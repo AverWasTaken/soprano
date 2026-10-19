@@ -260,9 +260,17 @@ final class PlacementPlanner {
     // first slot whose stack would place desired off this hit with this rotation, -1 if none. with margin, the rotation
     // nudged ANGLE_MARGIN each way has to agree too, so aim noise can't tip a stair into the next quadrant
     int slotThatPlaces(BlockState desired, BlockHitResult hit, Rotation rot, List<ItemStack> stacks, boolean margin) {
+        // a bucket has nothing to aim, so no margin either
+        boolean pour = BuilderProcess.fluidSource(desired);
         for (int i = 0; i < stacks.size(); i++) {
             ItemStack stack = stacks.get(i);
-            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
+            if (stack == null || stack.isEmpty() || !(pour ? BuilderProcess.pours(stack) != null : stack.getItem() instanceof BlockItem)) {
+                continue;
+            }
+            if (pour) {
+                if (placesRight(desired, hit, rot, stack)) {
+                    return i;
+                }
                 continue;
             }
             if (!placesRight(desired, hit, rot, stack)) {
@@ -290,6 +298,13 @@ final class PlacementPlanner {
 
     // null if vanilla would refuse the click
     BlockState simulate(BlockHitResult hit, Rotation rot, ItemStack stack) {
+        BlockState fluid = BuilderProcess.pours(stack);
+        if (fluid != null) {
+            return pour(hit, fluid);
+        }
+        if (!(stack.getItem() instanceof BlockItem)) {
+            return null;
+        }
         float yaw = ctx.player().getYRot();
         float pitch = ctx.player().getXRot();
         ctx.player().setYRot(rot.getYaw());
@@ -314,6 +329,14 @@ final class PlacementPlanner {
             ctx.player().setYRot(yaw);
             ctx.player().setXRot(pitch);
         }
+    }
+
+    // BucketItem.emptyContents with us sneaking: the block we clicked never gets the fluid (no waterlogged stairs by
+    // accident), it goes one out of the face, and lands if that cell is air or something the fluid washes away.
+    // no BlockPlaceContext, a bucket isn't a block and the click goes through use(), not useOn()
+    private BlockState pour(BlockHitResult hit, BlockState fluid) {
+        BlockState there = ctx.world().getBlockState(hit.getBlockPos().relative(hit.getDirection()));
+        return BuilderProcess.pourInto(there, fluid) ? fluid : null;
     }
 
     // RayTraceUtils.rayTraceTowards but from any eye, not just the player's. same fluid rule as objectMouseOver, which

@@ -21,6 +21,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -44,6 +45,11 @@ public final class PlaceRules {
     // is asking for the neighbours. a stair next to a sideways stair is a corner whether the file likes it or not.
     // by block AND property: a fence's north is literally PipeBlock.NORTH, and a vine's north is a face somebody chose
     public static boolean derived(Block block, Property<?> prop) {
+        if (prop == BlockStateProperties.WATERLOGGED) {
+            // the builder doesn't pour into blocks (it sneaks, the bucket goes one out), so a wet stair the file wants
+            // would be a break and place loop forever. dry or wet, a stair is a stair
+            return true;
+        }
         if (block instanceof StairBlock) {
             return prop == StairBlock.SHAPE;
         }

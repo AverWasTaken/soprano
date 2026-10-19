@@ -75,6 +75,21 @@ final class GivenUp {
         return any;
     }
 
+    // anything still sitting out its break that counts. the for good ones don't, they're as done as they get
+    boolean anyWaiting(long now, CellFilter counts) {
+        for (Entry e : cells.values()) {
+            if (e.until != Long.MAX_VALUE && e.until > now && counts.test(e.x, e.y, e.z)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @FunctionalInterface
+    interface CellFilter {
+        boolean test(int x, int y, int z);
+    }
+
     // a neighbour going in or coming out can be exactly what a for good one was waiting on, so it gets one more go.
     // one, not a fresh MAX_ATTEMPTS: if the change didn't help it's back to for good after a single stall
     void nearbyChanged(int x, int y, int z, long now) {

@@ -20,6 +20,7 @@ package baritone.process;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.BlockChangeEvent;
+import baritone.api.event.events.TickEvent;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
@@ -38,6 +39,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.PathingCommandContext;
+import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
 import baritone.utils.schematic.SelectionSchematic;
@@ -47,13 +49,16 @@ import com.google.common.collect.ImmutableSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -63,6 +68,8 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -71,6 +78,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -149,6 +157,22 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Object seenWorld;
     // wrong blocks nothing short of creative breaks (bedrock where the file wants air), out of the goal and the scan
     private List<BetterBlockPos> unbreakableCells = List.of();
+    // which fluid the bucket pass is on (water, then lava), null while there's block work left. see pourGoals
+    private Block pouring;
+    // sources left dry on purpose (water that boils off here, lava that would meet water), for the pause line
+    private List<BetterBlockPos> unpourable = List.of();
+    private LongOpenHashSet unpourableLogged;
+    // the file as start left it, and per fluid whether it has a source of it anywhere. see spilled
+    private ISchematic pourScan;
+    private Map<Block, Boolean> sourceInFile;
+    // the game's ticks, not the builder's: the sign editor and the empty bucket both outlive the builder's control
+    private long clientTicks;
+    private long pouredAt = Long.MIN_VALUE / 2;
+    private int pouredSlot = -1;
+    private static final int EMPTY_BUCKET_TICKS = 20;
+    // signs we clicked in and when. the editor for one of those gets closed, nobody else's
+    private final Map<BlockPos, Long> signsPlaced = new HashMap<>();
+    private static final int SIGN_TICKS = 40;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -168,7 +192,58 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                 }
             }
+
+            @Override
+            public void onTick(TickEvent event) {
+                if (event.getType() == TickEvent.Type.IN) {
+                    clientTicks++;
+                    afterClicks();
+                }
+            }
         });
+    }
+
+    // what the builder's own clicks leave behind, every tick whether it has control or not. the last block of a build is
+    // as likely as not the sign, and then it's done before the editor even shows up
+    private void afterClicks() {
+        if (clientTicks - pouredAt <= EMPTY_BUCKET_TICKS) {
+            dropEmptyBucket();
+        }
+        if (!signsPlaced.isEmpty()) {
+            closeOurSignEditor();
+        }
+    }
+
+    // a survival pour leaves an empty bucket in hand, and the next right click from anybody (a movement, the user)
+    // scoops the water right back up. BlockPlaceHelper's use fallback stays as it is, MovementFall picks its water up
+    // through it
+    private void dropEmptyBucket() {
+        if (ctx.player().getInventory().getSelectedSlot() != pouredSlot || !emptyBucket(ctx.player().getMainHandItem())) {
+            return;
+        }
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        for (int i = 0; i < 9; i++) {
+            if (!(inv.get(i).getItem() instanceof BucketItem)) {
+                ctx.player().getInventory().setSelectedSlot(i);
+                pouredAt = Long.MIN_VALUE / 2;
+                return;
+            }
+        }
+    }
+
+    private static boolean emptyBucket(ItemStack stack) {
+        return stack.getItem() instanceof BucketItem bucket && bucket.getContent() == Fluids.EMPTY;
+    }
+
+    // the editor shows up a round trip after the click, so this keeps looking for a bit. removed() sends the blank text
+    // like pressing done would. PlaceSignTask writes its own signs and never goes through the builder's click, so its
+    // editor stays open
+    private void closeOurSignEditor() {
+        signsPlaced.values().removeIf(at -> clientTicks - at > SIGN_TICKS);
+        if (ctx.minecraft().gui.screen() instanceof AbstractSignEditScreen screen
+                && signsPlaced.remove(((ISignEditScreen) screen).baritone$sign().getBlockPos()) != null) {
+            ctx.minecraft().gui.setScreen(null);
+        }
     }
 
     @Override
@@ -213,6 +288,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return !Baritone.settings().buildSkipBlocks.value.contains(this.desiredState(x, y, z, current, Collections.emptyList()).getBlock());
             }
         };
+        this.pourScan = this.schematic;
+        this.sourceInFile = null;
         int x = origin.getX();
         int y = origin.getY();
         int z = origin.getZ();
@@ -276,6 +353,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         droppedLogged = null;
         torchNoPlanLogged = null;
         dropped = List.of();
+        pouring = null;
+        unpourable = List.of();
+        unpourableLogged = null;
     }
 
     public void resume() {
@@ -522,7 +602,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // empty slot off limits for the hotbar swap below
             return null;
         }
+        if (fluidSource(desired) && !pourHere(bcc, center, x, y, z, desired)) {
+            return null;
+        }
         return desired;
+    }
+
+    // the scan's half of the bucket pass: only the fluid that's up, not the ones we leave dry on purpose, and survival
+    // lava only from above. lava runs sideways and down, never up
+    private boolean pourHere(BuilderCalculationContext bcc, BetterBlockPos feet, int x, int y, int z, BlockState desired) {
+        if (pouring != desired.getBlock() || pourSkip(bcc, x, y, z, desired) != null) {
+            return false;
+        }
+        return desired.getBlock() != Blocks.LAVA || ctx.player().hasInfiniteMaterials() || feet.y > y;
     }
 
     private Optional<Placement> plannedFromHere(BuilderCalculationContext bcc, BetterBlockPos feet, List<BlockState> desirableOnHotbar) {
@@ -570,7 +662,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         UnaryOperator<Rotation> noise = PlacementPlanner.noise(baritone.getLookBehavior().getAimProcessor());
         // room to the next quadrant if there's a way to get it, a stair aimed right at the boundary only works on the
         // ticks the noise feels like it. the click gate catches the rest either way
-        Optional<PlacementPlanner.Recipe> recipe = PlaceRules.aimProof(toPlace)
+        Optional<PlacementPlanner.Recipe> recipe = PlaceRules.aimProof(toPlace) || fluidSource(toPlace)
                 ? Optional.empty()
                 : planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, true, reach, preferAgainst);
         if (recipe.isEmpty()) {
@@ -591,6 +683,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // again on exactly that ray and rotation and only click if the right state comes out. upstream also clicked when
     // the rotation was merely close, which is how stairs went in backwards
     private boolean placeGateOpen(BuilderCalculationContext bcc, Placement p) {
+        if (emptyBucket(ctx.player().getMainHandItem())) {
+            // the click would scoop up whatever fluid it's looking at, likely the one we just poured
+            return false;
+        }
         if (!ctx.player().isCrouching()) {
             // the plan used the sneaking eye, and a standing click on a chest opens it
             return false;
@@ -607,6 +703,20 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(p.hotbarSelection);
         return planner().placesRight(desired, hit, ctx.playerRotations(), stack);
+    }
+
+    // what afterClicks cleans up after. the click may sit out BlockPlaceHelper's timer a tick, the gate opens again then
+    // and this just writes the same thing again
+    private void clicked(BuilderCalculationContext bcc, Placement p) {
+        if (pours(ctx.player().getMainHandItem()) != null) {
+            pouredAt = clientTicks;
+            pouredSlot = p.hotbarSelection;
+        }
+        BlockPos cell = p.target();
+        BlockState desired = bcc.getSchematic(cell.getX(), cell.getY(), cell.getZ(), bcc.bsi.get0(cell));
+        if (desired != null && desired.getBlock() instanceof SignBlock) {
+            signsPlaced.put(cell.immutable(), clientTicks);
+        }
     }
 
     @Override
@@ -760,6 +870,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
                 stallTicks = 0;
+                clicked(bcc, toPlace.get());
             } else if (stalled()) {
                 giveUpOn(bcc, List.of(BetterBlockPos.from(toPlace.get().target())), "Couldn't get a place click in");
             }
@@ -944,6 +1055,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             logDirect(String.format("Can't break %s blocks, they don't break:", unbreakableCells.size()));
             logDirect(unbreakableCells.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (unbreakableCells.size() > 10 ? "\n..." : ""));
         }
+        if (!unpourable.isEmpty()) {
+            logDirect(String.format("Left %s fluid sources dry on purpose (water boils off here, or lava would meet water):", unpourable.size()));
+            logDirect(unpourable.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (unpourable.size() > 10 ? "\n..." : ""));
+        }
         if (!dropped.isEmpty()) {
             logDirect(String.format("Can't place %s blocks there yet, nothing to hold them up:", dropped.size()));
             logDirect(dropped.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (dropped.size() > 10 ? "\n..." : ""));
@@ -1008,13 +1123,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
-    // the block item creative would hand itself for this state, null if there's nothing that places it. only block
-    // items: the place branch can't pour a bucket, and an item that comes out as a different block (kelp for a kelp
-    // plant) would just be a goal the stall check has to burn down. those stay missing and the pause names them.
-    // the torch item for a wall torch is fine though, the planner asks the item and gets the wall one out of it
+    // the item creative would hand itself for this state, null if there's nothing that places it. block items, plus the
+    // bucket for a water or lava source. an item that comes out as a different block (kelp for a kelp plant) would just
+    // be a goal the stall check has to burn down, those stay missing and the pause names them. the torch item for a
+    // wall torch is fine though, the planner asks the item and gets the wall one out of it
     static Item creativeItem(BlockState desired) {
         if (desired.getBlock() instanceof LiquidBlock) {
-            return null;
+            return bucketFor(desired); // flowing ones are the source's business
         }
         Item item = desired.getBlock().asItem();
         return item instanceof BlockItem block && (block.getBlock() == desired.getBlock() || item instanceof StandingAndWallBlockItem) ? item : null;
@@ -1341,8 +1456,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> flowingLiquids = new ArrayList<>();
         Map<BlockState, Integer> missing = new HashMap<>();
         List<BetterBlockPos> outOfBounds = new ArrayList<>();
+        List<BetterBlockPos> pourCells = new ArrayList<>();
         incorrectPositions.forEach(pos -> {
             BlockState state = bcc.bsi.get0(pos);
+            if (pourCell(bcc, pos, state)) {
+                pourCells.add(pos);
+                return;
+            }
             if (state.getBlock() instanceof AirBlock) {
                 BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, state);
                 if (desired == null) {
@@ -1428,6 +1548,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 owners.add(new Pair<>(pos, goal));
             }
         });
+        pouring = null;
+        List<BetterBlockPos> unpourableNow = new ArrayList<>();
+        if (!pourCells.isEmpty() && toPlace.isEmpty() && toBreak.isEmpty() && !missingBlocks(missing, creative) && !waitingOnBlocks(bcc)) {
+            pourGoals(bcc, pourCells, approxPlaceable, creative, toPlace, owners, missing, unpourableNow);
+        }
+        unpourable = unpourableNow;
         goalOwners = owners;
 
         if (!toPlace.isEmpty()) {
@@ -1453,6 +1579,140 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return null;
         }
         return new GoalComposite(toBreak.toArray(new Goal[0]));
+    }
+
+    // a source the file wants where a bucket would pour it. these sit out till the blocks are done, see pourGoals
+    private boolean pourCell(BuilderCalculationContext bcc, BetterBlockPos pos, BlockState current) {
+        if (!(current.getBlock() instanceof AirBlock) && !current.canBeReplaced()) {
+            // a torch would wash away too, but the scan won't click into it (isReplaceable), so it gets broken like any
+            // wrong block first and comes back here as air
+            return false;
+        }
+        BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, current);
+        return desired != null && fluidSource(desired) && pourInto(current, desired);
+    }
+
+    // a wall that isn't up yet because we don't have it holds the water back, or it just runs out the gap. the hotbar
+    // only pass calls a block in the backpack missing too, and that one's coming. kelp plant, bubble column and friends
+    // have no item at all, nobody's bringing those, so they don't count
+    static boolean missingBlocks(Map<BlockState, Integer> missing, boolean creative) {
+        for (BlockState state : missing.keySet()) {
+            if (creative ? creativeItem(state) != null : itemOf(state) != Items.AIR) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a block we let go of for a bit is still coming back, and the water goes in after it. the for good ones, the
+    // unbreakable ones and the ones that can't stay yet are as done as they get
+    private boolean waitingOnBlocks(BuilderCalculationContext bcc) {
+        return givenUp != null && givenUp.anyWaiting(builderTicks, (x, y, z) -> {
+            BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
+            return desired == null || !fluidSource(desired);
+        });
+    }
+
+    // the bucket pass, once the blocks are done: walls first or the water just runs off. all the water before any lava,
+    // lava poured next to water is a cobble generator
+    private void pourGoals(BuilderCalculationContext bcc, List<BetterBlockPos> cells, List<BlockState> approxPlaceable, boolean creative,
+                           List<Goal> toPlace, List<Pair<BetterBlockPos, Goal>> owners, Map<BlockState, Integer> missing, List<BetterBlockPos> skipped) {
+        List<BetterBlockPos> water = new ArrayList<>();
+        List<BetterBlockPos> lava = new ArrayList<>();
+        Map<String, List<BetterBlockPos>> why = new LinkedHashMap<>();
+        for (BetterBlockPos pos : cells) {
+            if (givenUp(pos.x, pos.y, pos.z)) {
+                continue;
+            }
+            BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            String skip = pourSkip(bcc, pos.x, pos.y, pos.z, desired);
+            if (skip != null) {
+                skipped.add(pos);
+                why.computeIfAbsent(skip, k -> new ArrayList<>()).add(pos);
+            } else if (creative ? creativeItem(desired) == null : !containsBlockState(approxPlaceable, desired)) {
+                // one bucket is one source, so a survival pool runs dry here and the pause asks for more
+                missing.merge(desired, 1, Integer::sum);
+            } else {
+                (desired.getBlock() == Blocks.WATER ? water : lava).add(pos);
+            }
+        }
+        logUnpourable(bcc, why);
+        // water we're out of buckets for or let go of for a bit still goes first. lava running into where it ends up
+        // is cobble all over the pool
+        boolean waterComing = missing.containsKey(Blocks.WATER.defaultBlockState()) || givenUp != null
+                && givenUp.anyWaiting(builderTicks, (x, y, z) -> {
+                    BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
+                    return desired != null && desired.getBlock() == Blocks.WATER && fluidSource(desired);
+                });
+        List<BetterBlockPos> pass = !water.isEmpty() ? water : waterComing ? List.of() : lava;
+        if (pass.isEmpty()) {
+            return;
+        }
+        pouring = pass == water ? Blocks.WATER : Blocks.LAVA;
+        boolean fromAbove = !creative && pouring == Blocks.LAVA;
+        for (BetterBlockPos pos : pass) {
+            Goal goal = new GoalPour(pos, fromAbove);
+            toPlace.add(goal);
+            owners.add(new Pair<>(pos, goal));
+        }
+    }
+
+    // why a source stays dry, null if it doesn't. the scan asks too, so the two can't disagree
+    private String pourSkip(BuilderCalculationContext bcc, int x, int y, int z, BlockState desired) {
+        BlockPos pos = new BlockPos(x, y, z);
+        if (desired.getBlock() == Blocks.WATER && Boolean.TRUE.equals(ctx.world().environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, pos))) {
+            return "water boils off in this dimension";
+        }
+        if (desired.getBlock() == Blocks.LAVA && touchesWater(pos, p -> bcc.bsi.get0(p.getX(), p.getY(), p.getZ()),
+                p -> bcc.getSchematic(p.getX(), p.getY(), p.getZ(), bcc.bsi.get0(p.getX(), p.getY(), p.getZ())))) {
+            return "lava would meet water";
+        }
+        return null;
+    }
+
+    // the cell and its six neighbours, water in the world now or in the file later. waterlogged counts, it's water too
+    static boolean touchesWater(BlockPos pos, Function<BlockPos, BlockState> world, Function<BlockPos, BlockState> wants) {
+        if (water(world.apply(pos))) {
+            return true;
+        }
+        for (Direction d : Direction.values()) {
+            BlockPos n = pos.relative(d);
+            if (water(world.apply(n)) || water(wants.apply(n))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // by fluid and not the tag, tags aren't bound in the tests
+    private static boolean water(BlockState state) {
+        if (state == null) {
+            return false;
+        }
+        Fluid fluid = state.getFluidState().getType();
+        return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER;
+    }
+
+    // one line per reason for the cells that just got left dry, same idea as logDropped
+    private void logUnpourable(BuilderCalculationContext bcc, Map<String, List<BetterBlockPos>> why) {
+        if (why.isEmpty()) {
+            return;
+        }
+        if (unpourableLogged == null) {
+            unpourableLogged = new LongOpenHashSet();
+        }
+        why.forEach((reason, cells) -> {
+            List<String> fresh = new ArrayList<>();
+            for (BetterBlockPos pos : cells) {
+                if (unpourableLogged.add(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z))) {
+                    fresh.add(describe(bcc, pos));
+                }
+            }
+            if (!fresh.isEmpty()) {
+                logDirect("Not pouring these, " + reason + ": " + String.join(", ", fresh.subList(0, Math.min(fresh.size(), 5)))
+                        + (fresh.size() > 5 ? " and " + (fresh.size() - 5) + " more" : ""));
+            }
+        });
     }
 
     public static class JankyGoalComposite implements Goal {
@@ -1708,6 +1968,79 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
+    // somewhere to pour a source from: beside it or up to two above, about two blocks out at most. GoalAdjacent wanted us next to it at the same height, which round a sunk pool is inside the
+    // wall. survival lava only from above, it runs sideways and down and a bucket of it at our feet is how you die
+    public static class GoalPour implements Goal {
+
+        private final int x;
+        private final int y;
+        private final int z;
+        private final boolean fromAbove;
+
+        public GoalPour(BlockPos cell, boolean fromAbove) {
+            this.x = cell.getX();
+            this.y = cell.getY();
+            this.z = cell.getZ();
+            this.fromAbove = fromAbove;
+        }
+
+        @Override
+        public boolean isInGoal(int x, int y, int z) {
+            int dx = x - this.x;
+            int dy = y - this.y;
+            int dz = z - this.z;
+            if (dx == 0 && dz == 0) {
+                return false; // in it, on it, or on top of whatever's over it, none of which sees a face to pour off
+            }
+            // not lower than the cell either: the scan skips a head height cell with air over it, and a pool top always
+            // has air over it
+            if (dy < (fromAbove ? 1 : 0) || dy > 2) {
+                return false;
+            }
+            // about reach from the sneaking eye to the far side of the cell, the scan does the real check
+            return dx * dx + dy * dy + dz * dz <= 6;
+        }
+
+        @Override
+        public double heuristic(int x, int y, int z) {
+            // the nearest rim spot, not the one straight over the pool, a partial path leaning out there falls in.
+            // lower cells first, same as GoalAdjacent
+            double best = Double.MAX_VALUE;
+            for (Direction d : Direction.Plane.HORIZONTAL) {
+                best = Math.min(best, GoalBlock.calculate(x - (this.x + d.getStepX()), y - (this.y + 1), z - (this.z + d.getStepZ())));
+            }
+            return this.y * 100 + best;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            GoalPour goal = (GoalPour) o;
+            return x == goal.x && y == goal.y && z == goal.z && fromAbove == goal.fromAbove;
+        }
+
+        @Override
+        public int hashCode() {
+            return (int) BetterBlockPos.longHash(x, y, z) * 31 + (fromAbove ? 1 : 0);
+        }
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "GoalPour{x=%s,y=%s,z=%s,fromAbove=%s}",
+                    SettingsUtil.maybeCensor(x),
+                    SettingsUtil.maybeCensor(y),
+                    SettingsUtil.maybeCensor(z),
+                    fromAbove
+            );
+        }
+    }
+
     // whether the builder pressed the click that's down right now. InputOverrideHandler asks it for the trace, so a click
     // that outlived the builder's control still shows up as the builder's
     public boolean clickedByBuilder() {
@@ -1762,6 +2095,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BlockState> result = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(i);
+            BlockState fluid = pours(stack);
+            if (fluid != null) {
+                // a full bucket is a source on legs, so owning one counts and the hotbar swap fetches it
+                result.add(fluid);
+                continue;
+            }
             if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
                 result.add(Blocks.AIR.defaultBlockState());
                 continue;
@@ -1815,8 +2154,43 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // kelp). by item, not block: approxPlaceable says standing torch for a torch stack, and that's still the stack the
     // wall torch comes out of, the planner asks the item which one it places
     static boolean sameItem(BlockState have, BlockState desired) {
-        Item item = have.getBlock().asItem();
-        return item != Items.AIR && item == desired.getBlock().asItem();
+        Item item = itemOf(have);
+        return item != Items.AIR && item == itemOf(desired);
+    }
+
+    // the bucket for a source, the block's own item for everything else (flowing water has none)
+    private static Item itemOf(BlockState state) {
+        Item bucket = bucketFor(state);
+        return bucket != null ? bucket : state.getBlock().asItem();
+    }
+
+    // a water or lava source, the only kind of fluid a bucket puts down
+    static boolean fluidSource(BlockState state) {
+        return state.getBlock() instanceof LiquidBlock && state.getValue(LiquidBlock.LEVEL) == 0;
+    }
+
+    // the bucket that pours this source, null for anything else. vanilla's two only, a modded fluid stays missing
+    static Item bucketFor(BlockState state) {
+        if (!fluidSource(state)) {
+            return null;
+        }
+        if (state.getBlock() == Blocks.WATER) {
+            return Items.WATER_BUCKET;
+        }
+        return state.getBlock() == Blocks.LAVA ? Items.LAVA_BUCKET : null;
+    }
+
+    // the source a full bucket pours, null for any other stack
+    static BlockState pours(ItemStack stack) {
+        if (stack.is(Items.WATER_BUCKET)) {
+            return Blocks.WATER.defaultBlockState();
+        }
+        return stack.is(Items.LAVA_BUCKET) ? Blocks.LAVA.defaultBlockState() : null;
+    }
+
+    // would BucketItem.emptyContents put this source into a cell holding current. same rule it uses
+    static boolean pourInto(BlockState current, BlockState fluid) {
+        return current.isAir() || current.canBeReplaced(fluid.getFluidState().getType());
     }
 
     static boolean containsItem(Collection<BlockState> states, BlockState state) {
@@ -1847,6 +2221,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (desired == null) {
             return true;
         }
+        if (desired.getBlock() instanceof LiquidBlock && desired.getValue(LiquidBlock.LEVEL) != 0
+                && (current.getBlock() instanceof AirBlock || current.getBlock() == desired.getBlock())) {
+            // flowing is whatever the source next to it makes of it, at whatever level it feels like. a bucket only
+            // pours sources, so nothing could ever make this cell more right
+            return true;
+        }
         if (current.getBlock() instanceof LiquidBlock && Baritone.settings().okIfWater.value) {
             return true;
         }
@@ -1869,6 +2249,41 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return true;
         }
         return sameBlockstate(current, desired);
+    }
+
+    // flowing water where the file wants air, from a file that has water in it: our own pool running round a corner or
+    // out past the selection, not something to fix. a file with no water anywhere still gets it reported
+    private boolean spilled(BlockState current, BlockState desired) {
+        return desired.getBlock() instanceof AirBlock && current.getBlock() instanceof LiquidBlock
+                && current.getValue(LiquidBlock.LEVEL) != 0 && hasSource(current.getBlock());
+    }
+
+    private boolean hasSource(Block fluid) {
+        if (pourScan == null) {
+            return false;
+        }
+        if (sourceInFile == null) {
+            sourceInFile = new HashMap<>();
+        }
+        return sourceInFile.computeIfAbsent(fluid, f -> scanForSource(pourScan, f));
+    }
+
+    // the whole file, once per fluid per build, and only once some flowing fluid is sitting where air is wanted
+    static boolean scanForSource(ISchematic schematic, Block fluid) {
+        BlockState air = Blocks.AIR.defaultBlockState();
+        for (int y = 0; y < schematic.heightY(); y++) {
+            for (int z = 0; z < schematic.lengthZ(); z++) {
+                for (int x = 0; x < schematic.widthX(); x++) {
+                    if (schematic.inSchematic(x, y, z, air)) {
+                        BlockState desired = schematic.desiredState(x, y, z, air, List.of());
+                        if (desired.getBlock() == fluid && fluidSource(desired)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public class BuilderCalculationContext extends CalculationContext {
@@ -1904,7 +2319,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         // valid() plus whatever the starter said to keep. every per cell "is this done" asks this one
         private boolean fine(int x, int y, int z, BlockState current, BlockState desired) {
-            return valid(current, desired, false) || kept(x, y, z, current);
+            return valid(current, desired, false) || kept(x, y, z, current) || spilled(current, desired);
         }
 
         private boolean kept(int x, int y, int z, BlockState current) {
