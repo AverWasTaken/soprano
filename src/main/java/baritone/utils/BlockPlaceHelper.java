@@ -66,6 +66,17 @@ public class BlockPlaceHelper {
         void placed(BlockPos pos, BlockState state);
     }
 
+    // any traced click (so only while building) that landed, and whose it was. game thread
+    public interface TracedPlaceListener {
+        void placed(BlockPos pos, BlockState state, String who);
+    }
+
+    private TracedPlaceListener tracedListener;
+
+    void setTracedPlaceListener(TracedPlaceListener tracedListener) {
+        this.tracedListener = tracedListener;
+    }
+
     private static final class Pending {
         final BlockPos pos;
         final Block block;
@@ -204,6 +215,9 @@ public class BlockPlaceHelper {
             if (!now.equals(t.before)) {
                 it.remove();
                 Trace.record("placed " + now + " at " + t.pos.toShortString() + " by " + t.who);
+                if (tracedListener != null) {
+                    tracedListener.placed(t.pos, now, t.who);
+                }
             } else if (++t.age > CONFIRM_TICKS) {
                 it.remove();
                 Debug.logInternal("place at " + t.pos.toShortString() + " by " + t.who + " never showed up");

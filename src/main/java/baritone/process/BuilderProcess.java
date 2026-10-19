@@ -38,6 +38,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
+import baritone.utils.BlockPlaceHelper;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
@@ -135,6 +136,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private BetterBlockPos lastBreak;
     private boolean digging;
     private GivenUp givenUp;
+    // air cells somebody else (a path, a movement) put a throwaway in this build. only these count when we mine one, or a
+    // clear job would remember every stone it ever dug and copy the lot into every bcc
+    private LongOpenHashSet scaffoldPlaced;
+    // and of those, the ones the builder then mined. a path that puts one back is the scaffold loop (upstream #2173): it
+    // needs that block to stand on, we mine it, it places it again. the throwaway that comes back is left alone till
+    // nothing else is left, see deferredScaffold
+    private LongOpenHashSet scaffoldMined;
+    private LongOpenHashSet scaffoldDeferLogged;
+    // set once the rest of the build is done and the deferred ones are fair game again. GivenUp bounds them from there
+    private boolean scaffoldReleased;
     // where to stand for the cells a movement can't place right (stairs, logs, anything aimed), see PlacementPlanner
     private PlacementPlanner planner;
     private Long2ObjectOpenHashMap<CellPlan> plans;
@@ -366,6 +377,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         pouring = null;
         unpourable = List.of();
         unpourableLogged = null;
+        forgetScaffold();
+    }
+
+    private void forgetScaffold() {
+        scaffoldPlaced = null;
+        scaffoldMined = null;
+        scaffoldDeferLogged = null;
+        scaffoldReleased = false;
     }
 
     public void resume() {
@@ -527,7 +546,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                     BlockState curr = bcc.bsi.get0(x, y, z);
                     // fine, not valid: a kept block is the caller's scaffolding and the builder never gets to mine it
-                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)) {
+                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
+                            && !bcc.deferredScaffold(x, y, z, curr)) {
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
                         Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
                         if (rot.isPresent()) {
@@ -814,6 +834,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!recalc(bcc)) {
             if (Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
                 logDirect("Starting layer " + layer);
+                // the release is once per layer, a fresh layer gets its own loop guard
+                forgetScaffold();
                 layer++;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
@@ -932,6 +954,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     // skip a layer, so give it another go now. each go is an attempt, so this runs out
                     logDirect("Only blocks I gave up on for a bit are left, trying them again");
                     // the logMissing pass just wrote it, but this isn't a pause
+                    missingAtPause = Map.of();
+                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                }
+                if (releaseScaffold(bcc)) {
+                    // after the given up ones get their retry, those are other work too
                     missingAtPause = Map.of();
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
@@ -1096,6 +1123,77 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private boolean retryGivenUp() {
         return givenUp != null && givenUp.retryNow(builderTicks);
+    }
+
+    // InputOverrideHandler hands over every traced place that landed. somebody else's throwaway in an air cell is the first
+    // half of the loop
+    public void placed(BlockPos pos, BlockState now, String who) {
+        if ("builder".equals(who) || !BlockPlaceHelper.throwaway(now.getBlock().asItem()) || !wantsAir(pos)) {
+            return;
+        }
+        if (scaffoldPlaced == null) {
+            scaffoldPlaced = new LongOpenHashSet();
+        }
+        scaffoldPlaced.add(BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    // and every traced break. ours, of a throwaway somebody else put there: the half the builder does
+    public void broke(BlockPos pos, BlockState before, String who) {
+        long cell = BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ());
+        if (!"builder".equals(who) || scaffoldPlaced == null || !scaffoldPlaced.contains(cell)
+                || !BlockPlaceHelper.throwaway(before.getBlock().asItem()) || !wantsAir(pos)) {
+            return;
+        }
+        if (scaffoldMined == null) {
+            scaffoldMined = new LongOpenHashSet();
+        }
+        scaffoldMined.add(cell);
+    }
+
+    private boolean wantsAir(BlockPos pos) {
+        if (!isActive()) {
+            return false;
+        }
+        int x = pos.getX() - origin.getX();
+        int y = pos.getY() - origin.getY();
+        int z = pos.getZ() - origin.getZ();
+        BlockState now = ctx.world().getBlockState(pos);
+        return schematic.inSchematic(x, y, z, now) && schematic.desiredState(x, y, z, now, approxPlaceable).getBlock() instanceof AirBlock;
+    }
+
+    // bcc.deferredScaffold plus the one log line per cell
+    private boolean deferredScaffold(BuilderCalculationContext bcc, BetterBlockPos pos) {
+        if (!bcc.deferredScaffold(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
+            return false;
+        }
+        if (scaffoldDeferLogged == null) {
+            scaffoldDeferLogged = new LongOpenHashSet();
+        }
+        if (scaffoldDeferLogged.add(BetterBlockPos.longHash(pos))) {
+            logDebug(String.format("A path put scaffold back where I mined it, leaving it till the end: %s", describe(bcc, pos)));
+        }
+        return true;
+    }
+
+    // nothing else left, so the scaffold we skipped is the work now. once a build, from here on a loop is GivenUp's problem
+    private boolean releaseScaffold(BuilderCalculationContext bcc) {
+        if (scaffoldReleased || scaffoldMined == null || scaffoldMined.isEmpty()) {
+            return false;
+        }
+        boolean any = false;
+        for (BetterBlockPos pos : incorrectPositions) {
+            if (bcc.deferredScaffold(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) {
+            return false;
+        }
+        scaffoldReleased = true;
+        logDebug("Only scaffold I left alone is left, mining it now");
+        // the bcc this tick still has the old snapshot, the recursion builds a new one
+        return true;
     }
 
     // upstream held left click on bedrock until somebody cancelled
@@ -1553,7 +1651,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         breakable.forEach(pos -> {
             if (unbreakable(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
                 cantBreak.add(pos);
-            } else if (!givenUp(pos.x, pos.y, pos.z)) {
+            } else if (!givenUp(pos.x, pos.y, pos.z) && !deferredScaffold(bcc, pos)) {
                 Goal goal = breakGoal(pos, bcc);
                 toBreak.add(goal);
                 owners.add(new Pair<>(pos, goal));
@@ -2349,6 +2447,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         private final int originZ;
         // one read per context, so a keep swapped mid search can't give half a path each answer
         private final Keep keep;
+        // same deal for the scaffold the builder mined, the game thread adds to it while the path thread asks
+        private final LongOpenHashSet scaffoldMined;
 
         public BuilderCalculationContext() {
             super(BuilderProcess.this.baritone, true); // wew lad
@@ -2358,6 +2458,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.originY = origin.getY();
             this.originZ = origin.getZ();
             this.keep = BuilderProcess.this.keep;
+            LongOpenHashSet mined = BuilderProcess.this.scaffoldMined;
+            this.scaffoldMined = BuilderProcess.this.scaffoldReleased || mined == null || mined.isEmpty() ? null : mined.clone();
 
             this.jumpPenalty += 10;
             this.backtrackCostFavoringCoefficient = 1;
@@ -2378,6 +2480,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         private boolean kept(int x, int y, int z, BlockState current) {
             return keep != null && !(current.getBlock() instanceof AirBlock) && keep.keep(x, y, z, current);
+        }
+
+        // a throwaway back in a cell we already mined one out of. not a goal, not a break target and priced like kept, so
+        // the path that put it there can use it. it stays wrong, so the build isn't done till releaseScaffold lets it go
+        private boolean deferredScaffold(int x, int y, int z, BlockState current) {
+            return scaffoldMined != null && BlockPlaceHelper.throwaway(current.getBlock().asItem())
+                    && scaffoldMined.contains(BetterBlockPos.longHash(x, y, z));
         }
 
         // this has to agree with what a movement will actually put there (InventoryBehavior.selectThrowawayForLocation),
@@ -2425,10 +2534,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if ((!allowBreak && !allowBreakAnyway.contains(current.getBlock())) || isBreakProtected(x, y, z)) {
                 return COST_INF;
             }
-            if (kept(x, y, z, current)) {
+            if (kept(x, y, z, current) || deferredScaffold(x, y, z, current)) {
                 // the caller's pillar, inside the box or out. x10 was still cheaper than a detour now and then, and a
                 // path that mines the scaffold it just put up is a loop that places it again. not INF though, standing
                 // on top of a tall pillar with no bucket the only way down is through it
+                // a deferred scaffold block is the same thing from the other side, a path put it there for a reason
                 return 1000;
             }
             BlockState sch = getSchematic(x, y, z, current);
