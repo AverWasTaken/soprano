@@ -35,6 +35,7 @@ import baritone.pathing.movement.MovementState.MovementTarget;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
+import baritone.utils.portal.Portal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -432,11 +433,13 @@ public class MovementFall extends Movement {
             return false; // already one in here (us, a tick ago), physics takes it from here
         }
         double reach = ctx.playerController().getBlockReachDistance();
+        // live is fine here, this is the client thread and the server can't change mid fall
+        boolean roundsUp = Portal.roundsFallDamageUp();
         // what's under the crosshair right now is exactly what a click will hit
         BlockHitResult hit = ctx.objectMouseOver() instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK ? b : null;
         int aimed = hit == null ? -1 : aimedCell(bsi, hit, mask);
         if (aimed >= 0) {
-            LadderClutch.Plan now = LadderClutch.pick(pos.y, mot.y, player.fallDistance, dest.y, 1 << aimed, 0, reach);
+            LadderClutch.Plan now = LadderClutch.pick(pos.y, mot.y, player.fallDistance, dest.y, 1 << aimed, 0, reach, roundsUp);
             boolean roomy = item != Items.LADDER || gap(dest.above(aimed), hit.getDirection().getOpposite(), pos) >= LadderClutch.LADDER_CLEARANCE + 0.01;
             if (now != null && now.place() == 0 && roomy) {
                 inv.pickClutchItem(true);
@@ -450,7 +453,7 @@ public class MovementFall extends Movement {
                 return true;
             }
         }
-        LadderClutch.Plan plan = LadderClutch.pick(pos.y, mot.y, player.fallDistance, dest.y, mask, 1, reach);
+        LadderClutch.Plan plan = LadderClutch.pick(pos.y, mot.y, player.fallDistance, dest.y, mask, 1, reach, roundsUp);
         if (plan == null) {
             clutchGaveUp = true;
             return false;
@@ -616,7 +619,7 @@ public class MovementFall extends Movement {
         if (mask <= 0) {
             return false;
         }
-        return LadderClutch.pick(pos.y, player.getDeltaMovement().y, player.fallDistance, dest.y, mask, 0, ctx.playerController().getBlockReachDistance()) != null;
+        return LadderClutch.pick(pos.y, player.getDeltaMovement().y, player.fallDistance, dest.y, mask, 0, ctx.playerController().getBlockReachDistance(), Portal.roundsFallDamageUp()) != null;
     }
 
     // all there is to an unplanned fall: clutch on the way down, fetch the ladder once we're standing. no centering, no

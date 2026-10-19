@@ -20,6 +20,7 @@ package baritone.utils;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefBridge;
 import baritone.altoclef.AltoClefSettings;
+import baritone.utils.portal.Portal;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
@@ -286,14 +287,28 @@ public class ToolSet {
             speed *= 1 + (player.getEffect(MobEffects.HASTE).getAmplifier() + 1) * 0.2;
         }
         if (player.hasEffect(MobEffects.MINING_FATIGUE)) {
-            // 1.21.4 had a switch with 0.3, 0.09, 0.0027, 0.00081 (the 0.0027 was a typo-looking truth). 26.3 made it a real power,
-            // so fatigue 3 and 4 are 10x less crippling than that table says
-            speed *= fatigueFactor(player.getEffect(MobEffects.MINING_FATIGUE).getAmplifier());
+            // asked once per toolset and baked into potionMult, same lifetime as breakStrengthCache. a toolset that
+            // outlives a server switch is wrong about way more than fatigue anyway
+            speed *= fatigueFactor(player.getEffect(MobEffects.MINING_FATIGUE).getAmplifier(), Portal.oldMiningFatigue());
         }
         return speed;
     }
 
-    static double fatigueFactor(int amplifier) {
-        return Math.pow(0.3, amplifier + 1);
+    // 26.3 made it a real power. up to 26.2 it's a switch (vfp puts it back on old servers), and the 0.0027 is not a typo,
+    // it's a typo-looking truth. so amp 2 and 3 (fatigue III and IV) are 10x worse there, then it bottoms out at 0.00081
+    static double fatigueFactor(int amplifier, boolean oldTable) {
+        if (!oldTable) {
+            return Math.pow(0.3, amplifier + 1);
+        }
+        switch (amplifier) {
+            case 0:
+                return 0.3;
+            case 1:
+                return 0.09;
+            case 2:
+                return 0.0027;
+            default:
+                return 0.00081;
+        }
     }
 }

@@ -341,7 +341,7 @@ public class MovementDescend extends Movement {
                 }
             }
         }
-        LadderClutch.Plan plan = mask == 0 ? null : LadderClutch.plan(startY - landY, mask, context.blockReach);
+        LadderClutch.Plan plan = mask == 0 ? null : LadderClutch.plan(startY - landY, mask, context.blockReach, context.fallDamageRoundsUp);
         if (plan == null) {
             return COST_INF;
         }

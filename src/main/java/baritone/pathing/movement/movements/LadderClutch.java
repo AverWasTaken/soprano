@@ -31,8 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
 //      starts. the landing tick counts too, and landing is what checks the fall distance, so a vine in the landing cell
 //      means a 200 block fall costs one move (under 3.92, terminal velocity) and that's free. this is the one that makes a
 //      clutch work at terminal velocity
-// both of those run before Entity.checkFallDamage adds the tick's move, and that adds the landing move too (in 1.21.4 it
-// skipped the move that ended on the ground). damage is floor(fall + 1e-6 - 3) now, so anything under 4 is free
+// both of those run before Entity.checkFallDamage adds the tick's move. from 1.21.5 on that adds the landing move too and
+// damage is floor(fall + 1e-6 - 3), so anything under 4 is free. older servers (2b2t through vfp) skip the move that ends
+// on the ground and round up with ceil(fall - 3), so there it's anything up to 3. roundsUp picks which one we're playing
 final class LadderClutch {
 
     // straight out of 26.3 LivingEntity.travelInAir: y += vy, then vy = (vy - 0.08) * 0.98f (same as 1.21.4)
@@ -52,9 +53,11 @@ final class LadderClutch {
     static final double AIM_HEIGHT = 0.8;
     // tick starts closer than this to the top or bottom of a cell don't count as inside it, 0.05 is the float/server slop
     static final double SLOP = 0.05;
-    // fall distance we're ok landing with. damage is floor(fallDistance + 1e-6 - 3) and the landing move is in the
-    // distance, so 4 is the first one that hurts (it was ceil, and 3, back when the landing move didn't count)
-    static final double SAFE_FALL = 4 - 0.05;
+    // fall distance we're ok landing with. 1.21.5+ is floor(fallDistance + 1e-6 - 3) so 4 is the first one that hurts,
+    // older servers are ceil(fallDistance - 3) so anything past 3 does
+    static double safeFall(boolean roundsUp) {
+        return roundsUp ? 3 - 0.05 : 4 - 0.05;
+    }
     // the cells above the landing floor we look at. a vine in any of these does it, higher than this and the fall
     // distance that's left after the reset is too much to land with anyway
     static final int CELLS = 5;
@@ -102,7 +105,7 @@ final class LadderClutch {
 
     // slop moves the edges of everything (tick start inside the cell, move long enough). positive is stingy, negative is
     // generous, and a plan has to be safe either way so a tick start sitting right on an edge never decides anything
-    static Landing play(double y, double v, double fall, int floor, int cell, int place, double slop) {
+    static Landing play(double y, double v, double fall, int floor, int cell, int place, double slop, boolean roundsUp) {
         for (int t = 0; t < MAX_TICKS; t++) {
             boolean there = t >= place;
             if (there && y >= cell + slop && y < cell + 1 - slop) {
@@ -118,10 +121,16 @@ final class LadderClutch {
             if (there && fall != 0 && moved >= 1 + slop * 0.4 && end <= cell + 1 - slop && y >= cell + slop) {
                 fall = 0;
             }
-            // the landing move is in, Entity.checkFallDamage adds every move now. after the resets above, not before them
-            fall += moved;
+            // 1.21.5+ checkFallDamage adds every move, landing included, after the resets above. older ones land first and
+            // only count moves where we stayed in the air, so the last one never makes it in
+            if (!roundsUp) {
+                fall += moved;
+            }
             if (landed) {
                 return new Landing(fall, t + (v < 0 ? moved / -v : 0));
+            }
+            if (roundsUp) {
+                fall += moved;
             }
             y = end;
             v = (v - GRAVITY) * DRAG;
@@ -142,7 +151,8 @@ final class LadderClutch {
 
     // the best way to clutch from this exact state. mask has bit k set if the cell k above the floor is air with something
     // to hang a climbable on. earliest click wins (it's the most room to retry), then the lowest cell
-    static Plan pick(double y0, double v0, double fall0, int floor, int mask, int firstPlace, double reach) {
+    static Plan pick(double y0, double v0, double fall0, int floor, int mask, int firstPlace, double reach, boolean roundsUp) {
+        double safe = safeFall(roundsUp);
         double[] ys = new double[MAX_TICKS];
         double[] vs = new double[MAX_TICKS];
         int n = 0;
@@ -159,12 +169,12 @@ final class LadderClutch {
                 if ((mask & (1 << k)) == 0 || !canReach(ys[p] - floor, k, reach)) {
                     continue;
                 }
-                Landing stingy = play(y0, v0, fall0, floor, floor + k, p, SLOP);
-                if (stingy.fall() > SAFE_FALL) {
+                Landing stingy = play(y0, v0, fall0, floor, floor + k, p, SLOP, roundsUp);
+                if (stingy.fall() > safe) {
                     continue;
                 }
-                Landing generous = play(y0, v0, fall0, floor, floor + k, p, -SLOP);
-                if (generous.fall() <= SAFE_FALL) {
+                Landing generous = play(y0, v0, fall0, floor, floor + k, p, -SLOP, roundsUp);
+                if (generous.fall() <= safe) {
                     return new Plan(k, p, Math.max(stingy.ticks(), generous.ticks()), Math.max(stingy.fall(), generous.fall()));
                 }
             }
@@ -176,17 +186,23 @@ final class LadderClutch {
     private static final ConcurrentHashMap<Long, Plan> MEMO = new ConcurrentHashMap<>();
 
     // pick from a fall off a ledge. A* asks this for every column it falls down, and the answer is only the drop, which
-    // cells have something to hang on, and your reach, so remember it
-    static Plan plan(int drop, int mask, double reach) {
+    // cells have something to hang on, your reach, and which server rules we're on, so remember it
+    static Plan plan(int drop, int mask, double reach, boolean roundsUp) {
         if (drop > MAX_DROP || drop < 1) {
             return null;
         }
-        long key = ((long) drop << 24) | ((long) mask << 16) | Math.round(reach * 10);
+        long key = memoKey(drop, mask, reach, roundsUp);
         Plan p = MEMO.get(key);
         if (p == null) {
-            p = pick(drop, WALK_OFF_VY, 0, 0, mask, FIRST_PLACE, reach);
+            p = pick(drop, WALK_OFF_VY, 0, 0, mask, FIRST_PLACE, reach, roundsUp);
             MEMO.put(key, p == null ? NONE : p);
         }
         return p == NONE || p == null ? null : p;
+    }
+
+    // drop is 9 bits at 24, mask is CELLS bits at 16, reach * 10 sits under that, so 40 up is all ours. a 1.21.4 plan
+    // handed to a 26.3 search (or the other way round) would be a free fall in one of them and a hurt one in the other
+    static long memoKey(int drop, int mask, double reach, boolean roundsUp) {
+        return ((long) drop << 24) | ((long) mask << 16) | Math.round(reach * 10) | (roundsUp ? 1L << 40 : 0);
     }
 }

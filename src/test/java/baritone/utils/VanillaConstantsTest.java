@@ -64,10 +64,20 @@ public class VanillaConstantsTest {
 
     @Test
     public void miningFatigueIsAPower() {
-        assertEquals(0.3, ToolSet.fatigueFactor(0), 1e-9);
-        assertEquals(0.09, ToolSet.fatigueFactor(1), 1e-9);
-        assertEquals(0.027, ToolSet.fatigueFactor(2), 1e-9);
-        assertEquals(0.0081, ToolSet.fatigueFactor(3), 1e-9);
+        for (int amp = 0; amp <= 5; amp++) {
+            assertEquals(Math.pow(0.3, amp + 1), ToolSet.fatigueFactor(amp, false), 1e-12);
+        }
+        assertEquals(0.027, ToolSet.fatigueFactor(2, false), 1e-9);
+        assertEquals(0.0081, ToolSet.fatigueFactor(3, false), 1e-9);
+    }
+
+    // what vfp patches getDestroySpeed back to for anything up to 26.2. the floats are vanilla's, the doubles are ours
+    @Test
+    public void miningFatigueUsedToBeATable() {
+        float[] vanilla = {0.3f, 0.09f, 0.0027f, 8.1E-4f, 8.1E-4f, 8.1E-4f};
+        for (int amp = 0; amp <= 5; amp++) {
+            assertEquals("amp " + amp, vanilla[amp], ToolSet.fatigueFactor(amp, true), 1e-7);
+        }
     }
 
     // NightSleep leans on the overworld clock being the 24000 one, and on nether and end never letting you sleep

@@ -23,6 +23,9 @@ import static org.junit.Assert.*;
 
 public class LadderClutchTest {
 
+    // everything below that doesn't say otherwise is 26.3 rules
+    private static final double NEW_SAFE = LadderClutch.safeFall(false);
+
     // the closed form of y += vy, vy = (vy - 0.08) * 0.98 from vy = -0.0784: vy after n ticks is -3.92 * (1 - 0.98^(n+1))
     private static double expectedStart(double drop, int tick) {
         return drop - 3.92 * (tick - 0.98 * (1 - Math.pow(0.98, tick)) / 0.02);
@@ -45,32 +48,32 @@ public class LadderClutchTest {
     @Test
     public void plainFallCountsEveryMove() {
         // nothing placed: this is just the fall, and Entity.checkFallDamage adds the landing move too now, so it's all 10
-        LadderClutch.Landing none = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 999, 0);
+        LadderClutch.Landing none = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 999, 0, false);
         assertEquals(10, none.fall(), 1e-9);
-        assertTrue(none.fall() > LadderClutch.SAFE_FALL);
+        assertTrue(none.fall() > NEW_SAFE);
     }
 
     @Test
     public void almostFourBlocksIsStillFree() {
         // damage is floor(fall + 1e-6 - 3), so the picker takes a wall that leaves 3 and a bit of fall on the table
-        LadderClutch.Plan p = LadderClutch.plan(30, 0b01000, 4.5);
+        LadderClutch.Plan p = LadderClutch.plan(30, 0b01000, 4.5, false);
         assertNotNull(p);
-        assertTrue(p.fall() > 3 && p.fall() <= LadderClutch.SAFE_FALL);
+        assertTrue(p.fall() > 3 && p.fall() <= NEW_SAFE);
     }
 
     @Test
     public void landingCellClutchesAnyHeight() {
         // a vine in the cell we land in, any height. at speed it's the move onto the floor crossing the cell, nothing slows down
         for (int drop : new int[]{4, 5, 8, 12, 20, 30, 64, 100, 200}) {
-            LadderClutch.Plan p = LadderClutch.plan(drop, 0b1, 4.5);
+            LadderClutch.Plan p = LadderClutch.plan(drop, 0b1, 4.5, false);
             assertNotNull("drop " + drop, p);
             assertEquals(0, p.cell());
-            assertTrue(p.fall() <= LadderClutch.SAFE_FALL);
+            assertTrue(p.fall() <= NEW_SAFE);
             assertTrue(p.place() >= LadderClutch.FIRST_PLACE);
         }
         // at terminal velocity the first tick that's close enough to click is the last or next to last
         double[] ys = LadderClutch.tickStarts(100);
-        assertTrue(LadderClutch.plan(100, 0b1, 4.5).place() >= ys.length - 2);
+        assertTrue(LadderClutch.plan(100, 0b1, 4.5, false).place() >= ys.length - 2);
     }
 
     @Test
@@ -79,9 +82,9 @@ public class LadderClutchTest {
         // the tick start rule nor the move rule can say for sure, so it won't bet on cell 0 alone
         double[] ys = LadderClutch.tickStarts(13);
         assertEquals(1, ys[ys.length - 1], 0.01);
-        assertNull(LadderClutch.plan(13, 0b01, 4.5));
+        assertNull(LadderClutch.plan(13, 0b01, 4.5, false));
         // but a wall next to cell 1 is fine, that one has the whole last move through it
-        LadderClutch.Plan p = LadderClutch.plan(13, 0b11, 4.5);
+        LadderClutch.Plan p = LadderClutch.plan(13, 0b11, 4.5, false);
         assertNotNull(p);
         assertEquals(1, p.cell());
     }
@@ -90,22 +93,22 @@ public class LadderClutchTest {
     public void wallHighUpIsNoGood() {
         // a vine 4 above the floor wipes the fall distance, but there's still 30 blocks of it to land with (well,
         // however much is left after that tick) so it's never safe
-        assertNull(LadderClutch.plan(30, 0b10000, 4.5));
+        assertNull(LadderClutch.plan(30, 0b10000, 4.5, false));
         // while the cells near the floor are
-        assertNotNull(LadderClutch.plan(30, 0b00100, 4.5));
+        assertNotNull(LadderClutch.plan(30, 0b00100, 4.5, false));
     }
 
     @Test
     public void noWallNoClutch() {
-        assertNull(LadderClutch.plan(30, 0, 4.5));
+        assertNull(LadderClutch.plan(30, 0, 4.5, false));
     }
 
     @Test
     public void reachBoundsHowFastItCanBeDone() {
         // 4.5 gets there. 1.5 never does, the eye is 1.62 above the feet, so the ray to the floor would be longer than
         // that on the very last tick even if we were standing on it
-        assertNotNull(LadderClutch.plan(30, 0b1, 4.5));
-        assertNull(LadderClutch.plan(30, 0b1, 1.5));
+        assertNotNull(LadderClutch.plan(30, 0b1, 4.5, false));
+        assertNull(LadderClutch.plan(30, 0b1, 1.5, false));
         // the cell has to be at or below our feet
         assertTrue(LadderClutch.canReach(1.5, 1, 4.5));
         assertFalse(LadderClutch.canReach(1.5, 2, 4.5));
@@ -120,36 +123,36 @@ public class LadderClutchTest {
         // here, so the picker gets the live y / vy / fall distance and the floor, same as a planned fall's clutch tick
         double y = 40, v = -0.7, fall = 3.4;
         // a wall at the landing cell is enough, the move onto the floor does the work
-        LadderClutch.Plan p = LadderClutch.pick(y, v, fall, 0, 0b1, 0, 4.5);
+        LadderClutch.Plan p = LadderClutch.pick(y, v, fall, 0, 0b1, 0, 4.5, false);
         assertNotNull(p);
         assertEquals(0, p.cell());
-        assertTrue(p.fall() <= LadderClutch.SAFE_FALL);
+        assertTrue(p.fall() <= NEW_SAFE);
         // and it clicks as late as it can: the near ticks are too far for the eye to reach the wall
         assertTrue(p.place() > 10);
         // a wall only up high is no use however early we are, the rest of the fall is still ours
-        assertNull(LadderClutch.pick(y, v, fall, 0, 0b10000, 0, 4.5));
+        assertNull(LadderClutch.pick(y, v, fall, 0, 0b10000, 0, 4.5, false));
         // no wall near the column, nothing to hang it on, so the chain does nothing (same as having no water)
-        assertNull(LadderClutch.pick(y, v, fall, 0, 0, 0, 4.5));
+        assertNull(LadderClutch.pick(y, v, fall, 0, 0, 0, 4.5, false));
     }
 
     @Test
     public void unplannedFallAlreadyAtTerminalVelocity() {
         // 150 blocks in and going 3.9 a tick, which is what happens when the thing that knocked us off was a long way up
-        LadderClutch.Plan p = LadderClutch.pick(30, -3.9, 140, 0, 0b1, 0, 4.5);
+        LadderClutch.Plan p = LadderClutch.pick(30, -3.9, 140, 0, 0b1, 0, 4.5, false);
         assertNotNull(p);
         assertEquals(0, p.cell());
         // too close to the floor to do anything about it: the cell has to be at or below our feet and in reach, and by the
         // time the eye is that close the next tick lands us
-        assertNull(LadderClutch.pick(0.3, -3.9, 140, 0, 0b10, 0, 4.5));
+        assertNull(LadderClutch.pick(0.3, -3.9, 140, 0, 0b10, 0, 4.5, false));
     }
 
     @Test
     public void slidingStartsFromWhereItGrabbed() {
         // slow fall, a ladder 7 up: you grab it at once and ride it down, but then it's 7 more blocks and that kills you
-        double fall = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 7, 0, LadderClutch.SLOP).fall();
-        assertTrue(fall > LadderClutch.SAFE_FALL);
+        double fall = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 7, 0, LadderClutch.SLOP, false).fall();
+        assertTrue(fall > NEW_SAFE);
         // two up, and the drop off the bottom of it is nothing
-        assertTrue(LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 0, LadderClutch.SLOP).fall() < 2.2);
+        assertTrue(LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 0, LadderClutch.SLOP, false).fall() < 2.2);
     }
 
     @Test
@@ -172,5 +175,45 @@ public class LadderClutchTest {
         for (int cell = 95; cell < 98; cell++) {
             assertTrue(LadderClutch.grabs(100, cell));
         }
+    }
+
+    @Test
+    public void safeFallFollowsTheRounding() {
+        // floor(fall + 1e-6 - 3) on 1.21.5+ hurts from 4, ceil(fall - 3) on older servers hurts from anything past 3
+        assertEquals(4 - 0.05, LadderClutch.safeFall(false), 0);
+        assertEquals(3 - 0.05, LadderClutch.safeFall(true), 0);
+    }
+
+    @Test
+    public void oldServersDontCountTheLandingMove() {
+        // walk off 10 blocks: the last tick starts 0.333 up and the next move puts us on the floor. 26.3 counts that move
+        // so it's all 10, 1.21.4 lands first and never adds it, so it's 9.667
+        double[] ys = LadderClutch.tickStarts(10);
+        double last = ys[ys.length - 1];
+        assertEquals(0.333, last, 0.001);
+        assertEquals(10, LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 999, 0, false).fall(), 1e-9);
+        assertEquals(10 - last, LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 999, 0, true).fall(), 1e-9);
+        // a vine in the landing cell from 30: the 1.49 move onto the floor wipes the fall and then 26.3 adds that same
+        // move back on, 1.21.4 lands with nothing at all
+        double[] from30 = LadderClutch.tickStarts(30);
+        double landingMove = from30[from30.length - 1];
+        assertEquals(1.485, landingMove, 0.001);
+        assertEquals(landingMove, LadderClutch.play(30, LadderClutch.WALK_OFF_VY, 0, 0, 0, 0, 0, false).fall(), 1e-9);
+        assertEquals(0, LadderClutch.play(30, LadderClutch.WALK_OFF_VY, 0, 0, 0, 0, 0, true).fall(), 0);
+    }
+
+    @Test
+    public void rulesChangeWhichWallsWork() {
+        // a wall 2 up from a 22 drop leaves 3.2 of fall: free under floor, a hit under ceil
+        assertNotNull(LadderClutch.plan(22, 0b100, 4.5, false));
+        assertNull(LadderClutch.plan(22, 0b100, 4.5, true));
+        // and the other way: 3 up from 20 only works when the landing move doesn't count
+        assertNull(LadderClutch.plan(20, 0b1000, 4.5, false));
+        LadderClutch.Plan old = LadderClutch.plan(20, 0b1000, 4.5, true);
+        assertNotNull(old);
+        assertTrue(old.fall() <= LadderClutch.safeFall(true));
+        // asked in that order on purpose, the memo must not hand one rule set's answer to the other
+        assertNotEquals(LadderClutch.memoKey(22, 0b100, 4.5, false), LadderClutch.memoKey(22, 0b100, 4.5, true));
+        assertNotEquals(LadderClutch.memoKey(LadderClutch.MAX_DROP, 0b11111, 6.0, false), LadderClutch.memoKey(LadderClutch.MAX_DROP, 0b11111, 6.0, true));
     }
 }

@@ -29,6 +29,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.SearchCache;
+import baritone.utils.portal.Portal;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -82,6 +83,8 @@ public class CalculationContext {
     public final boolean preferFasterPathing;
     // the clutch item is a ladder (vines win if both are there) and pickupLadders is on, so a clutch also costs the pickup
     public boolean clutchPicksUp;
+    // which fall damage rules the server is on (see LadderClutch). read once here so a search can't change servers halfway
+    public final boolean fallDamageRoundsUp;
     public final float blockReach;
     public final boolean hasThrowaway;
     public final boolean canSprint;
@@ -238,6 +241,8 @@ public class CalculationContext {
         Item clutchItem = baritone != null && ExperimentalMovement.allowLadderClutch() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
+        // no baritone is a test, and tests are on 26.3
+        this.fallDamageRoundsUp = baritone != null && Portal.roundsFallDamageUp();
         this.health = health;
         this.fastMode = ExperimentalMovement.on();
         this.fastModeMinHealth = Baritone.settings().fastModeMinHealth.value;

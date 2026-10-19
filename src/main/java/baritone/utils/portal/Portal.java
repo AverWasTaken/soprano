@@ -23,6 +23,8 @@ package baritone.utils.portal;
 public final class Portal {
 
     private static Boolean available;
+    // flipped the first time a rule question blows up (vfp moved something, api not up yet), after that it's 26.3 forever
+    private static volatile boolean broken;
 
     private Portal() {}
 
@@ -61,5 +63,31 @@ public final class Portal {
 
     public static void select(int step) {
         ViaPortal.select(step);
+    }
+
+    // does the server round fall damage up and skip the landing move, see LadderClutch. false means 26.3 rules
+    public static boolean roundsFallDamageUp() {
+        if (!available() || broken) {
+            return false;
+        }
+        try {
+            return ViaPortal.roundsFallDamageUp();
+        } catch (LinkageError | RuntimeException e) {
+            broken = true;
+            return false;
+        }
+    }
+
+    // is the client breaking with the old fatigue table, see ToolSet.fatigueFactor. false means 26.3 rules
+    public static boolean oldMiningFatigue() {
+        if (!available() || broken) {
+            return false;
+        }
+        try {
+            return ViaPortal.oldMiningFatigue();
+        } catch (LinkageError | RuntimeException e) {
+            broken = true;
+            return false;
+        }
     }
 }

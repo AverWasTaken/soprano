@@ -87,6 +87,23 @@ public final class ViaPortal {
         return steps().contains(target) ? null : target.getName();
     }
 
+    // the version vfp is actually talking right now, same call its own gameplay mixins gate on. auto, bedrock and april
+    // fools are SPECIAL and don't count as older, so off a server (auto) we get plain 26.3 rules
+    static boolean serverOlderThan(ProtocolVersion version) {
+        ProtocolVersion target = ViaFabricPlus.api().targetVersion();
+        return target.getVersionType() != VersionType.SPECIAL && target.olderThan(version);
+    }
+
+    // 1.21.5 is where fall damage went from ceil to floor and the landing move started counting
+    public static boolean roundsFallDamageUp() {
+        return serverOlderThan(ProtocolVersion.v1_21_5);
+    }
+
+    // vfp puts the old fatigue table back for anything up to 26.2, so this is that gate said the other way round
+    public static boolean oldMiningFatigue() {
+        return serverOlderThan(ProtocolVersion.v26_3);
+    }
+
     public static void select(int step) {
         List<ProtocolVersion> list = steps();
         ViaFabricPlus.api().setTargetVersion(list.get(Math.max(0, Math.min(step, list.size() - 1))));
