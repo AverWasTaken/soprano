@@ -212,6 +212,21 @@ public final class InventoryBehavior extends Behavior implements Helper {
                 p.getInventory().getSelectedSlot(), awaitedAt, tickCount);
     }
 
+    // put a hotbar slot in hand for someone who is borrowing it (SelfDefenseProcess swaps to a sword and back). nothing
+    // is clicked, so the throwaway wait above stays true: picking slot 7 back up while its swap is pending is still
+    // "waiting on the swap", and handWaitingOnSwap keeps saying so. false when the hand is somebody else's right now
+    public boolean selectHotbar(int slot, String who) {
+        LocalPlayer p = ctx.player();
+        if (p == null || slot < 0 || slot > 8 || AltoClefSettings.getInstance().isInteractionPaused()) {
+            return false;
+        }
+        if (p.getInventory().getSelectedSlot() != slot) {
+            p.getInventory().setSelectedSlot(slot);
+            Trace.record("select hot" + slot + " by " + who);
+        }
+        return true;
+    }
+
     public OptionalInt getTempHotbarSlot(Predicate<Integer> disallowedHotbar) {
         // we're using 0 and 8 for pickaxe and throwaway. the rest goes through ThrowawayPicks so a temp swap can't stomp
         // the slot in hand or the one the next placement is about to pull from (that one was a fun afternoon)
