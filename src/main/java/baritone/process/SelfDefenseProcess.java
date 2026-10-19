@@ -60,8 +60,8 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
 
     // entity id -> game time it last hit us
     private final Map<Integer, Long> hits = new HashMap<>();
-    // entity id -> when we gave up on it for having no line, see SelfDefenseRules.shrugged
-    private final Map<Integer, Long> shrugs = new HashMap<>();
+    // entity id -> {when we gave up on it, for how long}, see SelfDefenseRules.shrugFor
+    private final Map<Integer, long[]> shrugs = new HashMap<>();
     // the client builds a new source for every hit and keeps it around for 40 ticks, so a new object is a new hit
     private DamageSource lastSource;
 
@@ -73,6 +73,8 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
     private float lastHealth;
     // what was in hand before we pulled the sword, -1 when we didn't swap
     private int restoreSlot = -1;
+    // and the slot the weapon went in, so a late restore only happens if nobody touched the hand since
+    private int swordSlot = -1;
 
     public SelfDefenseProcess(Baritone baritone) {
         super(baritone);
@@ -88,12 +90,12 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
 
             @Override
             public void onWorldEvent(WorldEvent event) {
-                // entity ids and game time both start over in a new world, and the zombie stayed in the old one
+                // entity ids and game time both start over in a new world, and the zombie stayed in the old one.
+                // restoreSlot stays, a portal keeps the inventory and the job still wants its pickaxe back
                 hits.clear();
                 shrugs.clear();
                 lastSource = null;
                 target = null;
-                restoreSlot = -1;
             }
         });
     }
@@ -104,9 +106,8 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
             return;
         }
         long now = ctx.world().getGameTime();
-        // the hand could not go back when we let go (something paused interactions), keep trying until it can
-        if (target == null && restoreSlot >= 0 && baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense")) {
-            restoreSlot = -1;
+        if (target == null && restoreSlot >= 0) {
+            retryRestore();
         }
         DamageSource source = player.getLastDamageSource();
         if (source != null && source != lastSource) {
@@ -124,7 +125,7 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
                 it.remove();
             }
         }
-        shrugs.values().removeIf(at -> !SelfDefenseRules.shrugged(now - at));
+        shrugs.values().removeIf(s -> !SelfDefenseRules.shrugged(now - s[0], s[1]));
     }
 
     private static String typeOf(Entity entity) {
@@ -217,7 +218,8 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         boolean stuck = ticksNoLine >= SelfDefenseRules.NO_LINE_TICKS || SelfDefenseRules.noProgress(ticksNoProgress);
         if (stuck || SelfDefenseRules.release(!target.isAlive() || target.isRemoved(), dist, ticksOutOfReach, ticksNoLine)) {
             if (stuck) {
-                shrugs.put(target.getId(), ctx.world().getGameTime());
+                shrugs.put(target.getId(), new long[]{ctx.world().getGameTime(),
+                        SelfDefenseRules.shrugFor(SelfDefenseRules.noProgress(ticksNoProgress))});
             }
             release((stuck ? "giving up on " : "done with ") + typeOf(target));
             return new PathingCommand(null, PathingCommandType.DEFER);
@@ -243,6 +245,7 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
             // the swap resets the attack cooldown, so the first swing is a bit late. still better than a pickaxe.
             // a restore still pending from the last fight keeps its slot, that's the one the job had
             restoreSlot = held;
+            swordSlot = weapon;
         }
         logDebug("Self defense: fighting " + typeOf(mob));
     }
@@ -251,12 +254,24 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         // a failed restore stays pending, noteHits tries again
         if (restoreSlot >= 0 && baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense")) {
             restoreSlot = -1;
+            swordSlot = -1;
         }
         target = null;
         ticksOutOfReach = 0;
         ticksNoLine = 0;
         ticksNoProgress = 0;
         logDebug("Self defense: " + why + ", back to the job");
+    }
+
+    // the hand could not go back when we let go, which means alto had interactions paused. try again once it lets go, but
+    // only while the weapon is still what we're holding and alto is off: otherwise alto or the player picked a slot since
+    // and it's theirs now
+    private void retryRestore() {
+        boolean stillOurs = ctx.player().getInventory().selected == swordSlot && !AltoClefBridge.isRunning();
+        if (!stillOurs || baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense")) {
+            restoreSlot = -1;
+            swordSlot = -1;
+        }
     }
 
     private int weaponSlot(int held) {

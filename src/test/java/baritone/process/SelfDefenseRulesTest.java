@@ -61,15 +61,21 @@ public class SelfDefenseRulesTest {
         assertFalse(SelfDefenseRules.release(false, 2, 0, 39));
         assertTrue(SelfDefenseRules.release(false, 2, 0, 40));
         // and we leave that one alone for a bit after
-        assertTrue(SelfDefenseRules.shrugged(0));
-        assertTrue(SelfDefenseRules.shrugged(SelfDefenseRules.SHRUG_TICKS - 1));
-        assertFalse(SelfDefenseRules.shrugged(SelfDefenseRules.SHRUG_TICKS));
+        long length = SelfDefenseRules.shrugFor(false);
+        assertEquals(SelfDefenseRules.SHRUG_TICKS, length);
+        assertTrue(SelfDefenseRules.shrugged(0, length));
+        assertTrue(SelfDefenseRules.shrugged(length - 1, length));
+        assertFalse(SelfDefenseRules.shrugged(length, length));
+        assertFalse(SelfDefenseRules.shrugged(-1, length));
     }
 
     @Test
     public void oneThatWontGetHurtIsGivenUpOn() {
         assertFalse(SelfDefenseRules.noProgress(SelfDefenseRules.NO_PROGRESS_TICKS - 1));
         assertTrue(SelfDefenseRules.noProgress(SelfDefenseRules.NO_PROGRESS_TICKS));
+        // and it's left alone a lot longer than one we just couldn't see
+        assertTrue(SelfDefenseRules.shrugFor(true) > SelfDefenseRules.shrugFor(false));
+        assertTrue(SelfDefenseRules.shrugged(SelfDefenseRules.SHRUG_TICKS, SelfDefenseRules.shrugFor(true)));
     }
 
     @Test
