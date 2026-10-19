@@ -279,7 +279,8 @@ public class GatherBillTask extends Task {
             if (bag.shovelTier() >= 1 && RecipeBill.isShovelStuff(f.name())) _shovelLeaves.put(f.name(), f.target());
         }
         setDebugState("Fetching the raw materials");
-        // not squashed: the order is the bill's, lowest pickaxe first
+        // not squashed: the order is the bill's, lowest pickaxe first. that only holds between the non-ore leaves, the ores
+        // in one pass get mined together, nearest short one first (CataloguedResourceTask.oresTogether)
         _leafTask = new CataloguedResourceTask(false, targets.toArray(ItemTarget[]::new));
         return _leafTask;
     }
