@@ -21,6 +21,7 @@ import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.StairBlock;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -46,10 +47,15 @@ public class BuilderCreativeTest {
     }
 
     @Test
+    public void sourcesComeFromBuckets() {
+        assertEquals(Items.WATER_BUCKET, BuilderProcess.creativeItem(Blocks.WATER.defaultBlockState()));
+        assertEquals(Items.LAVA_BUCKET, BuilderProcess.creativeItem(Blocks.LAVA.defaultBlockState()));
+        // flowing is the source's business
+        assertNull(BuilderProcess.creativeItem(Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3)));
+    }
+
+    @Test
     public void nothingTheBuilderCantClickInGetsHandedOut() {
-        // the place branch only does block items
-        assertNull(BuilderProcess.creativeItem(Blocks.WATER.defaultBlockState()));
-        assertNull(BuilderProcess.creativeItem(Blocks.LAVA.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.FIRE.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.AIR.defaultBlockState()));
     }

@@ -71,8 +71,10 @@ public class PlaceRulesTest {
         BlockState gate = Blocks.OAK_FENCE_GATE.defaultBlockState();
         assertTrue(same(gate, gate.setValue(FenceGateBlock.IN_WALL, true)));
         assertFalse(same(gate, gate.setValue(FenceGateBlock.FACING, Direction.WEST)));
-        // waterlogged isn't one of them
-        assertFalse(same(fence, fence.setValue(BlockStateProperties.WATERLOGGED, true)));
+        // the builder never pours into a block, so wet or dry is the world's call too
+        assertTrue(same(fence, fence.setValue(BlockStateProperties.WATERLOGGED, true)));
+        BlockState stair = Blocks.OAK_STAIRS.defaultBlockState();
+        assertTrue(same(stair, stair.setValue(BlockStateProperties.WATERLOGGED, true)));
         assertTrue(same(Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.GRASS_BLOCK.defaultBlockState().setValue(BlockStateProperties.SNOWY, true)));
     }
 

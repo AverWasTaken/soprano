@@ -36,6 +36,22 @@ public class GivenUpTest {
     }
 
     @Test
+    public void onlyTheOnesStillComingBackAreWaiting() {
+        GivenUp g = new GivenUp();
+        assertFalse(g.anyWaiting(0, (x, y, z) -> true));
+        g.giveUp(A, 0);
+        assertTrue(g.anyWaiting(1, (x, y, z) -> true));
+        // the filter gets the last word, the fluid pass doesn't wait on its own cells
+        assertFalse(g.anyWaiting(1, (x, y, z) -> false));
+        // its break ran out
+        assertFalse(g.anyWaiting(GivenUp.EXPIRY_TICKS, (x, y, z) -> true));
+        // for good isn't waiting on anything
+        g.giveUp(A, 1);
+        g.giveUp(A, 2);
+        assertFalse(g.anyWaiting(3, (x, y, z) -> true));
+    }
+
+    @Test
     public void aGiveUpRunsOut() {
         GivenUp g = new GivenUp();
         assertFalse(g.isGivenUp(A.x, A.y, A.z, 0));
