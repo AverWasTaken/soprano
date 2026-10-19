@@ -25,6 +25,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 final class GivenUp {
 
     static final int EXPIRY_TICKS = 200;
+    // the second break is longer. ten seconds was often just long enough to walk back and stall on it again
+    static final int SECOND_EXPIRY_TICKS = 600;
     static final int MAX_ATTEMPTS = 3;
     // a block this close changing is a reason to look at a for good one again. just the cell and its neighbours,
     // with the old 5 box every block the builder put down anywhere near kept waking up the whole stuck pile
@@ -50,7 +52,7 @@ final class GivenUp {
     int giveUp(BetterBlockPos pos, long now) {
         Entry e = cells.computeIfAbsent(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z), k -> new Entry(pos.x, pos.y, pos.z));
         e.attempts++;
-        e.until = e.attempts >= MAX_ATTEMPTS ? Long.MAX_VALUE : now + EXPIRY_TICKS;
+        e.until = e.attempts >= MAX_ATTEMPTS ? Long.MAX_VALUE : now + (e.attempts == 1 ? EXPIRY_TICKS : SECOND_EXPIRY_TICKS);
         return e.attempts;
     }
 
