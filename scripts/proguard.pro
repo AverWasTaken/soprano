@@ -73,6 +73,11 @@
 -dontwarn baritone.utils.schematic.schematica.**
 -dontwarn baritone.utils.schematic.litematica.**
 
+#same deal for viafabricplus. keep the members too, or proguard happily inlines the via calls into Portal
+#and then the "no via types in Portal" trick is gone and forge dies with a NoClassDefFoundError
+-keep class baritone.utils.portal.ViaPortal { *; }
+-dontwarn com.viaversion.**
+
 # Keep - Applications. Keep all application classes, along with their 'main'
 # methods.
 -keepclasseswithmembers public class * {

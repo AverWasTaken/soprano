@@ -47,6 +47,9 @@ dependencies {
         common sourceSet.output
         shadowCommon sourceSet.output
     }
+    // dev runtime only so runClient has the version slider to play with. not shadowed, not shipped (it's gpl).
+    // transitive off because the jar already nests everything it needs, the pom deps would just be duplicate mod ids
+    runtimeOnly('com.viaversion:viafabricplus:5.1.1') { transitive = false }
 }
 
 processResources {

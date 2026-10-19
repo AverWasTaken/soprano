@@ -92,6 +92,15 @@ allprojects {
                 artifact()
             }
         }
+        // viafabricplus and the viaversion bits it drags along
+        maven {
+            name = "viaversion"
+            url = "https://repo.viaversion.com"
+            // only via stuff, everything else has no business being looked up here first
+            content {
+                includeGroup "com.viaversion"
+            }
+        }
         mavenCentral()
     }
 
@@ -158,6 +167,11 @@ sourceSets {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    // compile against the api only, the real mod is optional and never shadowed. see baritone.utils.portal
+    // transitive off because the api pom pins timestamped viaversion snapshots that the repo will purge someday,
+    // and ProtocolVersion is the only viaversion type we touch anyway
+    compileOnly('com.viaversion:viafabricplus-api:5.1.1') { transitive = false }
+    compileOnly('com.viaversion:viaversion-common:5.12.1') { transitive = false }
 }
 
 jar {
