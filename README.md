@@ -5,6 +5,7 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 [![Release](https://img.shields.io/github/v/release/AverWasTaken/soprano)](https://github.com/AverWasTaken/soprano/releases)
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg?branch=1.21.4)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/ccjQaGSSkT)
 
 [Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
