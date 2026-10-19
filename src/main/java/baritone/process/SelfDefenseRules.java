@@ -38,6 +38,8 @@ public final class SelfDefenseRules {
     public static final int NO_PROGRESS_TICKS = 100;
     // one we gave up on for having no line stays ignored this long, or it bites again and we freeze for another 40
     public static final long SHRUG_TICKS = 100;
+    // one we couldn't hurt is ignored much longer, it would keep biting and we'd pause the job half the time for nothing
+    public static final long HOPELESS_TICKS = 600;
     // near a full charge, a 0.5 swing does a quarter of the damage and still resets the cooldown
     public static final float SWING_CHARGE = 0.9f;
     // how far off the rotation the server has can be from where we want to hit and still count as looking at it
@@ -77,9 +79,14 @@ public final class SelfDefenseRules {
         return inReach && sinceHit >= 0 && sinceHit <= FRESH_HIT;
     }
 
-    // one we shrugged off for having no line is left alone for a bit even if it bites again
-    public static boolean shrugged(long sinceShrug) {
-        return sinceShrug >= 0 && sinceShrug < SHRUG_TICKS;
+    // how long to leave one alone after giving up on it, even if it bites again
+    public static long shrugFor(boolean couldNotHurt) {
+        return couldNotHurt ? HOPELESS_TICKS : SHRUG_TICKS;
+    }
+
+    // still being ignored. a clock that went backwards (new world) ends it
+    public static boolean shrugged(long sinceShrug, long length) {
+        return sinceShrug >= 0 && sinceShrug < length;
     }
 
     // once engaged we hold until one of these. no chasing, the job is what we came here for
@@ -87,7 +94,7 @@ public final class SelfDefenseRules {
         return gone || distance > TOO_FAR || ticksOutOfReach >= OUT_OF_REACH_TICKS || ticksNoLine >= NO_LINE_TICKS;
     }
 
-    // and one we're getting nowhere with. given up like the no line case, see shrugged
+    // and one we're getting nowhere with. given up on like the no line case, see shrugFor
     public static boolean noProgress(int ticksSinceHurt) {
         return ticksSinceHurt >= NO_PROGRESS_TICKS;
     }
