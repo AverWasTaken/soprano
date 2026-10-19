@@ -200,8 +200,8 @@ public final class Settings {
      * It never chases or paths anywhere, it only swings at what is already in reach, and it gives up on a mob it can't
      * hit or can't hurt after a few seconds. Creepers, wardens, withers, creakings, the dragon and the flying ones
      * (phantoms, vexes, ghasts, blazes) are left alone. It stays out of the way in water, in lava, while flying an elytra
-     * and while a chest or other container is open. AltoClef tasks have their own combat, so this does nothing while one
-     * is running.
+     * and while a chest or other container is open. Tasks like {@code #get} and {@code #gamer} have their own combat, so
+     * this does nothing while one of those is running.
      */
     public final Setting<Boolean> selfDefense = new Setting<>(true);
 
