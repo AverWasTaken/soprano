@@ -48,6 +48,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -126,6 +127,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // cells left out of the goal because the block can't stay there yet (a wall torch with no wall), logged once each
     private LongOpenHashSet droppedLogged;
     private List<BetterBlockPos> dropped = List.of();
+    // the cells behind desirableOnHotbar, same order, so creative can hand out the nearest one's block first
+    private List<BetterBlockPos> desirableCells = List.of();
+    // creative: when each item was last handed to us, so a give the inventory hasn't shown yet isn't sent ten times
+    private Map<Item, Long> givenAt;
+    private long lastGive = -1000;
+    // when the builder last picked or filled each hotbar slot, the oldest one gets overwritten first
+    private long[] slotUsed;
+    // the throwaway stack creative hands out at the start, kept so pillaring and bridging keep working
+    private int throwawaySlot = -1;
+    private boolean throwawayGiven;
+    private static final int GIVE_AGAIN_TICKS = 20;
     // which cell asked for which part of the last goal, so the stall check knows who parked us
     private List<Pair<BetterBlockPos, Goal>> goalOwners = List.of();
     // what recalcNearby saw last time per cell, so it can tell a change from a cell that just came into range
@@ -235,9 +247,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.observedCompleted = new LongOpenHashSet();
         this.incorrectPositions = null;
         forgetStalls();
+        forgetCreative();
     }
 
     // a fresh build, a resume or a repeat: whatever we gave up on before was about a different situation
+    // what the build hands itself in creative, see creativeSupply. no ctx in here either, start calls it
+    private void forgetCreative() {
+        givenAt = null;
+        lastGive = -1000;
+        slotUsed = null;
+        throwawaySlot = -1;
+        throwawayGiven = false;
+    }
+
     private void forgetStalls() {
         givenUp = null;
         stallTicks = 0;
@@ -445,6 +467,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private Optional<Placement> searchForPlacables(BuilderCalculationContext bcc, List<BlockState> desirableOnHotbar) {
         BetterBlockPos center = ctx.playerFeet();
+        desirableCells = new ArrayList<>();
         // standing where the planner said to stand for some cell: that one first, off the face it planned
         Optional<Placement> planned = plannedFromHere(bcc, center, desirableOnHotbar);
         if (planned.isPresent()) {
@@ -461,6 +484,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                         continue;
                     }
                     desirableOnHotbar.add(desired);
+                    desirableCells.add(new BetterBlockPos(x, y, z));
                     Optional<Placement> opt = possibleToPlace(bcc, desired, x, y, z, null);
                     if (opt.isPresent()) {
                         return opt;
@@ -511,6 +535,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     break;
                 }
                 desirableOnHotbar.add(desired);
+                desirableCells.add(cell);
                 Optional<Placement> opt = possibleToPlace(bcc, desired, cell.x, cell.y, cell.z, f.recipe().side().getOpposite());
                 if (opt.isPresent()) {
                     return opt;
@@ -605,6 +630,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (paused) {
             stallTicks = 0;
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
+        if (recursions == 0 && ctx.player().hasInfiniteMaterials() && !AltoClefSettings.getInstance().isInteractionPaused()) {
+            creativeThrowaway();
         }
         if (Baritone.settings().buildInLayers.value) {
             if (realSchematic == null) {
@@ -721,6 +749,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             Rotation rot = toPlace.get().rot;
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().getInventory().setSelectedSlot(toPlace.get().hotbarSelection);
+            slotUsed()[toPlace.get().hotbarSelection] = builderTicks;
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
             if (placeGateOpen(bcc, toPlace.get())) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
@@ -732,7 +761,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
 
-        if (!interactionPaused && Baritone.settings().allowInventory.value) {
+        boolean creative = ctx.player().hasInfiniteMaterials();
+        if (!interactionPaused && creative) {
+            creativeSupply(desirableOnHotbar);
+        } else if (!interactionPaused && Baritone.settings().allowInventory.value) {
             ArrayList<Integer> usefulSlots = new ArrayList<>();
             List<BlockState> noValidHotbarOption = new ArrayList<>();
             outer:
@@ -836,7 +868,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // not a click, but not nothing either
     private boolean busyElsewhere() {
-        return digging || baritone.getInventoryBehavior().movePending();
+        // a give lands in the same tick, the few after it are the place branch noticing
+        return digging || baritone.getInventoryBehavior().movePending() || builderTicks - lastGive <= 5;
     }
 
     private void giveUpOn(BuilderCalculationContext bcc, List<BetterBlockPos> cells, String why) {
@@ -968,6 +1001,148 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             logDirect("Can't place these yet, nothing to hold them up, leaving them out till they would stay: "
                     + String.join(", ", fresh.subList(0, Math.min(fresh.size(), 5))) + (fresh.size() > 5 ? " and " + (fresh.size() - 5) + " more" : ""));
         }
+    }
+
+    // the block item creative would hand itself for this state, null if there's nothing that places it. only block
+    // items: the place branch can't pour a bucket, and an item that comes out as a different block (kelp for a kelp
+    // plant) would just be a goal the stall check has to burn down. those stay missing and the pause names them
+    static Item creativeItem(BlockState desired) {
+        if (desired.getBlock() instanceof LiquidBlock) {
+            return null;
+        }
+        Item item = desired.getBlock().asItem();
+        return item instanceof BlockItem block && block.getBlock() == desired.getBlock() ? item : null;
+    }
+
+    private long[] slotUsed() {
+        if (slotUsed == null) {
+            slotUsed = new long[9];
+        }
+        return slotUsed;
+    }
+
+    // one stack of the first throwaway at the start of a creative build, or every pillar and bridge costs INF
+    // (hasThrowaway). its slot is kept out of the supply's reach after that
+    private void creativeThrowaway() {
+        if (throwawayGiven) {
+            return;
+        }
+        List<Item> acceptable = Baritone.settings().acceptableThrowawayItems.value;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        for (int i = 0; i < 9; i++) {
+            if (acceptable.contains(inv.get(i).getItem())) {
+                throwawaySlot = i;
+                throwawayGiven = true;
+                return;
+            }
+        }
+        if (acceptable.isEmpty()) {
+            throwawayGiven = true;
+            return;
+        }
+        // a hotbar of tools and food has no slot for it yet, so this asks again next tick instead of never
+        int slot = creativeSlot(Set.of());
+        if (slot >= 0) {
+            give(acceptable.get(0), slot);
+            throwawaySlot = slot;
+            throwawayGiven = true;
+        }
+    }
+
+    // the block the nearest cell wants that isn't on the hotbar yet, one give a tick. the server doesn't send the
+    // slot back after a creative set (checked), so the local slot gets written too and nothing waits for a sync
+    private void creativeSupply(List<BlockState> desirableOnHotbar) {
+        if (lastGive == builderTicks || desirableOnHotbar.isEmpty()) {
+            return;
+        }
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < desirableOnHotbar.size(); i++) {
+            order.add(i);
+        }
+        BetterBlockPos feet = ctx.playerFeet();
+        List<BetterBlockPos> cells = desirableCells;
+        if (cells.size() == desirableOnHotbar.size()) {
+            order.sort(Comparator.comparingDouble(i -> cells.get(i).distSqr(feet)));
+        }
+        Set<Item> wanted = new HashSet<>();
+        for (BlockState desired : desirableOnHotbar) {
+            Item item = creativeItem(desired);
+            if (item != null) {
+                wanted.add(item);
+            }
+        }
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        if (givenAt == null) {
+            givenAt = new HashMap<>();
+        }
+        for (int i : order) {
+            Item item = creativeItem(desirableOnHotbar.get(i));
+            if (item == null || onHotbar(inv, item)) {
+                continue;
+            }
+            Long at = givenAt.get(item);
+            if (at != null && builderTicks - at < GIVE_AGAIN_TICKS) {
+                continue; // just gave it, if it's not showing yet it's not going to show by asking again
+            }
+            int slot = creativeSlot(wanted);
+            if (slot >= 0) {
+                give(item, slot);
+            }
+            return;
+        }
+    }
+
+    private static boolean onHotbar(NonNullList<ItemStack> inv, Item item) {
+        for (int i = 0; i < 9; i++) {
+            if (inv.get(i).is(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // an empty slot, else the longest unused one that isn't in hand, the throwaway, a tool or anything else that isn't a
+    // block, or a block something nearby still wants. -1 if every slot is spoken for
+    private int creativeSlot(Set<Item> wanted) {
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        for (int i = 0; i < 9; i++) {
+            if (inv.get(i).isEmpty()) {
+                return i;
+            }
+        }
+        int selected = ctx.player().getInventory().getSelectedSlot();
+        long[] used = slotUsed();
+        // a build with more kinds of block in reach than there are slots wants all of them, so the second pass lets the
+        // oldest wanted one go. it comes back the same way when its cell is nearest
+        for (int pass = 0; pass < 2; pass++) {
+            int best = -1;
+            for (int i = 0; i < 9; i++) {
+                ItemStack stack = inv.get(i);
+                if (i == selected || i == throwawaySlot || !(stack.getItem() instanceof BlockItem) || (pass == 0 && wanted.contains(stack.getItem()))) {
+                    continue;
+                }
+                if (best < 0 || used[i] < used[best]) {
+                    best = i;
+                }
+            }
+            if (best >= 0) {
+                return best;
+            }
+        }
+        return -1;
+    }
+
+    private void give(Item item, int slot) {
+        ItemStack stack = new ItemStack(item, item.getDefaultMaxStackSize());
+        ctx.player().getInventory().setItem(slot, stack);
+        // a copy for the packet, it gets encoded off thread and the one in the slot is ours to change
+        ctx.minecraft().gameMode.handleCreativeModeItemAdd(stack.copy(), 36 + slot);
+        slotUsed()[slot] = builderTicks;
+        lastGive = builderTicks;
+        if (givenAt == null) {
+            givenAt = new HashMap<>();
+        }
+        givenAt.put(item, builderTicks);
     }
 
     // what the planner said about a cell. stale = something near it changed and it's due a new look
@@ -1139,6 +1314,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private Goal assemble(BuilderCalculationContext bcc, List<BlockState> approxPlaceable, boolean logMissing) {
+        boolean creative = ctx.player().hasInfiniteMaterials();
         List<BetterBlockPos> placeable = new ArrayList<>();
         List<BetterBlockPos> breakable = new ArrayList<>();
         List<BetterBlockPos> sourceLiquids = new ArrayList<>();
@@ -1151,7 +1327,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, state);
                 if (desired == null) {
                     outOfBounds.add(pos);
-                } else if (containsBlockState(approxPlaceable, desired) || (!PlaceRules.aimProof(desired) && containsItem(approxPlaceable, desired))) {
+                } else if (containsBlockState(approxPlaceable, desired) || (!PlaceRules.aimProof(desired) && containsItem(approxPlaceable, desired))
+                        || (creative && creativeItem(desired) != null)) {
+                    // creative hands itself the block when it gets there (creativeSupply), so it's never missing
                     // the states in approxPlaceable are what each stack places with us facing wherever we face right
                     // now, so a stack of stairs only counted for the one facing. an aimed block gets planned (see
                     // planCells) and the click gate checks the real state, so for those owning the item is enough
@@ -1528,6 +1706,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         missingAtPause = Map.of();
         keep = null;
         forgetStalls();
+        forgetCreative();
         incorrectPositions = null;
         name = null;
         schematic = null;
