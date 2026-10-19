@@ -179,6 +179,12 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return true;
     }
 
+    // a swap somebody asked for that the move delay is still holding back. the builder's stall check counts it as
+    // something happening
+    public boolean movePending() {
+        return lastTickRequestedMove != null;
+    }
+
     // the one place a placement click is vetted (see InputOverrideHandler): throwaway() selects slot 7 even when the swap into
     // it was throttled, and a right click with a bucket or a steak in hand empties the bucket or eats the steak
     public boolean handWaitingOnSwap() {
