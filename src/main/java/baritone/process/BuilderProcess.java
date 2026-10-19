@@ -40,6 +40,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockPlaceHelper;
 import baritone.utils.PathingCommandContext;
+import baritone.utils.accessor.IClientBlockBreak;
 import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
@@ -127,12 +128,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int stallTicks;
     private BetterBlockPos stallFeet;
     private static final int STALL_TICKS = 40;
-    // the same idea for stuck somewhere that isn't the goal (a goal the pather can't reach, a move that keeps failing).
-    // much longer, a long path calc or a slow pillar sits still for a while too and that's fine
-    private int farStallTicks;
-    private BetterBlockPos farStallFeet;
-    private boolean leftClickHeld;
-    private static final int FAR_STALL_TICKS = 200;
+    // ticks at the same feet with nothing landing in the world and no dig getting anywhere, whoever is driving. see
+    // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
+    private int watchdogTicks;
+    private BetterBlockPos watchdogFeet;
+    private float lastDestroyProgress;
+    // where the last path we saw was headed. paths get cancelled all the time, so getPath is empty half the ticks
+    private BetterBlockPos lastPathDest;
+    private static final int WATCHDOG_TICKS = 200;
     // a big composite has hundreds of owners, giving all of them up would skip half the build for one bad spot
     private static final int FAR_STALL_CELLS = 8;
     private BetterBlockPos lastBreak;
@@ -382,8 +385,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         givenUp = null;
         stallTicks = 0;
         stallFeet = null;
-        farStallTicks = 0;
-        farStallFeet = null;
+        resetWatchdog();
+        lastPathDest = null;
         lastBreak = null;
         goalOwners = List.of();
         seen = null;
@@ -807,8 +810,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // this and none of them are a stare
         digging = baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT) && lastBreak != null
                 && !ctx.world().getBlockState(lastBreak).isAir();
-        // anyone's dig, the path's included. a path through stone by hand stands still for seconds a block, that's progress
-        leftClickHeld = baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT);
         return onTick(calcFailed, isSafeToCancel, 0);
     }
 
@@ -826,7 +827,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         forcedClicks = false;
         if (paused) {
             stallTicks = 0;
-            farStallTicks = 0;
+            resetWatchdog();
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
         if (recursions == 0 && ctx.player().hasInfiniteMaterials() && !AltoClefSettings.getInstance().isInteractionPaused()) {
@@ -881,6 +882,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             };
         }
         BuilderCalculationContext bcc = new BuilderCalculationContext();
+        if (recursions == 0) {
+            // up here and not next to stallCheck, the click and break branches return before that
+            watchdog(bcc);
+        }
         if (!recalc(bcc)) {
             if (Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
                 logDirect("Starting layer " + layer);
@@ -933,7 +938,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
                 forcedClicks = true;
                 stallTicks = 0;
-                farStallTicks = 0;
             } else if (stalled()) {
                 // turned towards it for two seconds and never got to look at it
                 giveUpOn(bcc, List.of(pos), "Couldn't aim at a block to break");
@@ -961,7 +965,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
                 stallTicks = 0;
-                farStallTicks = 0;
                 clicked(bcc, place);
             } else if (stalled()) {
                 giveUpOn(bcc, List.of(BetterBlockPos.from(place.target())), "Couldn't get a place click in");
@@ -1045,14 +1048,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         BetterBlockPos feet = ctx.playerFeet();
         if (interactionPaused || busyElsewhere()) {
             stallTicks = 0;
-            farStallTicks = 0;
             return false;
         }
         if (!goal.isInGoal(feet)) {
-            stallTicks = 0;
-            return farStall(bcc, feet);
+            stallTicks = 0; // not there yet, getting there is the watchdog's business
+            return false;
         }
-        farStallTicks = 0;
         if (!isSafeToCancel || !ctx.player().onGround()) {
             // walking, swimming, mid movement, told not to click, or something is happening that just isn't a click.
             // the click branches need safe to cancel and on the ground too, so none of that is a stare
@@ -1078,29 +1079,57 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return true;
     }
 
-    // not in the goal and not getting any closer. onGround and safe to cancel don't reset this one, a bot stuck on a lip
-    // fails a movement over and over and is mid movement or blinking off the ground the whole time. only moving does
-    private boolean farStall(BuilderCalculationContext bcc, BetterBlockPos feet) {
-        if (!feet.equals(farStallFeet) || leftClickHeld) {
-            farStallFeet = feet;
-            farStallTicks = 0;
-            return false;
+    // stuck, whatever the reason: a goal the pather can't reach, a move that keeps failing, a click that never lands.
+    // stallCheck only covers standing in the goal and the click branches return before it, so this one counts every
+    // tick and only trusts the world. moving, a block of ours landing (placed, broke) or a dig getting further resets
+    // it. interactionPaused, held clicks and inventory moves don't, a left click held on nothing for ten seconds is
+    // exactly the kind of stuck this is for
+    private void watchdog(BuilderCalculationContext bcc) {
+        baritone.getPathingBehavior().getPath().ifPresent(path -> lastPathDest = path.getDest());
+        BetterBlockPos feet = ctx.playerFeet();
+        float progress = ctx.minecraft().gameMode instanceof IClientBlockBreak gameMode ? gameMode.getCurrentBreakingProgress() : 0;
+        boolean digging = progress > lastDestroyProgress;
+        lastDestroyProgress = progress;
+        if (!feet.equals(watchdogFeet) || digging) {
+            watchdogFeet = feet;
+            watchdogTicks = 0;
+            return;
         }
-        if (++farStallTicks < FAR_STALL_TICKS) {
-            return false;
+        if (++watchdogTicks < WATCHDOG_TICKS) {
+            return;
         }
-        farStallTicks = 0;
-        // the ones nearest by their own heuristic, that's what the pather was chasing
-        List<BetterBlockPos> owners = goalOwners.stream()
+        watchdogTicks = 0;
+        List<BetterBlockPos> owners = watchdogOwners(goalOwners, lastPathDest, feet, FAR_STALL_CELLS);
+        if (!owners.isEmpty()) {
+            giveUpOn(bcc, owners, "Stuck short of the goal", WATCHDOG_TICKS);
+        }
+    }
+
+    // a block landed or broke, that's progress no matter where we stand
+    private void resetWatchdog() {
+        watchdogTicks = 0;
+        watchdogFeet = null;
+    }
+
+    // the cells whose goal the path was headed for, same filter as stallCheck but at the path's end instead of our feet.
+    // none of those (no path yet, or it went somewhere else) means the nearest few by their own heuristic
+    static List<BetterBlockPos> watchdogOwners(List<Pair<BetterBlockPos, Goal>> goalOwners, BetterBlockPos dest, BetterBlockPos feet, int fallback) {
+        List<BetterBlockPos> owners = new ArrayList<>();
+        if (dest != null) {
+            for (Pair<BetterBlockPos, Goal> owner : goalOwners) {
+                if (owner.second().isInGoal(dest)) {
+                    owners.add(owner.first());
+                }
+            }
+        }
+        if (!owners.isEmpty()) {
+            return owners;
+        }
+        return goalOwners.stream()
                 .sorted(Comparator.comparingDouble(owner -> owner.second().heuristic(feet)))
-                .limit(FAR_STALL_CELLS)
+                .limit(fallback)
                 .map(Pair::first)
                 .collect(Collectors.toList());
-        if (owners.isEmpty()) {
-            return false;
-        }
-        giveUpOn(bcc, owners, "Stuck short of the goal", FAR_STALL_TICKS);
-        return true;
     }
 
     // one more tick at the same feet with nothing to show for it. true on the tick that makes it STALL_TICKS
@@ -1131,9 +1160,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void giveUpOn(BuilderCalculationContext bcc, List<BetterBlockPos> cells, String why, int stuckTicks) {
         StringBuilder line = new StringBuilder();
         int named = 0;
+        int breakTicks = -1;
         for (BetterBlockPos pos : cells) {
             int attempts = givenUp().giveUp(pos, builderTicks);
             forgetStickyGoal(pos.x, pos.y, pos.z);
+            if (breakTicks < 0 && attempts < GivenUp.MAX_ATTEMPTS) {
+                breakTicks = GivenUp.breakTicks(attempts);
+            }
             if (named++ >= 5) {
                 continue; // still given up, just not all in one chat line
             }
@@ -1148,7 +1181,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (cells.size() > 5) {
             line.append(" and ").append(cells.size() - 5).append(" more");
         }
-        logDebug(String.format("%s for %ss, leaving it alone for %ss: %s", why, stuckTicks / 20, GivenUp.EXPIRY_TICKS / 20, line));
+        logDebug(String.format("%s for %ss, leaving it alone for %ss: %s", why, stuckTicks / 20, Math.max(breakTicks, GivenUp.EXPIRY_TICKS) / 20, line));
     }
 
     // "stone" for a place, "dirt -> air" for a break, "dirt -> stone" for a swap
@@ -1188,6 +1221,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // InputOverrideHandler hands over every traced place that landed. somebody else's throwaway in an air cell is the first
     // half of the loop
     public void placed(BlockPos pos, BlockState now, String who) {
+        resetWatchdog(); // ours or a movement's, something went in
         if ("builder".equals(who) || !BlockPlaceHelper.throwaway(now.getBlock().asItem()) || !wantsAir(pos)) {
             return;
         }
@@ -1199,6 +1233,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // and every traced break. ours, of a throwaway somebody else put there: the half the builder does
     public void broke(BlockPos pos, BlockState before, String who) {
+        resetWatchdog();
         long cell = BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ());
         if (!"builder".equals(who) || scaffoldPlaced == null || !scaffoldPlaced.contains(cell)
                 || !BlockPlaceHelper.throwaway(before.getBlock().asItem()) || !wantsAir(pos)) {
@@ -2456,7 +2491,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         keptGivenUp = givenUp;
         keptName = name;
         keptOrigin = origin;
-        forgetStalls();
+        forgetStalls(); // the watchdog with it
         forgetCreative();
         incorrectPositions = null;
         name = null;

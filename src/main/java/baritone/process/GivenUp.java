@@ -52,8 +52,13 @@ final class GivenUp {
     int giveUp(BetterBlockPos pos, long now) {
         Entry e = cells.computeIfAbsent(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z), k -> new Entry(pos.x, pos.y, pos.z));
         e.attempts++;
-        e.until = e.attempts >= MAX_ATTEMPTS ? Long.MAX_VALUE : now + (e.attempts == 1 ? EXPIRY_TICKS : SECOND_EXPIRY_TICKS);
+        e.until = e.attempts >= MAX_ATTEMPTS ? Long.MAX_VALUE : now + breakTicks(e.attempts);
         return e.attempts;
+    }
+
+    // how long the break after this many give ups is, for anything short of MAX_ATTEMPTS
+    static int breakTicks(int attempts) {
+        return attempts <= 1 ? EXPIRY_TICKS : SECOND_EXPIRY_TICKS;
     }
 
     boolean isGivenUp(int x, int y, int z, long now) {
