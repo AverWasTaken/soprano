@@ -910,9 +910,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             logDirect("Repeating build in vector " + repeat + ", new origin is " + origin);
             return onTick(calcFailed, isSafeToCancel, recursions + 1);
         }
-        if (Baritone.settings().distanceTrim.value) {
-            trim();
-        }
 
         // altoclef pausing interactions means no breaking, no placing and no hotbar shuffling, we just keep walking
         boolean interactionPaused = AltoClefSettings.getInstance().isInteractionPaused();
@@ -1001,42 +998,38 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
 
-        plansPending = false;
-        Goal goal = assemble(bcc, approxPlaceable.subList(0, 9));
+        Goal goal = goalNearFirst(bcc);
+        if (goal == null && plansPending) {
+            // all that's left here is aimed cells the planner hasn't got to yet. they're first in line (planOrder),
+            // a few ticks of standing still beats giving up on them or pausing the build
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+        }
         if (goal == null) {
-            goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
-            if (goal == null && plansPending) {
-                // all that's left here is aimed cells the planner hasn't got to yet. they're first in line (planOrder),
-                // a few ticks of standing still beats giving up on them or pausing the build
-                return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+            if (retryGivenUp()) {
+                // all that's left is stuff we let go of for a bit. that's not "unable to do it" and not a reason to
+                // skip a layer, so give it another go now. each go is an attempt, so this runs out
+                logDirect("Only blocks I gave up on for a bit are left, trying them again");
+                // the logMissing pass just wrote it, but this isn't a pause
+                missingAtPause = Map.of();
+                return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
-            if (goal == null) {
-                if (retryGivenUp()) {
-                    // all that's left is stuff we let go of for a bit. that's not "unable to do it" and not a reason to
-                    // skip a layer, so give it another go now. each go is an attempt, so this runs out
-                    logDirect("Only blocks I gave up on for a bit are left, trying them again");
-                    // the logMissing pass just wrote it, but this isn't a pause
-                    missingAtPause = Map.of();
-                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
-                }
-                if (releaseScaffold(bcc)) {
-                    // after the given up ones get their retry, those are other work too
-                    missingAtPause = Map.of();
-                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
-                }
-                if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
-                    logDirect("Skipping layer that I cannot construct! Layer #" + layer);
-                    // not a pause, so nothing is missing as far as missingAtPause is concerned
-                    missingAtPause = Map.of();
-                    forgetStalls();
-                    layer++;
-                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
-                }
-                logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
-                logWhyUnable(bcc);
-                paused = true;
-                return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+            if (releaseScaffold(bcc)) {
+                // after the given up ones get their retry, those are other work too
+                missingAtPause = Map.of();
+                return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
+            if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
+                logDirect("Skipping layer that I cannot construct! Layer #" + layer);
+                // not a pause, so nothing is missing as far as missingAtPause is concerned
+                missingAtPause = Map.of();
+                forgetStalls();
+                layer++;
+                return onTick(calcFailed, isSafeToCancel, recursions + 1);
+            }
+            logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
+            logWhyUnable(bcc);
+            paused = true;
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel)) {
             // the cells that parked us here are out of the goal now, so build it again without them
@@ -1247,8 +1240,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (scaffoldReleased || scaffoldMined == null || scaffoldMined.isEmpty()) {
             return false;
         }
-        // no looking through incorrectPositions for one first, distanceTrim can have cut the far ones out of it. letting go
-        // when none are left costs one more pass and then this says false forever
+        // no looking through incorrectPositions for one first, a mined one we never walked back past can still be in
+        // there as a wrong block. letting go when none are left costs one more pass and then this says false forever
         scaffoldReleased = true;
         logDebug("Only scaffold I left alone is left, mining it now");
         // the bcc this tick still has the old snapshot, the recursion builds a new one
@@ -1631,12 +1624,88 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return !incorrectPositions.isEmpty();
     }
 
-    private void trim() {
-        HashSet<BetterBlockPos> copy = new HashSet<>(incorrectPositions);
-        copy.removeIf(pos -> pos.distSqr(ctx.player().blockPosition()) > 200);
-        if (!copy.isEmpty()) {
-            incorrectPositions = copy;
+    // distanceTrim used to delete everything past this from incorrectPositions. only recalcNearby's little box ever put
+    // cells back, so a wall we walked away from was gone for good (the ladder column we left half done). now the set
+    // keeps them and only the goal is trimmed
+    static final double NEAR_DIST_SQ = 200;
+    // the far cells handed to the goal when nothing near makes one. a handful, GoalComposite.heuristic loops every
+    // member for every node A* opens, so the whole far set would be a very slow way to walk across a build
+    static final int FAR_FALLBACK_CELLS = 48;
+
+    // the goal off the cells near us, and if those make nothing (all given up, missing, waiting), off the nearest far
+    // ones too. before the retry / release / skip / pause branch, those are for when there's really nothing left
+    private Goal goalNearFirst(BuilderCalculationContext bcc) {
+        plansPending = false;
+        boolean trim = Baritone.settings().distanceTrim.value;
+        Collection<BetterBlockPos> near = trim ? nearCells(incorrectPositions, ctx.player().blockPosition(), NEAR_DIST_SQ) : incorrectPositions;
+        boolean everything = near.size() == incorrectPositions.size();
+        Goal goal = assembleEitherInventory(bcc, near, everything);
+        if (goal != null || plansPending || everything) {
+            return goal;
         }
+        List<BetterBlockPos> cells = new ArrayList<>(near);
+        cells.addAll(farFallback(bcc));
+        // near goes in again with them so the pause line (missing, dropped, unbreakable) still covers everything
+        return assembleEitherInventory(bcc, cells, true);
+    }
+
+    private Goal assembleEitherInventory(BuilderCalculationContext bcc, Collection<BetterBlockPos> cells, boolean logMissing) {
+        Goal goal = assemble(bcc, approxPlaceable.subList(0, 9), cells, false);
+        if (goal != null) {
+            return goal;
+        }
+        // we're far away, so assume that we have our whole inventory to recalculate placeable properly
+        return assemble(bcc, approxPlaceable, cells, logMissing);
+    }
+
+    // a copy, assemble takes cells out of incorrectPositions while it walks its list
+    static List<BetterBlockPos> nearCells(Collection<BetterBlockPos> all, BlockPos player, double maxDistSqr) {
+        List<BetterBlockPos> out = new ArrayList<>();
+        for (BetterBlockPos pos : all) {
+            if (pos.distSqr(player) <= maxDistSqr) {
+                out.add(pos);
+            }
+        }
+        return out;
+    }
+
+    // the k nearest past nearDistSqr, nearest first. a bounded max heap, the set can be the whole build
+    static List<BetterBlockPos> nearestFar(Collection<BetterBlockPos> all, BlockPos player, double nearDistSqr, int k) {
+        PriorityQueue<BetterBlockPos> heap = new PriorityQueue<>(k + 1, Comparator.comparingDouble((BetterBlockPos p) -> p.distSqr(player)).reversed());
+        for (BetterBlockPos pos : all) {
+            double d = pos.distSqr(player);
+            if (d <= nearDistSqr) {
+                continue;
+            }
+            if (heap.size() < k) {
+                heap.add(pos);
+            } else if (d < heap.peek().distSqr(player)) {
+                heap.poll();
+                heap.add(pos);
+            }
+        }
+        List<BetterBlockPos> out = new ArrayList<>(heap);
+        out.sort(Comparator.comparingDouble(p -> p.distSqr(player)));
+        return out;
+    }
+
+    // the far ones are only rescanned when we walk past, so one somebody else finished since would read as a wrong block
+    // to break (assemble takes everything in the set as wrong). a look at these few first, loaded chunks only
+    private List<BetterBlockPos> farFallback(BuilderCalculationContext bcc) {
+        List<BetterBlockPos> out = new ArrayList<>();
+        for (BetterBlockPos pos : nearestFar(incorrectPositions, ctx.player().blockPosition(), NEAR_DIST_SQ, FAR_FALLBACK_CELLS)) {
+            if (bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+                BlockState current = bcc.bsi.get0(pos.x, pos.y, pos.z);
+                BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, current);
+                if (desired != null && bcc.fine(pos.x, pos.y, pos.z, current, desired)) {
+                    incorrectPositions.remove(pos);
+                    observedCompleted.add(BetterBlockPos.longHash(pos));
+                    continue;
+                }
+            }
+            out.add(pos);
+        }
+        return out;
     }
 
     private void recalcNearby(BuilderCalculationContext bcc) {
@@ -1722,11 +1791,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
-    private Goal assemble(BuilderCalculationContext bcc, List<BlockState> approxPlaceable) {
-        return assemble(bcc, approxPlaceable, false);
-    }
-
-    private Goal assemble(BuilderCalculationContext bcc, List<BlockState> approxPlaceable, boolean logMissing) {
+    private Goal assemble(BuilderCalculationContext bcc, List<BlockState> approxPlaceable, Collection<BetterBlockPos> cells, boolean logMissing) {
         // with nowhere to hand a block over, possibleToPlace and costOfPlacingAt say no too, so the goal shouldn't say yes
         boolean creative = ctx.player().hasInfiniteMaterials() && creativeSlot() >= 0;
         List<BetterBlockPos> placeable = new ArrayList<>();
@@ -1736,7 +1801,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         Map<BlockState, Integer> missing = new HashMap<>();
         List<BetterBlockPos> outOfBounds = new ArrayList<>();
         List<BetterBlockPos> pourCells = new ArrayList<>();
-        incorrectPositions.forEach(pos -> {
+        cells.forEach(pos -> {
             BlockState state = bcc.bsi.get0(pos);
             if (pourCell(bcc, pos, state)) {
                 pourCells.add(pos);

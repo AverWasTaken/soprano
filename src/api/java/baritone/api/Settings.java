@@ -1554,7 +1554,8 @@ public final class Settings {
     public final Setting<Long> mineDropLoiterDurationMSThanksLouca = new Setting<>(250L);
 
     /**
-     * Trim incorrect positions too far away, helps performance but hurts reliability in very large schematics
+     * Only build the goal from incorrect positions near you, plus the nearest few far ones when nothing near can be
+     * done. Far positions are still remembered. Helps performance in very large schematics
      */
     public final Setting<Boolean> distanceTrim = new Setting<>(true);
 
