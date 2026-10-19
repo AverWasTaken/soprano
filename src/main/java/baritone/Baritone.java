@@ -150,6 +150,7 @@ public class Baritone implements IBaritone {
             this.elytraProcess           = this.registerProcess(ElytraProcess::create);
             this.registerProcess(BackfillProcess::new);
             this.registerProcess(SelfDefenseProcess::new);
+            this.registerProcess(TorchProcess::new);
         }
 
         this.worldProvider = new WorldProvider(this);
