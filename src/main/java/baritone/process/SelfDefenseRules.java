@@ -33,6 +33,9 @@ public final class SelfDefenseRules {
     public static final int NO_LINE_TICKS = 40;
     // and one that walked off this far is gone, no waiting around
     public static final double TOO_FAR = 8;
+    // swinging at it this long without its health going down means it can't be hurt (a creaking with its heart, an
+    // invulnerable server npc). without this we'd stand there forever with the job paused
+    public static final int NO_PROGRESS_TICKS = 100;
     // one we gave up on for having no line stays ignored this long, or it bites again and we freeze for another 40
     public static final long SHRUG_TICKS = 100;
     // near a full charge, a 0.5 swing does a quarter of the damage and still resets the cooldown
@@ -42,7 +45,8 @@ public final class SelfDefenseRules {
 
     // creepers want us to come closer, wardens and withers and the dragon are not a melee job, and the flyers swoop in and
     // out so holding for them freezes the job over and over
-    private static final Set<String> EXCLUDED = Set.of("creeper", "warden", "wither", "ender_dragon",
+    // a creaking with a heart can't be hurt and freezes while we stare at it, which is all we'd do
+    private static final Set<String> EXCLUDED = Set.of("creeper", "warden", "wither", "ender_dragon", "creaking",
             "phantom", "vex", "ghast", "blaze");
 
     private SelfDefenseRules() {
@@ -81,6 +85,11 @@ public final class SelfDefenseRules {
     // once engaged we hold until one of these. no chasing, the job is what we came here for
     public static boolean release(boolean gone, double distance, int ticksOutOfReach, int ticksNoLine) {
         return gone || distance > TOO_FAR || ticksOutOfReach >= OUT_OF_REACH_TICKS || ticksNoLine >= NO_LINE_TICKS;
+    }
+
+    // and one we're getting nowhere with. given up like the no line case, see shrugged
+    public static boolean noProgress(int ticksSinceHurt) {
+        return ticksSinceHurt >= NO_PROGRESS_TICKS;
     }
 
     // aimError is NaN when we don't know what the server thinks we're looking at, which is a no
