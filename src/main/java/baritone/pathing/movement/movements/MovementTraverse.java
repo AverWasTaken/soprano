@@ -288,6 +288,12 @@ public class MovementTraverse extends Movement {
                 System.out.println("In movement traverse");
                 return state.setInput(Input.JUMP, true);
             }
+            if (ctx.player().onGround()) {
+                // standing a block above the whole move, usually a path that started from the block under a lip we were
+                // perched on. no input here walks us down to it, so idling just burned the movement timeout. fail now,
+                // the replan starts from where we actually are
+                return state.setStatus(MovementStatus.FAILED);
+            }
             return state;
         }
 
