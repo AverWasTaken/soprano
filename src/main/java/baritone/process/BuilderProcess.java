@@ -19,6 +19,8 @@ package baritone.process;
 
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
+import baritone.api.event.events.BlockChangeEvent;
+import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalComposite;
@@ -48,11 +50,12 @@ import baritone.utils.schematic.SchematicSystem;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
-import net.minecraft.util.Tuple;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -115,9 +118,42 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the clicks still down are ours. onLostControl lets go of exactly those, once: it runs for every loser every tick
     // and clearAllKeys there would wipe whatever the winner just pressed
     private boolean forcedClicks;
+    // the builder's own clock, recursions don't count
+    private long builderTicks;
+    // ticks in a row at the same feet with nothing clicked, see stallCheck
+    private int stallTicks;
+    private BetterBlockPos stallFeet;
+    private static final int STALL_TICKS = 40;
+    private BetterBlockPos lastBreak;
+    private boolean digging;
+    private GivenUp givenUp;
+    // which cell asked for which part of the last goal, so the stall check knows who parked us
+    private List<Pair<BetterBlockPos, Goal>> goalOwners = List.of();
+    // what recalcNearby saw last time per cell, so it can tell a change from a cell that just came into range
+    private Long2ObjectOpenHashMap<BlockState> seen;
+    private Object seenWorld;
+    // wrong blocks nothing short of creative breaks (bedrock where the file wants air), out of the goal and the scan
+    private List<BetterBlockPos> unbreakableCells = List.of();
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
+        baritone.getGameEventHandler().registerEventListener(new AbstractGameEventListener() {
+            @Override
+            public void onBlockChange(BlockChangeEvent event) {
+                if (schematic == null || ctx.player() == null) {
+                    return;
+                }
+                // a farm or a waterfall across the map sends these all day and each one walks every cell we care about,
+                // so only the ones near us. the nearby scan in recalcNearby has the close ones covered anyway
+                BetterBlockPos feet = ctx.playerFeet();
+                for (Pair<BlockPos, BlockState> change : event.getBlocks()) {
+                    BlockPos p = change.first();
+                    if (Math.abs(p.getX() - feet.x) <= 32 && Math.abs(p.getY() - feet.y) <= 32 && Math.abs(p.getZ() - feet.z) <= 32) {
+                        blockChanged(p.getX(), p.getY(), p.getZ());
+                    }
+                }
+            }
+        });
     }
 
     @Override
@@ -199,11 +235,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.numRepeats = 0;
         this.observedCompleted = new LongOpenHashSet();
         this.incorrectPositions = null;
+        forgetStalls();
+    }
+
+    // a fresh build, a resume or a repeat: whatever we gave up on before was about a different situation
+    private void forgetStalls() {
+        givenUp = null;
+        stallTicks = 0;
+        stallFeet = null;
+        lastBreak = null;
+        goalOwners = List.of();
+        seen = null;
     }
 
     public void resume() {
         paused = false;
         missingAtPause = Map.of();
+        // everything left got given up on for good if we paused over it, so the resume is the next go
+        forgetStalls();
     }
 
     public void pause() {
@@ -349,13 +398,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     if (dy == -1 && x == pathStart.x && z == pathStart.z) {
                         continue; // dont mine what we're supported by, but not directly standing on
                     }
+                    if (givenUp(x, y, z)) {
+                        continue;
+                    }
                     BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
                     if (desired == null) {
                         continue; // irrelevant
                     }
                     BlockState curr = bcc.bsi.get0(x, y, z);
                     // fine, not valid: a kept block is the caller's scaffolding and the builder never gets to mine it
-                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired)) {
+                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)) {
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
                         Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
                         if (rot.isPresent()) {
@@ -381,6 +433,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.side = side;
             this.rot = rot;
         }
+
+        // side is the face of placeAgainst we click, so the block lands one step out of it
+        BlockPos target() {
+            return placeAgainst.relative(side);
+        }
     }
 
     private Optional<Placement> searchForPlacables(BuilderCalculationContext bcc, List<BlockState> desirableOnHotbar) {
@@ -392,7 +449,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     int y = center.y + dy;
                     int z = center.z + dz;
                     BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
-                    if (desired == null) {
+                    if (desired == null || givenUp(x, y, z)) {
                         continue; // irrelevant
                     }
                     BlockState curr = bcc.bsi.get0(x, y, z);
@@ -512,6 +569,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
+        builderTicks++;
+        // a dig the break branch started last tick and the block is still there: obsidian by hand is ~250 ticks of
+        // this and none of them are a stare
+        digging = baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT) && lastBreak != null
+                && !ctx.world().getBlockState(lastBreak).isAir();
         return onTick(calcFailed, isSafeToCancel, 0);
     }
 
@@ -528,6 +590,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         baritone.getInputOverrideHandler().clearAllKeys();
         forcedClicks = false;
         if (paused) {
+            stallTicks = 0;
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
         if (Baritone.settings().buildInLayers.value) {
@@ -598,6 +661,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             // build repeat time
             layer = 0;
+            forgetStalls(); // keyed by world position, and the origin is about to move
             origin = new BlockPos(origin.getX(), origin.getY(), origin.getZ()).offset(repeat);
             if (!Baritone.settings().buildRepeatSneaky.value) {
                 schematic.reset();
@@ -618,6 +682,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             dropPathBeforeClicking();
             Rotation rot = toBreak.get().second();
             BetterBlockPos pos = toBreak.get().first();
+            lastBreak = pos;
             baritone.getLookBehavior().updateTarget(rot, true);
             MovementHelper.switchToBestToolFor(ctx, bcc.get(pos));
             if (ctx.player().isCrouching()) {
@@ -629,6 +694,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (ctx.isLookingAt(pos) || ctx.playerRotations().isReallyCloseTo(rot)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
                 forcedClicks = true;
+                stallTicks = 0;
+            } else if (stalled()) {
+                // turned towards it for two seconds and never got to look at it
+                giveUpOn(bcc, List.of(pos), "Couldn't aim at a block to break");
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -643,6 +712,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if ((ctx.isLookingAt(toPlace.get().placeAgainst) && ((BlockHitResult) ctx.objectMouseOver()).getDirection().equals(toPlace.get().side)) || ctx.playerRotations().isReallyCloseTo(rot)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
+                stallTicks = 0;
+            } else if (stalled()) {
+                giveUpOn(bcc, List.of(BetterBlockPos.from(toPlace.get().target())), "Couldn't get a place click in");
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -679,19 +751,169 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (goal == null) {
             goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
             if (goal == null) {
+                if (retryGivenUp()) {
+                    // all that's left is stuff we let go of for a bit. that's not "unable to do it" and not a reason to
+                    // skip a layer, so give it another go now. each go is an attempt, so this runs out
+                    logDirect("Only blocks I gave up on for a bit are left, trying them again");
+                    // the logMissing pass just wrote it, but this isn't a pause
+                    missingAtPause = Map.of();
+                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                }
                 if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
                     // not a pause, so nothing is missing as far as missingAtPause is concerned
                     missingAtPause = Map.of();
+                    forgetStalls();
                     layer++;
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
                 logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
+                logWhyUnable(bcc);
                 paused = true;
                 return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
         }
+        if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel)) {
+            // the cells that parked us here are out of the goal now, so build it again without them
+            return onTick(calcFailed, isSafeToCancel, recursions + 1);
+        }
         return new PathingCommandContext(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
+    }
+
+    // upstream's goal composites are happy if any member is. a member that's happy with where we stand while nothing
+    // around here is clickable means the pather never moves us and nothing else does either: the stare. true when this
+    // tick gave some cells up and the goal needs building again
+    private boolean stallCheck(BuilderCalculationContext bcc, Goal goal, boolean interactionPaused, boolean isSafeToCancel) {
+        BetterBlockPos feet = ctx.playerFeet();
+        if (interactionPaused || !isSafeToCancel || !ctx.player().onGround() || busyElsewhere() || !goal.isInGoal(feet)) {
+            // walking, swimming, mid movement, told not to click, or something is happening that just isn't a click.
+            // the click branches need safe to cancel and on the ground too, so none of that is a stare
+            stallTicks = 0;
+            return false;
+        }
+        if (!stalled()) {
+            return false;
+        }
+        List<BetterBlockPos> owners = new ArrayList<>();
+        for (Pair<BetterBlockPos, Goal> owner : goalOwners) {
+            if (owner.second().isInGoal(feet)) {
+                owners.add(owner.first());
+            }
+        }
+        if (owners.isEmpty()) {
+            return false;
+        }
+        giveUpOn(bcc, owners, "Stood in the goal with nothing to click");
+        return true;
+    }
+
+    // one more tick at the same feet with nothing to show for it. true on the tick that makes it STALL_TICKS
+    private boolean stalled() {
+        BetterBlockPos feet = ctx.playerFeet();
+        if (!feet.equals(stallFeet)) {
+            stallFeet = feet;
+            stallTicks = 0;
+        }
+        if (busyElsewhere() || ++stallTicks < STALL_TICKS) {
+            return false;
+        }
+        stallTicks = 0;
+        return true;
+    }
+
+    // not a click, but not nothing either
+    private boolean busyElsewhere() {
+        return digging || baritone.getInventoryBehavior().movePending();
+    }
+
+    private void giveUpOn(BuilderCalculationContext bcc, List<BetterBlockPos> cells, String why) {
+        StringBuilder line = new StringBuilder();
+        int named = 0;
+        for (BetterBlockPos pos : cells) {
+            int attempts = givenUp().giveUp(pos, builderTicks);
+            if (named++ >= 5) {
+                continue; // still given up, just not all in one chat line
+            }
+            if (line.length() > 0) {
+                line.append(", ");
+            }
+            line.append(describe(bcc, pos));
+            if (attempts >= GivenUp.MAX_ATTEMPTS) {
+                line.append(" (for good, till something next to it changes)");
+            }
+        }
+        if (cells.size() > 5) {
+            line.append(" and ").append(cells.size() - 5).append(" more");
+        }
+        logDirect(String.format("%s for %ss, leaving it alone for %ss: %s", why, STALL_TICKS / 20, GivenUp.EXPIRY_TICKS / 20, line));
+    }
+
+    // "stone" for a place, "dirt -> air" for a break, "dirt -> stone" for a swap
+    private String describe(BuilderCalculationContext bcc, BetterBlockPos pos) {
+        BlockState curr = bcc.bsi.get0(pos.x, pos.y, pos.z);
+        BlockState want = bcc.getSchematic(pos.x, pos.y, pos.z, curr);
+        String what;
+        if (want == null) {
+            what = name(curr);
+        } else if (curr.getBlock() instanceof AirBlock) {
+            what = name(want);
+        } else {
+            what = name(curr) + " -> " + name(want);
+        }
+        return what + " at " + pos.x + " " + pos.y + " " + pos.z;
+    }
+
+    private static String name(BlockState state) {
+        return BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+    }
+
+    private boolean givenUp(int x, int y, int z) {
+        return givenUp != null && givenUp.isGivenUp(x, y, z, builderTicks);
+    }
+
+    private GivenUp givenUp() {
+        if (givenUp == null) {
+            givenUp = new GivenUp();
+        }
+        return givenUp;
+    }
+
+    private boolean retryGivenUp() {
+        return givenUp != null && givenUp.retryNow(builderTicks);
+    }
+
+    // upstream held left click on bedrock until somebody cancelled
+    private boolean unbreakable(int x, int y, int z, BlockState state) {
+        return !ctx.player().hasInfiniteMaterials() && state.getDestroySpeed(ctx.world(), new BlockPos(x, y, z)) < 0;
+    }
+
+    // the pause line used to be just "unable to do it". what's left and why, the missing materials already got theirs
+    private void logWhyUnable(BuilderCalculationContext bcc) {
+        if (!unbreakableCells.isEmpty()) {
+            logDirect(String.format("Can't break %s blocks, they don't break:", unbreakableCells.size()));
+            logDirect(unbreakableCells.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (unbreakableCells.size() > 10 ? "\n..." : ""));
+        }
+        if (givenUp == null || incorrectPositions == null) {
+            return;
+        }
+        List<String> stuck = new ArrayList<>();
+        for (BetterBlockPos pos : incorrectPositions) {
+            if (givenUp(pos.x, pos.y, pos.z)) {
+                stuck.add(describe(bcc, pos));
+            }
+        }
+        if (!stuck.isEmpty()) {
+            logDirect(String.format("Gave up on %s blocks after %s tries each, nothing next to them changed since:", stuck.size(), GivenUp.MAX_ATTEMPTS));
+            logDirect(String.join("\n", stuck.subList(0, Math.min(stuck.size(), 10))) + (stuck.size() > 10 ? "\n..." : ""));
+        }
+    }
+
+    // a block near one we gave up on for good changed, so it gets another chance. both the multi block packet event and
+    // the nearby scan in recalcNearby land here, the event alone misses single block updates
+    private void blockChanged(int x, int y, int z) {
+        if (givenUp != null) {
+            givenUp.nearbyChanged(x, y, z);
+        }
     }
 
     // PathingControlManager cancels the segment after the process tick, and that cancel clears every key, so the sneak
@@ -728,12 +950,29 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void recalcNearby(BuilderCalculationContext bcc) {
         BetterBlockPos center = ctx.playerFeet();
         int radius = Baritone.settings().builderTickScanRadius.value;
+        if (ctx.world() != seenWorld) {
+            // another dimension or a reconnect. the same coordinates are somewhere else now, so none of it means anything
+            forgetStalls();
+            seenWorld = ctx.world();
+        }
+        if (seen == null || seen.size() > 100_000) {
+            seen = new Long2ObjectOpenHashMap<>(); // a long walk across a big build, forgetting is cheaper than trimming
+        }
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     int x = center.x + dx;
                     int y = center.y + dy;
                     int z = center.z + dz;
+                    // states are interned, so != is a change. a cell we never saw before isn't one, and an unloaded
+                    // chunk reads as air, which isn't one either
+                    if (bcc.bsi.worldContainsLoadedChunk(x, z)) {
+                        BlockState now = bcc.bsi.get0(x, y, z);
+                        BlockState before = seen.put(BetterBlockPos.serializeToLong(x, y, z), now);
+                        if (before != null && before != now) {
+                            blockChanged(x, y, z);
+                        }
+                    }
                     BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
                     if (desired != null) {
                         // we care about this position
@@ -829,15 +1068,38 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         });
         incorrectPositions.removeAll(outOfBounds);
+        List<Pair<BetterBlockPos, Goal>> owners = new ArrayList<>();
         List<Goal> toBreak = new ArrayList<>();
-        breakable.forEach(pos -> toBreak.add(breakGoal(pos, bcc)));
-        List<Goal> toPlace = new ArrayList<>();
-        placeable.forEach(pos -> {
-            if (!placeable.contains(pos.below()) && !placeable.contains(pos.below(2))) {
-                toPlace.add(placementGoal(pos, bcc));
+        List<BetterBlockPos> cantBreak = new ArrayList<>();
+        breakable.forEach(pos -> {
+            if (unbreakable(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
+                cantBreak.add(pos);
+            } else if (!givenUp(pos.x, pos.y, pos.z)) {
+                Goal goal = breakGoal(pos, bcc);
+                toBreak.add(goal);
+                owners.add(new Pair<>(pos, goal));
             }
         });
-        sourceLiquids.forEach(pos -> toPlace.add(new GoalBlock(pos.above())));
+        unbreakableCells = cantBreak;
+        List<Goal> toPlace = new ArrayList<>();
+        // a set, List.contains for every position was quadratic and placeable is in the thousands on a big build
+        Set<BetterBlockPos> placeableSet = new HashSet<>(placeable);
+        placeable.forEach(pos -> {
+            // given up ones stay in placeableSet, or the block above a hole we gave up on becomes a goal over thin air
+            if (!placeableSet.contains(pos.below()) && !placeableSet.contains(pos.below(2)) && !givenUp(pos.x, pos.y, pos.z)) {
+                Goal goal = placementGoal(pos, bcc);
+                toPlace.add(goal);
+                owners.add(new Pair<>(pos, goal));
+            }
+        });
+        sourceLiquids.forEach(pos -> {
+            if (!givenUp(pos.x, pos.y, pos.z)) {
+                Goal goal = new GoalBlock(pos.above());
+                toPlace.add(goal);
+                owners.add(new Pair<>(pos, goal));
+            }
+        });
+        goalOwners = owners;
 
         if (!toPlace.isEmpty()) {
             return new JankyGoalComposite(new GoalComposite(toPlace.toArray(new Goal[0])), new GoalComposite(toBreak.toArray(new Goal[0])));
@@ -1085,6 +1347,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         missingAtPause = Map.of();
         keep = null;
+        forgetStalls();
         incorrectPositions = null;
         name = null;
         schematic = null;
