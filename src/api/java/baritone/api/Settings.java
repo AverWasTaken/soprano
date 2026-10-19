@@ -193,6 +193,17 @@ public final class Settings {
     public final Setting<Boolean> pickupLadders = new Setting<>(true);
 
     /**
+     * Hit back while a Baritone job (mine, tunnel, build, farm, follow, goto, explore) is running. When a hostile mob
+     * hits you and is within melee reach, the job pauses where it is, the bot takes out its best sword (or axe) from the
+     * hotbar and hits the mob until it dies or walks off, then puts the old item back and carries on with the job.
+     * <p>
+     * It never chases or paths anywhere, it only swings at what is already in reach. Creepers, wardens, withers, the
+     * dragon and the flying ones (phantoms, vexes, ghasts, blazes) are left alone. It stays out of the way in water, in
+     * lava and while flying an elytra. AltoClef tasks have their own combat, so this does nothing while one is running.
+     */
+    public final Setting<Boolean> selfDefense = new Setting<>(true);
+
+    /**
      * Allow Baritone to assume it can walk on still water just like any other block.
      * This functionality is assumed to be provided by a separate library that might have imported Baritone.
      * <p>
