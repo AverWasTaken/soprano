@@ -17,10 +17,13 @@
 
 package baritone.utils;
 
+import adris.altoclef.trace.Trace;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.IPlayerContext;
 import baritone.utils.accessor.IPlayerControllerMP;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.component.SwingAnimation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -40,6 +43,13 @@ public final class BlockBreakHelper {
         this.ctx = ctx;
     }
 
+    // the builder has its own "break" line, a movement's dig doesn't, and somebody is eating the scaffold
+    private void traceBroke(String who, BlockHitResult hit, BlockState before) {
+        if (who != null) {
+            Trace.record("broke " + before + " at " + hit.getBlockPos().toShortString() + " by " + who + " held " + ctx.player().getMainHandItem().getItem());
+        }
+    }
+
     public void stopBreakingBlock() {
         // The player controller will never be null, but the player can be
         if (ctx.player() != null && wasHitting) {
@@ -50,6 +60,11 @@ public final class BlockBreakHelper {
     }
 
     public void tick(boolean isLeftClick) {
+        tick(isLeftClick, null);
+    }
+
+    // who is the trace's name for the click, null for no trace
+    public void tick(boolean isLeftClick, String who) {
         if (breakDelayTimer > 0) {
             breakDelayTimer--;
             return;
@@ -64,10 +79,12 @@ public final class BlockBreakHelper {
                 ctx.playerController().clickBlock(((BlockHitResult) trace).getBlockPos(), ((BlockHitResult) trace).getDirection());
                 ctx.player().swing(InteractionHand.MAIN_HAND);
             } else {
+                BlockState before = who == null ? null : ctx.world().getBlockState(((BlockHitResult) trace).getBlockPos());
                 if (ctx.playerController().onPlayerDamageBlock(((BlockHitResult) trace).getBlockPos(), ((BlockHitResult) trace).getDirection())) {
                     ctx.player().swing(InteractionHand.MAIN_HAND);
                 }
                 if (ctx.playerController().hasBrokenBlock()) { // block broken this tick
+                    traceBroke(who, (BlockHitResult) trace, before);
                     // break delay timer only applies for multi-tick block breaks like vanilla
                     breakDelayTimer = BaritoneAPI.getSettings().blockBreakSpeed.value - BASE_BREAK_DELAY;
                     // must reset controller's destroy delay to prevent the client from delaying itself unnecessarily

@@ -42,6 +42,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SelectionSchematic;
@@ -123,6 +124,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // whoever started the build gets to say which wrong blocks are fine anyway (SchematicBuildTask's scaffolding, so the
     // builder stops mining the pillar it is standing on). volatile because the path thread reads it through the bcc
     private volatile Keep keep;
+    // the corner of the build we're doing, see BuildArea
+    private BuildArea area = new BuildArea();
+    private BetterBlockPos loggedAnchor;
+    private long lastAreaLog = -1000;
+    private long lastAnchorLog = -1000;
+    private long lastSwing = -1000;
+    // keepLastPlacement for breaking: last tick's target while it still needs it, so a half broken block gets finished
+    private BetterBlockPos lastBreak;
+    private HotbarHold hotbarHold = new HotbarHold();
+    // the clicks still down are ours. onLostControl lets go of exactly those, once: it runs for every loser every tick
+    // and clearAllKeys there would wipe whatever the winner just pressed
+    private boolean forcedClicks;
+    // the hotbar slots the last inventory pass called useful, so the clutch's ladder doesn't move into them
+    private int usefulSlotMask;
+    // last pos the trace heard about a break of, one line per block and not one per tick of digging
+    private BetterBlockPos tracedBreak;
+    // cells noStandingRoom already said so about, it's asked every tick
+    private LongOpenHashSet noRoomLogged;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -209,6 +228,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // a fresh one instead of clear(), BuilderPlacedBuildTest makes the builder with Unsafe and skips the initializers
         this.skips = new BuildSkips();
         this.lastPlacement = null;
+        // same reason, and start doesn't go through forgetSkips here
+        this.area = new BuildArea();
+        this.hotbarHold = new HotbarHold();
+        this.usefulSlotMask = 0;
+        this.lastBreak = null;
+        this.loggedAnchor = null;
+        skipRetries = 0;
     }
 
     public void resume() {
@@ -607,6 +633,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             ticks--;
         }
         baritone.getInputOverrideHandler().clearAllKeys();
+        forcedClicks = false;
         if (paused) {
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -716,6 +743,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // place branch over the hotbar on the ticks the two took turns
                 MovementHelper.switchToBestToolFor(ctx, bcc.get(pos));
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+                forcedClicks = true;
+                traceBreak(bcc, pos);
             }
             // cancelling the path for a block that never breaks (protected, bedrock, can't aim at it) used to be forever
             stuckOn(bcc, pos, breakLimit(pos), true);
@@ -740,6 +769,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (slot.isPresent()) {
                 ctx.player().getInventory().selected = slot.getAsInt();
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
+                forcedClicks = true;
+                tracePlace(bcc);
             } else if (!sneaking) {
                 // the sneak lands next tick and the click can go out with it
                 ctx.player().getInventory().selected = plan.hotbarSelection;
@@ -761,14 +792,22 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 }
                 noValidHotbarOption.add(desired);
             }
+            int mask = 0;
+            for (int i : usefulSlots) {
+                mask |= 1 << i;
+            }
+            usefulSlotMask = mask;
 
             outer:
             for (int i = 9; i < 36; i++) {
                 for (BlockState desired : noValidHotbarOption) {
                     if (canSupply(approxPlaceable.get(i), desired)) {
-                        if (!baritone.getInventoryBehavior().attemptToPutOnHotbar(i, usefulSlots::contains)) {
-                            // awaiting inventory move, so pause
-                            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+                        // a throttled fetch used to pause until it went through. one move a tick means that was a pause
+                        // every other tick, every pause lets go of the keys and the dig with them, and a dig down never
+                        // finished before its movement timed out. so walk on, the move is remembered and goes next tick
+                        OptionalInt into = baritone.getInventoryBehavior().fetchToHotbar(i, hotbarHold.tiers(usefulSlots::contains, this::clutchSlot, builderTicks), "builder");
+                        if (into.isPresent()) {
+                            hotbarHold.fetched(into.getAsInt(), builderTicks);
                         }
                         break outer;
                     }
@@ -1013,7 +1052,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<Goal> toBreak = new ArrayList<>();
         for (BetterBlockPos pos : placeCells) {
             if (goalWorthy(pos, inAreaOnly)) {
-                toPlace.add(placementGoal(pos, bcc));
+                Goal goal = placementGoal(pos, bcc);
+                if (goal != null) {
+                    toPlace.add(goal);
+                }
             }
         }
         for (BetterBlockPos pos : liquidCells) {
@@ -1188,19 +1230,60 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
+    // null when there's nowhere to stand for it right now, see noStandingRoom
     private Goal placementGoal(BlockPos pos, BuilderCalculationContext bcc) {
-        if (!(ctx.world().getBlockState(pos).getBlock() instanceof AirBlock)) {  // TODO can this even happen?
-            return new GoalPlace(pos);
+        BlockState current = ctx.world().getBlockState(pos);
+        BlockState desired = bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current);
+        // on top of an empty cell is only ever reached by pillaring into it, and a pillar places the real block (the
+        // cost won't let it put anything else there). so a block the pillar can't place (aimed, see costOfPlacingAt)
+        // or can't fit (a fence post is half a block into us at the top of the jump) doesn't get that spot
+        boolean pillarable = desired == null || (PlaceRules.fitsUnderFeet(desired) && PlaceRules.aimProof(desired));
+        if (!(current.getBlock() instanceof AirBlock) && pillarable) {  // TODO can this even happen?
+            return new GoalPlace(pos); // the rest go through the faces below like they would into air
         }
         boolean allowSameLevel = !(ctx.world().getBlockState(pos.above()).getBlock() instanceof AirBlock);
-        BlockState current = ctx.world().getBlockState(pos);
+        Direction blocked = null;
         for (Direction facing : Movement.HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
+            if (!MovementHelper.canPlaceAgainst(ctx, pos.relative(facing))) {
+                continue;
+            }
             //noinspection ConstantConditions
-            if (MovementHelper.canPlaceAgainst(ctx, pos.relative(facing)) && placementPlausible(pos, bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current))) {
-                return new GoalAdjacent(pos, pos.relative(facing), allowSameLevel);
+            if (placementPlausible(pos, desired)) {
+                return new GoalAdjacent(pos, pos.relative(facing), allowSameLevel, pillarable);
+            }
+            if (blocked == null) {
+                blocked = facing;
             }
         }
-        return new GoalPlace(pos);
+        if (pillarable) {
+            return new GoalPlace(pos);
+        }
+        if (blocked != null) {
+            // there's a face to click, something's just standing in the cell (usually us). any side but on top gets us
+            // out of it, GoalPlace would have us pillar up onto it
+            return new GoalAdjacent(pos, pos.relative(blocked), allowSameLevel, false);
+        }
+        if (MovementHelper.canPlaceAgainst(ctx, pos.above())) {
+            // possibleToPlace clicks undersides too, a fence post under an overhang is fine from the side
+            return new GoalAdjacent(pos, pos.above(), true, false);
+        }
+        return noStandingRoom(pos, desired);
+    }
+
+    // nothing to click it against and on top is out, so no goal is reachable. a goal over thin air had the planner pillar
+    // up and click a fence into its own feet (or a cobble into a stair cell) until the skips gave up. no skip either:
+    // the goal is asked again every tick and the cell gets one as soon as a neighbour goes in, and an instant skip
+    // burned the three retries in a single tick
+    private Goal noStandingRoom(BlockPos pos, BlockState desired) {
+        if (noRoomLogged == null) {
+            noRoomLogged = new LongOpenHashSet();
+        }
+        if (noRoomLogged.add(serialize(pos))) {
+            String line = "nowhere to stand to place " + desired + " at " + pos.toShortString() + " but on top of it, leaving it till something's next to it";
+            Trace.record("builder: " + line);
+            logDebug(line);
+        }
+        return null;
     }
 
     private Goal breakGoal(BlockPos pos, BuilderCalculationContext bcc) {
@@ -1222,11 +1305,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         private boolean allowSameLevel;
         private BlockPos no;
+        // standing right on top of the cell (or right under it), see placementGoal
+        private boolean allowAbove;
 
         public GoalAdjacent(BlockPos pos, BlockPos no, boolean allowSameLevel) {
+            this(pos, no, allowSameLevel, true);
+        }
+
+        public GoalAdjacent(BlockPos pos, BlockPos no, boolean allowSameLevel, boolean allowAbove) {
             super(pos);
             this.no = no;
             this.allowSameLevel = allowSameLevel;
+            this.allowAbove = allowAbove;
         }
 
         @Override
@@ -1235,6 +1325,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return false;
             }
             if (x == no.getX() && y == no.getY() && z == no.getZ()) {
+                return false;
+            }
+            if (!allowAbove && x == this.x && (y == this.y + 1 || y == this.y - 1) && z == this.z) {
+                // on top is a pillar we can't do. right under it has our head in the cell, and for a fence or a stair
+                // that means the click never goes and nothing counts towards a skip either
                 return false;
             }
             if (!allowSameLevel && y == this.y - 1) {
@@ -1260,6 +1355,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
             GoalAdjacent goal = (GoalAdjacent) o;
             return allowSameLevel == goal.allowSameLevel
+                    && allowAbove == goal.allowAbove
                     && Objects.equals(no, goal.no);
         }
 
@@ -1269,6 +1365,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             hash = hash * 1412661222 + super.hashCode();
             hash = hash * 1730799370 + (int) BetterBlockPos.longHash(no.getX(), no.getY(), no.getZ());
             hash = hash * 260592149 + (allowSameLevel ? -1314802005 : 1565710265);
+            hash = hash * 1067354897 + (allowAbove ? 0 : 1);
             return hash;
         }
 
@@ -1315,6 +1412,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // retry, the pause) and an anchor or a ban from before it means nothing after
     private void forgetSkips() {
         skips.clear();
+        noRoomLogged = null;
         lastPlacement = null;
         lastBreak = null;
         area.reset();
@@ -1469,14 +1567,66 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             BetterBlockPos s = BetterBlockPos.deserializeFromLong(p);
             BlockState curr = bcc.bsi.get0(s.x, s.y, s.z);
             // the window can skip a few at once, so ask each one what it was instead of trusting this tick
-            String what = MovementHelper.isReplaceable(s.x, s.y, s.z, curr, bcc.bsi)
-                    ? "place " + bcc.getSchematic(s.x, s.y, s.z, curr)
-                    : "break " + curr.getBlock();
-            logDebug(String.format("couldn't %s at %s %s %s, skipping it for %ss", what, s.x, s.y, s.z, BuildSkips.SKIP_TICKS / 20));
+            BlockState want = bcc.getSchematic(s.x, s.y, s.z, curr);
+            String line = String.format("couldn't %s at %s %s %s (it's %s now), skipping it for %ss", stuckWhat(s, curr, want, bcc), s.x, s.y, s.z, curr, BuildSkips.SKIP_TICKS / 20);
+            Trace.record("builder: " + line);
+            logDebug(line);
             if (p == lastTarget) {
                 lastPlacement = null;
             }
         }
+    }
+
+    // a replaceable (grass, snow, a puddle) where the file wants air is a stuck break, "place air" was a lie
+    private String stuckWhat(BetterBlockPos s, BlockState curr, BlockState want, BuilderCalculationContext bcc) {
+        if (!MovementHelper.isReplaceable(s.x, s.y, s.z, curr, bcc.bsi)) {
+            return "break " + curr.getBlock();
+        }
+        if (want != null && want.getBlock() instanceof AirBlock && !(curr.getBlock() instanceof AirBlock)) {
+            return "clear " + curr.getBlock();
+        }
+        return "place " + want;
+    }
+
+    // what we clicked with and what we wanted, the actual block comes from BlockPlaceHelper's own line after the confirm
+    private void tracePlace(BuilderCalculationContext bcc) {
+        BlockPos cell = gateCell;
+        if (cell == null) {
+            return;
+        }
+        tracedBreak = null; // a place and break loop on one cell should show every round of it
+        BlockState want = bcc.getSchematic(cell.getX(), cell.getY(), cell.getZ(), bcc.bsi.get0(cell));
+        Trace.record("builder: place at " + cell.toShortString() + " want " + want + " held " + ctx.player().getMainHandItem().getItem());
+    }
+
+    private void traceBreak(BuilderCalculationContext bcc, BetterBlockPos pos) {
+        if (pos.equals(tracedBreak)) {
+            return;
+        }
+        tracedBreak = pos;
+        BlockState curr = bcc.bsi.get0(pos.x, pos.y, pos.z);
+        Trace.record("builder: break " + curr + " at " + pos.x + " " + pos.y + " " + pos.z + " want " + bcc.getSchematic(pos.x, pos.y, pos.z, curr)
+                + " held " + ctx.player().getMainHandItem().getItem());
+    }
+
+    // whether the builder pressed the click that's down right now. BlockPlaceHelper and BlockBreakHelper ask it for the
+    // trace, so a click that outlived the builder's control still shows up as the builder's
+    public boolean clickedByBuilder() {
+        return forcedClicks;
+    }
+
+    // the ladder keepClutchItemOnHotbar keeps there, only while the clutch is on
+    private boolean clutchSlot(int slot) {
+        if (!ExperimentalMovement.allowLadderClutch()) {
+            return false;
+        }
+        ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(slot);
+        return stack.is(Items.LADDER) || stack.is(Items.VINE);
+    }
+
+    // a slot the builder is using or just filled, for anyone else about to swap something into the hotbar
+    public boolean hotbarSlotBusy(int slot) {
+        return HotbarHold.busy(slot, usefulSlotMask, hotbarHold, builderTicks);
     }
 
     private static long serialize(BlockPos pos) {
@@ -1485,6 +1635,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public void onLostControl() {
+        if (forcedClicks) {
+            // whoever has the wheel now may never touch the clicks, and a left click left down mines whatever's under
+            // the crosshair until somebody does
+            baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, false);
+            forcedClicks = false;
+        }
+        usefulSlotMask = 0;
+        tracedBreak = null;
         incorrectPositions = null;
         name = null;
         schematic = null;
@@ -1545,18 +1704,22 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private static boolean sameBlockstate(BlockState first, BlockState second) {
+        return sameBlockstate(first, second, Baritone.settings().buildIgnoreDirection.value, Baritone.settings().buildIgnoreProperties.value);
+    }
+
+    // the neighbour derived ones (PlaceRules.derived) never count: a straight stair the file wants next to a sideways
+    // one comes out a corner, the click gate refused that forever and every refusal dropped the path
+    static boolean sameBlockstate(BlockState first, BlockState second, boolean ignoreDirection, List<String> ignoredProps) {
         if (first.getBlock() != second.getBlock()) {
             return false;
         }
-        boolean ignoreDirection = Baritone.settings().buildIgnoreDirection.value;
-        List<String> ignoredProps = Baritone.settings().buildIgnoreProperties.value;
-        if (!ignoreDirection && ignoredProps.isEmpty()) {
-            return first.equals(second); // early return if no properties are being ignored
+        if (first.equals(second)) {
+            return true;
         }
-        Map<Property<?>, Comparable<?>> map1 = first.getValues();
-        Map<Property<?>, Comparable<?>> map2 = second.getValues();
-        for (Property<?> prop : map1.keySet()) {
-            if (!Objects.equals(map1.get(prop), map2.get(prop))
+        Block block = first.getBlock();
+        for (Property<?> prop : first.getProperties()) {
+            if (!Objects.equals(first.getValue(prop), second.getValue(prop))
+                    && !PlaceRules.derived(block, prop)
                     && !(ignoreDirection && ORIENTATION_PROPS.contains(prop))
                     && !ignoredProps.contains(prop.getName())) {
                 return false;
@@ -1681,18 +1844,22 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     // this won't be a schematic block, this will be a throwaway
                     return placeBlockCost * Baritone.settings().placeIncorrectBlockPenaltyMultiplier.value; // we're going to have to break it eventually
                 }
-                if (placeable.contains(sch)) {
+                if (!PlaceRules.aimProof(sch)) {
+                    // a movement clicks whatever face is handy, so a stair or a log from it is a coin flip and a fence
+                    // under our own feet is no flip at all. the builder places those itself
+                    return COST_INF;
+                }
+                // an aim-proof block has nothing a click could get wrong, so the same match assemble uses: snowy
+                // grass and buildIgnoreProperties leaves were placeable to it and unreachable here
+                if (containsBlockState(placeable, sch)) {
                     return 0; // thats right we gonna make it FREE to place a block where it should go in a structure
                     // no place block penalty at all 😎
                     // i'm such an idiot that i just tried to copy and paste the epic gamer moment emoji too
                     // get added to unicode when?
                 }
-                if (!hasThrowaway) {
-                    return COST_INF;
-                }
-                // we want it to be something that we don't have
-                // even more of a pain to place something wrong
-                return placeBlockCost * 1.5 * Baritone.settings().placeIncorrectBlockPenaltyMultiplier.value;
+                // the old answer was a throwaway here at 1.5x. it went into a cell the build wants, got kept as
+                // scaffolding, and came back out at cleanup, so selectThrowawayForLocation won't do it anymore either
+                return COST_INF;
             } else {
                 if (hasThrowaway) {
                     return placeBlockCost;
@@ -1708,8 +1875,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return COST_INF;
             }
             if (kept(x, y, z, current)) {
-                // our own pillar, inside the box or out. mining through it is the swap the keep is there to stop
-                return Baritone.settings().breakCorrectBlockPenaltyMultiplier.value;
+                // our own pillar, inside the box or out. x10 was still cheaper than a detour now and then, and a path
+                // that mines the scaffold it just put up is a loop that places it again
+                return COST_INF;
             }
             BlockState sch = getSchematic(x, y, z, current);
             if (sch != null) {

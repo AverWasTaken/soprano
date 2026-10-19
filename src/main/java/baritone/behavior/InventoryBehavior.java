@@ -22,6 +22,8 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
+import baritone.process.BuilderProcess;
+import baritone.process.PlaceRules;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.client.player.LocalPlayer;
@@ -131,7 +133,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
         NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
-                attemptToPutOnHotbar(i, slot -> false, "clutch");
+                // mid build the builder's blocks win, the ladder takes whatever slot they aren't in. with every slot
+                // spoken for it waits, fetchClutchItemNow is the one for an actual fall
+                BuilderProcess builder = baritone.getBuilderProcess();
+                attemptToPutOnHotbar(i, builder.isActive() ? builder::hotbarSlotBusy : slot -> false, "clutch");
                 return;
             }
         }
@@ -421,11 +426,22 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         BlockState maybe = baritone.getBuilderProcess().placeAt(x, y, z, baritone.bsi.get0(x, y, z));
+        // only on the builder's own paths, its costOfPlacingAt already went around these cells. anybody else's planner
+        // priced them like any other cell and would just fail the movement over and over
+        boolean builderPath = maybe != null && baritone.getPathingControlManager().mostRecentInControl().orElse(null) == baritone.getBuilderProcess();
+        if (builderPath && !PlaceRules.aimProof(maybe)) {
+            // a stair or a fence from a movement comes out however it's aimed, the builder does those itself
+            return false;
+        }
         if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
         }
         if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
+        }
+        if (builderPath) {
+            // no cobble in a cell the build wants filled: it got kept as scaffolding and broken back out at cleanup
+            return false;
         }
         for (Item item : movementThrowaways(allowProtected)) {
             if (throwaway(select, stack -> item.equals(stack.getItem()))) {

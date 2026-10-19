@@ -18,6 +18,7 @@ import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trace.Trace;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -222,9 +223,9 @@ public class SchematicBuildTask extends Task {
     }
 
     private void placedBlock(BlockPos pos, BlockState state) {
-        if (recording) {
-            scaffold.offer(pos, state);
-        }
+        // the not recording ones too, a block that should have been scaffolding and wasn't is the interesting one
+        boolean kept = recording && scaffold.offer(pos, state);
+        Trace.record("scaffold: " + state + " at " + pos.toShortString() + " recording=" + recording + " phase=" + phase + " kept=" + kept);
     }
 
     // what builder.build gets, put where the builder puts it
@@ -932,7 +933,9 @@ public class SchematicBuildTask extends Task {
             return reach(mod);
         }
         if (clean == Clean.REBUILD) {
-            cleanCount += scaffold.release();
+            int released = scaffold.release();
+            cleanCount += released;
+            Trace.record("scaffold: released " + released + " to the builder, " + scaffold.size() + " still ours");
             // the last round's builder keeps nothing, so whatever it pillars it swaps out like the stock builder does
             launchBuilder(mod, cleanRound < CLEAN_ROUNDS);
             clean = Clean.REBUILDING;
