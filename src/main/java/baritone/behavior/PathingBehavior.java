@@ -606,9 +606,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             // we aren't standing at
             // but only at rest height. a bot hanging off a lip sits exactly on the block line, one walking off a ledge or at
             // the top of a jump is a bit off it and still right next to the block it left, which isn't a start. and not going
-            // up: the third tick of a jump is +1.0013, right on the next line, the famous number that gets you onto a block
+            // up: the third tick of a jump is +1.0013, right on the next line, the famous number that gets you onto a block.
+            // and not falling fast either, a fall past a ledge crosses block lines too. a perch has one tick of gravity, -0.08
+            double vy = ctx.player().getDeltaMovement().y;
             BetterBlockPos support = ctx.player().onGround()
-                    || (Math.abs(ctx.player().position().y - feet.y) < 0.01 && ctx.player().getDeltaMovement().y <= 0) ? lipSupport(feet) : null;
+                    || (Math.abs(ctx.player().position().y - feet.y) < 0.01 && vy <= 0 && vy > -0.1) ? lipSupport(feet) : null;
             if (support != null) {
                 return support;
             }

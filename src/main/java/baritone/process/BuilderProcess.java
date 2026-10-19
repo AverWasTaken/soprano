@@ -1192,16 +1192,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (scaffoldReleased || scaffoldMined == null || scaffoldMined.isEmpty()) {
             return false;
         }
-        boolean any = false;
-        for (BetterBlockPos pos : incorrectPositions) {
-            if (bcc.deferredScaffold(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
-                any = true;
-                break;
-            }
-        }
-        if (!any) {
-            return false;
-        }
+        // no looking through incorrectPositions for one first, distanceTrim can have cut the far ones out of it. letting go
+        // when none are left costs one more pass and then this says false forever
         scaffoldReleased = true;
         logDebug("Only scaffold I left alone is left, mining it now");
         // the bcc this tick still has the old snapshot, the recursion builds a new one

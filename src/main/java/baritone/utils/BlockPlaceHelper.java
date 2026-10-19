@@ -193,9 +193,8 @@ public class BlockPlaceHelper {
         }
         BlockPos at = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), hand, held, hit) {}).getClickedPos().immutable();
         BlockState before = ctx.world().getBlockState(at);
-        // the log file too, not just the trace ring, so a play test log shows place/break pairs without a dump. only
-        // while building (who is null otherwise), the same rule that keeps these out of everything else
-        Debug.logInternal("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
+        // every click, ring only. a stuck place clicks five times a second, the log file gets the ones that landed
+        Trace.record("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
         return new Traced(at, before, who);
     }
 
@@ -214,7 +213,9 @@ public class BlockPlaceHelper {
             BlockState now = ctx.world().getBlockState(t.pos);
             if (!now.equals(t.before)) {
                 it.remove();
-                Trace.record("placed " + now + " at " + t.pos.toShortString() + " by " + t.who);
+                // the log file too, not just the trace ring, so a play test log shows place/break pairs without a dump.
+                // only while building (who is null otherwise), the same rule that keeps these out of everything else
+                Debug.logInternal("placed " + now + " at " + t.pos.toShortString() + " by " + t.who + " want " + want.apply(t.pos));
                 if (tracedListener != null) {
                     tracedListener.placed(t.pos, now, t.who);
                 }
