@@ -68,6 +68,9 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
     private Mob target;
     private int ticksOutOfReach;
     private int ticksNoLine;
+    // ticks since its health last went down, and what it was
+    private int ticksNoProgress;
+    private float lastHealth;
     // what was in hand before we pulled the sword, -1 when we didn't swap
     private int restoreSlot = -1;
 
@@ -85,10 +88,12 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
 
             @Override
             public void onWorldEvent(WorldEvent event) {
-                // entity ids and game time both start over in a new world
+                // entity ids and game time both start over in a new world, and the zombie stayed in the old one
                 hits.clear();
                 shrugs.clear();
                 lastSource = null;
+                target = null;
+                restoreSlot = -1;
             }
         });
     }
@@ -99,6 +104,10 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
             return;
         }
         long now = ctx.world().getGameTime();
+        // the hand could not go back when we let go (something paused interactions), keep trying until it can
+        if (target == null && restoreSlot >= 0 && baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense")) {
+            restoreSlot = -1;
+        }
         DamageSource source = player.getLastDamageSource();
         if (source != null && source != lastSource) {
             lastSource = source;
@@ -141,20 +150,22 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         if (p == null || ctx.world() == null || (target == null && hits.isEmpty())) {
             return false;
         }
+        // a chest or a crafting table open means someone is at the keyboard doing something, don't yank the camera
+        boolean jobActive = p.containerMenu == p.inventoryMenu && jobActive();
         return SelfDefenseRules.canRun(Baritone.settings().selfDefense.value, p.isAlive(), p.isFallFlying(), p.isInWater(),
-                p.isInLava(), AltoClefBridge.isRunning(), jobActive());
+                p.isInLava(), AltoClefBridge.isRunning(), jobActive);
     }
 
     private boolean jobActive() {
         IBaritoneProcess[] jobs = {baritone.getMineProcess(), baritone.getBuilderProcess(), baritone.getFarmProcess(),
-                baritone.getFollowProcess(), baritone.getGetToBlockProcess(), baritone.getExploreProcess(),
-                baritone.getCustomGoalProcess()};
+                baritone.getFollowProcess(), baritone.getGetToBlockProcess(), baritone.getExploreProcess()};
         for (IBaritoneProcess job : jobs) {
             if (job.isActive()) {
                 return true;
             }
         }
-        return false;
+        // a bare #goal is active forever and only draws a box, the player is walking themselves
+        return baritone.getCustomGoalProcess().isPathingToGoal();
     }
 
     // the nearest mob that bit us lately and is in reach right now
@@ -200,11 +211,15 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         if (inReach) {
             ticksNoLine = aim == null ? ticksNoLine + 1 : 0;
         }
-        if (SelfDefenseRules.release(!target.isAlive() || target.isRemoved(), dist, ticksOutOfReach, ticksNoLine)) {
-            if (ticksNoLine >= SelfDefenseRules.NO_LINE_TICKS) {
+        float health = target.getHealth();
+        ticksNoProgress = health < lastHealth ? 0 : ticksNoProgress + 1;
+        lastHealth = health;
+        boolean stuck = ticksNoLine >= SelfDefenseRules.NO_LINE_TICKS || SelfDefenseRules.noProgress(ticksNoProgress);
+        if (stuck || SelfDefenseRules.release(!target.isAlive() || target.isRemoved(), dist, ticksOutOfReach, ticksNoLine)) {
+            if (stuck) {
                 shrugs.put(target.getId(), ctx.world().getGameTime());
             }
-            release("done with " + typeOf(target));
+            release((stuck ? "giving up on " : "done with ") + typeOf(target));
             return new PathingCommand(null, PathingCommandType.DEFER);
         }
         if (aim != null) {
@@ -219,23 +234,28 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         target = mob;
         ticksOutOfReach = 0;
         ticksNoLine = 0;
+        ticksNoProgress = 0;
+        lastHealth = mob.getHealth();
         int held = ctx.player().getInventory().getSelectedSlot();
         int weapon = weaponSlot(held);
-        if (weapon >= 0 && weapon != held && baritone.getInventoryBehavior().selectHotbar(weapon, "selfDefense")) {
-            // the swap resets the attack cooldown, so the first swing is a bit late. still better than a pickaxe
+        if (weapon >= 0 && weapon != held && baritone.getInventoryBehavior().selectHotbar(weapon, "selfDefense")
+                && restoreSlot < 0) {
+            // the swap resets the attack cooldown, so the first swing is a bit late. still better than a pickaxe.
+            // a restore still pending from the last fight keeps its slot, that's the one the job had
             restoreSlot = held;
         }
         logDebug("Self defense: fighting " + typeOf(mob));
     }
 
     private void release(String why) {
-        if (restoreSlot >= 0) {
-            baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense");
+        // a failed restore stays pending, noteHits tries again
+        if (restoreSlot >= 0 && baritone.getInventoryBehavior().selectHotbar(restoreSlot, "selfDefense")) {
+            restoreSlot = -1;
         }
-        restoreSlot = -1;
         target = null;
         ticksOutOfReach = 0;
         ticksNoLine = 0;
+        ticksNoProgress = 0;
         logDebug("Self defense: " + why + ", back to the job");
     }
 
