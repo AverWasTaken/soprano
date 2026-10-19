@@ -17,15 +17,18 @@
 
 package baritone.utils;
 
-import adris.altoclef.trace.Trace;
+import adris.altoclef.Debug;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.IPlayerContext;
 import baritone.utils.accessor.IPlayerControllerMP;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+
+import java.util.function.Function;
 
 /**
  * @author Brady
@@ -38,15 +41,36 @@ public final class BlockBreakHelper {
     private final IPlayerContext ctx;
     private boolean wasHitting;
     private int breakDelayTimer = 0;
+    // what the build wants at a cell, same as BlockPlaceHelper's. null answers are air or outside the file
+    private Function<BlockPos, BlockState> want = pos -> null;
+    private BreakListener breakListener;
 
     BlockBreakHelper(IPlayerContext ctx) {
         this.ctx = ctx;
     }
 
-    // the builder has its own "break" line, a movement's dig doesn't, and somebody is eating the scaffold
-    private void traceBroke(String who, BlockHitResult hit, BlockState before) {
-        if (who != null) {
-            Trace.record("broke " + before + " at " + hit.getBlockPos().toShortString() + " by " + who + " held " + ctx.player().getMainHandItem().getItem());
+    // a traced break landed (the builder is running and somebody's click took a block out). game thread
+    public interface BreakListener {
+        void broke(BlockPos pos, BlockState before, String who);
+    }
+
+    void setWant(Function<BlockPos, BlockState> want) {
+        this.want = want;
+    }
+
+    void setBreakListener(BreakListener breakListener) {
+        this.breakListener = breakListener;
+    }
+
+    // the twin of the place line. a movement's dig and the builder's both land here, so a place then break of the same
+    // cell shows up as a pair in the log file without waiting for a dump. who is only set while building
+    private void traceBroke(String who, BlockPos pos, BlockState before) {
+        if (who == null) {
+            return;
+        }
+        Debug.logInternal("break at " + pos.toShortString() + " by " + who + " was " + before + " want " + want.apply(pos) + " held " + ctx.player().getMainHandItem().getItem());
+        if (breakListener != null) {
+            breakListener.broke(pos, before, who);
         }
     }
 
@@ -75,16 +99,23 @@ public final class BlockBreakHelper {
         if (isLeftClick && isBlockTrace) {
             ctx.playerController().setHittingBlock(wasHitting);
             if (ctx.playerController().hasBrokenBlock()) {
+                BlockPos pos = ((BlockHitResult) trace).getBlockPos();
+                BlockState before = who == null ? null : ctx.world().getBlockState(pos);
                 ctx.playerController().syncHeldItem();
-                ctx.playerController().clickBlock(((BlockHitResult) trace).getBlockPos(), ((BlockHitResult) trace).getDirection());
-                ctx.player().swing(InteractionHand.MAIN_HAND);
+                ctx.playerController().clickBlock(pos, ((BlockHitResult) trace).getDirection());
+                ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+                // an insta mine (creative, or a good enough tool) is gone on the first click and never goes through the
+                // damage branch below, which is where scaffold usually dies
+                if (before != null && !before.isAir() && ctx.playerController().hasBrokenBlock() && !ctx.world().getBlockState(pos).equals(before)) {
+                    traceBroke(who, pos, before);
+                }
             } else {
                 BlockState before = who == null ? null : ctx.world().getBlockState(((BlockHitResult) trace).getBlockPos());
                 if (ctx.playerController().onPlayerDamageBlock(((BlockHitResult) trace).getBlockPos(), ((BlockHitResult) trace).getDirection())) {
                     ctx.player().swing(InteractionHand.MAIN_HAND);
                 }
                 if (ctx.playerController().hasBrokenBlock()) { // block broken this tick
-                    traceBroke(who, (BlockHitResult) trace, before);
+                    traceBroke(who, ((BlockHitResult) trace).getBlockPos(), before);
                     // break delay timer only applies for multi-tick block breaks like vanilla
                     breakDelayTimer = BaritoneAPI.getSettings().blockBreakSpeed.value - BASE_BREAK_DELAY;
                     // must reset controller's destroy delay to prevent the client from delaying itself unnecessarily

@@ -56,6 +56,7 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         this.blockBreakHelper = new BlockBreakHelper(baritone.getPlayerContext());
         this.blockPlaceHelper = new BlockPlaceHelper(baritone.getPlayerContext());
         this.blockPlaceHelper.setWant(pos -> baritone.getBuilderProcess().placeAt(pos.getX(), pos.getY(), pos.getZ(), baritone.bsi.get0(pos)));
+        this.blockBreakHelper.setWant(pos -> baritone.getBuilderProcess().placeAt(pos.getX(), pos.getY(), pos.getZ(), baritone.bsi.get0(pos)));
     }
 
     /**
