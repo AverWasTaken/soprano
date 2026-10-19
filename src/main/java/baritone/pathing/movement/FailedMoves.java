@@ -18,6 +18,8 @@
 package baritone.pathing.movement;
 
 import baritone.api.utils.BetterBlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,6 +70,12 @@ public final class FailedMoves {
             cost[i] = penaltyFor(f[2]);
         }
         return new Snapshot(src, dest, cost);
+    }
+
+    // ladders and vines (MovementHelper.isClimbable), plus scaffolding and cave vines, which you climb the same way.
+    // PathExecutor skips recording an edge that touches one of these
+    public static boolean climbable(Block block) {
+        return MovementHelper.isClimbable(block) || block == Blocks.SCAFFOLDING || block == Blocks.CAVE_VINES || block == Blocks.CAVE_VINES_PLANT;
     }
 
     static double penaltyFor(long count) {
