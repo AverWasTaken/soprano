@@ -111,9 +111,10 @@ public class BuilderStallTest {
         List<Pair<BetterBlockPos, Goal>> owners = List.of(new Pair<>(a, new GoalBlock(a.above())), new Pair<>(b, new GoalBlock(b.above())));
         BetterBlockPos feet = new BetterBlockPos(5, 64, 0);
         assertEquals(List.of(b), BuilderProcess.watchdogOwners(owners, b.above(), feet, 8));
-        // no path, or it ended somewhere none of them wanted: the nearest by heuristic
+        // no path: the nearest to our feet by heuristic
         assertEquals(List.of(a), BuilderProcess.watchdogOwners(owners, null, feet, 1));
-        assertEquals(List.of(a), BuilderProcess.watchdogOwners(owners, new BetterBlockPos(99, 64, 99), feet, 1));
+        // a partial path that stopped short of b: nearest to where it stopped, not to us
+        assertEquals(List.of(b), BuilderProcess.watchdogOwners(owners, new BetterBlockPos(17, 64, 0), feet, 1));
     }
 
     @Test

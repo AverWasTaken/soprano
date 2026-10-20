@@ -1081,6 +1081,10 @@ public class SchematicBuildTask extends Task {
         IBuilderProcess builder = builder(mod);
         // before the build, the first placement can come the same tick
         view = builderView();
+        if (builder instanceof BuilderProcess process) {
+            // a meal or a night in between doesn't make the cells it was stuck on any less stuck
+            process.keepGiveUpsOnce();
+        }
         builder.build(name, SkipItems.of(cut, skipped), origin, rotation, mirror);
         // after it: every build() wipes the keep
         builder.setKeep(keep ? scaffold::holds : null);
