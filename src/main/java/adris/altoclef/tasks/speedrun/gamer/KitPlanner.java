@@ -376,7 +376,8 @@ public final class KitPlanner {
 
     // the iron pick breaks halfway through the nether, so the plan digs for a diamond one. behind everything the portal needs (a timed
     // out IRON still skips on the essentials) and in front of the wool, so the dig ends with a walk up to the sheep and not with the
-    // portal starting at the bottom of the world. diamondSpend on: three diamonds and DiamondSpend crafts the pick (its need is first in
+    // portal starting at the bottom of the world. (while iron cooks the wool is filler and may well be done first, SmeltFiller holds
+    // the dig back until the crafts are out of the furnace, and then the portal does start down there.) diamondSpend on: three diamonds and DiamondSpend crafts the pick (its need is first in
     // iron() the moment we hold them). off: the three, then the pick itself
     private static void addDiamondPick(List<KitNeed> out, GamerFacts f, OverworldConfig cfg) {
         if (!wantsDiamondPick(f, cfg)) {

@@ -238,6 +238,12 @@ public class IronPhase implements PhaseHandler {
         }
     }
 
+    // the tick's list without the stock-ups SmeltFiller tacks on the end: an optional log or wool top-up behind the dig is not a
+    // reason to give it up a minute and a half early (DiamondHunt.moreAfter)
+    private static List<KitNeed> planPart(List<KitNeed> needs, Schedule schedule) {
+        return schedule == null ? needs : needs.stream().filter(n -> !schedule.isStockUp(n)).toList();
+    }
+
     // every kit run goes through here, so the dig's clock knows it was the runner and not a side job that had the wheel
     private Task runKit(GamerContext ctx, List<KitNeed> needs) {
         Task task = runner.run(ctx, needs);
@@ -265,7 +271,7 @@ public class IronPhase implements PhaseHandler {
             needEnd.reset();
             needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood()));
         }
-        tickNeeds = needs;
+        tickNeeds = planPart(needs, schedule);
         KitNeed head = needs.isEmpty() ? null : needs.get(0);
         FurnacePlan.Moment moment = null;
         FurnacePlan.Plan plan = null;
@@ -532,7 +538,7 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
                 ctx.food(), ctx.wood(), ctx.buildBlocks());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
-        tickNeeds = runnable;
+        tickNeeds = planPart(runnable, schedule);
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
         // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder.
