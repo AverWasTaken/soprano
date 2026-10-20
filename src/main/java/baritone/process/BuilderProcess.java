@@ -159,6 +159,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private static final double CENTRE_TOLERANCE = 0.1;
     // centre sneaks with a drop this close, we're 0.3 either side of the middle so that's our edge over it already
     private static final double DROP_MARGIN = 0.3;
+    // the swap into the hotbar had nowhere to go this tick, every slot is in use by something near here. see quickGiveUp
+    private boolean hotbarFull;
     // ticks at the same feet with nothing landing in the world and no dig getting anywhere, whoever is driving. see
     // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
     private int watchdogTicks;
@@ -927,6 +929,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         baritone.getInputOverrideHandler().clearAllKeys();
         forcedClicks = false;
         keysForced = false;
+        hotbarFull = false;
         if (hanging()) {
             // every tick, not just at the click. let go of sneak on a ladder and we slide, push on it and vanilla bumps
             // us up 0.2, and the click gates wait for steady() forever. a climb still works: the path's movement clears
@@ -1133,8 +1136,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 for (BlockState desired : noValidHotbarOption) {
                     if (canSupply(approxPlaceable.get(i), desired)) {
                         if (!baritone.getInventoryBehavior().attemptToPutOnHotbar(i, usefulSlots::contains)) {
-                            // awaiting inventory move, so pause
-                            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+                            if (baritone.getInventoryBehavior().movePending()) {
+                                // awaiting inventory move, so pause
+                                return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+                            }
+                            // no slot to put it in, so it isn't coming however long we wait. pausing for it was standing
+                            // still forever, and going on as if it had worked was standing in the goal with nothing to
+                            // click. go on, and let the stall check know not to wait on it
+                            hotbarFull = true;
                         }
                         break outer;
                     }
@@ -1424,8 +1433,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // aim hasn't settled yet still gets the full STALL_TICKS, and so does anything that clears up by itself: a mob in the
     // cell, or the item not on the hotbar yet
     private boolean quickGiveUp(BuilderCalculationContext bcc, BetterBlockPos feet, List<BetterBlockPos> plannedHere) {
-        if (plannedHere == null || plannedHere.isEmpty() || !ctx.player().onGround() || builderTicks - lastPlaceAim <= NOTHING_TICKS) {
+        if (plannedHere == null || !ctx.player().onGround() || builderTicks - lastPlaceAim <= NOTHING_TICKS) {
             return false;
+        }
+        if (plannedHere.isEmpty()) {
+            return nothingFromUpstream(bcc, feet);
         }
         Vec3 pos = ctx.player().position();
         if (!(feet.equals(centreFeet) && centreTicks >= CENTRE_TICKS) && !centred(feet.x + 0.5 - pos.x, feet.z + 0.5 - pos.z)) {
@@ -1433,11 +1445,45 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         for (BetterBlockPos cell : plannedHere) {
             BlockState desired = bcc.getSchematic(cell.x, cell.y, cell.z, bcc.bsi.get0(cell));
-            if (desired == null || !placementPlausible(cell, desired) || !onHotbar(desired)) {
+            if (desired == null || !placementPlausible(cell, desired) || !nothingToWaitFor(desired)) {
                 return false;
             }
         }
         return true;
+    }
+
+    // the same two seconds of the same answer, in one of upstream's goals instead (no plan, just somewhere next to the
+    // cell). those never got the quick give up, so a log that wanted a side with nothing to click on stood its full
+    // STALL_TICKS every time round. every cell that parked us here has to be one of those and have no click from here
+    private boolean nothingFromUpstream(BuilderCalculationContext bcc, BetterBlockPos feet) {
+        if (ticks > 0 && !ctx.player().getAbilities().instabuild) {
+            return false; // a dig just let go, the click branch sat this one out
+        }
+        boolean any = false;
+        for (Pair<BetterBlockPos, Goal> owner : goalOwners) {
+            if (!owner.second().isInGoal(feet)) {
+                continue;
+            }
+            if (!(owner.second() instanceof GoalAdjacent)) {
+                return false; // a break or a planned spot is parked here too, that's not ours to rush
+            }
+            BetterBlockPos cell = owner.first();
+            BlockState current = bcc.bsi.get0(cell);
+            BlockState desired = bcc.getSchematic(cell.x, cell.y, cell.z, current);
+            if (!(current.getBlock() instanceof AirBlock) || desired == null || !placementPlausible(cell, desired) || !nothingToWaitFor(desired)) {
+                return false;
+            }
+            if (possibleToPlace(bcc, desired, cell.x, cell.y, cell.z, null).isPresent()) {
+                return false;
+            }
+            any = true;
+        }
+        return any;
+    }
+
+    // on the hotbar, or not coming however long we wait (no slot to swap it into). either way waiting won't help
+    private boolean nothingToWaitFor(BlockState desired) {
+        return onHotbar(desired) || hotbarFull;
     }
 
     // a hotbar stack that makes it, or creative's give that would
@@ -1976,6 +2022,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return 2;
     }
 
+    // the planner had a fresh look and found nowhere at all a click comes out right from, with the world as it is now (a
+    // log on its side with nothing on that side to click). upstream's goal for one of those was somewhere to stand and
+    // stare. so it sits out like the dropped ones till something near it changes: blockChanged stales the plan and
+    // planCells has another go. assemble hands them upstream's goal anyway once they're all that's left
+    private boolean waitsOnNeighbours(BuilderCalculationContext bcc, BetterBlockPos pos) {
+        if (plans == null || !bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+            return false;
+        }
+        CellPlan plan = plans.get(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z));
+        return plan != null && plan.feet.isEmpty() && !plan.stale && plan.desired == bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos));
+    }
+
     // a cell is waiting on the planner: aimed, and either never planned for what it wants now or due a new look
     private boolean replanPending(BetterBlockPos pos, BlockState desired) {
         if (desired == null || PlaceRules.aimProof(desired)) {
@@ -2284,7 +2342,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         planCells(bcc, aimed);
         prunePlans();
+        List<BetterBlockPos> waiting = new ArrayList<>();
         for (BetterBlockPos pos : placeCells) {
+            if (waitsOnNeighbours(bcc, pos)) {
+                waiting.add(pos);
+                continue;
+            }
             Goal goal = placementGoal(pos, bcc);
             if (goal == null) {
                 plansPending = true;
@@ -2300,10 +2363,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 owners.add(new Pair<>(pos, goal));
             }
         });
+        if (logMissing && toPlace.isEmpty() && toBreak.isEmpty() && !plansPending && !waiting.isEmpty()) {
+            // they're all that's left, and with nothing else going on nothing next to them is going to change either.
+            // upstream's goal like before, the stall check lets go of them from there. only on the last pass, a hotbar
+            // pass or the near cells alone leaving these out is how the other work gets found first
+            for (BetterBlockPos pos : waiting) {
+                Goal goal = placementGoal(pos, bcc);
+                if (goal == null) {
+                    continue;
+                }
+                toPlace.add(goal);
+                owners.add(new Pair<>(pos, goal));
+            }
+        }
         pouring = null;
         List<BetterBlockPos> unpourableNow = new ArrayList<>();
-        // a stair in the rim waiting on its plan is still a hole in the wall
-        if (!pourCells.isEmpty() && toPlace.isEmpty() && toBreak.isEmpty() && !plansPending && !missingBlocks(missing, creative) && !waitingOnBlocks(bcc)) {
+        // a stair in the rim waiting on its plan (or on a neighbour) is still a hole in the wall
+        if (!pourCells.isEmpty() && toPlace.isEmpty() && toBreak.isEmpty() && !plansPending && waiting.isEmpty() && !missingBlocks(missing, creative)
+                && !waitingOnBlocks(bcc)) {
             pourGoals(bcc, pourCells, approxPlaceable, creative, toPlace, owners, missing, unpourableNow);
         }
         unpourable = unpourableNow;
