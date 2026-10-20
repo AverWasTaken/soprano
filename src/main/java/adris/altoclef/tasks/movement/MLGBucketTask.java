@@ -8,6 +8,7 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -36,7 +37,9 @@ public class MLGBucketTask extends Task {
         ConfigHelper.loadConfig("configs/mlg_clutch_settings.json", MLGClutchConfig::new, MLGClutchConfig.class, newConfig -> _config = newConfig);
     }
 
-    private BlockPos _placedPos;
+    // every cell a click of ours really put water in this fall. a list because the task clicks every tick it can reach
+    // and #gamer carries two buckets, so one fall can place twice
+    private final List<BlockPos> _placedCells = new ArrayList<>();
     private BlockPos _movingTorwards;
 
     private static boolean isLava(BlockPos pos) {
@@ -181,7 +184,8 @@ public class MLGBucketTask extends Task {
             setDebugState("Performing MLG");
             LookHelper.lookAt(mod, reachable.get());
             // Try water by default
-            boolean hasClutch = (!WorldHelper.waterEvaporates(mod.getWorld()) && mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET));
+            boolean water = !WorldHelper.waterEvaporates(mod.getWorld()) && mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET);
+            boolean hasClutch = water;
             if (!hasClutch) {
                 // Go through our "clutch" items and see if any fit
                 if (!_config.clutchItems.isEmpty()) {
@@ -195,7 +199,9 @@ public class MLGBucketTask extends Task {
             }
             if (hasClutch) {
                 Debug.logMessage("HIT: " + willLandIn);
-                _placedPos = willLandIn;
+                if (water) {
+                    recordPour(mod);
+                }
                 mod.getInputControls().tryPress(Input.CLICK_RIGHT);
                 //mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
             } else {
@@ -205,6 +211,23 @@ public class MLGBucketTask extends Task {
             setDebugState("Waiting to reach target block...");
         }
         return null;
+    }
+
+    // where this click really puts the water: the bucket's own ray (outline, no fluids, vanilla reach) from where we are
+    // and look right now, lookAt already turned us. willLandIn is where we hoped it'd go, which misses a waterlogged
+    // block, a side face, and the second bucket. a cell that's already a source isn't ours to take
+    private void recordPour(AltoClef mod) {
+        Player player = mod.getPlayer();
+        Vec3 eye = player.getEyePosition();
+        Vec3 end = eye.add(player.getViewVector(1.0F).scale(player.blockInteractionRange()));
+        BlockHitResult hit = mod.getWorld().clip(new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+        if (hit.getType() != HitResult.Type.BLOCK) {
+            return;
+        }
+        BlockPos cell = BucketPour.waterGoesTo(mod.getWorld(), hit.getBlockPos(), hit.getDirection());
+        if (cell != null && !BucketPour.isWaterSource(mod.getWorld(), cell) && !_placedCells.contains(cell)) {
+            _placedCells.add(cell.immutable());
+        }
     }
 
     @Override
@@ -245,7 +268,8 @@ public class MLGBucketTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         mod.getClientBaritone().getPathingBehavior().forceCancel();
-        _placedPos = null;
+        // the chain copies these every tick, so an interrupt and restart losing them loses nothing
+        _placedCells.clear();
         // hold shift while falling.
         // Look down at first, might help
         mod.getPlayer().setXRot(90);
@@ -426,6 +450,11 @@ public class MLGBucketTask extends Task {
 
     @Override
     public boolean isFinished(AltoClef mod) {
+        return landed(mod);
+    }
+
+    // down, one way or another. the chain's water pickup starts its clock off this too
+    public static boolean landed(AltoClef mod) {
         return mod.getPlayer().isSwimming() || mod.getPlayer().isInWater() || mod.getPlayer().onGround() || mod.getPlayer().onClimbable();
     }
 
@@ -448,8 +477,8 @@ public class MLGBucketTask extends Task {
         return result;
     }
 
-    public BlockPos getWaterPlacedPos() {
-        return _placedPos;
+    public List<BlockPos> placedCells() {
+        return _placedCells;
     }
 
     private static class MLGClutchConfig {

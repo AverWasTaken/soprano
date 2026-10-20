@@ -6,6 +6,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import org.junit.BeforeClass;
@@ -16,6 +17,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 // the obsidian cast pours lava into CELL from the ledge one up and one west of it, clicking the west face of the frame
@@ -113,6 +115,63 @@ public class BucketPourTest {
         assertFalse(BucketPour.clearForPour(new OneBlock(Blocks.STONE_SLAB.defaultBlockState()), CELL));
         assertFalse(BucketPour.clearForPour(new OneBlock(Blocks.GLASS.defaultBlockState()), CELL));
         assertFalse(BucketPour.clearForPour(new OneBlock(Blocks.STONE.defaultBlockState()), CELL));
+    }
+
+    @Test
+    public void waterOnTopOfStoneGoesOnTop() {
+        OneBlock w = new OneBlock(Blocks.STONE.defaultBlockState());
+        assertEquals(CELL.above(), BucketPour.waterGoesTo(w, CELL, Direction.UP));
+        // a side face puts it beside the block, not on it
+        assertEquals(CELL.north(), BucketPour.waterGoesTo(w, CELL, Direction.NORTH));
+    }
+
+    @Test
+    public void aWaterloggableBlockTakesItInside() {
+        OneBlock w = new OneBlock(Blocks.OAK_STAIRS.defaultBlockState());
+        assertEquals(CELL, BucketPour.waterGoesTo(w, CELL, Direction.UP));
+    }
+
+    @Test
+    public void anAlreadyWaterloggedBlockStillTakesTheClick() {
+        // vanilla's canPlaceLiquid says yes to water either way, so the click goes into the stair and does nothing. the
+        // cell is a source already, so the mlg never writes it down as ours
+        OneBlock w = new OneBlock(Blocks.OAK_STAIRS.defaultBlockState().setValue(BlockStateProperties.WATERLOGGED, true));
+        assertEquals(CELL, BucketPour.waterGoesTo(w, CELL, Direction.UP));
+        assertTrue(BucketPour.isWaterSource(w, CELL));
+    }
+
+    @Test
+    public void grassWeHitGetsWaterOnTopNotInside() {
+        // the ray stops on the grass outline, the bucket goes to the face after that
+        OneBlock w = new OneBlock(Blocks.SHORT_GRASS.defaultBlockState());
+        assertEquals(CELL.above(), BucketPour.waterGoesTo(w, CELL, Direction.UP));
+    }
+
+    @Test
+    public void grassOnTheFaceGetsWashedAway() {
+        OneBlock w = new OneBlock(Blocks.STONE.defaultBlockState());
+        w.blocks.put(CELL.above(), Blocks.SHORT_GRASS.defaultBlockState());
+        assertEquals(CELL.above(), BucketPour.waterGoesTo(w, CELL, Direction.UP));
+    }
+
+    @Test
+    public void aBlockOnTheFaceMeansNowhere() {
+        OneBlock w = new OneBlock(Blocks.STONE.defaultBlockState());
+        w.blocks.put(CELL.above(), Blocks.STONE.defaultBlockState());
+        assertNull(BucketPour.waterGoesTo(w, CELL, Direction.UP));
+        // pure half, the same answers
+        assertEquals(CELL, BucketPour.waterGoesTo(CELL, Direction.UP, true, false));
+        assertEquals(CELL.above(), BucketPour.waterGoesTo(CELL, Direction.UP, false, true));
+        assertNull(BucketPour.waterGoesTo(CELL, Direction.UP, false, false));
+    }
+
+    @Test
+    public void waterloggedCountsAsOurSource() {
+        // getBlock() == WATER called this one not water, so the old pickup walked away from it
+        assertTrue(BucketPour.isWaterSource(new OneBlock(Blocks.OAK_STAIRS.defaultBlockState().setValue(BlockStateProperties.WATERLOGGED, true)), CELL));
+        assertTrue(BucketPour.isWaterSource(new OneBlock(Blocks.WATER.defaultBlockState()), CELL));
+        assertFalse(BucketPour.isWaterSource(new OneBlock(Blocks.WATER.defaultBlockState().setValue(BlockStateProperties.LEVEL, 3)), CELL));
+        assertFalse(BucketPour.isWaterSource(new OneBlock(Blocks.OAK_STAIRS.defaultBlockState()), CELL));
     }
 
     @Test

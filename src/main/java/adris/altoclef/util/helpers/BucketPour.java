@@ -3,7 +3,9 @@ package adris.altoclef.util.helpers;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.LiquidBlockContainer;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
 
 // pouring a bucket into a cell next to us without it ending up on us. vanilla puts the liquid on whatever face the
@@ -51,6 +53,37 @@ public final class BucketPour {
     // the cell the liquid goes in for a crosshair on hitPos's hitFace
     public static BlockPos landsIn(BlockPos hitPos, Direction hitFace) {
         return hitPos.relative(hitFace);
+    }
+
+    // where a water bucket click on hitFace of hitPos puts the water, same order as BucketItem.use: a waterloggable block
+    // takes it itself, otherwise it's the cell on the face if that one takes water, otherwise nowhere. a grass
+    // block we hit does not get it, the ray stopped on its outline so the water goes on top. pure, see waterGoesTo below
+    public static BlockPos waterGoesTo(BlockPos hitPos, Direction hitFace, boolean hitTakesItInside, boolean nextTakesIt) {
+        if (hitTakesItInside) {
+            return hitPos;
+        }
+        return nextTakesIt ? hitPos.relative(hitFace) : null;
+    }
+
+    // the world half of that. sneaking is ignored, nobody sneaks a clutch
+    public static BlockPos waterGoesTo(BlockGetter world, BlockPos hitPos, Direction hitFace) {
+        boolean inside = world.getBlockState(hitPos).getBlock() instanceof LiquidBlockContainer && takesWater(world, hitPos);
+        return waterGoesTo(hitPos, hitFace, inside, takesWater(world, hitPos.relative(hitFace)));
+    }
+
+    // air, something water washes away (grass, a torch), or a waterloggable block. 26.3's canPlaceLiquid says yes to
+    // water even when it's waterlogged already, and so does the bucket
+    static boolean takesWater(BlockGetter world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        if (state.isAir() || state.canBeReplaced(Fluids.WATER)) {
+            return true;
+        }
+        return state.getBlock() instanceof LiquidBlockContainer container && container.canPlaceLiquid(null, world, pos, state, Fluids.WATER);
+    }
+
+    // still water, including the water inside a waterlogged block (getBlock() == WATER misses those)
+    public static boolean isWaterSource(BlockGetter world, BlockPos pos) {
+        return world.getFluidState(pos).getType() == Fluids.WATER;
     }
 
     // the crosshair is on the block and the face we meant. anything else puts the liquid somewhere we didn't pick.

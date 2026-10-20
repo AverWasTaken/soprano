@@ -49,4 +49,29 @@ public class MLGBucketFallChainTest {
             }
         }
     }
+
+    @Test
+    public void ourSourceGoneWithABucketGainedIsThePickup() {
+        assertEquals(MLGBucketFallChain.CellEnd.PICKED_UP, MLGBucketFallChain.cellEnd(false, true, 1));
+        // gone is gone, however far off we are
+        assertEquals(MLGBucketFallChain.CellEnd.PICKED_UP, MLGBucketFallChain.cellEnd(false, true, 10));
+    }
+
+    @Test
+    public void goneWithoutABucketIsJustGone() {
+        // flowed off a ledge, a block on it, someone else's bucket
+        assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, 1));
+    }
+
+    @Test
+    public void aSourceInReachStaysOnTheList() {
+        // a tick we couldn't click (no aim yet, somebody else had the wheel) is not the end of it
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, MLGBucketFallChain.cellEnd(true, false, 0.5));
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, MLGBucketFallChain.cellEnd(true, true, MLGBucketFallChain.CLEANUP_REACH));
+    }
+
+    @Test
+    public void walkingOffLeavesIt() {
+        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, MLGBucketFallChain.cellEnd(true, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
+    }
 }
