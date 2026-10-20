@@ -877,8 +877,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         keysForced = true;
     }
 
-    // what afterClicks cleans up after. the click may sit out BlockPlaceHelper's timer a tick, the gate opens again then
-    // and this just writes the same thing again
+    // what afterClicks cleans up after. a click that doesn't land gets another go a few ticks on, and this just writes
+    // the same thing again
     private void clicked(BuilderCalculationContext bcc, Placement p) {
         if (pours(ctx.player().getMainHandItem()) != null) {
             pouredAt = clientTicks;
@@ -1049,11 +1049,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             lastPlaceAim = builderTicks;
             Placement place = toPlace.get();
             if (place.give != null) {
-                if (!aimLanded(place)) {
+                if (!aimLanded(place) || !baritone.getInputOverrideHandler().getBlockPlaceHelper().ready()) {
                     // the first tick after a walk the sneak (if this one wants it) hasn't kicked in and the head turns
-                    // after us (updateTarget), so the gate is shut whatever we hand over. a give now just lands in the lru
-                    // slot and maybe kicks out a block the next cell wanted. turn, sneak if needed, and give once the aim
-                    // is there. the slot is still
+                    // after us (updateTarget), so the gate is shut whatever we hand over. same for a click the place
+                    // timer would hold back. a give now just lands in the lru slot and maybe kicks out a block the next
+                    // cell wanted. turn, sneak if needed, and give once the click can go. the slot is still
                     // VIRTUAL_SLOT here, which is no hotbar slot at all, so nothing below this gets to see it
                     baritone.getLookBehavior().updateTarget(place.rot, true);
                     if (place.sneak) {
@@ -1077,10 +1077,20 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (place.sneak) {
                 forceSneak();
             }
-            if (placeGateOpen(bcc, place)) {
+            // a click pressed while BlockPlaceHelper's timer runs just gets dropped, so only on the ticks it'd go out
+            if (baritone.getInputOverrideHandler().getBlockPlaceHelper().ready() && placeGateOpen(bcc, place)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
-                stallTicks = 0;
+                // a click going out isn't a block going in: a Fail, a mob in the cell or a server saying no all land
+                // nothing. placed() resets the count once one of ours really shows up right, so a click that never lands
+                // runs out like any other stall. a bucket isn't a block item and never gets that far, so a pour counts here
+                if (pours(ctx.player().getMainHandItem()) != null) {
+                    stallTicks = 0;
+                } else if (countStall() && stallTicks >= STALL_TICKS) {
+                    // rightClickSpeed 1 clicks every tick and never gets to the stalled() below
+                    stallTicks = 0;
+                    giveUpOn(bcc, List.of(BetterBlockPos.from(place.target())), "Couldn't get a place click in");
+                }
                 // whatever centre() was counting was about getting this click in, and it's in
                 centreFeet = null;
                 centreTicks = 0;
@@ -1437,15 +1447,25 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // one more tick at the same feet with nothing to show for it. true on the tick that makes it limit
     private boolean stalled(int limit) {
+        if (!countStall() || stallTicks < limit) {
+            return false;
+        }
+        stallTicks = 0;
+        return true;
+    }
+
+    // the counting half of stalled, for a click tick: it counts, but the give up waits for a tick with no click going
+    // out, so we don't let go of a cell with our own click on its way into it. false while something else is going on
+    private boolean countStall() {
         BetterBlockPos feet = ctx.playerFeet();
         if (!feet.equals(stallFeet)) {
             stallFeet = feet;
             stallTicks = 0;
         }
-        if (busyElsewhere() || ++stallTicks < limit) {
+        if (busyElsewhere()) {
             return false;
         }
-        stallTicks = 0;
+        stallTicks++;
         return true;
     }
 
@@ -1526,13 +1546,34 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // half of the loop
     public void placed(BlockPos pos, BlockState now, String who) {
         resetWatchdog(); // ours or a movement's, something went in
-        if ("builder".equals(who) || !BlockPlaceHelper.throwaway(now.getBlock().asItem()) || !wantsAir(pos)) {
+        if ("builder".equals(who)) {
+            // the only thing that counts as getting somewhere for the stall count. confirmTraced calls anything that
+            // changed a landing, a log on the wrong axis included, and that one just gets mined again
+            if (landedRight(pos, now)) {
+                stallTicks = 0;
+            }
+            return;
+        }
+        if (!BlockPlaceHelper.throwaway(now.getBlock().asItem()) || !wantsAir(pos)) {
             return;
         }
         if (scaffoldPlaced == null) {
             scaffoldPlaced = new LongOpenHashSet();
         }
         scaffoldPlaced.add(BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    // what the file wants there, or the lone first half of a chest pair. same answer the bcc's fine gives
+    private boolean landedRight(BlockPos pos, BlockState now) {
+        BlockState want = placeAt(pos.getX(), pos.getY(), pos.getZ(), now);
+        if (want == null) {
+            return false; // air or outside the file, a block in there is nothing to be proud of
+        }
+        if (valid(now, want, false)) {
+            return true;
+        }
+        BlockPos partner = chestPartner(pos, want);
+        return partner != null && chestHalfWaiting(now, want, ctx.world().getBlockState(partner), false);
     }
 
     // and every traced break. ours, of a throwaway somebody else put there: the half the builder does
