@@ -8,6 +8,11 @@ import adris.altoclef.util.helpers.GarbageRules.Cand;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.entity.EntityEquipment;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.ShulkerBoxMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
@@ -259,5 +264,88 @@ public class GarbageRulesTest {
         assertEquals(-1, lastResort(new ItemStack(Items.GOLDEN_APPLE, 1)));
         assertEquals(-1, lastResort());
         assertEquals(1, lastResort(new ItemStack(Items.GOLDEN_APPLE, 1), new ItemStack(Items.BREAD, 2)));
+    }
+
+    // ---- which slots the garbage may look at
+
+    private static Inventory inventory() {
+        return new Inventory(null, new EntityEquipment());
+    }
+
+    @Test
+    public void bagSlotsInThePlayerMenuSkipResultGridArmorAndOffhand() {
+        Inventory inv = inventory();
+        InventoryMenu menu = new InventoryMenu(inv, true, null);
+        List<Integer> windows = GarbageRules.bagWindowSlots(menu, inv);
+        assertEquals(36, windows.size());
+        for (int w : windows) {
+            assertTrue("window " + w, w >= InventoryMenu.INV_SLOT_START && w < InventoryMenu.USE_ROW_SLOT_END);
+        }
+    }
+
+    @Test
+    public void bagSlotsInATableSkipItsGridAndResult() {
+        Inventory inv = inventory();
+        CraftingMenu menu = new CraftingMenu(0, inv);
+        List<Integer> windows = GarbageRules.bagWindowSlots(menu, inv);
+        assertEquals(36, windows.size());
+        // result 0, grid 1-9
+        for (int w : windows) {
+            assertTrue("window " + w, w >= 10);
+        }
+    }
+
+    // Slot has no type for a shulker box, so the inventory index mapping pointed at the box's own slots
+    @Test
+    public void bagSlotsInAShulkerAreTheLastThirtySix() {
+        Inventory inv = inventory();
+        ShulkerBoxMenu menu = new ShulkerBoxMenu(0, inv);
+        List<Integer> windows = GarbageRules.bagWindowSlots(menu, inv);
+        assertEquals(36, windows.size());
+        for (int w : windows) {
+            assertTrue("window " + w, w >= 27);
+        }
+    }
+
+    private static GarbageRules.Armor armor(int slot, net.minecraft.world.item.Item item, boolean wouldWear) {
+        return new GarbageRules.Armor(slot, ItemHelper.getArmorPoints(item), ItemHelper.getArmorToughness(item), wouldWear);
+    }
+
+    @Test
+    public void onlyTheBestPiecePerSlotIsKept() {
+        // two iron helmets with nothing on the head: one goes on, the other is a spare
+        boolean[] kept = GarbageRules.keptArmor(List.of(armor(0, Items.IRON_HELMET, true), armor(0, Items.IRON_HELMET, true)));
+        assertTrue(kept[0]);
+        assertFalse(kept[1]);
+        // the better one wins wherever it sits, a different slot is its own question
+        kept = GarbageRules.keptArmor(List.of(armor(0, Items.IRON_HELMET, true), armor(0, Items.DIAMOND_HELMET, true),
+                armor(1, Items.IRON_CHESTPLATE, true), GarbageRules.Armor.NONE, armor(2, Items.IRON_LEGGINGS, false)));
+        assertFalse(kept[0]);
+        assertTrue(kept[1]);
+        assertTrue(kept[2]);
+        assertFalse(kept[3]);
+        assertFalse(kept[4]);
+    }
+
+    @Test
+    public void aToolOnlyLosesToTheSameFamily() {
+        assertTrue(GarbageRules.toolAtOrBelow(Items.WOODEN_PICKAXE, Items.STONE_PICKAXE));
+        assertTrue(GarbageRules.toolAtOrBelow(Items.STONE_PICKAXE, Items.STONE_PICKAXE));
+        assertFalse(GarbageRules.toolAtOrBelow(Items.IRON_PICKAXE, Items.STONE_PICKAXE));
+        assertFalse(GarbageRules.toolAtOrBelow(Items.WOODEN_SWORD, Items.STONE_PICKAXE));
+        assertFalse(GarbageRules.toolAtOrBelow(Items.STRING, Items.STONE_PICKAXE));
+    }
+
+    @Test
+    public void atOrBelowFollowsThePickOrder() {
+        Cand one = GarbageRules.cand(new ItemStack(Items.STRING, 1));
+        Cand other = GarbageRules.cand(new ItemStack(Items.FEATHER, 1));
+        Cand many = GarbageRules.cand(new ItemStack(Items.FEATHER, 20));
+        Cand steak = GarbageRules.cand(new ItemStack(Items.COOKED_BEEF, 1));
+        assertTrue(GarbageRules.atOrBelow(one, other));
+        assertTrue(GarbageRules.atOrBelow(one, many));
+        assertFalse(GarbageRules.atOrBelow(many, one));
+        // food sits behind plain stuff, whatever the count
+        assertFalse(GarbageRules.atOrBelow(steak, many));
     }
 }
