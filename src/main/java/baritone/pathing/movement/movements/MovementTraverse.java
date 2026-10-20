@@ -372,6 +372,10 @@ public class MovementTraverse extends Movement {
                 default:
                     break;
             }
+            if (state.getStatus() == MovementStatus.UNREACHABLE) {
+                // findPlace already said there's nothing we may put here. the click below would go out with whatever is in hand
+                return state;
+            }
             if (feet.equals(dest)) {
                 // If we are in the block that we are trying to get to, we are sneaking over air and we need to place a block beneath us against the one we just walked off of
                 // Out.log(from + " " + to + " " + faceX + "," + faceY + "," + faceZ + " " + whereAmI);
@@ -392,6 +396,14 @@ public class MovementTraverse extends Movement {
                     state.setTarget(new MovementState.MovementTarget(backToFace, true));
                 }
                 if (ctx.isLookingAt(goalLook)) {
+                    // findPlace came back empty handed, so nothing picked the block for this cell. pick it now, same as its
+                    // ready path does right before the click (a creative hand over lands in the slot this tick too). on a
+                    // builder path a block that has to be aimed is a no, the builder places those itself
+                    BlockPos placeAt = dest.below();
+                    if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), true)) {
+                        MovementHelper.logNoThrowaway(state, baritone, placeAt);
+                        return state.setStatus(MovementStatus.UNREACHABLE);
+                    }
                     return state.setInput(Input.CLICK_RIGHT, true); // wait to right click until we are able to place
                 }
                 // Out.log("Trying to look at " + goalLook + ", actually looking at" + Baritone.whatAreYouLookingAt());

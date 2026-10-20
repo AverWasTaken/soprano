@@ -1085,7 +1085,7 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     // once per 5 seconds (NoThrowawayLogGate), at normal log level: the next run's logs say why we had nothing to place
     // instead of a silent no-op. the guard used to live on the movement, and every replan makes fresh movements
-    static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
+    public static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
         if (!NoThrowawayLogGate.due(System.currentTimeMillis())) {
             return;
         }
