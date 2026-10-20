@@ -82,6 +82,19 @@ public final class GarbageRules {
         return best;
     }
 
+    // a bag piece we would put on is not garbage: its slot is bare, or it beats what is on it (points first, toughness breaks a
+    // tie). an unworn single piece always won "smallest count" below, so the iron chestplate fresh off the pile was the first
+    // thing out the door. a spare (what is worn is as good or better) can still go
+    public static boolean wouldWear(boolean slotBare, double bagPoints, double bagToughness, double wornPoints, double wornToughness) {
+        if (slotBare) {
+            return true;
+        }
+        if (bagPoints != wornPoints) {
+            return bagPoints > wornPoints;
+        }
+        return bagToughness > wornToughness;
+    }
+
     private static int rank(Cand c) {
         if (c.spared()) {
             return 2;

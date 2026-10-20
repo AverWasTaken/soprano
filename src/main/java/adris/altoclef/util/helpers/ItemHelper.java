@@ -625,6 +625,32 @@ public class ItemHelper {
         return value;
     }
 
+    // armor points (and toughness, the tie break) a piece gives in its own slot. read off the modifiers like the attack numbers,
+    // so turtle shells and whatever a datapack makes up rank by what they actually do and not by a name list
+    public static double getArmorPoints(Item item) {
+        return wornAttribute(item, Attributes.ARMOR);
+    }
+
+    public static double getArmorToughness(Item item) {
+        return wornAttribute(item, Attributes.ARMOR_TOUGHNESS);
+    }
+
+    private static double wornAttribute(Item item, Holder<Attribute> attribute) {
+        net.minecraft.world.entity.EquipmentSlot slot = getEquipSlot(item);
+        ItemAttributeModifiers modifiers = item.components().get(DataComponents.ATTRIBUTE_MODIFIERS);
+        if (slot == null || modifiers == null) {
+            return 0;
+        }
+        double value = 0;
+        for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
+            if (entry.attribute().equals(attribute) && entry.slot().test(slot)
+                    && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE) {
+                value += entry.modifier().amount();
+            }
+        }
+        return value;
+    }
+
     private static boolean isMainHand(ItemAttributeModifiers.Entry entry, Holder<Attribute> attribute) {
         // ANY and HAND groups apply to the main hand too, not just MAINHAND
         return entry.attribute().equals(attribute) && entry.slot().test(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
