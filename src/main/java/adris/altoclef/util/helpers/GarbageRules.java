@@ -95,6 +95,23 @@ public final class GarbageRules {
         return bagToughness > wornToughness;
     }
 
+    // the cursor holds something we keep, nothing can be thrown and nowhere takes it. the stack that goes in its place is the
+    // lowest one by the usual order, only now the food floor does not get a say (the cands are already free of the important
+    // list and the gamer protect list is not asked). -1 = nothing to swap with, throw the cursor, it is that or click forever
+    public static int lastResort(List<Cand> cands) {
+        int best = -1;
+        for (int i = 0; i < cands.size(); i++) {
+            Cand c = cands.get(i);
+            if (c.reserved()) {
+                continue;
+            }
+            if (best < 0 || compare(c, cands.get(best)) < 0) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
     private static int rank(Cand c) {
         if (c.spared()) {
             return 2;

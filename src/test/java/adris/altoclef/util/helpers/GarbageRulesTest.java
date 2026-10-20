@@ -232,4 +232,32 @@ public class GarbageRulesTest {
         assertEquals(2.0, ItemHelper.getArmorToughness(Items.DIAMOND_CHESTPLATE), 0.001);
         assertEquals(0.0, ItemHelper.getArmorPoints(Items.COBBLESTONE), 0.001);
     }
+
+    private static int lastResort(ItemStack... stacks) {
+        List<Cand> cands = new ArrayList<>();
+        for (ItemStack s : stacks) {
+            cands.add(GarbageRules.cand(s));
+        }
+        return GarbageRules.lastResort(cands);
+    }
+
+    @Test
+    public void lastResortTakesTheLowestStackAndIgnoresTheFoodFloor() {
+        ItemStack steak = new ItemStack(Items.COOKED_BEEF, 3);
+        ItemStack pick = new ItemStack(Items.STONE_PICKAXE, 1);
+        ItemStack netherrack = new ItemStack(Items.NETHERRACK, 64);
+        // junk first, then tools, food last
+        assertEquals(2, lastResort(steak, pick, netherrack));
+        assertEquals(1, lastResort(steak, pick));
+        // the floor would keep 3 steak, a stuck cursor does not care
+        assertEquals(0, lastResort(steak));
+        assertEquals(-1, pick(FLOOR, steak));
+    }
+
+    @Test
+    public void lastResortStillSparesTheGappleAndCanComeUpEmpty() {
+        assertEquals(-1, lastResort(new ItemStack(Items.GOLDEN_APPLE, 1)));
+        assertEquals(-1, lastResort());
+        assertEquals(1, lastResort(new ItemStack(Items.GOLDEN_APPLE, 1), new ItemStack(Items.BREAD, 2)));
+    }
 }

@@ -312,6 +312,22 @@ public class StorageHelper {
         return Optional.empty();
     }
 
+    // EnsureFreeCursorSlotTask's way out when it holds something we keep and getGarbageSlot has nothing: the lowest bag stack that
+    // is not on the important list (or armor we would wear). the food floor and the protect list are soft, a deadlock is not
+    public static Optional<Slot> getLastResortSlot(AltoClef mod) {
+        final List<Slot> slots = new ArrayList<>();
+        final List<GarbageRules.Cand> cands = new ArrayList<>();
+        for (Slot slot : bagSlots()) {
+            ItemStack stack = getItemStackInSlot(slot);
+            if (stack.isEmpty() || AltoSettings.isImportant(stack.getItem()) || wouldWear(mod, stack))
+                continue;
+            slots.add(slot);
+            cands.add(GarbageRules.cand(stack));
+        }
+        int pick = GarbageRules.lastResort(cands);
+        return pick < 0 ? Optional.empty() : Optional.of(slots.get(pick));
+    }
+
     /**
      * @return whether EVERY item target in {@code targetsToMeet} is met in our inventory or conversion slots.
      */
