@@ -33,7 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
 // world in here, the tests ask it straight
 public final class PlaceRules {
 
-    // anything with one of these comes out however the click was aimed. by name so a modded log is a log too
+    // anything with one of these comes out however the click was aimed. by name so a modded log is a log too. "type"
+    // is a slab's top or bottom, which half of the face we clicked
     private static final Set<String> AIMED = Set.of("facing", "axis", "half", "type", "rotation", "orientation", "face", "hinge");
     // the path thread asks per node, and there's only so many states
     private static final Map<BlockState, Boolean> AIM_PROOF = new ConcurrentHashMap<>();
@@ -96,8 +97,8 @@ public final class PlaceRules {
         return AIM_PROOF.computeIfAbsent(state, PlaceRules::computeAimProof);
     }
 
-    // has something that comes off which way the click was aimed. a slab or a fence is not a full cube, but nothing on it
-    // depends on where we were looking
+    // has something that comes off which way the click was aimed. a fence or a wall is not a full cube, but nothing on it
+    // depends on where we were looking (the sides are derived). a slab does, its type is which half we clicked
     public static boolean aimed(BlockState state) {
         for (Property<?> prop : state.getProperties()) {
             if (AIMED.contains(prop.getName())) {

@@ -435,12 +435,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
         // priced them like any other cell and would just fail the movement over and over
         boolean builderPath = maybe != null && baritone.getPathingControlManager().mostRecentInControl().orElse(null) == baritone.getBuilderProcess();
         if (builderPath && !PlaceRules.aimProof(maybe)) {
-            // a stair or a fence from a movement comes out however it's aimed, the builder does those itself
+            // anything short of aim proof: a stair or a slab from a movement comes out however it's aimed, and a fence
+            // isn't a full cube so it isn't aim proof either. the builder does all of those itself
             return false;
         }
         // somebody else's movement placing an aimed block puts it down however it happened to be looking (a ladder facing
         // wherever we were turned, the guess below fakes the click), so those get a plain throwaway and the builder sorts
-        // the cell out later. a slab or a fence has nothing to aim and still gets the real thing
+        // the cell out later. slabs count as aimed too (type, see PlaceRules.AIMED). a fence or a wall has nothing to
+        // aim and still gets the real thing
         boolean aimed = maybe != null && PlaceRules.aimed(maybe);
         if (maybe != null && !aimed && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
