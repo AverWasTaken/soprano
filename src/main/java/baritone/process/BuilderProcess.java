@@ -440,6 +440,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         resetWatchdog();
         lastPathDest = null;
         lastBreak = null;
+        centreFeet = null;
+        centreTicks = 0;
         goalOwners = List.of();
         seen = null;
         // and the plans with them, they're cheap to make again and a stale one costs a walk
@@ -1055,6 +1057,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
                 stallTicks = 0;
+                // whatever centre() was counting was about getting this click in, and it's in
+                centreFeet = null;
+                centreTicks = 0;
                 clicked(bcc, place);
             } else if (stalled()) {
                 giveUpOn(bcc, List.of(BetterBlockPos.from(place.target())), "Couldn't get a place click in");
