@@ -69,6 +69,10 @@
 # need to keep mixin names
 -keep class baritone.launch.** { *; }
 
+# the updater copies SwapHelper out as one lone .class and runs it in its own jvm, so it has to stay exactly
+# as written, members and all
+-keep class baritone.utils.update.SwapHelper { *; }
+
 #try to keep usage of schematica in separate classes
 -keep class baritone.utils.schematic.schematica.**
 -keep class baritone.utils.schematic.litematica.**
