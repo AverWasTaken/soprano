@@ -33,7 +33,8 @@ public record KitNeed(String catalogueName, int count) {
             // flint, logs, planks and coal are the filler while iron cooks (SmeltFiller), none of them is made at a table.
             // cobblestone is the one trip's worth of stone the gather mines before the stone crafts, it is mined not crafted
             // cooking stands at a smoker, not a table, so it never holds the table either
-            case "iron_ingot", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal", "cobblestone", COOK_SMOKER, COOK_FURNACE -> true;
+            // the diamond pick's dig is a mine like the iron, it never holds a table
+            case "iron_ingot", "diamond", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal", "cobblestone", COOK_SMOKER, COOK_FURNACE -> true;
             default -> false;
         };
     }

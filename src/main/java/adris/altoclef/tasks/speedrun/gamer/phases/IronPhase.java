@@ -6,6 +6,7 @@ import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.BuildBlocks;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
+import adris.altoclef.tasks.speedrun.gamer.DiamondHunt;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
@@ -92,6 +93,9 @@ public class IronPhase implements PhaseHandler {
     private boolean starvedSaid;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
+    // this tick's plan as the path that ran saw it, and the attempt clock on the last tick the diamond dig led (-1 = it did not)
+    private List<KitNeed> tickNeeds;
+    private double huntAge = -1;
 
     @Override
     public GamerPhase phase() {
@@ -171,6 +175,8 @@ public class IronPhase implements PhaseHandler {
         cookLatch = false;
         starvedSaid = false;
         foodBand = -1;
+        tickNeeds = null;
+        huntAge = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -211,7 +217,29 @@ public class IronPhase implements PhaseHandler {
             needEnd.reset();
             arbiterOn = on;
         }
-        return on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
+        tickNeeds = null;
+        Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
+        huntClock(ctx, tickNeeds);
+        return task;
+    }
+
+    // the diamond dig's clock (DiamondHunt), only on ticks it leads the plan. out of time: the need is gone for the rest of the run
+    private void huntClock(GamerContext ctx, List<KitNeed> needs) {
+        if (!DiamondHunt.digging(needs)) {
+            huntAge = -1;
+            return;
+        }
+        RunState s = ctx.state();
+        double age = ctx.secondsInPhase();
+        s.diamondHuntSeconds = DiamondHunt.add(s.diamondHuntSeconds, huntAge, age);
+        huntAge = age;
+        if (DiamondHunt.over(s.diamondHuntSeconds, ctx.cfg().overworld.diamondPickMinutes, ctx.cfg().budgets.iron, age,
+                DiamondHunt.moreAfter(needs))) {
+            s.diamondHuntGaveUp = true;
+            huntAge = -1;
+            ctx.log("no diamonds in time, going with the iron pick");
+            ctx.save();
+        }
     }
 
     // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
@@ -234,6 +262,7 @@ public class IronPhase implements PhaseHandler {
             needEnd.reset();
             needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood()));
         }
+        tickNeeds = needs;
         KitNeed head = needs.isEmpty() ? null : needs.get(0);
         FurnacePlan.Moment moment = null;
         FurnacePlan.Plan plan = null;
@@ -467,6 +496,7 @@ public class IronPhase implements PhaseHandler {
         needEnd.reset();
         List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(),
                 ctx.wood()));
+        tickNeeds = needs;
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -499,6 +529,7 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
                 ctx.food(), ctx.wood(), ctx.buildBlocks());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
+        tickNeeds = runnable;
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
         // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder.

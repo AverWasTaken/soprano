@@ -212,6 +212,11 @@ public class RunState {
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed
     public boolean spawnBedGaveUp;
 
+    // game seconds spent with the diamond pick dig at the head of the iron plan, across retries and relogs (DiamondHunt)
+    public double diamondHuntSeconds;
+    // the dig ran out of time once: no more diamond pick this run, even if a later one gets lost. never cleared, like spawnBedGaveUp
+    public boolean diamondHuntGaveUp;
+
     // crafting tables this run placed, the only ones the pickup may take back. these three lists are what is saved of the
     // station registry (Workbenches), the rest of an entry (state, clocks, tries) is rebuilt from them after a relog
     public List<Pos> placedTables = new ArrayList<>();
