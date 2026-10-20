@@ -82,6 +82,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int pathPosition;
     private int ticksAway;
     private int ticksOnCurrent;
+    // the furthest we've got on this path and how long ago, see HighWater
+    private HighWater highWater = new HighWater();
     private Double currentMovementOriginalCostEstimate;
     private Integer costEstimateIndex;
     // planned versus real ticks per movement, handed on with the rest when a splice or a cut makes a new executor
@@ -273,6 +275,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     boatRefusedUntil = boat.endPosition();
                     boat = null;
                     onChangeInPathPosition();
+                    highWater.forget(); // the boat pushed pathPosition along, swimming back up to it isn't being stuck
                     break; // carry on on foot from wherever we ended up, the resync below sorts out where that is
                 default:
                     throw new IllegalStateException();
@@ -455,6 +458,15 @@ public class PathExecutor implements IPathExecutor, Helper {
                 // this is why we cache cost at the beginning, and don't recalculate for this comparison every tick
                 logDebug("This movement has taken too long (" + ticksOnCurrent + " ticks, expected " + currentMovementOriginalCostEstimate + "). Cancelling.");
                 rememberFailure(movement, true);
+                cancel();
+                return true;
+            }
+            if (highWater.tick(pathPosition, currentMovementOriginalCostEstimate, Baritone.settings().movementTimeoutTicks.value)) {
+                // bouncing between two movements resets ticksOnCurrent every bounce, so the check above never fires. the one
+                // we keep reaching and never get past is the one to blame
+                Movement stuck = (Movement) path.movements().get(highWater.high());
+                logDebug("Haven't got past movement " + highWater.high() + " in " + highWater.ticks() + " ticks (expected " + highWater.cost() + "). Cancelling.");
+                rememberFailure(stuck, true);
                 cancel();
                 return true;
             }
@@ -1652,6 +1664,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             ret.currentMovementOriginalCostEstimate = currentMovementOriginalCostEstimate;
             ret.costEstimateIndex = costEstimateIndex;
             ret.ticksOnCurrent = ticksOnCurrent;
+            if (pathPosition < highWater.high()) {
+                // the new path keeps our index but not necessarily what came after it, the old high might be another movement now
+                highWater.forget();
+            }
+            ret.highWater = highWater;
             ret.timer = timer;
             ret.flight = flight; // a new path showing up doesn't make us any less airborne
             // a splice keeps every index of the first path, so the trip carries straight over. losing it
@@ -1726,6 +1743,8 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ret.costEstimateIndex = costEstimateIndex - cutoffAmt;
             }
             ret.ticksOnCurrent = ticksOnCurrent;
+            highWater.shift(cutoffAmt);
+            ret.highWater = highWater;
             ret.timer = timer;
             ret.flight = flight;
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;
