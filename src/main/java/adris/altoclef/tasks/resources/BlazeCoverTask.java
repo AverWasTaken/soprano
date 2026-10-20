@@ -27,7 +27,8 @@ public final class BlazeCoverTask extends Task {
     private final Supplier<Blaze> shieldAt;
     private final Consumer<BlockPos> onStuck;
     // our own aura object just for its shield handling (food in hand, sneak, pausing the path), same code mob defense uses
-    private final KillAura shield = new KillAura();
+    // the shield keys under our name, like a plain hold from onTick always was: letGoOfKeys on a finished root task lifts them
+    private final KillAura shield = new KillAura(this);
     private int ticksTrying;
 
     public BlazeCoverTask(BlockPos spot, boolean allowShield, Supplier<Blaze> shieldAt, Consumer<BlockPos> onStuck) {

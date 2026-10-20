@@ -55,4 +55,39 @@ public class InputControlsTest {
         controls.hold(Input.CLICK_LEFT);
         assertTrue(controls.isHeldDown(Input.CLICK_LEFT));
     }
+
+    // the aura's shield and the chain's shield on one use key: one letting go must not lift the other's, a shield only
+    // blocks after 5 ticks of use and a lift starts that over
+    @Test
+    public void anOwnedKeyStaysDownWhileAnotherOwnerHoldsIt() {
+        Object aura = new Object();
+        Object chain = new Object();
+        controls.hold(Input.CLICK_RIGHT, aura);
+        controls.hold(Input.CLICK_RIGHT, chain);
+        controls.releaseOwnedBy(chain);
+        assertTrue(controls.isHeldDown(Input.CLICK_RIGHT));
+        // and no second click, the use under way just carries on
+        assertEquals(1, keys.clicks);
+        controls.releaseOwnedBy(aura);
+        assertFalse(controls.isHeldDown(Input.CLICK_RIGHT));
+    }
+
+    // the food chain's bite is a plain hold: a shield letting go leaves it be
+    @Test
+    public void anOwnerLettingGoLeavesAPlainHoldDown() {
+        Object aura = new Object();
+        controls.hold(Input.CLICK_RIGHT, aura);
+        controls.hold(Input.CLICK_RIGHT, null);
+        controls.releaseOwnedBy(aura);
+        assertTrue(controls.isHeldDown(Input.CLICK_RIGHT));
+    }
+
+    // and the food chain's plain release still wins over every shield, eating needs the use key
+    @Test
+    public void aPlainReleaseLiftsEveryOwner() {
+        controls.hold(Input.CLICK_RIGHT, new Object());
+        controls.hold(Input.CLICK_RIGHT, new Object());
+        controls.release(Input.CLICK_RIGHT);
+        assertFalse(controls.isHeldDown(Input.CLICK_RIGHT));
+    }
 }
