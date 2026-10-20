@@ -110,6 +110,8 @@ jobs:
 
     # a release made with this token never fires the release event, so discord.yml wouldn't see it
     - name: Post the release to discord
+      # set the repo variable DISCORD_RELEASE_POST to false to skip the post, e.g. when several lines ship at once
+      if: ${{ vars.DISCORD_RELEASE_POST != 'false' }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
