@@ -96,6 +96,9 @@ public class ConstructNetherPortalBucketTask extends Task {
 
     //private BlockPos _currentLavaTarget = null;
     private BlockPos _currentDestroyTarget = null;
+    // ticks the interior cell we're on has gone without a ray, see InteriorPick
+    private int _noReachTicks;
+    private int _reachSwitches;
     private boolean _firstSearch = false;
 
     @Override
@@ -103,6 +106,8 @@ public class ConstructNetherPortalBucketTask extends Task {
         mod.getBlockTracker().trackBlock(Blocks.LAVA);
 
         _currentDestroyTarget = null;
+        _reachSwitches = 0;
+        _noReachTicks = 0;
 
         mod.getBehaviour().push();
 
@@ -180,6 +185,9 @@ public class ConstructNetherPortalBucketTask extends Task {
                 _currentDestroyTarget = null;
             } else if (!isLiquid(targetState) && WorldHelper.tooSlowToBreak(mod, _currentDestroyTarget)) {
                 moveFrame(mod, _currentDestroyTarget, "portal interior");
+                return null;
+            } else if (_portalOrigin != null && switchedInteriorCell(mod)) {
+                // a cell we can actually hit beats one we've been staring past. next tick takes it from the top
                 return null;
             } else {
                 return clearInteriorCell(targetState, _currentDestroyTarget);
@@ -277,20 +285,16 @@ public class ConstructNetherPortalBucketTask extends Task {
         }
 
         // Now, clear the inside.
-        for (Vec3i offs : PORTAL_INTERIOR) {
-            BlockPos p = _portalOrigin.offset(offs);
-            assert Minecraft.getInstance().level != null;
-            BlockState inside = Minecraft.getInstance().level.getBlockState(p);
-            if (!inside.isAir()) {
-                if (!isLiquid(inside) && WorldHelper.tooSlowToBreak(mod, p)) {
-                    moveFrame(mod, p, "portal interior");
-                    return null;
-                }
-                setDebugState("Clearing inside of portal");
-                _currentDestroyTarget = p;
+        BlockPos p = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, cell -> mod.getWorld().getBlockState(cell).isAir(), null, 0, _reachSwitches);
+        if (p != null) {
+            if (!isLiquid(mod.getWorld().getBlockState(p)) && WorldHelper.tooSlowToBreak(mod, p)) {
+                moveFrame(mod, p, "portal interior");
                 return null;
-                //return new DestroyBlockTask(p);
             }
+            setDebugState("Clearing inside of portal");
+            _currentDestroyTarget = p;
+            _noReachTicks = 0;
+            return null;
         }
 
         setDebugState("Flinting and Steeling");
@@ -317,6 +321,21 @@ public class ConstructNetherPortalBucketTask extends Task {
     @Override
     protected String toDebugString() {
         return "Construct Nether Portal";
+    }
+
+    // count the cell we're on going without a ray and move to a better one when InteriorPick says so
+    private boolean switchedInteriorCell(AltoClef mod) {
+        _noReachTicks = InteriorPick.reachNow(mod, _currentDestroyTarget) ? 0 : _noReachTicks + 1;
+        BlockPos next = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, cell -> mod.getWorld().getBlockState(cell).isAir(), _currentDestroyTarget, _noReachTicks, _reachSwitches);
+        if (next == null || next.equals(_currentDestroyTarget)) {
+            return false;
+        }
+        if (!mod.getBlockTracker().unreachable(_currentDestroyTarget)) {
+            _reachSwitches++;
+        }
+        _currentDestroyTarget = next;
+        _noReachTicks = 0;
+        return true;
     }
 
     // fluids come out with a bucket, everything else gets broken. the obsidian variant asks too
