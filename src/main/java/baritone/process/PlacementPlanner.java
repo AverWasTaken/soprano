@@ -35,7 +35,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.LadderBlock;
@@ -335,7 +334,7 @@ final class PlacementPlanner {
         ctx.player().setYRot(rot.getYaw());
         ctx.player().setXRot(rot.getPitch());
         try {
-            BlockPlaceContext place = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, hit) {}); // that {} gives us access to a protected constructor lmfao
+            BlockPlaceContext place = sneaking(hit, stack);
             if (!place.canPlace()) {
                 return null;
             }
@@ -354,6 +353,18 @@ final class PlacementPlanner {
             ctx.player().setYRot(yaw);
             ctx.player().setXRot(pitch);
         }
+    }
+
+    // sneaking, because every click the builder sends is (see placeGateOpen). asking the live player instead planned
+    // with whatever we were doing at plan time, usually walking, and a sneak changes things: a chest clicked on its side
+    // only joins the one it was clicked on, unsneaked it grabs any neighbour it likes
+    private BlockPlaceContext sneaking(BlockHitResult hit, ItemStack stack) {
+        return new BlockPlaceContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, hit) {
+            @Override
+            public boolean isSecondaryUseActive() {
+                return true;
+            }
+        };
     }
 
     // BucketItem.emptyContents with us sneaking: the block we clicked never gets the fluid (no waterlogged stairs by
