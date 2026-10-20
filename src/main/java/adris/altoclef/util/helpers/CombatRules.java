@@ -1,5 +1,7 @@
 package adris.altoclef.util.helpers;
 
+import java.util.List;
+
 // the pure half of "are we in a fight, and what do we do about our health bar". no world, just numbers, so the eat
 // vs fight vs flee call can be tested without minecraft. MobDefenseChain feeds it real data and FoodChain listens.
 //
@@ -46,6 +48,9 @@ public final class CombatRules {
     public static final double FAST_MOB_SPEED = 0.3;
     // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
     public static final double SHOOTER_RANGE = 15;
+    // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
+    // them back a block or so, and every re-raise is 5 ticks before the shield blocks again
+    public static final double PILE_SHIELD_SLACK = 1.5;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
@@ -101,6 +106,25 @@ public final class CombatRules {
     // above the flee line: healthy enough for the aura to put a shield up and for a fight to carry on
     public static boolean aboveFleeLine(float health) {
         return health > FLEE_HEALTH;
+    }
+
+    // the shield in a normal (not cornered) fight: the target is melee and in contact, and another melee mob that has hit us
+    // is in contact too. one zombie never gets it, 1v1 is crits first and a raised shield vetoes the jump. only mobs that hit
+    // us count, never bystanders: two zombies milling about while we walk to a target five blocks off must not stop the walk
+    // for a shield. up: it is up already, and then the hold band (contact plus PILE_SHIELD_SLACK) is the one asked
+    public static boolean pileShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
+        double reach = up ? CONTACT_RANGE + PILE_SHIELD_SLACK : CONTACT_RANGE;
+        boolean target = false;
+        boolean other = false;
+        for (CombatCommit.Foe foe : foes) {
+            if (!foe.melee() || foe.distance() > reach) continue;
+            if (foe.id() == targetId) {
+                target = true;
+            } else if (foe.hitUs()) {
+                other = true;
+            }
+        }
+        return target && other;
     }
 
     // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)
