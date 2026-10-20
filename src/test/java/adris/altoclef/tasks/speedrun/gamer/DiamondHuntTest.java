@@ -75,10 +75,50 @@ public class DiamondHuntTest {
     }
 
     @Test
-    public void diggingIsTheDigAtTheHead() {
-        assertTrue(DiamondHunt.digging(List.of(DIG, WOOL)));
-        assertFalse(DiamondHunt.digging(List.of(WOOL, DIG)));
-        assertFalse(DiamondHunt.digging(List.of()));
+    public void diggingIsTheNeedTheRunnerIsOn() {
+        assertTrue(DiamondHunt.digging(DIG));
+        assertFalse(DiamondHunt.digging(WOOL));
         assertFalse(DiamondHunt.digging(null));
+    }
+
+    @Test
+    public void onlyTicksTheRunnerDugAreBilled() {
+        RunState s = new RunState();
+        DiamondHunt.Step step = DiamondHunt.tick(s, -1, true, List.of(DIG), 100, 8, 22);
+        step = DiamondHunt.tick(s, step.lastAge(), true, List.of(DIG), 160, 8, 22);
+        assertEquals(60, s.diamondHuntSeconds, 0);
+        // a furnace trip had the wheel for two minutes with the dig still at the head: nothing billed, and the clock restarts after it
+        step = DiamondHunt.tick(s, step.lastAge(), false, List.of(DIG), 280, 8, 22);
+        assertEquals(-1, step.lastAge(), 0);
+        step = DiamondHunt.tick(s, step.lastAge(), true, List.of(DIG), 281, 8, 22);
+        assertEquals(60, s.diamondHuntSeconds, 0);
+        assertFalse(step.gaveUp());
+    }
+
+    @Test
+    public void runningOutGivesUpOnceAndForTheRun() {
+        RunState s = new RunState();
+        double last = -1;
+        int gaveUp = 0;
+        for (int t = 0; t <= 600; t++) {
+            DiamondHunt.Step step = DiamondHunt.tick(s, last, !s.diamondHuntGaveUp, List.of(DIG, WOOL), t, 8, 22);
+            last = step.lastAge();
+            gaveUp += step.gaveUp() ? 1 : 0;
+        }
+        assertEquals(1, gaveUp);
+        assertTrue(s.diamondHuntGaveUp);
+        assertEquals(480, s.diamondHuntSeconds, 0);
+        // a flag that is set stays set, a later dig tick (a lost pick) does not bill or give up again
+        DiamondHunt.Step after = DiamondHunt.tick(s, -1, true, List.of(DIG), 700, 8, 22);
+        assertFalse(after.gaveUp());
+        assertEquals(480, s.diamondHuntSeconds, 0);
+    }
+
+    @Test
+    public void theMarginFollowsWhatIsLeftInThePlan() {
+        RunState alone = new RunState();
+        assertFalse(DiamondHunt.tick(alone, -1, true, List.of(DIG, PICK), 22 * 60 - 150, 8, 22).gaveUp());
+        RunState wool = new RunState();
+        assertTrue(DiamondHunt.tick(wool, -1, true, List.of(DIG, WOOL), 22 * 60 - 150, 8, 22).gaveUp());
     }
 }

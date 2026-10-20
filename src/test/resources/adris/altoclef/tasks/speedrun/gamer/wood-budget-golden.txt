@@ -146,7 +146,7 @@
 145|064c9844e104efb1|need=0;ironNeed=0;first=0;keep=0/0;fuel=0/0;cookFuel=0/0/0/0;food=98/false;gatherLogs=-;planLogs=-;gather=[cobblestone:11,stone_pickaxe:2,stone_axe:1,];plan=[stone_axe:1,stone_pickaxe:1,food:100,cook_in_smoker:3,];gather3=[cobblestone:11,stone_pickaxe:2,stone_axe:1,];plan3=[stone_axe:1,stone_pickaxe:1,food:100,cook_in_smoker:3,];gatherDone=[cobblestone:11,stone_pickaxe:2,stone_axe:1,];planDone=[stone_axe:1,stone_pickaxe:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;toMakeN=false;stationY=SMOKER;toMakeY=false;smokerLogs=4;feasible=true;reusable=true/true;woodSmelts=21/21/15/13;fuelSmelts=21/21/15/13;stock=0/0,0/0,16/0,;schedN=[stone_axe:1,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];schedY=[stone_axe:1,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];gatherRunnable=[cobblestone:11,stone_pickaxe:2,stone_axe:1,];coal=2;
 146|f51c746afce456fe|need=0;ironNeed=0;first=0;keep=4/24;fuel=4/24;cookFuel=0/0/0/0;food=31/true;gatherLogs=-;planLogs=-;gather=[cobblestone:5,stone_pickaxe:2,food:130,];plan=[food:130,iron_ingot:3,iron_ingot:20,iron_pickaxe:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:24,food:100,];gather3=[cobblestone:5,stone_pickaxe:2,food:130,];plan3=[food:130,iron_ingot:3,iron_ingot:20,iron_pickaxe:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:24,food:100,];gatherDone=[cobblestone:5,stone_pickaxe:2,food:70,];planDone=[food:70,iron_ingot:3,iron_ingot:20,iron_pickaxe:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:24,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=SMOKER;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=18/18/12/10;fuelSmelts=50/50/44/42;stock=0/0,0/0,0/0,;schedN=[food:130,iron_ingot:3,iron_ingot:20,ladder:3,equip_armor:1,wool:24,food:100,build_blocks:32,]|[iron_pickaxe:1,shield:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[];schedY=[food:130,iron_ingot:3,iron_ingot:20,ladder:3,equip_armor:1,wool:24,food:100,build_blocks:32,food:130,wool:33,build_blocks:64,]|[iron_pickaxe:1,shield:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[food:130,wool:33,build_blocks:64,];gatherRunnable=[cobblestone:5,stone_pickaxe:2,food:130,];coal=5;
 147|444ef663e842ebe6|need=0;ironNeed=0;first=0;keep=4/5;fuel=4/5;cookFuel=0/0/0/0;food=103/true;gatherLogs=-;planLogs=-;gather=[cobblestone:5,stone_pickaxe:2,food:130,];plan=[food:130,iron_ingot:35,iron_pickaxe:1,iron_axe:1,bucket:2,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:9,cook_in_smoker:3,];gather3=[cobblestone:5,stone_pickaxe:2,];plan3=[iron_ingot:35,iron_pickaxe:1,iron_axe:1,bucket:2,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:9,cook_in_smoker:3,];gatherDone=[cobblestone:5,stone_pickaxe:2,];planDone=[iron_ingot:35,iron_pickaxe:1,iron_axe:1,bucket:2,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:9,cook_in_smoker:3,];cook=cook_in_smoker;stationN=NONE;toMakeN=false;stationY=SMOKER;toMakeY=true;smokerLogs=5;feasible=true;reusable=true/false;woodSmelts=15/15/9/7;fuelSmelts=39/39/33/31;stock=0/0,0/0,14/0,;schedN=[food:130,iron_ingot:35,iron_pickaxe:1,iron_axe:1,bucket:2,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:9,cook_in_smoker:3,]|[]|[];schedY=[food:130,iron_ingot:35,iron_pickaxe:1,iron_axe:1,bucket:2,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:9,cook_in_smoker:3,]|[]|[];gatherRunnable=[cobblestone:5,stone_pickaxe:2,food:130,];coal=9;
-148|217e793ce692de50|need=0;ironNeed=0;first=0;keep=0/0;fuel=0/0;cookFuel=0/0/0/0;food=91/true;gatherLogs=-;planLogs=-;gather=[cobblestone:10,furnace:1,food:130,];plan=[food:130,iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];gather3=[cobblestone:10,furnace:1,];plan3=[iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];gatherDone=[cobblestone:10,furnace:1,];planDone=[iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=27/27/21/19;fuelSmelts=51/51/45/43;stock=0/0,0/0,0/0,;schedN=[food:130,iron_ingot:24,ladder:3,diamond:3,food:100,]|[iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[];schedY=[food:130,iron_ingot:24,ladder:3,diamond:3,food:100,food:130,wool:9,]|[iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[food:130,wool:9,];gatherRunnable=[cobblestone:10,furnace:1,food:130,];coal=4;
+148|db5daa16f9ffee8a|need=0;ironNeed=0;first=0;keep=0/0;fuel=0/0;cookFuel=0/0/0/0;food=91/true;gatherLogs=-;planLogs=-;gather=[cobblestone:10,furnace:1,food:130,];plan=[food:130,iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];gather3=[cobblestone:10,furnace:1,];plan3=[iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];gatherDone=[cobblestone:10,furnace:1,];planDone=[iron_ingot:24,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=27/27/21/19;fuelSmelts=51/51/45/43;stock=0/0,0/0,0/0,;schedN=[food:130,iron_ingot:24,ladder:3,food:100,]|[iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,]|[];schedY=[food:130,iron_ingot:24,ladder:3,food:100,food:130,wool:9,]|[iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,]|[food:130,wool:9,];gatherRunnable=[cobblestone:10,furnace:1,food:130,];coal=4;
 149|a7e4b6429d928e68|need=0;ironNeed=0;first=0;keep=11/0;fuel=11/0;cookFuel=0/0/0/0;food=70/false;gatherLogs=-;planLogs=-;gather=[stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_ingot:39,iron_pickaxe:1,iron_axe:1,bucket:2,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];gather3=[stone_pickaxe:2,stone_axe:1,furnace:1,];plan3=[stone_axe:1,iron_ingot:39,iron_pickaxe:1,iron_axe:1,bucket:2,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];gatherDone=[stone_pickaxe:2,stone_axe:1,furnace:1,];planDone=[stone_axe:1,iron_ingot:39,iron_pickaxe:1,iron_axe:1,bucket:2,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=NONE;toMakeN=false;stationY=SMOKER;toMakeY=true;smokerLogs=4;feasible=true;reusable=true/false;woodSmelts=1/1/0/0;fuelSmelts=33/33/32/32;stock=0/0,0/0,16/0,;schedN=[stone_axe:1,iron_ingot:39,iron_pickaxe:1,iron_axe:1,bucket:2,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];schedY=[stone_axe:1,iron_ingot:39,iron_pickaxe:1,iron_axe:1,bucket:2,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];gatherRunnable=[stone_pickaxe:2,stone_axe:1,furnace:1,];coal=9;
 150|22481bf1292e3a01|need=0;ironNeed=0;first=0;keep=5/12;fuel=5/12;cookFuel=1/1/14/1;food=57/true;gatherLogs=19;planLogs=-;gather=[wooden_axe:1,log:19,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:25,iron_pickaxe:1,iron_axe:1,shield:1,shears:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,];gather3=[wooden_axe:1,log:19,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan3=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:25,iron_pickaxe:1,iron_axe:1,shield:1,shears:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,];gatherDone=[wooden_axe:1,log:19,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:70,];planDone=[stone_pickaxe:1,stone_axe:1,food:70,iron_ingot:25,iron_pickaxe:1,iron_axe:1,shield:1,shears:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=5;feasible=false;reusable=false/false;woodSmelts=21/21/15/13;fuelSmelts=21/21/15/13;stock=0/0,0/0,0/0,;schedN=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:25,iron_pickaxe:1,iron_axe:1,shield:1,shears:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,]|[]|[];schedY=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:25,iron_pickaxe:1,iron_axe:1,shield:1,shears:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,]|[]|[];gatherRunnable=[wooden_axe:1,log:19,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];coal=4;
 151|c4c53a1bcf267b5a|need=3;ironNeed=2;first=0;keep=0/7;fuel=0/7;cookFuel=0/0/0/0;food=60/true;gatherLogs=3;planLogs=2;gather=[log:3,stone_pickaxe:2,food:130,];plan=[log:2,stone_pickaxe:1,food:130,iron_ingot:27,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,cook_in_furnace:3,];gather3=[log:3,stone_pickaxe:2,];plan3=[log:2,stone_pickaxe:1,iron_ingot:27,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,cook_in_furnace:3,];gatherDone=[log:3,stone_pickaxe:2,food:70,];planDone=[log:2,stone_pickaxe:1,food:70,iron_ingot:27,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,cook_in_furnace:3,];cook=cook_in_furnace;stationN=FURNACE;toMakeN=false;stationY=FURNACE;toMakeY=false;smokerLogs=5;feasible=true;reusable=false/false;woodSmelts=0/0/0/0;fuelSmelts=0/0/0/0;stock=3/0,7/0,15/0,;schedN=[log:2,stone_pickaxe:1,food:130,iron_ingot:27,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,cook_in_furnace:3,]|[]|[];schedY=[log:2,stone_pickaxe:1,food:130,iron_ingot:27,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,food:100,cook_in_furnace:3,]|[]|[];gatherRunnable=[log:3,stone_pickaxe:2,food:130,];coal=10;
@@ -178,7 +178,7 @@
 177|e0f36e3b5bd73740|need=0;ironNeed=0;first=0;keep=1/22;fuel=1/22;cookFuel=0/0/0/0;food=97/true;gatherLogs=-;planLogs=-;gather=[food:130,];plan=[food:130,iron_ingot:31,bucket:2,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:12,food:100,cook_in_furnace:3,];gather3=[];plan3=[iron_ingot:31,bucket:2,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:12,food:100,cook_in_furnace:3,];gatherDone=[];planDone=[iron_ingot:31,bucket:2,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:12,food:100,cook_in_furnace:3,];cook=cook_in_furnace;stationN=FURNACE;toMakeN=false;stationY=FURNACE;toMakeY=false;smokerLogs=4;feasible=true;reusable=true/false;woodSmelts=19/19/13/12;fuelSmelts=27/27/21/20;stock=0/0,0/0,0/0,;schedN=[food:130,iron_ingot:31,bucket:2,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:12,food:100,cook_in_furnace:3,]|[]|[];schedY=[food:130,iron_ingot:31,bucket:2,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:12,food:100,cook_in_furnace:3,]|[]|[];gatherRunnable=[food:130,];coal=7;
 178|704c96e03e859ce7|need=5;ironNeed=0;first=0;keep=3/12;fuel=3/12;cookFuel=0/0/0/0;food=0/true;gatherLogs=8;planLogs=-;gather=[wooden_axe:1,log:8,cobblestone:13,stone_axe:1,furnace:1,food:130,];plan=[food:24,stone_axe:1,food:130,iron_ingot:32,iron_pickaxe:1,iron_axe:1,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];gather3=[wooden_axe:1,log:8,cobblestone:13,stone_axe:1,furnace:1,food:130,];plan3=[food:24,stone_axe:1,food:130,iron_ingot:32,iron_pickaxe:1,iron_axe:1,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];gatherDone=[wooden_axe:1,log:8,cobblestone:13,stone_axe:1,furnace:1,food:70,];planDone=[food:24,stone_axe:1,food:70,iron_ingot:32,iron_pickaxe:1,iron_axe:1,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=true/false;woodSmelts=0/0/0/0;fuelSmelts=16/16/16/16;stock=0/0,5/0,13/0,;schedN=[food:24,stone_axe:1,food:130,iron_ingot:32,iron_pickaxe:1,iron_axe:1,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,]|[]|[];schedY=[food:24,stone_axe:1,food:130,iron_ingot:32,iron_pickaxe:1,iron_axe:1,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,]|[]|[];gatherRunnable=[wooden_axe:1,log:8,cobblestone:13,stone_axe:1,furnace:1,food:130,];coal=9;
 179|4f939ad7d9e517d8|need=4;ironNeed=0;first=0;keep=5/1;fuel=5/1;cookFuel=14/14/14/14;food=22/true;gatherLogs=23;planLogs=-;gather=[log:23,food:130,];plan=[food:130,shears:1,iron_ingot:33,iron_axe:1,bucket:2,flint_and_steel:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];gather3=[log:23,food:130,];plan3=[food:130,shears:1,iron_ingot:33,iron_axe:1,bucket:2,flint_and_steel:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];gatherDone=[log:23,food:70,];planDone=[food:70,shears:1,iron_ingot:33,iron_axe:1,bucket:2,flint_and_steel:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=SMOKER;toMakeY=true;smokerLogs=5;feasible=false;reusable=false/false;woodSmelts=0/0/0/0;fuelSmelts=8/8/8/8;stock=0/0,8/0,16/0,;schedN=[food:130,shears:1,iron_ingot:33,iron_axe:1,bucket:2,flint_and_steel:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,]|[]|[];schedY=[food:130,shears:1,iron_ingot:33,iron_axe:1,bucket:2,flint_and_steel:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,food:100,]|[]|[];gatherRunnable=[log:23,food:130,];coal=6;
-180|cceacc55039cc0d6|need=0;ironNeed=0;first=0;keep=6/0;fuel=6/0;cookFuel=0/0/0/0;food=19/true;gatherLogs=-;planLogs=-;gather=[cobblestone:13,stone_axe:1,furnace:1,food:130,];plan=[food:24,stone_axe:1,food:130,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];gather3=[cobblestone:13,stone_axe:1,furnace:1,food:130,];plan3=[food:24,stone_axe:1,food:130,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];gatherDone=[cobblestone:13,stone_axe:1,furnace:1,food:70,];planDone=[food:24,stone_axe:1,food:70,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=19/19/13/12;fuelSmelts=19/19/13/12;stock=0/0,0/0,0/0,;schedN=[food:24,stone_axe:1,food:130,iron_ingot:28,ladder:3,diamond:3,wool:9,food:100,planks:17,]|[iron_axe:1,shield:1,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[];schedY=[food:24,stone_axe:1,food:130,iron_ingot:28,ladder:3,diamond:3,wool:9,food:100,planks:17,food:130,wool:18,]|[iron_axe:1,shield:1,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[food:130,wool:18,];gatherRunnable=[cobblestone:13,stone_axe:1,furnace:1,food:130,];coal=7;
+180|7b9bad384f94546d|need=0;ironNeed=0;first=0;keep=6/0;fuel=6/0;cookFuel=0/0/0/0;food=19/true;gatherLogs=-;planLogs=-;gather=[cobblestone:13,stone_axe:1,furnace:1,food:130,];plan=[food:24,stone_axe:1,food:130,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];gather3=[cobblestone:13,stone_axe:1,furnace:1,food:130,];plan3=[food:24,stone_axe:1,food:130,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];gatherDone=[cobblestone:13,stone_axe:1,furnace:1,food:70,];planDone=[food:24,stone_axe:1,food:70,iron_ingot:28,iron_axe:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,wool:9,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=19/19/13/12;fuelSmelts=19/19/13/12;stock=0/0,0/0,0/0,;schedN=[food:24,stone_axe:1,food:130,iron_ingot:28,ladder:3,wool:9,food:100,planks:17,]|[iron_axe:1,shield:1,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,]|[];schedY=[food:24,stone_axe:1,food:130,iron_ingot:28,ladder:3,wool:9,food:100,planks:17,food:130,wool:18,]|[iron_axe:1,shield:1,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,diamond:3,]|[food:130,wool:18,];gatherRunnable=[cobblestone:13,stone_axe:1,furnace:1,food:130,];coal=7;
 181|25696926a70e38e8|need=0;ironNeed=0;first=0;keep=4/0;fuel=11/0;cookFuel=0/0/0/0;food=104/false;gatherLogs=-;planLogs=-;gather=[wooden_axe:1,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_pickaxe:1,stone_axe:1,];gather3=[wooden_axe:1,stone_pickaxe:2,stone_axe:1,furnace:1,];plan3=[stone_pickaxe:1,stone_axe:1,];gatherDone=[wooden_axe:1,stone_pickaxe:2,stone_axe:1,furnace:1,];planDone=[stone_pickaxe:1,stone_axe:1,];cook=-;stationN=NONE;toMakeN=false;stationY=SMOKER;toMakeY=true;smokerLogs=4;feasible=false;reusable=true/true;woodSmelts=0/0/0/0;fuelSmelts=24/24/24/24;stock=0/0,0/0,16/0,;schedN=[stone_pickaxe:1,stone_axe:1,]|[]|[];schedY=[stone_pickaxe:1,stone_axe:1,]|[]|[];gatherRunnable=[wooden_axe:1,stone_pickaxe:2,stone_axe:1,furnace:1,];coal=3;
 182|abf89c1312518819|need=0;ironNeed=0;first=0;keep=2/34;fuel=2/34;cookFuel=0/0/0/0;food=61/false;gatherLogs=-;planLogs=-;gather=[stone_pickaxe:2,furnace:1,];plan=[iron_ingot:34,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];gather3=[stone_pickaxe:2,furnace:1,];plan3=[iron_ingot:34,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];gatherDone=[stone_pickaxe:2,furnace:1,];planDone=[iron_ingot:34,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;toMakeN=false;stationY=SMOKER;toMakeY=false;smokerLogs=5;feasible=true;reusable=false/false;woodSmelts=6/6/0/0;fuelSmelts=6/6/0/0;stock=0/0,0/0,8/0,;schedN=[iron_ingot:34,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];schedY=[iron_ingot:34,iron_pickaxe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,wool:24,stone_pickaxe:1,food:100,cook_in_smoker:3,]|[]|[];gatherRunnable=[stone_pickaxe:2,furnace:1,];coal=8;
 183|d6eee6696ebaf228|need=0;ironNeed=0;first=0;keep=3/21;fuel=3/21;cookFuel=0/0/5/0;food=76/true;gatherLogs=-;planLogs=-;gather=[wooden_axe:1,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:27,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:9,food:100,];gather3=[wooden_axe:1,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan3=[stone_pickaxe:1,stone_axe:1,iron_ingot:27,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:9,food:100,];gatherDone=[wooden_axe:1,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];planDone=[stone_pickaxe:1,stone_axe:1,iron_ingot:27,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_helmet:1,iron_leggings:1,iron_boots:1,equip_armor:1,wool:9,food:100,];cook=-;stationN=NONE;toMakeN=false;stationY=NONE;toMakeY=false;smokerLogs=4;feasible=false;reusable=false/false;woodSmelts=21/21/15/13;fuelSmelts=53/53/47/45;stock=0/0,0/0,0/0,;schedN=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:27,ladder:3,equip_armor:1,wool:9,food:100,build_blocks:32,flint:1,]|[iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[];schedY=[stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:27,ladder:3,equip_armor:1,wool:9,food:100,build_blocks:32,flint:1,food:130,wool:18,build_blocks:64,]|[iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,iron_helmet:1,iron_leggings:1,iron_boots:1,]|[food:130,wool:18,build_blocks:64,];gatherRunnable=[wooden_axe:1,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];coal=6;
@@ -283,7 +283,7 @@
 282|cc97ce613ce4fb21
 283|0f23e6f405f9fb48
 284|48cb859a29f39e26
-285|ff44da754d46d9d2
+285|d421611e85949f98
 286|69d2a8b50b2cb459
 287|d2f8cf259517d984
 288|066eefa18ed982df
@@ -553,7 +553,7 @@
 552|e3ae341734d9bae9
 553|bf5af2cc436cee38
 554|079d01c8220f95c9
-555|88e82598ca95f5b4
+555|81b765a5f6f9f1c8
 556|c339dfb31cfe4a9d
 557|4159d51f07a3f418
 558|ef195a5eb8f82bdf
@@ -800,7 +800,7 @@
 799|188e51eb94762c3c
 800|1cd85ad6ed582cd6
 801|01d448ac7a36ff6f
-802|84f4d66fd0ed40e8
+802|344a2cab46f94371
 803|84dcde13f8c06519
 804|46082ce5b2b89275
 805|ef18e3cd653ebbbd
@@ -1069,7 +1069,7 @@
 1068|b825d04b61e464d1
 1069|c864a1e234c02168
 1070|d98268d368d8fff8
-1071|e2832dabe69bcc13
+1071|3f8374fc6958e18d
 1072|0079a33e07b06618
 1073|271627704deada81
 1074|716014906e4c7a30
@@ -1113,7 +1113,7 @@
 1112|cb3b335948f41b70
 1113|172da56adb8e1239
 1114|7e837a41ff0e6fc0
-1115|30d4fb4fb40a1362
+1115|2bc7fb0f792c4d0a
 1116|6d5beaf7dec897eb
 1117|4b80b1fc918b5a19
 1118|951f1626b28baf3c
@@ -1310,7 +1310,7 @@
 1309|86c1523961d1c2f8
 1310|ba07dbd2db44e287
 1311|dcc927a4ac22137c
-1312|1856069f1e849a0f
+1312|2fd48462506c5856
 1313|34be1aecf464592f
 1314|92c0be78bb641f07
 1315|9d68d66a3478dbb2
@@ -1684,7 +1684,7 @@
 1683|d121f25cd2c1e875
 1684|04f601b8a830edae
 1685|77a62b05ade37fea
-1686|2da26fca6c3f73e7
+1686|8b4869aab04dc4e7
 1687|88fd954cd8cc41fc
 1688|6dc92622272223f1
 1689|4be52ebe46a63fae
@@ -1747,7 +1747,7 @@
 1746|c7b0877072117ebb
 1747|878032977ccca8e6
 1748|e19cf3c0c57e2949
-1749|029e44e6574909f0
+1749|ab464571bcfdb4bf
 1750|cc4915611b9c0e55
 1751|e96b69b19484b5c3
 1752|e19fa8b8d145cb3c
@@ -1770,7 +1770,7 @@
 1769|26c14d48131b4e61
 1770|98b5ec409c8e4916
 1771|311c1f61f0e6dfe6
-1772|d001897e4f98e5db
+1772|c9234bcbacdb1f59
 1773|82453b8c717146b5
 1774|e3837b3290571fcb
 1775|ec8d456c72310275
@@ -1992,7 +1992,7 @@
 1991|c3db37211c692cff
 1992|41e15f39495d4ab1
 1993|33309f240b607b4a
-1994|c0453608b3ceccb5
+1994|55db3ff4703b6fc9
 1995|646e70dd74606d56
 1996|1a0ee4a337cf755c
 1997|1f8356f8b2289280
@@ -2005,7 +2005,7 @@
 2004|092586e17f3ac818
 2005|b7b3917d48902419
 2006|454fd45c59533c8d
-2007|4f166e4f7618e7e8
+2007|861b4a043e8e8a37
 2008|ca6e6fd7de3cb2f2
 2009|99621025aecfb992
 2010|dfc876ad7f31fa94
@@ -2233,7 +2233,7 @@
 2232|fa9a4da4ff807e4a
 2233|d622aa95f56a453b
 2234|a0c51c38c01640d7
-2235|dc34c1bdcd42ddcd
+2235|48045b04b7a8dcba
 2236|98082423e33fab02
 2237|e872527070eda055
 2238|595cfe259514e6f0
@@ -2243,7 +2243,7 @@
 2242|0281711ebea7110a
 2243|03a183fb56436c3d
 2244|2899abee50255568
-2245|f83cfb6a42395de9
+2245|2190b8bad4f368f9
 2246|182b4a0cab085f0a
 2247|a1cd67fe30730bd3
 2248|f4eff3a13c0ea513
@@ -2458,7 +2458,7 @@
 2457|2f7431576462b096
 2458|df5bbd62a4e629f9
 2459|7009ca765233f86c
-2460|1db98dce5db3ff78
+2460|32de479e91a995b7
 2461|597a06e23008f1d8
 2462|a4283125407b3d51
 2463|a2d9259dbe98c65e
@@ -2521,7 +2521,7 @@
 2520|d13436701302e493
 2521|0b685c8864a96f3e
 2522|53cc4e9d72283c71
-2523|b41fd3adaaeffdb2
+2523|98538075246b38ba
 2524|6fde9d58e7386088
 2525|7ac5ae632d3cdd75
 2526|29a35612471c10f5
@@ -2639,7 +2639,7 @@
 2638|f5fec233f689fa58
 2639|407cee2261f557be
 2640|12eb4b125613d37a
-2641|aad787fca7aaf068
+2641|2c311ffbf888c762
 2642|8730a1cfedf62132
 2643|679955a5f7cc16b9
 2644|a4a78d5e1ab34220
@@ -2767,7 +2767,7 @@
 2766|ee3e1d105d5e8c24
 2767|47fd0b454a640b23
 2768|397899d967502e90
-2769|a2bb5c66b4a3e275
+2769|b8a4a3fc8c3dc9cc
 2770|6ec5472fe914ab5e
 2771|621639b4ab74d1ca
 2772|8c1d54dc882c4291
@@ -2841,7 +2841,7 @@
 2840|0f19c6740841c024
 2841|217fd4e1fa16e713
 2842|b3e777f555997e22
-2843|397d232f60a22178
+2843|1468e31b0d85490a
 2844|aa736ee4a559a39c
 2845|42bf07d1ceca661d
 2846|dd04287b6a27ee6b
@@ -3298,7 +3298,7 @@
 3297|bac7601d9f8a9a33
 3298|8e64aa162b45ae25
 3299|eb505332af4480b4
-3300|f00a2401dd84dea3
+3300|4d6537ecf400ae87
 3301|59d7352077b25910
 3302|e0f4d0bd53b5727e
 3303|f4f93da16176671f
@@ -3443,7 +3443,7 @@
 3442|87d4729b66e0b8c6
 3443|37909fbcd57c6eed
 3444|4c6549cfe43d6ace
-3445|a88504341ab0418c
+3445|185eea4a48f6491d
 3446|d9d3ffd324370d7a
 3447|fff7ee91a89df2e0
 3448|65b40930502649ae
@@ -3603,7 +3603,7 @@
 3602|a64d6f5d4f7a66e7
 3603|e6526631f7daf07f
 3604|fcf057e48eddd59c
-3605|aef50532edcd0a53
+3605|922df6129e17d742
 3606|182f8c289866666a
 3607|5557028b6402f830
 3608|fc363671f3cc25c4
@@ -4153,7 +4153,7 @@
 4152|9732e76d5ab67eab
 4153|c217a0e4fa1eaba1
 4154|60edbcb2be76458b
-4155|6c6e4d46a39ca083
+4155|9e987e530a27dda6
 4156|3a3bbc4918664c8c
 4157|6ee832b692bd507a
 4158|a99a8e13e499e568
@@ -4361,7 +4361,7 @@
 4360|2d64b8a5c5182796
 4361|8800a44c12a7fb2a
 4362|5e0519a60fc47462
-4363|e0d1d47b8b36370b
+4363|404b3e98009a9bf9
 4364|4aa747dca870141b
 4365|4284702a77b6314c
 4366|68f65acf9ad0ad09
@@ -4376,7 +4376,7 @@
 4375|fd16eb8de5aac336
 4376|323f3c348902c12f
 4377|9ee61bd255cc117f
-4378|2e5af33f1ee7eccf
+4378|d3d133f20e9569c3
 4379|12809dadde6b8045
 4380|3772dcb18a6b1b70
 4381|c2b91454498f9b90
@@ -4406,7 +4406,7 @@
 4405|d4e200a40bd89eee
 4406|88aff731f9af04c9
 4407|aa87cf83d8cb7c8a
-4408|5800eb29b89102b5
+4408|4ca9517e2f6a04c4
 4409|58edfd5ea3b6dec8
 4410|ac7dc9a1641d4ec2
 4411|5b565449ef2b39c7
@@ -4750,7 +4750,7 @@
 4749|8fdba3749755b7d1
 4750|3375aa0c672caa6f
 4751|3be7b46329b91ba2
-4752|e24ed68d5d2f5658
+4752|7691517049a47495
 4753|32e4f22d6d5c7a8c
 4754|7fae6fb8bb6016a5
 4755|46ae6e34d9008893
@@ -4765,7 +4765,7 @@
 4764|1fb6b0cfeaa72c89
 4765|b49466afe373ca9c
 4766|da4f23ce57f52d19
-4767|c6fd0f1c86e9c4bc
+4767|ddfbfa6ad1f8d476
 4768|0a0bd5c5417852b9
 4769|a5d9aec5148c775d
 4770|3e0b81942ec11f4c
