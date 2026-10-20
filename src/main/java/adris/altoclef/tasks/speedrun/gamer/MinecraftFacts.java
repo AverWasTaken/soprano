@@ -493,6 +493,11 @@ public final class MinecraftFacts implements GamerFacts {
     }
 
     @Override
+    public boolean diamondHuntGaveUp() {
+        return state != null && state.diamondHuntGaveUp;
+    }
+
+    @Override
     public boolean earlyLoadInFlight() {
         return state != null && FurnacePlan.earlyLoadInFlight(state.earlyLoadTick, gameTime);
     }
