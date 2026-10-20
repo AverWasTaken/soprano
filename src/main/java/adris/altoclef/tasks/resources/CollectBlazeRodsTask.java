@@ -23,6 +23,8 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // a hiding spot further than this from the spawner is not a spot near the spawner
     private static final double COVER_HOLD_RADIUS = 10;
+    // the cover spot is within 10 of the spawner, ten seconds of walking at it and not getting there is not a long walk
+    private static final int WALK_BACK_STUCK_TICKS = 200;
     private final int _count;
     private final Task _searcher = new SearchChunkForBlockTask(Blocks.NETHER_BRICKS);
     // the fight logic lives in there. this task used to just camp, silently, while blazes it had decided not to see shot at it
@@ -32,6 +34,9 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
     private boolean _camping;
+    // consecutive ticks spent walking back to the camp spot, and which spot
+    private int _walkBackTicks;
+    private BlockPos _walkBackTo;
 
     public CollectBlazeRodsTask(int count) {
         super(Items.BLAZE_ROD, count);
@@ -73,6 +78,9 @@ public class CollectBlazeRodsTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         _camping = false;
+        // the walk back count only survives ticks that are the walk back, anything in between (a fight, a fire) starts it over
+        int walkedBefore = _walkBackTicks;
+        _walkBackTicks = 0;
         // We must go to the nether.
         if (WorldHelper.getCurrentDimension() != Dimension.NETHER) {
             setDebugState("Going to nether");
@@ -91,7 +99,8 @@ public class CollectBlazeRodsTask extends ResourceTask {
             // out of their sight and healing, the spawner can wait. standing here is the plan so it counts as camping, unless
             // there are blazes we could go get, then it is just a breather and not a dud spawner
             setDebugState("Recovering away from the blazes");
-            _camping = _fight.huntable() == 0;
+            // a retreat that stopped healing is dead time just like a dud spawner, the rods watch clocks have to see it
+            _camping = _fight.huntable() == 0 || _fight.retreatGaveUp();
             return null;
         }
 
@@ -101,8 +110,16 @@ public class CollectBlazeRodsTask extends ResourceTask {
             BlockPos hide = _fight.campSpot();
             if (hide != null && hide.closerToCenterThan(Vec3.atCenterOf(_foundBlazeSpawner), COVER_HOLD_RADIUS)) {
                 if (!hide.closerToCenterThan(mod.getPlayer().position(), 1.5)) {
-                    setDebugState("Going back to cover");
-                    return new GetToBlockTask(hide, false);
+                    int walked = hide.equals(_walkBackTo) ? walkedBefore + 1 : 1;
+                    if (walked <= WALK_BACK_STUCK_TICKS) {
+                        _walkBackTo = hide;
+                        _walkBackTicks = walked;
+                        setDebugState("Going back to cover");
+                        return new GetToBlockTask(hide, false);
+                    }
+                    // cannot get back there, same as BlazeCoverTask handing a stuck spot to markBad. camp where we are
+                    // this tick, the spawner walk takes over next tick and the next cover picks somewhere else
+                    _fight.campSpotUnreachable();
                 }
             } else if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), 4)) {
                 setDebugState("Going to blaze spawner");
