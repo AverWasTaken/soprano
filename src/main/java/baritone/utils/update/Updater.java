@@ -117,13 +117,20 @@ public final class Updater {
         submit(this::runDownload);
     }
 
-    // also from DISABLED once checkForUpdates got turned back on, so the card doesn't need a restart for that
+    // also from DISABLED once checkForUpdates got turned back on, so the card doesn't need a restart for that.
+    // turned off counts too: no network at all then, the card just goes back to DISABLED
     public void recheck() {
         boolean enabledNow = checkForUpdates();
         synchronized (this) {
             boolean retryable = state == UpdateState.CHECK_FAILED || state == UpdateState.UP_TO_DATE
-                    || (state == UpdateState.DISABLED && enabledNow && started.get());
+                    || (state == UpdateState.DISABLED && started.get());
             if (!retryable || running == null) {
+                return;
+            }
+            if (!enabledNow) {
+                state = UpdateState.DISABLED;
+                error = null;
+                publish();
                 return;
             }
             state = UpdateState.CHECKING;
@@ -210,6 +217,10 @@ public final class Updater {
             return;
         }
         synchronized (this) {
+            if (state != UpdateState.CHECKING) {
+                // reconcile found a staged jar while this check sat in the queue, that answer beats this one
+                return;
+            }
             pick = found;
             release = found == null ? null : new Snapshot.Release(found.version().raw(), found.title(),
                     Markdown.plain(found.body()), found.htmlUrl(), found.asset() == null ? 0 : found.asset().size());
@@ -229,6 +240,9 @@ public final class Updater {
     }
 
     private synchronized void checkFailed(String why) {
+        if (state != UpdateState.CHECKING) {
+            return;
+        }
         state = UpdateState.CHECK_FAILED;
         error = why;
         publish();
@@ -328,7 +342,8 @@ public final class Updater {
         return pick == null ? null : pick.notInstallable();
     }
 
-    // callers hold the lock
+    // callers hold the lock. canInstall is about the picked release, so the ui should only read it in AVAILABLE and
+    // FAILED. a READY from reconcile has no pick and says false there, which is fine since there's nothing to click
     private void publish() {
         Path jar = self.jar();
         boolean can = installable();

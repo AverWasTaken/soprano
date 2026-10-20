@@ -69,6 +69,9 @@ final class UpdateHttp {
         } catch (TimeoutException e) {
             f.cancel(true);
             throw new IOException("timed out");
+        } catch (InterruptedException e) {
+            f.cancel(true);
+            throw e;
         } catch (ExecutionException e) {
             throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
         }
@@ -120,7 +123,8 @@ final class UpdateHttp {
     }
 
     // the request timeout only covers the headers, a connection that goes quiet mid body would hang the read
-    // forever. the watchdog closes the stream when nothing arrived for stallMs, which unblocks it with an exception.
+    // forever. the watchdog closes the stream when nothing arrived for stallMs, which unblocks it (an exception or an
+    // early end, either way the size check fails it).
     // returns the byte count, which is past expected (and the rest unread) when the server sends too much
     static long copy(InputStream in, Path part, MessageDigest md, long expected, long stallMs, LongConsumer progress) throws IOException {
         AtomicLong last = new AtomicLong(System.currentTimeMillis());
