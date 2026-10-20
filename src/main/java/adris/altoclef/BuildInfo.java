@@ -13,6 +13,8 @@ public final class BuildInfo {
 
     private static String id;
     private static String built;
+    private static String version;
+    private static String minecraftVersion;
 
     private BuildInfo() {
     }
@@ -29,6 +31,22 @@ public final class BuildInfo {
             built = read(RESOURCE, "buildTime");
         }
         return built;
+    }
+
+    // "1.1.6" or "1.1.6-anyversion", whatever -Prelease_version said. the updater compares against this
+    public static synchronized String version() {
+        if (version == null) {
+            version = read(RESOURCE, "version");
+        }
+        return version;
+    }
+
+    // the mc line this jar was built for, not whatever version a viafabricplus server pretends to be
+    public static synchronized String minecraftVersion() {
+        if (minecraftVersion == null) {
+            minecraftVersion = read(RESOURCE, "minecraftVersion");
+        }
+        return minecraftVersion;
     }
 
     // "build 1a2b3c4 built 2026-10-10 01:02:03"

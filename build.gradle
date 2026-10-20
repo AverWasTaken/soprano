@@ -194,7 +194,11 @@ processResources {
     // the id is the input, the time is not: a time that changes every configure would redo the resources (and so
     // the tests and the jar) on every single build
     inputs.property "buildId", buildId
+    // the updater reads these back to know what it is and which mc line it's on, so a new -Prelease_version has to
+    // redo the resources or the jar would claim to be the last version forever
+    inputs.property "version", project.version
+    inputs.property "minecraftVersion", project.minecraft_version
     filesMatching("adris/altoclef/build-id.properties") {
-        expand "buildId": buildId, "buildTime": buildTime
+        expand "buildId": buildId, "buildTime": buildTime, "version": project.version, "minecraftVersion": project.minecraft_version
     }
 }

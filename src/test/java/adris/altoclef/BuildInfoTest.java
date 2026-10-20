@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -34,6 +35,8 @@ public class BuildInfoTest {
             assertNotNull(in);
             String raw = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             assertTrue(raw, raw.contains("buildId="));
+            assertTrue(raw, raw.contains("version="));
+            assertTrue(raw, raw.contains("minecraftVersion="));
             assertFalse(raw, raw.contains("${"));
         }
     }
@@ -46,5 +49,14 @@ public class BuildInfoTest {
         assertFalse(BuildInfo.built().contains("${"));
         assertFalse(BuildInfo.id().isEmpty());
         assertTrue(BuildInfo.line().startsWith("build " + BuildInfo.id() + " built "));
+    }
+
+    @Test
+    public void theVersionAndMinecraftLineAreFilledIn() {
+        // the updater refuses to do anything with an unknown version, so a silently broken expand would turn it off
+        assertNotEquals(BuildInfo.UNKNOWN, BuildInfo.version());
+        assertNotEquals(BuildInfo.UNKNOWN, BuildInfo.minecraftVersion());
+        assertFalse(BuildInfo.version().contains("${"));
+        assertFalse(BuildInfo.minecraftVersion().contains("${"));
     }
 }
