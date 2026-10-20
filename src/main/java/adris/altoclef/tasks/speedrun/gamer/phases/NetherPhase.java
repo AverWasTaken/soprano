@@ -183,7 +183,7 @@ public class NetherPhase implements PhaseHandler {
         planner = new NetherSweepPlanner(s, n);
         planner.setGround(new NetherGround(mod, () -> n.waypointShiftBlocks));
         planner.setLog(Debug::logInternal);
-        rodsWatch = new RodsWatch(n.spawnerCampMinutes * 60, n.rodsBudgetMinutes * 60);
+        rodsWatch = new RodsWatch(n.spawnerCampMinutes * 60, n.spawnerDryMinutes * 60, n.rodsBudgetMinutes * 60);
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
         endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
@@ -448,15 +448,16 @@ public class NetherPhase implements PhaseHandler {
         }
         boolean camping = rodsTask.isCampingSpawner();
         BlockPos camped = rodsTask.currentSpawner();
-        if (camping && camped != null) {
+        if (camped != null) {
             // the one the task picked, not whatever the tracker calls nearest: they are not always the same spawner
             RunState.Pos mine = new RunState.Pos(camped.getX(), camped.getY(), camped.getZ());
             if (!mine.equals(s.spawner)) {
                 s.spawner = mine;
+                rodsWatch.spawnerChanged();
                 ctx.save();
             }
         }
-        RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping);
+        RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping, camped != null);
         if (verdict == RodsWatch.Verdict.GIVE_UP_RODS) {
             s.netherRodsGaveUp = true;
             ctx.log("blaze rods are taking too long, moving on with " + rods);
@@ -466,7 +467,9 @@ public class NetherPhase implements PhaseHandler {
         if (verdict == RodsWatch.Verdict.GIVE_UP_SPAWNER) {
             return giveUpSpawner(mod, ctx, now);
         }
-        if (campPinger.ping(now, camping)) {
+        // hiding from or walking out to blazes at our spawner can stand still for a while too, and the rods watch has its
+        // own clocks for a spawner that goes nowhere, so that is not a stall either. a stuck walk to the spawner still is
+        if (campPinger.ping(now, camping || (camped != null && rodsTask.isBusyWithBlazes()))) {
             ctx.progress("waiting at the blaze spawner");
         }
         Task toFortress = walkToKnownFortress(mod, s, now);
@@ -475,8 +478,14 @@ public class NetherPhase implements PhaseHandler {
             return toFortress;
         }
         // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
-        hudState = (camping ? "Waiting for blazes to spawn" : "Collecting blaze rods") + " (" + rods + "/" + rodsNeed + ")";
+        // and "waiting to spawn" with six blazes in view reads like a bug, so say which kind of waiting it is
+        hudState = rodsHud(camping, rodsTask.blazesAround()) + " (" + rods + "/" + rodsNeed + ")";
         return rodsTask;
+    }
+
+    private static String rodsHud(boolean camping, int blazesAround) {
+        if (!camping) return "Collecting blaze rods";
+        return blazesAround > 0 ? "Waiting for blazes to come in reach" : "Waiting for blazes to spawn";
     }
 
     // a fortress we saw (an earlier visit, a relog, the next one after a dud spawner) and are nowhere near: the rods task
