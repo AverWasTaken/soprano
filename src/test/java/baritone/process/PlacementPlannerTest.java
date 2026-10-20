@@ -18,16 +18,23 @@
 package baritone.process;
 
 import adris.altoclef.util.helpers.ItemFixture;
+import baritone.utils.BlockStateInterface;
+import baritone.utils.pathing.BetterWorldBorder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.border.WorldBorder;
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -95,5 +102,62 @@ public class PlacementPlannerTest {
         assertTrue(low.heuristic(5, 64, 5) < high.heuristic(5, 64, 5));
         assertNotEquals(low, high);
         assertEquals(low, new BuilderProcess.GoalPlanned(feet, 64));
+    }
+
+    private static final class MapWorld extends BlockStateInterface {
+        final Map<Long, BlockState> blocks = new HashMap<>();
+
+        MapWorld() {
+            super(new BetterWorldBorder(new WorldBorder()), -64, 384);
+        }
+
+        void set(int x, int y, int z, BlockState s) {
+            blocks.put(BlockPos.asLong(x, y, z), s);
+        }
+
+        @Override
+        protected BlockState getUncached(int x, int y, int z) {
+            // y comes in shifted by -minY
+            return blocks.getOrDefault(BlockPos.asLong(x, y - 64, z), Blocks.AIR.defaultBlockState());
+        }
+
+        @Override
+        public boolean isLoaded(int x, int z) {
+            return true;
+        }
+
+        @Override
+        public boolean worldContainsLoadedChunk(int x, int z) {
+            return true;
+        }
+    }
+
+    @Test
+    public void theTopOfALadderIsNoFloor() {
+        // a ladder shaft up the side of a wall, a stone pillar next to it for comparison, open air all round
+        MapWorld world = new MapWorld();
+        BlockState ladder = Blocks.LADDER.defaultBlockState().setValue(LadderBlock.FACING, Direction.EAST);
+        for (int y = 64; y <= 67; y++) {
+            world.set(-1, y, 0, Blocks.STONE.defaultBlockState());
+            world.set(0, y, 0, ladder);
+            world.set(3, y, 0, Blocks.STONE.defaultBlockState());
+        }
+        PlacementPlanner.CellWants nothing = (x, y, z, current) -> null;
+        BlockPos cell = new BlockPos(10, 70, 10);
+        try {
+            PlacementPlanner.standable(world, nothing, cell, 3, 68, 0);
+        } catch (Throwable t) {
+            Assume.assumeNoException("MovementHelper wants the baritone settings", t);
+        }
+        assertTrue(PlacementPlanner.standable(world, nothing, cell, 3, 68, 0));
+        // 3/16 of a block to stand on, we'd drop into the ladder cell and hang there
+        assertFalse(PlacementPlanner.standable(world, nothing, cell, 0, 68, 0));
+        // in the shaft is a hang spot, sneaking holds us there
+        assertTrue(PlacementPlanner.standable(world, nothing, cell, 0, 66, 0));
+        assertTrue(PlacementPlanner.climbable(ladder));
+        assertFalse(PlacementPlanner.climbable(Blocks.STONE.defaultBlockState()));
+        assertTrue(PlacementPlanner.hangable(ladder));
+        // sneaking in scaffolding is how you go down it
+        assertFalse(PlacementPlanner.hangable(Blocks.SCAFFOLDING.defaultBlockState()));
     }
 }

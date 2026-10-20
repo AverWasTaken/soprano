@@ -28,6 +28,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.accessor.IBlockItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.BlockItem;
@@ -37,6 +38,8 @@ import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -220,7 +223,7 @@ final class PlacementPlanner {
     // somewhere a player fits, with something under it or at least a spot a throwaway can go. a cell the build wants a
     // block in doesn't count as a spot for scaffolding, that's the place and break loop again (roof stairs still get
     // their spots off scaffolding outside the build)
-    private static boolean standable(BlockStateInterface bsi, CellWants wants, BlockPos cell, int x, int y, int z) {
+    static boolean standable(BlockStateInterface bsi, CellWants wants, BlockPos cell, int x, int y, int z) {
         if (x == cell.getX() && z == cell.getZ() && (y == cell.getY() || y + 1 == cell.getY())) {
             return false; // our body would be in it
         }
@@ -230,18 +233,40 @@ final class PlacementPlanner {
         if (!MovementHelper.canWalkThrough(bsi, x, y, z) || !MovementHelper.canWalkThrough(bsi, x, y + 1, z)) {
             return false;
         }
+        if (hangable(bsi.get0(x, y, z))) {
+            // hanging off it, sneaking holds us still (BuilderProcess.steady). the click scan uses the real eye wherever
+            // in the cell we stopped, so a guess that's a bit off fixes itself
+            return true;
+        }
+        BlockState floor = bsi.get0(x, y - 1, z);
+        if (climbable(floor)) {
+            // canWalkOn says yes for pathing's sake, but the top of a ladder is a 3/16 plate and we're 0.6 wide, so we
+            // drop into the ladder cell and hang there bobbing. scaffolding is no better, the sneak we click with
+            // sinks us through it
+            return false;
+        }
         if (MovementHelper.canWalkOn(bsi, x, y - 1, z)) {
             return true;
         }
         if (x == cell.getX() && y - 1 == cell.getY() && z == cell.getZ()) {
             return false; // standing on the cell we're about to fill
         }
-        BlockState under = bsi.get0(x, y - 1, z);
-        if (!MovementHelper.isReplaceable(x, y - 1, z, under, bsi)) {
+        if (!MovementHelper.isReplaceable(x, y - 1, z, floor, bsi)) {
             return false;
         }
-        BlockState want = wants.at(x, y - 1, z, under);
+        BlockState want = wants.at(x, y - 1, z, floor);
         return want == null || want.getBlock() instanceof AirBlock;
+    }
+
+    // ladders by class too, the tests don't load block tags and a ladder is the one that matters
+    static boolean climbable(BlockState state) {
+        return state.getBlock() instanceof LadderBlock || state.is(BlockTags.CLIMBABLE);
+    }
+
+    // climbable and sneaking holds us still in it. scaffolding is the one where a sneak takes us down instead
+    // (LivingEntity.handleOnClimbable leaves it out of the no sliding rule)
+    static boolean hangable(BlockState state) {
+        return climbable(state) && !(state.getBlock() instanceof ScaffoldingBlock);
     }
 
     private static double eyeDistSq(BlockPos cell, int x, int y, int z, double eyeHeight) {
