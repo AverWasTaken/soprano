@@ -1,6 +1,6 @@
-# builds the jars and makes a github release when a tag like soprano-v1.0.0 is pushed
-# laid out like baritone's releases: every jar flavor plus checksums.txt, and a one line note saying which minecraft
-# version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4), see CONTRIBUTING.md
+# builds the jars and makes a github release when a tag like soprano-v1.1.0 is pushed
+# the api jar per loader plus unoptimized fabric, and a one line note saying which minecraft
+# version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4, 1.1.x is 26.3, 1.2.x is 1.21.11), see CONTRIBUTING.md
 
 name: Release
 
@@ -27,12 +27,20 @@ jobs:
         VERSION="${TAG#soprano-v}"
         MC_VERSION="$(grep '^minecraft_version=' gradle.properties | cut -d= -f2)"
         echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+        # soprano-v1.1.5-anyversion is the version-agnostic build: same number, pre-release, fabric only
+        BASE="${VERSION%-anyversion}"
+        ANYVERSION=0
+        if [ "$BASE" != "$VERSION" ]; then ANYVERSION=1; fi
+        echo "BASE_VERSION=${BASE}" >> "$GITHUB_ENV"
+        echo "ANYVERSION=${ANYVERSION}" >> "$GITHUB_ENV"
+        JAVA_VERSION="$(grep '^java_version=' gradle.properties | cut -d= -f2)"
         echo "MC_VERSION=${MC_VERSION}" >> "$GITHUB_ENV"
+        echo "JAVA_VERSION=${JAVA_VERSION}" >> "$GITHUB_ENV"
 
-    - name: Set up JDK 21
+    - name: Set up the JDK this branch wants
       uses: actions/setup-java@v5
       with:
-        java-version: '21'
+        java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
         cache: gradle
 
@@ -54,11 +62,55 @@ jobs:
         ls dist/soprano-api-forge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Forge is supported."
         ls dist/soprano-api-fabric-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Fabric is supported."
         ls dist/soprano-api-neoforge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} NeoForge is supported."
+        # the any version build only ships fabric and runs on a 26.3 client against any server,
+        # so the usual line would be lying. discord_release.py reads this one for "Supports" too
+        if [ "$ANYVERSION" = "1" ]; then
+          NOTES="This version is base ${MC_VERSION} MC that is compatible with every server version. May be bug prone. Fabric only."
+        fi
         echo "$NOTES" > release-notes.md
+        # the what's fixed list lives in release-notes/<version>.md, tack it on when there is one
+        if [ -f "release-notes/${VERSION}.md" ]; then
+          echo "" >> release-notes.md
+          cat "release-notes/${VERSION}.md" >> release-notes.md
+        fi
         cat release-notes.md
 
     - name: Create the release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create "$GITHUB_REF_NAME"           --title "Soprano v${VERSION}"           --notes-file release-notes.md           dist/*.jar dist/checksums.txt
+        # only the jars people download: api per loader, plus unoptimized fabric for readable crash logs.
+        # standalone and the loader-less jars sat at 0 downloads, so they don't ship
+        # the any version build bundles viafabricplus, which is fabric only, so the other loaders stay home
+        CANDIDATES="dist/soprano-api-fabric-${VERSION}.jar dist/soprano-api-forge-${VERSION}.jar dist/soprano-api-neoforge-${VERSION}.jar dist/soprano-unoptimized-fabric-${VERSION}.jar"
+        if [ "$ANYVERSION" = "1" ]; then
+          CANDIDATES="dist/soprano-api-fabric-${VERSION}.jar dist/soprano-unoptimized-fabric-${VERSION}.jar"
+        fi
+        FILES=""
+        for f in $CANDIDATES; do
+          [ -f "$f" ] && FILES="$FILES $f"
+        done
+
+        TITLE="Soprano v${VERSION} (${MC_VERSION})"
+        if [ "$ANYVERSION" = "1" ]; then
+          TITLE="Soprano v${BASE_VERSION} Any Version (base ${MC_VERSION})"
+        fi
+
+        # github hands out latest by semver, so 1.2.0 on 1.21.11 would steal it from 26.3. spell it out every time
+        FLAGS="--latest=false"
+        case "$VERSION" in
+          *-*) FLAGS="--latest=false --prerelease" ;;
+          *) if [ "$MC_VERSION" = "26.3" ]; then FLAGS="--latest"; fi ;;
+        esac
+
+        echo "title: $TITLE"
+        echo "flags: $FLAGS"
+        echo "files:$FILES"
+        gh release create "$GITHUB_REF_NAME" --title "$TITLE" $FLAGS --notes-file release-notes.md $FILES
+
+    # a release made with this token never fires the release event, so discord.yml wouldn't see it
+    - name: Post the release to discord
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: python3 .github/scripts/discord_release.py "$GITHUB_REF_NAME" "${{ github.repository }}"
