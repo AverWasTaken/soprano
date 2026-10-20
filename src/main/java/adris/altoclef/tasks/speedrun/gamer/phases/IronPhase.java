@@ -93,8 +93,10 @@ public class IronPhase implements PhaseHandler {
     private boolean starvedSaid;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
-    // this tick's plan as the path that ran saw it, and the attempt clock on the last tick the diamond dig led (-1 = it did not)
+    // this tick's plan as the path that ran saw it, whether the kit runner ran the diamond dig this tick, and the attempt clock on
+    // the last tick it did (-1 = it did not)
     private List<KitNeed> tickNeeds;
+    private boolean dug;
     private double huntAge = -1;
 
     @Override
@@ -176,6 +178,7 @@ public class IronPhase implements PhaseHandler {
         starvedSaid = false;
         foodBand = -1;
         tickNeeds = null;
+        dug = false;
         huntAge = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
@@ -218,28 +221,28 @@ public class IronPhase implements PhaseHandler {
             arbiterOn = on;
         }
         tickNeeds = null;
+        dug = false;
         Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
-        huntClock(ctx, tickNeeds);
+        huntClock(ctx);
         return task;
     }
 
-    // the diamond dig's clock (DiamondHunt), only on ticks it leads the plan. out of time: the need is gone for the rest of the run
-    private void huntClock(GamerContext ctx, List<KitNeed> needs) {
-        if (!DiamondHunt.digging(needs)) {
-            huntAge = -1;
-            return;
-        }
-        RunState s = ctx.state();
-        double age = ctx.secondsInPhase();
-        s.diamondHuntSeconds = DiamondHunt.add(s.diamondHuntSeconds, huntAge, age);
-        huntAge = age;
-        if (DiamondHunt.over(s.diamondHuntSeconds, ctx.cfg().overworld.diamondPickMinutes, ctx.cfg().budgets.iron, age,
-                DiamondHunt.moreAfter(needs))) {
-            s.diamondHuntGaveUp = true;
-            huntAge = -1;
+    // the diamond dig's clock (DiamondHunt), only on ticks the kit runner ran it. out of time: the need is gone for the rest of the run
+    private void huntClock(GamerContext ctx) {
+        DiamondHunt.Step step = DiamondHunt.tick(ctx.state(), huntAge, dug, tickNeeds, ctx.secondsInPhase(),
+                ctx.cfg().overworld.diamondPickMinutes, ctx.cfg().budgets.iron);
+        huntAge = step.lastAge();
+        if (step.gaveUp()) {
             ctx.log("no diamonds in time, going with the iron pick");
             ctx.save();
         }
+    }
+
+    // every kit run goes through here, so the dig's clock knows it was the runner and not a side job that had the wheel
+    private Task runKit(GamerContext ctx, List<KitNeed> needs) {
+        Task task = runner.run(ctx, needs);
+        dug = task != null && DiamondHunt.digging(runner.current());
+        return task;
     }
 
     // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
@@ -452,7 +455,7 @@ public class IronPhase implements PhaseHandler {
             kitHead = head;
             needEnd.working(head, ctx.facts().gameTime());
         }
-        return runner.run(ctx, needs);
+        return runKit(ctx, needs);
     }
 
     // why the activity that just handed back null is over, for the activity line
@@ -512,7 +515,7 @@ public class IronPhase implements PhaseHandler {
         }
         // the first three raw iron are about to go in: from here the early need stays owed until the furnace is lit
         EarlyIronPick.track(ctx.state(), first, ctx.facts(), ctx.cfg().overworld);
-        Task task = runner.run(ctx, needs);
+        Task task = runKit(ctx, needs);
         hudState = runner.hud();
         return task;
     }
@@ -577,7 +580,7 @@ public class IronPhase implements PhaseHandler {
         }
         committed = head;
         needEnd.working(head, f.gameTime());
-        Task task = runner.run(ctx, runnable);
+        Task task = runKit(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
     }
