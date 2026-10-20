@@ -94,6 +94,14 @@ public final class CombatCommit {
 
     // a run that something in contact keeps hitting us through for this long is not working, and an armed bot turns on it
     public static final long BITTEN_TICKS = 20;
+    // the other way a run is not working: it keeps taking hits. the biter wants a second of unbroken contact, and every hit
+    // knocks us out of contact, so a mob that runs in, swings, gets knocked off and runs in again never added up to anything.
+    // this many hits landed while we run (each one counted once) and an armed bot turns on it, same turn as the biter's
+    public static final int RUN_HITS = 2;
+    // hits in the first this many ticks of a run do not count. a crowd run starts with them on us, and they get their swings in
+    // while we turn round and the first path comes back: that is why we are running, not news that it is not working.
+    // (player i-frames are about 10 ticks and a zombie swings about every 20, so this is a swing or two each)
+    public static final long RUN_HIT_GRACE = 30;
 
     // how far a lobber that hit us is still worth a fight (FoeRules.WITCH_HIT_RANGE is the same number from the other side:
     // how far a witch can be and still be what the poison is blamed on)
@@ -433,6 +441,10 @@ public final class CombatCommit {
     private long capFrom;
     private boolean extended;
     private long bittenSince = -1;
+    // hits landed on us this run after the grace, and per foe the tick of the last one we counted: one hit seen for a hundred
+    // ticks is still one hit, the next swing from the same mob is a new one
+    private int runHits;
+    private final Map<Integer, Long> runHitAt = new HashMap<>();
     private long cornerSince = -1;
     private double cornerX;
     private double cornerZ;
@@ -524,6 +536,7 @@ public final class CombatCommit {
         farSince = -1;
         clearSince = -1;
         bittenSince = -1;
+        clearRunHits();
         cornerSince = -1;
         stuckSince = -1;
         noRoomSince = -1;
@@ -825,6 +838,7 @@ public final class CombatCommit {
         extended = false;
         clearSince = -1;
         bittenSince = -1;
+        clearRunHits();
         cornerSince = -1;
         stuckSince = -1;
         noRoomSince = -1;
@@ -886,6 +900,9 @@ public final class CombatCommit {
         } else if (t.armed() && t.now() - bittenSince >= BITTEN_TICKS && !anyDanger(t)) {
             return startFight(t, biter, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
         }
+        // or it keeps landing hits whether it stays in contact or not
+        Event hitThrough = hitThrough(t);
+        if (hitThrough != Event.NONE) return hitThrough;
 
         Event cramped = noRoomFight(t);
         if (cramped != Event.NONE) return cramped;
@@ -943,11 +960,58 @@ public final class CombatCommit {
     private Foe biter(Tick t) {
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.health()) || ignored.containsKey(foe.id())) continue;
+            // (stillIgnored, not ignored: one we gave up on that bites us again is news, same as candidates())
+            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.health()) || stillIgnored(foe, t.now())) continue;
             if (foe.sinceHit() >= t.now() - startTick) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
         return best;
+    }
+
+    // RUN_HITS hits after the grace and the run is not working. armed with nothing we only run from about, turn on it (the
+    // biter's turn, boxed in rules). no pick this tick keeps the count, the next tick asks again
+    private Event hitThrough(Tick t) {
+        countRunHits(t);
+        if (runHits < RUN_HITS || !t.armed() || anyDanger(t)) return Event.NONE;
+        Foe pick = hitPick(t);
+        if (pick == null) return Event.NONE;
+        return startFight(t, pick, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
+    }
+
+    // a hit counts wherever the hitter is within SWARM_RANGE, not just in contact: the tick we hear about a hit is the tick it
+    // knocked us back, so the mob that did it is three or four blocks off by then. never one we only run from (the warden is
+    // in there), never one we gave up on and that has not hit us since
+    private void countRunHits(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (!foe.hitUs() || !foe.melee() || foe.distance() > CombatRules.SWARM_RANGE) continue;
+            if (foe.mustRun(t.health()) || stillIgnored(foe, t.now())) continue;
+            long at = t.now() - foe.sinceHit();
+            if (at <= startTick + RUN_HIT_GRACE) continue;
+            Long counted = runHitAt.get(foe.id());
+            if (counted != null && at <= counted) continue;
+            runHitAt.put(foe.id(), at);
+            runHits++;
+        }
+    }
+
+    // who the hits turn us on: the closest melee foe in contact, else the closest one that landed a counted hit this run and is
+    // still within 8. same "never one we only run from, no creeper, nothing we gave up on" as chaser()
+    private Foe hitPick(Tick t) {
+        Foe onUs = null;
+        Foe hitter = null;
+        for (Foe foe : t.foes()) {
+            if (!foe.melee() || foe.mustRun(t.health()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (foe.distance() <= CONTACT && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
+            if (foe.distance() <= LOW_HP_RANGE && runHitAt.containsKey(foe.id()) && (hitter == null || foe.distance() < hitter.distance())) {
+                hitter = foe;
+            }
+        }
+        return onUs != null ? onUs : hitter;
+    }
+
+    private void clearRunHits() {
+        runHits = 0;
+        runHitAt.clear();
     }
 
     // still on our heels at the cap: hurt with something near, or a crowd that is still on us
@@ -997,6 +1061,7 @@ public final class CombatCommit {
         farSince = -1;
         clearSince = -1;
         bittenSince = -1;
+        clearRunHits();
         cornerSince = -1;
         stuckSince = -1;
         extended = false;
