@@ -19,6 +19,7 @@ package baritone.process;
 
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CrossCollisionBlock;
 import net.minecraft.world.level.block.DoorBlock;
@@ -112,5 +113,27 @@ public class PlaceRulesTest {
         // not a cube is not the same as aimed: nothing on a fence cares where we looked, a ladder's facing does
         assertFalse(PlaceRules.aimed(Blocks.OAK_FENCE.defaultBlockState()));
         assertTrue(PlaceRules.aimed(Blocks.LADDER.defaultBlockState()));
+    }
+
+    @Test
+    public void usableIsAnythingWithItsOwnRightClick() {
+        for (Block block : List.of(Blocks.CHEST, Blocks.OAK_DOOR, Blocks.IRON_DOOR, Blocks.OAK_TRAPDOOR, Blocks.OAK_FENCE_GATE, Blocks.REPEATER,
+                Blocks.COMPARATOR, Blocks.NOTE_BLOCK, Blocks.LEVER, Blocks.STONE_BUTTON, Blocks.DAYLIGHT_DETECTOR, Blocks.CRAFTING_TABLE,
+                Blocks.ANVIL, Blocks.FLOWER_POT, Blocks.COMPOSTER, Blocks.CAKE, Blocks.OAK_SIGN)) {
+            assertTrue(block.toString(), PlaceRules.usable(block.defaultBlockState()));
+        }
+        // the stuff builds are made of clicks straight through to a placement, no crouch for those
+        for (Block block : List.of(Blocks.STONE, Blocks.OAK_PLANKS, Blocks.OAK_LOG, Blocks.OAK_STAIRS, Blocks.OAK_SLAB, Blocks.GLASS,
+                Blocks.COBBLESTONE_WALL, Blocks.GRASS_BLOCK, Blocks.OAK_LEAVES)) {
+            assertFalse(block.toString(), PlaceRules.usable(block.defaultBlockState()));
+        }
+    }
+
+    @Test
+    public void readsSneakIsTheShortList() {
+        assertTrue(PlaceRules.readsSneak(Blocks.CHEST));
+        assertTrue(PlaceRules.readsSneak(Blocks.CANDLE));
+        assertTrue(PlaceRules.readsSneak(Blocks.SCAFFOLDING));
+        assertFalse(PlaceRules.readsSneak(Blocks.OAK_STAIRS));
     }
 }
