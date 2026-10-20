@@ -67,20 +67,22 @@ final class FallCover {
         }
     }
 
-    // the water at the end of a fall is baritone's to pick up when it's the dest cell and there's an empty bucket on the
-    // hotbar to do it with (MovementFall's isWater branch), so the chain's own pickup would be a second click on the same
-    // water. anything else (water somewhere else, no hotbar bucket) is still the chain's
-    static boolean pickupIsBaritones(boolean placedAtDest, boolean destIsWater, boolean emptyBucketOnHotbar) {
-        return placedAtDest && destIsWater && emptyBucketOnHotbar;
+    // the water at the end of a fall is baritone's to pick up when it's the dest cell, baritone poured it there itself and
+    // will fetch it (MovementFall.canFetch: still a source, not paused) and there's an empty bucket on the hotbar to do it
+    // with, so the chain's own pickup would be a second click on the same water. anything else (water somewhere else,
+    // water the chain poured, no hotbar bucket) is still the chain's
+    static boolean pickupIsBaritones(boolean placedAtDest, boolean baritoneFetches, boolean emptyBucketOnHotbar) {
+        return placedAtDest && baritoneFetches && emptyBucketOnHotbar;
     }
 
     // standing still in a still water source reads -0.005 at the start of a tick: the floor zeroes y, then water gravity
     // (0.08 / 16) goes on after. so the old y >= 0 only ever came true when the swim jump bobbed us up. sinking with no
-    // floor tops out at -0.025, a bit past that is still nobody falling. anything faster is the drop's momentum
+    // floor tops out at -0.025, a bit past that is still nobody falling. anything faster is the drop's momentum.
+    // on dry ground it's worse, -0.0784 every tick (gravity then drag after the floor), so on the ground is just down
     static final double NOT_FALLING_Y = -0.05;
 
     static boolean notFalling(boolean onGround, boolean inWater, double motionY) {
-        return (onGround || inWater) && motionY > NOT_FALLING_Y;
+        return onGround || inWater && motionY > NOT_FALLING_Y;
     }
 
     // our feet in dest or a block next to it, same level. drifting one over while the water slows us is normal, and the

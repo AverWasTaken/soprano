@@ -113,6 +113,9 @@ public class MovementFall extends Movement {
     // built by unplanned(), see updateUnplanned
     private boolean unplanned;
 
+    // we clicked the water bucket at dest this fall. only that water is ours to take back, a pool we landed in isn't
+    private boolean poured;
+
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
 
@@ -146,6 +149,7 @@ public class MovementFall extends Movement {
         lowAtLedge = false;
         bucketRiskyAtLedge = false;
         hurt = false;
+        poured = false;
         plannedDamage = -1;
         ladder = null;
         ladderIn = false;
@@ -251,6 +255,7 @@ public class MovementFall extends Movement {
 
                 if (ctx.isLookingAt(dest) || ctx.isLookingAt(dest.below())) {
                     state.setInput(Input.CLICK_RIGHT, true);
+                    poured = true;
                 }
             }
         }
@@ -264,8 +269,7 @@ public class MovementFall extends Movement {
         } else {
             state.setTarget(new MovementTarget(toDest, false));
         }
-        // flowing water can't go back in a bucket, and the click is eaten while paused
-        boolean canFetch = isWater && !paused && destIsSource() && emptyBucketOnHotbar();
+        boolean canFetch = isWater && canFetch(paused);
         if (canFetch && pickUpWater(state)) {
             return state; // not done until the bucket's full again, same as the ladder
         }
@@ -572,6 +576,11 @@ public class MovementFall extends Movement {
         return ctx.world().getFluidState(dest).getType() == Fluids.WATER;
     }
 
+    // there's water of ours at dest to take back. flowing water can't go in a bucket, and the click is eaten while paused
+    private boolean canFetch(boolean paused) {
+        return poured && !paused && destIsSource() && emptyBucketOnHotbar();
+    }
+
     // take the water at dest back from wherever we ended up next to it. this used to want our feet exactly in dest and
     // y >= 0, and standing still in water is never y >= 0 (FallCover.NOT_FALLING_Y), so a block of drift or just standing
     // there never clicked and the movement timed out with the water left behind. returns true while it has the inputs
@@ -628,8 +637,9 @@ public class MovementFall extends Movement {
             return false;
         }
         boolean at = placed.getX() == dest.x && placed.getY() == dest.y && placed.getZ() == dest.z;
-        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
-        return FallCover.pickupIsBaritones(at, water, Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY)));
+        // the same question updateState asks before pickUpWater, or the chain waits on a click nobody makes
+        boolean ours = canFetch(AltoClefSettings.getInstance().isInteractionPaused());
+        return FallCover.pickupIsBaritones(at, ours, emptyBucketOnHotbar());
     }
 
     // a fall nobody planned (knockback, a slip, a mob) for altoclef to clutch with a ladder or vine. landing is the cell
