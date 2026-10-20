@@ -11,7 +11,6 @@ import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
-import adris.altoclef.AltoSettings;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -28,12 +27,9 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.ConcurrentModificationException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Supplier;
 
 // after a death: walk back to where we died and pick up whatever is lying around there. bounded on purpose, the pile might
@@ -274,14 +270,14 @@ public class RecoverItemsTask extends Task {
         double bestDist = Double.MAX_VALUE;
         FullBag full = new FullBag(mod);
         for (ItemEntity e : drops) {
-            if (full.skips(e.getItem())) {
+            double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
+            if (d > RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS || d >= bestDist) {
                 continue;
             }
-            double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
             // a drop that slid into lava is a drop we are not going swimming for
             boolean lost = RecoverRules.hopeless(level.getFluidState(e.blockPosition()).is(FluidTags.LAVA), e.blockPosition().getY(), level.getMinY());
-            if (d <= RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS && d < bestDist && !lost
-                    && mod.getEntityTracker().isEntityReachable(e)) {
+            // the bag question last, every drop in the world goes through this loop and most are not ours
+            if (!lost && mod.getEntityTracker().isEntityReachable(e) && !full.skips(e.getItem())) {
                 bestDist = d;
                 best = e;
             }
@@ -290,12 +286,11 @@ public class RecoverItemsTask extends Task {
     }
 
     // a full bag at the pile: the drop that would be the next thing thrown is not worth making room for (see RecoverRules.skipWhenFull).
-    // the bag side is only looked at once a drop does not fit, and then once per tick for the reserve
+    // the bag is only read once a pile drop does not fit, and then once per tick no matter how many drops ask
     private static final class FullBag {
         private final AltoClef _mod;
-        private boolean _read;
+        private StorageHelper.GarbageView _view;
         private int _blocksHeld;
-        private Set<Item> _throwaways;
 
         FullBag(AltoClef mod) {
             _mod = mod;
@@ -305,17 +300,16 @@ public class RecoverItemsTask extends Task {
             if (PickupDroppedItemTask.hasRoomFor(_mod, drop)) {
                 return false;
             }
-            if (!_read) {
-                _read = true;
-                _throwaways = new HashSet<>(Arrays.asList(AltoSettings.getThrowawayItems(_mod)));
-                _blocksHeld = StorageHelper.throwawayBlocksHeld(_mod);
+            if (_view == null) {
+                _view = StorageHelper.garbageView(_mod);
+                _blocksHeld = _view.throwawayBlocksHeld();
             }
             Item item = drop.getItem();
             // any throwaway that is not a block, or a block once the reserve is full. the pick alone would let two block kinds take
             // turns (cobble in pushes the first block stack out, which is the netherrack, and round again)
-            boolean junk = _throwaways.contains(item)
+            boolean junk = _view.isThrowaway(item)
                     && (!(item instanceof BlockItem) || _blocksHeld >= Baritone.settings().altoReservedBuildingBlockCount.value);
-            return RecoverRules.skipWhenFull(false, junk, !junk && StorageHelper.dropIsNextGarbage(_mod, drop));
+            return RecoverRules.skipWhenFull(false, junk, !junk && _view.dropIsNext(drop));
         }
     }
 

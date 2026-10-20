@@ -135,8 +135,21 @@ public final class GarbageRules {
     }
 
     // one bag slot as the garbage pick sees it. mayGo is everything the game side asks first (canDropStack, not armor we would wear),
-    // throwaway is "on altoThrowawayItems"
-    public record Entry(ItemStack stack, boolean mayGo, boolean throwaway) {
+    // throwRank is where it sits on altoThrowawayItems (-1 = not on it). the list order is the junk order: gravel and sand sit
+    // ahead of cobble so the blocks that fall on our head go first
+    public record Entry(ItemStack stack, boolean mayGo, int throwRank) {
+        public boolean throwaway() {
+            return throwRank >= 0;
+        }
+    }
+
+    // item -> first spot on the throwaway list, what Entry.throwRank reads from
+    public static java.util.Map<Item, Integer> throwRanks(Item[] throwaways) {
+        java.util.Map<Item, Integer> out = new java.util.HashMap<>();
+        for (int i = 0; i < throwaways.length; i++) {
+            out.putIfAbsent(throwaways[i], i);
+        }
+        return out;
     }
 
     // the whole garbage pick in one place, index into bag or -1: junk (a throwaway that is not a block, else the first throwaway
@@ -154,24 +167,33 @@ public final class GarbageRules {
         return restPick(bag, foodUnits, foodFloor);
     }
 
+    // by throwaway list order, bag order only breaks a tie. the old getJunkSlot walked the list item by item, and going by bag
+    // order instead threw the cobble in the hotbar while the gravel sat in the main bag
     public static int junkPick(List<Entry> bag, int reserve) {
-        int firstBlock = -1;
+        int item = -1;
+        int block = -1;
         int blocks = 0;
         for (int i = 0; i < bag.size(); i++) {
             Entry e = bag.get(i);
             if (!e.throwaway() || !e.mayGo()) {
                 continue;
             }
-            if (!(e.stack().getItem() instanceof BlockItem)) {
-                // Throw away this non-block immediately.
-                return i;
-            }
-            blocks += e.stack().getCount();
-            if (firstBlock < 0) {
-                firstBlock = i;
+            if (e.stack().getItem() instanceof BlockItem) {
+                blocks += e.stack().getCount();
+                block = earlierRank(bag, block, i);
+            } else {
+                // not a block, so it is no use for building either, it goes no matter the reserve
+                item = earlierRank(bag, item, i);
             }
         }
-        return blocks > reserve ? firstBlock : -1;
+        if (item >= 0) {
+            return item;
+        }
+        return blocks > reserve ? block : -1;
+    }
+
+    private static int earlierRank(List<Entry> bag, int best, int i) {
+        return best < 0 || bag.get(i).throwRank() < bag.get(best).throwRank() ? i : best;
     }
 
     private static int toolPick(List<Entry> bag) {
@@ -214,6 +236,12 @@ public final class GarbageRules {
         after.set(pick, drop);
         int next = nextPick(after, reserve, throwUnused, foodUnits, foodFloor);
         return next == pick || (next >= 0 && after.get(next).stack().getItem() == drop.stack().getItem());
+    }
+
+    // the food total once `thrown` is on the floor and `drop` is in. what dropIsNextPick wants for foodUnits: the bag total
+    // as it is still counts the stack that is about to go, and 2 bread off the pile looked like food we had to keep
+    public static int unitsAfterSwap(int foodUnits, ItemStack thrown, ItemStack drop) {
+        return foodUnits - keepUnits(thrown) + keepUnits(drop);
     }
 
     // a bag piece we would put on is not garbage: its slot is bare, or it beats what is on it (points first, toughness breaks a
