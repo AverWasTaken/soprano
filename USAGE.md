@@ -50,13 +50,23 @@ For death, `#wp list death` will list waypoints under the "death" tag (remember 
 
 - `mine diamond_ore iron_ore` to mine diamond ore or iron ore. An amount of blocks can also be specified, for example, `mine 64 diamond_ore`. Turn on the setting `legitMine` to only mine ores that it can actually see, it will explore randomly around y=11 until it finds them
 - `tunnel` to dig a 1x2 tunnel. It will only deviate from the straight line if necessary, such as to avoid lava. For a dumber tunnel that is really just cleararea, you can `tunnel 3 2 100` to clear an area 3 high, 2 wide, and 100 deep
-- `build` to build a schematic. `build blah.schematic` will load `schematics/blah.schematic` and build it with the origin being your player feet. `build blah.schematic x y z` to set the origin. Any of those can be relative to your player (`~ 69 ~-420` would build at x=player x, y=69, z=player z-420)
+- `build` to build a schematic. `build blah.schematic` will load `schematics/blah.schematic` and build it where you placed it in the gui's Schematics tab (same turn and flip), or at your player feet if you never placed it in this dimension. With no extension it looks for a placed file by that name first, then `blah.schematic`. `build blah.schematic x y z` to set the origin. Any of those can be relative to your player (`~ 69 ~-420` would build at x=player x, y=69, z=player z-420). `build` on its own lists what you placed in this dimension and where
 - `litematica` to build the schematic that is currently open in Litematica
 - `schem nether yes|no` answers a survival build from the gui's Schematics tab. Before it goes to the nether for anything (blaze rods for a brewing stand, quartz, nether bricks...) the build stops and asks in chat with clickable [Yes] / [No], and waits as long as it takes. Yes lets it go for the rest of that build, also after a stop and start or a restart. No builds without those blocks and unticks them in the tab, tick them again to build them next time (that start asks again). Moving the build or finishing it forgets the answer. In the tab every item row has a box: unticked items are left out of the next build, and a block others rest on can leave them floating
 - `farm` to automatically harvest, replant, or bone meal crops. Use `farm <range>` or `farm <range> <waypoint>` to limit the max distance from the starting point or a waypoint. Set `farmWaitForGrowth` to `true` to keep farming active while nearby crops are immature
 - `pickup` to pick up dropped items, or `pickup <item1> <item2>` for only certain items
 - `blacklist` to stop Soprano from going to the closest block, so it won't try to get to it again
 - `find` to search through Soprano's cache for the location of a block
+
+### Building a schematic
+
+1. Put the file in `.minecraft/schematics` (or use Import in the tab).
+2. Open the click gui (right shift, or `#gui`) and go to the Schematics tab.
+3. Click the schematic. The see-through blocks in the world show where it will go.
+4. Place it: drag it on the map, press Move to me to put it at your feet, or press Move to fly a camera around and nudge it with the arrows. The turn and mirror buttons spin and flip it.
+5. Click Build, then click it again (the first click only arms it and says where it will build). Survival gathers the materials first, creative just builds.
+
+Once it's placed you can also type `#build <file>` in chat and it builds at the same spot, turned the same way. That's the plain builder though: it doesn't gather materials in survival and it builds the items you unticked in the tab too.
 
 ## Control
 
