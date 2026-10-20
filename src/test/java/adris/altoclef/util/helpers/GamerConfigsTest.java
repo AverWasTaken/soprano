@@ -111,6 +111,17 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void aSavedOverworldFromBeforeTheDiamondPickGetsItsDefaults() throws IOException {
+        // a file saved before the knobs existed: its own overworld numbers stay, the two new keys come from the code
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"diamondSpend\": false, \"netherSparePicks\": 1}}");
+        GamerConfig c = GamerConfigs.load();
+        assertFalse(c.overworld.diamondSpend);
+        assertEquals(1, c.overworld.netherSparePicks);
+        assertTrue(c.overworld.diamondPick);
+        assertEquals(8, c.overworld.diamondPickMinutes, 0);
+    }
+
+    @Test
     public void unknownKeysAreIgnored() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 15, \"somethingNew\": {\"a\": 1}, \"nether\": {\"alsoNew\": true}}");
         GamerConfig c = GamerConfigs.load();

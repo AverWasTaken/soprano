@@ -156,6 +156,12 @@ public interface GamerFacts {
         return FurnaceJobs.pendingUnits(furnaceJobs());
     }
 
+    // the diamond pick dig ran out of time this run (RunState.diamondHuntGaveUp), so the plan stops asking for it. same deal as
+    // cookSuspended: run memory the pure planner reads through the facts
+    default boolean diamondHuntGaveUp() {
+        return false;
+    }
+
     // altoEarlyIronPick: make the iron pickaxe from the first three raw iron (EarlyIronPick). a setting, so the real facts read it
     default boolean earlyIronPick() {
         return true;

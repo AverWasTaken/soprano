@@ -6,10 +6,17 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.HashMap;
 import java.util.List;
@@ -247,8 +254,19 @@ public final class KitRunner {
             case KitNeed.COOK_FURNACE -> new CookRawFoodTask(false);
             case KitNeed.BUILD_BLOCKS -> new GetBuildingMaterialsTask(need.count());
             case KitNeed.EQUIP_ARMOR -> equip.isEmpty() ? null : new EquipArmorTask(equip.toArray(new Item[0]));
+            case KitPlanner.DIAMOND -> diamondDig(need.count());
             default -> TaskCatalogue.taskExists(need.catalogueName()) ? TaskCatalogue.getItemTask(need.catalogueName(), need.count()) : null;
         };
+    }
+
+    // the catalogue's diamond with the detour's lava rule on top: the dig goes deep, where every other vein hugs a lava pocket, and
+    // the catalogue would happily break the ore out from over it (see DetourSpec.lavaTouches)
+    private static Task diamondDig(int count) {
+        return new MineAndCollectTask(new ItemTarget(Items.DIAMOND, count), new Block[]{Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE},
+                MiningRequirement.IRON).ore().onlyWhere(pos -> {
+                    ClientLevel level = Minecraft.getInstance().level;
+                    return level != null && !ResourceDetour.lavaBeside(level, pos);
+                });
     }
 
     // the catalogue hides which sub step it is on, so these are a best guess from what we hold
@@ -265,6 +283,7 @@ public final class KitRunner {
             case "stone_pickaxe", "stone_axe", "stone_sword" -> KitPlanner.have(f, "stone_pickaxe") > 0 || f.has(Items.WOODEN_PICKAXE) ? "Mining stone" : "Chopping wood";
             case "furnace" -> "Making a furnace";
             case "flint" -> "Looking for flint";
+            case KitPlanner.DIAMOND -> "Digging for diamonds";
             case "planks" -> "Making planks";
             case "log" -> "Chopping logs";
             case "cobblestone" -> "Mining stone";

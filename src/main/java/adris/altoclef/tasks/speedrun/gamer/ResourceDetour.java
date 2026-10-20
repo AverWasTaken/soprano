@@ -376,7 +376,8 @@ public final class ResourceDetour {
         return !DetourSpec.underTallColumn(feet.getX(), feet.getY(), feet.getZ(), pos.getX(), pos.getY(), pos.getZ(), stack);
     }
 
-    private static boolean lavaBeside(ClientLevel level, BlockPos pos) {
+    // (KitRunner's diamond dig skips the same ore)
+    static boolean lavaBeside(ClientLevel level, BlockPos pos) {
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         return DetourSpec.lavaTouches((x, y, z) -> level.getFluidState(at.set(x, y, z)).is(FluidTags.LAVA), pos.getX(), pos.getY(), pos.getZ());
     }
