@@ -9,13 +9,17 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -197,19 +201,19 @@ public class DestroyBlockVinesTest {
     public void aVineInFrontOfTheLogIsTheOneToBreak() {
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
-        assertEquals(LOG.east(), DestroyBlockTask.vineInTheWay(w, EYE, LOG, 4.5));
+        assertEquals(LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
     }
 
     @Test
     public void nothingInTheWayMeansNothingToBreak() {
-        assertNull(DestroyBlockTask.vineInTheWay(trunk(), EYE, LOG, 4.5));
+        assertNull(DestroyBlockTask.clearableInTheWay(trunk(), EYE, LOG, 4.5));
     }
 
     @Test
     public void aVineOutOfReachIsLeftAlone() {
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
-        assertNull(DestroyBlockTask.vineInTheWay(w, EYE, LOG, 2.0));
+        assertNull(DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 2.0));
     }
 
     @Test
@@ -217,7 +221,7 @@ public class DestroyBlockVinesTest {
         // leaves in the way (or any other block) aren't something to clear on the way to a log
         MapGetter w = trunk();
         w.set(LOG.east(), Blocks.JUNGLE_LEAVES.defaultBlockState());
-        assertNull(DestroyBlockTask.vineInTheWay(w, EYE, LOG, 4.5));
+        assertNull(DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
     }
 
     @Test
@@ -225,6 +229,82 @@ public class DestroyBlockVinesTest {
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
         w.set(LOG.east(2), vineOn(Direction.WEST));
-        assertEquals(LOG.east(2), DestroyBlockTask.vineInTheWay(w, EYE, LOG, 4.5));
+        assertEquals(LOG.east(2), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
+    }
+
+    private static BlockPos firstHit(BlockGetter w, Vec3 eye, Vec3 to) {
+        return w.clip(new ClipContext(eye, to, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty())).getBlockPos();
+    }
+
+    @Test
+    public void looseStuffInFrontIsOursToBreak() {
+        for (Block loose : new Block[]{Blocks.GRAVEL, Blocks.SAND, Blocks.RED_SAND, Blocks.CONCRETE_POWDER.white(), Blocks.SUSPICIOUS_GRAVEL, Blocks.SUSPICIOUS_SAND}) {
+            MapGetter w = trunk();
+            w.set(LOG.east(), loose.defaultBlockState());
+            assertEquals(loose.toString(), LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
+        }
+    }
+
+    @Test
+    public void anvilsEggsAndWallsAreNot() {
+        for (Block block : new Block[]{Blocks.ANVIL, Blocks.DRAGON_EGG, Blocks.STONE, Blocks.NETHERRACK}) {
+            MapGetter w = trunk();
+            w.set(LOG.east(), block.defaultBlockState());
+            // the ray really does stop on it, or this would pass for the wrong reason
+            assertEquals(block.toString(), LOG.east(), firstHit(w, EYE, Vec3.atCenterOf(LOG)));
+            assertNull(block.toString(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
+        }
+    }
+
+    @Test
+    public void gravelOutOfReachIsLeftAlone() {
+        MapGetter w = trunk();
+        w.set(LOG.east(), Blocks.GRAVEL.defaultBlockState());
+        // its face is 1.5 out
+        assertNull(DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 1.4));
+    }
+
+    @Test
+    public void gravelInFrontOfAFarBlockIsLeftAlone() {
+        MapGetter w = trunk();
+        w.set(LOG.east(), Blocks.GRAVEL.defaultBlockState());
+        // the gravel is in reach, the log (3 out) is not. walking up is the answer, not digging
+        assertNull(DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 2.0));
+        assertEquals(LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 3.1));
+    }
+
+    @Test
+    public void aVineInFrontOfAFarLogStillGoes() {
+        // vines never had the "is the block itself close" question, they go in one swing either way
+        MapGetter w = trunk();
+        w.set(LOG.east(), vineOn(Direction.WEST));
+        assertEquals(LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 2.5));
+    }
+
+    @Test
+    public void neverTheFloor() {
+        // standing on the block at 0 64 0, feet at y 65
+        AABB box = new AABB(0.2, 65, 0.2, 0.8, 66.8, 0.8);
+        assertTrue(DestroyBlockTask.underBox(LOG, box));
+        assertTrue(DestroyBlockTask.underBox(LOG.below(), box));
+        // half over the edge counts too
+        AABB edge = new AABB(0.7, 65, 0.2, 1.3, 66.8, 0.8);
+        assertTrue(DestroyBlockTask.underBox(LOG.east(), edge));
+        assertTrue(DestroyBlockTask.underBox(LOG, edge));
+        // beside us or at our feet is not under us
+        assertFalse(DestroyBlockTask.underBox(LOG.east(), box));
+        assertFalse(DestroyBlockTask.underBox(LOG.above(), box));
+    }
+
+    @Test
+    public void gravelOnlyInTheWayOfAFaceStillCounts() {
+        MapGetter w = new MapGetter();
+        w.set(LOG, Blocks.JUNGLE_LOG.defaultBlockState());
+        w.set(LOG.east(), Blocks.STONE.defaultBlockState());
+        w.set(LOG.above(), Blocks.GRAVEL.defaultBlockState());
+        // a block higher up: the middle ray dips into the stone, the one to the top face runs over it into the gravel
+        Vec3 eye = new Vec3(3.5, 64 + 1.62, 0.5);
+        assertEquals(LOG.east(), firstHit(w, eye, Vec3.atCenterOf(LOG)));
+        assertEquals(LOG.above(), DestroyBlockTask.clearableInTheWay(w, eye, LOG, 4.5));
     }
 }
