@@ -23,9 +23,11 @@ import baritone.utils.pathing.BetterWorldBorder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.border.WorldBorder;
 import org.junit.Assume;
@@ -39,6 +41,7 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 // the bits of the planner that don't need a world. the facing and half themselves come from vanilla's own
@@ -159,5 +162,34 @@ public class PlacementPlannerTest {
         assertTrue(PlacementPlanner.hangable(ladder));
         // sneaking in scaffolding is how you go down it
         assertFalse(PlacementPlanner.hangable(Blocks.SCAFFOLDING.defaultBlockState()));
+    }
+
+    private static BlockState chest(Direction facing, ChestType type) {
+        return Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, facing).setValue(ChestBlock.TYPE, type);
+    }
+
+    @Test
+    public void theFirstHalfOfAChestPairIsFineTillItsPartnerIsThere() {
+        BlockPos pos = new BlockPos(0, 64, 0);
+        BlockState left = chest(Direction.NORTH, ChestType.LEFT);
+        BlockState single = chest(Direction.NORTH, ChestType.SINGLE);
+        BlockState air = Blocks.AIR.defaultBlockState();
+        // vanilla's own idea of where the other half is, and the other half points back
+        BlockPos partner = BuilderProcess.chestPartner(pos, left);
+        assertEquals(ChestBlock.getConnectedBlockPos(pos, left), partner);
+        assertEquals(pos, BuilderProcess.chestPartner(partner, chest(Direction.NORTH, ChestType.RIGHT)));
+        assertNull(BuilderProcess.chestPartner(pos, single));
+        // nothing to join yet, single is as right as it gets
+        assertTrue(BuilderProcess.chestHalfWaiting(single, left, air, true));
+        assertTrue(BuilderProcess.chestHalfWaiting(single, left, Blocks.STONE.defaultBlockState(), false));
+        // a trapped chest never joins a plain one, so it's not a partner either
+        assertTrue(BuilderProcess.chestHalfWaiting(single, left, Blocks.TRAPPED_CHEST.defaultBlockState(), true));
+        // the partner is down, now both have to match for real
+        assertFalse(BuilderProcess.chestHalfWaiting(single, left, single, true));
+        // facing still counts, and a single the file asked for is just valid()
+        assertFalse(BuilderProcess.chestHalfWaiting(chest(Direction.EAST, ChestType.SINGLE), left, air, true));
+        assertFalse(BuilderProcess.chestHalfWaiting(single, single, air, true));
+        assertFalse(BuilderProcess.chestHalfWaiting(chest(Direction.NORTH, ChestType.RIGHT), left, air, true));
+        assertFalse(BuilderProcess.chestHalfWaiting(Blocks.TRAPPED_CHEST.defaultBlockState(), left, air, true));
     }
 }

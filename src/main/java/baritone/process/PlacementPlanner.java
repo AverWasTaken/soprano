@@ -317,7 +317,16 @@ final class PlacementPlanner {
     // hasAnyItemThatWouldPlace does. the state depends on the facing of the player sometimes
     boolean placesRight(BlockState desired, BlockHitResult hit, Rotation rot, ItemStack stack) {
         BlockState would = simulate(hit, rot, stack);
-        return would != null && BuilderProcess.valid(would, desired, true);
+        if (would == null) {
+            return false;
+        }
+        if (BuilderProcess.valid(would, desired, true)) {
+            return true;
+        }
+        // the first half of a chest pair can only come out single, same rule as the bcc's fine. the clicked pos and not
+        // one out of the face, a click on short grass puts the chest in the grass
+        BlockPos partner = BuilderProcess.chestPartner(sneaking(hit, stack).getClickedPos(), desired);
+        return partner != null && BuilderProcess.chestHalfWaiting(would, desired, ctx.world().getBlockState(partner), true);
     }
 
     // null if vanilla would refuse the click

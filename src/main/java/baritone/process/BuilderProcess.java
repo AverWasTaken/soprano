@@ -82,6 +82,7 @@ import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -2771,6 +2772,26 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return sameBlockstate(current, desired);
     }
 
+    // where the other half of a chest the file wants paired goes, null for anything that isn't half a pair
+    static BlockPos chestPartner(BlockPos pos, BlockState desired) {
+        if (!(desired.getBlock() instanceof ChestBlock) || desired.getValue(ChestBlock.TYPE) == ChestType.SINGLE) {
+            return null;
+        }
+        return ChestBlock.getConnectedBlockPos(pos, desired);
+    }
+
+    // a pair goes in one half at a time and the first half can only ever come out single, there's nothing to join yet.
+    // asking for left or right straight away meant no plan for it, or one that put it in, broke it and put it in again.
+    // so a lone half is right for now while the partner cell has no chest it could join. once it does, both have to be
+    // exactly what the file says, and the second half's sneak click on the first one's side is what joins them
+    static boolean chestHalfWaiting(BlockState current, BlockState desired, BlockState partner, boolean itemVerify) {
+        if (!(desired.getBlock() instanceof ChestBlock chest) || current.getBlock() != desired.getBlock()
+                || desired.getValue(ChestBlock.TYPE) == ChestType.SINGLE || current.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+            return false;
+        }
+        return !chest.chestCanConnectTo(partner) && valid(current, desired.setValue(ChestBlock.TYPE, ChestType.SINGLE), itemVerify);
+    }
+
     // flowing water where the file wants air, from a file that has water in it: our own pool running round a corner or
     // out past the selection, not something to fix. a file with no water anywhere still gets it reported
     private boolean spilled(BlockState current, BlockState desired) {
@@ -2850,7 +2871,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         // valid() plus whatever the starter said to keep. every per cell "is this done" asks this one
         private boolean fine(int x, int y, int z, BlockState current, BlockState desired) {
-            return valid(current, desired, false) || kept(x, y, z, current) || spilled(current, desired);
+            return valid(current, desired, false) || kept(x, y, z, current) || spilled(current, desired) || chestWaiting(x, y, z, current, desired);
+        }
+
+        private boolean chestWaiting(int x, int y, int z, BlockState current, BlockState desired) {
+            BlockPos partner = chestPartner(new BlockPos(x, y, z), desired);
+            return partner != null && chestHalfWaiting(current, desired, bsi.get0(partner), false);
         }
 
         private boolean kept(int x, int y, int z, BlockState current) {
@@ -2925,7 +2951,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 }
                 // it should be a real block
                 // is it already that block?
-                if (valid(bsi.get0(x, y, z), sch, false)) {
+                if (valid(bsi.get0(x, y, z), sch, false) || chestWaiting(x, y, z, bsi.get0(x, y, z), sch)) {
                     return Baritone.settings().breakCorrectBlockPenaltyMultiplier.value;
                 } else {
                     // can break if it's wrong
