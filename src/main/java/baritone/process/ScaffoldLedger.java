@@ -21,6 +21,7 @@ import baritone.api.utils.BetterBlockPos;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
@@ -62,12 +63,15 @@ final class ScaffoldLedger {
     // blocks that went in where the file wants a different real block. not cleanup work, the builder swaps them like any
     // wrong block, just not out from under our feet (BuilderProcess.besideUs). so only known, never kept
     private final LongOpenHashSet solid = new LongOpenHashSet();
+    // what went in, per scaffold and solid cell. the builder is off for whole gathers and nights, and a bed or a chest
+    // that lands in the same cell meanwhile is nobody's scaffold. a Block in the game, anything in the tests
+    private final Long2ObjectOpenHashMap<Object> what = new Long2ObjectOpenHashMap<>();
     private final Long2IntOpenHashMap detours = new Long2IntOpenHashMap();
     // first time detours we're still going past, and of those the ones we haven't walked out of reach of yet
     private final LongOpenHashSet passing = new LongOpenHashSet();
     private final LongOpenHashSet near = new LongOpenHashSet();
     private final LongOpenHashSet late = new LongOpenHashSet();
-    // scaffold cells that went back to air or the right block, ever. the watchdog counts these as getting somewhere
+    // scaffold cells that went back to air or the right block, ever. the watchdog counts these during the cleanup
     private long cleared;
     // bumped on every change, the bcc copies only when it moved
     private int version;
@@ -87,6 +91,7 @@ final class ScaffoldLedger {
         scaffold.clear();
         abandoned.clear();
         solid.clear();
+        what.clear();
         detours.clear();
         passing.clear();
         near.clear();
@@ -95,8 +100,9 @@ final class ScaffoldLedger {
     }
 
     // a block went in where the file wants nothing. who put it there doesn't matter, it comes down at the end either way
-    void scaffold(long cell) {
+    void scaffold(long cell, Object block) {
         solid.remove(cell);
+        what.put(cell, block);
         if (scaffold.add(cell)) {
             abandoned.remove(cell);
             version++;
@@ -104,8 +110,14 @@ final class ScaffoldLedger {
     }
 
     // nothing to copy for the bcc, only the game thread asks
-    void solid(long cell) {
+    void solid(long cell, Object block) {
         solid.add(cell);
+        what.put(cell, block);
+    }
+
+    // what we put in a scaffold or solid cell, null for none
+    Object what(long cell) {
+        return what.get(cell);
     }
 
     boolean isSolid(long cell) {
@@ -120,9 +132,10 @@ final class ScaffoldLedger {
         return scaffold.contains(cell) || abandoned.contains(cell);
     }
 
-    // the cell holds air or what the file wants: nothing to take down any more
+    // the cell holds air, what the file wants or somebody else's block: nothing of ours to take down any more
     void gone(long cell) {
         solid.remove(cell);
+        what.remove(cell);
         if (scaffold.remove(cell) | abandoned.remove(cell)) {
             cleared++;
             version++;
@@ -231,6 +244,15 @@ final class ScaffoldLedger {
 
     int detours(long cell) {
         return detours.get(cell);
+    }
+
+    // a fresh start of the same build gets a fresh set of rounds at what the last one left up
+    void unabandon() {
+        if (!abandoned.isEmpty()) {
+            scaffold.addAll(abandoned);
+            abandoned.clear();
+            version++;
+        }
     }
 
     // out of rounds, these stay up

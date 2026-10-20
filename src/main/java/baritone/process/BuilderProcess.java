@@ -47,6 +47,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.InputOverrideHandler;
 import baritone.utils.PathingCommandContext;
+import baritone.utils.accessor.IClientBlockBreak;
 import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SelectionSchematic;
@@ -167,6 +168,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
     private int watchdogTicks;
     private WatchdogProgress watchdogProgress = new WatchdogProgress();
+    private float lastDestroyProgress;
+    // the left click down last tick was the builder's own break, not a movement's
+    private boolean builderDig;
     // where the last path we saw was headed. paths get cancelled all the time, so getPath is empty half the ticks
     private BetterBlockPos lastPathDest;
     private static final int WATCHDOG_TICKS = 200;
@@ -437,7 +441,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (ledger == null) {
             ledger = new ScaffoldLedger(); // BuilderPlacedBuildTest skips the constructor, and the field initializers with it
         }
-        ledger.own(name, this.origin);
+        if (ledger.own(name, this.origin)) {
+            ledger.unabandon();
+        }
         forgetCleanup();
         if (restoreGivenUp && keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
             // a world change in between still wipes it, recalcNearby's seenWorld check sees to that. the for good ones
@@ -1011,6 +1017,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         planBudget = PLANS_PER_TICK;
         // a dig the break branch started last tick and the block is still there: obsidian by hand is ~250 ticks of
         // this and none of them are a stare
+        // forcedClicks still says whether last tick's click was ours, the inner onTick only lets go of it after this
+        builderDig = forcedClicks && baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT);
         digging = baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT) && lastBreak != null
                 && !ctx.world().getBlockState(lastBreak).isAir();
         return onTick(calcFailed, isSafeToCancel, 0);
@@ -1118,7 +1126,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
             // the whole build is right, the repeat too. before the origin moves, so the scaffold is still ours to find
-            if (ledger.endPassing() || cleanupStep()) {
+            if (endPassing() || cleanupStep()) {
                 incorrectPositions = null;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
@@ -1270,7 +1278,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 missingAtPause = Map.of();
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
-            if (ledger.endPassing()) {
+            if (endPassing()) {
                 // after the given up ones get their retry, the dug out cells we were walking past are other work too
                 missingAtPause = Map.of();
                 incorrectPositions = null;
@@ -1473,10 +1481,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         path.ifPresent(p -> lastPathDest = p.getDest());
         snapshotPath(path);
         BetterBlockPos feet = ctx.playerFeet();
-        // scaffold coming down is the cleanup's progress, and it doesn't show up in observedCompleted outside the box
-        long done = (observedCompleted == null ? 0 : observedCompleted.size()) + ledger.cleared();
+        // scaffold coming down is the cleanup's progress, and it doesn't show up in observedCompleted outside the box.
+        // only then: a path digging out a throwaway and putting it back would count as progress every time
+        long done = (observedCompleted == null ? 0 : observedCompleted.size()) + (cleanStage != CleanStage.NONE ? ledger.cleared() : 0);
+        float destroy = ctx.minecraft().gameMode instanceof IClientBlockBreak gameMode ? gameMode.getCurrentBreakingProgress() : 0;
+        boolean digGoing = builderDig && destroy > lastDestroyProgress;
+        lastDestroyProgress = destroy;
         if (watchdogProgress.progressed(done, lastPathDest, feet)) {
             watchdogTicks = 0;
+            return;
+        }
+        if (digGoing) {
+            // our own dig getting further holds the count, it doesn't reset it. obsidian by hand is longer than the
+            // whole watchdog, and a wrong block that keeps going back in wrong still runs out between the digs
             return;
         }
         if (++watchdogTicks < WATCHDOG_TICKS) {
@@ -1781,7 +1798,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         BlockState want = wholeWants(pos.getX(), pos.getY(), pos.getZ(), now);
         if (want != null && !(want.getBlock() instanceof AirBlock)) {
             if (!valid(now, want, false)) {
-                ledger.solid(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()));
+                ledger.solid(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()), now.getBlock());
             }
             return;
         }
@@ -1790,7 +1807,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 origin.getX() + full.widthX() - 1, origin.getY() + full.heightY() - 1, origin.getZ() + full.lengthZ() - 1)) {
             return; // the walk over, not ours
         }
-        ledger.scaffold(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()));
+        ledger.scaffold(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()), now.getBlock());
     }
 
     // once a tick, before the bcc copies it: scaffold that's gone (or turned into the right block) leaves the ledger,
@@ -1823,6 +1840,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         double reach = ctx.playerController().getBlockReachDistance();
         LongArrayList rejoined = ledger.updatePassing(pathCells::contains,
                 cell -> BetterBlockPos.deserializeFromLong(cell).distSqr(feet) <= reach * reach);
+        if (!rejoined.isEmpty()) {
+            workChanged();
+        }
         if (incorrectPositions != null) {
             // recalcNearby only looks around our feet, and a path can carry us well past one before it lets go
             for (long cell : rejoined) {
@@ -1838,9 +1858,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         BlockState now = baritone.bsi.get0(pos.x, pos.y, pos.z);
         BlockState want = wholeWants(pos.x, pos.y, pos.z, now);
-        if (now.getBlock() instanceof AirBlock || (want != null && valid(now, want, false))) {
+        // water, snow, tall grass: nothing a break gets rid of. somebody else's block: not ours to break
+        if (now.canBeReplaced() || !stillOurs(ledger.what(cell), now) || (want != null && valid(now, want, false))) {
             ledger.gone(cell);
         }
+    }
+
+    // by block, not state: leaves change their distance the tick they land, and a dirt pillar top in the light goes
+    // grassy
+    static boolean stillOurs(Object placed, BlockState now) {
+        if (!(placed instanceof Block block) || now.is(block)) {
+            return true;
+        }
+        return block == Blocks.DIRT && (now.is(Blocks.GRASS_BLOCK) || now.is(Blocks.MYCELIUM) || now.is(Blocks.PODZOL));
     }
 
     // nothing else in the whole build is left (or the rest is given up for good): the scaffold is the work now. in
@@ -1854,7 +1884,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     return false;
                 }
                 cleanRound = 1;
-                logDirect(String.format("Nothing else left to build, taking down %s scaffold blocks", ledger.scaffold().size()));
+                if (ledger.hasScaffold()) {
+                    logDirect(String.format("Taking down %s scaffold blocks", ledger.scaffold().size()));
+                }
                 startRound();
             }
             case SCAFFOLD -> {
@@ -1864,7 +1896,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             case OUTSIDE -> toDetours();
             case DETOUR -> {
                 ledger.dropLate(); // put back, or given up on by now. plain cells like any other from here
-                if (freshScaffold() && cleanRound < ScaffoldLedger.ROUNDS) {
+                // a round's own pillars, or whatever it gave up on for a bit, get the next round
+                if (ledger.hasScaffold() && cleanRound < ScaffoldLedger.ROUNDS) {
                     cleanRound++;
                     startRound();
                     return true;
@@ -1879,26 +1912,25 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return true;
     }
 
-    // scaffold that went up during this round, the next round's
-    private boolean freshScaffold() {
-        LongIterator it = ledger.scaffold().iterator();
-        while (it.hasNext()) {
-            if (!cleanCells.contains(it.nextLong())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private void startRound() {
         cleanCells = new LongOpenHashSet(ledger.scaffold());
         cleanStage = CleanStage.SCAFFOLD;
         cleanVersion++;
+        workChanged();
     }
 
     private void toDetours() {
         cleanStage = CleanStage.DETOUR;
         cleanVersion++;
+        workChanged();
+    }
+
+    // cells that were fine a moment ago are work again: the fresh recalc takes them out of observedCompleted, and the
+    // watchdog's best from before would take half the cleanup to beat
+    private void workChanged() {
+        if (watchdogProgress != null) {
+            watchdogProgress.reset();
+        }
     }
 
     // the scaffold the builder can't see. it never makes a goal for those, so this is the goal and the click, nearest
@@ -1960,6 +1992,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             ledgerViewClean = cleanVersion;
         }
         return ledgerView;
+    }
+
+    // the dug out cells we were walking past are the work now
+    private boolean endPassing() {
+        if (!ledger.endPassing()) {
+            return false;
+        }
+        workChanged();
+        return true;
     }
 
     // altoclef's way to tell a build that got to the end (cleanup and all) from one that got knocked off

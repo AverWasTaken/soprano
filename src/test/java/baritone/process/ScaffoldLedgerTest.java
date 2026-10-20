@@ -45,7 +45,7 @@ public class ScaffoldLedgerTest {
     @Test
     public void theSameBuildKeepsItsScaffold() {
         ScaffoldLedger l = owned();
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         // a stop and start, a resume, a repeat: same name, the origin build() got
         assertTrue(l.own("house", ORIGIN));
         assertTrue(l.isScaffold(A));
@@ -54,12 +54,12 @@ public class ScaffoldLedgerTest {
     @Test
     public void aDifferentBuildStartsOver() {
         ScaffoldLedger l = owned();
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         l.detour(B);
         assertFalse(l.own("house", new Vec3i(0, 64, 0)));
         assertFalse(l.isScaffold(A));
         assertEquals(0, l.detours(B));
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         assertFalse(l.own("barn", new Vec3i(0, 64, 0)));
         assertFalse(l.isScaffold(A));
     }
@@ -68,7 +68,7 @@ public class ScaffoldLedgerTest {
     public void anotherDimensionStartsOverButAReconnectDoesnt() {
         ScaffoldLedger l = owned();
         l.world("overworld");
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         l.world("overworld");
         assertTrue(l.isScaffold(A));
         l.world("nether");
@@ -78,7 +78,7 @@ public class ScaffoldLedgerTest {
     @Test
     public void goneScaffoldLeavesAndCounts() {
         ScaffoldLedger l = owned();
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         l.gone(A);
         assertFalse(l.isScaffold(A));
         assertEquals(1, l.cleared());
@@ -90,7 +90,7 @@ public class ScaffoldLedgerTest {
     @Test
     public void aSolidCellIsKnownButNeverKept() {
         ScaffoldLedger l = owned();
-        l.solid(A);
+        l.solid(A, "cobble");
         assertTrue(l.isSolid(A));
         assertFalse(l.isScaffold(A));
         assertTrue(l.view(null, false).kept().isEmpty());
@@ -141,8 +141,8 @@ public class ScaffoldLedgerTest {
     @Test
     public void theViewKeepsWhatTheCleanupIsntOn() {
         ScaffoldLedger l = owned();
-        l.scaffold(A);
-        l.scaffold(B);
+        l.scaffold(A, "cobble");
+        l.scaffold(B, "cobble");
         l.detour(BetterBlockPos.serializeToLong(0, 0, 0));
         long late = BetterBlockPos.serializeToLong(1, 0, 0);
         l.detour(late);
@@ -163,14 +163,37 @@ public class ScaffoldLedgerTest {
     @Test
     public void outOfRoundsTheRestStaysUpButKept() {
         ScaffoldLedger l = owned();
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         assertEquals(1, l.abandon());
         assertFalse(l.hasScaffold());
         assertTrue(l.isScaffold(A));
         assertTrue(l.view(null, false).kept().contains(A));
         // a fresh pillar in the same spot is cleanup work again
-        l.scaffold(A);
+        l.scaffold(A, "cobble");
         assertTrue(l.hasScaffold());
+    }
+
+    @Test
+    public void itRemembersWhatWentInTillItsGone() {
+        ScaffoldLedger l = owned();
+        l.scaffold(A, "cobble");
+        l.solid(B, "dirt");
+        assertEquals("cobble", l.what(A));
+        assertEquals("dirt", l.what(B));
+        l.gone(A);
+        l.gone(B);
+        assertEquals(null, l.what(A));
+        assertEquals(null, l.what(B));
+    }
+
+    @Test
+    public void aFreshStartGetsAnotherGoAtTheLeftovers() {
+        ScaffoldLedger l = owned();
+        l.scaffold(A, "cobble");
+        l.abandon();
+        l.unabandon();
+        assertTrue(l.hasScaffold());
+        assertTrue(l.view(null, false).kept().contains(A));
     }
 
     @Test
