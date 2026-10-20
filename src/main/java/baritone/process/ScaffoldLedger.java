@@ -133,11 +133,14 @@ final class ScaffoldLedger {
     }
 
     // the cell holds air, what the file wants or somebody else's block: nothing of ours to take down any more
-    void gone(long cell) {
+    // counts = it's air or the right block now, not water or a chest
+    void gone(long cell, boolean counts) {
         solid.remove(cell);
         what.remove(cell);
         if (scaffold.remove(cell) | abandoned.remove(cell)) {
-            cleared++;
+            if (counts) {
+                cleared++;
+            }
             version++;
         }
     }
