@@ -236,7 +236,7 @@ public class DestroyBlockVinesTest {
 
     @Test
     public void looseStuffInFrontIsOursToBreak() {
-        for (Block loose : new Block[]{Blocks.GRAVEL, Blocks.SAND, Blocks.RED_SAND, Blocks.CONCRETE_POWDER.white(), Blocks.SUSPICIOUS_GRAVEL, Blocks.SUSPICIOUS_SAND}) {
+        for (Block loose : new Block[]{Blocks.GRAVEL, Blocks.SAND, Blocks.RED_SAND, Blocks.WHITE_CONCRETE_POWDER, Blocks.SUSPICIOUS_GRAVEL, Blocks.SUSPICIOUS_SAND}) {
             MapGetter w = trunk();
             w.set(LOG.east(), loose.defaultBlockState());
             assertEquals(loose.toString(), LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 4.5));
