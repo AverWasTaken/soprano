@@ -9,6 +9,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.List;
 import org.junit.Test;
 
 // the eat / fight / flee call and the one hp line, as numbers
@@ -182,5 +183,64 @@ public class CombatRulesTest {
         // the stall tracker uses the same two, a mob in contact is never stuck and one on our heels while we run neither
         assertEquals(CombatRules.CONTACT_RANGE, MobReachRules.STALL_EXEMPT_RANGE, 0);
         assertEquals(CombatRules.LOW_HP_RANGE, MobReachRules.FLEEING_STALL_RANGE, 0);
+    }
+
+    // ---- the pile shield. zombie 1 is the fight target throughout
+
+    private static final long NEVER = CombatCommit.NEVER;
+
+    private static CombatCommit.Foe zombie(int id, double distance, long sinceHit) {
+        return new CombatCommit.Foe(id, distance, false, false, sinceHit);
+    }
+
+    private static boolean pile(boolean up, CombatCommit.Foe... foes) {
+        return CombatRules.pileShield(up, 1, List.of(foes));
+    }
+
+    @Test
+    public void thePileShieldWantsTheTargetAndAnotherHitterInContact() {
+        assertTrue(pile(false, zombie(1, 2.5, 30), zombie(2, 2.9, 10)));
+        // the target need not have hit us itself, it is the target
+        assertTrue(pile(false, zombie(1, 2.5, NEVER), zombie(2, 2.9, 10)));
+        // the other one hit us but is a step out of contact: not raised yet
+        assertFalse(pile(false, zombie(1, 2.5, 30), zombie(2, 3.5, 10)));
+    }
+
+    @Test
+    public void oneZombieNeverGetsThePileShield() {
+        assertFalse(pile(false, zombie(1, 1, 0)));
+        assertFalse(pile(true, zombie(1, 1, 0)));
+    }
+
+    @Test
+    public void aBystanderInContactIsNotAPile() {
+        assertFalse(pile(false, zombie(1, 2, 0), zombie(2, 2, NEVER)));
+        assertFalse(pile(false, zombie(1, 2, 0), zombie(2, 2, CombatCommit.HIT_MEMORY + 1)));
+    }
+
+    @Test
+    public void aRaisedPileShieldHoldsThroughTheKnockback() {
+        double band = CombatRules.CONTACT_RANGE + CombatRules.PILE_SHIELD_SLACK;
+        assertTrue(pile(true, zombie(1, 4.0, 30), zombie(2, 4.0, 10)));
+        assertTrue(pile(true, zombie(1, band, 30), zombie(2, band, 10)));
+        // the same spread would not raise it
+        assertFalse(pile(false, zombie(1, 4.0, 30), zombie(2, 4.0, 10)));
+        // past the band it drops, either one
+        assertFalse(pile(true, zombie(1, 2, 30), zombie(2, 4.6, 10)));
+        assertFalse(pile(true, zombie(1, 4.6, 30), zombie(2, 2, 10)));
+    }
+
+    @Test
+    public void theTargetOutOfReachDropsThePileShield() {
+        assertFalse(pile(true, zombie(1, 6, 30), zombie(2, 2, 0), zombie(3, 2, 0)));
+        // and gone from the list altogether too
+        assertFalse(pile(true, zombie(2, 2, 0), zombie(3, 2, 0)));
+    }
+
+    @Test
+    public void rangedNeverMakesAPile() {
+        // a skeleton target is not a shield fight, and a skeleton plinking us is not the second mob on us
+        assertFalse(pile(false, new CombatCommit.Foe(1, 2, true, false, 10), zombie(2, 2, 10)));
+        assertFalse(pile(false, zombie(1, 2, 10), new CombatCommit.Foe(2, 2, true, false, 10)));
     }
 }

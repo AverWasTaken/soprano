@@ -112,7 +112,8 @@ public class KillAura {
                 !mod.getMLGBucketChain().isChorusFruiting()) {
             PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
             Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-            // (one zombie does not need the shield, and the shield stops us walking)
+            // (one zombie does not get the shield, it stops us walking and vetoes the crit hop. two hitting us do, see
+            // CombatRules.pileShield)
             if (!_shieldAllowed) {
                 stopShielding(mod);
             } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
