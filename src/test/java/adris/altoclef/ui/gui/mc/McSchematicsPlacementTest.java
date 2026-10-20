@@ -587,6 +587,30 @@ public class McSchematicsPlacementTest {
     }
 
     @Test
+    public void pinnedHereIsOnlyWhatSomebodyChoseInThisDimension() {
+        McSchematics s = make();
+        // looked at, never touched: that's the made-up feet default, #build must not treat it as placed
+        s.placement("wall.schem");
+        assertTrue(s.pinnedHere().isEmpty());
+        s.move("wall.schem", 2, 0, 0);
+        assertEquals(Map.of("wall.schem", new SchematicPlacement(new BlockPos(12, 64, -20), Rotation.NONE, Mirror.NONE,
+            "minecraft:overworld")), s.pinnedHere());
+        game.dimension = "minecraft:the_nether";
+        assertTrue(s.pinnedHere().isEmpty());
+        game.leaveWorld();
+        assertTrue(s.pinnedHere().isEmpty());
+    }
+
+    @Test
+    public void pinnedHereDoesNotWaitForTheFolderScan() {
+        PlacementStore.save(saveFile, Map.of("wall.schem", SchematicPlacement.at(new BlockPos(7, 8, 9), "minecraft:overworld")));
+        // no list(), no drain: the scan never ran
+        McSchematics s = new McSchematics(new SchematicLibrary(dir.toFile()), queue::add, HashMap::new, id -> false,
+            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game, () -> now);
+        assertEquals(new BlockPos(7, 8, 9), s.pinnedHere().get("wall.schem").origin());
+    }
+
+    @Test
     public void atFeetIsTheCornerOnTheFeet() {
         McSchematics s = make();
         assertTrue(s.atFeet("wall.schem"));
