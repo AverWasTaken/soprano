@@ -49,6 +49,7 @@ import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableSet;
+import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -192,8 +193,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the goal each unplanned cell got last time, so it stays put until something about the cell changes. it used to be
     // worked out fresh every tick and flipped between GoalAdjacent and GoalPlace, and every flip cancelled the path
     private Long2ObjectOpenHashMap<StickyGoal> stickyGoals;
-    // cells left out of the goal because the block can't stay there yet (a wall torch with no wall), logged once each
-    private LongOpenHashSet droppedLogged;
+    // cells left out of the goal because the block can't stay there yet (a wall torch with no wall), logged once each.
+    // cell -> builderTicks when it got its line
+    private Long2LongOpenHashMap droppedLogged;
+    // a cell that pops out of the dropped set and back in (a neighbour flickering in and out of placeable) waits this long
+    // before it gets a second line
+    private static final long DROPPED_LOG_FLOOR_TICKS = 200;
     private LongOpenHashSet torchNoPlanLogged;
     private List<BetterBlockPos> dropped = List.of();
     // when the builder last picked or filled each hotbar slot, the oldest one gets overwritten first
@@ -1519,26 +1524,31 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 }
             }
         }
-        if (droppedLogged != null && !droppedLogged.isEmpty()) {
-            // a neighbour going in is usually exactly what a dropped one was waiting for, it can say so again next time
-            droppedLogged.removeIf((long p) -> {
-                BetterBlockPos cell = BetterBlockPos.deserializeFromLong(p);
-                return Math.abs(cell.x - x) <= 1 && Math.abs(cell.y - y) <= 1 && Math.abs(cell.z - z) <= 1;
-            });
-        }
     }
 
-    // one line for the cells that just got left out of the goal, not one per cell per tick
+    // one line for the cells that just got left out of the goal, not one per cell per tick. a cell is forgotten once it
+    // leaves the dropped set (placed, or it can stay now), not when something next to it goes in: in a build something
+    // next to it goes in about every other tick, and every one of those was the same line again
     private void logDropped(BuilderCalculationContext bcc, List<BetterBlockPos> cells) {
-        if (cells.isEmpty()) {
+        if (droppedLogged == null) {
+            if (cells.isEmpty()) {
+                return;
+            }
+            droppedLogged = new Long2LongOpenHashMap();
+        }
+        if (cells.isEmpty() && droppedLogged.isEmpty()) {
             return;
         }
-        if (droppedLogged == null) {
-            droppedLogged = new LongOpenHashSet();
+        LongOpenHashSet now = new LongOpenHashSet(cells.size());
+        for (BetterBlockPos pos : cells) {
+            now.add(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z));
         }
+        droppedLogged.long2LongEntrySet().removeIf(e -> !now.contains(e.getLongKey()) && builderTicks - e.getLongValue() >= DROPPED_LOG_FLOOR_TICKS);
         List<String> fresh = new ArrayList<>();
         for (BetterBlockPos pos : cells) {
-            if (droppedLogged.add(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z))) {
+            long key = BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z);
+            if (!droppedLogged.containsKey(key)) {
+                droppedLogged.put(key, builderTicks);
                 fresh.add(describe(bcc, pos));
             }
         }
