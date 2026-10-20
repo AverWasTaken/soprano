@@ -410,7 +410,7 @@ public class MovementTraverse extends Movement {
     public static boolean godFooting(BlockState srcDown, boolean allowMagma) {
         Block block = srcDown.getBlock();
         return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK)
-                && !opensWhenClicked(srcDown);
+                && !MovementHelper.opensWhenClicked(srcDown);
     }
 
     // the planner's half of the executor's isInWater / onClimbable check, close but not all of it (an open trapdoor over a
@@ -420,14 +420,6 @@ public class MovementTraverse extends Movement {
         Block block = feet.getBlock();
         return feet.getFluidState().isEmpty()
                 && !MovementHelper.isClimbable(block) && block != Blocks.SCAFFOLDING && block != Blocks.CAVE_VINES && block != Blocks.CAVE_VINES_PLANT;
-    }
-
-    // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click
-    // would open the thing and walk us off the edge. block entities cover chests, furnaces, barrels and friends
-    private static boolean opensWhenClicked(BlockState state) {
-        Block block = state.getBlock();
-        return state.hasBlockEntity() || block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE
-                || block == Blocks.SMITHING_TABLE || block == Blocks.LOOM || block == Blocks.NOTE_BLOCK || block == Blocks.RESPAWN_ANCHOR;
     }
 
     // is this the back place the sneaking code would have done: nothing but src.below() to place against. same loop as cost

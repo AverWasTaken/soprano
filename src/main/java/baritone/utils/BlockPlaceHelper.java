@@ -21,6 +21,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.trace.Trace;
 import baritone.Baritone;
 import baritone.api.utils.IPlayerContext;
+import baritone.pathing.movement.MovementHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -199,6 +200,9 @@ public class BlockPlaceHelper {
         ItemStack held = ctx.player().getItemInHand(hand);
         if (held.isEmpty() || !(held.getItem() instanceof BlockItem)) {
             return null; // a door or a chest getting opened isn't a placement
+        }
+        if (!ctx.player().isSecondaryUseActive() && MovementHelper.opensWhenClicked(ctx.world().getBlockState(hit.getBlockPos()))) {
+            return null; // unsneaked that's a use, the gate swings and nothing gets placed. same rule vanilla's click goes by
         }
         BlockPos at = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), hand, held, hit) {}).getClickedPos().immutable();
         BlockState before = ctx.world().getBlockState(at);
