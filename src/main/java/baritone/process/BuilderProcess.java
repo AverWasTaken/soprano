@@ -815,15 +815,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // the click would scoop up whatever fluid it's looking at, likely the one we just poured
             return false;
         }
-        if (!ctx.player().isCrouching()) {
-            // the plan used the sneaking eye, and a standing click on a chest opens it
+        if (!aimLanded(p)) {
             return false;
         }
-        HitResult over = ctx.objectMouseOver();
-        if (!(over instanceof BlockHitResult hit) || over.getType() != HitResult.Type.BLOCK
-                || !hit.getBlockPos().equals(p.placeAgainst) || hit.getDirection() != p.side) {
-            return false;
-        }
+        BlockHitResult hit = (BlockHitResult) ctx.objectMouseOver();
         BlockPos cell = p.target();
         BlockState desired = bcc.getSchematic(cell.getX(), cell.getY(), cell.getZ(), bcc.bsi.get0(cell));
         if (desired == null) {
@@ -831,6 +826,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(p.hotbarSelection);
         return planner().placesRight(desired, hit, ctx.playerRotations(), stack);
+    }
+
+    // the half of placeGateOpen that doesn't care what's in our hand, so the creative give can wait for it too
+    private boolean aimLanded(Placement p) {
+        if (!ctx.player().isCrouching()) {
+            // the plan used the sneaking eye, and a standing click on a chest opens it
+            return false;
+        }
+        HitResult over = ctx.objectMouseOver();
+        return over instanceof BlockHitResult hit && over.getType() == HitResult.Type.BLOCK
+                && hit.getBlockPos().equals(p.placeAgainst) && hit.getDirection() == p.side;
     }
 
     private void forceSneak() {
@@ -1010,6 +1016,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             lastPlaceAim = builderTicks;
             Placement place = toPlace.get();
             if (place.give != null) {
+                if (!aimLanded(place)) {
+                    // the first tick after a walk the sneak hasn't kicked in and the head turns after us (updateTarget),
+                    // so the gate is shut whatever we hand over. a give now just lands in the lru slot and maybe kicks
+                    // out a block the next cell wanted. turn, sneak, and give once the aim is there. the slot is still
+                    // VIRTUAL_SLOT here, which is no hotbar slot at all, so nothing below this gets to see it
+                    baritone.getLookBehavior().updateTarget(place.rot, true);
+                    forceSneak();
+                    if (stalled()) {
+                        giveUpOn(bcc, List.of(BetterBlockPos.from(place.target())), "Couldn't get a place click in");
+                    }
+                    return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+                }
                 // the one give this click needs, right before it. the creative slot packet goes out now, the click later
                 // this tick, and useItemOn sends the slot change ahead of the use packet, so the server sees it in order
                 int slot = creativeSlot();
