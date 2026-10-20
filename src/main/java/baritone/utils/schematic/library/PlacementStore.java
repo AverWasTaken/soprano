@@ -78,6 +78,16 @@ public final class PlacementStore {
 
     // load, and the choices too. same rules: a gone file loses its choices, null = couldn't read it right now
     public static Saved loadAll(Path file, Predicate<String> exists) {
+        try {
+            return read(file, exists);
+        } catch (RuntimeException e) {
+            // that's us failing to understand the file (gson on mangled field names), not the file being broken. null
+            // blocks saving over it, and no moveAside: renaming a good file to .bad would be everyone's placements gone
+            return null;
+        }
+    }
+
+    private static Saved read(Path file, Predicate<String> exists) {
         Map<String, SchematicPlacement> out = new LinkedHashMap<>();
         Map<String, BuildChoices> choices = new LinkedHashMap<>();
         Saved empty = new Saved(out, choices);
@@ -260,8 +270,10 @@ public final class PlacementStore {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
             return true;
-        } catch (IOException e) {
-            System.out.println("schematic placements: could not save " + file + " (" + e.getMessage() + ")");
+        } catch (IOException | RuntimeException e) {
+            // the runtime half is gson choking on our own classes (a release jar with the field names mangled, say).
+            // the placements still live in memory, a failed save must not take the build click down with it
+            System.out.println("schematic placements: could not save " + file + " (" + e + ")");
             return false;
         }
     }
