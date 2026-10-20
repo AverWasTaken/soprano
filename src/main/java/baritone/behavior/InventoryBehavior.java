@@ -182,12 +182,12 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         OptionalInt destination = getTempHotbarSlot(disallowedHotbar);
-        if (destination.isPresent()) {
-            if (!requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who)) {
-                return false;
-            }
+        if (destination.isEmpty()) {
+            // nowhere to put it is not "it's on the hotbar". this said true and the builder went on to stand in the goal
+            // with nothing to click. movePending tells this apart from a swap that's only throttled
+            return false;
         }
-        return true;
+        return requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who);
     }
 
     // a swap somebody asked for that the move delay is still holding back. the builder's stall check counts it as
