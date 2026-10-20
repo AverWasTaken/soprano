@@ -47,6 +47,21 @@ public class SmeltFillerTest {
     }
 
     @Test
+    public void theDiamondDigWaitsForTheCraftsTheFurnaceOwes() {
+        // the essentials in hand, the armor's iron still cooking: the dig is no ingots but it is not the filler either
+        FakeFacts f = atTheFurnace().give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.BUCKET, 2)
+                .give(Items.IRON_AXE, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("iron_ingot", 24, 400);
+        Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
+        assertNull(s.runnable().toString(), find(s.runnable(), KitPlanner.DIAMOND));
+        assertEquals(new KitNeed(KitPlanner.DIAMOND, 3), find(s.blocked(), KitPlanner.DIAMOND));
+        // nothing waiting on the furnace (a smoker cooks the meat, say): the dig is runnable again
+        cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
+        FakeFacts done = atTheFurnace().give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.BUCKET, 2)
+                .give(Items.IRON_AXE, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("cooked_beef", 8, 400);
+        assertEquals(new KitNeed(KitPlanner.DIAMOND, 3), find(SmeltFiller.schedule(done, cfg, BEDS).runnable(), KitPlanner.DIAMOND));
+    }
+
+    @Test
     public void withNoJobTheScheduleIsJustThePlan() {
         FakeFacts f = atTheFurnace();
         Schedule s = SmeltFiller.schedule(f, cfg, BEDS);

@@ -6,6 +6,7 @@ import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.BuildBlocks;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
+import adris.altoclef.tasks.speedrun.gamer.DiamondHunt;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
@@ -92,6 +93,11 @@ public class IronPhase implements PhaseHandler {
     private boolean starvedSaid;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
+    // this tick's plan as the path that ran saw it, whether the kit runner ran the diamond dig this tick, and the attempt clock on
+    // the last tick it did (-1 = it did not)
+    private List<KitNeed> tickNeeds;
+    private boolean dug;
+    private double huntAge = -1;
 
     @Override
     public GamerPhase phase() {
@@ -171,6 +177,9 @@ public class IronPhase implements PhaseHandler {
         cookLatch = false;
         starvedSaid = false;
         foodBand = -1;
+        tickNeeds = null;
+        dug = false;
+        huntAge = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -211,7 +220,35 @@ public class IronPhase implements PhaseHandler {
             needEnd.reset();
             arbiterOn = on;
         }
-        return on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
+        tickNeeds = null;
+        dug = false;
+        Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
+        huntClock(ctx);
+        return task;
+    }
+
+    // the diamond dig's clock (DiamondHunt), only on ticks the kit runner ran it. out of time: the need is gone for the rest of the run
+    private void huntClock(GamerContext ctx) {
+        DiamondHunt.Step step = DiamondHunt.tick(ctx.state(), huntAge, dug, tickNeeds, ctx.secondsInPhase(),
+                ctx.cfg().overworld.diamondPickMinutes, ctx.cfg().budgets.iron);
+        huntAge = step.lastAge();
+        if (step.gaveUp()) {
+            ctx.log("no diamonds in time, going with the iron pick");
+            ctx.save();
+        }
+    }
+
+    // the tick's list without the stock-ups SmeltFiller tacks on the end: an optional log or wool top-up behind the dig is not a
+    // reason to give it up a minute and a half early (DiamondHunt.moreAfter)
+    private static List<KitNeed> planPart(List<KitNeed> needs, Schedule schedule) {
+        return schedule == null ? needs : needs.stream().filter(n -> !schedule.isStockUp(n)).toList();
+    }
+
+    // every kit run goes through here, so the dig's clock knows it was the runner and not a side job that had the wheel
+    private Task runKit(GamerContext ctx, List<KitNeed> needs) {
+        Task task = runner.run(ctx, needs);
+        dug = task != null && DiamondHunt.digging(runner.current());
+        return task;
     }
 
     // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
@@ -234,6 +271,7 @@ public class IronPhase implements PhaseHandler {
             needEnd.reset();
             needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood()));
         }
+        tickNeeds = planPart(needs, schedule);
         KitNeed head = needs.isEmpty() ? null : needs.get(0);
         FurnacePlan.Moment moment = null;
         FurnacePlan.Plan plan = null;
@@ -423,7 +461,7 @@ public class IronPhase implements PhaseHandler {
             kitHead = head;
             needEnd.working(head, ctx.facts().gameTime());
         }
-        return runner.run(ctx, needs);
+        return runKit(ctx, needs);
     }
 
     // why the activity that just handed back null is over, for the activity line
@@ -467,6 +505,7 @@ public class IronPhase implements PhaseHandler {
         needEnd.reset();
         List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(),
                 ctx.wood()));
+        tickNeeds = needs;
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -482,7 +521,7 @@ public class IronPhase implements PhaseHandler {
         }
         // the first three raw iron are about to go in: from here the early need stays owed until the furnace is lit
         EarlyIronPick.track(ctx.state(), first, ctx.facts(), ctx.cfg().overworld);
-        Task task = runner.run(ctx, needs);
+        Task task = runKit(ctx, needs);
         hudState = runner.hud();
         return task;
     }
@@ -499,6 +538,7 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
                 ctx.food(), ctx.wood(), ctx.buildBlocks());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
+        tickNeeds = planPart(runnable, schedule);
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
         // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder.
@@ -546,7 +586,7 @@ public class IronPhase implements PhaseHandler {
         }
         committed = head;
         needEnd.working(head, f.gameTime());
-        Task task = runner.run(ctx, runnable);
+        Task task = runKit(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
     }
