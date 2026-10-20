@@ -86,6 +86,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -1206,7 +1207,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // a stale plan's old feet: the new look may well say stand somewhere else, so it's not ours to give up yet.
             // planOrder puts the one we're parked for first, so this is a tick or two
             // once the wait ran out it's upstream's goal like any other, and gets given up like any other
-            if (owner.second().isInGoal(feet) && (pendingWaitedOut || !replanPending(pos, bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))))) {
+            if (!owner.second().isInGoal(feet)) {
+                continue;
+            }
+            BlockState current = bcc.bsi.get0(pos.x, pos.y, pos.z);
+            // same test assemble sorts placeable by
+            boolean placing = current.getBlock() instanceof AirBlock;
+            if (!heldForPlan(placing, pendingWaitedOut, () -> replanPending(pos, bcc.getSchematic(pos.x, pos.y, pos.z, current)))) {
                 owners.add(pos);
             }
         }
@@ -1215,6 +1222,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         giveUpOn(bcc, owners, "Stood in the goal with nothing to click", limit);
         return true;
+    }
+
+    // whether stallCheck leaves an owner alone because the planner still owes it a look. only place cells ever get a
+    // plan, and replanPending says yes to any planless cell that doesn't want a full cube. stone where the file wants a
+    // stair has to be mined first, so asking about that one was a yes forever and the break never got given up
+    static boolean heldForPlan(boolean placing, boolean waitedOut, BooleanSupplier replanPending) {
+        return placing && !waitedOut && replanPending.getAsBoolean();
     }
 
     // stuck, whatever the reason: a goal the pather can't reach, a move that keeps failing, a click that never lands.

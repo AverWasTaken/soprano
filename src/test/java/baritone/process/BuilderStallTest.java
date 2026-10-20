@@ -50,6 +50,16 @@ public class BuilderStallTest {
     }
 
     @Test
+    public void aBreakNeverWaitsOnThePlanner() {
+        // replanPending says yes to every planless cell that doesn't want a full cube, a break included
+        assertFalse(BuilderProcess.heldForPlan(false, false, () -> true));
+        assertTrue(BuilderProcess.heldForPlan(true, false, () -> true));
+        // once the wait ran out a place cell goes like any other
+        assertFalse(BuilderProcess.heldForPlan(true, true, () -> true));
+        assertFalse(BuilderProcess.heldForPlan(true, false, () -> false));
+    }
+
+    @Test
     public void aSolidCellDoesntTakeFeetRightUnderIt() {
         assertFalse(adjacent(true).isInGoal(CELL.below()));
         // a torch doesn't care where our head is
