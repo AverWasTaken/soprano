@@ -59,7 +59,6 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.attribute.EnvironmentAttributes;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
@@ -147,6 +146,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private GivenUp keptGivenUp;
     private String keptName;
     private Vec3i keptOrigin;
+    // only the caller that restarts its own build asks for that (keepGiveUpsOnce). a #build from chat or a one block
+    // PlaceBlockTask retry gets its three fresh goes like before
+    private boolean restoreGivenUp;
     // air cells somebody else (a path, a movement) put a throwaway in this build. only these count when we mine one, or a
     // clear job would remember every stone it ever dug and copy the lot into every bcc
     private LongOpenHashSet scaffoldPlaced;
@@ -168,6 +170,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // an aimed cell this tick's goal left out because its plan isn't in yet (or is stale with nowhere to stand), see
     // placementGoal. set by assemble
     private boolean plansPending;
+    // any cell at all waiting on a plan this tick, left out or not
+    private boolean pendingSeen;
+    // ticks in a row the whole goal was pending plans. past PENDING_WAIT_TICKS they get upstream's goal after all, till
+    // a tick with nothing pending. the planner normally catches up in a tick or two, this is for when it doesn't
+    private int pendingWaitTicks;
+    private boolean pendingWaitedOut;
+    private static final int PENDING_WAIT_TICKS = 100;
     // the goal each unplanned cell got last time, so it stays put until something about the cell changes. it used to be
     // worked out fresh every tick and flipped between GoalAdjacent and GoalPlace, and every flip cancelled the path
     private Long2ObjectOpenHashMap<StickyGoal> stickyGoals;
@@ -365,11 +374,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.incorrectPositions = null;
         forgetStalls();
         forgetCreative();
-        if (keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
+        if (restoreGivenUp && keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
             // a world change in between still wipes it, recalcNearby's seenWorld check sees to that
             givenUp = keptGivenUp;
         }
         keptGivenUp = null;
+        restoreGivenUp = false;
+    }
+
+    // the next start of this same build (name and origin) picks up the give ups the last one lost control with
+    public void keepGiveUpsOnce() {
+        restoreGivenUp = true;
     }
 
     // a fresh build, a resume or a repeat: whatever we gave up on before was about a different situation
@@ -393,6 +408,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // and the plans with them, they're cheap to make again and a stale one costs a walk
         plans = null;
         stickyGoals = null;
+        pendingWaitTicks = 0;
+        pendingWaitedOut = false;
         droppedLogged = null;
         torchNoPlanLogged = null;
         dropped = List.of();
@@ -705,14 +722,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     public boolean placementPlausible(BlockPos pos, BlockState state) {
-        return placementPlausible(pos, state, null);
-    }
-
-    // except is left out of the entity check. the goal picker passes us: walking up to a cell puts our own head in it
-    // for a tick, and that's no reason to want a different spot. the click itself still counts us
-    private boolean placementPlausible(BlockPos pos, BlockState state, Entity except) {
         VoxelShape voxelshape = state.getCollisionShape(ctx.world(), pos);
-        return voxelshape.isEmpty() || ctx.world().isUnobstructed(except, voxelshape.move(pos.getX(), pos.getY(), pos.getZ()));
+        return voxelshape.isEmpty() || ctx.world().isUnobstructed(null, voxelshape.move(pos.getX(), pos.getY(), pos.getZ()));
     }
 
     // upstream's possibleToPlace, with the per face work moved into PlacementPlanner.plan so the planner's guesses and
@@ -1002,9 +1013,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
 
         Goal goal = goalNearFirst(bcc);
+        if (!pendingSeen) {
+            pendingWaitTicks = 0;
+            pendingWaitedOut = false;
+        }
         if (goal == null && plansPending) {
             // all that's left here is aimed cells the planner hasn't got to yet. they're first in line (planOrder),
             // a few ticks of standing still beats giving up on them or pausing the build
+            if (++pendingWaitTicks >= PENDING_WAIT_TICKS) {
+                pendingWaitedOut = true;
+            }
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (goal == null) {
@@ -1105,14 +1123,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
-    // a block landed or broke, that's progress no matter where we stand
+    // a block landed or broke, that's progress no matter where we stand. the old path end goes too, the next path
+    // is about whatever's next
     private void resetWatchdog() {
         watchdogTicks = 0;
         watchdogFeet = null;
+        lastPathDest = null;
     }
 
     // the cells whose goal the path was headed for, same filter as stallCheck but at the path's end instead of our feet.
-    // none of those (no path yet, or it went somewhere else) means the nearest few by their own heuristic
+    // none of those (a partial path, which is most of what a stuck bot has) means the nearest few by their own
+    // heuristic, from the path's end if there is one: that's as close as the pather thought it could get
     static List<BetterBlockPos> watchdogOwners(List<Pair<BetterBlockPos, Goal>> goalOwners, BetterBlockPos dest, BetterBlockPos feet, int fallback) {
         List<BetterBlockPos> owners = new ArrayList<>();
         if (dest != null) {
@@ -1125,8 +1146,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!owners.isEmpty()) {
             return owners;
         }
+        BetterBlockPos from = dest != null ? dest : feet;
         return goalOwners.stream()
-                .sorted(Comparator.comparingDouble(owner -> owner.second().heuristic(feet)))
+                .sorted(Comparator.comparingDouble(owner -> owner.second().heuristic(from)))
                 .limit(fallback)
                 .map(Pair::first)
                 .collect(Collectors.toList());
@@ -1181,7 +1203,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (cells.size() > 5) {
             line.append(" and ").append(cells.size() - 5).append(" more");
         }
-        logDebug(String.format("%s for %ss, leaving it alone for %ss: %s", why, stuckTicks / 20, Math.max(breakTicks, GivenUp.EXPIRY_TICKS) / 20, line));
+        String gone = breakTicks < 0 ? "for good" : "for " + breakTicks / 20 + "s";
+        logDebug(String.format("%s for %ss, leaving it alone %s: %s", why, stuckTicks / 20, gone, line));
     }
 
     // "stone" for a place, "dirt -> air" for a break, "dirt -> stone" for a swap
@@ -1565,6 +1588,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         List<BetterBlockPos> todo = new ArrayList<>();
         for (BetterBlockPos pos : cells) {
+            if (!bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+                continue; // it'd be planned against air, and nothing tells us when the chunk shows up
+            }
             BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
             CellPlan plan = plans.get(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z));
             if (plan == null || plan.stale || plan.desired != desired) {
@@ -1660,8 +1686,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     // distanceTrim used to delete everything past this from incorrectPositions. only recalcNearby's little box ever put
-    // cells back, so a wall we walked away from was gone for good (the ladder column we left half done). now the set
-    // keeps them and only the goal is trimmed
+    // cells back, so anything we walked away from half done was gone for good. now the set keeps them and only the goal
+    // is trimmed
     static final double NEAR_DIST_SQ = 200;
     // the far cells handed to the goal when nothing near makes one. a handful, GoalComposite.heuristic loops every
     // member for every node A* opens, so the whole far set would be a very slow way to walk across a build
@@ -1671,6 +1697,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // ones too. before the retry / release / skip / pause branch, those are for when there's really nothing left
     private Goal goalNearFirst(BuilderCalculationContext bcc) {
         plansPending = false;
+        pendingSeen = false;
         boolean trim = Baritone.settings().distanceTrim.value;
         Collection<BetterBlockPos> near = trim ? nearCells(incorrectPositions, ctx.player().blockPosition(), NEAR_DIST_SQ) : incorrectPositions;
         boolean everything = near.size() == incorrectPositions.size();
@@ -1936,7 +1963,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         });
         pouring = null;
         List<BetterBlockPos> unpourableNow = new ArrayList<>();
-        if (!pourCells.isEmpty() && toPlace.isEmpty() && toBreak.isEmpty() && !missingBlocks(missing, creative) && !waitingOnBlocks(bcc)) {
+        // a stair in the rim waiting on its plan is still a hole in the wall
+        if (!pourCells.isEmpty() && toPlace.isEmpty() && toBreak.isEmpty() && !plansPending && !missingBlocks(missing, creative) && !waitingOnBlocks(bcc)) {
             pourGoals(bcc, pourCells, approxPlaceable, creative, toPlace, owners, missing, unpourableNow);
         }
         unpourable = unpourableNow;
@@ -2197,8 +2225,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             return feet.length == 1 ? feet[0] : new GoalComposite(feet);
         }
+        if (!bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+            // reads as air till it loads, and loading doesn't come through blockChanged. fresh every tick, like upstream
+            return upstreamPlacementGoal(pos, desired);
+        }
         if (replanPending(pos, desired)) {
-            return null; // only a plan that ran and found nowhere gets upstream's goal
+            pendingSeen = true;
+            if (!pendingWaitedOut) {
+                return null; // only a plan that ran and found nowhere gets upstream's goal
+            }
         }
         StickyGoal sticky = stickyGoals == null ? null : stickyGoals.get(key);
         if (sticky != null && sticky.desired == desired) {
@@ -2221,9 +2256,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         boolean allowSameLevel = !(ctx.world().getBlockState(pos.above()).getBlock() instanceof AirBlock);
         // a solid cell can't go in with our head in it, so standing right under it is no good
         boolean solid = desired != null && !desired.getCollisionShape(ctx.world(), pos).isEmpty();
+        // upstream also asked placementPlausible here. that's only an entity check, and it counted our own head the
+        // tick an ascend next to the cell put it there, so the goal flipped to GoalPlace and back and took the path
+        // with it. a mob in the cell is the click's problem (possibleToPlace still asks), not the goal's
         for (Direction facing : Movement.HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
-            //noinspection ConstantConditions
-            if (MovementHelper.canPlaceAgainst(ctx, pos.relative(facing)) && placementPlausible(pos, desired, ctx.player())) {
+            if (MovementHelper.canPlaceAgainst(ctx, pos.relative(facing))) {
                 return new GoalAdjacent(pos, pos.relative(facing), allowSameLevel, solid);
             }
         }
