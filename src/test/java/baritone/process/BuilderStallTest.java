@@ -206,4 +206,16 @@ public class BuilderStallTest {
         assertEquals(goal, new BuilderProcess.GoalBreakAside(CELL));
         assertEquals(goal.hashCode(), new BuilderProcess.GoalBreakAside(CELL).hashCode());
     }
+
+    @Test
+    public void scaffoldIsStillOursTillSomethingElseIsThere() {
+        assertTrue(BuilderProcess.stillOurs(Blocks.COBBLESTONE, Blocks.COBBLESTONE.defaultBlockState()));
+        // a dirt pillar top in the light goes grassy
+        assertTrue(BuilderProcess.stillOurs(Blocks.DIRT, Blocks.GRASS_BLOCK.defaultBlockState()));
+        assertFalse(BuilderProcess.stillOurs(Blocks.COBBLESTONE, Blocks.GRASS_BLOCK.defaultBlockState()));
+        // the night's bed in a cell our pillar used to be in
+        assertFalse(BuilderProcess.stillOurs(Blocks.COBBLESTONE, Blocks.CRAFTING_TABLE.defaultBlockState()));
+        // nothing on record, nothing to argue with
+        assertTrue(BuilderProcess.stillOurs(null, Blocks.STONE.defaultBlockState()));
+    }
 }
