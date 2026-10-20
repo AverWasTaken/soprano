@@ -39,6 +39,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockPlaceHelper;
+import baritone.utils.InputOverrideHandler;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.accessor.IClientBlockBreak;
 import baritone.utils.accessor.ISignEditScreen;
@@ -129,6 +130,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int stallTicks;
     private BetterBlockPos stallFeet;
     private static final int STALL_TICKS = 40;
+    // see quickGiveUp
+    private static final int NOTHING_TICKS = 5;
+    // the last tick the place branch turned us towards a click, a rotation still on its way isn't a stare
+    private long lastPlaceAim = Long.MIN_VALUE / 2;
+    // walking to the middle of a planned spot, see centre. sneaking is about 0.06 a tick, 20 is the far edge twice over
+    private int centreTicks;
+    private BetterBlockPos centreFeet;
+    private static final int CENTRE_TICKS = 20;
+    private static final double CENTRE_TOLERANCE = 0.1;
     // ticks at the same feet with nothing landing in the world and no dig getting anywhere, whoever is driving. see
     // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
     private int watchdogTicks;
@@ -974,6 +984,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         Optional<Placement> toPlace = searchForPlacables(bcc, desirableOnHotbar);
         if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && steady() && ticks <= 0) {
             dropPathBeforeClicking();
+            lastPlaceAim = builderTicks;
             Placement place = toPlace.get();
             if (place.give != null) {
                 // the one give this click needs, right before it. the creative slot packet goes out now, the click later
@@ -1069,11 +1080,73 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             paused = true;
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel)) {
+        // null with a candidate, the click branch had its chance and the gate is what's holding it
+        List<BetterBlockPos> plannedHere = toPlace.isPresent() ? null : plannedHere(bcc, ctx.playerFeet());
+        if (plannedHere != null && !plannedHere.isEmpty() && centre(goal, interactionPaused, isSafeToCancel)) {
+            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
+        if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel, plannedHere)) {
             // the cells that parked us here are out of the goal now, so build it again without them
             return onTick(calcFailed, isSafeToCancel, recursions + 1);
         }
         return new PathingCommandContext(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
+    }
+
+    // the planner only promised the click from within EYE_SLOP of the middle of its spot, and the traverse calls it done
+    // the moment our feet are in the block, then we coast to a stop wherever. so before calling a planned spot a stare,
+    // shuffle to the middle of it. sneaking, so the edge of a roof stays where it is. true while we're doing that
+    private boolean centre(Goal goal, boolean interactionPaused, boolean isSafeToCancel) {
+        BetterBlockPos feet = ctx.playerFeet();
+        if (!feet.equals(centreFeet)) {
+            centreFeet = feet;
+            centreTicks = 0;
+        }
+        if (interactionPaused || busyElsewhere() || !isSafeToCancel || !ctx.player().onGround() || !goal.isInGoal(feet)
+                || centreTicks >= CENTRE_TICKS) {
+            return false;
+        }
+        Vec3 pos = ctx.player().position();
+        double dx = feet.x + 0.5 - pos.x;
+        double dz = feet.z + 0.5 - pos.z;
+        if (centred(dx, dz)) {
+            return false;
+        }
+        centreTicks++;
+        stallTicks = 0;
+        dropPathBeforeClicking();
+        // keys relative to where we look, so the aim stays put for the click that comes after
+        double yaw = Math.toRadians(ctx.player().getYRot());
+        double forward = -Math.sin(yaw) * dx + Math.cos(yaw) * dz;
+        double left = Math.cos(yaw) * dx + Math.sin(yaw) * dz;
+        InputOverrideHandler keys = baritone.getInputOverrideHandler();
+        keys.setInputForceState(Input.SNEAK, true);
+        keys.setInputForceState(forward > 0 ? Input.MOVE_FORWARD : Input.MOVE_BACK, Math.abs(forward) > CENTRE_TOLERANCE / 2);
+        keys.setInputForceState(left > 0 ? Input.MOVE_LEFT : Input.MOVE_RIGHT, Math.abs(left) > CENTRE_TOLERANCE / 2);
+        return true;
+    }
+
+    static boolean centred(double dx, double dz) {
+        return Math.abs(dx) <= CENTRE_TOLERANCE && Math.abs(dz) <= CENTRE_TOLERANCE;
+    }
+
+    // the cells still waiting for a click that the planner said to stand right here for. same match as plannedFromHere
+    private List<BetterBlockPos> plannedHere(BuilderCalculationContext bcc, BetterBlockPos feet) {
+        if (plans == null || plans.isEmpty()) {
+            return List.of();
+        }
+        List<BetterBlockPos> cells = new ArrayList<>();
+        for (Long2ObjectMap.Entry<CellPlan> e : plans.long2ObjectEntrySet()) {
+            for (PlacementPlanner.Feet f : e.getValue().feet) {
+                if (f.feet().equals(feet)) {
+                    BetterBlockPos cell = BetterBlockPos.deserializeFromLong(e.getLongKey());
+                    if (wantsPlace(bcc, feet, cell.x, cell.y, cell.z) != null) {
+                        cells.add(cell);
+                    }
+                    break;
+                }
+            }
+        }
+        return cells;
     }
 
     // on the ground, or hanging off a ladder with the sneak in (onTick holds it), so nothing slides or bobs under the click
@@ -1091,7 +1164,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // upstream's goal composites are happy if any member is. a member that's happy with where we stand while nothing
     // around here is clickable means the pather never moves us and nothing else does either: the stare. true when this
     // tick gave some cells up and the goal needs building again
-    private boolean stallCheck(BuilderCalculationContext bcc, Goal goal, boolean interactionPaused, boolean isSafeToCancel) {
+    private boolean stallCheck(BuilderCalculationContext bcc, Goal goal, boolean interactionPaused, boolean isSafeToCancel, List<BetterBlockPos> plannedHere) {
         BetterBlockPos feet = ctx.playerFeet();
         if (interactionPaused || busyElsewhere()) {
             stallTicks = 0;
@@ -1107,7 +1180,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             stallTicks = 0;
             return false;
         }
-        if (!stalled()) {
+        if (!baritone.getInputOverrideHandler().getBlockPlaceHelper().ready()) {
+            return false; // a click just went out and may not be in the world yet, that's not a stare
+        }
+        int limit = quickGiveUp(bcc, feet, plannedHere) ? NOTHING_TICKS : STALL_TICKS;
+        if (!stalled(limit)) {
             return false;
         }
         List<BetterBlockPos> owners = new ArrayList<>();
@@ -1123,7 +1200,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (owners.isEmpty()) {
             return false;
         }
-        giveUpOn(bcc, owners, "Stood in the goal with nothing to click");
+        giveUpOn(bcc, owners, "Stood in the goal with nothing to click", limit);
         return true;
     }
 
@@ -1193,14 +1270,52 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 .collect(Collectors.toList());
     }
 
-    // one more tick at the same feet with nothing to show for it. true on the tick that makes it STALL_TICKS
+    // centred in a planned spot (or done trying), nothing aimed for a click lately, and the scan has nothing at all from
+    // here. two seconds of that is two seconds of the same answer, the world isn't changing under us. a candidate whose
+    // aim hasn't settled yet still gets the full STALL_TICKS, and so does anything that clears up by itself: a mob in the
+    // cell, or the item not on the hotbar yet
+    private boolean quickGiveUp(BuilderCalculationContext bcc, BetterBlockPos feet, List<BetterBlockPos> plannedHere) {
+        if (plannedHere == null || plannedHere.isEmpty() || !ctx.player().onGround() || builderTicks - lastPlaceAim <= NOTHING_TICKS) {
+            return false;
+        }
+        Vec3 pos = ctx.player().position();
+        if (!(feet.equals(centreFeet) && centreTicks >= CENTRE_TICKS) && !centred(feet.x + 0.5 - pos.x, feet.z + 0.5 - pos.z)) {
+            return false;
+        }
+        for (BetterBlockPos cell : plannedHere) {
+            BlockState desired = bcc.getSchematic(cell.x, cell.y, cell.z, bcc.bsi.get0(cell));
+            if (desired == null || !placementPlausible(cell, desired) || !onHotbar(desired)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // a hotbar stack that makes it, or creative's give that would
+    private boolean onHotbar(BlockState desired) {
+        if (virtualItem(desired) != null) {
+            return true;
+        }
+        for (int i = 0; i < 9; i++) {
+            if (canSupply(approxPlaceable.get(i), desired)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean stalled() {
+        return stalled(STALL_TICKS);
+    }
+
+    // one more tick at the same feet with nothing to show for it. true on the tick that makes it limit
+    private boolean stalled(int limit) {
         BetterBlockPos feet = ctx.playerFeet();
         if (!feet.equals(stallFeet)) {
             stallFeet = feet;
             stallTicks = 0;
         }
-        if (busyElsewhere() || ++stallTicks < STALL_TICKS) {
+        if (busyElsewhere() || ++stallTicks < limit) {
             return false;
         }
         stallTicks = 0;
@@ -1243,7 +1358,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             line.append(" and ").append(cells.size() - 5).append(" more");
         }
         String gone = breakTicks < 0 ? "for good" : "for " + breakTicks / 20 + "s";
-        logDebug(String.format("%s for %ss, leaving it alone %s: %s", why, stuckTicks / 20, gone, line));
+        logDebug(String.format("%s for %ss, leaving it alone %s: %s", why, stuckTicks / 20.0, gone, line));
     }
 
     // "stone" for a place, "dirt -> air" for a break, "dirt -> stone" for a swap
