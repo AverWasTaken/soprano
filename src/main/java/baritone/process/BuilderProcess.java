@@ -159,6 +159,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private float lastDestroyProgress;
     // the left click down last tick was the builder's own break, not a movement's
     private boolean builderDig;
+    // ticks the dig held the watchdog since the last real progress. obsidian by hand fits, a dig and put back loop
+    // runs out of it
+    private int digHeldTicks;
+    private static final int DIG_HOLD_TICKS = 400;
     // where the last path we saw was headed. paths get cancelled all the time, so getPath is empty half the ticks
     private BetterBlockPos lastPathDest;
     private static final int WATCHDOG_TICKS = 200;
@@ -1477,9 +1481,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         lastDestroyProgress = destroy;
         if (watchdogProgress.progressed(done, lastPathDest, feet)) {
             watchdogTicks = 0;
+            digHeldTicks = 0;
             return;
         }
-        if (digGoing) {
+        if (digGoing && ++digHeldTicks <= DIG_HOLD_TICKS) {
             // our own dig getting further holds the count, it doesn't reset it. obsidian by hand is longer than the
             // whole watchdog, and a wrong block that keeps going back in wrong still runs out between the digs
             return;
@@ -1514,6 +1519,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void resetWatchdog() {
         watchdogTicks = 0;
         lastPathDest = null;
+        digHeldTicks = 0;
         if (watchdogProgress == null) {
             watchdogProgress = new WatchdogProgress(); // same as the ledger in start
         } else {
@@ -1846,9 +1852,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         BlockState now = baritone.bsi.get0(pos.x, pos.y, pos.z);
         BlockState want = wholeWants(pos.x, pos.y, pos.z, now);
-        // water, snow, tall grass: nothing a break gets rid of. somebody else's block: not ours to break
-        if (now.canBeReplaced() || !stillOurs(ledger.what(cell), now) || (want != null && valid(now, want, false))) {
-            ledger.gone(cell);
+        // water, snow, tall grass: nothing a break gets rid of. somebody else's block: not ours to break. only air or
+        // the right block counts as the cleanup getting somewhere
+        boolean down = now.getBlock() instanceof AirBlock || (want != null && valid(now, want, false));
+        if (down || now.canBeReplaced() || !stillOurs(ledger.what(cell), now)) {
+            ledger.gone(cell, down);
+            if (cleanCells != null && cleanCells.remove(cell)) {
+                // a path that pillars back up the same column puts it back as this round's own, the next round's
+                // work. otherwise it's a target again right away and every break looks like progress
+                cleanVersion++;
+            }
         }
     }
 

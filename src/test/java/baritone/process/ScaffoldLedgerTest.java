@@ -79,11 +79,16 @@ public class ScaffoldLedgerTest {
     public void goneScaffoldLeavesAndCounts() {
         ScaffoldLedger l = owned();
         l.scaffold(A, "cobble");
-        l.gone(A);
+        l.gone(A, true);
         assertFalse(l.isScaffold(A));
         assertEquals(1, l.cleared());
         // twice is still one block
-        l.gone(A);
+        l.gone(A, true);
+        assertEquals(1, l.cleared());
+        // water moving in takes it off the books but isn't us getting anywhere
+        l.scaffold(A, "cobble");
+        l.gone(A, false);
+        assertFalse(l.isScaffold(A));
         assertEquals(1, l.cleared());
     }
 
@@ -94,7 +99,7 @@ public class ScaffoldLedgerTest {
         assertTrue(l.isSolid(A));
         assertFalse(l.isScaffold(A));
         assertTrue(l.view(null, false).kept().isEmpty());
-        l.gone(A);
+        l.gone(A, true);
         assertFalse(l.isSolid(A));
     }
 
@@ -180,8 +185,8 @@ public class ScaffoldLedgerTest {
         l.solid(B, "dirt");
         assertEquals("cobble", l.what(A));
         assertEquals("dirt", l.what(B));
-        l.gone(A);
-        l.gone(B);
+        l.gone(A, true);
+        l.gone(B, true);
         assertEquals(null, l.what(A));
         assertEquals(null, l.what(B));
     }
