@@ -178,4 +178,14 @@ public final class RecoverRules {
             crowdedSince = Double.NaN;
         }
     }
+
+    // the pile with a full bag. picking up a block we already hold the building reserve of (or the very item the garbage pick would
+    // throw) is making room just to throw the same thing back down, and then chasing it: netherrack in, netherrack out, for ever.
+    // leaving it costs nothing, it was going straight back on the floor anyway
+    public static boolean skipWhenFull(boolean fits, boolean throwawayBlock, int blocksHeld, int reserve, boolean sameAsGarbage) {
+        if (fits) {
+            return false;
+        }
+        return (throwawayBlock && blocksHeld >= reserve) || sameAsGarbage;
+    }
 }

@@ -180,11 +180,35 @@ public class NetherTripRulesTest {
         assertEquals(Stage.HOME, short_.stage());
     }
 
+    // the old 15 s cap judged the kit with the chestplate still in the bag. a piece we hold keeps WEAR going, the trip clock is the cap
     @Test
-    public void wearingThatDragsOnIsJudgedWithWhatIsOn() {
-        long late = NetherTripRules.WEAR_SECONDS * 20L + 1;
-        Step step = NetherTripRules.next(bagged(Stage.WEAR, late, true, true, 2));
-        assertEquals("the pile did not have the kit", step.giveUp());
+    public void wearingKeepsGoingWhileAPieceIsStillInTheBag() {
+        Step step = NetherTripRules.next(bagged(Stage.WEAR, 20 * 60, true, true, 2));
+        assertEquals(Stage.WEAR, step.stage());
+        assertNull(step.giveUp());
+    }
+
+    @Test
+    public void wearingStillEndsWithTheTrip() {
+        Inputs late = new Inputs(Stage.WEAR, Dimension.NETHER, LIMITS.tripTicks() + 1, 20 * 60, 24, false, 3, true, 14, true, 2, LIMITS);
+        assertEquals("out of time", NetherTripRules.next(late).giveUp());
+    }
+
+    // armor first, then "did anything come back": a pile that only handed back armor can read as nothing gained
+    @Test
+    public void armorInTheBagIsWornBeforeAnEmptyPileGivesUp() {
+        Inputs nothing = new Inputs(Stage.RECOVER, Dimension.NETHER, 2000, 100, 24, false, 3, true, 0, true, 1, LIMITS);
+        Step step = NetherTripRules.next(nothing);
+        assertEquals(Stage.WEAR, step.stage());
+        assertNull(step.giveUp());
+    }
+
+    @Test
+    public void anEmptyPileStillGivesUpOnceTheArmorIsOn() {
+        Inputs worn = new Inputs(Stage.WEAR, Dimension.NETHER, 2000, 100, 24, false, 3, true, 0, true, 0, LIMITS);
+        Step step = NetherTripRules.next(worn);
+        assertEquals("nothing left at the pile", step.giveUp());
+        assertEquals(Stage.HOME, step.stage());
     }
     @Test
     public void anEmptyPileGivesUpAndWalksHomeWhenTheKitIsStillShort() {
