@@ -65,6 +65,7 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.item.BlockItem;
@@ -620,6 +621,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                         continue; // irrelevant
                     }
                     BlockState curr = bcc.bsi.get0(x, y, z);
+                    if (hanging && dx == 0 && dz == 0 && (dy == 1 || dy == -1) && curr.is(BlockTags.CLIMBABLE)) {
+                        // the rungs above our head and under our feet are the column we're on. mine one and we drop or
+                        // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
+                        continue;
+                    }
                     // fine, not valid: a kept block is the caller's scaffolding and the builder never gets to mine it
                     if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
                             && !bcc.deferredScaffold(x, y, z, curr)) {

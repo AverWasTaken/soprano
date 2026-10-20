@@ -96,11 +96,20 @@ public final class PlaceRules {
         return AIM_PROOF.computeIfAbsent(state, PlaceRules::computeAimProof);
     }
 
-    private static boolean computeAimProof(BlockState state) {
+    // has something that comes off which way the click was aimed. a slab or a fence is not a full cube, but nothing on it
+    // depends on where we were looking
+    public static boolean aimed(BlockState state) {
         for (Property<?> prop : state.getProperties()) {
             if (AIMED.contains(prop.getName())) {
-                return false;
+                return true;
             }
+        }
+        return false;
+    }
+
+    private static boolean computeAimProof(BlockState state) {
+        if (aimed(state)) {
+            return false;
         }
         VoxelShape shape = collision(state);
         return shape != null && Block.isShapeFullBlock(shape);
