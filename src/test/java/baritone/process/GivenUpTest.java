@@ -143,4 +143,16 @@ public class GivenUpTest {
         assertTrue(g.isGivenUp(b.x, b.y, b.z, 5));
         assertEquals(2, g.giveUp(b, 300));
     }
+
+    @Test
+    public void aPinnedOneStaysOutWhateverChangesNextToIt() {
+        GivenUp g = new GivenUp();
+        g.forGood(A);
+        assertTrue(g.isGivenUp(A.x, A.y, A.z, 0));
+        // the build going on around it, and a stop and start, both used to put it right back
+        g.nearbyChanged(A.x + 1, A.y, A.z, 10);
+        g.unwatched(20);
+        assertFalse(g.retryNow(30));
+        assertTrue(g.isGivenUp(A.x, A.y, A.z, 40));
+    }
 }
