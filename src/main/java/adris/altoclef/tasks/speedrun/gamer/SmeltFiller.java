@@ -86,8 +86,15 @@ public final class SmeltFiller {
     // the boots get theirs). the ones we cannot pay for yet wait for the furnace
     private static void split(GamerFacts f, List<KitNeed> needs, List<KitNeed> runnable, List<KitNeed> blocked) {
         int ingots = f.count(Items.IRON_INGOT);
+        boolean craftWaiting = false;
         for (KitNeed need : needs) {
             if (foodBlocked(f, need)) {
+                blocked.add(need);
+                continue;
+            }
+            // the diamond dig costs no ingots, but it goes down for minutes: with a craft above it still waiting on the furnace it
+            // would leave the armor in the furnace and the bot climbing back up for every collect. it waits for the crafts
+            if (KitPlanner.DIAMOND.equals(need.catalogueName()) && craftWaiting) {
                 blocked.add(need);
                 continue;
             }
@@ -99,6 +106,7 @@ public final class SmeltFiller {
                 runnable.add(need);
             } else {
                 blocked.add(need);
+                craftWaiting = true;
             }
         }
     }
