@@ -23,6 +23,8 @@ import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
+import adris.altoclef.ui.gui.mc.ghost.SchematicGhostRenderer;
+import adris.altoclef.ui.gui.mc.move.MoveGizmo;
 import adris.altoclef.util.helpers.DeathStash;
 import baritone.Baritone;
 import baritone.api.Settings;
@@ -80,6 +82,10 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             // the commands go in now, long before altoclef itself exists, so #help and tab completion know about them from
             // the title screen on. running one is what creates altoclef, see require
             AltoClefCommands.register(primary);
+            // the ghost of the schematic picked in the gui, it draws whatever McSchematics.ghost() says
+            SchematicGhostRenderer.attach(primary);
+            // the arrows of the schematic move mode, after the ghost so they draw over it
+            MoveGizmo.attach(primary);
         } catch (Throwable t) {
             System.err.println("altoclef could not hook into soprano, it stays off this session");
             t.printStackTrace();
@@ -142,6 +148,12 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     public static boolean userTaskActive() {
         AltoClef ac = instanceOrNull();
         return ac != null && ac.getUserTaskChain().isActive() && !ac.getUserTaskChain().isRunningIdleTask();
+    }
+
+    // autoTorch asks before every placement. altoclef off is a yes, see TorchGate for what it waits out while it runs
+    public static boolean torchingAllowed() {
+        AltoClef ac = isRunning() ? instanceOrNull() : null;
+        return ac == null || TorchGate.allows(ac);
     }
 
     // who collects blocks for a trip (TripBehavior). null while altoclef is off, the trip just says it can't

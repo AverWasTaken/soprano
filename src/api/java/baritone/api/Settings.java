@@ -909,6 +909,27 @@ public final class Settings {
     public final Setting<Boolean> backfill = new Setting<>(false);
 
     /**
+     * Place torches in dark spots near you while Baritone is busy mining or walking
+     * <p>
+     * Needs torches in the hotbar (or the inventory with {@link #allowInventory}). It only places while another process
+     * (mine, goto, explore, a task like #get...) is running, never while building, in the Nether or the End, or near water and lava.
+     * Spots with sky light above {@link #autoTorchLightLevel} are left alone, so the surface does not get covered in torches.
+     */
+    public final Setting<Boolean> autoTorch = new Setting<>(false);
+
+    /**
+     * {@link #autoTorch} places a torch where both the block light and the sky light are at or below this (0 to 15)
+     * <p>
+     * Spacing between torches falls out of this: higher means more torches closer together.
+     */
+    public final Setting<Integer> autoTorchLightLevel = new Setting<>(7);
+
+    /**
+     * How far around you {@link #autoTorch} looks for dark spots, in blocks. Never further than {@link #blockReachDistance}
+     */
+    public final Setting<Integer> autoTorchRadius = new Setting<>(4);
+
+    /**
      * Shows popup message in the upper right corner, similarly to when you make an advancement
      */
     public final Setting<Boolean> logAsToast = new Setting<>(false);
@@ -1530,6 +1551,18 @@ public final class Settings {
     public final Setting<Mirror> buildSchematicMirror = new Setting<>(Mirror.NONE);
 
     /**
+     * How see-through the ghost blocks of the schematic picked in the gui's Schematics tab are, from 0 to 1. Below 0.1
+     * nothing is drawn.
+     */
+    public final Setting<Float> schematicGhostAlpha = new Setting<>(0.45f);
+
+    /**
+     * How far from the camera, in blocks, the ghost blocks of the schematic picked in the gui's Schematics tab are
+     * drawn (8 to 128).
+     */
+    public final Setting<Integer> schematicGhostDistance = new Setting<>(64);
+
+    /**
      * The fallback used by the build command when no extension is specified. This may be useful if schematics of a
      * particular format are used often, and the user does not wish to have to specify the extension with every usage.
      */
@@ -1555,7 +1588,8 @@ public final class Settings {
     public final Setting<Long> mineDropLoiterDurationMSThanksLouca = new Setting<>(250L);
 
     /**
-     * Trim incorrect positions too far away, helps performance but hurts reliability in very large schematics
+     * Only build the goal from incorrect positions near you, plus the nearest few far ones when nothing near can be
+     * done. Far positions are still remembered. Helps performance in very large schematics
      */
     public final Setting<Boolean> distanceTrim = new Setting<>(true);
 
@@ -2256,7 +2290,7 @@ public final class Settings {
     public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
 
     /**
-     * {@code #gamer} only. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
+     * {@code #gamer} and survival schematic builds. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
      * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
      * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it
      * pillars up out of their range, puts the bed on top and sleeps there. A bed the bot placed itself is picked up again
@@ -2266,6 +2300,9 @@ public final class Settings {
      * planks it already holds, and in the last four minutes, with sheep close by and no wool, it hunts three wool of one
      * colour first (150 seconds at most, then it leaves it for the evening). With no bed and no wool it works the night as
      * before.
+     * <p>
+     * A schematic build stops the builder for the night (and for the evening's wool or craft), then walks back and counts
+     * again in the morning before building on. The pillar only uses blocks held above what the rest of the build needs.
      */
     public final Setting<Boolean> altoSleepAtNight = new Setting<>(true);
 

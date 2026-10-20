@@ -81,6 +81,8 @@ public class KitPlannerTest {
         full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WOOL.white(), 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         full.foodUnits = 100;
+        // the diamond pick dig is written off: it has its own tests, these take one iron thing away and want it back
+        full.diamondHuntGaveUp = true;
         return full;
     }
 
@@ -103,6 +105,7 @@ public class KitPlannerTest {
         assertEquals(List.of("log", "stone_pickaxe", "stone_axe", "food", "iron_ingot", "iron_pickaxe", "iron_axe", "bucket",
                 "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
+        // no dig yet: the essentials are not in hand (theDigWaitsForTheEssentials)
     }
 
     @Test
@@ -957,12 +960,105 @@ public class KitPlannerTest {
     @Test
     public void switchedOffTheDiamondsSitInTheBag() {
         cfg.diamondSpend = false;
+        // the dig for the pick has its own switch and its own tests below, with it on 40 diamonds are one pick craft
+        cfg.diamondPick = false;
         f.foodUnits = 40;
         List<KitNeed> bare = KitPlanner.plan(f, cfg, 8);
         FakeFacts rich = new FakeFacts().give(Items.DIAMOND, 40);
         rich.foodUnits = 40;
         assertEquals(bare, KitPlanner.plan(rich, cfg, 8));
         assertEquals(List.of(), KitPlanner.plan(complete().give(Items.DIAMOND, 40), cfg, 8));
+    }
+
+    // ---- the diamond pick dig (addDiamondPick)
+
+    @Test
+    public void theDigComesAfterTheIronCraftsAndBeforeTheWool() {
+        // the essentials in hand (pick, light, two buckets), the rest of the iron kit still owed
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1)
+                .give(Items.BUCKET, 2).give(Items.OAK_LOG, 20);
+        f.foodUnits = 40;
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        List<String> n = names(plan);
+        int dig = n.indexOf(KitPlanner.DIAMOND);
+        assertEquals(new KitNeed(KitPlanner.DIAMOND, 3), plan.get(dig));
+        for (String before : List.of("iron_ingot", "iron_axe", "shield", "shears", "ladder", "iron_chestplate", "iron_boots")) {
+            assertTrue(before + " " + n, n.indexOf(before) < dig);
+        }
+        assertTrue(n.toString(), dig < n.indexOf("wool"));
+        // diamondSpend crafts the pick once the three are in, so the plan never names it while we dig
+        assertFalse(n.contains("diamond_pickaxe"));
+    }
+
+    @Test
+    public void theDigWaitsForTheEssentials() {
+        FakeFacts bag = complete();
+        bag.diamondHuntGaveUp = false;
+        assertTrue(names(KitPlanner.plan(bag, cfg, 8)).contains(KitPlanner.DIAMOND));
+        // one bucket short: the bucket first, then the dig. same for the light and for the iron pick (nothing else mines a diamond)
+        bag.items.put(Items.BUCKET, 1);
+        assertEquals(List.of("iron_ingot", "bucket"), names(KitPlanner.plan(bag, cfg, 8)));
+        bag.items.put(Items.BUCKET, 2);
+        bag.items.remove(Items.FLINT_AND_STEEL);
+        assertFalse(names(KitPlanner.plan(bag, cfg, 8)).contains(KitPlanner.DIAMOND));
+        bag.give(Items.FLINT_AND_STEEL, 1);
+        bag.items.remove(Items.IRON_PICKAXE);
+        assertFalse(names(KitPlanner.plan(bag, cfg, 8)).contains(KitPlanner.DIAMOND));
+    }
+
+    @Test
+    public void aWholeKitStillOwesTheDig() {
+        FakeFacts bag = complete();
+        bag.diamondHuntGaveUp = false;
+        assertEquals(List.of(new KitNeed(KitPlanner.DIAMOND, 3)), KitPlanner.plan(bag, cfg, 8));
+        // two in the bag is still "hold three"
+        assertEquals(List.of(new KitNeed(KitPlanner.DIAMOND, 3)), KitPlanner.plan(bag.give(Items.DIAMOND, 2), cfg, 8));
+        // the wool goes behind it
+        bag.items.put(Items.WOOL.white(), 0);
+        assertEquals(List.of(KitPlanner.DIAMOND, "wool"), names(KitPlanner.plan(bag, cfg, 8)));
+    }
+
+    @Test
+    public void withDiamondSpendOffTheDigIsTheDiamondsThenThePick() {
+        cfg.diamondSpend = false;
+        FakeFacts bag = complete();
+        bag.diamondHuntGaveUp = false;
+        assertEquals(List.of(new KitNeed(KitPlanner.DIAMOND, 3), new KitNeed("diamond_pickaxe", 1)), KitPlanner.plan(bag, cfg, 8));
+        bag.give(Items.DIAMOND, 3);
+        assertEquals(List.of(new KitNeed("diamond_pickaxe", 1)), KitPlanner.plan(bag, cfg, 8));
+        bag.give(Items.DIAMOND_PICKAXE, 1);
+        assertEquals(List.of(), KitPlanner.plan(bag, cfg, 8));
+    }
+
+    @Test
+    public void threeDiamondsAndNoDiamondPickPutDiamondSpendsPickFirst() {
+        FakeFacts bag = complete().give(Items.DIAMOND, 3).give(Items.STICK, 2);
+        bag.diamondHuntGaveUp = false;
+        bag.items.remove(Items.SHEARS);
+        List<KitNeed> plan = KitPlanner.plan(bag, cfg, 8);
+        // the pick ahead of the iron the shears still want, and no dig: the three it would dig for are in the bag
+        assertEquals(new KitNeed("diamond_pickaxe", 1), plan.get(0));
+        assertEquals(List.of("diamond_pickaxe", "iron_ingot", "shears"), names(plan));
+    }
+
+    @Test
+    public void noDigOnceGivenUpOrWithADiamondPickOrSwitchedOff() {
+        FakeFacts bag = complete();
+        assertEquals("complete() has it written off", List.of(), KitPlanner.plan(bag, cfg, 8));
+        bag.diamondHuntGaveUp = false;
+        assertEquals(List.of(new KitNeed(KitPlanner.DIAMOND, 3)), KitPlanner.plan(bag, cfg, 8));
+        assertEquals("a diamond pick", List.of(), KitPlanner.plan(complete().give(Items.DIAMOND_PICKAXE, 1), cfg, 8));
+        FakeFacts netherite = complete().give(Items.NETHERITE_PICKAXE, 1);
+        netherite.diamondHuntGaveUp = false;
+        assertEquals("netherite is a diamond pick too", List.of(), KitPlanner.plan(netherite, cfg, 8));
+        cfg.diamondPick = false;
+        assertEquals("switched off", List.of(), KitPlanner.plan(bag, cfg, 8));
+    }
+
+    @Test
+    public void theDigIsAMineAndNeverHoldsATable() {
+        assertTrue(new KitNeed(KitPlanner.DIAMOND, 3).isGathering());
+        assertFalse(new KitNeed(KitPlanner.DIAMOND, 3).isCraft());
     }
 
     @Test

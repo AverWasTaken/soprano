@@ -30,6 +30,8 @@ public class FakeFacts implements GamerFacts {
     public boolean smokerPlaced;
     // the cook task gave up a while ago
     public boolean cookSuspended;
+    // the diamond pick dig ran out of time (RunState.diamondHuntGaveUp), false like a fresh run
+    public boolean diamondHuntGaveUp;
     // the station a running cook committed to
     public String cookStation;
     public int fingerprint;
@@ -166,6 +168,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean cookSuspended() {
         return cookSuspended;
+    }
+
+    @Override
+    public boolean diamondHuntGaveUp() {
+        return diamondHuntGaveUp;
     }
 
     @Override

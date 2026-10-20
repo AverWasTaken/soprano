@@ -18,6 +18,7 @@
 package baritone.utils.schematic.format.defaults;
 
 import baritone.utils.schematic.StaticSchematic;
+import baritone.utils.schematic.format.ParseReport;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -27,11 +28,17 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * @author Brady
  * @since 12/27/2019
  */
-public final class MCEditSchematic extends StaticSchematic {
+public final class MCEditSchematic extends StaticSchematic implements ParseReport {
+
+    private final Map<String, Integer> unknown = new LinkedHashMap<>();
 
     public MCEditSchematic(CompoundTag schematic) {
         String type = schematic.getString("Materials").orElseThrow();
@@ -64,12 +71,21 @@ public final class MCEditSchematic extends StaticSchematic {
                         // additional is 0 through 15 inclusive since it's & 0xF above
                         blockID |= additional[blockInd] << 8;
                     }
-                    Identifier blockKey = Identifier.tryParse(ItemIdFix.getItem(blockID));
+                    String itemId = ItemIdFix.getItem(blockID);
+                    Identifier blockKey = Identifier.tryParse(itemId);
                     Block block = blockKey == null
-                        ? Blocks.AIR
+                        ? null
                         : BuiltInRegistries.BLOCK.get(blockKey)
                             .map(Holder.Reference::value)
-                            .orElse(Blocks.AIR);
+                            .orElse(null);
+                    if (block == null) {
+                        // an item-only id (a shovel in a block array), still air like it always was
+                        unknown.merge(blockKey == null ? "id " + blockID : itemId, 1, Integer::sum);
+                        block = Blocks.AIR;
+                    } else if (block == Blocks.AIR && blockID != 0) {
+                        // the id table answers minecraft:air for numbers it has never heard of
+                        unknown.merge("id " + blockID, 1, Integer::sum);
+                    }
 
 //                    int meta = metadata[blockInd] & 0xFF;
 //                    this.states[x][z][y] = block.getStateFromMeta(meta);
@@ -77,5 +93,15 @@ public final class MCEditSchematic extends StaticSchematic {
                 }
             }
         }
+    }
+
+    @Override
+    public Map<String, Integer> unknownBlocks() {
+        return Collections.unmodifiableMap(unknown);
+    }
+
+    @Override
+    public int formatVersion() {
+        return 0;
     }
 }

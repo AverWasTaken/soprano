@@ -3,6 +3,7 @@ package adris.altoclef.tasks.resources;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
@@ -46,6 +47,8 @@ final class BlazeFight {
 
     // a raycast per blaze per tick is silly, a blaze moves maybe half a block in this long
     private static final int LINE_EVERY = 5;
+    // how close to the floor under a blaze the hunt walk wants to get. close enough that it sees us, then COVER takes over
+    private static final int HUNT_RANGE = 3;
 
     private Mode mode = Mode.CAMP;
     // when the current mode started, game time. the dwell in BlazeFightRules.decide counts from here
@@ -55,6 +58,18 @@ final class BlazeFight {
     private boolean retreating;
     private final List<Blaze> threats = new ArrayList<>();
     private int reachable;
+    // blazes worth walking to, nearest first, and every live blaze within MAX_CHASE_DISTANCE (that one is just for the hud)
+    private final List<Hunt> huntable = new ArrayList<>();
+    private int around;
+    // game time a blaze last had eyes on us. MIN_VALUE is never
+    private long lastThreatTick = Long.MIN_VALUE;
+    // the blaze we are walking toward and where we are walking. sticky so two similar blazes do not have us pacing
+    private Blaze huntTarget;
+    private BlockPos huntGoal;
+    private long huntSince;
+    private long lastHuntTick = Long.MIN_VALUE;
+    // blazes we walked at for too long, by entity id and when. skipped for BAD_SPOT_TICKS, same idea as badSpots
+    private final Map<Integer, Long> skippedHunts = new HashMap<>();
 
     private BlockPos spot;
     private long spotTick = Long.MIN_VALUE;
@@ -70,6 +85,23 @@ final class BlazeFight {
     private record LineCheck(long tick, boolean clear) {
     }
 
+    // what is under a blaze: the block we would stand on (null for none within the scan), how high it hovers over that,
+    // and whether it is lava instead
+    private record Floor(BlockPos pos, double height, boolean lava) {
+    }
+
+    // stand is the spot on top of its floor
+    private record Hunt(Blaze blaze, BlockPos stand) {
+    }
+
+    int huntable() {
+        return huntable.size();
+    }
+
+    int around() {
+        return around;
+    }
+
     BlockPos campSpot() {
         return campSpot;
     }
@@ -81,20 +113,26 @@ final class BlazeFight {
     Task tick(AltoClef mod, BlockPos spawner) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        scan(mod, player, now);
+        scan(mod, player, now, spawner);
         float health = player.getHealth();
         // game time can go backwards on a world change, then the old mode is as good as ancient
         long dwelled = now >= modeSince ? now - modeSince : Long.MAX_VALUE;
-        Mode next = BlazeFightRules.decide(health, retreating, threats.size(), reachable, mode, dwelled);
+        // same deal for the hide hold, a clock that went backwards means the last look was long ago
+        long sinceThreat = lastThreatTick != Long.MIN_VALUE && now >= lastThreatTick ? now - lastThreatTick : Long.MAX_VALUE;
+        Mode next = BlazeFightRules.decide(health, retreating, threats.size(), reachable, huntable.size(), sinceThreat, mode, dwelled);
         retreating = next == Mode.RETREAT;
         if (next != mode) modeSince = now;
         mode = next;
+        // a real fight starts the next hunt fresh. CAMP does not: a blaze blinking over the lava edge for a tick would
+        // restart the give up clock for ever
+        if (mode == Mode.KILL || mode == Mode.COVER || mode == Mode.RETREAT) huntTarget = null;
         logChange(health);
         return switch (mode) {
             case CAMP -> null;
             case KILL -> new KillEntitiesTask(e -> e instanceof Blaze blaze && isReachable(mod, blaze), Blaze.class);
             case COVER -> cover(mod, now, spawner);
             case RETREAT -> retreat(mod, now, spawner);
+            case HUNT -> hunt(now);
         };
     }
 
@@ -106,6 +144,7 @@ final class BlazeFight {
             case COVER -> Debug.logInternal("rods: taking cover from " + plural(threats.size()));
             case RETREAT -> Debug.logInternal("rods: retreating at " + (int) health + " hp");
             case CAMP -> Debug.logInternal("rods: all quiet, back to camping");
+            case HUNT -> Debug.logInternal("rods: " + plural(huntable.size()) + " about and none can see us, going to say hi");
         }
     }
 
@@ -115,11 +154,14 @@ final class BlazeFight {
 
     // ---- what is out there
 
-    private void scan(AltoClef mod, LocalPlayer player, long now) {
+    private void scan(AltoClef mod, LocalPlayer player, long now, BlockPos spawner) {
         threats.clear();
         reachable = 0;
+        huntable.clear();
+        around = 0;
         // forget blazes that died or left, the ids get reused
         lines.values().removeIf(check -> now - check.tick() > LINE_EVERY * 4L);
+        skippedHunts.values().removeIf(when -> now < when || now - when > BAD_SPOT_TICKS);
         List<Blaze> blazes;
         try {
             blazes = new ArrayList<>(mod.getEntityTracker().getTrackedEntities(Blaze.class));
@@ -131,41 +173,49 @@ final class BlazeFight {
             if (!blaze.isAlive()) continue;
             double distance = player.distanceTo(blaze);
             if (distance > BlazeFightRules.MAX_CHASE_DISTANCE) continue;
-            if (isReachable(mod, blaze, distance, now)) reachable++;
+            around++;
+            Floor floor = floorUnder(mod.getWorld(), blaze);
+            if (isReachable(mod, blaze, floor, distance, now)) reachable++;
             // raycasts only for the ones that could actually hit us from where they are
             if (distance <= BlazeFightRules.SIGHT_RANGE && LookHelper.seesPlayer(blaze, player, BlazeFightRules.SIGHT_RANGE)) {
                 threats.add(blaze);
             }
+            BlockPos stand = floor.pos() == null ? null : floor.pos().above();
+            double fromSpawner = spawner == null || stand == null ? Double.NaN : Math.sqrt(stand.distSqr(spawner));
+            boolean banned = !mod.getEntityTracker().isEntityReachable(blaze) || skippedHunts.containsKey(blaze.getId());
+            if (BlazeFightRules.isHuntable(stand != null, floor.lava(), distance, banned, fromSpawner)) {
+                huntable.add(new Hunt(blaze, stand));
+            }
         }
         threats.sort(Comparator.comparingDouble(player::distanceToSqr));
+        huntable.sort(Comparator.comparingDouble(h -> player.distanceToSqr(h.blaze())));
+        if (!threats.isEmpty()) lastThreatTick = now;
     }
 
     private boolean isReachable(AltoClef mod, Blaze blaze) {
-        return isReachable(mod, blaze, mod.getPlayer().distanceTo(blaze), mod.getWorld().getGameTime());
+        return isReachable(mod, blaze, floorUnder(mod.getWorld(), blaze), mod.getPlayer().distanceTo(blaze), mod.getWorld().getGameTime());
+    }
+
+    private boolean isReachable(AltoClef mod, Blaze blaze, Floor floor, double distance, long now) {
+        // cheap rejects first, the ray is the only part that costs anything
+        if (!BlazeFightRules.isReachable(floor.height(), floor.lava(), distance, true)) return false;
+        return meleeLineClear(mod, blaze, now);
     }
 
     // walk straight down from the blaze to whatever it is hovering over. lava is a no, a floor is how high it is
-    private boolean isReachable(AltoClef mod, Blaze blaze, double distance, long now) {
-        Level level = mod.getWorld();
+    private static Floor floorUnder(Level level, Blaze blaze) {
         BlockPos at = blaze.blockPosition();
-        double height = Double.POSITIVE_INFINITY;
-        boolean lava = false;
         for (int i = 0; i <= 8; i++) {
             BlockPos check = at.below(i);
             BlockState state = level.getBlockState(check);
-            if (state.is(Blocks.LAVA)) {
-                lava = true;
-                break;
-            }
+            if (state.is(Blocks.LAVA)) return new Floor(null, Double.POSITIVE_INFINITY, true);
             if (!state.getCollisionShape(level, check).isEmpty()) {
                 // fences and slabs and stairs are not a full block, use the actual top of the thing
-                height = blaze.getY() - (check.getY() + state.getCollisionShape(level, check).max(Direction.Axis.Y));
-                break;
+                double height = blaze.getY() - (check.getY() + state.getCollisionShape(level, check).max(Direction.Axis.Y));
+                return new Floor(check.immutable(), height, false);
             }
         }
-        // cheap rejects first, the ray is the only part that costs anything
-        if (!BlazeFightRules.isReachable(height, lava, distance, true)) return false;
-        return meleeLineClear(mod, blaze, now);
+        return new Floor(null, Double.POSITIVE_INFINITY, false);
     }
 
     // collision shapes, not visual ones: a nether brick fence is see through and swing proof. cached a few ticks per blaze
@@ -208,6 +258,42 @@ final class BlazeFight {
         }
         // nowhere nearby hides us from all of them. run from them, the threat list is who we mean (not just the charged ones)
         return new RunAwayFromHostilesTask(RUN_DISTANCE, true, this::threatEntities);
+    }
+
+    // walk to the floor under a blaze, not the blaze: one hovering five up has no standing spot in a follow goal, so the
+    // path pillars or fails and the tracker bans it. the mode is re-decided every tick, so the walk ends the moment one
+    // sees us (COVER) or gets in reach (KILL)
+    private Task hunt(long now) {
+        // a long break with nothing worth the walk is a fresh start too, the old clock is not this hunt's fault
+        boolean longBreak = lastHuntTick == Long.MIN_VALUE || now < lastHuntTick || now - lastHuntTick > BlazeFightRules.HIDE_HOLD_TICKS;
+        if (longBreak) huntTarget = null;
+        lastHuntTick = now;
+        if (huntTarget != null && BlazeFightRules.huntTakingTooLong(now >= huntSince ? now - huntSince : 0)) {
+            skippedHunts.put(huntTarget.getId(), now);
+            Blaze gone = huntTarget;
+            huntable.removeIf(h -> h.blaze() == gone);
+            huntTarget = null;
+        }
+        // that was the only one, sit tight this tick and the next scan says camp
+        if (huntable.isEmpty()) return null;
+        Hunt pick = null;
+        for (Hunt h : huntable) {
+            if (h.blaze() == huntTarget) {
+                pick = h;
+                break;
+            }
+        }
+        boolean changed = pick == null;
+        if (changed) {
+            pick = huntable.get(0);
+            huntSince = now;
+        }
+        double drift = huntGoal == null ? Double.POSITIVE_INFINITY : Math.sqrt(pick.stand().distSqr(huntGoal));
+        if (BlazeFightRules.needsNewHuntGoal(changed, drift)) {
+            huntTarget = pick.blaze();
+            huntGoal = pick.stand();
+        }
+        return new GetWithinRangeOfBlockTask(huntGoal, HUNT_RANGE);
     }
 
     private void markBad(BlockPos bad) {

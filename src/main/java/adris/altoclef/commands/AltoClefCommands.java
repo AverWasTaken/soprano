@@ -52,9 +52,10 @@ public final class AltoClefCommands {
     // soprano's own come walks to the camera, and a whisper wants the player who asked
     private static final Set<String> BUTLER_INTERNAL = Set.of("goto", "follow", "stop", "cancel", "come");
     // ours, but not something a whisper gets to run. punk kills a player, gamma is the owner's own screen and whitelist
-    // is who gets to whisper at all (a trusted player must not be able to trust anyone else). subtracted from everything
+    // is who gets to whisper at all (a trusted player must not be able to trust anyone else), schem answers the owner's
+    // own build questions (a whisper saying yes to the nether is not the owner saying yes). subtracted from everything
     // else, so a new alias of these has to be added here too
-    private static final Set<String> BUTLER_DENIED = Set.of("punk", "gamma", "setgamma", "set_gamma", "whitelist");
+    private static final Set<String> BUTLER_DENIED = Set.of("punk", "gamma", "setgamma", "set_gamma", "whitelist", "schem");
 
     private static final Runnable NOOP = () -> {
     };
@@ -104,6 +105,7 @@ public final class AltoClefCommands {
                 new ReloadSettingsCommand(baritone),
                 new CustomCommand(baritone),
                 new GamerCommand(baritone),
+                new SchemCommand(baritone),
                 new TaskCommand(baritone, new String[]{"hero"}, "Kill all hostile mobs",
                         HeroTask::new,
                         "Hunts down every hostile mob it can find and keeps going until stopped."),

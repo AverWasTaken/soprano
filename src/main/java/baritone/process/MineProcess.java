@@ -80,6 +80,11 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
         return filter != null;
     }
 
+    // what we're mining right now, null when we aren't
+    public BlockOptionalMetaLookup filter() {
+        return filter;
+    }
+
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
         if (desiredQuantity > 0) {

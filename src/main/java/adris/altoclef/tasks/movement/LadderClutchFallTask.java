@@ -7,7 +7,6 @@ import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
 import baritone.behavior.InventoryBehavior;
 import baritone.pathing.movement.movements.MovementFall;
-import baritone.utils.ExperimentalMovement;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -35,7 +34,7 @@ public class LadderClutchFallTask extends Task {
     // a task for this fall if a ladder or vine can save it from where we are, otherwise null (and nothing was touched,
     // other than a ladder that was in the main inventory moving to the hotbar, that's what the clutch has to click from)
     public static LadderClutchFallTask probe(AltoClef mod) {
-        if (!ExperimentalMovement.allowLadderClutch()) {
+        if (!mod.getClientBaritone().getInventoryBehavior().clutchAllowed()) {
             return null;
         }
         LocalPlayer player = mod.getPlayer();

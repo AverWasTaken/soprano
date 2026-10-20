@@ -412,6 +412,11 @@ public class BotBehaviour {
         _states.push(customState);
     }
 
+    // for a task that wants to pop only its own level and never somebody's above it (SchematicBuildTask)
+    public boolean isTop(State level) {
+        return !_states.isEmpty() && _states.peek() == level;
+    }
+
     public State pop() {
         if (_states.isEmpty()) {
             Debug.logError("State stack is empty. This shouldn't be happening.");

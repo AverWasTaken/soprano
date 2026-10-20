@@ -421,7 +421,8 @@ public class MovementFall extends Movement {
             return false;
         }
         InventoryBehavior inv = ((Baritone) baritone).getInventoryBehavior();
-        Item item = inv.pickClutchItem(false);
+        // asked again here and not just by the planner, the unplanned route never went through one
+        Item item = inv.clutchAllowed() ? inv.pickClutchItem(false) : null;
         if (item == null) {
             return false; // the last one's already in the wall, or somebody ate the vines
         }

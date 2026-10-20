@@ -26,7 +26,11 @@ import baritone.api.utils.input.Input;
 import baritone.behavior.Behavior;
 import net.minecraft.client.player.KeyboardInput;
 
+import baritone.api.pathing.movement.IMovement;
+import baritone.api.process.IBaritoneProcess;
+import baritone.pathing.path.PathExecutor;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -51,6 +55,10 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         super(baritone);
         this.blockBreakHelper = new BlockBreakHelper(baritone.getPlayerContext());
         this.blockPlaceHelper = new BlockPlaceHelper(baritone.getPlayerContext());
+        this.blockPlaceHelper.setWant(pos -> baritone.getBuilderProcess().placeAt(pos.getX(), pos.getY(), pos.getZ(), baritone.bsi.get0(pos)));
+        this.blockBreakHelper.setWant(pos -> baritone.getBuilderProcess().placeAt(pos.getX(), pos.getY(), pos.getZ(), baritone.bsi.get0(pos)));
+        this.blockBreakHelper.setBreakListener((pos, before, who) -> baritone.getBuilderProcess().broke(pos, before, who));
+        this.blockPlaceHelper.setTracedPlaceListener((pos, state, who) -> baritone.getBuilderProcess().placed(pos, state, who));
     }
 
     /**
@@ -101,8 +109,10 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         if (isInputForcedDown(Input.CLICK_LEFT)) {
             setInputForceState(Input.CLICK_RIGHT, false);
         }
-        blockBreakHelper.tick(isInputForcedDown(Input.CLICK_LEFT));
-        blockPlaceHelper.tick(isInputForcedDown(Input.CLICK_RIGHT));
+        // only while building, everything else has its own trace lines and these would drown them
+        String who = baritone.getBuilderProcess().isActive() && (isInputForcedDown(Input.CLICK_LEFT) || isInputForcedDown(Input.CLICK_RIGHT)) ? clicker() : null;
+        blockBreakHelper.tick(isInputForcedDown(Input.CLICK_LEFT), who);
+        blockPlaceHelper.tick(isInputForcedDown(Input.CLICK_RIGHT), who);
 
         if (inControl()) {
             if (ctx.player().input.getClass() != PlayerMovementInput.class) {
@@ -115,6 +125,22 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         }
         // only set it if it was previously incorrect
         // gotta do it this way, or else it constantly thinks you're beginning a double tap W sprint lol
+    }
+
+    // whose click this is for the trace: the builder's own, else the movement running, else whoever has the wheel
+    private String clicker() {
+        if (baritone.getBuilderProcess().clickedByBuilder()) {
+            return "builder";
+        }
+        PathExecutor exec = baritone.getPathingBehavior().getCurrent();
+        if (exec != null) {
+            List<IMovement> moves = exec.getPath().movements();
+            int at = exec.getPosition();
+            if (at >= 0 && at < moves.size()) {
+                return moves.get(at).getClass().getSimpleName();
+            }
+        }
+        return baritone.getPathingControlManager().mostRecentInControl().map(IBaritoneProcess::displayName).orElse("nobody");
     }
 
     private boolean inControl() {

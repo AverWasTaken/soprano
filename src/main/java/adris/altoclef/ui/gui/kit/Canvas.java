@@ -43,6 +43,10 @@ public interface Canvas extends TextMeasurer {
         icon(Icon.PLAYER, x + size * 0.15f, y + size * 0.15f, size * 0.7f, color(Theme.TEXT_2));
     }
 
+    // a hand drawn picture stretched over a pixel rect, nearest neighbour so a block stays a crisp square. tint
+    // multiplies (0xFFFFFFFF draws it as is, a lower alpha fades it). the game uploads it once per version
+    void image(PixelImage image, float x, float y, float w, float h, int tint);
+
     void pushClip(float x, float y, float w, float h);
 
     void popClip();

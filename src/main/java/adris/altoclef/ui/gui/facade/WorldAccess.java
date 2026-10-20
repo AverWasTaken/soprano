@@ -24,6 +24,11 @@ public interface WorldAccess {
     // null when there is no player
     Position playerPos();
 
+    // where the player looks, minecraft's yaw in degrees: 0 south, 90 west, 180 north, 270 east. 0 without a player
+    default float playerYaw() {
+        return 0f;
+    }
+
     // "overworld", "the_nether", "the_end" or whatever the dimension id's path is
     String dimension();
 

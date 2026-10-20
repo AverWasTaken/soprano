@@ -142,6 +142,19 @@ public final class Icons {
                 line(g, 12, 20, 12, 9);
                 line(g, 19, 20, 19, 4);
             }
+            case SCHEMATICS -> {
+                // two courses of bricks with the joints offset, so it is a wall and not a window
+                g.draw(new RoundRectangle2D.Float(3, 6, 18, 12, 2, 2));
+                line(g, 3, 12, 21, 12);
+                line(g, 12, 6, 12, 12);
+                line(g, 7.5f, 12, 7.5f, 18);
+                line(g, 16.5f, 12, 16.5f, 18);
+            }
+            case WARNING -> {
+                poly(g, true, 12, 3.5f, 21, 19.5f, 3, 19.5f);
+                line(g, 12, 9, 12, 13.5f);
+                dot(g, 12, 16.5f, w);
+            }
             case SEARCH -> {
                 g.draw(new Ellipse2D.Float(3.5f, 3.5f, 14, 14));
                 line(g, 15.5f, 15.5f, 20.5f, 20.5f);
@@ -307,7 +320,55 @@ public final class Icons {
                 g.draw(eye);
                 g.draw(new Ellipse2D.Float(8.5f, 8.5f, 7, 7));
             }
+            case CHEVRON_UP -> poly(g, false, 6, 15, 12, 9, 18, 15);
+            case CHEVRON_LEFT -> poly(g, false, 15, 6, 9, 12, 15, 18);
+            case ROTATE_LEFT -> turn(g);
+            case ROTATE_RIGHT -> {
+                // the same turn seen in a mirror
+                AffineTransform t = g.getTransform();
+                g.translate(24, 0);
+                g.scale(-1, 1);
+                turn(g);
+                g.setTransform(t);
+            }
+            case FLIP -> {
+                line(g, 12, 4, 12, 7);
+                line(g, 12, 10.5f, 12, 13.5f);
+                line(g, 12, 17, 12, 20);
+                poly(g, true, 9, 6, 9, 18, 3.5f, 12);
+                poly(g, true, 15, 6, 15, 18, 20.5f, 12);
+            }
+            case LEVEL_UP -> {
+                poly(g, false, 6, 13, 12, 7, 18, 13);
+                line(g, 6, 18, 18, 18);
+            }
+            case LEVEL_DOWN -> {
+                line(g, 6, 6, 18, 6);
+                poly(g, false, 6, 11, 12, 17, 18, 11);
+            }
+            case MOVE -> {
+                line(g, 12, 4, 12, 20);
+                line(g, 4, 12, 20, 12);
+                poly(g, false, 9.5f, 6.5f, 12, 4, 14.5f, 6.5f);
+                poly(g, false, 9.5f, 17.5f, 12, 20, 14.5f, 17.5f);
+                poly(g, false, 6.5f, 9.5f, 4, 12, 6.5f, 14.5f);
+                poly(g, false, 17.5f, 9.5f, 20, 12, 17.5f, 14.5f);
+            }
         }
+    }
+
+    // three quarters of a circle open at the top, the arrow on the loose end going counter clockwise, and a dot for
+    // the pivot. same arc trick as RESET, the dot is the difference
+    private static void turn(Graphics2D g) {
+        float cx = 12f;
+        float cy = 12f;
+        float r = 7f;
+        g.draw(new Arc2D.Float(cx - r, cy - r, 2 * r, 2 * r, 135, 270, Arc2D.OPEN));
+        double th = Math.toRadians(45);
+        float px = cx + r * (float) Math.cos(th);
+        float py = cy - r * (float) Math.sin(th);
+        head(g, px, py, (float) -Math.sin(th), (float) -Math.cos(th), 3.5f, 2.75f);
+        g.fill(new Ellipse2D.Float(cx - 1.5f, cy - 1.5f, 3, 3));
     }
 
     // an isometric cube seen from a corner, 18 units tall so it matches the rest of the family

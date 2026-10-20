@@ -119,6 +119,9 @@ public class CalculationContext {
     public final boolean allowSwimming;
     // moves a swimmer just got pinned on, they cost extra for a bit. see SwimStalls
     public final SwimStalls.Snapshot swimStalls;
+    // moves the executor just gave up on, see FailedMoves. only A* adds it, never calculateCost, or the executor's per tick
+    // cost recheck would cancel a perfectly good path for walking near an old failure
+    public final FailedMoves.Snapshot failedMoves;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
     // BoatTrip won't get the boat out for a shorter row of water than this, so the planner doesn't price one either
@@ -238,7 +241,7 @@ public class CalculationContext {
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
         // (no baritone means a test building one by hand, with fastMode on it would otherwise go looking for a hotbar)
-        Item clutchItem = baritone != null && ExperimentalMovement.allowLadderClutch() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
+        Item clutchItem = baritone != null && ((Baritone) baritone).getInventoryBehavior().clutchAllowed() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         // no baritone is a test, and tests are on 26.3
@@ -282,6 +285,8 @@ public class CalculationContext {
         // no baritone means a test building one by hand, nobody has been swimming
         this.swimStalls = baritone == null ? SwimStalls.Snapshot.NONE
                 : ((Baritone) baritone).getPathingBehavior().swimStalls().snapshot(world, System.currentTimeMillis());
+        this.failedMoves = baritone == null ? FailedMoves.Snapshot.NONE
+                : ((Baritone) baritone).getPathingBehavior().failedMoves().snapshot(world, System.currentTimeMillis());
         if (this.allowSwimming) {
             // sprint swimming beats wading on the bottom, unless depth strider is good enough to flip that
             waterSpeed = Math.min(waterSpeed, ActionCosts.SWIM_ONE_BLOCK_COST);

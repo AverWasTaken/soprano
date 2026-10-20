@@ -36,6 +36,9 @@ public class PathingControlManager implements IPathingControlManager {
     private final Baritone baritone;
     private final HashSet<IBaritoneProcess> processes; // unGh
     private final List<IBaritoneProcess> active;
+    // what was active as of the last sort, for whoever asks from outside executeProcesses (chat commands, behaviors).
+    // `active` itself is only trustworthy mid tick
+    private List<IBaritoneProcess> activeSnapshot = List.of();
     private IBaritoneProcess inControlLastTick;
     private IBaritoneProcess inControlThisTick;
     private PathingCommand command;
@@ -65,6 +68,7 @@ public class PathingControlManager implements IPathingControlManager {
         inControlThisTick = null;
         command = null;
         active.clear();
+        activeSnapshot = List.of();
         for (IBaritoneProcess proc : processes) {
             proc.onLostControl();
             if (proc.isActive() && !proc.isTemporary()) { // it's okay only for a temporary thing (like combat pause) to maintain control even if you say to cancel
@@ -76,6 +80,27 @@ public class PathingControlManager implements IPathingControlManager {
     @Override
     public Optional<IBaritoneProcess> mostRecentInControl() {
         return Optional.ofNullable(inControlThisTick);
+    }
+
+    // is a real process (mine, goto, follow...) running. the temporary ones (backfill, inventory pauser, #pause) only
+    // ever borrow the wheel from one of these, so they don't count as somebody wanting something
+    public boolean nonTemporaryActive() {
+        for (IBaritoneProcess proc : activeSnapshot) {
+            if (!proc.isTemporary()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // same question minus the asker, for a temporary process that only wants to help someone else's job along
+    public boolean otherNonTemporaryActive(IBaritoneProcess self) {
+        for (IBaritoneProcess proc : activeSnapshot) {
+            if (proc != self && !proc.isTemporary()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -191,6 +216,7 @@ public class PathingControlManager implements IPathingControlManager {
         }
         // ties are broken by which was added to the beginning of the list first
         active.sort(Comparator.comparingDouble(IBaritoneProcess::priority).reversed());
+        activeSnapshot = List.copyOf(active);
 
         Iterator<IBaritoneProcess> iterator = active.iterator();
         while (iterator.hasNext()) {

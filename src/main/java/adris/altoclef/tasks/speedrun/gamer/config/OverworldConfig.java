@@ -43,12 +43,18 @@ public class OverworldConfig {
             new KitItem("ladder", 3)));
     public ArmorPlan armorPlan = ArmorPlan.FULL_IRON;
     // stone-or-better pickaxes the bag holds on top of the one we dig with when the portal is entered (PortalPlanner.gate). the
-    // nether digs netherrack all day and a stone pick is 3 cobble and 2 sticks, nothing next to running out. 0 = off. a plain
+    // nether digs netherrack all day and a stone pick is 3 cobble and 2 sticks, nothing next to running out. a diamond pick in the
+    // bag (see diamondPick) needs none of them. 0 = off. a plain
     // number and not a kit list, so an old saved config just gets 3 and GamerConfig.VERSION stays
     public int netherSparePicks = 3;
     // diamonds in the bag (mined, or out of a chest) get crafted into upgrades instead of sitting there: a pick, then armor, see
     // DiamondSpend. off = the plan is exactly what it was. a plain flag, not a kit list, so an old saved config just gets true
     public boolean diamondSpend = true;
+    // dig for a diamond pick before the portal: the iron one wears out halfway through the nether. it goes after everything the
+    // portal needs (a timed out IRON can still skip with the essentials) and gives up after diamondPickMinutes of digging, or when
+    // the IRON budget is nearly gone. plain scalars, an old saved config just gets these
+    public boolean diamondPick = true;
+    public double diamondPickMinutes = 8;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;

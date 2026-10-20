@@ -40,6 +40,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.piston.MovingPistonBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -733,11 +734,49 @@ public interface MovementHelper extends ActionCosts, Helper {
         return isBlockNormalCube(state) || state.getBlock() == Blocks.GLASS || state.getBlock() instanceof StainedGlassBlock;
     }
 
+    // would an unsneaked right click do something to this block instead of placing against it. the click goes to the
+    // block first and the item only gets a turn if the block shrugs. block entities cover chests, furnaces, shelves,
+    // pots and friends, the menu provider catches the menus that have no block entity, the rest is the long tail of
+    // things that open, flip, eat, ring or blow up. MovementTraverse keeps its own shorter list, its god bridge cost
+    // was tuned on that one
+    static boolean opensWhenClicked(BlockState state, Level level, BlockPos pos) {
+        if (state.hasBlockEntity() || state.getMenuProvider(level, pos) != null) {
+            return true;
+        }
+        Block block = state.getBlock();
+        return block instanceof DoorBlock || block instanceof TrapDoorBlock || block instanceof FenceGateBlock
+                || block instanceof ButtonBlock || block instanceof LeverBlock || block instanceof BedBlock
+                || block instanceof AnvilBlock || block instanceof CakeBlock || block instanceof CandleCakeBlock
+                || block instanceof AbstractCauldronBlock || block instanceof DiodeBlock || block instanceof FlowerPotBlock
+                || clicky(block);
+    }
+
+    // a constant Set of these would make loading MovementHelper pull in Blocks, and the plain unit tests can't have that
+    private static boolean clicky(Block block) {
+        return block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE || block == Blocks.SMITHING_TABLE
+                || block == Blocks.LOOM || block == Blocks.GRINDSTONE || block == Blocks.STONECUTTER || block == Blocks.NOTE_BLOCK
+                || block == Blocks.RESPAWN_ANCHOR || block == Blocks.COMPOSTER || block == Blocks.TNT || block == Blocks.BELL
+                || block == Blocks.DAYLIGHT_DETECTOR || block == Blocks.JUKEBOX || block == Blocks.LECTERN
+                || block == Blocks.DRAGON_EGG || block == Blocks.REDSTONE_WIRE;
+    }
+
     /**
      * Can we climb up this block by pressing space while inside it?
      * Also doubles as "If I start a movement on this, can weird things happen?"
      * because movements can end/start on these blocks despite them not being canWalkOn.
      */
+    // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click
+    // would open the thing and walk us off the edge. block entities cover chests, furnaces, barrels and friends.
+    // an iron door just sits there when clicked, so that one's a placement
+    public static boolean opensWhenClicked(BlockState state) {
+        Block block = state.getBlock();
+        return state.hasBlockEntity() || block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE
+                || block == Blocks.SMITHING_TABLE || block == Blocks.LOOM || block == Blocks.NOTE_BLOCK || block == Blocks.RESPAWN_ANCHOR
+                || DoorBlock.isWoodenDoor(state) || block instanceof FenceGateBlock
+                || (block instanceof TrapDoorBlock && block != Blocks.IRON_TRAPDOOR)
+                || block instanceof ButtonBlock || block instanceof LeverBlock || block instanceof RepeaterBlock;
+    }
+
     static boolean isClimbable(Block block) {
         return block == Blocks.LADDER
             || block == Blocks.VINE
@@ -1042,7 +1081,7 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     // once per 5 seconds (NoThrowawayLogGate), at normal log level: the next run's logs say why we had nothing to place
     // instead of a silent no-op. the guard used to live on the movement, and every replan makes fresh movements
-    static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
+    public static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
         if (!NoThrowawayLogGate.due(System.currentTimeMillis())) {
             return;
         }

@@ -25,6 +25,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -73,7 +76,14 @@ public interface IPlayerContext {
         // this does not impact performance at all since we're not null checking constantly
         // if there is an exception, the only overhead is Java generating the exception object... so we can ignore it
         try {
-            if (world().getBlockState(feet).getBlock() instanceof SlabBlock) {
+            BlockState inFeet = world().getBlockState(feet);
+            if (inFeet.getBlock() instanceof SlabBlock) {
+                return feet.above();
+            }
+            // same deal as the slab: the only way to be inside a bottom stair's cell is standing on its low step, and the
+            // planner calls that the cell above. otherwise the low step and the high step are two different feet and the
+            // executor flips between the ascend onto it and the traverse off it
+            if (inFeet.getBlock() instanceof StairBlock && inFeet.getValue(StairBlock.HALF) == Half.BOTTOM) {
                 return feet.above();
             }
         } catch (NullPointerException ignored) {}

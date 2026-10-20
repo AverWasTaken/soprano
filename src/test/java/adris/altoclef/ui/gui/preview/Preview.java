@@ -134,6 +134,16 @@ public final class Preview {
         advance(16);
     }
 
+    // the pointer moving with the button held, after press(): the shell gets a drag, not a move
+    public void drag(float x, float y) {
+        float dx = x - mouseX;
+        float dy = y - mouseY;
+        mouseX = x;
+        mouseY = y;
+        shell.mouseDrag(x, y, 0, dx, dy);
+        advance(16);
+    }
+
     public void scroll(float x, float y, float notches) {
         hover(x, y);
         shell.scroll(x, y, notches);

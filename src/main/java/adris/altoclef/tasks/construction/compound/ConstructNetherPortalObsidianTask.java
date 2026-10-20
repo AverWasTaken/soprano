@@ -96,6 +96,9 @@ public class ConstructNetherPortalObsidianTask extends Task {
     private BlockPos _origin;
 
     private BlockPos _destroyTarget;
+    // ticks the interior cell we're on has gone without a ray, see InteriorPick
+    private int _noReachTicks;
+    private int _reachSwitches;
 
     private static BlockPos getBuildableAreaNearby(AltoClef mod) {
         BlockPos checkOrigin = mod.getPlayer().blockPosition();
@@ -114,6 +117,8 @@ public class ConstructNetherPortalObsidianTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
+        _reachSwitches = 0;
+        _noReachTicks = 0;
         mod.getBehaviour().push();
 
         // Avoid breaking portal frame if we're obsidian.
@@ -184,15 +189,24 @@ public class ConstructNetherPortalObsidianTask extends Task {
         }
 
         // Clear middle
+        // same pick as the bucket build: stay on the cell we're on unless it got banned or has gone a second without a ray
+        // while another cell has one
         if (_destroyTarget != null && !WorldHelper.isAir(mod, _destroyTarget)) {
-            return ConstructNetherPortalBucketTask.clearInteriorCell(mod.getWorld().getBlockState(_destroyTarget), _destroyTarget);
+            _noReachTicks = InteriorPick.reachNow(mod, _destroyTarget) ? 0 : _noReachTicks + 1;
+        } else {
+            _destroyTarget = null;
+            _noReachTicks = 0;
         }
-        for (Vec3i middleOffs : PORTAL_INTERIOR) {
-            BlockPos middlePos = _origin.offset(middleOffs);
-            if (!WorldHelper.isAir(mod, middlePos)) {
-                _destroyTarget = middlePos;
-                return ConstructNetherPortalBucketTask.clearInteriorCell(mod.getWorld().getBlockState(middlePos), middlePos);
+        BlockPos next = InteriorPick.pick(mod, _origin, PORTAL_INTERIOR, cell -> WorldHelper.isAir(mod, cell), _destroyTarget, _noReachTicks, _reachSwitches);
+        if (next != null) {
+            if (!next.equals(_destroyTarget)) {
+                if (_destroyTarget != null && !mod.getBlockTracker().unreachable(_destroyTarget)) {
+                    _reachSwitches++;
+                }
+                _destroyTarget = next;
+                _noReachTicks = 0;
             }
+            return ConstructNetherPortalBucketTask.clearInteriorCell(mod.getWorld().getBlockState(next), next);
         }
         // Flint and steel
         return new InteractWithBlockTask(new ItemTarget(Items.FLINT_AND_STEEL, 1), Direction.UP, _origin.below(), true);
