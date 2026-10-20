@@ -994,7 +994,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         List<BlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlacables(bcc, desirableOnHotbar);
-        if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && steady() && ticks <= 0) {
+        // creative breaks land the tick we click, there's no dig to wait out
+        boolean digCooldown = ticks > 0 && !ctx.player().getAbilities().instabuild;
+        if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && steady() && !digCooldown) {
             dropPathBeforeClicking();
             lastPlaceAim = builderTicks;
             Placement place = toPlace.get();
