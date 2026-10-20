@@ -74,6 +74,8 @@ final class CombatBrain {
     private int _meleeNear;
     private int _meleeAround;
     private boolean _shotAt;
+    // a normal fight with a second mob hitting us, the shield is up for it (CombatRules.pileShield)
+    private boolean _pile;
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
     private long _stanceLogAt = Long.MIN_VALUE / 2;
@@ -120,13 +122,20 @@ final class CombatBrain {
         return _swingAt.contains(id);
     }
 
-    // the aura is all feet and no hands while running, and only uses the shield when boxed in
+    // the aura is all feet and no hands while running. the shield is for a fight that is boxed in or has a pile on us: one
+    // zombie still does not get it, two hitting us do
     boolean auraKiting() {
         return _commit.mode() == Mode.RUN;
     }
 
+    // in a committed fight the flee line was already the machine's call (a cornered one never bails), so the aura keeps its
+    // hands and its shield under it
+    boolean auraFighting() {
+        return _commit.mode() == Mode.FIGHT;
+    }
+
     boolean auraShield() {
-        return _commit.mode() == Mode.FIGHT && _commit.cornered();
+        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile);
     }
 
     float holdPriority() {
@@ -146,6 +155,7 @@ final class CombatBrain {
         _meleeNear = 0;
         _meleeAround = 0;
         _shotAt = false;
+        _pile = false;
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
@@ -290,6 +300,8 @@ final class CombatBrain {
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
         }
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
+        // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
+        _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         _shotAt = shotAt;

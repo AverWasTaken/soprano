@@ -130,8 +130,9 @@ public class CombatCommitChasedTest {
 
     @Test
     public void theTurnPicksWhatIsOnUsOrHitUsOverTheClosest() {
-        // 2 is closest but never touched us, 3 hit us from six blocks: 3 it is
-        Foe[] foes = {zombie(2, 4), zombie(3, 6, 20)};
+        // 2 is closest but never touched us, 3 hit us from seven blocks: 3 it is. (seven, not six: a sinceHit that stays 20 for
+        // a thousand ticks is a fresh hit every tick, and inside SWARM_RANGE that many hits turns the run around long before the cap)
+        Foe[] foes = {zombie(2, 4), zombie(3, 7, 20)};
         CombatCommit c = extendedRun(foes);
         holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, foes);
         assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, foes)));
