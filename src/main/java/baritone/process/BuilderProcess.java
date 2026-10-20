@@ -57,6 +57,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.Direction;
@@ -582,6 +583,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Optional<Tuple<BetterBlockPos, Rotation>> toBreakNearPlayer(BuilderCalculationContext bcc) {
         BetterBlockPos center = ctx.playerFeet();
         BetterBlockPos pathStart = baritone.getPathingBehavior().pathStart();
+        boolean hanging = hanging();
         for (int dx = -5; dx <= 5; dx++) {
             for (int dy = Baritone.settings().breakFromAbove.value ? -1 : 0; dy <= 5; dy++) {
                 for (int dz = -5; dz <= 5; dz++) {
@@ -590,6 +592,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     int z = center.z + dz;
                     if (dy == -1 && x == pathStart.x && z == pathStart.z) {
                         continue; // dont mine what we're supported by, but not directly standing on
+                    }
+                    if (hanging && dx == 0 && dy == 0 && dz == 0) {
+                        continue; // the ladder we're holding on to. from the ground it's just another block
                     }
                     if (givenUp(x, y, z)) {
                         continue;
@@ -850,6 +855,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             ticks--;
         }
         baritone.getInputOverrideHandler().clearAllKeys();
+        if (hanging()) {
+            // every tick, not just at the click. let go of sneak on a ladder and we slide, push on it and vanilla bumps
+            // us up 0.2, and the click gates wait for steady() forever. a climb still works: the path's movement clears
+            // the keys after us (Movement.update) and presses its own
+            baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
+        }
         forcedClicks = false;
         if (paused) {
             stallTicks = 0;
@@ -944,8 +955,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         // altoclef pausing interactions means no breaking, no placing and no hotbar shuffling, we just keep walking
         boolean interactionPaused = AltoClefSettings.getInstance().isInteractionPaused();
-        Optional<Tuple<BetterBlockPos, Rotation>> toBreak = toBreakNearPlayer(bcc);
-        if (!interactionPaused && toBreak.isPresent() && isSafeToCancel && ctx.player().onGround()) {
+        Optional<Pair<BetterBlockPos, Rotation>> toBreak = toBreakNearPlayer(bcc);
+        if (!interactionPaused && toBreak.isPresent() && isSafeToCancel && steady()) {
             // we'd like to pause to break this block
             // only change look direction if it's safe (don't want to fuck up an in progress parkour for example
             dropPathBeforeClicking();
@@ -972,7 +983,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         List<BlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlacables(bcc, desirableOnHotbar);
-        if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && ctx.player().onGround() && ticks <= 0) {
+        if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && steady() && ticks <= 0) {
             dropPathBeforeClicking();
             Placement place = toPlace.get();
             if (place.give != null) {
@@ -1076,6 +1087,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return new PathingCommandContext(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
     }
 
+    // on the ground, or hanging off a ladder with the sneak in (onTick holds it), so nothing slides or bobs under the click
+    private boolean steady() {
+        return ctx.player().onGround() || (hanging() && ctx.player().isCrouching());
+    }
+
+    // on a ladder or a vine, where holding sneak keeps us put. scaffolding is climbable too but a sneak in it is the way
+    // down (same exception as PlacementPlanner.hangable)
+    private boolean hanging() {
+        LocalPlayer player = ctx.player();
+        return player.onClimbable() && !player.getAbilities().flying && !player.getInBlockState().is(Blocks.SCAFFOLDING);
+    }
+
     // upstream's goal composites are happy if any member is. a member that's happy with where we stand while nothing
     // around here is clickable means the pather never moves us and nothing else does either: the stare. true when this
     // tick gave some cells up and the goal needs building again
@@ -1089,9 +1112,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             stallTicks = 0; // not there yet, getting there is the watchdog's business
             return false;
         }
-        if (!isSafeToCancel || !ctx.player().onGround()) {
+        if (!isSafeToCancel || !steady()) {
             // walking, swimming, mid movement, told not to click, or something is happening that just isn't a click.
-            // the click branches need safe to cancel and on the ground too, so none of that is a stare
+            // the click branches need safe to cancel and steady footing too, so none of that is a stare
             stallTicks = 0;
             return false;
         }
