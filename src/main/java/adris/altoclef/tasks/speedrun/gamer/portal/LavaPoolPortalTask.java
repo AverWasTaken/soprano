@@ -99,6 +99,8 @@ public class LavaPoolPortalTask extends Task {
     private int blockedReads;
     private P stepBackTo;
     private int stepBackSince;
+    private P retreatTo;
+    private int retreatSince;
     private boolean nudging;
 
     public LavaPoolPortalTask(Consumer<String> log) {
@@ -174,6 +176,19 @@ public class LavaPoolPortalTask extends Task {
         letGoOfTheNudge(mod);
         if (failReason != null || finished) {
             return null;
+        }
+        // before everything, wandering and the slow cast included: nothing else matters while we're standing in lava
+        if (layout != null) {
+            LiveTerrain here = new LiveTerrain(mod.getWorld());
+            boolean burning = PortalMold.lavaOnUs(here, body(mod));
+            Task run = retreat(mod, here, burning);
+            if (run != null || burning) {
+                setDebugState("getting out of the lava");
+                // the time out here isn't the step's fault
+                stepKey = "";
+                standKey = "";
+                return run;
+            }
         }
         if (unstick != null && unstick.isActive() && !unstick.isFinished(mod)) {
             setDebugState("shaking loose");
@@ -439,6 +454,22 @@ public class LavaPoolPortalTask extends Task {
             nudging = false;
             mod.getInputControls().release(Input.MOVE_BACK);
         }
+    }
+
+    // standing in lava: walk to a spot that isn't, and keep walking there until we arrive (or it stops being safe, or it
+    // takes too long). no spot means null and the survival chain's lava escape does its thing
+    private Task retreat(AltoClef mod, LiveTerrain terrain, boolean burning) {
+        if (retreatTo != null) {
+            boolean there = toP(mod.getPlayer().blockPosition()).equals(retreatTo);
+            if (there || tick - retreatSince > RETREAT_TICKS || !PortalMold.safeToStand(terrain, retreatTo)) {
+                retreatTo = null;
+            }
+        }
+        if (retreatTo == null && burning) {
+            retreatTo = PortalMold.retreatSpot(layout, terrain, toP(mod.getPlayer().blockPosition()));
+            retreatSince = tick;
+        }
+        return retreatTo == null ? null : new GetToBlockTask(toPos(retreatTo), false);
     }
 
     private static PortalMold.Box body(AltoClef mod) {

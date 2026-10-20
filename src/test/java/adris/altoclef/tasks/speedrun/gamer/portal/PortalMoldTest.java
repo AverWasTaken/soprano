@@ -476,6 +476,58 @@ public class PortalMoldTest {
     }
 
     @Test
+    public void lavaCountsOnlyWhenItIsInOurBox() {
+        World w = new World(straight());
+        Layout l = w.l;
+        PortalMold.Box onStand = bodyAt(l, 0.5, 2.5);
+        // the pool under the shore and lava in t are not on us
+        w.set(l.cell(0, 1, 0), Mat.LAVA);
+        assertFalse(PortalMold.lavaOnUs(w, onStand));
+        // right beside a flow in the next cell is still not in it, that's how the scoop stands at the pool
+        w.set(l.cell(0, 1, 1), Mat.LAVA_FLOW);
+        assertFalse(PortalMold.lavaOnUs(w, bodyAt(l, 0.5, 2.35)));
+        // poking into it is
+        assertTrue(PortalMold.lavaOnUs(w, bodyAt(l, 0.5, 2.2)));
+        // and so is the flow reaching our own cell
+        w.set(l.cell(0, 2, 2), Mat.LAVA_FLOW);
+        assertTrue(PortalMold.lavaOnUs(w, onStand));
+    }
+
+    @Test
+    public void retreatsUpTheColumnOrPastTheFlow() {
+        World w = new World(straight());
+        Layout l = w.l;
+        w.set(l.cell(0, 1, 2), Mat.LAVA_FLOW);
+        w.set(l.cell(0, 1, 1), Mat.LAVA_FLOW);
+        P spot = PortalMold.retreatSpot(l, w, l.cell(0, 1, 2));
+        assertNotNull(spot);
+        int[] at = l.local(spot);
+        assertTrue("retreated to " + at[0] + "," + at[1] + "," + at[2], at[2] >= 4 || at[0] <= -2 || at[0] >= 2);
+        assertTrue(PortalMold.safeToStand(w, spot));
+        // our column is a wall past d=3: sideways it is, and never into the cell next to the flow
+        for (int d = 4; d <= 8; d++) {
+            w.set(l.cell(0, 1, d), Mat.STONE);
+            w.set(l.cell(0, 2, d), Mat.STONE);
+            w.set(l.cell(0, 3, d), Mat.STONE);
+        }
+        at = l.local(PortalMold.retreatSpot(l, w, l.cell(0, 1, 2)));
+        assertEquals(2, at[2]);
+        assertTrue(Math.abs(at[0]) >= 2);
+    }
+
+    @Test
+    public void noRetreatWhenEverythingAroundIsLava() {
+        World w = new World(straight());
+        Layout l = w.l;
+        for (int u = -9; u <= 14; u++) {
+            for (int d = 1; d <= 12; d++) {
+                w.set(l.cell(u, 1, d), Mat.LAVA);
+            }
+        }
+        assertEquals(null, PortalMold.retreatSpot(l, w, l.cell(0, 1, 2)));
+    }
+
+    @Test
     public void stepsBackOffAStandOntoSomethingSafe() {
         World w = new World(straight());
         Cast left1 = PortalMold.CASTS.get(0);
