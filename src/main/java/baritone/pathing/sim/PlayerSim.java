@@ -126,7 +126,7 @@ public final class PlayerSim {
         }
         failure = null;
 
-        // KeyboardInput / PlayerMovementInput: moveVector = new Vec2(left, forward).normalized()
+        // KeyboardInput / PlayerMovementInput: moveVector = new Vec2(left, forward).normalized(). not on <= 1.21.4 through vfp, see PlayerMovementInput
         float lx = c.left(), lz = c.forward();
         float len = Mth.sqrt(lx * lx + lz * lz);
         float mvx = 0.0F, mvz = 0.0F;

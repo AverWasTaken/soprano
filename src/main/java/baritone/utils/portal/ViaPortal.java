@@ -104,6 +104,12 @@ public final class ViaPortal {
         return serverOlderThan(ProtocolVersion.v26_3);
     }
 
+    // exactly vfp's own gate on KeyboardInput's normalized() call, no SPECIAL carve out, so bot input and real
+    // keyboard input never disagree about it
+    public static boolean rawDiagonalInput() {
+        return ViaFabricPlus.api().targetVersion().olderThanOrEqualTo(ProtocolVersion.v1_21_4);
+    }
+
     public static void select(int step) {
         List<ProtocolVersion> list = steps();
         ViaFabricPlus.api().setTargetVersion(list.get(Math.max(0, Math.min(step, list.size() - 1))));

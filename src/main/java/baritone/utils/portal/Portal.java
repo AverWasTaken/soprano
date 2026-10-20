@@ -90,4 +90,17 @@ public final class Portal {
             return false;
         }
     }
+
+    // does the client skip normalizing diagonal input like <= 1.21.4 did, see PlayerMovementInput. false means 26.3 rules
+    public static boolean rawDiagonalInput() {
+        if (!available() || broken) {
+            return false;
+        }
+        try {
+            return ViaPortal.rawDiagonalInput();
+        } catch (LinkageError | RuntimeException e) {
+            broken = true;
+            return false;
+        }
+    }
 }

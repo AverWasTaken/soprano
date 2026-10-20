@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.api.utils.input.Input;
+import baritone.utils.portal.Portal;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.world.phys.Vec2;
 
@@ -57,8 +58,11 @@ public class PlayerMovementInput extends ClientInput {
 
         boolean sneaking = handler.isInputForcedDown(Input.SNEAK);
         // no sneak scaling here, LocalPlayer.modifyInput does the 0.98 and the sneaking speed attribute (scaling it here
-        // too made a sneak 0.09 instead of 0.294). and normalized like KeyboardInput, or a diagonal sneak is 1.4x too fast
-        this.moveVector = new Vec2(leftImpulse, forwardImpulse).normalized();
+        // too made a sneak 0.09 instead of 0.294). and normalized like KeyboardInput, or a diagonal sneak is 1.4x too fast.
+        // except on <= 1.21.4 through vfp: those clients never normalized and the 1.4x diagonal sneak was just how it was,
+        // so vfp skips it in KeyboardInput (and turns off modifyInputSpeedForSquareMovement). it can't see us, so we copy it
+        Vec2 move = new Vec2(leftImpulse, forwardImpulse);
+        this.moveVector = Portal.rawDiagonalInput() ? move : move.normalized();
 
         boolean sprinting = handler.isInputForcedDown(Input.SPRINT);
 
