@@ -125,6 +125,12 @@ final class CombatBrain {
         return _commit.mode() == Mode.RUN;
     }
 
+    // in a committed fight the flee line was already the machine's call (a cornered one never bails), so the aura keeps its
+    // hands and its shield under it
+    boolean auraFighting() {
+        return _commit.mode() == Mode.FIGHT;
+    }
+
     boolean auraShield() {
         return _commit.mode() == Mode.FIGHT && _commit.cornered();
     }
