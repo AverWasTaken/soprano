@@ -151,9 +151,10 @@ public final class KitPlanner {
 
     // stone-or-better picks we still need to make to walk into the nether with the one we dig with plus netherSparePicks that are
     // not worn out. have() counts the better tiers and leaves worn ones out (they are 'spent'), so an iron pick plus two stone
-    // ones is three, and a diamond pick is a pick like any other. 0 when the bag has them
+    // ones is three. 0 when the bag has them, or holds a diamond pick
     public static int sparePicksShort(GamerFacts f, OverworldConfig cfg) {
-        if (cfg.netherSparePicks <= 0) {
+        // a diamond pick digs netherrack for the whole nether and then some, the stone spares were for an iron pick running out
+        if (cfg.netherSparePicks <= 0 || f.count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0) {
             return 0;
         }
         return Math.max(0, 1 + cfg.netherSparePicks - have(f, "stone_pickaxe"));
