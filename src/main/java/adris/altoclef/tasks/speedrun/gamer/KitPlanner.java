@@ -365,8 +365,35 @@ public final class KitPlanner {
         if (worn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, worn));
         }
+        addDiamondPick(out, f, cfg);
         addWool(out, f, endBeds);
         return out;
+    }
+
+    // the name of the dig for the diamond pick (DiamondHunt clocks it while it is the head)
+    public static final String DIAMOND = "diamond";
+
+    // the iron pick breaks halfway through the nether, so the plan digs for a diamond one. behind everything the portal needs (a timed
+    // out IRON still skips on the essentials) and in front of the wool, so the dig ends with a walk up to the sheep and not with the
+    // portal starting at the bottom of the world. diamondSpend on: three diamonds and DiamondSpend crafts the pick (its need is first in
+    // iron() the moment we hold them). off: the three, then the pick itself
+    private static void addDiamondPick(List<KitNeed> out, GamerFacts f, OverworldConfig cfg) {
+        if (!wantsDiamondPick(f, cfg)) {
+            return;
+        }
+        if (f.count(Items.DIAMOND) < DiamondSpend.MIN) {
+            out.add(new KitNeed(DIAMOND, DiamondSpend.MIN));
+        }
+        if (!cfg.diamondSpend) {
+            out.add(new KitNeed("diamond_pickaxe", held(f, "diamond_pickaxe") + 1));
+        }
+    }
+
+    // switched on, not given up on this run, no diamond (or netherite) pick in the bag, and the essentials in hand. that last one
+    // is what really puts it behind them: while iron cooks SmeltFiller runs whatever needs no ingots, and a dig there would
+    // otherwise go before the buckets are made (and with no iron pick, before there is anything that can mine a diamond)
+    public static boolean wantsDiamondPick(GamerFacts f, OverworldConfig cfg) {
+        return cfg.diamondPick && !f.diamondHuntGaveUp() && have(f, "diamond_pickaxe") == 0 && essentialsMet(f, cfg);
     }
 
     // the craft keeps its count, it only moves up. the shared iron_ingot need was sized with it, so nothing is counted twice

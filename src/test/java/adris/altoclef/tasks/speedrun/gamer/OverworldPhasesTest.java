@@ -87,6 +87,11 @@ public class OverworldPhasesTest {
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
         f.give(Items.GREEN_WOOL, 24);
+        assertFalse("no diamond pick yet", iron.isDone(f, state, cfg));
+        f.diamondHuntGaveUp = true;
+        assertTrue("the dig ran out of time, the iron pick it is", iron.isDone(f, state, cfg));
+        f.diamondHuntGaveUp = false;
+        f.give(Items.DIAMOND_PICKAXE, 1);
         assertTrue(iron.isDone(f, state, cfg));
         f.foodUnits = 99;
         assertFalse("food under the target", iron.isDone(f, state, cfg));
@@ -99,7 +104,7 @@ public class OverworldPhasesTest {
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
         FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
-                Items.SHIELD, Items.SHEARS)) {
+                Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
@@ -123,7 +128,7 @@ public class OverworldPhasesTest {
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
         FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
-                Items.SHIELD, Items.SHEARS)) {
+                Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
@@ -201,7 +206,7 @@ public class OverworldPhasesTest {
         cfg.end.beds = 2;
         FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
-                Items.SHIELD, Items.SHEARS)) {
+                Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
