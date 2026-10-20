@@ -143,13 +143,67 @@ public class BuilderStallTest {
     }
 
     @Test
-    public void bobbingBetweenTwoCellsIsNotMoving() {
-        // feet flipping a block up and down on a ladder, or across a block edge, kept resetting the watchdog
-        assertTrue(BuilderProcess.watchdogMoved(null, CELL));
-        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL));
-        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL.above()));
-        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL.below().east().north()));
-        assertTrue(BuilderProcess.watchdogMoved(CELL, CELL.above(2)));
-        assertTrue(BuilderProcess.watchdogMoved(CELL, CELL.west(2)));
+    public void theWatchdogOnlyCountsGettingFurther() {
+        WatchdogProgress p = new WatchdogProgress();
+        BetterBlockPos dest = new BetterBlockPos(20, 64, 0);
+        // the first look is always a new best
+        assertTrue(p.progressed(100, dest, new BetterBlockPos(0, 64, 0)));
+        // standing still, or bobbing back and forth, is nothing
+        assertFalse(p.progressed(100, dest, new BetterBlockPos(0, 64, 0)));
+        assertFalse(p.progressed(100, dest, new BetterBlockPos(-1, 64, 0)));
+        assertFalse(p.progressed(100, dest, new BetterBlockPos(0, 64, 0)));
+        // closer than ever is
+        assertTrue(p.progressed(100, dest, new BetterBlockPos(1, 64, 0)));
+        // a block going in, then out again, then in again: only the first one is new
+        assertTrue(p.progressed(101, dest, new BetterBlockPos(1, 64, 0)));
+        assertFalse(p.progressed(100, dest, new BetterBlockPos(1, 64, 0)));
+        assertFalse(p.progressed(101, dest, new BetterBlockPos(1, 64, 0)));
+        assertFalse(p.progressed(101, null, new BetterBlockPos(1, 64, 0)));
+    }
+
+    @Test
+    public void twoGoalsTakingTurnsArentNewEveryTime() {
+        WatchdogProgress p = new WatchdogProgress();
+        BetterBlockPos a = new BetterBlockPos(20, 64, 0);
+        BetterBlockPos b = new BetterBlockPos(-20, 64, 0);
+        BetterBlockPos feet = new BetterBlockPos(0, 64, 0);
+        assertTrue(p.progressed(0, a, feet));
+        assertTrue(p.progressed(0, b, feet));
+        // the place, break, place loop flips the path end between the same two spots
+        assertFalse(p.progressed(0, a, feet));
+        assertFalse(p.progressed(0, b, feet));
+        p.reset();
+        assertTrue(p.progressed(0, a, feet));
+    }
+
+    @Test
+    public void besideIsUnderTheFeetOrTouchingTheBody() {
+        BlockPos feet = new BlockPos(0, 64, 0);
+        assertTrue(BuilderProcess.besideFeet(feet, 0, 63, 0)); // standing on it
+        assertTrue(BuilderProcess.besideFeet(feet, 1, 63, 0));
+        assertTrue(BuilderProcess.besideFeet(feet, 0, 64, -1));
+        assertTrue(BuilderProcess.besideFeet(feet, -1, 65, 0)); // head level
+        assertFalse(BuilderProcess.besideFeet(feet, 1, 64, 1)); // the corner isn't touching
+        assertFalse(BuilderProcess.besideFeet(feet, 2, 64, 0));
+        assertFalse(BuilderProcess.besideFeet(feet, 0, 62, 0));
+        assertFalse(BuilderProcess.besideFeet(feet, 0, 66, 0));
+    }
+
+    @Test
+    public void breakingAsideNeverStandsOnItOrNextToIt() {
+        BuilderProcess.GoalBreakAside goal = new BuilderProcess.GoalBreakAside(CELL);
+        assertFalse(goal.isInGoal(CELL.above()));
+        assertFalse(goal.isInGoal(CELL.east()));
+        assertFalse(goal.isInGoal(CELL.east().below()));
+        assertFalse(goal.isInGoal(CELL.below()));
+        assertTrue(goal.isInGoal(CELL.east(2)));
+        assertTrue(goal.isInGoal(CELL.east().north()));
+        assertTrue(goal.isInGoal(CELL.east(2).above()));
+        // under it with the head two short, a break straight up
+        assertTrue(goal.isInGoal(CELL.below(2)));
+        assertFalse(goal.isInGoal(CELL.east(3)));
+        assertFalse(goal.isInGoal(CELL.east(2).above(2)));
+        assertEquals(goal, new BuilderProcess.GoalBreakAside(CELL));
+        assertEquals(goal.hashCode(), new BuilderProcess.GoalBreakAside(CELL).hashCode());
     }
 }
