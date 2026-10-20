@@ -22,10 +22,12 @@ import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.BlockChangeEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.event.listener.AbstractGameEventListener;
+import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalComposite;
 import baritone.api.pathing.goals.GoalGetToBlock;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.process.IBuilderProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
@@ -38,10 +40,8 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
-import baritone.utils.BlockPlaceHelper;
 import baritone.utils.InputOverrideHandler;
 import baritone.utils.PathingCommandContext;
-import baritone.utils.accessor.IClientBlockBreak;
 import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
@@ -52,6 +52,8 @@ import com.google.common.collect.ImmutableSet;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -149,11 +151,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private static final double DROP_MARGIN = 0.3;
     // the swap into the hotbar had nowhere to go this tick, every slot is in use by something near here. see quickGiveUp
     private boolean hotbarFull;
-    // ticks at the same feet with nothing landing in the world and no dig getting anywhere, whoever is driving. see
+    // ticks without the build getting further or us getting closer to where the path goes, whoever is driving. see
     // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
     private int watchdogTicks;
-    private BetterBlockPos watchdogFeet;
-    private float lastDestroyProgress;
+    private WatchdogProgress watchdogProgress = new WatchdogProgress();
     // where the last path we saw was headed. paths get cancelled all the time, so getPath is empty half the ticks
     private BetterBlockPos lastPathDest;
     private static final int WATCHDOG_TICKS = 200;
@@ -171,16 +172,35 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // only the caller that restarts its own build asks for that (keepGiveUpsOnce). a #build from chat or a one block
     // PlaceBlockTask retry gets its three fresh goes like before
     private boolean restoreGivenUp;
-    // air cells somebody else (a path, a movement) put a throwaway in this build. only these count when we mine one, or a
-    // clear job would remember every stone it ever dug and copy the lot into every bcc
-    private LongOpenHashSet scaffoldPlaced;
-    // and of those, the ones the builder then mined. a path that puts one back is the scaffold loop (upstream #2173): it
-    // needs that block to stand on, we mine it, it places it again. the throwaway that comes back is left alone till
-    // nothing else is left, see deferredScaffold
-    private LongOpenHashSet scaffoldMined;
-    private LongOpenHashSet scaffoldDeferLogged;
-    // set once the rest of the build is done and the deferred ones are fair game again. GivenUp bounds them from there
-    private boolean scaffoldReleased;
+    // the scaffold this build put up and the right blocks paths dug out of it. mining a pillar the moment it went up was
+    // the scaffold loop (upstream #2173): the path needs it to stand on, we mine it, it places it again. now it all
+    // stays up till the build is done and comes down after, see cleanupStep
+    private ScaffoldLedger ledger = new ScaffoldLedger();
+    // the bcc's copy of it, made again only when the ledger or the cleanup moved
+    private ScaffoldLedger.View ledgerView = ScaffoldLedger.View.EMPTY;
+    private int ledgerViewVersion = -1;
+    private int ledgerViewClean = -1;
+    private int cleanVersion;
+    // 0 while building, else which cleanup round this is
+    private int cleanRound;
+    private CleanStage cleanStage = CleanStage.NONE;
+    // the scaffold this round takes down. anything a path puts up while we're at it waits for the next round
+    private LongOpenHashSet cleanCells;
+    // the path's cells plus the two over each, as of the last path we saw. a dug out cell in here is still in the way
+    private LongOpenHashSet pathCells = new LongOpenHashSet();
+    private Object pathCellsOf;
+    // the last build that got all the way to "Done building", cleanup and all
+    private long finishedSerial;
+
+    private enum CleanStage {
+        NONE,
+        // scaffold inside the box, through the normal goal
+        SCAFFOLD,
+        // then the scaffold the builder can't see (outside the box, cut out cells), through our own GoalBreak pass
+        OUTSIDE,
+        // then the dug out cells that waited for the end
+        DETOUR
+    }
     // where to stand for the cells a movement can't place right (stairs, logs, anything aimed), see PlacementPlanner
     private PlacementPlanner planner;
     private Long2ObjectOpenHashMap<CellPlan> plans;
@@ -400,6 +420,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.incorrectPositions = null;
         forgetStalls();
         forgetCreative();
+        // the same build again (altoclef after a meal, a night, a gather) still owns the scaffold it put up. a chat
+        // #build somewhere else doesn't get to tear it down
+        if (ledger == null) {
+            ledger = new ScaffoldLedger(); // BuilderPlacedBuildTest skips the constructor, and the field initializers with it
+        }
+        ledger.own(name, this.origin);
+        forgetCleanup();
         if (restoreGivenUp && keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
             // a world change in between still wipes it, recalcNearby's seenWorld check sees to that. the for good ones
             // get one more go: nobody was watching their neighbours while we were stopped, and altoclef's cleanup
@@ -447,14 +474,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         pouring = null;
         unpourable = List.of();
         unpourableLogged = null;
-        forgetScaffold();
+        pathCells = new LongOpenHashSet();
+        pathCellsOf = null;
     }
 
-    private void forgetScaffold() {
-        scaffoldPlaced = null;
-        scaffoldMined = null;
-        scaffoldDeferLogged = null;
-        scaffoldReleased = false;
+    // the ledger stays, only where the cleanup was goes. the next time there's nothing else left it starts over
+    private void forgetCleanup() {
+        cleanRound = 0;
+        cleanStage = CleanStage.NONE;
+        cleanCells = null;
+        cleanVersion++;
     }
 
     public void resume() {
@@ -598,6 +627,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Optional<Pair<BetterBlockPos, Rotation>> toBreakNearPlayer(BuilderCalculationContext bcc) {
         BetterBlockPos center = ctx.playerFeet();
         BetterBlockPos pathStart = baritone.getPathingBehavior().pathStart();
+        if (cleanStage == CleanStage.SCAFFOLD) {
+            // the scaffold in the box in cleanupOrder, the scan below would go bottom up
+            Optional<Pair<BetterBlockPos, Rotation>> scaffold = firstReachable(bcc, cleanTargets(bcc, true), pathStart);
+            if (scaffold.isPresent()) {
+                return scaffold;
+            }
+        }
         boolean hanging = hanging();
         for (int dx = -5; dx <= 5; dx++) {
             for (int dy = Baritone.settings().breakFromAbove.value ? -1 : 0; dy <= 5; dy++) {
@@ -624,9 +660,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                         // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
                         continue;
                     }
-                    // fine, not valid: a kept block is the caller's scaffolding and the builder never gets to mine it
+                    // fine, not valid: a kept block is the caller's scaffolding and the ledger's is ours, the builder
+                    // never gets to mine either till the cleanup
                     if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
-                            && !bcc.deferredScaffold(x, y, z, curr)) {
+                            && !besideUs(center, x, y, z)) {
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
                         Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
                         if (rot.isPresent()) {
@@ -637,6 +674,69 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         return Optional.empty();
+    }
+
+    // scaffold where the file wants a real block isn't cleanup work, the builder swaps it like any wrong block. just not
+    // while it's what we stand on or right next to us, that's the pillar we're on and the edge we're leaning on. only the
+    // ones this build put there, the dirt we started on is just ground
+    private boolean besideUs(BlockPos feet, int x, int y, int z) {
+        return ledger.isSolid(BetterBlockPos.serializeToLong(x, y, z)) && besideFeet(feet, x, y, z);
+    }
+
+    // under the feet, or touching the body from the side (feet level, head level or the one under feet level)
+    static boolean besideFeet(BlockPos feet, int x, int y, int z) {
+        int dy = y - feet.getY();
+        return dy >= -1 && dy <= 1 && Math.abs(x - feet.getX()) + Math.abs(z - feet.getZ()) <= 1;
+    }
+
+    // the first of these we can hit from here, never the block we're standing on
+    private Optional<Pair<BetterBlockPos, Rotation>> firstReachable(BuilderCalculationContext bcc, List<BetterBlockPos> cells, BetterBlockPos pathStart) {
+        BetterBlockPos feet = ctx.playerFeet();
+        for (BetterBlockPos pos : cells) {
+            if (Math.abs(pos.x - feet.x) > 6 || Math.abs(pos.y - feet.y) > 6 || Math.abs(pos.z - feet.z) > 6) {
+                continue; // nearest column first, but it's still a list of the whole build
+            }
+            if (pos.equals(feet.below()) || pos.equals(pathStart.below())) {
+                continue;
+            }
+            if (unbreakable(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
+                continue;
+            }
+            Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
+            if (rot.isPresent()) {
+                return Optional.of(new Pair<>(pos, rot.get()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    // what this cleanup round still has to take down: in the box where the file wants air, or the cells the builder
+    // can't see at all. in cleanupOrder from our feet
+    private List<BetterBlockPos> cleanTargets(BuilderCalculationContext bcc, boolean inBox) {
+        if (cleanCells == null) {
+            return List.of();
+        }
+        List<BetterBlockPos> out = new ArrayList<>();
+        LongIterator it = cleanCells.iterator();
+        while (it.hasNext()) {
+            long cell = it.nextLong();
+            if (!ledger.scaffold().contains(cell)) {
+                continue; // already down
+            }
+            BetterBlockPos pos = BetterBlockPos.deserializeFromLong(cell);
+            if (givenUp(pos.x, pos.y, pos.z)) {
+                continue;
+            }
+            BlockState current = bcc.bsi.get0(pos.x, pos.y, pos.z);
+            if (bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z) && current.getBlock() instanceof AirBlock) {
+                continue; // tidyLedger gets it next tick
+            }
+            BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, current);
+            if (inBox ? desired != null && desired.getBlock() instanceof AirBlock : desired == null) {
+                out.add(pos);
+            }
+        }
+        return ScaffoldLedger.cleanupOrder(out, ctx.playerFeet());
     }
 
     public static class Placement {
@@ -980,17 +1080,34 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 }
             };
         }
+        if (recursions == 0) {
+            // before the bcc copies the ledger, so it gets this tick's answer
+            tidyLedger();
+        }
         BuilderCalculationContext bcc = new BuilderCalculationContext();
         if (recursions == 0) {
             // up here and not next to stallCheck, the click and break branches return before that
             watchdog(bcc);
         }
+        // altoclef pausing interactions means no breaking, no placing and no hotbar shuffling, we just keep walking
+        boolean interactionPaused = AltoClefSettings.getInstance().isInteractionPaused();
+        if (cleanStage == CleanStage.OUTSIDE) {
+            PathingCommand outside = cleanOutside(bcc, interactionPaused, isSafeToCancel);
+            if (outside != null) {
+                return outside;
+            }
+            // nothing left out there, on to the dug out cells with a fresh bcc
+            return onTick(calcFailed, isSafeToCancel, recursions + 1);
+        }
         if (!recalc(bcc)) {
             if (Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
                 logDirect("Starting layer " + layer);
-                // the release is once per layer, a fresh layer gets its own loop guard
-                forgetScaffold();
                 layer++;
+                return onTick(calcFailed, isSafeToCancel, recursions + 1);
+            }
+            // the whole build is right, the repeat too. before the origin moves, so the scaffold is still ours to find
+            if (ledger.endPassing() || cleanupStep()) {
+                incorrectPositions = null;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
             Vec3i repeat = Baritone.settings().buildRepeat.value;
@@ -1001,6 +1118,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 if (Baritone.settings().notificationOnBuildFinished.value) {
                     logNotification("Done building", false);
                 }
+                // altoclef asks this to tell done from knocked off, onLostControl takes the serial with it
+                finishedSerial = buildSerial;
                 onLostControl();
                 return null;
             }
@@ -1015,33 +1134,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return onTick(calcFailed, isSafeToCancel, recursions + 1);
         }
 
-        // altoclef pausing interactions means no breaking, no placing and no hotbar shuffling, we just keep walking
-        boolean interactionPaused = AltoClefSettings.getInstance().isInteractionPaused();
         Optional<Pair<BetterBlockPos, Rotation>> toBreak = toBreakNearPlayer(bcc);
         if (!interactionPaused && toBreak.isPresent() && isSafeToCancel && steady()) {
-            // we'd like to pause to break this block
-            // only change look direction if it's safe (don't want to fuck up an in progress parkour for example
-            dropPathBeforeClicking();
-            Rotation rot = toBreak.get().second();
-            BetterBlockPos pos = toBreak.get().first();
-            lastBreak = pos;
-            baritone.getLookBehavior().updateTarget(rot, true);
-            MovementHelper.switchToBestToolFor(ctx, bcc.get(pos));
-            if (ctx.player().isCrouching()) {
-                // really horrible bug where a block is visible for breaking while sneaking but not otherwise
-                // so you can't see it, it goes to place something else, sneaks, then the next tick it tries to break
-                // and is unable since it's unsneaked in the intermediary tick
-                forceSneak();
-            }
-            if (ctx.isLookingAt(pos) || ctx.playerRotations().isReallyCloseTo(rot)) {
-                baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
-                forcedClicks = true;
-                stallTicks = 0;
-            } else if (stalled()) {
-                // turned towards it for two seconds and never got to look at it
-                giveUpOn(bcc, List.of(pos), "Couldn't aim at a block to break");
-            }
-            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+            return breakAt(bcc, toBreak.get().first(), toBreak.get().second());
         }
         List<BlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlacables(bcc, desirableOnHotbar);
@@ -1163,9 +1258,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 missingAtPause = Map.of();
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
-            if (releaseScaffold(bcc)) {
-                // after the given up ones get their retry, those are other work too
+            if (ledger.endPassing()) {
+                // after the given up ones get their retry, the dug out cells we were walking past are other work too
                 missingAtPause = Map.of();
+                incorrectPositions = null;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
             if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
@@ -1174,6 +1270,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 missingAtPause = Map.of();
                 forgetStalls();
                 layer++;
+                return onTick(calcFailed, isSafeToCancel, recursions + 1);
+            }
+            // a build that ends paused (a few cells given up on for good) still takes its scaffold down. not for a
+            // materials pause, more blocks are on the way and the pillars are how we'll get them in
+            if (missingAtPause.isEmpty() && cleanupStep()) {
+                incorrectPositions = null;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
             logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
@@ -1350,19 +1452,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return placing && !waitedOut && replanPending.getAsBoolean();
     }
 
-    // stuck, whatever the reason: a goal the pather can't reach, a move that keeps failing, a click that never lands.
-    // stallCheck only covers standing in the goal and the click branches return before it, so this one counts every
-    // tick and only trusts the world. moving, a block of ours landing (placed, broke) or a dig getting further resets
-    // it. interactionPaused, held clicks and inventory moves don't, a left click held on nothing for ten seconds is
-    // exactly the kind of stuck this is for
+    // stuck, whatever the reason: a goal the pather can't reach, a move that keeps failing, a click that never lands, a
+    // loop. stallCheck only covers standing in the goal and the click branches return before it, so this one counts
+    // every tick and only trusts progress (WatchdogProgress): more of the build right than ever, or closer to where the
+    // path goes than ever. moving, digging and blocks going in and out don't count, a loop does all of those forever
     private void watchdog(BuilderCalculationContext bcc) {
-        baritone.getPathingBehavior().getPath().ifPresent(path -> lastPathDest = path.getDest());
+        Optional<IPath> path = baritone.getPathingBehavior().getPath();
+        path.ifPresent(p -> lastPathDest = p.getDest());
+        snapshotPath(path);
         BetterBlockPos feet = ctx.playerFeet();
-        float progress = ctx.minecraft().gameMode instanceof IClientBlockBreak gameMode ? gameMode.getCurrentBreakingProgress() : 0;
-        boolean digging = progress > lastDestroyProgress;
-        lastDestroyProgress = progress;
-        if (watchdogMoved(watchdogFeet, feet) || digging) {
-            watchdogFeet = feet;
+        // scaffold coming down is the cleanup's progress, and it doesn't show up in observedCompleted outside the box
+        long done = (observedCompleted == null ? 0 : observedCompleted.size()) + ledger.cleared();
+        if (watchdogProgress.progressed(done, lastPathDest, feet)) {
             watchdogTicks = 0;
             return;
         }
@@ -1376,21 +1477,31 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
-    // only getting more than a block away from where it started counts as moving. bobbing on a ladder flips the feet
-    // between two cells every few ticks, and so does rocking on a block edge, and that kept the watchdog at zero forever
-    static boolean watchdogMoved(BetterBlockPos anchor, BetterBlockPos feet) {
-        if (anchor == null) {
-            return true;
+    // the cells the path walks through, ours and the two over each (head, and the jump). PathingBehavior drops a path
+    // the moment it's done, so this keeps the last one till the next shows up: "the path that just finished"
+    private void snapshotPath(Optional<IPath> path) {
+        if (path.isEmpty() || path.get() == pathCellsOf) {
+            return;
         }
-        return Math.max(Math.abs(feet.x - anchor.x), Math.max(Math.abs(feet.y - anchor.y), Math.abs(feet.z - anchor.z))) > 1;
+        pathCellsOf = path.get();
+        LongOpenHashSet cells = new LongOpenHashSet();
+        for (BetterBlockPos pos : path.get().positions()) {
+            for (int dy = 0; dy <= 2; dy++) {
+                cells.add(BetterBlockPos.serializeToLong(pos.x, pos.y + dy, pos.z));
+            }
+        }
+        pathCells = cells;
     }
 
-    // a block landed or broke, that's progress no matter where we stand. the old path end goes too, the next path
-    // is about whatever's next
+    // a pause, a resume, a new build. the old bests were about a different situation
     private void resetWatchdog() {
         watchdogTicks = 0;
-        watchdogFeet = null;
         lastPathDest = null;
+        if (watchdogProgress == null) {
+            watchdogProgress = new WatchdogProgress(); // same as the ledger in start
+        } else {
+            watchdogProgress.reset();
+        }
     }
 
     // the cells whose goal the path was headed for, same filter as stallCheck but at the path's end instead of our feet.
@@ -1588,25 +1699,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return givenUp != null && givenUp.retryNow(builderTicks);
     }
 
-    // InputOverrideHandler hands over every traced place that landed. somebody else's throwaway in an air cell is the first
-    // half of the loop
+    // InputOverrideHandler hands over every traced place that landed (only while we're building), whoever clicked
     public void placed(BlockPos pos, BlockState now, String who) {
-        resetWatchdog(); // ours or a movement's, something went in
-        if ("builder".equals(who)) {
-            // the only thing that counts as getting somewhere for the stall count. confirmTraced calls anything that
+        if ("builder".equals(who) && landedRight(pos, now)) {
+            // the only place that counts as getting somewhere for the stall count. confirmTraced calls anything that
             // changed a landing, a log on the wrong axis included, and that one just gets mined again
-            if (landedRight(pos, now)) {
-                stallTicks = 0;
-            }
-            return;
+            stallTicks = 0;
         }
-        if (!BlockPlaceHelper.throwaway(now.getBlock().asItem()) || !wantsAir(pos)) {
-            return;
-        }
-        if (scaffoldPlaced == null) {
-            scaffoldPlaced = new LongOpenHashSet();
-        }
-        scaffoldPlaced.add(BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ()));
+        ledgerPlaced(pos, now);
     }
 
     // what the file wants there, or the lone first half of a chest pair. same answer the bcc's fine gives
@@ -1622,56 +1722,237 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return partner != null && chestHalfWaiting(now, want, ctx.world().getBlockState(partner), false);
     }
 
-    // and every traced break. ours, of a throwaway somebody else put there: the half the builder does
+    // and every traced break. ours resets the stall count, a right block somebody else dug out is a detour
     public void broke(BlockPos pos, BlockState before, String who) {
-        resetWatchdog();
-        long cell = BetterBlockPos.longHash(pos.getX(), pos.getY(), pos.getZ());
-        if (!"builder".equals(who) || scaffoldPlaced == null || !scaffoldPlaced.contains(cell)
-                || !BlockPlaceHelper.throwaway(before.getBlock().asItem()) || !wantsAir(pos)) {
+        if ("builder".equals(who)) {
+            // a dig that landed. clicking at one that never breaks isn't getting anywhere
+            stallTicks = 0;
             return;
         }
-        if (scaffoldMined == null) {
-            scaffoldMined = new LongOpenHashSet();
+        if (before == null || !isActive() || !landedRight(pos, before)) {
+            return;
         }
-        scaffoldMined.add(cell);
+        BetterBlockPos cell = BetterBlockPos.from(pos);
+        if (ledger.detour(BetterBlockPos.serializeToLong(cell.x, cell.y, cell.z)) == ScaffoldLedger.Detour.GIVE_UP) {
+            // third time the path went through this one. putting it back is just handing it the same block to dig
+            givenUp().forGood(cell);
+            forgetStickyGoal(cell.x, cell.y, cell.z);
+            logDebug(String.format("Paths keep digging out %s at %s %s %s, leaving it out for good", name(before), cell.x, cell.y, cell.z));
+        }
     }
 
-    private boolean wantsAir(BlockPos pos) {
-        if (!isActive()) {
-            return false;
-        }
-        int x = pos.getX() - origin.getX();
-        int y = pos.getY() - origin.getY();
-        int z = pos.getZ() - origin.getZ();
-        BlockState now = ctx.world().getBlockState(pos);
-        return schematic.inSchematic(x, y, z, now) && schematic.desiredState(x, y, z, now, approxPlaceable).getBlock() instanceof AirBlock;
+    // the file the whole build is about. the layer wrapper says no to every cell above the layer, and a pillar in one
+    // of those is still a pillar in a cell that wants air
+    private ISchematic wholeSchematic() {
+        return realSchematic != null ? realSchematic : schematic;
     }
 
-    // bcc.deferredScaffold plus the one log line per cell
-    private boolean deferredScaffold(BuilderCalculationContext bcc, BetterBlockPos pos) {
-        if (!bcc.deferredScaffold(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
-            return false;
+    // what the file wants at a world cell: null outside the box or in a cut out cell, else the block (air included)
+    private BlockState wholeWants(int wx, int wy, int wz, BlockState current) {
+        ISchematic full = wholeSchematic();
+        int x = wx - origin.getX();
+        int y = wy - origin.getY();
+        int z = wz - origin.getZ();
+        if (x < 0 || y < 0 || z < 0 || x >= full.widthX() || y >= full.heightY() || z >= full.lengthZ() || !full.inSchematic(x, y, z, current)) {
+            return null;
         }
-        if (scaffoldDeferLogged == null) {
-            scaffoldDeferLogged = new LongOpenHashSet();
+        return full.desiredState(x, y, z, current, approxPlaceable == null ? List.of() : approxPlaceable);
+    }
+
+    // a block went in where the file wants air, or somewhere near the box the file doesn't cover. who put it there
+    // doesn't matter, it's in the way of the build either way and comes down at the end. one where the file wants a
+    // real block isn't scaffold, the builder swaps it (besideUs)
+    private void ledgerPlaced(BlockPos pos, BlockState now) {
+        if (!isActive() || now.isAir()) {
+            return;
         }
-        if (scaffoldDeferLogged.add(BetterBlockPos.longHash(pos))) {
-            logDebug(String.format("A path put scaffold back where I mined it, leaving it till the end: %s", describe(bcc, pos)));
+        BlockState want = wholeWants(pos.getX(), pos.getY(), pos.getZ(), now);
+        if (want != null && !(want.getBlock() instanceof AirBlock)) {
+            if (!valid(now, want, false)) {
+                ledger.solid(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()));
+            }
+            return;
+        }
+        ISchematic full = wholeSchematic();
+        if (want == null && !ScaffoldLedger.nearBox(pos.getX(), pos.getY(), pos.getZ(), origin.getX(), origin.getY(), origin.getZ(),
+                origin.getX() + full.widthX() - 1, origin.getY() + full.heightY() - 1, origin.getZ() + full.lengthZ() - 1)) {
+            return; // the walk over, not ours
+        }
+        ledger.scaffold(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    // once a tick, before the bcc copies it: scaffold that's gone (or turned into the right block) leaves the ledger,
+    // dug out cells that got filled again stop waiting, and the ones we're past rejoin the build
+    private void tidyLedger() {
+        if (!isActive() || ctx.world() == null) {
+            return;
+        }
+        ledger.world(ctx.world().dimension());
+        for (long cell : ledger.scaffold().toLongArray()) {
+            tidyScaffold(cell);
+        }
+        for (long cell : ledger.abandoned().toLongArray()) {
+            tidyScaffold(cell);
+        }
+        for (long cell : ledger.solid().toLongArray()) {
+            tidyScaffold(cell);
+        }
+        for (long cell : ledger.waiting().toLongArray()) {
+            BetterBlockPos pos = BetterBlockPos.deserializeFromLong(cell);
+            if (baritone.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+                BlockState now = baritone.bsi.get0(pos.x, pos.y, pos.z);
+                BlockState want = wholeWants(pos.x, pos.y, pos.z, now);
+                if (want != null && valid(now, want, false)) {
+                    ledger.filled(cell);
+                }
+            }
+        }
+        BetterBlockPos feet = ctx.playerFeet();
+        double reach = ctx.playerController().getBlockReachDistance();
+        LongArrayList rejoined = ledger.updatePassing(pathCells::contains,
+                cell -> BetterBlockPos.deserializeFromLong(cell).distSqr(feet) <= reach * reach);
+        if (incorrectPositions != null) {
+            // recalcNearby only looks around our feet, and a path can carry us well past one before it lets go
+            for (long cell : rejoined) {
+                incorrectPositions.add(BetterBlockPos.deserializeFromLong(cell));
+            }
+        }
+    }
+
+    private void tidyScaffold(long cell) {
+        BetterBlockPos pos = BetterBlockPos.deserializeFromLong(cell);
+        if (!baritone.bsi.worldContainsLoadedChunk(pos.x, pos.z)) {
+            return; // reads as air till it loads, that's not the block being gone
+        }
+        BlockState now = baritone.bsi.get0(pos.x, pos.y, pos.z);
+        BlockState want = wholeWants(pos.x, pos.y, pos.z, now);
+        if (now.getBlock() instanceof AirBlock || (want != null && valid(now, want, false))) {
+            ledger.gone(cell);
+        }
+    }
+
+    // nothing else in the whole build is left (or the rest is given up for good): the scaffold is the work now. in
+    // rounds, each takes down what was up when it started (in the box first, then outside), then puts back the dug out
+    // cells that waited. a round's own pillars go in the next one. true when the tick should start over with a fresh
+    // recalc
+    private boolean cleanupStep() {
+        switch (cleanStage) {
+            case NONE -> {
+                if (!ledger.hasScaffold() && !ledger.hasLate()) {
+                    return false;
+                }
+                cleanRound = 1;
+                logDirect(String.format("Nothing else left to build, taking down %s scaffold blocks", ledger.scaffold().size()));
+                startRound();
+            }
+            case SCAFFOLD -> {
+                cleanStage = CleanStage.OUTSIDE;
+                cleanVersion++;
+            }
+            case OUTSIDE -> toDetours();
+            case DETOUR -> {
+                ledger.dropLate(); // put back, or given up on by now. plain cells like any other from here
+                if (freshScaffold() && cleanRound < ScaffoldLedger.ROUNDS) {
+                    cleanRound++;
+                    startRound();
+                    return true;
+                }
+                int left = ledger.abandon();
+                if (left > 0) {
+                    logDirect(String.format("Left %s scaffold blocks up after %s cleanup rounds", left, cleanRound));
+                }
+                forgetCleanup();
+            }
         }
         return true;
     }
 
-    // nothing else left, so the scaffold we skipped is the work now. once a build, from here on a loop is GivenUp's problem
-    private boolean releaseScaffold(BuilderCalculationContext bcc) {
-        if (scaffoldReleased || scaffoldMined == null || scaffoldMined.isEmpty()) {
-            return false;
+    // scaffold that went up during this round, the next round's
+    private boolean freshScaffold() {
+        LongIterator it = ledger.scaffold().iterator();
+        while (it.hasNext()) {
+            if (!cleanCells.contains(it.nextLong())) {
+                return true;
+            }
         }
-        // no looking through incorrectPositions for one first, a mined one we never walked back past can still be in
-        // there as a wrong block. letting go when none are left costs one more pass and then this says false forever
-        scaffoldReleased = true;
-        logDebug("Only scaffold I left alone is left, mining it now");
-        // the bcc this tick still has the old snapshot, the recursion builds a new one
-        return true;
+        return false;
+    }
+
+    private void startRound() {
+        cleanCells = new LongOpenHashSet(ledger.scaffold());
+        cleanStage = CleanStage.SCAFFOLD;
+        cleanVersion++;
+    }
+
+    private void toDetours() {
+        cleanStage = CleanStage.DETOUR;
+        cleanVersion++;
+    }
+
+    // the scaffold the builder can't see. it never makes a goal for those, so this is the goal and the click, nearest
+    // column first and top down. null once there's none left
+    private PathingCommand cleanOutside(BuilderCalculationContext bcc, boolean interactionPaused, boolean isSafeToCancel) {
+        List<BetterBlockPos> targets = cleanTargets(bcc, false);
+        if (targets.isEmpty()) {
+            toDetours();
+            incorrectPositions = null;
+            return null;
+        }
+        if (!interactionPaused && isSafeToCancel && steady()) {
+            Optional<Pair<BetterBlockPos, Rotation>> hit = firstReachable(bcc, targets, baritone.getPathingBehavior().pathStart());
+            if (hit.isPresent()) {
+                return breakAt(bcc, hit.get().first(), hit.get().second());
+            }
+        }
+        BetterBlockPos target = targets.get(0);
+        Goal goal = new GoalBreak(target);
+        goalOwners = List.of(new Pair<>(target, goal));
+        if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel, List.of())) {
+            // given up on, the next tick takes the next one
+            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
+        return new PathingCommandContext(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
+    }
+
+    // the break click, for the scan's pick and the cleanup's
+    private PathingCommand breakAt(BuilderCalculationContext bcc, BetterBlockPos pos, Rotation rot) {
+        // we'd like to pause to break this block
+        // only change look direction if it's safe (don't want to fuck up an in progress parkour for example
+        dropPathBeforeClicking();
+        lastBreak = pos;
+        baritone.getLookBehavior().updateTarget(rot, true);
+        MovementHelper.switchToBestToolFor(ctx, bcc.get(pos));
+        if (ctx.player().isCrouching()) {
+            // really horrible bug where a block is visible for breaking while sneaking but not otherwise
+            // so you can't see it, it goes to place something else, sneaks, then the next tick it tries to break
+            // and is unable since it's unsneaked in the intermediary tick
+            forceSneak();
+        }
+        if (ctx.isLookingAt(pos) || ctx.playerRotations().isReallyCloseTo(rot)) {
+            // no stall reset here, broke() does that once the block is really gone. a wrong block that goes back in
+            // wrong every time used to look like progress forever
+            baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+            forcedClicks = true;
+        } else if (stalled()) {
+            // turned towards it for two seconds and never got to look at it
+            giveUpOn(bcc, List.of(pos), "Couldn't aim at a block to break");
+        }
+        return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+    }
+
+    // the bcc's copy of the ledger, made again only when something moved
+    private ScaffoldLedger.View ledgerView() {
+        if (ledger.version() != ledgerViewVersion || cleanVersion != ledgerViewClean) {
+            ledgerView = ledger.view(cleanStage == CleanStage.NONE ? null : cleanCells, cleanStage == CleanStage.DETOUR);
+            ledgerViewVersion = ledger.version();
+            ledgerViewClean = cleanVersion;
+        }
+        return ledgerView;
+    }
+
+    // altoclef's way to tell a build that got to the end (cleanup and all) from one that got knocked off
+    public boolean finished(long serial) {
+        return serial != 0 && serial == finishedSerial;
     }
 
     // upstream held left click on bedrock until somebody cancelled
@@ -2248,8 +2529,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         Map<BlockState, Integer> missing = new HashMap<>();
         List<BetterBlockPos> outOfBounds = new ArrayList<>();
         List<BetterBlockPos> pourCells = new ArrayList<>();
+        List<BetterBlockPos> ledgerFine = new ArrayList<>();
         cells.forEach(pos -> {
             BlockState state = bcc.bsi.get0(pos);
+            if (bcc.ledgerFine(pos.x, pos.y, pos.z, state)) {
+                // went into the ledger after the scan put it here, recalcNearby only sees our end of the build
+                ledgerFine.add(pos);
+                return;
+            }
             if (pourCell(bcc, pos, state)) {
                 pourCells.add(pos);
                 return;
@@ -2287,14 +2574,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         });
         incorrectPositions.removeAll(outOfBounds);
+        incorrectPositions.removeAll(ledgerFine);
         List<Pair<BetterBlockPos, Goal>> owners = new ArrayList<>();
         List<Goal> toBreak = new ArrayList<>();
         List<BetterBlockPos> cantBreak = new ArrayList<>();
         breakable.forEach(pos -> {
             if (unbreakable(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))) {
                 cantBreak.add(pos);
-            } else if (!givenUp(pos.x, pos.y, pos.z) && !deferredScaffold(bcc, pos)) {
-                Goal goal = breakGoal(pos, bcc);
+            } else if (!givenUp(pos.x, pos.y, pos.z)) {
+                // our own scaffold in a real block's cell gets broken from a step away, every time and not only while
+                // we're next to it. a goal that flips with where we stand cancels the path every flip
+                Goal goal = ledger.isSolid(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z)) ? new GoalBreakAside(pos) : breakGoal(pos, bcc);
                 toBreak.add(goal);
                 owners.add(new Pair<>(pos, goal));
             }
@@ -2611,6 +2901,52 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         @Override
         public int hashCode() {
             return super.hashCode() * 1636324008;
+        }
+    }
+
+    // in reach of the cell without standing on it or right next to it (besideFeet), see besideUs. two out sideways,
+    // two under to one over, which a 4.5 reach covers from anywhere in it
+    public static class GoalBreakAside implements Goal {
+
+        private final int x;
+        private final int y;
+        private final int z;
+        private final GoalNear near;
+
+        public GoalBreakAside(BlockPos pos) {
+            this.x = pos.getX();
+            this.y = pos.getY();
+            this.z = pos.getZ();
+            this.near = new GoalNear(pos, 2);
+        }
+
+        @Override
+        public boolean isInGoal(int x, int y, int z) {
+            int dy = y - this.y;
+            if (Math.abs(x - this.x) > 2 || Math.abs(z - this.z) > 2 || dy < -2 || dy > 1) {
+                return false;
+            }
+            return !besideFeet(new BlockPos(x, y, z), this.x, this.y, this.z);
+        }
+
+        @Override
+        public double heuristic(int x, int y, int z) {
+            return near.heuristic(x, y, z);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof GoalBreakAside g && g.x == x && g.y == y && g.z == z;
+        }
+
+        @Override
+        public int hashCode() {
+            return (int) BetterBlockPos.longHash(x, y, z) * 709;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("GoalBreakAside{x=%s,y=%s,z=%s}", SettingsUtil.maybeCensor(x), SettingsUtil.maybeCensor(y), SettingsUtil.maybeCensor(z));
         }
     }
 
@@ -2951,6 +3287,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         keptOrigin = origin;
         forgetStalls(); // the watchdog with it
         forgetCreative();
+        // not the ledger: the same build starting again still owns its scaffold (see start)
+        forgetCleanup();
         incorrectPositions = null;
         name = null;
         schematic = null;
@@ -3206,8 +3544,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         private final int originZ;
         // one read per context, so a keep swapped mid search can't give half a path each answer
         private final Keep keep;
-        // same deal for the scaffold the builder mined, the game thread adds to it while the path thread asks
-        private final LongOpenHashSet scaffoldMined;
+        // same deal for the ledger, the game thread adds to it while the path thread asks. a copy made per change
+        private final ScaffoldLedger.View ledger;
         // creative with a slot free: any block the file wants is placeable whether or not it's on the hotbar yet, the
         // movement gets it handed over when it gets there (creativeHand). read here, the path thread can't ask the hotbar
         private final boolean creativeGives;
@@ -3220,8 +3558,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.originY = origin.getY();
             this.originZ = origin.getZ();
             this.keep = BuilderProcess.this.keep;
-            LongOpenHashSet mined = BuilderProcess.this.scaffoldMined;
-            this.scaffoldMined = BuilderProcess.this.scaffoldReleased || mined == null || mined.isEmpty() ? null : mined.clone();
+            this.ledger = ledgerView();
             this.creativeGives = ctx.player().hasInfiniteMaterials() && !AltoClefSettings.getInstance().isInteractionPaused() && creativeSlot() >= 0;
 
             this.jumpPenalty += 10;
@@ -3241,7 +3578,27 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         // valid() plus whatever the starter said to keep. every per cell "is this done" asks this one
         private boolean fine(int x, int y, int z, BlockState current, BlockState desired) {
-            return valid(current, desired, false) || kept(x, y, z, current) || spilled(current, desired) || chestWaiting(x, y, z, current, desired);
+            return valid(current, desired, false) || kept(x, y, z, current) || spilled(current, desired) || chestWaiting(x, y, z, current, desired)
+                    || ledgerFine(x, y, z, current, desired);
+        }
+
+        // our scaffold where the file wants air (till the cleanup gets to it), and a dug out cell that's empty while
+        // we're still going past it (or till the end, the second time)
+        private boolean ledgerFine(int x, int y, int z, BlockState current, BlockState desired) {
+            long cell = BetterBlockPos.serializeToLong(x, y, z);
+            if (current.getBlock() instanceof AirBlock) {
+                return ledger.deferred().contains(cell);
+            }
+            return desired.getBlock() instanceof AirBlock && ledger.kept().contains(cell);
+        }
+
+        // the same, for assemble's cells, which never asked what the file wants
+        private boolean ledgerFine(int x, int y, int z, BlockState current) {
+            if (ledger.kept().isEmpty() && ledger.deferred().isEmpty()) {
+                return false;
+            }
+            BlockState desired = getSchematic(x, y, z, current);
+            return desired != null && ledgerFine(x, y, z, current, desired);
         }
 
         private boolean chestWaiting(int x, int y, int z, BlockState current, BlockState desired) {
@@ -3251,13 +3608,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         private boolean kept(int x, int y, int z, BlockState current) {
             return keep != null && !(current.getBlock() instanceof AirBlock) && keep.keep(x, y, z, current);
-        }
-
-        // a throwaway back in a cell we already mined one out of. not a goal, not a break target and priced like kept, so
-        // the path that put it there can use it. it stays wrong, so the build isn't done till releaseScaffold lets it go
-        private boolean deferredScaffold(int x, int y, int z, BlockState current) {
-            return scaffoldMined != null && BlockPlaceHelper.throwaway(current.getBlock().asItem())
-                    && scaffoldMined.contains(BetterBlockPos.longHash(x, y, z));
         }
 
         // this has to agree with what a movement will actually put there (InventoryBehavior.selectThrowawayForLocation),
@@ -3305,11 +3655,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if ((!allowBreak && !allowBreakAnyway.contains(current.getBlock())) || isBreakProtected(x, y, z)) {
                 return COST_INF;
             }
-            if (kept(x, y, z, current) || deferredScaffold(x, y, z, current)) {
-                // the caller's pillar, inside the box or out. x10 was still cheaper than a detour now and then, and a
-                // path that mines the scaffold it just put up is a loop that places it again. not INF though, standing
-                // on top of a tall pillar with no bucket the only way down is through it
-                // a deferred scaffold block is the same thing from the other side, a path put it there for a reason
+            if (kept(x, y, z, current) || ledger.kept().contains(BetterBlockPos.serializeToLong(x, y, z))) {
+                // the caller's pillar or the ledger's, inside the box or out. x10 was still cheaper than a detour now
+                // and then, and a path that mines the scaffold it just put up is a loop that places it again. not INF
+                // though, standing on top of a tall pillar with no bucket the only way down is through it. the round
+                // the cleanup takes down isn't in kept, that one prices like any block the file wants gone
                 return 1000;
             }
             BlockState sch = getSchematic(x, y, z, current);
