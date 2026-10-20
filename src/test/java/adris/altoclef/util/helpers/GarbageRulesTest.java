@@ -10,6 +10,7 @@ import java.util.List;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.entity.EntityEquipment;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.ShulkerBoxMenu;
@@ -307,6 +308,17 @@ public class GarbageRulesTest {
         }
     }
 
+    @Test
+    public void bagSlotsInAChestComeAfterItsRows() {
+        Inventory inv = inventory();
+        ChestMenu menu = ChestMenu.threeRows(0, inv);
+        List<Integer> windows = GarbageRules.bagWindowSlots(menu, inv);
+        assertEquals(36, windows.size());
+        for (int w : windows) {
+            assertTrue("window " + w, w >= 27);
+        }
+    }
+
     private static GarbageRules.Armor armor(int slot, net.minecraft.world.item.Item item, boolean wouldWear) {
         return new GarbageRules.Armor(slot, ItemHelper.getArmorPoints(item), ItemHelper.getArmorToughness(item), wouldWear);
     }
@@ -330,11 +342,18 @@ public class GarbageRulesTest {
     // ---- the whole pick, and a drop that would come straight back out
 
     private static GarbageRules.Entry e(net.minecraft.world.item.Item item, int count) {
-        return new GarbageRules.Entry(new ItemStack(item, count), true, false);
+        return new GarbageRules.Entry(new ItemStack(item, count), true, -1);
     }
 
+    // the default list's order (gravel and sand ahead of cobble, netherrack after), plus two non-blocks for the item tier
+    private static java.util.Map<net.minecraft.world.item.Item, Integer> ranks;
+
     private static GarbageRules.Entry junk(net.minecraft.world.item.Item item, int count) {
-        return new GarbageRules.Entry(new ItemStack(item, count), true, true);
+        if (ranks == null) {
+            ranks = GarbageRules.throwRanks(new net.minecraft.world.item.Item[]{Items.GRAVEL, Items.SAND, Items.COBBLESTONE, Items.DIRT,
+                    Items.NETHERRACK, Items.SPIDER_EYE, Items.ROTTEN_FLESH, Items.GRAVEL});
+        }
+        return new GarbageRules.Entry(new ItemStack(item, count), true, ranks.get(item));
     }
 
     private static int next(List<GarbageRules.Entry> bag) {
@@ -350,12 +369,62 @@ public class GarbageRulesTest {
         assertEquals(2, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1), junk(Items.ROTTEN_FLESH, 5))));
         assertEquals(2, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1), e(Items.WOODEN_SWORD, 1))));
         assertEquals(0, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1))));
-        // blocks only past the reserve, then the first block stack
+        // blocks only past the reserve, then the block that is first on the throwaway list (cobble before netherrack)
         assertEquals(1, next(List.of(junk(Items.NETHERRACK, 64), e(Items.STRING, 1))));
-        assertEquals(0, next(List.of(junk(Items.NETHERRACK, 40), junk(Items.COBBLESTONE, 30), e(Items.STRING, 9))));
+        assertEquals(1, next(List.of(junk(Items.NETHERRACK, 40), junk(Items.COBBLESTONE, 30), e(Items.STRING, 9))));
         // nothing that may not go is ever the pick, with throwUnused off only junk and tools are
         assertEquals(-1, GarbageRules.nextPick(List.of(e(Items.STRING, 1)), 64, false, 0, 0));
-        assertEquals(-1, next(List.of(new GarbageRules.Entry(new ItemStack(Items.STRING, 1), false, false))));
+        assertEquals(-1, next(List.of(new GarbageRules.Entry(new ItemStack(Items.STRING, 1), false, -1))));
+    }
+
+    // the menu lists the main bag before the hotbar, so going by bag order threw the cobble and kept the gravel
+    @Test
+    public void gravelInTheHotbarGoesBeforeCobbleInTheMainBag() {
+        List<GarbageRules.Entry> bag = List.of(junk(Items.COBBLESTONE, 64), e(Items.STRING, 1), junk(Items.GRAVEL, 10));
+        assertEquals(2, next(bag));
+        assertEquals(2, GarbageRules.junkPick(bag, 64));
+    }
+
+    @Test
+    public void junkGoesByListOrderAndBagOrderOnlyBreaksATie() {
+        // non-blocks first whatever the list says about the blocks, then the earlier one on the list
+        assertEquals(1, next(List.of(junk(Items.GRAVEL, 64), junk(Items.SPIDER_EYE, 2), junk(Items.ROTTEN_FLESH, 9))));
+        assertEquals(2, next(List.of(junk(Items.GRAVEL, 64), junk(Items.ROTTEN_FLESH, 9), junk(Items.SPIDER_EYE, 2))));
+        // two stacks of the same block: the first in the bag
+        assertEquals(1, next(List.of(e(Items.STRING, 1), junk(Items.COBBLESTONE, 40), junk(Items.COBBLESTONE, 40))));
+        // under the reserve no block goes, the list order does not change that
+        assertEquals(-1, GarbageRules.junkPick(List.of(junk(Items.GRAVEL, 30), junk(Items.COBBLESTONE, 30)), 64));
+        // a stack that may not go does not get a rank say either
+        assertEquals(1, GarbageRules.junkPick(List.of(new GarbageRules.Entry(new ItemStack(Items.GRAVEL, 64), false, 0),
+                junk(Items.COBBLESTONE, 64), junk(Items.NETHERRACK, 64)), 64));
+    }
+
+    @Test
+    public void aDuplicateOnTheListKeepsItsFirstSpot() {
+        assertEquals(0, (int) GarbageRules.throwRanks(new net.minecraft.world.item.Item[]{Items.GRAVEL, Items.SAND, Items.GRAVEL}).get(Items.GRAVEL));
+    }
+
+    // 2 bread and 5 steak is 50 against a floor of 45, the bread has to stay. a string is the pick and more bread comes off the
+    // pile: once it is in the bag holds 60 and the old bread is surplus, so that bread would just go straight back out
+    @Test
+    public void theFoodFloorIsAskedOfTheBagAfterTheSwap() {
+        ItemStack bread = new ItemStack(Items.BREAD, 2);
+        ItemStack steak = new ItemStack(Items.COOKED_BEEF, 5);
+        ItemStack string = new ItemStack(Items.STRING, 1);
+        List<GarbageRules.Entry> bag = List.of(new GarbageRules.Entry(bread, true, -1), new GarbageRules.Entry(steak, true, -1),
+                new GarbageRules.Entry(string, true, -1));
+        int units = bag(bread, steak);
+        assertEquals(50, units);
+        int pick = GarbageRules.nextPick(bag, 64, true, units, 45);
+        assertEquals(2, pick);
+        GarbageRules.Entry drop = e(Items.BREAD, 2);
+        int after = GarbageRules.unitsAfterSwap(units, string, drop.stack());
+        assertEquals(60, after);
+        assertTrue(GarbageRules.dropIsNextPick(bag, pick, drop, 64, true, after, 45));
+        // the bag total as it is said keep it all, and the bread came in only to be thrown
+        assertFalse(GarbageRules.dropIsNextPick(bag, pick, drop, 64, true, units, 45));
+        // and throwing food takes its units off: the 2 bread pick gives way to 1 bread worth 5
+        assertEquals(45, GarbageRules.unitsAfterSwap(50, bread, new ItemStack(Items.BREAD, 1)));
     }
 
     // a stone sword in the bag, a string is the pick: the wooden sword off the floor would be the worse tool the moment it is in
@@ -392,7 +461,7 @@ public class GarbageRulesTest {
         // food sits behind plain stuff
         assertFalse(comesBack(bag, e(Items.COOKED_BEEF, 1)));
         // a drop that may not go (important, armor we would wear) is never the pick
-        assertFalse(comesBack(bag, new GarbageRules.Entry(new ItemStack(Items.BONE, 1), false, false)));
+        assertFalse(comesBack(bag, new GarbageRules.Entry(new ItemStack(Items.BONE, 1), false, -1)));
         // no pick, no room to make
         assertFalse(GarbageRules.dropIsNextPick(bag, -1, e(Items.FEATHER, 1), 64, true, 0, 0));
     }

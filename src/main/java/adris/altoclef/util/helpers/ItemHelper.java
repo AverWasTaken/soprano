@@ -446,13 +446,19 @@ public class ItemHelper {
     // canThrowAwayStack plus the food floor: food we cannot spare is not a stack to throw. this is the question every
     // "make room" path asks. canThrowAwayStack alone stays for the ones that only mean "may we touch this" (FoodChain eats by it)
     public static boolean canDropStack(AltoClef mod, ItemStack stack) {
+        // the bag total is only counted for food, this gets asked about every cursor stack
+        return canDropStack(mod, stack, GarbageRules.keepUnits(stack) == 0 ? 0 : StorageHelper.bagFoodUnits(mod));
+    }
+
+    // bagUnits is the food the bag holds, passed in when asking about a bag we are about to have (a pile drop swapped in)
+    public static boolean canDropStack(AltoClef mod, ItemStack stack, int bagUnits) {
         if (!canThrowAwayStack(mod, stack))
             return false;
         // the gapple is the run saver, it is never the stack that goes
         if (FoodHelper.kindOf(stack.getItem()) == FoodHelper.Kind.RESERVED)
             return false;
         int units = GarbageRules.keepUnits(stack);
-        return units == 0 || !GarbageRules.keepsFood(StorageHelper.bagFoodUnits(mod), units, Baritone.settings().altoFoodKeepUnits.value);
+        return units == 0 || !GarbageRules.keepsFood(bagUnits, units, Baritone.settings().altoFoodKeepUnits.value);
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
