@@ -131,4 +131,15 @@ public class BuilderStallTest {
         assertEquals(1, BuilderProcess.planOrder(stale, Blocks.STONE_STAIRS.defaultBlockState(), feet));
         assertEquals(2, BuilderProcess.planOrder(stale, stair, feet));
     }
+
+    @Test
+    public void bobbingBetweenTwoCellsIsNotMoving() {
+        // feet flipping a block up and down on a ladder, or across a block edge, kept resetting the watchdog
+        assertTrue(BuilderProcess.watchdogMoved(null, CELL));
+        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL));
+        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL.above()));
+        assertFalse(BuilderProcess.watchdogMoved(CELL, CELL.below().east().north()));
+        assertTrue(BuilderProcess.watchdogMoved(CELL, CELL.above(2)));
+        assertTrue(BuilderProcess.watchdogMoved(CELL, CELL.west(2)));
+    }
 }
