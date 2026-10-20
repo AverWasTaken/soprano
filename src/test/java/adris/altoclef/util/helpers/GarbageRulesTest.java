@@ -314,8 +314,9 @@ public class GarbageRulesTest {
         ChestMenu menu = ChestMenu.threeRows(0, inv);
         List<Integer> windows = GarbageRules.bagWindowSlots(menu, inv);
         assertEquals(36, windows.size());
-        for (int w : windows) {
-            assertTrue("window " + w, w >= 27);
+        // rows 0-26, then the bag 27-62 in one run
+        for (int i = 0; i < windows.size(); i++) {
+            assertEquals(27 + i, (int) windows.get(i));
         }
     }
 
