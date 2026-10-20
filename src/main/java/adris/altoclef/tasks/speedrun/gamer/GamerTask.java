@@ -1039,7 +1039,8 @@ public class GamerTask extends Task {
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));
-            recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks));
+            recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
+                    () -> KitPlanner.toEquip(facts, cfg.overworld));
             recoverPos = deathPos;
             recoverDimension = deathDimension;
             allowance = new RecoverRules.Allowance(deathGameTime / 20.0, cfg.death.recoverSeconds);

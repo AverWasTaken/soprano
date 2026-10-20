@@ -247,6 +247,23 @@ public class StorageHelper {
         return ItemHelper.canDropStack(mod, stack) && !wouldWear(mod, stack);
     }
 
+    private static boolean isThrowawayBlock(AltoClef mod, Set<Item> throwaways, ItemStack stack) {
+        return stack.getItem() instanceof BlockItem && throwaways.contains(stack.getItem()) && mayGo(mod, stack);
+    }
+
+    // the throwaway blocks getJunkSlot weighs against the building reserve
+    public static int throwawayBlocksHeld(AltoClef mod) {
+        Set<Item> throwaways = new HashSet<>(Arrays.asList(AltoSettings.getThrowawayItems(mod)));
+        int total = 0;
+        for (Slot slot : bagSlots()) {
+            ItemStack stack = getItemStackInSlot(slot);
+            if (isThrowawayBlock(mod, throwaways, stack)) {
+                total += stack.getCount();
+            }
+        }
+        return total;
+    }
+
     // the cheap half of getGarbageSlot: throwaway items (dirt, cobble past the building reserve, rotten flesh). what comes after is
     // worse tools and, with altoThrowAwayUnusedItems, anything the task is not using, which is not room anybody should plan on
     public static Optional<Slot> getJunkSlot(AltoClef mod) {
