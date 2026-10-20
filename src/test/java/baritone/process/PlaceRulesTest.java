@@ -19,8 +19,11 @@ package baritone.process;
 
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.PoweredRailBlock;
+import net.minecraft.world.level.block.RailBlock;
 import net.minecraft.world.level.block.CrossCollisionBlock;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
@@ -32,6 +35,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoorHingeSide;
 import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.level.block.state.properties.WallSide;
@@ -113,6 +117,19 @@ public class PlaceRulesTest {
         // not a cube is not the same as aimed: nothing on a fence cares where we looked, a ladder's facing does
         assertFalse(PlaceRules.aimed(Blocks.OAK_FENCE.defaultBlockState()));
         assertTrue(PlaceRules.aimed(Blocks.LADDER.defaultBlockState()));
+    }
+
+    @Test
+    public void railShapeIsTheNeighboursCall() {
+        BlockState rail = Blocks.RAIL.defaultBlockState();
+        assertTrue(same(rail, rail.setValue(RailBlock.SHAPE, RailShape.SOUTH_EAST)));
+        for (Block block : List.of(Blocks.RAIL, Blocks.POWERED_RAIL, Blocks.DETECTOR_RAIL, Blocks.ACTIVATOR_RAIL)) {
+            assertTrue(PlaceRules.derived(block, ((BaseRailBlock) block).getShapeProperty()));
+        }
+        BlockState powered = Blocks.POWERED_RAIL.defaultBlockState();
+        assertTrue(same(powered, powered.setValue(PoweredRailBlock.POWERED, true)));
+        // still a rail and not a powered one
+        assertFalse(same(rail, powered));
     }
 
     @Test
