@@ -21,12 +21,15 @@ import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DoorHingeSide;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.state.properties.StairsShape;
@@ -71,6 +74,14 @@ public class PlaceRulesTest {
         BlockState gate = Blocks.OAK_FENCE_GATE.defaultBlockState();
         assertTrue(same(gate, gate.setValue(FenceGateBlock.IN_WALL, true)));
         assertFalse(same(gate, gate.setValue(FenceGateBlock.FACING, Direction.WEST)));
+        // open or shut is whoever walked through last, the path opens these itself
+        assertTrue(same(gate, gate.setValue(FenceGateBlock.OPEN, true)));
+        BlockState door = Blocks.OAK_DOOR.defaultBlockState();
+        assertTrue(same(door, door.setValue(DoorBlock.OPEN, true)));
+        assertFalse(same(door, door.setValue(DoorBlock.HINGE, DoorHingeSide.RIGHT)));
+        BlockState trapdoor = Blocks.OAK_TRAPDOOR.defaultBlockState();
+        assertTrue(same(trapdoor, trapdoor.setValue(TrapDoorBlock.OPEN, true)));
+        assertFalse(same(trapdoor, trapdoor.setValue(TrapDoorBlock.HALF, Half.TOP)));
         // the builder never pours into a block, so wet or dry is the world's call too
         assertTrue(same(fence, fence.setValue(BlockStateProperties.WATERLOGGED, true)));
         BlockState stair = Blocks.OAK_STAIRS.defaultBlockState();

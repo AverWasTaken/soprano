@@ -738,6 +738,18 @@ public interface MovementHelper extends ActionCosts, Helper {
      * Also doubles as "If I start a movement on this, can weird things happen?"
      * because movements can end/start on these blocks despite them not being canWalkOn.
      */
+    // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click
+    // would open the thing and walk us off the edge. block entities cover chests, furnaces, barrels and friends.
+    // an iron door just sits there when clicked, so that one's a placement
+    public static boolean opensWhenClicked(BlockState state) {
+        Block block = state.getBlock();
+        return state.hasBlockEntity() || block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE
+                || block == Blocks.SMITHING_TABLE || block == Blocks.LOOM || block == Blocks.NOTE_BLOCK || block == Blocks.RESPAWN_ANCHOR
+                || DoorBlock.isWoodenDoor(state) || block instanceof FenceGateBlock
+                || (block instanceof TrapDoorBlock && block != Blocks.IRON_TRAPDOOR)
+                || block instanceof ButtonBlock || block instanceof LeverBlock || block instanceof RepeaterBlock;
+    }
+
     static boolean isClimbable(Block block) {
         return block == Blocks.LADDER
             || block == Blocks.VINE

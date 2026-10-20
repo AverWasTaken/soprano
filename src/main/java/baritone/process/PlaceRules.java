@@ -62,7 +62,9 @@ public final class PlaceRules {
                     || prop == WallBlock.WEST || prop == WallBlock.UP;
         }
         if (block instanceof FenceGateBlock) {
-            return prop == FenceGateBlock.IN_WALL;
+            // open is whoever walked through last, us included (traverse opens gates on the way). same for doors and
+            // trapdoors below, and vanilla places all three open if there's power, so the file can't win that one anyway
+            return prop == FenceGateBlock.IN_WALL || prop == FenceGateBlock.OPEN;
         }
         if (block instanceof RedstoneWireBlock) {
             return prop == RedstoneWireBlock.NORTH || prop == RedstoneWireBlock.EAST
@@ -77,10 +79,10 @@ public final class PlaceRules {
             return prop == NoteBlock.INSTRUMENT; // whatever's under it
         }
         if (block instanceof DoorBlock) {
-            return prop == DoorBlock.POWERED;
+            return prop == DoorBlock.POWERED || prop == DoorBlock.OPEN;
         }
         if (block instanceof TrapDoorBlock) {
-            return prop == TrapDoorBlock.POWERED;
+            return prop == TrapDoorBlock.POWERED || prop == TrapDoorBlock.OPEN;
         }
         if (block instanceof SnowyBlock) {
             return prop == SnowyBlock.SNOWY;
