@@ -257,7 +257,10 @@
     state.className = 'sc-rows-state';
     const build = $('#sc-build'), warn = $('#sc-warn');
     build.disabled = !r || noWorld || !!r.error || building.state === 'PARSING';
-    build.textContent = armed ? 'Click again to build' : 'Build here';
+    // the armed button says where, like SchematicsTab.where: the feet when the corner is on them, else the corner
+    const at = r && !r.error ? placementOf(r.path) : null;
+    const where = !at ? '' : at.x === 100 && at.y === 64 && at.z === -40 && at.dim === myDim ? ' at your feet' : ' at ' + at.x + ' ' + at.y + ' ' + at.z;
+    build.textContent = armed ? 'Click again to build' + where : 'Build here';
     build.classList.toggle('armed', !!armed);
     warn.classList.add('off'); warn.classList.remove('state', 'error');
     // the map and its controls only exist for a file that parsed

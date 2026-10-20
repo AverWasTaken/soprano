@@ -551,4 +551,51 @@ public class McSchematicsPlacementTest {
         assertNotNull(s.terrain(0, 0, 1));
         assertTrue(s.terrain(0, 0, 1).knownAt(0, 0));
     }
+
+    @Test
+    public void aBuildThatBlowsUpSaysWhatBlewUp() {
+        McSchematics s = make();
+        game.boom = new IllegalStateException("nope");
+        s.build("wall.schem");
+        drain();
+        assertEquals(BuildState.ERROR, s.building().state());
+        assertEquals("Could not start building: IllegalStateException", s.building().message());
+        assertEquals(List.of("Could not start building: IllegalStateException (wall)"), game.said);
+    }
+
+    @Test
+    public void couldNotStartNamesWhatItCan() {
+        assertEquals("Too big to build (out of memory)", McSchematics.couldNotStart(new OutOfMemoryError()));
+        assertTrue(McSchematics.couldNotStart(new java.util.concurrent.RejectedExecutionException()).contains("reader stopped"));
+        assertTrue(McSchematics.couldNotStart(new java.io.UncheckedIOException(new java.io.IOException())).contains("file"));
+        assertEquals("Could not start building: IllegalArgumentException",
+            McSchematics.couldNotStart(new IllegalArgumentException("declares multiple JSON fields named 'a'")));
+    }
+
+    @Test
+    public void aSaveThatCannotLandStillBuildsAndKeepsTheEdit() throws Exception {
+        // a plain file where the altoclef folder should be, so every save fails
+        Files.createDirectories(saveFile.getParent().getParent());
+        Files.writeString(saveFile.getParent(), "in the way");
+        McSchematics s = make();
+        Placement moved = s.move("wall.schem", 4, 0, 0);
+        assertNotNull(moved);
+        assertEquals(14, s.placement("wall.schem").x());
+        assertTrue(s.build("wall.schem").ok());
+        drain();
+        assertEquals(new BlockPos(14, 64, -20), game.built.get(0).origin());
+    }
+
+    @Test
+    public void atFeetIsTheCornerOnTheFeet() {
+        McSchematics s = make();
+        assertTrue(s.atFeet("wall.schem"));
+        s.move("wall.schem", 1, 0, 0);
+        assertFalse(s.atFeet("wall.schem"));
+        s.placeAtFeet("wall.schem");
+        assertTrue(s.atFeet("wall.schem"));
+        game.feet = new BlockPos(0, 0, 0);
+        assertFalse(s.atFeet("wall.schem"));
+        assertFalse(s.atFeet("broken.schem"));
+    }
 }
