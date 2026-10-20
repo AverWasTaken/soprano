@@ -185,7 +185,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // any cell at all waiting on a plan this tick, left out or not
     private boolean pendingSeen;
     // ticks in a row the whole goal was pending plans. past PENDING_WAIT_TICKS they get upstream's goal after all, till
-    // a tick with nothing pending. the planner normally catches up in a tick or two, this is for when it doesn't
+    // a tick with nothing pending. the planner normally catches up in a few ticks, this is for when it doesn't
     private int pendingWaitTicks;
     private boolean pendingWaitedOut;
     private static final int PENDING_WAIT_TICKS = 100;
@@ -387,8 +387,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         forgetStalls();
         forgetCreative();
         if (restoreGivenUp && keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
-            // a world change in between still wipes it, recalcNearby's seenWorld check sees to that
+            // a world change in between still wipes it, recalcNearby's seenWorld check sees to that. the for good ones
+            // get one more go: nobody was watching their neighbours while we were stopped, and altoclef's cleanup
+            // takes scaffold down in exactly that gap
             givenUp = keptGivenUp;
+            givenUp.unwatched(builderTicks);
         }
         keptGivenUp = null;
         restoreGivenUp = false;
@@ -1028,6 +1031,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!pendingSeen) {
             pendingWaitTicks = 0;
             pendingWaitedOut = false;
+        } else if (goal != null) {
+            pendingWaitTicks = 0; // in a row, a stretch of building in between starts it over
         }
         if (goal == null && plansPending) {
             // all that's left here is aimed cells the planner hasn't got to yet. they're first in line (planOrder),
@@ -1098,7 +1103,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             BetterBlockPos pos = owner.first();
             // a stale plan's old feet: the new look may well say stand somewhere else, so it's not ours to give up yet.
             // planOrder puts the one we're parked for first, so this is a tick or two
-            if (owner.second().isInGoal(feet) && !replanPending(pos, bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z)))) {
+            // once the wait ran out it's upstream's goal like any other, and gets given up like any other
+            if (owner.second().isInGoal(feet) && (pendingWaitedOut || !replanPending(pos, bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z))))) {
                 owners.add(pos);
             }
         }

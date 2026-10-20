@@ -127,4 +127,20 @@ public class GivenUpTest {
         assertTrue(g.isGivenUp(A.x, A.y, A.z, 1000 + GivenUp.SECOND_EXPIRY_TICKS - 1));
         assertFalse(g.isGivenUp(A.x, A.y, A.z, 1000 + GivenUp.SECOND_EXPIRY_TICKS));
     }
+
+    @Test
+    public void comingBackAfterAWhileGivesTheForGoodOnesOneMoreGo() {
+        GivenUp g = new GivenUp();
+        BetterBlockPos b = new BetterBlockPos(50, 64, 50);
+        for (int i = 0; i < GivenUp.MAX_ATTEMPTS; i++) {
+            g.giveUp(A, 0);
+        }
+        g.giveUp(b, 0);
+        g.unwatched(5);
+        assertFalse(g.isGivenUp(A.x, A.y, A.z, 5));
+        assertEquals(GivenUp.MAX_ATTEMPTS, g.giveUp(A, 5));
+        // a timed one keeps its break and its count
+        assertTrue(g.isGivenUp(b.x, b.y, b.z, 5));
+        assertEquals(2, g.giveUp(b, 300));
+    }
 }
