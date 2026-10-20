@@ -242,22 +242,24 @@ public class RecoverRulesTest {
 
     // ---- full bag at the pile
 
+    // args: fits, junk (throwaway, or a block past the reserve), same item as the pick, may go at all, loses to the pick in its tier
     @Test
-    public void aBlockPastTheReserveIsLeftWhenTheBagIsFull() {
-        assertTrue(RecoverRules.skipWhenFull(false, true, 64, 64, false));
-        assertTrue(RecoverRules.skipWhenFull(false, true, 128, 64, false));
-        // under the reserve it is building stock we still want
-        assertFalse(RecoverRules.skipWhenFull(false, true, 40, 64, false));
+    public void junkAndTheGarbagePicksOwnKindAreLeftWhenTheBagIsFull() {
+        assertTrue(RecoverRules.skipWhenFull(false, true, false, true, false));
+        assertTrue(RecoverRules.skipWhenFull(false, false, true, true, false));
+        assertFalse(RecoverRules.skipWhenFull(false, false, false, true, false));
     }
 
+    // two single stacks would otherwise take turns: throw X for Y, then Y is the smallest and goes for X
     @Test
-    public void theGarbagePicksOwnKindIsLeftWhenTheBagIsFull() {
-        assertTrue(RecoverRules.skipWhenFull(false, false, 0, 64, true));
-        assertFalse(RecoverRules.skipWhenFull(false, false, 0, 64, false));
+    public void aDropThatLosesToThePickIsLeft() {
+        assertTrue(RecoverRules.skipWhenFull(false, false, false, true, true));
+        // something we may not throw (important, armor we would wear) is worth the room even if it ranks low
+        assertFalse(RecoverRules.skipWhenFull(false, false, false, false, true));
     }
 
     @Test
     public void aDropThatFitsIsAlwaysTaken() {
-        assertFalse(RecoverRules.skipWhenFull(true, true, 500, 64, true));
+        assertFalse(RecoverRules.skipWhenFull(true, true, true, true, true));
     }
 }
