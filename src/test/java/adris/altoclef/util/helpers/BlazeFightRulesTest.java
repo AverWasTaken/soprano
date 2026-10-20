@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.CAMP;
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.COVER;
+import static adris.altoclef.util.helpers.BlazeFightRules.Mode.HUNT;
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.KILL;
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.RETREAT;
 import static org.junit.Assert.assertEquals;
@@ -110,5 +111,65 @@ public class BlazeFightRulesTest {
         // coming back from a retreat is the heal logic's call too, no timer on top
         assertEquals(KILL, BlazeFightRules.decide(14, true, 0, 1, RETREAT, 0));
         assertEquals(COVER, BlazeFightRules.decide(20, true, 2, 0, RETREAT, 0));
+    }
+
+    // hiding works too well: none of them can see us, so none of them come. go let one see us
+    @Test
+    public void hiddenBlazesGetVisitedOnceTheHoldIsUp() {
+        int hold = BlazeFightRules.HIDE_HOLD_TICKS;
+        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 3, hold));
+        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 1, Long.MAX_VALUE));
+        // just hid, give them a few seconds to come round the corner first
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 3, hold - 1));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 3, 0));
+        // nobody worth the walk
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 0, Long.MAX_VALUE));
+    }
+
+    @Test
+    public void everythingElseBeatsHunting() {
+        long quiet = Long.MAX_VALUE;
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, 3, quiet));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, 3, quiet));
+        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 0, 3, quiet));
+        assertEquals(RETREAT, BlazeFightRules.decide(13, true, 0, 0, 3, quiet));
+    }
+
+    @Test
+    public void theDwellNeverHoldsBackHunting() {
+        long quiet = Long.MAX_VALUE;
+        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 2, quiet, COVER, 0));
+        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 2, quiet, KILL, 0));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, 2, quiet, HUNT, 0));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, 2, quiet, HUNT, 0));
+        // the old KILL and COVER hold still applies with hunting in the mix
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, 2, quiet, KILL, 0));
+    }
+
+    @Test
+    public void huntableNeedsAFloorDryLandAndToStayNearTheSpawner() {
+        double noSpawner = Double.NaN;
+        assertTrue(BlazeFightRules.isHuntable(true, false, 25, false, noSpawner));
+        assertTrue(BlazeFightRules.isHuntable(true, false, 25, false, BlazeFightRules.HUNT_SPAWNER_RADIUS));
+        assertFalse(BlazeFightRules.isHuntable(true, false, 25, false, BlazeFightRules.HUNT_SPAWNER_RADIUS + 0.5));
+        assertFalse(BlazeFightRules.isHuntable(false, false, 10, false, noSpawner));
+        assertFalse(BlazeFightRules.isHuntable(false, true, 10, false, noSpawner));
+        assertFalse(BlazeFightRules.isHuntable(true, false, 10, true, noSpawner));
+        assertFalse(BlazeFightRules.isHuntable(true, false, BlazeFightRules.MAX_CHASE_DISTANCE + 1, false, noSpawner));
+    }
+
+    @Test
+    public void theHuntGoalOnlyMovesForANewBlazeOrABigDrift() {
+        assertFalse(BlazeFightRules.needsNewHuntGoal(false, 0));
+        assertFalse(BlazeFightRules.needsNewHuntGoal(false, BlazeFightRules.HUNT_REGOAL_DRIFT));
+        assertTrue(BlazeFightRules.needsNewHuntGoal(false, BlazeFightRules.HUNT_REGOAL_DRIFT + 0.5));
+        assertTrue(BlazeFightRules.needsNewHuntGoal(true, 0));
+    }
+
+    @Test
+    public void aHuntThatGoesNowhereGetsDropped() {
+        assertFalse(BlazeFightRules.huntTakingTooLong(0));
+        assertFalse(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS - 1));
+        assertTrue(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS));
     }
 }
