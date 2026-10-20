@@ -123,7 +123,8 @@ public class CombatRulesTest {
 
     @Test
     public void theAuraShieldGateIsTheSameLine() {
-        // KillAura asks aboveFleeLine and nothing else: 8 is not healthy enough, 8.5 is, and the old 10 gate is gone
+        // KillAura asks aboveFleeLine, unless the machine has us in a committed fight (then the flee line was its call and the
+        // aura keeps going): 8 is not healthy enough, 8.5 is, and the old 10 gate is gone
         assertFalse(CombatRules.aboveFleeLine(CombatRules.FLEE_HEALTH));
         assertTrue(CombatRules.aboveFleeLine(CombatRules.FLEE_HEALTH + 0.5f));
         assertTrue(CombatRules.aboveFleeLine(9));

@@ -114,13 +114,15 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     // standing still is the default. a fight raises the shield on the move: no sneak (it is walking at a third of the
-    // speed), no pause, and the caller lowers it the moment the arrow is gone
-    private static void startShielding(AltoClef mod, boolean standStill) {
+    // speed), no pause, and the caller lowers it the moment the arrow is gone.
+    // the keys carry our name, same as KillAura's: the two shields come and go in the same tick, and a plain release from
+    // one used to lift the other's (5 ticks before a raised shield blocks, all over again)
+    private void startShielding(AltoClef mod, boolean standStill) {
         _shielding = true;
         if (standStill) {
-            mod.getInputControls().hold(Input.SNEAK);
+            mod.getInputControls().hold(Input.SNEAK, this);
         }
-        mod.getInputControls().hold(Input.CLICK_RIGHT);
+        mod.getInputControls().hold(Input.CLICK_RIGHT, this);
         if (standStill) {
             mod.getClientBaritone().getPathingBehavior().requestPause();
             mod.getExtraBaritoneSettings().setInteractionPaused(true);
@@ -158,8 +160,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     mod.getSlotHandler().clickSlot(garbageSlot, 0, ContainerInput.PICKUP);
                 }
             }
-            mod.getInputControls().release(Input.SNEAK);
-            mod.getInputControls().release(Input.CLICK_RIGHT);
+            // (only ours: the aura's shield may be the one up)
+            mod.getInputControls().releaseOwnedBy(this);
             mod.getExtraBaritoneSettings().setInteractionPaused(false);
             _shielding = false;
         }
@@ -330,8 +332,9 @@ public class MobDefenseChain extends SingleTaskChain {
         snapshot(mod);
         _killAura.tickStart();
         // all feet and no hands on a run, the shield only when boxed in. the shield is for standing in a pile, not for the
-        // first zombie that wanders up
-        _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield());
+        // first zombie that wanders up. a committed fight keeps the aura going under the flee line and raises the shield mid
+        // move, the machine already decided this is a fight
+        _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield(), _brain.auraFighting());
 
         // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
