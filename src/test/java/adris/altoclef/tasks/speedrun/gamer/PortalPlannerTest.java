@@ -210,7 +210,7 @@ public class PortalPlannerTest {
 
     @Test
     public void gateCountsEveryTierAndKeepsTheTargetAboveTheStoneOnesHeld() {
-        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 1).give(Items.STONE_PICKAXE, 1).give(Items.DIAMOND_PICKAXE, 1);
+        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 2).give(Items.STONE_PICKAXE, 1);
         // three usable picks of four: one more, and the target is exact stone picks so it is 1 held + 1
         assertEquals(List.of(new KitNeed("stone_pickaxe", 2)), picksGate(f));
         f.give(Items.STONE_PICKAXE, 1);
@@ -235,17 +235,31 @@ public class PortalPlannerTest {
     }
 
     @Test
-    public void aWornStonePickAndADiamondOneStillLeaveTheTargetAboveWhatTheCatalogueSees() {
-        // diamond + 2 good stone = 3 usable of 4 wanted, one more. the catalogue counts the worn stone one too (3 held), so it stops at 4
-        FakeFacts f = readyToGo().give(Items.DIAMOND_PICKAXE, 1).give(Items.STONE_PICKAXE, 2);
+    public void aWornStonePickAndAnIronOneStillLeaveTheTargetAboveWhatTheCatalogueSees() {
+        // iron + 2 good stone = 3 usable of 4 wanted, one more. the catalogue counts the worn stone one too (3 held), so it stops at 4
+        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 1).give(Items.STONE_PICKAXE, 2);
         f.spent.put(Items.STONE_PICKAXE, 1);
         assertEquals(List.of(new KitNeed("stone_pickaxe", 4)), picksGate(f));
     }
 
     @Test
-    public void aDiamondAndTwoIronPicksNeedOneMoreStone() {
-        FakeFacts f = readyToGo().give(Items.DIAMOND_PICKAXE, 1).give(Items.IRON_PICKAXE, 2);
-        assertEquals(List.of(new KitNeed("stone_pickaxe", 1)), picksGate(f));
+    public void aDiamondPickWalksInWithNoStoneSpares() {
+        assertTrue(picksGate(readyToGo().give(Items.IRON_PICKAXE, 1).give(Items.DIAMOND_PICKAXE, 1)).isEmpty());
+        assertTrue("no iron one next to it either", picksGate(readyToGo().give(Items.DIAMOND_PICKAXE, 1)).isEmpty());
+        assertTrue("netherite is a diamond pick too", picksGate(readyToGo().give(Items.NETHERITE_PICKAXE, 1)).isEmpty());
+        // and the iron one alone still gets its three, like before
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 3)), picksGate(readyToGo().give(Items.IRON_PICKAXE, 1)));
+    }
+
+    @Test
+    public void aDiamondPickInHandDoesNotChangeTheFirstPortalChoice() {
+        // the dig before the portal means most runs hold one now. the first answer is still the pool, then the cast
+        assertTrue(PortalPlanner.usePool(true, false, Method.CAST));
+        for (boolean lava : new boolean[]{true, false}) {
+            assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, lava, true));
+            assertEquals(PortalPlanner.decide(Method.CAST, 0, cfg, lava, false), PortalPlanner.decide(Method.CAST, 0, cfg, lava, true));
+        }
+        assertEquals("a timeout while the pool ran still casts next", Method.CAST, PortalPlanner.afterTimeout(Method.CAST, true, true));
     }
 
     @Test
