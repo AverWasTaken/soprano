@@ -15,7 +15,7 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 </div>
 
 <p align="center">
-  <a href="https://github.com/AverWasTaken/soprano/releases/latest"><img alt="Download the latest release" src="https://img.shields.io/badge/Download-latest%20release-2ea44f?style=for-the-badge&logo=github&logoColor=white"></a>
+  <a href="https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.2.0"><img alt="Download Soprano v1.2.0" src="https://img.shields.io/badge/Download-v1.2.0%20for%201.21.11-2ea44f?style=for-the-badge&logo=github&logoColor=white"></a>
 </p>
 
 <div align="center">
@@ -35,19 +35,25 @@ Soprano keeps everything Baritone does.  <br> The `baritone.api` packages are un
 
 ## Install
 
-1. Go to the [latest release](https://github.com/AverWasTaken/soprano/releases/latest) and download the jar for your Minecraft version and loader (Fabric, Forge or NeoForge).
+| Minecraft | Latest Soprano | Loaders | Download |
+|:--|:--|:--|:--|
+| 26.3 | 1.1.5 | Fabric, Forge, NeoForge | [Soprano v1.1.5](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.5) |
+| 1.21.11 | 1.2.0 | Fabric, Forge, NeoForge | [Soprano v1.2.0](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.2.0) |
+| 1.21.4 (2b2t) | 1.0.3 | Fabric, Forge, NeoForge | [Soprano v1.0.3](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.0.3) |
+| Any Version (beta, 26.3 client joins any server) | 1.1.5 | Fabric | [Soprano v1.1.5 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.5-anyversion) |
+
+1. Open the release for your Minecraft version. For 1.21.11 that's [Soprano v1.2.0](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.2.0). Download the jar for your loader (Fabric, Forge or NeoForge).
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
 Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `1.21.11`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 1.21.11.
 
-Releases come in three flavors. Most people want the `api` jar.
+Releases come in two flavors. Most people want the `api` jar.
 
 | Jar | What it is |
 |---|---|
 | `soprano-api-<loader>-<version>.jar` | The one you want. Everything outside `baritone.api` is obfuscated, so other mods can still use the API. |
-| `soprano-standalone-<loader>-<version>.jar` | Everything is obfuscated. Slightly faster, but other mods can't use the API. |
-| `soprano-unoptimized-<loader>-<version>.jar` | Nothing is obfuscated. Use it when you're reporting a bug, the stack traces are readable. |
+| `soprano-unoptimized-fabric-<version>.jar` | Fabric only. Nothing is obfuscated. Use it when you're reporting a bug, the stack traces are readable. |
 
 See [SETUP.md](SETUP.md) for building it yourself.
 
