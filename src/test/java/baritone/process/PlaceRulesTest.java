@@ -109,5 +109,8 @@ public class PlaceRulesTest {
         assertFalse(PlaceRules.aimProof(Blocks.OAK_FENCE.defaultBlockState()));
         assertFalse(PlaceRules.aimProof(Blocks.FURNACE.defaultBlockState()));
         assertFalse(PlaceRules.aimProof(Blocks.OAK_SLAB.defaultBlockState().setValue(BlockStateProperties.SLAB_TYPE, SlabType.DOUBLE)));
+        // not a cube is not the same as aimed: nothing on a fence cares where we looked, a ladder's facing does
+        assertFalse(PlaceRules.aimed(Blocks.OAK_FENCE.defaultBlockState()));
+        assertTrue(PlaceRules.aimed(Blocks.LADDER.defaultBlockState()));
     }
 }

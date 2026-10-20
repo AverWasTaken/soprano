@@ -411,10 +411,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
             // a stair or a fence from a movement comes out however it's aimed, the builder does those itself
             return false;
         }
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
+        // somebody else's movement placing an aimed block puts it down however it happened to be looking (a ladder facing
+        // wherever we were turned, the guess below fakes the click), so those get a plain throwaway and the builder sorts
+        // the cell out later. a slab or a fence has nothing to aim and still gets the real thing
+        boolean aimed = maybe != null && PlaceRules.aimed(maybe);
+        if (maybe != null && !aimed && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
         }
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
+        if (maybe != null && !aimed && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
         }
         // creative and not on the hotbar yet: the builder hands it over like one of its own clicks. its costOfPlacingAt
