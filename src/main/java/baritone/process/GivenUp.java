@@ -111,6 +111,17 @@ final class GivenUp {
         }
     }
 
+    // we weren't looking for a while (the build stopped and came back), so nearbyChanged never got its chance. every for
+    // good one gets the one more go a change next to it would have bought
+    void unwatched(long now) {
+        for (Entry e : cells.values()) {
+            if (e.until == Long.MAX_VALUE) {
+                e.attempts = MAX_ATTEMPTS - 1;
+                e.until = now;
+            }
+        }
+    }
+
     boolean isEmpty() {
         return cells.isEmpty();
     }
