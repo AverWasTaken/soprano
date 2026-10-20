@@ -73,4 +73,26 @@ final class FallCover {
     static boolean pickupIsBaritones(boolean placedAtDest, boolean destIsWater, boolean emptyBucketOnHotbar) {
         return placedAtDest && destIsWater && emptyBucketOnHotbar;
     }
+
+    // standing still in a still water source reads -0.005 at the start of a tick: the floor zeroes y, then water gravity
+    // (0.08 / 16) goes on after. so the old y >= 0 only ever came true when the swim jump bobbed us up. sinking with no
+    // floor tops out at -0.025, a bit past that is still nobody falling. anything faster is the drop's momentum
+    static final double NOT_FALLING_Y = -0.05;
+
+    static boolean notFalling(boolean onGround, boolean inWater, double motionY) {
+        return (onGround || inWater) && motionY > NOT_FALLING_Y;
+    }
+
+    // our feet in dest or a block next to it, same level. drifting one over while the water slows us is normal, and the
+    // executor doesn't call that off path either (it's under MAX_DIST_FROM_PATH)
+    static boolean nextToDest(int feetX, int feetY, int feetZ, int destX, int destY, int destZ) {
+        return feetY == destY && Math.abs(feetX - destX) <= 1 && Math.abs(feetZ - destZ) <= 1;
+    }
+
+    // MovementFall's bucket pickup: there's a source at dest to take, we can reach it, we're down and done falling, and
+    // the empty bucket is on the hotbar. pure so it's testable, the movement hands in what it sees
+    static boolean pickupReady(boolean destIsSource, boolean nextToDest, double distToWater, double reach, boolean onGround,
+                               boolean inWater, double motionY, boolean emptyBucketOnHotbar) {
+        return destIsSource && nextToDest && distToWater <= reach && notFalling(onGround, inWater, motionY) && emptyBucketOnHotbar;
+    }
 }
