@@ -17,8 +17,13 @@ import baritone.behavior.PathingBehavior;
 import baritone.pathing.movement.movements.MovementFall;
 import baritone.pathing.path.PathExecutor;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.effect.MobEffects;
@@ -34,6 +39,10 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     private final TimerGame _cleanupTimer = new TimerGame(4);
     // the cells we really poured into (MLGBucketTask.placedCells), copied every tick so a restarted task loses nothing
     private final List<BlockPos> _ourWater = new ArrayList<>();
+    // the ones we've seen hold water on our side. a waterlogged block only fills on the server, so ours lags a round
+    // trip behind the click, and "no water there" means nothing until it showed up once
+    private final Set<BlockPos> _seenWater = new HashSet<>();
+    private int _landedAt;
     private final PickUpOurWaterTask _pickup = new PickUpOurWaterTask();
     private MLGBucketTask _lastMLG = null;
     // the mlg task had the fall last tick. only this blocks defense and food, the cleanup after it doesn't
@@ -135,6 +144,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         if (!_cleanupLive) {
             _cleanupLive = true;
             _cleanupTimer.reset();
+            _landedAt = WorldHelper.getTicks();
             _lastWaterBuckets = buckets;
         }
         if (_cleanupTimer.elapsed()) {
@@ -143,8 +153,15 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         }
         boolean gained = buckets > _lastWaterBuckets;
         _lastWaterBuckets = buckets;
+        boolean settled = WorldHelper.getTicks() - _landedAt >= BucketPour.settleTicks(pingMs(mod));
         Vec3 me = mod.getPlayer().position();
-        _ourWater.removeIf(cell -> cellEnd(BucketPour.isWaterSource(mod.getWorld(), cell), gained, Math.sqrt(cell.distToCenterSqr(me))) != CellEnd.KEEP);
+        _ourWater.removeIf(cell -> {
+            boolean source = BucketPour.isWaterSource(mod.getWorld(), cell);
+            if (source) {
+                _seenWater.add(cell);
+            }
+            return cellEnd(source, _seenWater.contains(cell), settled, gained, Math.sqrt(cell.distToCenterSqr(me))) != CellEnd.KEEP;
+        });
         if (_ourWater.isEmpty()) {
             endCleanup();
             return Float.NEGATIVE_INFINITY;
@@ -157,7 +174,8 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         double best = Double.MAX_VALUE;
         for (BlockPos cell : _ourWater) {
             double d = cell.distToCenterSqr(me);
-            if (d < best && !baritonePicksUp(mod, cell)) {
+            // a cell still dry on our side has nothing to aim at, it stays on the list without holding the wheel
+            if (d < best && BucketPour.isWaterSource(mod.getWorld(), cell) && !baritonePicksUp(mod, cell)) {
                 best = d;
                 target = cell;
             }
@@ -172,6 +190,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
 
     private void endCleanup() {
         _ourWater.clear();
+        _seenWater.clear();
         _cleanupLive = false;
         _pickup.target = null;
         if (_mainTask == _pickup) {
@@ -179,11 +198,23 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         }
     }
 
+    // same as PlaceObsidianBucketTask.pingMs
+    private static int pingMs(AltoClef mod) {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection == null) {
+            return 0;
+        }
+        PlayerInfo info = connection.getPlayerInfo(mod.getPlayer().getUUID());
+        return info == null ? 0 : info.getLatency();
+    }
+
     // what happens to one of our cells this tick. the source going away with a bucket gained is the pickup, going away
-    // without one is somebody else (or it flowed off a ledge), either way there's nothing left to fetch. pure for the tests
-    static CellEnd cellEnd(boolean stillSource, boolean gainedBucket, double distance) {
-        if (!stillSource) {
-            return gainedBucket ? CellEnd.PICKED_UP : CellEnd.GONE;
+    // without one is somebody else (or it flowed off a ledge), either way there's nothing left to fetch. a cell that never
+    // held water on our side gets a round trip or so (settled) to show up, then it's a click the server turned down.
+    // pure for the tests
+    static CellEnd cellEnd(boolean stillSource, boolean seenSource, boolean settled, boolean gainedBucket, double distance) {
+        if (!stillSource && (seenSource || settled)) {
+            return seenSource && gainedBucket ? CellEnd.PICKED_UP : CellEnd.GONE;
         }
         return distance > CLEANUP_REACH ? CellEnd.TOO_FAR : CellEnd.KEEP;
     }
