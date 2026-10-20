@@ -528,6 +528,27 @@ public final class McSchematics implements SchematicsAccess {
         }
     }
 
+    // #build's end: the placements somebody actually chose (or built at) in this dimension, never the made-up feet
+    // ones. straight from memory, no folder scan, so a chat command doesn't wait on the library. game thread only
+    public Map<String, SchematicPlacement> pinnedHere() {
+        try {
+            if (!syncWorld()) {
+                return Map.of();
+            }
+            String dimension = game.dimension();
+            Map<String, SchematicPlacement> out = new LinkedHashMap<>();
+            placements.forEach((path, p) -> {
+                if (p.dimension().equals(dimension)) {
+                    out.put(path, p);
+                }
+            });
+            return out;
+        } catch (Throwable t) {
+            Safe.report("gui schematic pinned", t);
+            return Map.of();
+        }
+    }
+
     // the placement the gui sees and the build uses, without the minecraft types
     private Placement view(SchematicPlacement p) {
         if (p == null) {
