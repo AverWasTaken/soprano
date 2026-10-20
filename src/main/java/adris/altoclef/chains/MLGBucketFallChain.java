@@ -54,8 +54,11 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             _lastMLG = null;
             return falling ? 100 : 60;
         }
-        boolean hasClutchItem = falling && MLGBucketTask.hasClutchItem(mod);
-        if (claimsFall(falling, hasClutchItem, falling && !hasClutchItem && MLGBucketTask.fallIsDeadly(mod))) {
+        // no water, hay or vines dropped into a build, and nothing to save in creative. a survival fall that kills us
+        // still gets the task, losing the whole inventory is worse than one wrong block the builder breaks again
+        boolean hasClutchItem = falling && mod.getClientBaritone().getInventoryBehavior().clutchWanted() && MLGBucketTask.hasClutchItem(mod);
+        boolean deadly = falling && !hasClutchItem && !mod.getPlayer().getAbilities().invulnerable && MLGBucketTask.fallIsDeadly(mod);
+        if (claimsFall(falling, hasClutchItem, deadly)) {
             _tryCollectWaterTimer.reset();
             setTask(new MLGBucketTask());
             _lastMLG = (MLGBucketTask) _mainTask;
