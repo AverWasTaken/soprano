@@ -50,6 +50,18 @@ public class KillAura {
     // the combat policy's say, set every tick before tickEnd. defaults are the old behavior: shield whenever it fits
     private boolean _kiting = false;
     private boolean _shieldAllowed = true;
+    private boolean _fighting = false;
+    // whose name the shield keys go under. a task that brings its own aura passes itself, so the task's own key cleanup (a
+    // finished root task is let go of without onStop) still lifts them
+    private final Object _owner;
+
+    public KillAura() {
+        _owner = this;
+    }
+
+    public KillAura(Object owner) {
+        _owner = owner;
+    }
 
     public static void equipWeapon(AltoClef mod) {
         // same pick as the kill tasks use. this loop used to equip a sword per inventory sword, every call
@@ -72,10 +84,12 @@ public class KillAura {
     }
 
     // kiting is all feet and no hands: a swing turns our head and the path goes where the head points. the shield is
-    // for standing our ground, which is the only time it earns its sneak speed and its paused pathing
-    public void setPolicy(boolean kiting, boolean shieldAllowed) {
+    // for standing our ground, which is the only time it earns its sneak speed and its paused pathing.
+    // fighting: a committed fight. the flee line and "is the path safe to cancel" were the machine's to ask, not ours
+    public void setPolicy(boolean kiting, boolean shieldAllowed, boolean fighting) {
         _kiting = kiting;
         _shieldAllowed = shieldAllowed;
+        _fighting = fighting;
     }
 
     public void tickEnd(AltoClef mod) {
@@ -88,7 +102,9 @@ public class KillAura {
             return;
         }
         Optional<Entity> entities = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
-        if (entities.isPresent() && CombatRules.aboveFleeLine(mod.getPlayer().getHealth()) &&
+        // (a cornered fight at hp 8 never bails, and going quiet under the flee line meant dropping the shield right when it
+        // was the only thing between us and the respawn screen)
+        if (entities.isPresent() && (CombatRules.aboveFleeLine(mod.getPlayer().getHealth()) || _fighting) &&
                 !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class) && !mod.getFoodChain().needsToEat() &&
                 (Double.isInfinite(_forceFieldRange) || entities.get().distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
                         entities.get().distanceToSqr(mod.getPlayer()) < 40) &&
@@ -104,7 +120,9 @@ public class KillAura {
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
                     && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
-                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                    // mid movement or knocked back mid movement the path is never safe to cancel, and a fight waiting for it
+                    // took its hits with the shield down. same deal as the arrow shield in MobDefenseChain
+                    && (_fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
                 LookHelper.lookAt(mod, entities.get().getEyePosition());
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
@@ -251,8 +269,11 @@ public class KillAura {
 
     public void startShielding(AltoClef mod) {
         _shielding = true;
-        mod.getInputControls().hold(Input.SNEAK);
-        mod.getInputControls().hold(Input.CLICK_RIGHT);
+        // our own name on the keys: MobDefenseChain's shield letting go in the same tick must not lift ours, a shield only
+        // blocks after 5 ticks of use and every lift starts that over. (passed by hand: the chain calls us from getPriority,
+        // where Task.currentOwner() is nobody)
+        mod.getInputControls().hold(Input.SNEAK, _owner);
+        mod.getInputControls().hold(Input.CLICK_RIGHT, _owner);
         mod.getClientBaritone().getPathingBehavior().requestPause();
         mod.getExtraBaritoneSettings().setInteractionPaused(true);
         if (!mod.getPlayer().isBlocking()) {
@@ -283,8 +304,8 @@ public class KillAura {
                     mod.getSlotHandler().clickSlot(garbageSlot, 0, ClickType.PICKUP);
                 }
             }
-            mod.getInputControls().release(Input.SNEAK);
-            mod.getInputControls().release(Input.CLICK_RIGHT);
+            // only our claims. a key somebody else still holds stays down, the food chain's plain hold for a bite included
+            mod.getInputControls().releaseOwnedBy(_owner);
             mod.getInputControls().release(Input.JUMP);
             mod.getExtraBaritoneSettings().setInteractionPaused(false);
             _shielding = false;
