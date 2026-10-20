@@ -37,6 +37,12 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import baritone.utils.FallingColumn;
+import net.minecraft.world.level.block.AnvilBlock;
+import net.minecraft.world.level.block.DragonEggBlock;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
@@ -397,15 +403,78 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         return _landGoal;
     }
 
-    // the vine the first thing in line between the eyes and the middle of the block, if there is one and it's in reach.
-    // anything else in the way (leaves, a wall) isn't ours to clear from here
-    static BlockPos vineInTheWay(BlockGetter world, Vec3 eye, BlockPos target, double reach) {
-        BlockHitResult hit = world.clip(new ClipContext(eye, Vec3.atCenterOf(target), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
-        if (hit.getType() != HitResult.Type.BLOCK || hit.getBlockPos().equals(target)) {
-            return null;
+    // the first thing in line between the eyes and the block, when it's ours to take down on the way and in reach. a vine,
+    // or loose stuff (sand, gravel, powder) that fell into the line uninvited. the middle goes first, then the same face
+    // points RotationUtils.reachable tries, so gravel that only blocks the ray to one face still counts. anything else in
+    // the way (leaves, a wall) isn't ours to clear from here, and neither is loose stuff when the block itself is out of
+    // reach: chewing through gravel three blocks short of a far ore gets us nowhere
+    static BlockPos clearableInTheWay(BlockGetter world, Vec3 eye, BlockPos target, double reach) {
+        boolean targetClose = eye.distanceToSqr(Vec3.atCenterOf(target)) <= reach * reach;
+        for (Vec3 point : rayPoints(world, target)) {
+            // nothing past reach counts, so the ray doesn't need to go there. this runs every tick of a long walk
+            Vec3 end = eye.distanceToSqr(point) > reach * reach ? eye.add(point.subtract(eye).normalize().scale(reach)) : point;
+            BlockHitResult hit = world.clip(new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+            if (hit.getType() != HitResult.Type.BLOCK || hit.getBlockPos().equals(target) || eye.distanceTo(hit.getLocation()) > reach) {
+                continue;
+            }
+            BlockState state = world.getBlockState(hit.getBlockPos());
+            if (state.is(Blocks.VINE) || (targetClose && looseInTheWay(state))) {
+                return hit.getBlockPos();
+            }
         }
-        BlockPos pos = hit.getBlockPos();
-        return world.getBlockState(pos).is(Blocks.VINE) && eye.distanceTo(hit.getLocation()) <= reach ? pos : null;
+        return null;
+    }
+
+    // the middle, then the middle of each face of the shape, in RotationUtils.reachable's order (its list is private)
+    private static List<Vec3> rayPoints(BlockGetter world, BlockPos target) {
+        VoxelShape shape = world.getBlockState(target).getShape(world, target);
+        if (shape.isEmpty()) {
+            shape = Shapes.block();
+        }
+        List<Vec3> points = new ArrayList<>(7);
+        points.add(Vec3.atCenterOf(target));
+        for (Vec3 side : FACE_MULTIPLIERS) {
+            points.add(new Vec3(target.getX(), target.getY(), target.getZ()).add(
+                    shape.min(Direction.Axis.X) * side.x + shape.max(Direction.Axis.X) * (1 - side.x),
+                    shape.min(Direction.Axis.Y) * side.y + shape.max(Direction.Axis.Y) * (1 - side.y),
+                    shape.min(Direction.Axis.Z) * side.z + shape.max(Direction.Axis.Z) * (1 - side.z)));
+        }
+        return points;
+    }
+
+    private static final Vec3[] FACE_MULTIPLIERS = {
+            new Vec3(0.5, 0, 0.5), new Vec3(0.5, 1, 0.5),
+            new Vec3(0.5, 0.5, 0), new Vec3(0.5, 0.5, 1),
+            new Vec3(0, 0.5, 0.5), new Vec3(1, 0.5, 0.5)
+    };
+
+    // sand and friends. not an anvil (a weapon, and slow), not the egg (a click teleports it somewhere worse)
+    static boolean looseInTheWay(BlockState state) {
+        Block block = state.getBlock();
+        return FallingColumn.isGravity(block) && !(block instanceof AnvilBlock) && !(block instanceof DragonEggBlock);
+    }
+
+    // somewhere under our feet. the gravel we stand on (or the gravel holding that up) is in the way of anything down
+    // and to the side, and taking it out drops us into whatever opened up the face we wanted
+    static boolean underBox(BlockPos pos, AABB box) {
+        return pos.getY() < box.minY
+                && pos.getX() < box.maxX && pos.getX() + 1 > box.minX
+                && pos.getZ() < box.maxZ && pos.getZ() + 1 > box.minZ;
+    }
+
+    // the world side of a loose block in the way: breaking it has to be as fine as breaking any sand. vines go in one
+    // swing and drop nothing on anyone, those were never asked
+    private static boolean mayClearInTheWay(AltoClef mod, BlockPos pos) {
+        BlockState state = mod.getWorld().getBlockState(pos);
+        if (state.is(Blocks.VINE)) {
+            return true;
+        }
+        return !underBox(pos, mod.getPlayer().getBoundingBox())
+                && state.getDestroySpeed(mod.getWorld(), pos) >= 0
+                && !mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)
+                && WorldHelper.fallingBlockSafeToBreak(pos)
+                && !(WorldHelper.letsFallingLoose(mod.getWorld(), pos) && WorldHelper.breakingDropsOnUs(mod, pos))
+                && !WorldHelper.tooSlowToBreak(mod, pos);
     }
 
     /**
@@ -786,12 +855,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         BlockPos swingAt = _pos;
         if (reach.isEmpty()) {
             // vines count as a hit for the ray even though you walk through them, so a log behind a curtain of them is
-            // "out of reach" until the curtain is gone. they break instantly, so take the one in the way down first
-            BlockPos vine = vineInTheWay(mod.getWorld(), mod.getPlayer().getEyePosition(), _pos, mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance());
-            Optional<Rotation> vineReach = vine == null ? Optional.empty() : LookHelper.getReach(vine);
-            if (vineReach.isPresent()) {
-                reach = vineReach;
-                swingAt = vine;
+            // "out of reach" until the curtain is gone. they break instantly, so take the one in the way down first.
+            // same for gravel that slid in front of it: no spot ever gets a ray through, so the stall clock was all we had
+            BlockPos inTheWay = clearableInTheWay(mod.getWorld(), mod.getPlayer().getEyePosition(), _pos, mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance());
+            Optional<Rotation> wayReach = inTheWay == null || !mayClearInTheWay(mod, inTheWay) ? Optional.empty() : LookHelper.getReach(inTheWay);
+            if (wayReach.isPresent()) {
+                reach = wayReach;
+                swingAt = inTheWay;
             }
         }
         // the ray is checked against face points but the distance against the center, so a ray that hit counts as close
