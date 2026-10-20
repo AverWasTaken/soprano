@@ -219,6 +219,12 @@ public final class FakeSchematics implements SchematicsAccess {
     }
 
     @Override
+    public boolean atFeet(String relativePath) {
+        Placement p = placement(relativePath);
+        return p != null && p.inThisDimension() && p.x() == feetX && p.y() == feetY && p.z() == feetZ;
+    }
+
+    @Override
     public Footprint footprint(String relativePath) {
         Placement p = placement(relativePath);
         if (p == null) {

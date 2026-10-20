@@ -551,4 +551,75 @@ public class McSchematicsPlacementTest {
         assertNotNull(s.terrain(0, 0, 1));
         assertTrue(s.terrain(0, 0, 1).knownAt(0, 0));
     }
+
+    @Test
+    public void aBuildThatBlowsUpSaysWhatBlewUp() {
+        McSchematics s = make();
+        game.boom = new IllegalStateException("nope");
+        s.build("wall.schem");
+        drain();
+        assertEquals(BuildState.ERROR, s.building().state());
+        assertEquals("Could not start building: IllegalStateException", s.building().message());
+        assertEquals(List.of("Could not start building: IllegalStateException (wall)"), game.said);
+    }
+
+    @Test
+    public void couldNotStartNamesWhatItCan() {
+        assertEquals("Too big to build (out of memory)", McSchematics.couldNotStart(new OutOfMemoryError()));
+        assertTrue(McSchematics.couldNotStart(new java.util.concurrent.RejectedExecutionException()).contains("reader stopped"));
+        assertTrue(McSchematics.couldNotStart(new java.io.UncheckedIOException(new java.io.IOException())).contains("file"));
+        assertEquals("Could not start building: IllegalArgumentException",
+            McSchematics.couldNotStart(new IllegalArgumentException("declares multiple JSON fields named 'a'")));
+    }
+
+    @Test
+    public void aSaveThatCannotLandStillBuildsAndKeepsTheEdit() throws Exception {
+        // a plain file where the altoclef folder should be, so every save fails
+        Files.createDirectories(saveFile.getParent().getParent());
+        Files.writeString(saveFile.getParent(), "in the way");
+        McSchematics s = make();
+        Placement moved = s.move("wall.schem", 4, 0, 0);
+        assertNotNull(moved);
+        assertEquals(14, s.placement("wall.schem").x());
+        assertTrue(s.build("wall.schem").ok());
+        drain();
+        assertEquals(new BlockPos(14, 64, -20), game.built.get(0).origin());
+    }
+
+    @Test
+    public void pinnedHereIsOnlyWhatSomebodyChoseInThisDimension() {
+        McSchematics s = make();
+        // looked at, never touched: that's the made-up feet default, #build must not treat it as placed
+        s.placement("wall.schem");
+        assertTrue(s.pinnedHere().isEmpty());
+        s.move("wall.schem", 2, 0, 0);
+        assertEquals(Map.of("wall.schem", new SchematicPlacement(new BlockPos(12, 64, -20), Rotation.NONE, Mirror.NONE,
+            "minecraft:overworld")), s.pinnedHere());
+        game.dimension = "minecraft:the_nether";
+        assertTrue(s.pinnedHere().isEmpty());
+        game.leaveWorld();
+        assertTrue(s.pinnedHere().isEmpty());
+    }
+
+    @Test
+    public void pinnedHereDoesNotWaitForTheFolderScan() {
+        PlacementStore.save(saveFile, Map.of("wall.schem", SchematicPlacement.at(new BlockPos(7, 8, 9), "minecraft:overworld")));
+        // no list(), no drain: the scan never ran
+        McSchematics s = new McSchematics(new SchematicLibrary(dir.toFile()), queue::add, HashMap::new, id -> false,
+            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game, () -> now);
+        assertEquals(new BlockPos(7, 8, 9), s.pinnedHere().get("wall.schem").origin());
+    }
+
+    @Test
+    public void atFeetIsTheCornerOnTheFeet() {
+        McSchematics s = make();
+        assertTrue(s.atFeet("wall.schem"));
+        s.move("wall.schem", 1, 0, 0);
+        assertFalse(s.atFeet("wall.schem"));
+        s.placeAtFeet("wall.schem");
+        assertTrue(s.atFeet("wall.schem"));
+        game.feet = new BlockPos(0, 0, 0);
+        assertFalse(s.atFeet("wall.schem"));
+        assertFalse(s.atFeet("broken.schem"));
+    }
 }

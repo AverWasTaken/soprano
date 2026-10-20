@@ -30,6 +30,9 @@
 -keep class baritone.api.IBaritoneProvider
 
 -keep class baritone.api.utils.MyChunkPos { *; } # even in standalone we need to keep this for gson reflect
+# same deal for the schematic placements file. renamed, Entry's six fields turn into a, b, c, a, b, c and gson
+# refuses the whole class, so every build click and every move died on the save
+-keep class baritone.utils.schematic.library.PlacementStore$* { *; }
 -keepname class baritone.api.utils.BlockOptionalMeta # this name is exposed to the user, so we need to keep it in all builds
 
 # Keep any class or member annotated with @KeepName so we dont have to put everything in the script

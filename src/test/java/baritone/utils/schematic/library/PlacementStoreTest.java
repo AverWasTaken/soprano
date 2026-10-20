@@ -214,4 +214,31 @@ public class PlacementStoreTest {
         assertTrue(json.contains("\"mirror\": \"FRONT_BACK\""));
         assertTrue(json.contains("\"dimension\": \"minecraft:overworld\""));
     }
+
+    @Test
+    public void aSaveThatThrowsInsideSaysNoInsteadOfThrowing() throws Exception {
+        Path file = file();
+        Map<String, SchematicPlacement> good = Map.of("a.schem", SchematicPlacement.at(new BlockPos(1, 2, 3), "d"));
+        assertTrue(PlacementStore.save(file, good));
+        // stands in for gson tripping over our own classes, the way it did on a release jar
+        Map<String, SchematicPlacement> bad = new LinkedHashMap<>() {
+            @Override
+            public void forEach(java.util.function.BiConsumer<? super String, ? super SchematicPlacement> action) {
+                throw new IllegalArgumentException("declares multiple JSON fields named 'a'");
+            }
+        };
+        assertFalse(PlacementStore.save(file, bad));
+        // and the old file is left alone
+        assertEquals(good, PlacementStore.load(file, path -> true));
+    }
+
+    @Test
+    public void aLoadThatThrowsInsideIsCouldNotReadNotCorrupt() {
+        // every call on this path throws, which is as close to "we broke, not the file" as a test gets without gson
+        Path cursed = (Path) java.lang.reflect.Proxy.newProxyInstance(Path.class.getClassLoader(), new Class<?>[]{Path.class},
+            (proxy, method, args) -> {
+                throw new UnsupportedOperationException(method.getName());
+            });
+        assertEquals(null, PlacementStore.loadAll(cursed, path -> true));
+    }
 }

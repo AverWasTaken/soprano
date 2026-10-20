@@ -516,6 +516,39 @@ public final class McSchematics implements SchematicsAccess {
         return new Footprint(p.origin().getX(), p.origin().getY(), p.origin().getZ(), size.getX(), size.getY(), size.getZ());
     }
 
+    @Override
+    public boolean atFeet(String relativePath) {
+        try {
+            SchematicPlacement p = current(relativePath);
+            BlockPos feet = game.feet();
+            return p != null && feet != null && p.origin().equals(feet) && p.dimension().equals(game.dimension());
+        } catch (Throwable t) {
+            Safe.report("gui schematic feet", t);
+            return false;
+        }
+    }
+
+    // #build's end: the placements somebody actually chose (or built at) in this dimension, never the made-up feet
+    // ones. straight from memory, no folder scan, so a chat command doesn't wait on the library. game thread only
+    public Map<String, SchematicPlacement> pinnedHere() {
+        try {
+            if (!syncWorld()) {
+                return Map.of();
+            }
+            String dimension = game.dimension();
+            Map<String, SchematicPlacement> out = new LinkedHashMap<>();
+            placements.forEach((path, p) -> {
+                if (p.dimension().equals(dimension)) {
+                    out.put(path, p);
+                }
+            });
+            return out;
+        } catch (Throwable t) {
+            Safe.report("gui schematic pinned", t);
+            return Map.of();
+        }
+    }
+
     // the placement the gui sees and the build uses, without the minecraft types
     private Placement view(SchematicPlacement p) {
         if (p == null) {
@@ -546,6 +579,8 @@ public final class McSchematics implements SchematicsAccess {
             return view(next);
         } catch (Throwable t) {
             Safe.report("gui schematic placement", t);
+            // a move that quietly does nothing reads as a broken button, so at least say it didn't take
+            game.say("Could not change the placement: " + t.getClass().getSimpleName());
             return null;
         }
     }
@@ -765,7 +800,7 @@ public final class McSchematics implements SchematicsAccess {
             return Result.ok("Building " + info.name() + " at " + o.getX() + ", " + o.getY() + ", " + o.getZ());
         } catch (Throwable t) {
             Safe.report("gui schematic build", t);
-            return Result.fail("Could not start building");
+            return Result.fail(couldNotStart(t));
         }
     }
 
@@ -821,9 +856,25 @@ public final class McSchematics implements SchematicsAccess {
             game.say(r.getMessage());
         } catch (Throwable t) {
             Safe.report("gui schematic build", t);
-            building = new Building(BuildState.ERROR, info.relativePath(), "Could not start building");
-            game.say("Could not start building " + info.name());
+            String failed = couldNotStart(t);
+            building = new Building(BuildState.ERROR, info.relativePath(), failed);
+            game.say(failed + " (" + info.name() + ")");
         }
+    }
+
+    // a bare "could not start building" sends people guessing. the ones we can name get words, the rest at least get
+    // the exception's name, which is a lot more to go on in a bug report
+    static String couldNotStart(Throwable t) {
+        if (t instanceof OutOfMemoryError) {
+            return "Too big to build (out of memory)";
+        }
+        if (t instanceof java.util.concurrent.RejectedExecutionException) {
+            return "Could not start building: the schematic reader stopped, restart the game";
+        }
+        if (t instanceof java.io.UncheckedIOException || t instanceof SecurityException) {
+            return "Could not start building: couldn't read or write a file";
+        }
+        return "Could not start building: " + t.getClass().getSimpleName();
     }
 
     // ----- the turned file, for drawing the build where it goes
@@ -1113,7 +1164,8 @@ public final class McSchematics implements SchematicsAccess {
                           BuildMemory memory) {
             GameType mode = gameMode();
             if (mode != GameType.SURVIVAL && mode != GameType.CREATIVE) {
-                throw new Refused("Can't build in " + (mode == null ? "this game mode" : mode.getName() + " mode"));
+                throw new Refused("Can't build in " + (mode == null ? "this game mode" : mode.getName() + " mode")
+                    + ", switch to survival or creative");
             }
             AltoClef alto = mode == GameType.SURVIVAL ? altoClef() : null;
             if (alto != null) {

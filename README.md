@@ -17,6 +17,9 @@
 
 </div>
 
+<img width="1040" height="680" alt="get-dark CnjDq7rR_ZULPW5" src="https://github.com/user-attachments/assets/bd1b83fd-c8cf-470e-919e-086383108e33" />
+
+
 ---
 
 > [!IMPORTANT]

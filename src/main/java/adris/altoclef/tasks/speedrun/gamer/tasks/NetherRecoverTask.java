@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
-import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -41,7 +40,6 @@ public class NetherRecoverTask extends Task {
     private Task blocks;
     private Task toPile;
     private RecoverItemsTask pile;
-    private Task wear;
     private Task home;
     // what the bag held at its lowest since the pile task started, and the most it ever climbed from there. the bag shrinks
     // while the pile task runs (dirt placed to reach it, food eaten), so the net change says nothing about what came back
@@ -119,7 +117,8 @@ public class NetherRecoverTask extends Task {
         boolean finished = pile != null && pile.isFinished(mod);
         int gained = pile == null ? 0 : trackGain(mod);
         NetherTripRules.Limits limits = NetherTripRules.Limits.of(d.netherTripSeconds, d.netherBlocks, d.netherBlocksSeconds);
-        int toWear = stage == Stage.RECOVER || stage == Stage.WEAR ? KitPlanner.toEquip(facts, cfg.get().overworld).size() : 0;
+        // what WearFromBag would put on right now, so WEAR never waits on a piece it would not try for
+        int toWear = stage == Stage.RECOVER || stage == Stage.WEAR ? WearFromBag.held(mod, toEquip()).size() : 0;
         return new NetherTripRules.Inputs(stage, facts.dimension(), now - trip.startTick, now - trip.stageTick,
                 facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg.get()), toWear, limits);
     }
@@ -152,7 +151,7 @@ public class NetherRecoverTask extends Task {
             }
             case RECOVER -> {
                 if (pile == null) {
-                    pile = new RecoverItemsTask(at, PILE_SECONDS);
+                    pile = new RecoverItemsTask(at, PILE_SECONDS, this::toEquip);
                     lowItems = itemTotal(mod);
                     lowStacks = stackTotal(mod);
                     peakItems = 0;
@@ -162,12 +161,10 @@ public class NetherRecoverTask extends Task {
                 return pile;
             }
             case WEAR -> {
-                if (wear == null) {
-                    List<Item> pieces = KitPlanner.toEquip(facts, cfg.get().overworld);
-                    wear = new EquipArmorTask(pieces.toArray(new Item[0]));
-                }
+                // rebuilt every tick from what is in the bag: a list fixed on the way in sent EquipArmorTask off to gather a piece
+                // that was thrown or never came back
                 setDebugState("Putting our armor back on.", "Putting on armor");
-                return wear;
+                return WearFromBag.task(mod, toEquip());
             }
             default -> {
                 if (home == null) {
@@ -177,6 +174,10 @@ public class NetherRecoverTask extends Task {
                 return home;
             }
         }
+    }
+
+    private List<Item> toEquip() {
+        return KitPlanner.toEquip(facts, cfg.get().overworld);
     }
 
     private String entered(Stage next) {

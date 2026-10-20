@@ -53,6 +53,7 @@ final class SchematicPane extends Widget {
     private static final String CANT_PLACE = "Can't place";
     private static final String NOT_COUNTED = "Not counted";
     private static final String BUILD = "Build here";
+    private static final String ARMED = "Click again to build";
     private static final String MOVE = "Move";
     private static final String STOP_MOVING = "Stop moving";
 
@@ -83,6 +84,8 @@ final class SchematicPane extends Widget {
     private Set<String> excluded = Set.of();
     private boolean world = true;
     private boolean armed;
+    // the armed sentence with the place in it, the button wears it when it fits and the tooltip gets it when not
+    private String armedText = ARMED;
     private boolean moving;
     private Body body = Body.NOTHING;
     private PlacementMap.Mode mode = PlacementMap.Mode.HIDDEN;
@@ -183,6 +186,9 @@ final class SchematicPane extends Widget {
         if (move.visible() && move.contains(mx, my)) {
             return move.tooltip();
         }
+        if (armed && build.visible() && build.contains(mx, my) && !build.text().equals(armedText)) {
+            return armedText;
+        }
         for (Button b : controls()) {
             if (!b.visible() || !b.contains(mx, my)) {
                 continue;
@@ -267,9 +273,11 @@ final class SchematicPane extends Widget {
         return r == null ? row == null : r.equals(row);
     }
 
-    void setArmed(boolean on) {
+    // where = "at 12 64 -30" / "at your feet", null when the tab couldn't tell
+    void setArmed(boolean on, String where) {
         armed = on;
-        build.setText(on ? "Click again to build" : BUILD);
+        armedText = where == null ? ARMED : ARMED + " " + where;
+        build.setText(on ? armedText : BUILD);
         build.setKind(on ? Button.Kind.DANGER : Button.Kind.PRIMARY);
         layout();
     }
@@ -483,6 +491,15 @@ final class SchematicPane extends Widget {
         listTop += hintH;
         listH = Math.max(0, footTop - 1 - listTop);
         list.setBounds(x + side, listTop, w - 2 * side, listH);
+        if (armed) {
+            // five digit coordinates don't fit at the 640 floor. then it's the short sentence, the move glyph keeps
+            // its square next to it and the place goes to the tooltip
+            build.setText(armedText);
+            int glyph = move.visible() ? theme.px(Theme.CONTROL_H) + theme.px(Theme.GAP) : 0;
+            if (build.preferredWidth() > w - 2 * pad - glyph) {
+                build.setText(ARMED);
+            }
+        }
         int bw = build.preferredWidth();
         int by = y + h - theme.px(Theme.SPACE_3) - bh;
         build.setBounds(x + w - pad - bw, by, bw, bh);

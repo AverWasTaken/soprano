@@ -108,13 +108,16 @@ public final class PortalMold {
 
     private static List<Cast> casts() {
         List<Cast> out = new ArrayList<>();
+        // the side casts stand two rows back. one row back is right beside t, baritone doesn't centre us, and with a 0.3
+        // half width our side pokes into t, so the lava went into the bot instead of the frame. from d=2 every click is
+        // still the face centre within 3.2 blocks, the left3/right3 water just needs the cell over our head (see roomForIt)
         for (int h = 1; h <= 3; h++) {
             out.add(new Cast("left" + h, new int[]{0, h, 0}, new int[]{0, h + 1, 0}, new int[]{1, h, 0}, new int[]{1, h + 1, 0},
-                    new int[]{0, 1, 1}, false, null));
+                    new int[]{0, 1, 2}, false, null));
         }
         for (int h = 1; h <= 3; h++) {
             out.add(new Cast("right" + h, new int[]{3, h, 0}, new int[]{3, h + 1, 0}, new int[]{2, h, 0}, new int[]{2, h + 1, 0},
-                    new int[]{3, 1, 1}, false, null));
+                    new int[]{3, 1, 2}, false, null));
         }
         // top row: the water goes in the corner next to the cell (clicking the guide that is still in the cell), then the
         // guide comes out and the lava goes in through the other guide's side. the pad lifts our eyes over the column
@@ -133,6 +136,13 @@ public final class PortalMold {
 
         public P cell(int[] c) {
             return cell(c[0], c[1], c[2]);
+        }
+
+        // the way back from a world cell to (u, h, d). the two axes are unit and square to each other, so it's just dots
+        public int[] local(P p) {
+            int dx = p.x() - ox;
+            int dz = p.z() - oz;
+            return new int[]{dx * ax + dz * az, p.y() - oy, dx * nx + dz * nz};
         }
 
         // a face given as a (u, h, d) offset, in world offsets
@@ -223,6 +233,14 @@ public final class PortalMold {
         // the shore row we stand on, and head room over it
         for (int u = -2; u <= 5; u++) {
             if (!m(l, t, u, 0, 1).solid() || m(l, t, u, 1, 1) != Mat.AIR || m(l, t, u, 2, 1) != Mat.AIR) {
+                return false;
+            }
+        }
+        // the side cast stands one row further back, and from there the upper clicks climb: the left3/right3 water goes
+        // through the cell over our head and then h=3 and h=4 of the shore row. a cave roof there and the click never lands
+        for (int u = 0; u <= 3; u += 3) {
+            if (!m(l, t, u, 0, 2).solid() || m(l, t, u, 1, 2) != Mat.AIR || m(l, t, u, 2, 2) != Mat.AIR || m(l, t, u, 3, 2) != Mat.AIR
+                    || m(l, t, u, 3, 1) != Mat.AIR || m(l, t, u, 4, 1) != Mat.AIR) {
                 return false;
             }
         }
@@ -348,6 +366,107 @@ public final class PortalMold {
             }
         }
         return best;
+    }
+
+    // ---- staying out of the lava ----
+
+    // our hitbox in world coordinates, the bits of an AABB this needs
+    public record Box(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+        // strict, like AABB.intersects: flush against a cell isn't in it. the scoop stands flush against the pool
+        public boolean touches(P c) {
+            return maxX > c.x() && minX < c.x() + 1 && maxY > c.y() && minY < c.y() + 1 && maxZ > c.z() && minZ < c.z() + 1;
+        }
+    }
+
+    // the pour goes into t and the water into w. a body poking into either is a body the bucket lands on
+    public static boolean inTheWay(Layout l, Box body, Cast c) {
+        return body.touches(l.cell(c.t)) || body.touches(l.cell(c.w));
+    }
+
+    private static boolean isLava(Mat m) {
+        return m == Mat.LAVA || m == Mat.LAVA_FLOW;
+    }
+
+    // lava in a cell our hitbox is in (feet and head cells included, they're in the box). lava next to us doesn't count,
+    // the lava scoop stands right beside the pool on purpose
+    public static boolean lavaOnUs(Terrain t, Box body) {
+        for (int x = (int) Math.floor(body.minX()); x <= (int) Math.floor(body.maxX()); x++) {
+            for (int y = (int) Math.floor(body.minY()); y <= (int) Math.floor(body.maxY()); y++) {
+                for (int z = (int) Math.floor(body.minZ()); z <= (int) Math.floor(body.maxZ()); z++) {
+                    if (body.touches(new P(x, y, z)) && isLava(t.at(x, y, z))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // somewhere to stand that isn't about to be lava: a floor, air for feet and head, and no lava beside either. fits()
+    // only looked at the first two shore rows, so anything past those gets asked here
+    public static boolean safeToStand(Terrain t, P feet) {
+        if (!t.at(feet.x(), feet.y() - 1, feet.z()).solid()) {
+            return false;
+        }
+        for (int dy = 0; dy <= 1; dy++) {
+            if (t.at(feet.x(), feet.y() + dy, feet.z()) != Mat.AIR) {
+                return false;
+            }
+            int[][] sides = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int[] s : sides) {
+                if (isLava(t.at(feet.x() + s[0], feet.y() + dy, feet.z() + s[1]))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // where to run when lava is on us: back up our own column to d>=4, or sideways along u until we're past the flow.
+    // nearest first, the column wins a tie. null = nowhere, the survival chain's lava escape gets it
+    public static P retreatSpot(Layout l, Terrain t, P feet) {
+        int[] me = l.local(feet);
+        List<int[]> spots = new ArrayList<>();
+        for (int d = Math.max(4, me[2] + 1); d <= 8; d++) {
+            spots.add(new int[]{me[0], d});
+        }
+        for (int k = 1; k <= 6; k++) {
+            spots.add(new int[]{me[0] - k, me[2]});
+            spots.add(new int[]{me[0] + k, me[2]});
+        }
+        P best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int[] s : spots) {
+            // the shore can step up or down a block, the walk there handles that
+            for (int dh : new int[]{0, 1, -1}) {
+                P p = l.cell(s[0], me[1] + dh, s[1]);
+                if (!safeToStand(t, p)) {
+                    continue;
+                }
+                int dist = Math.abs(s[0] - me[0]) + Math.abs(s[1] - me[2]) + Math.abs(dh);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = p;
+                }
+                break;
+            }
+        }
+        return best;
+    }
+
+    // a cell next to a stand to step off to, so the walk back puts us on the stand from a fresh angle. one row back
+    // first, then the two cells beside it, one down too since the top row stands on a pad. null = nothing standable
+    public static P stepBackSpot(Layout l, Terrain t, int[] stand) {
+        int[][] offs = {{0, 1}, {-1, 0}, {1, 0}};
+        for (int dh = 0; dh >= -1; dh--) {
+            for (int[] o : offs) {
+                P p = l.cell(stand[0] + o[0], stand[1] + dh, stand[2] + o[1]);
+                if (safeToStand(t, p)) {
+                    return p;
+                }
+            }
+        }
+        return null;
     }
 
     // ---- what to do next ----

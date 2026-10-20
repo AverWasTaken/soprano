@@ -305,30 +305,47 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
     // building is also demolishing whatever stands in the footprint, so the first click only arms the button
     @Override
     public void build() {
+        Row sel = rowFor(selectedPath);
+        if (sel == null || !sel.ok()) {
+            // the button is greyed out for this, but a click that lands anyway shouldn't just do nothing
+            disarm();
+            ctx.toast(Result.fail(sel == null ? "Pick a schematic first" : "That schematic didn't load, nothing to build"));
+            return;
+        }
         if (!pane.armed()) {
-            pane.setArmed(true);
+            pane.setArmed(true, where(sel));
             armTicks = 0;
             return;
         }
         disarm();
-        startBuild();
+        startBuild(sel);
+    }
+
+    // the second click builds wherever the map says, so the first one says where that is
+    private String where(Row sel) {
+        try {
+            if (schematics().atFeet(sel.relativePath())) {
+                return "at your feet";
+            }
+            Placement pl = schematics().placement(sel.relativePath());
+            return pl == null ? null : "at " + pl.x() + " " + pl.y() + " " + pl.z();
+        } catch (Throwable t) {
+            Safe.report("schematics where", t);
+            return null;
+        }
     }
 
     // the one place a build starts from. gathering lives behind the facade (McSchematics hands survival builds to
     // SchematicBuildTask), so the tab stays one call and the preview fake doesn't need to know
-    private void startBuild() {
-        Row sel = rowFor(selectedPath);
-        if (sel == null || !sel.ok()) {
-            return;
-        }
+    private void startBuild(Row sel) {
         Result r;
         try {
             r = schematics().build(sel.relativePath());
         } catch (Throwable t) {
             Safe.report("schematics build", t);
-            r = Result.fail("Could not start the build. Try #build in chat.");
+            r = Result.fail("Could not start building: " + t.getClass().getSimpleName());
         }
-        ctx.toast(r == null ? Result.fail("Could not start the build. Try #build in chat.") : r);
+        ctx.toast(r == null ? Result.fail("Could not start building, the build didn't answer") : r);
         poll();
     }
 
@@ -410,7 +427,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
 
     private void disarm() {
         if (pane.armed()) {
-            pane.setArmed(false);
+            pane.setArmed(false, null);
         }
         armTicks = 0;
     }

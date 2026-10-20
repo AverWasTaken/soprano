@@ -33,6 +33,8 @@ final class FakeGame implements McSchematics.Game {
     long serial;
     // non null = build says no with this, the way LiveGame does in adventure mode
     String refuse;
+    // non null = build falls over with this, the way a bug would
+    RuntimeException boom;
 
     void leaveWorld() {
         dimension = null;
@@ -70,6 +72,9 @@ final class FakeGame implements McSchematics.Game {
                       BuildMemory memory) {
         if (refuse != null) {
             throw new McSchematics.Refused(refuse);
+        }
+        if (boom != null) {
+            throw boom;
         }
         built.add(new Built(name, schematic, origin, rotation, mirror, memory));
         running = ++serial;

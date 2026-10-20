@@ -187,6 +187,31 @@ public class InteractWithBlockTask extends Task {
         return this;
     }
 
+    // for a parent that put us on the exact cell itself (the lava mold). out of reach means "tell me", not "walk": the
+    // stock goal for a bucket on a frame cell walks straight into the cell the lava is going in. the parent reads
+    // getClickStatus / stillAiming and decides
+    private boolean _stayPut;
+    // the last tick had the target in reach but the crosshair wasn't on it yet (or was on the wrong face, see pourAimOff)
+    private boolean _aiming;
+
+    public InteractWithBlockTask stayPut() {
+        _stayPut = true;
+        return this;
+    }
+
+    public boolean stillAiming() {
+        return _aiming;
+    }
+
+    static boolean walksWhenOutOfReach(boolean stayPut) {
+        return !stayPut;
+    }
+
+    // a stalled move checker or an unanswered click both end in a wander, which is walking too
+    static boolean wandersWhenStuck(boolean stayPut) {
+        return !stayPut;
+    }
+
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
                 pos.offset(1, 0, 0),
@@ -296,7 +321,11 @@ public class InteractWithBlockTask extends Task {
             mod.getClientBaritone().getExploreProcess().onLostControl();
             return _unstuckTask;
         }
-        if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
+        _aiming = false;
+        if (!wandersWhenStuck(_stayPut)) {
+            // the shimmy out of grass is a walk too, and standing still beside some is the plan here
+            stuckCheck.reset();
+        } else if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
             BlockPos blockStuck = stuckInBlock(mod);
             if (blockStuck != null) {
                 _unstuckTask = getFenceUnstuckTask();
@@ -320,7 +349,10 @@ public class InteractWithBlockTask extends Task {
             _clickTimer.reset();
             return wander(mod);
         }
-        if (!_moveChecker.check(mod)) {
+        if (!wandersWhenStuck(_stayPut)) {
+            // standing still is the whole point, the move checker would call that a stall
+            _moveChecker.reset();
+        } else if (!_moveChecker.check(mod)) {
             Debug.logMessage("Failed, blacklisting and wandering.");
             mod.getBlockTracker().requestBlockUnreachable(_target);
             return wander(mod);
@@ -342,7 +374,7 @@ public class InteractWithBlockTask extends Task {
             case CANT_REACH -> {
                 setDebugState("Getting to our goal");
                 // Get to our goal then
-                if (!proc.isActive()) {
+                if (walksWhenOutOfReach(_stayPut) && !proc.isActive()) {
                     proc.setGoalAndPath(moveGoal);
                 }
                 _clickTimer.reset();
@@ -365,6 +397,10 @@ public class InteractWithBlockTask extends Task {
                     if (bansOnClickTimeout(_scoop)) {
                         Debug.logInternal("interact: clicked " + _target.toShortString() + " for a whole click timeout and the bucket never filled, giving up on it");
                         mod.getBlockTracker().requestBlockUnreachable(_target, 0, "the bucket never filled");
+                    }
+                    if (!wandersWhenStuck(_stayPut)) {
+                        // the parent's step watchdog owns a click that does nothing
+                        return null;
                     }
                     return wander(mod);
                 }
@@ -395,7 +431,7 @@ public class InteractWithBlockTask extends Task {
             if (task._toUse != null && !task._toUse.equals(_toUse)) return false;
             if (!task._target.equals(_target)) return false;
             if (!task._interactInput.equals(_interactInput)) return false;
-            return task._walkInto == _walkInto && task._scoop == _scoop && Objects.equals(task._goalFor, _goalFor);
+            return task._walkInto == _walkInto && task._scoop == _scoop && task._stayPut == _stayPut && Objects.equals(task._goalFor, _goalFor);
         }
         return false;
     }
@@ -431,6 +467,7 @@ public class InteractWithBlockTask extends Task {
     }
 
     private ClickResponse rightClick(AltoClef mod) {
+        _aiming = false;
 
         // Don't interact if baritone can't interact.
         if (mod.getExtraBaritoneSettings().isInteractionPaused() || mod.getFoodChain().needsToEat() ||
@@ -489,6 +526,7 @@ public class InteractWithBlockTask extends Task {
                 }
                 //mod.getClientBaritone().getInputOverrideHandler().setInputForceState(_interactInput, true);
             } else {
+                _aiming = true;
                 LookHelper.lookAt(mod, reachable.get());
             }
             return ClickResponse.WAIT_FOR_CLICK;

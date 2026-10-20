@@ -58,6 +58,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.material.WaterFluid;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -113,6 +114,9 @@ public class MovementFall extends Movement {
     // built by unplanned(), see updateUnplanned
     private boolean unplanned;
 
+    // we clicked the water bucket at dest this fall. only that water is ours to take back, a pool we landed in isn't
+    private boolean poured;
+
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
 
@@ -146,6 +150,7 @@ public class MovementFall extends Movement {
         lowAtLedge = false;
         bucketRiskyAtLedge = false;
         hurt = false;
+        poured = false;
         plannedDamage = -1;
         ladder = null;
         ladderIn = false;
@@ -251,6 +256,7 @@ public class MovementFall extends Movement {
 
                 if (ctx.isLookingAt(dest) || ctx.isLookingAt(dest.below())) {
                     state.setInput(Input.CLICK_RIGHT, true);
+                    poured = true;
                 }
             }
         }
@@ -264,20 +270,17 @@ public class MovementFall extends Movement {
         } else {
             state.setTarget(new MovementTarget(toDest, false));
         }
+        boolean canFetch = isWater && canFetch(paused);
+        if (canFetch && pickUpWater(state)) {
+            return state; // not done until the bucket's full again, same as the ladder
+        }
         if (playerFeet.equals(dest) && (ctx.player().position().y - playerFeet.getY() < 0.094 || isWater)) { // 0.094 because lilypads
-            if (isWater) { // only match water, not flowing water (which we cannot pick up with a bucket)
-                if (!paused && Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
-                    ctx.player().getInventory().setSelectedSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY));
-                    if (ctx.player().getDeltaMovement().y >= 0) {
-                        return state.setInput(Input.CLICK_RIGHT, true);
-                    } else {
-                        return state;
-                    }
-                } else {
-                    if (ctx.player().getDeltaMovement().y >= 0) {
-                        return state.setStatus(MovementStatus.SUCCESS);
-                    } // don't else return state; we need to stay centered because this water might be flowing under the surface
-                }
+            if (isWater) {
+                // nothing to fetch, so done once we've stopped coming down. with something to fetch, pickUpWater has it
+                // the moment we stop, so this only ever skips it while we're still falling
+                if (!canFetch && FallCover.notFalling(ctx.player().onGround(), ctx.player().isInWater(), ctx.player().getDeltaMovement().y)) {
+                    return state.setStatus(MovementStatus.SUCCESS);
+                } // don't else return state; we need to stay centered because this water might be flowing under the surface
             } else {
                 return pickUpLadder(state) ? state.setStatus(MovementStatus.SUCCESS) : state;
             }
@@ -568,6 +571,49 @@ public class MovementFall extends Movement {
         return Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER));
     }
 
+    private boolean emptyBucketOnHotbar() {
+        return Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY));
+    }
+
+    private boolean destIsSource() {
+        return ctx.world().getFluidState(dest).getType() == Fluids.WATER;
+    }
+
+    // there's water of ours at dest to take back. flowing water can't go in a bucket, and the click is eaten while paused
+    private boolean canFetch(boolean paused) {
+        return poured && !paused && destIsSource() && emptyBucketOnHotbar();
+    }
+
+    // take the water at dest back from wherever we ended up next to it. this used to want our feet exactly in dest and
+    // y >= 0, and standing still in water is never y >= 0 (FallCover.NOT_FALLING_Y), so a block of drift or just standing
+    // there never clicked and the movement timed out with the water left behind. returns true while it has the inputs
+    private boolean pickUpWater(MovementState state) {
+        LocalPlayer player = ctx.player();
+        BlockPos feet = ctx.playerFeet();
+        Vec3 water = VecUtils.getBlockPosCenter(dest);
+        // the bucket's own reach, not baritone's setting, it's vanilla doing the ray
+        double reach = player.blockInteractionRange();
+        boolean near = FallCover.nextToDest(feet.getX(), feet.getY(), feet.getZ(), dest.x, dest.y, dest.z);
+        if (!FallCover.pickupReady(destIsSource(), near, ctx.playerHead().distanceTo(water), reach, player.onGround(), player.isInWater(), player.getDeltaMovement().y, emptyBucketOnHotbar())) {
+            return false;
+        }
+        player.getInventory().setSelectedSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY));
+        state.setTarget(new MovementTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(), water, ctx.playerRotations()), true));
+        // click once the crosshair is really on it, asked with the empty bucket's own ray (source water counts). isLookingAt
+        // can't see water with fluidHandling at NONE, and an exact rotation never comes with randomLooking113 on
+        if (aimedAtDest(reach)) {
+            state.setInput(Input.CLICK_RIGHT, true);
+        }
+        return true;
+    }
+
+    private boolean aimedAtDest(double reach) {
+        Vec3 eye = ctx.playerHead();
+        Vec3 dir = RotationUtils.calcLookDirectionFromRotation(ctx.playerRotations());
+        HitResult res = ctx.world().clip(new ClipContext(eye, eye.add(dir.scale(reach)), ClipContext.Block.OUTLINE, ClipContext.Fluid.SOURCE_ONLY, ctx.player()));
+        return res instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK && b.getBlockPos().equals(dest);
+    }
+
     // altoclef's mlg chain asks this before jumping in on a fall. true if this is the fall we planned, we're in it, and we
     // are doing something about it (or it's safe), so a second brain stealing the rotation and cancelling the path is the
     // one thing that can only make it worse. a knockback out of the column or a shove too hard to be ours says no
@@ -594,8 +640,9 @@ public class MovementFall extends Movement {
             return false;
         }
         boolean at = placed.getX() == dest.x && placed.getY() == dest.y && placed.getZ() == dest.z;
-        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
-        return FallCover.pickupIsBaritones(at, water, Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY)));
+        // the same question updateState asks before pickUpWater, or the chain waits on a click nobody makes
+        boolean ours = canFetch(AltoClefSettings.getInstance().isInteractionPaused());
+        return FallCover.pickupIsBaritones(at, ours, emptyBucketOnHotbar());
     }
 
     // a fall nobody planned (knockback, a slip, a mob) for altoclef to clutch with a ladder or vine. landing is the cell
