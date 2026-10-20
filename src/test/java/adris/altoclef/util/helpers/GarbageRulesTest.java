@@ -205,4 +205,33 @@ public class GarbageRulesTest {
         items.add(Items.DIRT);
         assertEquals(-1, GarbageRules.worseTool(items));
     }
+
+    private static boolean wouldWear(net.minecraft.world.item.Item bag, net.minecraft.world.item.Item worn) {
+        return GarbageRules.wouldWear(worn == null, ItemHelper.getArmorPoints(bag), ItemHelper.getArmorToughness(bag),
+                worn == null ? 0 : ItemHelper.getArmorPoints(worn), worn == null ? 0 : ItemHelper.getArmorToughness(worn));
+    }
+
+    @Test
+    public void armorForABareSlotOrBetterThanWornIsKept() {
+        assertTrue(wouldWear(Items.IRON_CHESTPLATE, null));
+        assertTrue(wouldWear(Items.IRON_CHESTPLATE, Items.LEATHER_CHESTPLATE));
+        // same points, diamond's toughness breaks the tie
+        assertTrue(wouldWear(Items.DIAMOND_CHESTPLATE, Items.IRON_CHESTPLATE));
+        // an elytra on the back is worth no armor, the chestplate in the bag is not garbage
+        assertTrue(wouldWear(Items.IRON_CHESTPLATE, Items.ELYTRA));
+    }
+
+    @Test
+    public void spareArmorStaysThrowable() {
+        assertFalse(wouldWear(Items.IRON_CHESTPLATE, Items.IRON_CHESTPLATE));
+        assertFalse(wouldWear(Items.IRON_CHESTPLATE, Items.DIAMOND_CHESTPLATE));
+        assertFalse(wouldWear(Items.LEATHER_HELMET, Items.IRON_HELMET));
+    }
+
+    @Test
+    public void armorPointsComeFromTheItem() {
+        assertEquals(6.0, ItemHelper.getArmorPoints(Items.IRON_CHESTPLATE), 0.001);
+        assertEquals(2.0, ItemHelper.getArmorToughness(Items.DIAMOND_CHESTPLATE), 0.001);
+        assertEquals(0.0, ItemHelper.getArmorPoints(Items.COBBLESTONE), 0.001);
+    }
 }

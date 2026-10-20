@@ -213,79 +213,96 @@ public class StorageHelper {
         return getGarbageSlotPastJunk(mod);
     }
 
+    // the 36 real bag slots (hotbar and main), as slots of whatever screen is up. getCurrentScreenSlots also hands out the cursor,
+    // the craft result and the 2x2 grid with no screen open: the result clicked with something else on the cursor does nothing
+    // (so the cursor task clicked it forever), and a grid slot takes the stack only for the grid clearer to hand it right back.
+    // isSlotInPlayerInventory says yes to every one of those, so it is no filter
+    public static List<Slot> bagSlots() {
+        List<Slot> out = new ArrayList<>(Inventory.INVENTORY_SIZE);
+        for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
+            Slot slot = Slot.getFromCurrentScreenInventory(i);
+            if (slot != null) {
+                out.add(slot);
+            }
+        }
+        return out;
+    }
+
+    // armor we would put on (bare slot, or it beats what is worn) is never garbage. the rule is GarbageRules.wouldWear
+    public static boolean wouldWear(AltoClef mod, ItemStack stack) {
+        if (stack.isEmpty() || mod.getPlayer() == null || !ItemHelper.isArmor(stack.getItem())) {
+            return false;
+        }
+        EquipmentSlot slot = ItemHelper.getEquipSlot(stack.getItem());
+        if (slot == null) {
+            return false;
+        }
+        ItemStack worn = mod.getPlayer().getItemBySlot(slot);
+        return GarbageRules.wouldWear(worn.isEmpty(), ItemHelper.getArmorPoints(stack.getItem()), ItemHelper.getArmorToughness(stack.getItem()),
+                ItemHelper.getArmorPoints(worn.getItem()), ItemHelper.getArmorToughness(worn.getItem()));
+    }
+
+    // what every garbage tier asks of a stack
+    private static boolean mayGo(AltoClef mod, ItemStack stack) {
+        return ItemHelper.canDropStack(mod, stack) && !wouldWear(mod, stack);
+    }
+
     // the cheap half of getGarbageSlot: throwaway items (dirt, cobble past the building reserve, rotten flesh). what comes after is
     // worse tools and, with altoThrowAwayUnusedItems, anything the task is not using, which is not room anybody should plan on
     public static Optional<Slot> getJunkSlot(AltoClef mod) {
         // Throwaway items, but keep a few for building.
-        final List<Slot> throwawayBlockItems = new ArrayList<>();
+        Set<Item> throwaways = new HashSet<>(Arrays.asList(AltoSettings.getThrowawayItems(mod)));
+        Slot firstBlock = null;
         int totalBlockThrowaways = 0;
-        if (!mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod)).isEmpty()) {
-            for (Slot slot : mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod))) {
-                // Our cursor slot is NOT a garbage slot
-                if (Slot.isCursor(slot))
-                    continue;
-                ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canDropStack(mod, stack))
-                    continue;
-                if (stack.getItem() instanceof BlockItem) {
-                    totalBlockThrowaways += stack.getCount();
-                    throwawayBlockItems.add(slot);
-                } else {
-                    // Throw away this non-block immediately.
-                    return Optional.of(slot);
+        for (Slot slot : bagSlots()) {
+            ItemStack stack = getItemStackInSlot(slot);
+            if (!throwaways.contains(stack.getItem()) || !mayGo(mod, stack))
+                continue;
+            if (stack.getItem() instanceof BlockItem) {
+                totalBlockThrowaways += stack.getCount();
+                if (firstBlock == null) {
+                    firstBlock = slot;
                 }
+            } else {
+                // Throw away this non-block immediately.
+                return Optional.of(slot);
             }
         }
-        if (!throwawayBlockItems.isEmpty() && totalBlockThrowaways > Baritone.settings().altoReservedBuildingBlockCount.value) {
-            for (Slot throwawayBlockItem : throwawayBlockItems) {
-                return Optional.ofNullable(throwawayBlockItem);
-            }
+        if (firstBlock != null && totalBlockThrowaways > Baritone.settings().altoReservedBuildingBlockCount.value) {
+            return Optional.of(firstBlock);
         }
         return Optional.empty();
     }
 
     private static Optional<Slot> getGarbageSlotPastJunk(AltoClef mod) {
+        List<Slot> bag = bagSlots();
         // Try throwing away lower tier tools. which one is worse is GarbageRules.worseTool, per tool family
-        if (PlayerSlot.getCurrentScreenSlots() != null) {
-            final List<Slot> toolSlots = new ArrayList<>();
-            final List<Item> toolItems = new ArrayList<>();
-            for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
-                ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canDropStack(mod, stack) || !ItemHelper.isTool(stack.getItem()))
-                    continue;
-                toolSlots.add(slot);
-                toolItems.add(stack.getItem());
-            }
-            int worse = GarbageRules.worseTool(toolItems);
-            if (worse >= 0) {
-                return Optional.of(toolSlots.get(worse));
-            }
+        final List<Slot> toolSlots = new ArrayList<>();
+        final List<Item> toolItems = new ArrayList<>();
+        for (Slot slot : bag) {
+            ItemStack stack = getItemStackInSlot(slot);
+            if (!mayGo(mod, stack) || !ItemHelper.isTool(stack.getItem()))
+                continue;
+            toolSlots.add(slot);
+            toolItems.add(stack.getItem());
+        }
+        int worse = GarbageRules.worseTool(toolItems);
+        if (worse >= 0) {
+            return Optional.of(toolSlots.get(worse));
         }
 
         // Now we're getting desparate
         if (Baritone.settings().altoThrowAwayUnusedItems.value) {
-
             // Get all non-important items. For now there is no measure of value.
             final List<Slot> possibleSlots = new ArrayList<>();
             final List<GarbageRules.Cand> cands = new ArrayList<>();
-            if (PlayerSlot.getCurrentScreenSlots() != null) {
-                for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
-                    ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                    // If we're an armor slot, don't count us.
-                    if (slot instanceof PlayerSlot playerSlot) {
-                        if (ArrayUtils.contains(PlayerSlot.ARMOR_SLOTS, playerSlot) ||
-                                playerSlot.getWindowSlot() == PlayerSlot.OFFHAND_SLOT.getWindowSlot()) {
-                            continue;
-                        }
-                    }
-                    // Throw away-able slots are good!
-                    if (ItemHelper.canDropStack(mod, stack)) {
-                        possibleSlots.add(slot);
-                        cands.add(GarbageRules.cand(stack));
-                    }
+            for (Slot slot : bag) {
+                ItemStack stack = getItemStackInSlot(slot);
+                if (mayGo(mod, stack)) {
+                    possibleSlots.add(slot);
+                    cands.add(GarbageRules.cand(stack));
                 }
             }
-
             // the ranking (and the food floor, once more) lives in GarbageRules so a test can lean on it
             int pick = GarbageRules.pick(cands, bagFoodUnits(mod), Baritone.settings().altoFoodKeepUnits.value);
             if (pick >= 0) {
