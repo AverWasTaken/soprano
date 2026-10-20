@@ -146,7 +146,8 @@ public class FallCoverTest {
         // -0.005 is what vanilla gives a player standing on the floor of a still source, the old y >= 0 never saw it
         assertTrue(ready(true, true, -0.005));
         assertTrue(ready(false, true, -0.025)); // sinking with no floor, tops out here
-        assertTrue(ready(true, false, 0));
+        // a block over on dry ground, which reads -0.0784 standing still
+        assertTrue(ready(true, false, -0.0784));
     }
 
     @Test
