@@ -13,9 +13,10 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.GarbageRules;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
-import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
@@ -296,7 +297,7 @@ public class RecoverItemsTask extends Task {
         private final AltoClef _mod;
         private boolean _read;
         private int _blocksHeld;
-        private Item _garbage;
+        private StorageHelper.Garbage _garbage;
         private Set<Item> _throwaways;
 
         FullBag(AltoClef mod) {
@@ -311,12 +312,28 @@ public class RecoverItemsTask extends Task {
                 _read = true;
                 _throwaways = new HashSet<>(Arrays.asList(AltoSettings.getThrowawayItems(_mod)));
                 _blocksHeld = StorageHelper.throwawayBlocksHeld(_mod);
-                Optional<Slot> garbage = StorageHelper.getGarbageSlot(_mod);
-                _garbage = garbage.map(slot -> StorageHelper.getItemStackInSlot(slot).getItem()).orElse(null);
+                _garbage = StorageHelper.getGarbage(_mod).orElse(null);
             }
-            boolean block = drop.getItem() instanceof BlockItem && _throwaways.contains(drop.getItem());
-            return RecoverRules.skipWhenFull(false, block, _blocksHeld, Baritone.settings().altoReservedBuildingBlockCount.value,
-                    drop.getItem() == _garbage);
+            Item item = drop.getItem();
+            // the same two ways getJunkSlot picks junk: any throwaway that is not a block, a block once the reserve is full
+            boolean junk = _throwaways.contains(item)
+                    && (!(item instanceof BlockItem) || _blocksHeld >= Baritone.settings().altoReservedBuildingBlockCount.value);
+            boolean same = _garbage != null && item == _garbage.stack().getItem();
+            boolean mayGo = ItemHelper.canDropStack(_mod, drop) && !StorageHelper.wouldWear(_mod, drop);
+            return RecoverRules.skipWhenFull(false, junk, same, mayGo, losesToGarbage(drop));
+        }
+
+        // with the drop in the bag next to the pick, would the pick's own tier throw the drop first. junk is picked before anything
+        // else gets a look, so a drop that is not junk itself never loses to junk
+        private boolean losesToGarbage(ItemStack drop) {
+            if (_garbage == null) {
+                return false;
+            }
+            return switch (_garbage.tier()) {
+                case JUNK -> false;
+                case TOOL -> GarbageRules.toolAtOrBelow(drop.getItem(), _garbage.stack().getItem());
+                case REST -> GarbageRules.atOrBelow(GarbageRules.cand(drop), GarbageRules.cand(_garbage.stack()));
+            };
         }
     }
 
