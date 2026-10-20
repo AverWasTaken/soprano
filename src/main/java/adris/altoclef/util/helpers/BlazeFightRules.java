@@ -19,6 +19,18 @@ public final class BlazeFightRules {
     // blaze bobbing over a fence line, a cached raycast landing) was swapping the whole task every couple of seconds
     public static final int MIN_DWELL_TICKS = 20;
 
+    // after the last blaze that could see us, wait this long before going out to find one. COVER hides us so they come
+    // round the corner, walking off the moment we are hidden throws that away
+    public static final int HIDE_HOLD_TICKS = 100;
+    // a spawner only spawns with a player within 16 and cover spots stay within 10 of it, so chasing a blaze further out
+    // than this leaves us in the open with nowhere to hide
+    public static final double HUNT_SPAWNER_RADIUS = 12;
+    // a hunt walk only gets a new goal once the blaze's floor has wandered this far from it. blazes drift all the time
+    public static final double HUNT_REGOAL_DRIFT = 4;
+    // walking at one blaze for this long without it seeing us means its floor is somewhere we cannot get to (the roof,
+    // the far side of a wall). try another one
+    public static final long HUNT_GIVE_UP_TICKS = 600;
+
     // at or below this with a blaze looking at us, leave
     public static final float RETREAT_HEALTH = 12;
     // at or below this leave whether or not anything is looking, we are one volley from the respawn screen
@@ -37,7 +49,9 @@ public final class BlazeFightRules {
         // something is shooting us and we cannot hit it. get out of its sight so it has to come closer
         COVER,
         // losing. break line of sight, eat, come back
-        RETREAT
+        RETREAT,
+        // blazes are around but none can see us and none is in reach, go let one see us
+        HUNT
     }
 
     // does a blaze count as hostile for the stance logic. charged is the flag the blaze itself syncs while it winds up a
@@ -55,22 +69,50 @@ public final class BlazeFightRules {
         return heightAboveFloor <= MAX_REACHABLE_HEIGHT;
     }
 
+    // worth walking over to: a floor to stand on under it, not over lava, not too far, not something the tracker gave up
+    // on, and close enough to the spawner that cover is still around. spawnerDistance is NaN with no spawner known
+    public static boolean isHuntable(boolean hasFloor, boolean overLava, double distance, boolean banned, double spawnerDistance) {
+        if (!hasFloor || overLava || banned || distance > MAX_CHASE_DISTANCE) return false;
+        return Double.isNaN(spawnerDistance) || spawnerDistance <= HUNT_SPAWNER_RADIUS;
+    }
+
+    // rebuild the hunt goal only for a new target or one that moved off, otherwise the path restarts every tick.
+    // goalDrift is how far the target's floor is from the goal we are walking to
+    public static boolean needsNewHuntGoal(boolean targetChanged, double goalDrift) {
+        return targetChanged || goalDrift > HUNT_REGOAL_DRIFT;
+    }
+
+    public static boolean huntTakingTooLong(long ticksOnTarget) {
+        return ticksOnTarget >= HUNT_GIVE_UP_TICKS;
+    }
+
     // threats is blazes with a line of sight to us inside SIGHT_RANGE, reachable is blazes we could hit right now
     // (threatening or not, a quiet reachable blaze is still a rod)
     public static Mode decide(float health, boolean retreating, int threats, int reachable) {
+        return decide(health, retreating, threats, reachable, 0, Long.MAX_VALUE);
+    }
+
+    // huntable is blazes worth walking to (isHuntable), ticksSinceThreat is how long since one last could see us
+    public static Mode decide(float health, boolean retreating, int threats, int reachable, int huntable, long ticksSinceThreat) {
         boolean leave = retreating
                 ? health < RECOVERED_HEALTH
                 : (health <= RETREAT_HEALTH && threats > 0) || health <= PANIC_HEALTH;
         if (leave) return Mode.RETREAT;
         if (reachable > 0) return Mode.KILL;
         if (threats > 0) return Mode.COVER;
+        if (huntable > 0 && ticksSinceThreat >= HIDE_HOLD_TICKS) return Mode.HUNT;
         return Mode.CAMP;
     }
 
-    // decide, but KILL and COVER hold for MIN_DWELL_TICKS before swapping with each other. retreating (in or out) and camping
-    // are never held back: low hp should not wait on a timer, and nothing to fight is nothing to dwell on
+    // decide, but KILL and COVER hold for MIN_DWELL_TICKS before swapping with each other. retreating (in or out), camping
+    // and hunting are never held back: low hp should not wait on a timer, and nothing to fight is nothing to dwell on
     public static Mode decide(float health, boolean retreating, int threats, int reachable, Mode current, long ticksInMode) {
-        Mode next = decide(health, retreating, threats, reachable);
+        return decide(health, retreating, threats, reachable, 0, Long.MAX_VALUE, current, ticksInMode);
+    }
+
+    public static Mode decide(float health, boolean retreating, int threats, int reachable, int huntable, long ticksSinceThreat,
+                              Mode current, long ticksInMode) {
+        Mode next = decide(health, retreating, threats, reachable, huntable, ticksSinceThreat);
         boolean flip = (current == Mode.KILL && next == Mode.COVER) || (current == Mode.COVER && next == Mode.KILL);
         if (flip && ticksInMode < MIN_DWELL_TICKS) return current;
         return next;

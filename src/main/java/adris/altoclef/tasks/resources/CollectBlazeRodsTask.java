@@ -42,6 +42,16 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return _camping;
     }
 
+    // every live blaze within chase range, hidden or not. only for saying "they are here, just not in reach" on the hud
+    public int blazesAround() {
+        return _fight.around();
+    }
+
+    // hunting, hiding, hitting or healing: standing still on purpose
+    public boolean isBusyWithBlazes() {
+        return _fight.mode() != BlazeFightRules.Mode.CAMP;
+    }
+
     // the spawner this task is working on right now, null while it is still looking. the gamer blacklists this one when
     // it gives up, not whatever the tracker would call nearest
     public BlockPos currentSpawner() {
@@ -68,6 +78,9 @@ public class CollectBlazeRodsTask extends ResourceTask {
             setDebugState("Going to nether");
             return new DefaultGoToDimensionTask(Dimension.NETHER);
         }
+        // spawner bookkeeping before the fight: a hunt can run for a while, and the spawner is what keeps it near cover and
+        // starts the dry timer. finding one only between fights meant a long hunt never found it
+        pickSpawner(mod);
         // blazes first: kill what we can reach, hide from what we cannot, leave when it goes badly. null is "nobody to fight"
         Task fight = _fight.tick(mod, _foundBlazeSpawner);
         if (fight != null) {
@@ -75,17 +88,11 @@ public class CollectBlazeRodsTask extends ResourceTask {
             return fight;
         }
         if (_fight.mode() == BlazeFightRules.Mode.RETREAT) {
-            // out of their sight and healing, the spawner can wait. standing here is the plan so it counts as camping
+            // out of their sight and healing, the spawner can wait. standing here is the plan so it counts as camping, unless
+            // there are blazes we could go get, then it is just a breather and not a dud spawner
             setDebugState("Recovering away from the blazes");
-            _camping = true;
+            _camping = _fight.huntable() == 0;
             return null;
-        }
-
-        // If the blaze spawner somehow isn't valid
-        if (_foundBlazeSpawner != null && mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)) {
-            Debug.logMessage("Blaze spawner at " + _foundBlazeSpawner + " too far away or invalid. Re-searching.");
-            _foundBlazeSpawner = null;
-            _fight.forgetCampSpot();
         }
 
         // If we have a blaze spawner, go near it.
@@ -107,22 +114,29 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 setDebugState("Clearing fire around spawner to prevent loss of blaze rods.");
                 return new PutOutFireTask(nearestFire.get());
             }
-            setDebugState("Waiting near blaze spawner for blazes to spawn");
-            _camping = true;
+            // blazes we could walk to (just hid from them, the hunt is a few seconds off) are not a dud spawner. ones over
+            // lava or out past the spawner are, the relocate timer has to keep running for those
+            setDebugState(_fight.around() > 0 ? "Waiting in cover for the blazes to come out" : "Waiting near blaze spawner for blazes to spawn");
+            _camping = _fight.huntable() == 0;
             return null;
-        }
-        // Search for blaze
-        if (mod.getBlockTracker().isTracking(Blocks.SPAWNER)) {
-            // nearest one we can actually look at: asking for the single nearest and then throwing it out for being in an
-            // unloaded chunk meant a perfectly good loaded spawner one tile further never got a look
-            Optional<BlockPos> spawner = mod.getBlockTracker().getNearestTracking(p -> isValidBlazeSpawner(mod, p), Blocks.SPAWNER);
-            if (spawner.isPresent()) {
-                _foundBlazeSpawner = spawner.get();
-            }
         }
         // We need to find our fortress.
         setDebugState("Searching for fortress/Traveling around fortress");
         return _searcher;
+    }
+
+    private void pickSpawner(AltoClef mod) {
+        // If the blaze spawner somehow isn't valid
+        if (_foundBlazeSpawner != null && mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)) {
+            Debug.logMessage("Blaze spawner at " + _foundBlazeSpawner + " too far away or invalid. Re-searching.");
+            _foundBlazeSpawner = null;
+            _fight.forgetCampSpot();
+        }
+        if (_foundBlazeSpawner != null || !mod.getBlockTracker().isTracking(Blocks.SPAWNER)) return;
+        // nearest one we can actually look at: asking for the single nearest and then throwing it out for being in an
+        // unloaded chunk meant a perfectly good loaded spawner one tile further never got a look
+        Optional<BlockPos> spawner = mod.getBlockTracker().getNearestTracking(p -> isValidBlazeSpawner(mod, p), Blocks.SPAWNER);
+        spawner.ifPresent(found -> _foundBlazeSpawner = found);
     }
 
     private boolean isValidBlazeSpawner(AltoClef mod, BlockPos pos) {
