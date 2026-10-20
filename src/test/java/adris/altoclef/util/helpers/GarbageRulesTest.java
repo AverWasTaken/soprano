@@ -327,25 +327,73 @@ public class GarbageRulesTest {
         assertFalse(kept[4]);
     }
 
-    @Test
-    public void aToolOnlyLosesToTheSameFamily() {
-        assertTrue(GarbageRules.toolAtOrBelow(Items.WOODEN_PICKAXE, Items.STONE_PICKAXE));
-        assertTrue(GarbageRules.toolAtOrBelow(Items.STONE_PICKAXE, Items.STONE_PICKAXE));
-        assertFalse(GarbageRules.toolAtOrBelow(Items.IRON_PICKAXE, Items.STONE_PICKAXE));
-        assertFalse(GarbageRules.toolAtOrBelow(Items.WOODEN_SWORD, Items.STONE_PICKAXE));
-        assertFalse(GarbageRules.toolAtOrBelow(Items.STRING, Items.STONE_PICKAXE));
+    // ---- the whole pick, and a drop that would come straight back out
+
+    private static GarbageRules.Entry e(net.minecraft.world.item.Item item, int count) {
+        return new GarbageRules.Entry(new ItemStack(item, count), true, false);
+    }
+
+    private static GarbageRules.Entry junk(net.minecraft.world.item.Item item, int count) {
+        return new GarbageRules.Entry(new ItemStack(item, count), true, true);
+    }
+
+    private static int next(List<GarbageRules.Entry> bag) {
+        return GarbageRules.nextPick(bag, 64, true, 0, 0);
+    }
+
+    private static boolean comesBack(List<GarbageRules.Entry> bag, GarbageRules.Entry drop) {
+        return GarbageRules.dropIsNextPick(bag, next(bag), drop, 64, true, 0, 0);
     }
 
     @Test
-    public void atOrBelowFollowsThePickOrder() {
-        Cand one = GarbageRules.cand(new ItemStack(Items.STRING, 1));
-        Cand other = GarbageRules.cand(new ItemStack(Items.FEATHER, 1));
-        Cand many = GarbageRules.cand(new ItemStack(Items.FEATHER, 20));
-        Cand steak = GarbageRules.cand(new ItemStack(Items.COOKED_BEEF, 1));
-        assertTrue(GarbageRules.atOrBelow(one, other));
-        assertTrue(GarbageRules.atOrBelow(one, many));
-        assertFalse(GarbageRules.atOrBelow(many, one));
-        // food sits behind plain stuff, whatever the count
-        assertFalse(GarbageRules.atOrBelow(steak, many));
+    public void thePickGoesJunkThenWorseToolThenAnything() {
+        assertEquals(2, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1), junk(Items.ROTTEN_FLESH, 5))));
+        assertEquals(2, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1), e(Items.WOODEN_SWORD, 1))));
+        assertEquals(0, next(List.of(e(Items.STRING, 1), e(Items.STONE_SWORD, 1))));
+        // blocks only past the reserve, then the first block stack
+        assertEquals(1, next(List.of(junk(Items.NETHERRACK, 64), e(Items.STRING, 1))));
+        assertEquals(0, next(List.of(junk(Items.NETHERRACK, 40), junk(Items.COBBLESTONE, 30), e(Items.STRING, 9))));
+        // nothing that may not go is ever the pick, with throwUnused off only junk and tools are
+        assertEquals(-1, GarbageRules.nextPick(List.of(e(Items.STRING, 1)), 64, false, 0, 0));
+        assertEquals(-1, next(List.of(new GarbageRules.Entry(new ItemStack(Items.STRING, 1), false, false))));
+    }
+
+    // a stone sword in the bag, a string is the pick: the wooden sword off the floor would be the worse tool the moment it is in
+    @Test
+    public void aWorseToolDropComesBackOutEvenWhenThePickIsNotATool() {
+        List<GarbageRules.Entry> bag = List.of(e(Items.STONE_SWORD, 1), e(Items.STRING, 3));
+        assertTrue(comesBack(bag, e(Items.WOODEN_SWORD, 1)));
+    }
+
+    // and the other way round: the wooden sword is the pick, the string that replaces it is the next pick
+    @Test
+    public void aDropBehindTheToolPickComesBackOutToo() {
+        List<GarbageRules.Entry> bag = List.of(e(Items.STONE_SWORD, 1), e(Items.WOODEN_SWORD, 1), e(Items.BONE, 30));
+        assertTrue(comesBack(bag, e(Items.STRING, 3)));
+    }
+
+    // two single stacks would take turns: throw the string for the feather, then the feather is the smallest
+    @Test
+    public void twoSingleStacksDoNotTakeTurns() {
+        List<GarbageRules.Entry> bag = List.of(e(Items.STRING, 1), e(Items.BONE, 30));
+        assertTrue(comesBack(bag, e(Items.FEATHER, 1)));
+    }
+
+    @Test
+    public void anotherStackOfTheSameBlockComesBackOut() {
+        List<GarbageRules.Entry> bag = List.of(junk(Items.NETHERRACK, 64), junk(Items.NETHERRACK, 64), e(Items.STRING, 1));
+        assertTrue(comesBack(bag, junk(Items.NETHERRACK, 64)));
+    }
+
+    @Test
+    public void aDropThatOutranksThePickIsWorthTheRoom() {
+        List<GarbageRules.Entry> bag = List.of(e(Items.STRING, 1), e(Items.FEATHER, 5));
+        assertFalse(comesBack(bag, e(Items.BONE, 20)));
+        // food sits behind plain stuff
+        assertFalse(comesBack(bag, e(Items.COOKED_BEEF, 1)));
+        // a drop that may not go (important, armor we would wear) is never the pick
+        assertFalse(comesBack(bag, new GarbageRules.Entry(new ItemStack(Items.BONE, 1), false, false)));
+        // no pick, no room to make
+        assertFalse(GarbageRules.dropIsNextPick(bag, -1, e(Items.FEATHER, 1), 64, true, 0, 0));
     }
 }

@@ -180,13 +180,10 @@ public final class RecoverRules {
     }
 
     // the pile with a full bag. a drop that would be the next garbage once it is in (junk, a block we already hold the building
-    // reserve of, the garbage pick's own item, or anything that loses to the pick in the pick's own tier) is making room just to
-    // throw it back down and chase it again: netherrack in, netherrack out, or two single stacks taking turns, for ever. leaving
-    // it costs nothing, it was going straight back on the floor anyway
-    public static boolean skipWhenFull(boolean fits, boolean dropJunk, boolean sameAsGarbage, boolean dropMayGo, boolean losesToGarbage) {
-        if (fits) {
-            return false;
-        }
-        return dropJunk || sameAsGarbage || (dropMayGo && losesToGarbage);
+    // reserve of, or what the garbage pick would land on with the drop in the bag) is making room just to throw it back down and
+    // chase it again: netherrack in, netherrack out, or two stacks taking turns, for ever. leaving it costs nothing, it was going
+    // straight back on the floor anyway
+    public static boolean skipWhenFull(boolean fits, boolean dropJunk, boolean dropIsNextGarbage) {
+        return !fits && (dropJunk || dropIsNextGarbage);
     }
 }

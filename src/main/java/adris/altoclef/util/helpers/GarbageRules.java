@@ -6,6 +6,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -133,15 +134,86 @@ public final class GarbageRules {
         return l.points() != r.points() ? l.points() > r.points() : l.toughness() > r.toughness();
     }
 
-    // whether a ranks at or below b in pick's order, so with both in the bag a goes first (or they are even)
-    public static boolean atOrBelow(Cand a, Cand b) {
-        return compare(a, b) <= 0;
+    // one bag slot as the garbage pick sees it. mayGo is everything the game side asks first (canDropStack, not armor we would wear),
+    // throwaway is "on altoThrowawayItems"
+    public record Entry(ItemStack stack, boolean mayGo, boolean throwaway) {
     }
 
-    // same family and no better material: worseTool would hand this one over first (or call it even)
-    public static boolean toolAtOrBelow(Item tool, Item than) {
-        String kind = ItemHelper.toolKind(tool);
-        return kind != null && kind.equals(ItemHelper.toolKind(than)) && ItemHelper.getToolDurability(tool) <= ItemHelper.getToolDurability(than);
+    // the whole garbage pick in one place, index into bag or -1: junk (a throwaway that is not a block, else the first throwaway
+    // block once they are past the building reserve), then the worse of two tools of a family, then with throwUnused anything by
+    // pick's order. StorageHelper used to do this over live slots, here it can also be asked about a bag that does not exist yet
+    public static int nextPick(List<Entry> bag, int reserve, boolean throwUnused, int foodUnits, int foodFloor) {
+        int junk = junkPick(bag, reserve);
+        if (junk >= 0) {
+            return junk;
+        }
+        int tool = toolPick(bag);
+        if (tool >= 0 || !throwUnused) {
+            return tool;
+        }
+        return restPick(bag, foodUnits, foodFloor);
+    }
+
+    public static int junkPick(List<Entry> bag, int reserve) {
+        int firstBlock = -1;
+        int blocks = 0;
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (!e.throwaway() || !e.mayGo()) {
+                continue;
+            }
+            if (!(e.stack().getItem() instanceof BlockItem)) {
+                // Throw away this non-block immediately.
+                return i;
+            }
+            blocks += e.stack().getCount();
+            if (firstBlock < 0) {
+                firstBlock = i;
+            }
+        }
+        return blocks > reserve ? firstBlock : -1;
+    }
+
+    private static int toolPick(List<Entry> bag) {
+        List<Integer> at = new ArrayList<>();
+        List<Item> tools = new ArrayList<>();
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (e.mayGo() && ItemHelper.isTool(e.stack().getItem())) {
+                at.add(i);
+                tools.add(e.stack().getItem());
+            }
+        }
+        int worse = worseTool(tools);
+        return worse < 0 ? -1 : at.get(worse);
+    }
+
+    private static int restPick(List<Entry> bag, int foodUnits, int foodFloor) {
+        List<Integer> at = new ArrayList<>();
+        List<Cand> cands = new ArrayList<>();
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (e.mayGo()) {
+                at.add(i);
+                cands.add(cand(e.stack()));
+            }
+        }
+        int pick = pick(cands, foodUnits, foodFloor);
+        return pick < 0 ? -1 : at.get(pick);
+    }
+
+    // a full bag, and the pick at `pick` gets thrown so `drop` can come in. would the drop be the next thing out? it would if the
+    // same pick lands on it, or on the same item somewhere else (another netherrack stack). this is the whole pick run again with
+    // the drop in the pick's slot, so a stone sword in the bag makes a wooden sword drop the next garbage even while the current
+    // pick is a string in the "anything" tier. checking tiers one at a time missed that and the two took turns on the floor
+    public static boolean dropIsNextPick(List<Entry> bag, int pick, Entry drop, int reserve, boolean throwUnused, int foodUnits, int foodFloor) {
+        if (pick < 0) {
+            return false;
+        }
+        List<Entry> after = new ArrayList<>(bag);
+        after.set(pick, drop);
+        int next = nextPick(after, reserve, throwUnused, foodUnits, foodFloor);
+        return next == pick || (next >= 0 && after.get(next).stack().getItem() == drop.stack().getItem());
     }
 
     // a bag piece we would put on is not garbage: its slot is bare, or it beats what is on it (points first, toughness breaks a
