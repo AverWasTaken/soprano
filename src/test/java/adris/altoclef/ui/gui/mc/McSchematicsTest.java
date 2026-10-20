@@ -319,6 +319,9 @@ public class McSchematicsTest {
         // powershell's byte order mark on the first line, and a line that isn't a path at all
         FilePicker.Choice bom = FilePicker.parse(List.of("﻿C:\\a\\one.schem", "bad\0line"));
         assertEquals(1, bom.files().size());
-        assertEquals("one.schem", bom.files().get(0).getFileName().toString());
+        // a backslash is only a separator on windows, ci runs on linux, so check the text and not getFileName
+        String first = bom.files().get(0).toString();
+        assertTrue(first.endsWith("one.schem"));
+        assertTrue(first.startsWith("C:"));
     }
 }
