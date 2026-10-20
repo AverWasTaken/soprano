@@ -40,6 +40,9 @@ final class GivenUp {
         final int z;
         long until;
         int attempts;
+        // given up by the ledger (a cell the path keeps digging out), not by a stall. a neighbour changing is the
+        // build going on around it, that's no reason to put it back in the path's way again
+        boolean pinned;
 
         Entry(int x, int y, int z) {
             this.x = x;
@@ -54,6 +57,14 @@ final class GivenUp {
         e.attempts++;
         e.until = e.attempts >= MAX_ATTEMPTS ? Long.MAX_VALUE : now + breakTicks(e.attempts);
         return e.attempts;
+    }
+
+    // straight to for good, and it stays that way till the next resume
+    void forGood(BetterBlockPos pos) {
+        Entry e = cells.computeIfAbsent(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z), k -> new Entry(pos.x, pos.y, pos.z));
+        e.attempts = MAX_ATTEMPTS;
+        e.until = Long.MAX_VALUE;
+        e.pinned = true;
     }
 
     // how long the break after this many give ups is, for anything short of MAX_ATTEMPTS
@@ -104,7 +115,7 @@ final class GivenUp {
             return;
         }
         for (Entry e : cells.values()) {
-            if (e.until == Long.MAX_VALUE && Math.abs(e.x - x) <= NEARBY && Math.abs(e.y - y) <= NEARBY && Math.abs(e.z - z) <= NEARBY) {
+            if (e.until == Long.MAX_VALUE && !e.pinned && Math.abs(e.x - x) <= NEARBY && Math.abs(e.y - y) <= NEARBY && Math.abs(e.z - z) <= NEARBY) {
                 e.attempts = MAX_ATTEMPTS - 1;
                 e.until = now;
             }
@@ -115,7 +126,7 @@ final class GivenUp {
     // good one gets the one more go a change next to it would have bought
     void unwatched(long now) {
         for (Entry e : cells.values()) {
-            if (e.until == Long.MAX_VALUE) {
+            if (e.until == Long.MAX_VALUE && !e.pinned) {
                 e.attempts = MAX_ATTEMPTS - 1;
                 e.until = now;
             }
