@@ -53,7 +53,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
-// "simulate before you stand": where do we have to be so that one sneaking click puts a stair in facing the right way.
+// "simulate before you stand": where do we have to be so that one click puts a stair in facing the right way.
 // vanilla reads the facing off our yaw and the half off where the ray lands, and the server only knows the rotation we
 // last sent it, so the answer is a spot plus an aim, worked out here with the same raytrace and getStateForPlacement
 // the click will go through. main thread only, it borrows the player's rotation for the simulation
@@ -82,8 +82,9 @@ final class PlacementPlanner {
         this.ctx = ctx;
     }
 
-    // where to click and from which way, plus the hotbar slot that does it (-1 for a hypothetical stack)
-    record Recipe(BlockPos placeAgainst, Direction side, Vec3 aim, Rotation rot, int slot) {
+    // where to click and from which way, plus the hotbar slot that does it (-1 for a hypothetical stack) and whether the
+    // click has to go out sneaking
+    record Recipe(BlockPos placeAgainst, Direction side, Vec3 aim, Rotation rot, int slot, boolean sneak) {
         BlockPos target() {
             return placeAgainst.relative(side);
         }
@@ -97,17 +98,22 @@ final class PlacementPlanner {
     // right state into cell. aim turns a wanted rotation into the one we'd actually end up with (the aim processor's
     // noise for the real eye, nothing for a guess). margin asks for room to the next quadrant on both angles.
     // stacks are indexed by hotbar slot, nulls and non blocks are skipped. preferAgainst goes first so a cell placeable
-    // from two faces doesn't flip between them
+    // from two faces doesn't flip between them. sneak is the shift key the click goes out with, and the eye has to be the
+    // one that comes with it (eyeHeight)
     Optional<Recipe> plan(BlockStateInterface bsi, Vec3 eye, BlockPos cell, BlockState desired, List<ItemStack> stacks, UnaryOperator<Rotation> aim,
-                          boolean margin, double reach, Direction preferAgainst) {
-        return plan(bsi, eye, cell, desired, stacks, aim, margin, reach, preferAgainst, r -> true);
+                          boolean margin, double reach, Direction preferAgainst, boolean sneak) {
+        return plan(bsi, eye, cell, desired, stacks, aim, margin, reach, preferAgainst, sneak, r -> true);
     }
 
     // accept gets the last word on each face and aim that works, so the planner can ask for one that also works from
     // the corners instead of giving up on a spot because the first face it found doesn't
     Optional<Recipe> plan(BlockStateInterface bsi, Vec3 eye, BlockPos cell, BlockState desired, List<ItemStack> stacks, UnaryOperator<Rotation> aim,
-                          boolean margin, double reach, Direction preferAgainst, Predicate<Recipe> accept) {
+                          boolean margin, double reach, Direction preferAgainst, boolean sneak, Predicate<Recipe> accept) {
         if (!desired.canSurvive(ctx.world(), cell)) {
+            return Optional.empty();
+        }
+        if (!sneak && BuilderProcess.fluidSource(desired)) {
+            // unsneaked the bucket goes into whatever we clicked first, a cauldron or a stair that takes water
             return Optional.empty();
         }
         for (Direction against : facesFirst(preferAgainst)) {
@@ -115,6 +121,9 @@ final class PlacementPlanner {
             BlockState againstState = ctx.world().getBlockState(placeAgainst);
             if (MovementHelper.isReplaceable(placeAgainst.getX(), placeAgainst.getY(), placeAgainst.getZ(), againstState, bsi)) {
                 continue;
+            }
+            if (!sneak && PlaceRules.usable(againstState)) {
+                continue; // unsneaked that's a use, the chest opens and nothing gets placed
             }
             VoxelShape shape = againstState.getShape(ctx.world(), placeAgainst);
             if (shape.isEmpty()) {
@@ -132,16 +141,16 @@ final class PlacementPlanner {
                 // the cheap half first: would a click at the point we're aiming for even come out right. the ray is
                 // the expensive half and most spots fail on facing alone
                 BlockHitResult guess = new BlockHitResult(point, side, placeAgainst, false);
-                if (slotThatPlaces(desired, guess, rot, stacks, margin) < 0) {
+                if (slotThatPlaces(desired, guess, rot, stacks, margin, sneak) < 0) {
                     continue;
                 }
                 BlockHitResult hit = clip(eye, rot, reach);
                 if (hit == null || !hit.getBlockPos().equals(placeAgainst) || hit.getDirection() != side) {
                     continue;
                 }
-                int slot = slotThatPlaces(desired, hit, rot, stacks, margin);
+                int slot = slotThatPlaces(desired, hit, rot, stacks, margin, sneak);
                 if (slot >= 0) {
-                    Recipe recipe = new Recipe(placeAgainst, side, point, wanted, slot);
+                    Recipe recipe = new Recipe(placeAgainst, side, point, wanted, slot, sneak);
                     if (accept.test(recipe)) {
                         return Optional.of(recipe);
                     }
@@ -159,7 +168,10 @@ final class PlacementPlanner {
         }
         List<ItemStack> stacks = List.of(stack);
         double reach = ctx.playerController().getBlockReachDistance();
+        // only for picking and sorting candidates, each spot gets its real eye in planAt
         double eyeHeight = ctx.player().getEyeHeight(Pose.CROUCHING);
+        // a sneaking second go only where a sneak changes anything, it's a whole second simulation per spot
+        boolean sneakMatters = PlaceRules.readsSneak(desired.getBlock()) || usableNeighbour(cell);
         List<BetterBlockPos> candidates = new ArrayList<>();
         for (int dx = -HORIZONTAL; dx <= HORIZONTAL; dx++) {
             for (int dy = -BELOW; dy <= ABOVE; dy++) {
@@ -180,13 +192,51 @@ final class PlacementPlanner {
             if (out.size() >= MAX_FEET || evaluated++ >= MAX_EVALUATED) {
                 break;
             }
-            double eyeY = standHeight(bsi, f) + eyeHeight;
-            Vec3 eye = new Vec3(f.x + 0.5, eyeY, f.z + 0.5);
-            Optional<Recipe> recipe = plan(bsi, eye, cell, desired, stacks, r -> r, true, reach - REACH_MARGIN, null,
-                    r -> worksFromAllOf(f, eyeY, desired, stacks, r, reach - REACH_MARGIN));
+            double floorY = standHeight(bsi, f);
+            boolean mustSneak = mustSneakAt(bsi, f);
+            // unsneaked first, a crouch nobody needs is how the twerking started
+            Optional<Recipe> recipe = mustSneak ? Optional.empty() : planAt(bsi, f, floorY, cell, desired, stacks, reach, false);
+            if (recipe.isEmpty() && (mustSneak || sneakMatters)) {
+                recipe = planAt(bsi, f, floorY, cell, desired, stacks, reach, true);
+            }
             recipe.ifPresent(r -> out.add(new Feet(f, r)));
         }
         return out;
+    }
+
+    private Optional<Recipe> planAt(BlockStateInterface bsi, BetterBlockPos f, double floorY, BlockPos cell, BlockState desired, List<ItemStack> stacks,
+                                    double reach, boolean sneak) {
+        double eyeY = floorY + eyeHeight(new Vec3(f.x + 0.5, floorY, f.z + 0.5), sneak);
+        Vec3 eye = new Vec3(f.x + 0.5, eyeY, f.z + 0.5);
+        return plan(bsi, eye, cell, desired, stacks, r -> r, true, reach - REACH_MARGIN, null, sneak,
+                r -> worksFromAllOf(f, eyeY, desired, stacks, r, reach - REACH_MARGIN));
+    }
+
+    // hanging off a ladder the sneak is what holds us there (BuilderProcess.hanging), and a spot with no floor yet is the
+    // edge of whatever the path put down for us, a sneak is what keeps us on it
+    private static boolean mustSneakAt(BlockStateInterface bsi, BetterBlockPos f) {
+        return hangable(bsi.get0(f.x, f.y, f.z)) || !MovementHelper.canWalkOn(bsi, f.x, f.y - 1, f.z);
+    }
+
+    // the eye we'd really have with our feet here: crouched when sneaking, and crouched anyway under a ceiling too low to
+    // stand under, vanilla's updatePlayerPose does that whatever the shift key says
+    double eyeHeight(Vec3 feet, boolean sneak) {
+        if (sneak) {
+            return ctx.player().getEyeHeight(Pose.CROUCHING);
+        }
+        AABB standing = ctx.player().getDimensions(Pose.STANDING).makeBoundingBox(feet).deflate(1.0E-7);
+        // noCollision like canPlayerFitWithinBlocksAndEntitiesWhen, a boat over our head crouches us as much as a slab
+        return ctx.player().getEyeHeight(ctx.world().noCollision(ctx.player(), standing) ? Pose.STANDING : Pose.CROUCHING);
+    }
+
+    // anything round the cell a click could land on that would rather be used than built on
+    boolean usableNeighbour(BlockPos cell) {
+        for (Direction d : Direction.values()) {
+            if (PlaceRules.usable(ctx.world().getBlockState(cell.relative(d)))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // where our feet actually end up in that cell. a bottom slab or a stair under us is half a block lower than the
@@ -212,7 +262,7 @@ final class PlacementPlanner {
             if (hit == null || !hit.getBlockPos().equals(recipe.placeAgainst()) || hit.getDirection() != recipe.side()) {
                 return false;
             }
-            if (slotThatPlaces(desired, hit, rot, stacks, true) < 0) {
+            if (slotThatPlaces(desired, hit, rot, stacks, true, recipe.sneak()) < 0) {
                 return false;
             }
         }
@@ -283,7 +333,7 @@ final class PlacementPlanner {
 
     // first slot whose stack would place desired off this hit with this rotation, -1 if none. with margin, the rotation
     // nudged ANGLE_MARGIN each way has to agree too, so aim noise can't tip a stair into the next quadrant
-    int slotThatPlaces(BlockState desired, BlockHitResult hit, Rotation rot, List<ItemStack> stacks, boolean margin) {
+    int slotThatPlaces(BlockState desired, BlockHitResult hit, Rotation rot, List<ItemStack> stacks, boolean margin, boolean sneak) {
         // a bucket has nothing to aim, so no margin either
         boolean pour = BuilderProcess.fluidSource(desired);
         for (int i = 0; i < stacks.size(); i++) {
@@ -292,16 +342,16 @@ final class PlacementPlanner {
                 continue;
             }
             if (pour) {
-                if (placesRight(desired, hit, rot, stack)) {
+                if (placesRight(desired, hit, rot, stack, sneak)) {
                     return i;
                 }
                 continue;
             }
-            if (!placesRight(desired, hit, rot, stack)) {
+            if (!placesRight(desired, hit, rot, stack, sneak)) {
                 continue;
             }
-            if (margin && !(placesRight(desired, hit, nudge(rot, -1, -1), stack) && placesRight(desired, hit, nudge(rot, 1, 1), stack)
-                    && placesRight(desired, hit, nudge(rot, -1, 1), stack) && placesRight(desired, hit, nudge(rot, 1, -1), stack))) {
+            if (margin && !(placesRight(desired, hit, nudge(rot, -1, -1), stack, sneak) && placesRight(desired, hit, nudge(rot, 1, 1), stack, sneak)
+                    && placesRight(desired, hit, nudge(rot, -1, 1), stack, sneak) && placesRight(desired, hit, nudge(rot, 1, -1), stack, sneak))) {
                 continue;
             }
             return i;
@@ -315,8 +365,8 @@ final class PlacementPlanner {
 
     // getStateForPlacement with the player turned to rot for the duration, the same trick upstream's
     // hasAnyItemThatWouldPlace does. the state depends on the facing of the player sometimes
-    boolean placesRight(BlockState desired, BlockHitResult hit, Rotation rot, ItemStack stack) {
-        BlockState would = simulate(hit, rot, stack);
+    boolean placesRight(BlockState desired, BlockHitResult hit, Rotation rot, ItemStack stack, boolean sneak) {
+        BlockState would = simulate(hit, rot, stack, sneak);
         if (would == null) {
             return false;
         }
@@ -325,12 +375,12 @@ final class PlacementPlanner {
         }
         // the first half of a chest pair can only come out single, same rule as the bcc's fine. the clicked pos and not
         // one out of the face, a click on short grass puts the chest in the grass
-        BlockPos partner = BuilderProcess.chestPartner(sneaking(hit, stack).getClickedPos(), desired);
+        BlockPos partner = BuilderProcess.chestPartner(context(hit, stack, sneak).getClickedPos(), desired);
         return partner != null && BuilderProcess.chestHalfWaiting(would, desired, ctx.world().getBlockState(partner), true);
     }
 
     // null if vanilla would refuse the click
-    BlockState simulate(BlockHitResult hit, Rotation rot, ItemStack stack) {
+    BlockState simulate(BlockHitResult hit, Rotation rot, ItemStack stack, boolean sneak) {
         BlockState fluid = BuilderProcess.pours(stack);
         if (fluid != null) {
             return pour(hit, fluid);
@@ -343,7 +393,7 @@ final class PlacementPlanner {
         ctx.player().setYRot(rot.getYaw());
         ctx.player().setXRot(rot.getPitch());
         try {
-            BlockPlaceContext place = sneaking(hit, stack);
+            BlockPlaceContext place = context(hit, stack, sneak);
             if (!place.canPlace()) {
                 return null;
             }
@@ -364,14 +414,14 @@ final class PlacementPlanner {
         }
     }
 
-    // sneaking, because every click the builder sends is (see placeGateOpen). asking the live player instead planned
-    // with whatever we were doing at plan time, usually walking, and a sneak changes things: a chest clicked on its side
-    // only joins the one it was clicked on, unsneaked it grabs any neighbour it likes
-    private BlockPlaceContext sneaking(BlockHitResult hit, ItemStack stack) {
+    // with the sneak the click will go out with, not whatever the live player happens to be doing at plan time (usually
+    // walking). a sneak changes things: a chest clicked on its side only joins the one it was clicked on, unsneaked it
+    // grabs any neighbour it likes. PlaceRules.readsSneak has the rest of them
+    private BlockPlaceContext context(BlockHitResult hit, ItemStack stack, boolean sneak) {
         return new BlockPlaceContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, hit) {
             @Override
             public boolean isSecondaryUseActive() {
-                return true;
+                return sneak;
             }
         };
     }

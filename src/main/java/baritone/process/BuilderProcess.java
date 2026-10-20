@@ -157,6 +157,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private BetterBlockPos centreFeet;
     private static final int CENTRE_TICKS = 20;
     private static final double CENTRE_TOLERANCE = 0.1;
+    // centre sneaks with a drop this close, we're 0.3 either side of the middle so that's our edge over it already
+    private static final double DROP_MARGIN = 0.3;
     // ticks at the same feet with nothing landing in the world and no dig getting anywhere, whoever is driving. see
     // watchdog. much longer than STALL_TICKS, a long path calc or a slow pillar sits still for a while too
     private int watchdogTicks;
@@ -655,22 +657,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         private final Rotation rot;
         // creative: the item this click needs handed over first, null when it's already in hotbarSelection
         private final Item give;
+        // the shift key this click goes out with, and the eye height the plan was worked out from (crouched under a low
+        // ceiling even without the sneak). aimLanded waits for both
+        private final boolean sneak;
+        private final double eyeHeight;
 
-        public Placement(int hotbarSelection, BlockPos placeAgainst, Direction side, Rotation rot) {
-            this(hotbarSelection, placeAgainst, side, rot, null);
-        }
-
-        Placement(int hotbarSelection, BlockPos placeAgainst, Direction side, Rotation rot, Item give) {
+        Placement(int hotbarSelection, BlockPos placeAgainst, Direction side, Rotation rot, Item give, boolean sneak, double eyeHeight) {
             this.hotbarSelection = hotbarSelection;
             this.placeAgainst = placeAgainst;
             this.side = side;
             this.rot = rot;
             this.give = give;
+            this.sneak = sneak;
+            this.eyeHeight = eyeHeight;
         }
 
         // the same click once the give landed in a real slot
         Placement inSlot(int slot) {
-            return new Placement(slot, placeAgainst, side, rot);
+            return new Placement(slot, placeAgainst, side, rot, null, sneak, eyeHeight);
         }
 
         // side is the face of placeAgainst we click, so the block lands one step out of it
@@ -775,7 +779,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     // upstream's possibleToPlace, with the per face work moved into PlacementPlanner.plan so the planner's guesses and
-    // this real click ask the exact same question. the real sneaking eye and the aim processor's noise, like upstream
+    // this real click ask the exact same question. the real eye and the aim processor's noise, like upstream
     private Optional<Placement> possibleToPlace(BuilderCalculationContext bcc, BlockState toPlace, int x, int y, int z, Direction preferAgainst) {
         BetterBlockPos pos = new BetterBlockPos(x, y, z);
         if (!placementPlausible(pos, toPlace)) {
@@ -789,19 +793,44 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             hotbar = new ArrayList<>(hotbar);
             hotbar.add(new ItemStack(virtual));
         }
-        Vec3 eye = RayTraceUtils.inferSneakingEyePosition(ctx.player());
-        double reach = ctx.playerController().getBlockReachDistance();
+        // whatever the shift key did last tick first, so a run of clicks doesn't bob up and down between them. the other
+        // one only where it can change the answer: a face that'd rather be used, a block that reads the sneak, or
+        // getting out of a crouch nobody needs any more
+        boolean must = mustSneak(bcc, toPlace);
+        boolean first = must || ctx.player().isShiftKeyDown();
+        Optional<Placement> placement = possibleToPlace(bcc, toPlace, pos, preferAgainst, hotbar, virtual, first);
+        if (placement.isEmpty() && !must && (first || PlaceRules.readsSneak(toPlace.getBlock()) || planner().usableNeighbour(pos))) {
+            placement = possibleToPlace(bcc, toPlace, pos, preferAgainst, hotbar, virtual, !first);
+        }
+        return placement;
+    }
+
+    private Optional<Placement> possibleToPlace(BuilderCalculationContext bcc, BlockState toPlace, BetterBlockPos pos, Direction preferAgainst,
+                                                List<ItemStack> hotbar, Item virtual, boolean sneak) {
         PlacementPlanner planner = planner();
+        double eyeHeight = planner.eyeHeight(ctx.player().position(), sneak);
+        Vec3 eye = ctx.player().position().add(0, eyeHeight, 0);
+        double reach = ctx.playerController().getBlockReachDistance();
         UnaryOperator<Rotation> noise = PlacementPlanner.noise(baritone.getLookBehavior().getAimProcessor());
         // room to the next quadrant if there's a way to get it, a stair aimed right at the boundary only works on the
         // ticks the noise feels like it. the click gate catches the rest either way
         Optional<PlacementPlanner.Recipe> recipe = PlaceRules.aimProof(toPlace) || fluidSource(toPlace)
                 ? Optional.empty()
-                : planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, true, reach, preferAgainst);
+                : planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, true, reach, preferAgainst, sneak);
         if (recipe.isEmpty()) {
-            recipe = planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, false, reach, preferAgainst);
+            recipe = planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, false, reach, preferAgainst, sneak);
         }
-        return recipe.map(r -> new Placement(r.slot(), r.placeAgainst(), r.side(), r.rot(), r.slot() == VIRTUAL_SLOT ? virtual : null));
+        return recipe.map(r -> new Placement(r.slot(), r.placeAgainst(), r.side(), r.rot(), r.slot() == VIRTUAL_SLOT ? virtual : null, sneak, eyeHeight));
+    }
+
+    // no choice about the sneak: hanging off a ladder (onTick holds it anyway), a bucket (unsneaked it pours into
+    // whatever we clicked), or rocking on the edge of the block next door with air under our own cell
+    private boolean mustSneak(BuilderCalculationContext bcc, BlockState toPlace) {
+        if (hanging() || fluidSource(toPlace)) {
+            return true;
+        }
+        BetterBlockPos feet = ctx.playerFeet();
+        return ctx.player().onGround() && !MovementHelper.canWalkOn(bcc.bsi, feet.x, feet.y - 1, feet.z);
     }
 
     // what creative would hand over for this cell, null in survival or with no slot to put it in
@@ -839,13 +868,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return false;
         }
         ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(p.hotbarSelection);
-        return planner().placesRight(desired, hit, ctx.playerRotations(), stack);
+        return planner().placesRight(desired, hit, ctx.playerRotations(), stack, ctx.player().isShiftKeyDown());
     }
 
     // the half of placeGateOpen that doesn't care what's in our hand, so the creative give can wait for it too
     private boolean aimLanded(Placement p) {
-        if (!ctx.player().isCrouching()) {
-            // the plan used the sneaking eye, and a standing click on a chest opens it
+        // the shift key the server has is last tick's, and that's what isShiftKeyDown says too. the click goes out before
+        // this tick's input does. the pose is a separate thing: a low ceiling crouches us with no shift at all, and the
+        // plan's eye was worked out for whichever one we'd have, so that has to be in too
+        if (ctx.player().isShiftKeyDown() != p.sneak || Math.abs(ctx.player().getEyeHeight() - p.eyeHeight) > 1.0E-3) {
             return false;
         }
         HitResult over = ctx.objectMouseOver();
@@ -1031,12 +1062,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             Placement place = toPlace.get();
             if (place.give != null) {
                 if (!aimLanded(place)) {
-                    // the first tick after a walk the sneak hasn't kicked in and the head turns after us (updateTarget),
-                    // so the gate is shut whatever we hand over. a give now just lands in the lru slot and maybe kicks
-                    // out a block the next cell wanted. turn, sneak, and give once the aim is there. the slot is still
+                    // the first tick after a walk the sneak (if this one wants it) hasn't kicked in and the head turns
+                    // after us (updateTarget), so the gate is shut whatever we hand over. a give now just lands in the lru
+                    // slot and maybe kicks out a block the next cell wanted. turn, sneak if needed, and give once the aim
+                    // is there. the slot is still
                     // VIRTUAL_SLOT here, which is no hotbar slot at all, so nothing below this gets to see it
                     baritone.getLookBehavior().updateTarget(place.rot, true);
-                    forceSneak();
+                    if (place.sneak) {
+                        forceSneak();
+                    }
                     if (stalled()) {
                         giveUpOn(bcc, List.of(BetterBlockPos.from(place.target())), "Couldn't get a place click in");
                     }
@@ -1052,7 +1086,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().getInventory().setSelectedSlot(place.hotbarSelection);
             slotUsed()[place.hotbarSelection] = builderTicks;
-            forceSneak();
+            if (place.sneak) {
+                forceSneak();
+            }
             if (placeGateOpen(bcc, place)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
@@ -1140,7 +1176,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         // null with a candidate, the click branch had its chance and the gate is what's holding it
         List<BetterBlockPos> plannedHere = toPlace.isPresent() ? null : plannedHere(bcc, ctx.playerFeet());
-        if (plannedHere != null && !plannedHere.isEmpty() && centre(goal, interactionPaused, isSafeToCancel)) {
+        if (plannedHere != null && !plannedHere.isEmpty() && centre(bcc, goal, interactionPaused, isSafeToCancel)) {
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
         if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel, plannedHere)) {
@@ -1152,8 +1188,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // the planner only promised the click from within EYE_SLOP of the middle of its spot, and the traverse calls it done
     // the moment our feet are in the block, then we coast to a stop wherever. so before calling a planned spot a stare,
-    // shuffle to the middle of it. sneaking, so the edge of a roof stays where it is. true while we're doing that
-    private boolean centre(Goal goal, boolean interactionPaused, boolean isSafeToCancel) {
+    // shuffle to the middle of it. sneaking only next to a drop (nearDrop), so the edge of a roof stays where it is. true
+    // while we're doing that
+    private boolean centre(BuilderCalculationContext bcc, Goal goal, boolean interactionPaused, boolean isSafeToCancel) {
         BetterBlockPos feet = ctx.playerFeet();
         if (!feet.equals(centreFeet)) {
             centreFeet = feet;
@@ -1177,7 +1214,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         double forward = -Math.sin(yaw) * dx + Math.cos(yaw) * dz;
         double left = Math.cos(yaw) * dx + Math.sin(yaw) * dz;
         InputOverrideHandler keys = baritone.getInputOverrideHandler();
-        forceSneak(); // the flag in there covers the walking keys below too
+        if (nearDrop(bcc, feet, pos)) {
+            forceSneak();
+        }
+        keysForced = true; // onLostControl lets go of the walking keys below
         keys.setInputForceState(forward > 0 ? Input.MOVE_FORWARD : Input.MOVE_BACK, Math.abs(forward) > CENTRE_TOLERANCE / 2);
         keys.setInputForceState(left > 0 ? Input.MOVE_LEFT : Input.MOVE_RIGHT, Math.abs(left) > CENTRE_TOLERANCE / 2);
         return true;
@@ -1185,6 +1225,34 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     static boolean centred(double dx, double dz) {
         return Math.abs(dx) <= CENTRE_TOLERANCE && Math.abs(dz) <= CENTRE_TOLERANCE;
+    }
+
+    // nothing under our own cell (hanging on by the edge of the next one), or a side with a drop past it closer than
+    // DROP_MARGIN. a shuffle that overshoots by a bit is fine anywhere else, so no crouch for it
+    private boolean nearDrop(BuilderCalculationContext bcc, BetterBlockPos feet, Vec3 pos) {
+        if (!MovementHelper.canWalkOn(bcc.bsi, feet.x, feet.y - 1, feet.z)) {
+            return true;
+        }
+        for (Direction d : Direction.Plane.HORIZONTAL) {
+            int x = feet.x + d.getStepX();
+            int z = feet.z + d.getStepZ();
+            if (edgeDistance(pos.x - feet.x, pos.z - feet.z, d) < DROP_MARGIN
+                    && MovementHelper.canWalkThrough(bcc.bsi, x, feet.y, z) && !MovementHelper.canWalkOn(bcc.bsi, x, feet.y - 1, z)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // how far the middle of us is from our cell's side towards d, fx and fz being where we are inside the cell
+    static double edgeDistance(double fx, double fz, Direction d) {
+        return switch (d) {
+            case EAST -> 1 - fx;
+            case WEST -> fx;
+            case SOUTH -> 1 - fz;
+            case NORTH -> fz;
+            default -> Double.MAX_VALUE;
+        };
     }
 
     // the cells still waiting for a click that the planner said to stand right here for. same match as plannedFromHere

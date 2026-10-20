@@ -18,11 +18,17 @@
 package baritone.process;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.Map;
@@ -38,6 +44,17 @@ public final class PlaceRules {
     private static final Set<String> AIMED = Set.of("facing", "axis", "half", "type", "rotation", "orientation", "face", "hinge");
     // the path thread asks per node, and there's only so many states
     private static final Map<BlockState, Boolean> AIM_PROOF = new ConcurrentHashMap<>();
+    // per block class, there's a lot fewer of those than states
+    private static final Map<Class<?>, Boolean> USABLE = new ConcurrentHashMap<>();
+    // the two ways a block gets a say in a right click, by name and signature
+    private static final String USE_WITHOUT_ITEM = "useWithoutItem";
+    private static final Class<?>[] USE_WITHOUT_ITEM_ARGS = {BlockState.class, Level.class, BlockPos.class, Player.class, BlockHitResult.class};
+    private static final String USE_ITEM_ON = "useItemOn";
+    private static final Class<?>[] USE_ITEM_ON_ARGS = {ItemStack.class, BlockState.class, Level.class, BlockPos.class, Player.class, InteractionHand.class, BlockHitResult.class};
+    // if the names ever stop matching (remapped, renamed) every lookup would say "doesn't override" and we'd click chests
+    // open unsneaked. so if the base class doesn't have them either, everything counts as usable
+    private static final boolean USE_NAMES_OK = declares(BlockBehaviour.class, USE_WITHOUT_ITEM, USE_WITHOUT_ITEM_ARGS)
+            && declares(BlockBehaviour.class, USE_ITEM_ON, USE_ITEM_ON_ARGS);
 
     private PlaceRules() {
     }
@@ -89,6 +106,44 @@ public final class PlaceRules {
             return prop == SnowyBlock.SNOWY;
         }
         return false;
+    }
+
+    // a right click on this does something with a block in hand (opens, flips, eats, ties a lead), so it only turns into a
+    // placement sneaking. on purpose by "the class has its own use method" and not a list: a fence takes a lead and gets
+    // a sneak it didn't need, but a list that forgot one clicks a chest open and stares into it
+    public static boolean usable(BlockState state) {
+        if (state.hasBlockEntity()) {
+            return true; // same call MovementHelper.opensWhenClicked makes, signs and beds and friends
+        }
+        return !USE_NAMES_OK || USABLE.computeIfAbsent(state.getBlock().getClass(), PlaceRules::overridesUse);
+    }
+
+    private static boolean overridesUse(Class<?> type) {
+        for (Class<?> c = type; c != null && c != BlockBehaviour.class; c = c.getSuperclass()) {
+            if (declares(c, USE_WITHOUT_ITEM, USE_WITHOUT_ITEM_ARGS) || declares(c, USE_ITEM_ON, USE_ITEM_ON_ARGS)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean declares(Class<?> c, String name, Class<?>[] args) {
+        try {
+            c.getDeclaredMethod(name, args);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        } catch (RuntimeException | LinkageError e) {
+            return true; // couldn't tell, so it's usable. a sneak too many is just a crouch
+        }
+    }
+
+    // the placement itself asks whether we're sneaking: a chest joins a neighbour or doesn't, a candle goes into the one
+    // we clicked or next to it, scaffolding stacks or goes where we aimed. for these the planner tries both
+    public static boolean readsSneak(Block block) {
+        return block instanceof ChestBlock || block instanceof CeilingHangingSignBlock || block instanceof SpeleothemBlock
+                || block instanceof CandleBlock || block instanceof SeaPickleBlock || block instanceof SegmentableBlock
+                || block instanceof TurtleEggBlock || block instanceof ScaffoldingBlock;
     }
 
     // a block that comes out right whichever face a movement happens to click: a full cube with nothing to aim.
