@@ -153,6 +153,16 @@ public final class SwapHelper {
     public static Process spawn(long gamePid, Path old, Path staged, Path fin) throws IOException {
         String resource = SwapHelper.class.getName().replace('.', '/') + ".class";
         Path dir = Files.createTempDirectory("soprano-swap");
+        try {
+            return start(dir, resource, gamePid, old, staged, fin);
+        } catch (IOException | RuntimeException e) {
+            // reconcile tries again every launch, one orphaned temp dir per failed launch would add up
+            deleteTree(dir.toFile());
+            throw e;
+        }
+    }
+
+    private static Process start(Path dir, String resource, long gamePid, Path old, Path staged, Path fin) throws IOException {
         Path dest = dir.resolve(resource);
         Files.createDirectories(dest.getParent());
         try (InputStream in = SwapHelper.class.getResourceAsStream("/" + resource)) {
@@ -180,13 +190,7 @@ public final class SwapHelper {
         // cwd goes next to the temp dir, not in it. windows won't delete a folder some process is standing in, so
         // cleanUpOwnDir would leave an empty soprano-swap folder behind every update
         pb.directory(dir.getParent().toFile());
-        try {
-            return pb.start();
-        } catch (IOException | RuntimeException e) {
-            // reconcile tries again every launch, one orphaned temp dir per failed launch would add up
-            deleteTree(dir.toFile());
-            throw e;
-        }
+        return pb.start();
     }
 
     static String javaBinary() {
