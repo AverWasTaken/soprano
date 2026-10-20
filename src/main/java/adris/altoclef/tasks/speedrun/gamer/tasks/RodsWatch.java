@@ -1,30 +1,44 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 // the timers around CollectBlazeRodsTask, which never gives up on its own. pure: the phase feeds it the clock, the rod
-// count and "are we parked next to a spawner", it answers keep going / try another fortress / forget the rods
+// count, "are we parked next to a spawner" and "have we got a spawner at all", it answers keep going / try another fortress / forget the rods
 public final class RodsWatch {
     public enum Verdict {
         KEEP_GOING,
-        // camped at the spawner for too long without a rod
+        // camped at the spawner for too long without a rod, or worked it (camping or not) for even longer without one
         GIVE_UP_SPAWNER,
         // the whole rods step took too long
         GIVE_UP_RODS
     }
 
     private final double campSeconds;
+    private final double drySeconds;
     private final double budgetSeconds;
 
     private double startedAt = Double.NaN;
     private double lastGain;
     private double campSince = Double.NaN;
+    // first tick this spawner was ours. walking around looking for the fortress is not the spawner's fault
+    private double spawnerSince = Double.NaN;
     private int lastRods = -1;
 
     public RodsWatch(double campSeconds, double budgetSeconds) {
+        this(campSeconds, Double.POSITIVE_INFINITY, budgetSeconds);
+    }
+
+    public RodsWatch(double campSeconds, double drySeconds, double budgetSeconds) {
         this.campSeconds = campSeconds;
+        this.drySeconds = drySeconds;
         this.budgetSeconds = budgetSeconds;
     }
 
     public Verdict update(double now, int rods, boolean camping) {
+        return update(now, rods, camping, false);
+    }
+
+    // the camp timer alone misses a spawner whose blazes keep us busy (hiding, walking out to them) and never die, that
+    // is never "camping". so a second, longer timer runs the whole time we have a spawner, whatever we are doing at it
+    public Verdict update(double now, int rods, boolean camping, boolean atSpawner) {
         if (Double.isNaN(startedAt)) {
             startedAt = now;
             lastGain = now;
@@ -34,8 +48,14 @@ public final class RodsWatch {
             campSince = camping ? now : Double.NaN;
         }
         lastRods = rods;
+        if (atSpawner && Double.isNaN(spawnerSince)) {
+            spawnerSince = now;
+        }
         if (now - startedAt >= budgetSeconds) {
             return Verdict.GIVE_UP_RODS;
+        }
+        if (atSpawner && now - Math.max(spawnerSince, lastGain) >= drySeconds) {
+            return Verdict.GIVE_UP_SPAWNER;
         }
         if (!camping) {
             campSince = Double.NaN;
@@ -47,9 +67,15 @@ public final class RodsWatch {
         return now - Math.max(campSince, lastGain) >= campSeconds ? Verdict.GIVE_UP_SPAWNER : Verdict.KEEP_GOING;
     }
 
+    // the task dropped its spawner and picked another by itself, the new one gets its own dry clock
+    public void spawnerChanged() {
+        spawnerSince = Double.NaN;
+    }
+
     // we left that spawner, the next one starts a fresh camp
     public void spawnerGivenUp(double now) {
         campSince = Double.NaN;
+        spawnerSince = Double.NaN;
         lastGain = now;
     }
 }

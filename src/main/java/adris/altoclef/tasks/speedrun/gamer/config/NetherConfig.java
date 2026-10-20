@@ -19,6 +19,8 @@ public class NetherConfig {
     public double rodsBudgetMinutes = 12;
     // no rod after this long next to the spawner: try the next fortress cell
     public double spawnerCampMinutes = 6;
+    // no rod after this long with a spawner picked, camping or busy with its blazes: same thing, next fortress
+    public double spawnerDryMinutes = 8;
 
     // never sweep more than this many structure cells in one attempt (about 2.5 cells per fortress, so 12 is generous)
     public int maxCells = 12;
