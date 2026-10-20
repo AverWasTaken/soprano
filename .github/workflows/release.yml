@@ -91,6 +91,7 @@ jobs:
           [ -f "$f" ] && FILES="$FILES $f"
         done
 
+        # the in-game updater picks releases by the "(MC)" / "(base MC)" at the end of these titles, keep that format
         TITLE="Soprano v${VERSION} (${MC_VERSION})"
         if [ "$ANYVERSION" = "1" ]; then
           TITLE="Soprano v${BASE_VERSION} Any Version (base ${MC_VERSION})"

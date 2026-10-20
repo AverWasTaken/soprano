@@ -2110,6 +2110,15 @@ public final class Settings {
      */
     public final Setting<Boolean> guiAnimations = new Setting<>(true);
 
+    /**
+     * Ask GitHub once per session, when the title screen first opens, whether a newer Soprano release exists for the
+     * Minecraft version and release channel you are on, so the title screen can offer to update. Nothing is
+     * downloaded unless you click update.
+     * <p>
+     * Turning this off stops the check, but an update that was already downloaded still gets finished.
+     */
+    public final Setting<Boolean> checkForUpdates = new Setting<>(true);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
