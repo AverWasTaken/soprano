@@ -387,6 +387,21 @@ public final class PortalMold {
         return m == Mat.LAVA || m == Mat.LAVA_FLOW;
     }
 
+    // lava in a cell our hitbox is in (feet and head cells included, they're in the box). lava next to us doesn't count,
+    // the lava scoop stands right beside the pool on purpose
+    public static boolean lavaOnUs(Terrain t, Box body) {
+        for (int x = (int) Math.floor(body.minX()); x <= (int) Math.floor(body.maxX()); x++) {
+            for (int y = (int) Math.floor(body.minY()); y <= (int) Math.floor(body.maxY()); y++) {
+                for (int z = (int) Math.floor(body.minZ()); z <= (int) Math.floor(body.maxZ()); z++) {
+                    if (body.touches(new P(x, y, z)) && isLava(t.at(x, y, z))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // somewhere to stand that isn't about to be lava: a floor, air for feet and head, and no lava beside either. fits()
     // only looked at the first two shore rows, so anything past those gets asked here
     public static boolean safeToStand(Terrain t, P feet) {
@@ -405,6 +420,38 @@ public final class PortalMold {
             }
         }
         return true;
+    }
+
+    // where to run when lava is on us: back up our own column to d>=4, or sideways along u until we're past the flow.
+    // nearest first, the column wins a tie. null = nowhere, the survival chain's lava escape gets it
+    public static P retreatSpot(Layout l, Terrain t, P feet) {
+        int[] me = l.local(feet);
+        List<int[]> spots = new ArrayList<>();
+        for (int d = Math.max(4, me[2] + 1); d <= 8; d++) {
+            spots.add(new int[]{me[0], d});
+        }
+        for (int k = 1; k <= 6; k++) {
+            spots.add(new int[]{me[0] - k, me[2]});
+            spots.add(new int[]{me[0] + k, me[2]});
+        }
+        P best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int[] s : spots) {
+            // the shore can step up or down a block, the walk there handles that
+            for (int dh : new int[]{0, 1, -1}) {
+                P p = l.cell(s[0], me[1] + dh, s[1]);
+                if (!safeToStand(t, p)) {
+                    continue;
+                }
+                int dist = Math.abs(s[0] - me[0]) + Math.abs(s[1] - me[2]) + Math.abs(dh);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = p;
+                }
+                break;
+            }
+        }
+        return best;
     }
 
     // a cell next to a stand to step off to, so the walk back puts us on the stand from a fresh angle. one row back
