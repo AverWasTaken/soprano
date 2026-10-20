@@ -210,7 +210,7 @@ public class SchematicsTabTest {
         clickRow(0);
         clickBuild();
         assertTrue(tab.armed());
-        assertEquals("Click again to build", tab.buildButton().text());
+        assertEquals("Click again to build at your feet", tab.buildButton().text());
         assertTrue(facade.actions.isEmpty());
         clickBuild();
         assertFalse(tab.armed());
@@ -230,6 +230,36 @@ public class SchematicsTabTest {
         ticks(1);
         assertFalse(tab.armed());
         clickBuild();
+        assertTrue(facade.actions.isEmpty());
+    }
+
+    @Test
+    public void theArmedButtonSaysWhereItBuilds() {
+        clickRow(0);
+        facade.schematics.move("Small Castle.litematic", 1, 0, 0);
+        clickBuild();
+        assertEquals("Click again to build at 101 64 -40", tab.buildButton().text());
+    }
+
+    @Test
+    public void aLongPlaceFallsBackToTheTooltipAtTheFloor() throws Exception {
+        reopen(830, 540);
+        clickRow(0);
+        facade.schematics.move("Small Castle.litematic", -29_000_000, 0, -29_000_000);
+        clickBuild();
+        var b = tab.buildButton();
+        assertEquals("Click again to build", b.text());
+        assertTrue(b.x() >= tab.pane().x());
+        assertEquals("Click again to build at -28999900 64 -29000040", tab.pane().tipAt(b.x() + 2, b.y() + 2));
+    }
+
+    @Test
+    public void aBuildWithNothingPickedSaysSo() {
+        tab.build();
+        p.settle();
+        assertFalse(tab.armed());
+        assertEquals("Pick a schematic first", p.shell.toast().currentLine());
+        assertFalse(p.shell.toast().currentOk());
         assertTrue(facade.actions.isEmpty());
     }
 

@@ -271,6 +271,11 @@ public interface SchematicsAccess {
     // the box the placement covers, null when placement() is
     Footprint footprint(String relativePath);
 
+    // the corner sits on the player's feet right now, so the build button can say "at your feet" instead of numbers
+    default boolean atFeet(String relativePath) {
+        return false;
+    }
+
     // starts building at the placement as it is at the time of the click. the file is read in the background and the
     // build starts on the game thread a moment later, watch building() for how it went. ok = the request was taken
     Result build(String relativePath);
