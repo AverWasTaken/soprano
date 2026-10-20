@@ -127,6 +127,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the clicks still down are ours. onLostControl lets go of exactly those, once: it runs for every loser every tick
     // and clearAllKeys there would wipe whatever the winner just pressed
     private boolean forcedClicks;
+    // same deal for the sneak and the walking keys hanging() and centre() hold. clearAllKeys at the top of the next
+    // tick lets go of them, so it's only a stop that leaves them down
+    private boolean keysForced;
     // the builder's own clock, recursions don't count
     private long builderTicks;
     // ticks in a row at the same feet with nothing clicked, see stallCheck
@@ -830,6 +833,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return planner().placesRight(desired, hit, ctx.playerRotations(), stack);
     }
 
+    private void forceSneak() {
+        baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
+        keysForced = true;
+    }
+
     // what afterClicks cleans up after. the click may sit out BlockPlaceHelper's timer a tick, the gate opens again then
     // and this just writes the same thing again
     private void clicked(BuilderCalculationContext bcc, Placement p) {
@@ -866,13 +874,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             ticks--;
         }
         baritone.getInputOverrideHandler().clearAllKeys();
+        forcedClicks = false;
+        keysForced = false;
         if (hanging()) {
             // every tick, not just at the click. let go of sneak on a ladder and we slide, push on it and vanilla bumps
             // us up 0.2, and the click gates wait for steady() forever. a climb still works: the path's movement clears
             // the keys after us (Movement.update) and presses its own
-            baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
+            forceSneak();
         }
-        forcedClicks = false;
         if (paused) {
             stallTicks = 0;
             resetWatchdog();
@@ -980,7 +989,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // really horrible bug where a block is visible for breaking while sneaking but not otherwise
                 // so you can't see it, it goes to place something else, sneaks, then the next tick it tries to break
                 // and is unable since it's unsneaked in the intermediary tick
-                baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
+                forceSneak();
             }
             if (ctx.isLookingAt(pos) || ctx.playerRotations().isReallyCloseTo(rot)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
@@ -1011,7 +1020,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().getInventory().setSelectedSlot(place.hotbarSelection);
             slotUsed()[place.hotbarSelection] = builderTicks;
-            baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
+            forceSneak();
             if (placeGateOpen(bcc, place)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
@@ -1133,7 +1142,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         double forward = -Math.sin(yaw) * dx + Math.cos(yaw) * dz;
         double left = Math.cos(yaw) * dx + Math.sin(yaw) * dz;
         InputOverrideHandler keys = baritone.getInputOverrideHandler();
-        keys.setInputForceState(Input.SNEAK, true);
+        forceSneak(); // the flag in there covers the walking keys below too
         keys.setInputForceState(forward > 0 ? Input.MOVE_FORWARD : Input.MOVE_BACK, Math.abs(forward) > CENTRE_TOLERANCE / 2);
         keys.setInputForceState(left > 0 ? Input.MOVE_LEFT : Input.MOVE_RIGHT, Math.abs(left) > CENTRE_TOLERANCE / 2);
         return true;
@@ -2708,6 +2717,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
             baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, false);
             forcedClicks = false;
+        }
+        if (keysForced) {
+            // a sneak left down leaves the next process creeping along, and a held walking key walks us off somewhere.
+            // not on the REQUEST_PAUSE returns, the builder keeps ticking there and hanging() needs the sneak held or we
+            // slide. this can run after the winner's onTick in the same tick and let go of a sneak it just pressed, same
+            // risk the clicks above take. a path is fine, PathExecutor sets its keys after the processes
+            InputOverrideHandler keys = baritone.getInputOverrideHandler();
+            keys.setInputForceState(Input.SNEAK, false);
+            keys.setInputForceState(Input.MOVE_FORWARD, false);
+            keys.setInputForceState(Input.MOVE_BACK, false);
+            keys.setInputForceState(Input.MOVE_LEFT, false);
+            keys.setInputForceState(Input.MOVE_RIGHT, false);
+            keysForced = false;
         }
         missingAtPause = Map.of();
         keep = null;
