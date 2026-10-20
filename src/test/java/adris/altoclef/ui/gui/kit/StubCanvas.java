@@ -97,6 +97,11 @@ public class StubCanvas implements Canvas {
     }
 
     @Override
+    public void image(PixelImage image, float x, float y, float w, float h, int tint) {
+        calls.add(new Call("image", image.width() + "x" + image.height() + "@" + image.version(), x, y, w, h, tint));
+    }
+
+    @Override
     public void pushClip(float x, float y, float w, float h) {
         clipDepth++;
     }

@@ -3,28 +3,42 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep;
 
 // the one fact the mob defense chain needs from the night trip: which stage it is in, null when there is no trip. same shape as
-// StationHook, the gamer writes it every tick and clears it when the run ends. the chain asks NightSleep.standsDown with the
-// live health, so the low health bail does not wait for the next gamer tick
+// StationHook, the owner (the gamer, or a schematic build) writes it every tick and clears it when it lets go. the chain asks
+// NightSleep.standsDown with the live health, so the low health bail does not wait for the next owner tick
 public final class NightSleepHook {
-    private static volatile NightSleep.Stage stage;
+    // a stage nobody has written in this many game ticks is a leak (an owner that got dropped without saying so), not a trip.
+    // ten seconds: long enough for a meal or a fire to have the wheel for a bit, short enough that mob defense isn't stood
+    // down all night for nobody
+    public static final long STALE_TICKS = 200;
+
+    private static volatile Stamp stamp;
+
+    private record Stamp(NightSleep.Stage stage, long at) {
+    }
 
     private NightSleepHook() {
     }
 
-    public static void set(NightSleep.Stage now) {
-        stage = now;
+    // now is the level's game time, the same clock the chain reads with
+    public static void set(NightSleep.Stage now, long gameTime) {
+        stamp = now == null ? null : new Stamp(now, gameTime);
     }
 
     public static void clear() {
-        stage = null;
+        stamp = null;
     }
 
-    public static NightSleep.Stage stage() {
-        return stage;
+    public static NightSleep.Stage stage(long gameTime) {
+        Stamp s = stamp;
+        // (a time from before the stamp is another world after a relog, just as stale)
+        if (s == null || gameTime < s.at() || gameTime - s.at() > STALE_TICKS) {
+            return null;
+        }
+        return s.stage();
     }
 
-    public static boolean standsDown(float health) {
-        NightSleep.Stage now = stage;
+    public static boolean standsDown(float health, long gameTime) {
+        NightSleep.Stage now = stage(gameTime);
         return now != null && NightSleep.standsDown(now, health);
     }
 }

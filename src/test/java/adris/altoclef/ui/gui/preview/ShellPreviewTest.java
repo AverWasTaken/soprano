@@ -97,6 +97,8 @@ public class ShellPreviewTest {
                 tab(t, "goto", "Go to", Icon.GOTO, false),
                 tab(t, "follow", "Follow", Icon.FOLLOW, true),
                 tab(t, "waypoints", "Waypoints", Icon.WAYPOINTS, true),
+                tab(t, "schematics", "Schematics", Icon.SCHEMATICS, true),
+                tab(t, "stats", "Stats", Icon.STATS, false),
                 tab(t, "help", "Help", Icon.HELP, true),
                 tab(t, "settings", "Settings", Icon.SETTINGS, true));
     }

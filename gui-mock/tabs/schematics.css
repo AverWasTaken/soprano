@@ -1,0 +1,163 @@
+/* schematics tab layout (tabs/SchematicsTab.java, SchematicRows.java, MaterialRows.java). content box is 863 x 587 */
+
+.sc { position: absolute; inset: 0; --sc-list: clamp(200px, calc((var(--panel-w, 1040px) - 177px) * 0.37), 320px); }  /* the list takes 37% of the content, 200 to 320 */
+
+/* toolbar: the three file actions on the left, the count line on the right */
+.sc-bar { position: absolute; left: 16px; right: 16px; top: 16px; height: 30px; display: flex; align-items: center; gap: 8px; }
+.sc-bar .btn.icon-only { margin-left: -4px; }
+.sc-count { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.sc-count.loading { color: var(--text-3); }
+
+/* list: a 330 scroll box (320 card + the 10 gutter) from 70 down, 16 off the bottom */
+.sc-list { position: absolute; left: 16px; width: calc(var(--sc-list) + 10px); top: 70px; bottom: 16px; }
+.sc-card { overflow: hidden; }
+.sc-card .row { height: 44px; padding: 0 16px; cursor: default; }
+.sc-card .row .sic { position: absolute; left: 16px; top: 14px; color: var(--text-3); }
+.sc-card .row .txt { position: absolute; left: 44px; top: 5px; right: 16px; transform: translateY(0.5px); will-change: transform; }
+.sc-card .row.warn .txt { right: 40px; }
+.sc-card .row .name { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-card .row .sub { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-card .row.err .sub { color: var(--danger); }
+.sc-card .row .mark { position: absolute; right: 16px; top: 14px; color: var(--text-2); display: none; }
+.sc-card .row.warn .mark { display: block; }
+/* the selected file: the same soft blue a followed row gets */
+.sc-card .row.sel, .sc-card .row.sel:hover { background: var(--accent-soft); }
+.sc-card .row.sel .sic { color: var(--accent-text); }
+
+/* empty and first-load states take the list's place, centred on the 320 card */
+.sc-list-state { position: absolute; left: 16px; width: var(--sc-list); top: 70px; bottom: 16px; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 24px; gap: 4px; color: var(--text-3); }
+.sc-list-state .lead { color: var(--text-2); }
+.sc.empty .sc-list, .sc.first-load .sc-list { display: none; }
+.sc.empty .sc-list-state, .sc.first-load .sc-list-state { display: flex; }
+
+/* detail card: 6 clear of the list's gutter, the rest of the width */
+.sc-detail { position: absolute; left: calc(16px + var(--sc-list) + 26px); right: 16px; top: 70px; bottom: 16px; display: flex; flex-direction: column; }
+.sc-head { flex: none; padding: 12px 16px 12px; }
+.sc-head .name { font-size: 20px; line-height: 24px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-head .meta { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-head .sum { margin-top: 8px; height: 17px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-head .sum .short { color: var(--danger); }
+.sc-head .unknown { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-rule { flex: none; height: var(--hl); background: var(--hairline); margin: 0 var(--hl); }
+
+/* the placement map: a full width band between two hairlines (like the header and the footer), never a boxed card. the
+   terrain is a canvas of vanilla map colours at a whole number of px per block, the footprint and the player sit on it
+   as plain divs. height is set by the script: half of what is left after the header, footer and controls, 48..176 */
+.sc-map { flex: none; height: 140px; position: relative; background: var(--field); overflow: hidden; user-select: none; }
+.sc-map canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
+/* the footprint: a drafting rectangle in the one blue. the thick edge is the front (where the file's north went after the
+   turn), the dot is the file's origin corner (it jumps to the other end of that edge when mirrored) */
+.sc-map .fp { position: absolute; box-sizing: border-box; border: 1px solid var(--accent); background: rgba(10, 115, 232, 0.22); cursor: grab; }
+.sc-map .fp:hover { background: rgba(10, 115, 232, 0.32); }
+.sc-map .fp.drag { cursor: grabbing; background: rgba(10, 115, 232, 0.32); }
+.sc-map .fp .front { position: absolute; background: var(--accent); }
+.sc-map .fp[data-front="0"] .front { left: 0; right: 0; top: 0; height: 3px; }
+.sc-map .fp[data-front="1"] .front { top: 0; bottom: 0; right: 0; width: 3px; }
+.sc-map .fp[data-front="2"] .front { left: 0; right: 0; bottom: 0; height: 3px; }
+.sc-map .fp[data-front="3"] .front { top: 0; bottom: 0; left: 0; width: 3px; }
+.sc-map .fp .origin { position: absolute; width: 5px; height: 5px; background: var(--accent); }
+/* the player: the vanilla map's arrow, a light triangle on a dark one a pixel bigger so it reads on sand and on snow.
+   the whole thing turns with the yaw. off the band it sits clamped to the edge, turned the same */
+.sc-map .me { position: absolute; width: 0; height: 0; pointer-events: none; }
+.sc-map .me .halo, .sc-map .me .dot { position: absolute; width: 0; height: 0; border-style: solid; border-color: transparent; }
+.sc-map .me .halo { left: -6px; top: -7px; border-width: 0 6px 13px 6px; border-bottom-color: rgba(0, 0, 0, 0.55); }
+.sc-map .me .dot { left: -4px; top: -5px; border-width: 0 4px 9px 4px; border-bottom-color: var(--text); }
+.sc-map .me .tick { display: none; }
+/* chips: coordinates top left, north top right. surface at 85% so the terrain shows through a little */
+.sc-map .chip { position: absolute; top: 8px; height: 20px; line-height: 20px; padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.sc-map .chip.coords { left: 8px; }
+.sc-map .chip.north { right: 8px; padding: 0 6px; font-weight: 500; }
+/* no world and another dimension take the map's place, two centred lines on the field */
+.sc-map-state { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; gap: 4px; color: var(--text-3); }
+.sc-map-state .lead { color: var(--text-2); }
+.sc-map.state canvas, .sc-map.state .fp, .sc-map.state .me, .sc-map.state .chip { display: none; }
+.sc-map.state .sc-map-state { display: flex; }
+
+/* the controls: nudge west/north/south/east, a level up or down, a turn each way, mirror, and move to me on the right.
+   4 above and below each 30 px row. the fits, widest first (SchematicPane.controlRows): one row with both words, one
+   row with mirror as a glyph (the flip glyph reads on its own, a lone pin does not), two rows (arrows and layers, then
+   turns, mirror and move to me), three rows at the 640 floor (move to me on its own, word and all). nothing is dropped */
+.sc-ctl { flex: none; display: flex; flex-wrap: nowrap; align-items: center; padding: 4px 8px; row-gap: 4px; }
+.sc-ctl.two, .sc-ctl.three { flex-wrap: wrap; }
+.sc-ctl .sep { width: 4px; flex: none; }
+.sc-ctl .break { display: none; flex-basis: 100%; height: 0; }
+.sc-ctl .btn { flex: none; }
+.sc-ctl .btn.feet { margin-left: auto; }
+.sc-ctl.mid #sc-mirror span { display: none; }
+.sc-ctl.mid #sc-mirror { width: var(--control-h); padding: 0; justify-content: center; }
+.sc-ctl.two #sc-br1, .sc-ctl.three #sc-br1, .sc-ctl.three #sc-br2 { display: block; }
+.sc-ctl.two #sc-br1 + .btn, .sc-ctl.three #sc-br1 + .btn { margin-left: 0; }
+.sc-ctl .btn:disabled { opacity: .4; }
+
+/* the caption over the list (SchematicPane.drawHint): the whole sentence on up to two lines, on the rows' inset so it
+   lines up with the boxes. .one is the short sentence when the window is tight, .none drops it before the band shrinks */
+.sc-hint { flex: none; padding: 4px 16px; font-size: 12px; line-height: 15px; color: var(--text-3); overflow: hidden; }
+.sc-hint.one { white-space: nowrap; text-overflow: ellipsis; }
+.sc-hint.none, .sc-detail.state .sc-hint, .sc-detail.nomap .sc-hint, .sc-detail.nothing .sc-hint { display: none; }
+
+/* the material list fills whatever is left. no separators: the bar tracks already rule the rows */
+.sc-rows { flex: 1; min-height: 0; position: relative; }
+.sc-detail.nomap .sc-map, .sc-detail.nomap .sc-ctl, .sc-detail.nomap .sc-map + .sc-rule, .sc-detail.nomap .sc-ctl + .sc-rule { display: none; }
+.sc-foot .warn.state { color: var(--text-3); }
+.sc-foot .warn.state .icon { display: none; }
+.sc-foot .warn.error { color: var(--danger); }
+.sc-rows .scroll { position: absolute; inset: 0; padding: 4px 8px 4px 8px; }
+.mrow { position: relative; display: flex; align-items: center; height: 40px; padding: 0 8px; border-radius: var(--row-radius); }
+.mrow:hover { background: var(--hover); }
+/* the box (MaterialRows.box): icon sized, a touch tighter in the corners than a control. checked is the accent with a
+   white tick, like a switch that is on; empty is a field with the strong hairline round it. the whole row toggles it */
+.mrow .chk { position: relative; flex: none; width: 16px; height: 16px; margin-right: 8px; border-radius: 4px; box-sizing: border-box; background: var(--accent); color: var(--on-accent); }
+.mrow .chk .icon { position: absolute; left: 1px; top: 1px; width: 14px; height: 14px; }
+.mrow.off .chk { background: var(--field); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.mrow.off .chk .icon { display: none; }
+/* the folded kinds keep the icon column so every name starts on the same line, with nothing in the box's place */
+.mrow .chk.gap { background: none; box-shadow: none; }
+/* struck from the build: name, counts and the bar's fill go to the caption grey, the sprite goes to 40% (the java
+   lays the row's background over it at 60%, which comes to the same pixels) */
+.mrow.off .m-name, .mrow.off .m-num, .mrow.off.short .m-num { color: var(--text-3); }
+.mrow.off .m-bar i { background: color-mix(in srgb, var(--hairline-strong) 60%, transparent); }
+.mrow.off .m-icon { opacity: .4; }
+/* a build of this file in flight: the boxes fade to 45%, they still toggle, the caption says it feeds the next start */
+.sc-rows.building .mrow .chk { opacity: .45; }
+.mrow .m-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; margin-right: 12px; }
+.mrow .m-text { flex: 1; min-width: 0; }
+.mrow .m-name { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.mrow .m-name .note { color: var(--text-3); font-size: 12px; margin-left: 6px; }
+/* the coverage bar: have over needed, accent on a hairline track. full when the stack is covered, empty when you hold none */
+.mrow .m-bar { position: relative; height: 2px; margin-top: 3px; border-radius: 1px; background: var(--hairline); overflow: hidden; }
+.mrow .m-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: var(--accent); border-radius: 1px; }
+.mrow .m-num { flex: none; margin-left: 12px; font-size: 12px; line-height: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mrow.short .m-num { color: var(--danger); }
+.mrow.plain .m-bar { display: none; }
+.mrow.plain .m-num { color: var(--text-3); }
+
+/* the two folded sections: one 36 row each with a chevron, their rows only exist when open */
+.msec { display: flex; align-items: center; height: 36px; padding: 0 8px; border-radius: var(--row-radius); color: var(--text-2); font-size: 14px; line-height: 17px; font-weight: 500; cursor: default; user-select: none; }
+.msec:hover { background: var(--hover); color: var(--text); }
+.msec .icon { margin-right: 8px; transition: transform var(--anim-fast) var(--ease); }
+.msec.open .icon { transform: rotate(90deg); }
+.msec .cnt { color: var(--text-3); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.mnote { padding: 8px 8px 4px; font-size: 12px; line-height: 15px; color: var(--text-3); }
+
+/* loading, error and nothing-selected take the rows' place */
+.sc-rows-state { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; gap: 4px; color: var(--text-3); }
+.sc-rows-state .lead { color: var(--text-2); }
+.sc-rows-state.error .lead { color: var(--danger); }
+.sc-detail.state .sc-rows .scroll { display: none; }
+.sc-detail.state .sc-rows-state { display: flex; }
+.sc-detail.nothing .sc-head { display: none; }
+
+/* build bar: 54 like the basket footer. the warning line gives way to the button, never the other way round */
+.sc-foot { flex: none; height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+.sc-foot .warn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 15px; color: var(--text-2); }
+.sc-foot .warn .icon { color: var(--danger); flex: none; }
+.sc-foot .warn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-foot .warn:empty, .sc-foot .warn.off { visibility: hidden; }
+.sc-foot .btn { flex: none; }
+/* armed: the second click builds, so the button says so in the danger look for about three seconds */
+.sc-foot .btn.armed { background: var(--raised); color: var(--danger); box-shadow: inset 0 0 0 var(--hl) var(--edge); }
+.sc-foot .btn.armed:hover { background: var(--danger-fill); }
+
+/* tooltip for an ellipsized name or an error line: a small floating card by the pointer, shown after a short rest */
+.sc-tip { position: absolute; z-index: 4; max-width: 360px; padding: 6px 10px; font-size: 12px; line-height: 15px; color: var(--text); pointer-events: none; display: none; white-space: normal; word-break: break-word; }
+.sc-tip.show { display: block; }

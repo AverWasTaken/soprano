@@ -288,6 +288,12 @@ public class MovementTraverse extends Movement {
                 System.out.println("In movement traverse");
                 return state.setInput(Input.JUMP, true);
             }
+            if (ctx.player().onGround()) {
+                // standing a block above the whole move, usually a path that started from the block under a lip we were
+                // perched on. no input here walks us down to it, so idling just burned the movement timeout. fail now,
+                // the replan starts from where we actually are
+                return state.setStatus(MovementStatus.FAILED);
+            }
             return state;
         }
 
@@ -366,6 +372,10 @@ public class MovementTraverse extends Movement {
                 default:
                     break;
             }
+            if (state.getStatus() == MovementStatus.UNREACHABLE) {
+                // findPlace already said there's nothing we may put here. the click below would go out with whatever is in hand
+                return state;
+            }
             if (feet.equals(dest)) {
                 // If we are in the block that we are trying to get to, we are sneaking over air and we need to place a block beneath us against the one we just walked off of
                 // Out.log(from + " " + to + " " + faceX + "," + faceY + "," + faceZ + " " + whereAmI);
@@ -386,6 +396,14 @@ public class MovementTraverse extends Movement {
                     state.setTarget(new MovementState.MovementTarget(backToFace, true));
                 }
                 if (ctx.isLookingAt(goalLook)) {
+                    // findPlace came back empty handed, so nothing picked the block for this cell. pick it now, same as its
+                    // ready path does right before the click (a creative hand over lands in the slot this tick too). on a
+                    // builder path a block that has to be aimed is a no, the builder places those itself
+                    BlockPos placeAt = dest.below();
+                    if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), true)) {
+                        MovementHelper.logNoThrowaway(state, baritone, placeAt);
+                        return state.setStatus(MovementStatus.UNREACHABLE);
+                    }
                     return state.setInput(Input.CLICK_RIGHT, true); // wait to right click until we are able to place
                 }
                 // Out.log("Trying to look at " + goalLook + ", actually looking at" + Baritone.whatAreYouLookingAt());
@@ -404,7 +422,7 @@ public class MovementTraverse extends Movement {
     public static boolean godFooting(BlockState srcDown, boolean allowMagma) {
         Block block = srcDown.getBlock();
         return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK)
-                && !opensWhenClicked(srcDown);
+                && !MovementHelper.opensWhenClicked(srcDown);
     }
 
     // the planner's half of the executor's isInWater / onClimbable check, close but not all of it (an open trapdoor over a
@@ -414,14 +432,6 @@ public class MovementTraverse extends Movement {
         Block block = feet.getBlock();
         return feet.getFluidState().isEmpty()
                 && !MovementHelper.isClimbable(block) && block != Blocks.SCAFFOLDING && block != Blocks.CAVE_VINES && block != Blocks.CAVE_VINES_PLANT;
-    }
-
-    // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click
-    // would open the thing and walk us off the edge. block entities cover chests, furnaces, barrels and friends
-    private static boolean opensWhenClicked(BlockState state) {
-        Block block = state.getBlock();
-        return state.hasBlockEntity() || block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE
-                || block == Blocks.SMITHING_TABLE || block == Blocks.LOOM || block == Blocks.NOTE_BLOCK || block == Blocks.RESPAWN_ANCHOR;
     }
 
     // is this the back place the sneaking code would have done: nothing but src.below() to place against. same loop as cost

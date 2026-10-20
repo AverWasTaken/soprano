@@ -219,7 +219,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // up on a pillar with a bed (NightSleep): a zombie at the foot of it is the reason we are up here, not a fight, and a run
         // would walk us off the top. same stand down as a meal, minus the lit creeper (it can still blow the pillar up) and minus
         // low health, which hands the wheel back inside standsDown
-        if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth())) {
+        if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth(), mod.getWorld().getGameTime())) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
             return Float.NEGATIVE_INFINITY;
@@ -502,7 +502,7 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean enabled = Baritone.settings().altoMobDefense.value && Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value
                 && Baritone.settings().altoCommitCombat.value
                 // (the night trip's stand down: nothing gets committed to up there, and one already held is let go of)
-                && !NightSleepHook.standsDown(player.getHealth());
+                && !NightSleepHook.standsDown(player.getHealth(), mod.getWorld().getGameTime());
         _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
         stepCreepers(mod, now);
         _stance = _brain.stance();

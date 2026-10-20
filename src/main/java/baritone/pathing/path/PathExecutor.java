@@ -29,6 +29,7 @@ import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.Movement;
+import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
@@ -81,6 +82,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int pathPosition;
     private int ticksAway;
     private int ticksOnCurrent;
+    // the furthest we've got on this path and how long ago, see HighWater
+    private HighWater highWater = new HighWater();
     private Double currentMovementOriginalCostEstimate;
     private Integer costEstimateIndex;
     // planned versus real ticks per movement, handed on with the rest when a splice or a cut makes a new executor
@@ -272,6 +275,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     boatRefusedUntil = boat.endPosition();
                     boat = null;
                     onChangeInPathPosition();
+                    highWater.forget(); // the boat pushed pathPosition along, swimming back up to it isn't being stuck
                     break; // carry on on foot from wherever we ended up, the resync below sorts out where that is
                 default:
                     throw new IllegalStateException();
@@ -415,6 +419,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
+            rememberFailure(movement, false);
             cancel();
             return true;
         }
@@ -452,6 +457,16 @@ public class PathExecutor implements IPathExecutor, Helper {
                 // ticksOnCurrent is greater than recalculateCost + 100
                 // this is why we cache cost at the beginning, and don't recalculate for this comparison every tick
                 logDebug("This movement has taken too long (" + ticksOnCurrent + " ticks, expected " + currentMovementOriginalCostEstimate + "). Cancelling.");
+                rememberFailure(movement, true);
+                cancel();
+                return true;
+            }
+            if (highWater.tick(pathPosition, currentMovementOriginalCostEstimate, Baritone.settings().movementTimeoutTicks.value)) {
+                // bouncing between two movements resets ticksOnCurrent every bounce, so the check above never fires. the one
+                // we keep reaching and never get past is the one to blame
+                Movement stuck = (Movement) path.movements().get(highWater.high());
+                logDebug("Haven't got past movement " + highWater.high() + " in " + highWater.ticks() + " ticks (expected " + highWater.cost() + "). Cancelling.");
+                rememberFailure(stuck, true);
                 cancel();
                 return true;
             }
@@ -1593,6 +1608,32 @@ public class PathExecutor implements IPathExecutor, Helper {
         behavior.baritone.getInputOverrideHandler().clearAllKeys();
     }
 
+    // before the cancel, so the replan it triggers already sees it and a fast fail loop climbs the ladder. only the movement
+    // itself failing counts, a process pulling the path out from under us says nothing about the edge
+    private void rememberFailure(Movement movement, boolean timedOut) {
+        if (FailedMoves.forgives(timedOut, timedOut && climbEdge(movement))) {
+            return;
+        }
+        behavior.failedMoves().record(movement.getSrc(), movement.getDest(), ctx.world(), System.currentTimeMillis());
+    }
+
+    // a climb that runs out of time is the bot swaying on the rungs, not a bad edge. remembering those made A* walk the
+    // long way round every ladder it had ever wobbled on. only edges that change height (plus the climb jumps, a leap
+    // can land level): a flat walk under hanging cave vines that really is blocked still has to count. the cell over src
+    // is the one a climb up goes into, the one under dest is the top rung it comes off
+    private boolean climbEdge(Movement movement) {
+        BetterBlockPos src = movement.getSrc();
+        BetterBlockPos dest = movement.getDest();
+        if (src.y == dest.y && !(movement instanceof MovementClimb)) {
+            return false;
+        }
+        return climbable(src) || climbable(src.above()) || climbable(dest) || climbable(dest.below());
+    }
+
+    private boolean climbable(BetterBlockPos pos) {
+        return FailedMoves.climbable(ctx.world().getBlockState(pos).getBlock());
+    }
+
     private void cancel() {
         if (releasedWhy.isEmpty()) {
             releasedWhy = "path cancelled";
@@ -1628,6 +1669,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             ret.currentMovementOriginalCostEstimate = currentMovementOriginalCostEstimate;
             ret.costEstimateIndex = costEstimateIndex;
             ret.ticksOnCurrent = ticksOnCurrent;
+            if (pathPosition < highWater.high()) {
+                // the new path keeps our index but not necessarily what came after it, the old high might be another movement now
+                highWater.forget();
+            }
+            ret.highWater = highWater;
             ret.timer = timer;
             ret.flight = flight; // a new path showing up doesn't make us any less airborne
             // a splice keeps every index of the first path, so the trip carries straight over. losing it
@@ -1702,6 +1748,8 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ret.costEstimateIndex = costEstimateIndex - cutoffAmt;
             }
             ret.ticksOnCurrent = ticksOnCurrent;
+            highWater.shift(cutoffAmt);
+            ret.highWater = highWater;
             ret.timer = timer;
             ret.flight = flight;
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;

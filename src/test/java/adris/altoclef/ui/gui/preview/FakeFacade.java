@@ -28,6 +28,7 @@ public final class FakeFacade implements BotFacade {
     public final FakeWorld world = new FakeWorld();
     public final FakeStatus status = new FakeStatus();
     public StatsAccess stats = StatsAccess.NONE;
+    public final FakeSchematics schematics = new FakeSchematics(actions);
     public final Clipboard clipboard = Clipboard.inMemory();
 
     @Override
@@ -58,6 +59,11 @@ public final class FakeFacade implements BotFacade {
     @Override
     public StatsAccess stats() {
         return stats;
+    }
+
+    @Override
+    public adris.altoclef.ui.gui.facade.SchematicsAccess schematics() {
+        return schematics;
     }
 
     @Override
@@ -347,6 +353,8 @@ public final class FakeFacade implements BotFacade {
 
     public final class FakeWorld implements WorldAccess {
         public Position pos = new Position(120.5, 64.0, -30.5);
+        // looking a little west of north, so the map's arrow has a tilt to show
+        public float yaw = 200f;
         public String dimension = "overworld";
         public String following;
         public final List<PlayerEntry> players = new ArrayList<>();
@@ -381,6 +389,11 @@ public final class FakeFacade implements BotFacade {
         @Override
         public Position playerPos() {
             return pos;
+        }
+
+        @Override
+        public float playerYaw() {
+            return yaw;
         }
 
         @Override
