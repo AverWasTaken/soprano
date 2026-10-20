@@ -105,6 +105,12 @@ public final class PlaceRules {
         if (block instanceof SnowyBlock) {
             return prop == SnowyBlock.SNOWY;
         }
+        if (block instanceof BaseRailBlock rail) {
+            // a rail bends towards whatever rails are next to it, on placement and on every neighbour update. the click
+            // has no say, so a curve the file wants was a break and place loop till the neighbours happened to agree.
+            // powered is redstone (or a minecart for the detector one), not ours either
+            return prop == rail.getShapeProperty() || prop == PoweredRailBlock.POWERED || prop == DetectorRailBlock.POWERED;
+        }
         return false;
     }
 
