@@ -1137,7 +1137,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         float progress = ctx.minecraft().gameMode instanceof IClientBlockBreak gameMode ? gameMode.getCurrentBreakingProgress() : 0;
         boolean digging = progress > lastDestroyProgress;
         lastDestroyProgress = progress;
-        if (!feet.equals(watchdogFeet) || digging) {
+        if (watchdogMoved(watchdogFeet, feet) || digging) {
             watchdogFeet = feet;
             watchdogTicks = 0;
             return;
@@ -1150,6 +1150,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!owners.isEmpty()) {
             giveUpOn(bcc, owners, "Stuck short of the goal", WATCHDOG_TICKS);
         }
+    }
+
+    // only getting more than a block away from where it started counts as moving. bobbing on a ladder flips the feet
+    // between two cells every few ticks, and so does rocking on a block edge, and that kept the watchdog at zero forever
+    static boolean watchdogMoved(BetterBlockPos anchor, BetterBlockPos feet) {
+        if (anchor == null) {
+            return true;
+        }
+        return Math.max(Math.abs(feet.x - anchor.x), Math.max(Math.abs(feet.y - anchor.y), Math.abs(feet.z - anchor.z))) > 1;
     }
 
     // a block landed or broke, that's progress no matter where we stand. the old path end goes too, the next path
