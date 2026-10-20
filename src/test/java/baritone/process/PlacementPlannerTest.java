@@ -18,6 +18,8 @@
 package baritone.process;
 
 import adris.altoclef.util.helpers.ItemFixture;
+import baritone.api.utils.Rotation;
+import baritone.api.utils.RotationUtils;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.pathing.BetterWorldBorder;
 import net.minecraft.core.BlockPos;
@@ -30,6 +32,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.world.phys.Vec3;
 import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -162,6 +165,27 @@ public class PlacementPlannerTest {
         assertTrue(PlacementPlanner.hangable(ladder));
         // sneaking in scaffolding is how you go down it
         assertFalse(PlacementPlanner.hangable(Blocks.SCAFFOLDING.defaultBlockState()));
+    }
+
+    @Test
+    public void thePlannersSlopIsNotTheCellsEdge() {
+        // a stair's facing is the yaw's quadrant. this aim point is one the planner takes from feet at the origin: the
+        // middle and all four EYE_SLOP corners agree with ANGLE_MARGIN to spare. coast to the edge of the same cell
+        // and it's a different quadrant, which is why the builder walks to the middle before it gives up
+        Vec3 aim = new Vec3(1.5, 65.6, 2.2);
+        double s = PlacementPlanner.EYE_SLOP;
+        for (double[] corner : new double[][]{{0, 0}, {-s, -s}, {-s, s}, {s, -s}, {s, s}}) {
+            float yaw = yawFrom(0.5 + corner[0], 0.5 + corner[1], aim);
+            assertEquals(Direction.SOUTH, Direction.fromYRot(yaw - PlacementPlanner.ANGLE_MARGIN));
+            assertEquals(Direction.SOUTH, Direction.fromYRot(yaw + PlacementPlanner.ANGLE_MARGIN));
+        }
+        assertNotEquals(Direction.SOUTH, Direction.fromYRot(yawFrom(0.05, 0.95, aim)));
+        assertTrue(BuilderProcess.centred(0.05, -0.08));
+        assertFalse(BuilderProcess.centred(-0.45, 0.45));
+    }
+
+    private static float yawFrom(double x, double z, Vec3 aim) {
+        return RotationUtils.calcRotationFromVec3d(new Vec3(x, 65.6, z), aim, new Rotation(0, 0)).getYaw();
     }
 
     private static BlockState chest(Direction facing, ChestType type) {
