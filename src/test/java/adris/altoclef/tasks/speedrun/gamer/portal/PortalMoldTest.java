@@ -357,6 +357,145 @@ public class PortalMoldTest {
     }
 
     @Test
+    public void sideCastsStandTwoRowsBackAndNotNextToTheirCells() {
+        for (Cast c : PortalMold.CASTS) {
+            if (c.top) {
+                continue;
+            }
+            assertTrue(c.name + " stands at d=" + c.stand[2], c.stand[2] >= 2);
+            assertTrue(c.name + " is beside its lava", manhattan(c.stand, c.t) > 1);
+            assertTrue(c.name + " is beside its water", manhattan(c.stand, c.w) > 1);
+        }
+    }
+
+    // the clicks aim at the face centre, from the stand's eye that has to be inside survival reach
+    @Test
+    public void sideCastClicksAreInReachFromTheStand() {
+        for (Cast c : PortalMold.CASTS) {
+            if (c.top) {
+                continue;
+            }
+            double[] eye = {c.stand[0] + 0.5, c.stand[1] + 1.62, c.stand[2] + 0.5};
+            assertTrue(c.name + " lava", reach(eye, c.lavaSupport, c.t) <= 4.5);
+            assertTrue(c.name + " water", reach(eye, c.waterSupport, c.w) <= 4.5);
+        }
+    }
+
+    private static double reach(double[] eye, int[] support, int[] into) {
+        double[] p = new double[3];
+        for (int i = 0; i < 3; i++) {
+            p[i] = support[i] + 0.5 + (into[i] - support[i]) * 0.5;
+        }
+        return Math.sqrt(Math.pow(p[0] - eye[0], 2) + Math.pow(p[1] - eye[1], 2) + Math.pow(p[2] - eye[2], 2));
+    }
+
+    private static int manhattan(int[] a, int[] b) {
+        return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+    }
+
+    @Test
+    public void refusesARowWithNowhereToStandTwoBack() {
+        // no floor under either side stand, or something at feet, head, over the head, or high on the shore row where
+        // the upper clicks go through
+        int[][] cases = {{0, 0, 2}, {3, 0, 2}, {0, 1, 2}, {3, 1, 2}, {0, 2, 2}, {3, 2, 2}, {0, 3, 2}, {3, 3, 2},
+                {0, 3, 1}, {3, 3, 1}, {0, 4, 1}, {3, 4, 1}};
+        for (int[] k : cases) {
+            World w = new World(straight());
+            w.set(w.l.cell(k[0], k[1], k[2]), k[1] == 0 ? Mat.AIR : Mat.STONE);
+            assertFalse("u=" + k[0] + " h=" + k[1] + " d=" + k[2], PortalMold.fits(w.l, w));
+        }
+        assertTrue(PortalMold.fits(straight(), new World(straight())));
+    }
+
+    // every cell between the stand's eye and the face centre we aim at (LookHelper aims at exactly that point) is one
+    // fits() made sure is air, or the cast's own t and w (empty, or lava the pour ray looks through). anywhere baritone
+    // can park us in the stand cell without poking out of it
+    @Test
+    public void sideCastClicksSeeTheirFaceFromAnywhereOnTheStand() {
+        for (Cast c : PortalMold.CASTS) {
+            if (c.top) {
+                continue;
+            }
+            Set<String> clear = new HashSet<>();
+            for (int h = 1; h <= 3; h++) {
+                clear.add(c.stand[0] + "," + h + ",2");
+            }
+            for (int h = 1; h <= 4; h++) {
+                clear.add(c.stand[0] + "," + h + ",1");
+            }
+            clear.add(c.t[0] + "," + c.t[1] + "," + c.t[2]);
+            clear.add(c.w[0] + "," + c.w[1] + "," + c.w[2]);
+            for (double ou = 0.3; ou <= 0.71; ou += 0.2) {
+                for (double od = 0.3; od <= 0.71; od += 0.2) {
+                    double[] eye = {c.stand[0] + ou, c.stand[1] + 1.62, c.stand[2] + od};
+                    assertRayClear(c.name + " lava", eye, c.lavaSupport, c.t, clear);
+                    assertRayClear(c.name + " water", eye, c.waterSupport, c.w, clear);
+                }
+            }
+        }
+    }
+
+    private static void assertRayClear(String what, double[] eye, int[] support, int[] into, Set<String> clear) {
+        double[] face = new double[3];
+        for (int i = 0; i < 3; i++) {
+            face[i] = support[i] + 0.5 + (into[i] - support[i]) * 0.5;
+        }
+        // f stays under 1, the face itself is the block we click
+        for (int s = 0; s < 1000; s++) {
+            double f = s / 1000.0;
+            String cell = (int) Math.floor(eye[0] + (face[0] - eye[0]) * f) + ","
+                    + (int) Math.floor(eye[1] + (face[1] - eye[1]) * f) + ","
+                    + (int) Math.floor(eye[2] + (face[2] - eye[2]) * f);
+            assertTrue(what + " goes through " + cell, clear.contains(cell));
+        }
+    }
+
+    private static PortalMold.Box bodyAt(Layout l, double u, double d) {
+        // a standing player on the shore row, centre at (u, d) in layout coordinates. only straight() is used here
+        P o = l.cell(0, 1, 0);
+        return new PortalMold.Box(o.x() + u - 0.3, o.y(), o.z() + d - 0.3, o.x() + u + 0.3, o.y() + 1.8, o.z() + d + 0.3);
+    }
+
+    @Test
+    public void aBodyOnTheStandIsNeverInTheCastCells() {
+        Layout l = straight();
+        for (Cast c : PortalMold.CASTS) {
+            if (c.top) {
+                continue;
+            }
+            // anywhere baritone could park us in the stand cell
+            for (double du = 0; du < 1; du += 0.1) {
+                for (double dd = 0; dd < 1; dd += 0.1) {
+                    assertFalse(c.name, PortalMold.inTheWay(l, bodyAt(l, c.stand[0] + du, c.stand[2] + dd), c));
+                }
+            }
+        }
+        // one row back is where it used to stand, and a centre short of 1.3 is in t
+        Cast left1 = PortalMold.CASTS.get(0);
+        assertTrue(PortalMold.inTheWay(l, bodyAt(l, 0.5, 1.2), left1));
+    }
+
+    @Test
+    public void stepsBackOffAStandOntoSomethingSafe() {
+        World w = new World(straight());
+        Cast left1 = PortalMold.CASTS.get(0);
+        P back = PortalMold.stepBackSpot(w.l, w, left1.stand);
+        assertNotNull(back);
+        assertEquals(w.l.cell(0, 1, 3), back);
+    }
+
+    @Test
+    public void localUndoesCell() {
+        Layout[] layouts = {straight(), new Layout(10, 70, -5, 0, 1, -1, 0), new Layout(-3, 40, 8, -1, 0, 0, -1)};
+        for (Layout l : layouts) {
+            int[] back = l.local(l.cell(-2, 3, 5));
+            assertEquals(-2, back[0]);
+            assertEquals(3, back[1]);
+            assertEquals(5, back[2]);
+        }
+    }
+
+    @Test
     public void picksTheBaseBackUpWhereItLeftOffAfterAnInterruption() {
         // re-derive from a half built world: the left column done, nothing in the bags, water source sitting out
         World half = new World(straight());
