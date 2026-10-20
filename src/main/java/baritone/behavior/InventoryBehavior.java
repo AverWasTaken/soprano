@@ -373,8 +373,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
     // a clutch is a parachute for fall damage. creative and friends take none, and the builder's ladders are schematic
     // blocks, a clutch would hang one where the file wants air and the builder would break it again right under us
     public boolean clutchAllowed() {
+        return ExperimentalMovement.allowLadderClutch() && clutchWanted();
+    }
+
+    // the half of that altoclef's water bucket clutch asks too (MLGBucketFallChain), its bucket or hay bale is just as
+    // much a block in the build as our ladder
+    public boolean clutchWanted() {
         LocalPlayer player = ctx.player();
-        return ExperimentalMovement.allowLadderClutch() && player != null && !player.getAbilities().invulnerable
+        return player != null && !player.getAbilities().invulnerable
                 && baritone.getPathingControlManager().mostRecentInControl().orElse(null) != baritone.getBuilderProcess();
     }
 
