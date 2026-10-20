@@ -1,6 +1,11 @@
 package adris.altoclef.util.helpers;
 
+import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -80,6 +85,63 @@ public final class GarbageRules {
             }
         }
         return best;
+    }
+
+    // the window slots of the 36 real bag slots (hotbar and main) in whatever menu is open. the menu's own slot list also has the
+    // craft result and the 2x2 grid with no screen up: the result clicked with something else on the cursor does nothing (the
+    // cursor task clicked it forever), and a grid slot takes the stack only for the grid clearer to hand it right back.
+    // isSlotInPlayerInventory says yes to all of those, and the inventory index mapping guesses wrong under any menu Slot has no
+    // type for (a shulker box), so ask each slot whose it is
+    public static List<Integer> bagWindowSlots(AbstractContainerMenu menu, Container inventory) {
+        List<Integer> out = new ArrayList<>(Inventory.INVENTORY_SIZE);
+        for (int i = 0; i < menu.slots.size(); i++) {
+            Slot slot = menu.slots.get(i);
+            if (slot.container == inventory && slot.getContainerSlot() < Inventory.INVENTORY_SIZE) {
+                out.add(i);
+            }
+        }
+        return out;
+    }
+
+    // one armor piece in the bag: its equip slot (-1 for anything that is not armor), what it gives, and wouldWear's say
+    public record Armor(int equipSlot, double points, double toughness, boolean wouldWear) {
+        public static final Armor NONE = new Armor(-1, 0, 0, false);
+    }
+
+    // of the pieces wouldWear likes, only the best one per equip slot is kept (first wins a tie). two iron helmets and no helmet
+    // on: one goes on, the other is a spare like any other
+    public static boolean[] keptArmor(List<Armor> pieces) {
+        boolean[] kept = new boolean[pieces.size()];
+        java.util.Map<Integer, Integer> best = new java.util.HashMap<>();
+        for (int i = 0; i < pieces.size(); i++) {
+            Armor a = pieces.get(i);
+            if (a.equipSlot() < 0 || !a.wouldWear()) {
+                continue;
+            }
+            Integer at = best.get(a.equipSlot());
+            if (at == null || beats(a, pieces.get(at))) {
+                best.put(a.equipSlot(), i);
+            }
+        }
+        for (int i : best.values()) {
+            kept[i] = true;
+        }
+        return kept;
+    }
+
+    private static boolean beats(Armor l, Armor r) {
+        return l.points() != r.points() ? l.points() > r.points() : l.toughness() > r.toughness();
+    }
+
+    // whether a ranks at or below b in pick's order, so with both in the bag a goes first (or they are even)
+    public static boolean atOrBelow(Cand a, Cand b) {
+        return compare(a, b) <= 0;
+    }
+
+    // same family and no better material: worseTool would hand this one over first (or call it even)
+    public static boolean toolAtOrBelow(Item tool, Item than) {
+        String kind = ItemHelper.toolKind(tool);
+        return kind != null && kind.equals(ItemHelper.toolKind(than)) && ItemHelper.getToolDurability(tool) <= ItemHelper.getToolDurability(than);
     }
 
     // a bag piece we would put on is not garbage: its slot is bare, or it beats what is on it (points first, toughness breaks a

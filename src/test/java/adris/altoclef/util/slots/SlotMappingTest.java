@@ -17,7 +17,6 @@
 
 package adris.altoclef.util.slots;
 
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.SmithingMenu;
@@ -144,19 +143,5 @@ public class SlotMappingTest {
         roundTrip("brewing", BrewingStandSlot::new);
         roundTrip("chest", (slot, inv) -> new ChestSlot(slot, false, inv));
         roundTrip("large chest", (slot, inv) -> new ChestSlot(slot, true, inv));
-    }
-
-    // StorageHelper.bagSlots walks inventory indices 0 until INVENTORY_SIZE. whatever screen is up, none of those may land on the
-    // craft result, a grid slot, armor or the offhand: the garbage pick clicking those is how the make room loops started
-    @Test
-    public void bagIndicesNeverMapOntoGridResultArmorOrOffhand() {
-        assertEquals(36, Inventory.INVENTORY_SIZE);
-        for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
-            int player = new PlayerSlot(i, true).getWindowSlot();
-            assertTrue("player window slot " + player, player >= InventoryMenu.INV_SLOT_START && player < InventoryMenu.USE_ROW_SLOT_END);
-            assertTrue(player != InventoryMenu.SHIELD_SLOT);
-            int table = new CraftingTableSlot(i, true).getWindowSlot();
-            assertTrue("table window slot " + table, table >= 10 && table <= 45);
-        }
     }
 }
