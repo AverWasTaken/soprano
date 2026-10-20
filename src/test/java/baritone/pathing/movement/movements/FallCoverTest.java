@@ -135,4 +135,44 @@ public class FallCoverTest {
         // not water yet means the placement is still in flight
         assertFalse(FallCover.pickupIsBaritones(true, false, true));
     }
+
+    // standing in the water at dest, done falling, bucket ready
+    private static boolean ready(boolean onGround, boolean inWater, double motionY) {
+        return FallCover.pickupReady(true, true, 1.2, 4.5, onGround, inWater, motionY, true);
+    }
+
+    @Test
+    public void standingStillInWaterPicksUp() {
+        // -0.005 is what vanilla gives a player standing on the floor of a still source, the old y >= 0 never saw it
+        assertTrue(ready(true, true, -0.005));
+        assertTrue(ready(false, true, -0.025)); // sinking with no floor, tops out here
+        assertTrue(ready(true, false, 0));
+    }
+
+    @Test
+    public void stillComingDownDoesNot() {
+        assertFalse(ready(false, true, -0.5));
+        assertFalse(ready(false, true, FallCover.NOT_FALLING_Y));
+        // the top of a jump in the air is slow but nowhere near the water
+        assertFalse(ready(false, false, 0));
+    }
+
+    @Test
+    public void aBlockOfDriftIsStillInRange() {
+        assertTrue(FallCover.nextToDest(10, 64, 10, 10, 64, 10));
+        assertTrue(FallCover.nextToDest(11, 64, 10, 10, 64, 10));
+        assertTrue(FallCover.nextToDest(9, 64, 11, 10, 64, 10));
+        assertFalse(FallCover.nextToDest(12, 64, 10, 10, 64, 10));
+        // one up is still on the way down, one under is a hole next to it
+        assertFalse(FallCover.nextToDest(10, 65, 10, 10, 64, 10));
+        assertFalse(FallCover.nextToDest(11, 63, 10, 10, 64, 10));
+    }
+
+    @Test
+    public void everythingElseHasToBeThereToo() {
+        assertFalse(FallCover.pickupReady(false, true, 1.2, 4.5, true, true, -0.005, true)); // flowing, or gone already
+        assertFalse(FallCover.pickupReady(true, false, 1.2, 4.5, true, true, -0.005, true));
+        assertFalse(FallCover.pickupReady(true, true, 4.6, 4.5, true, true, -0.005, true));
+        assertFalse(FallCover.pickupReady(true, true, 1.2, 4.5, true, true, -0.005, false));
+    }
 }
