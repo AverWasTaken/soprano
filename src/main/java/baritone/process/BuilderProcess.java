@@ -2768,6 +2768,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         missingAtPause = Map.of();
         keep = null;
+        if (schematic == null) {
+            // cancelEverything calls every process, so a stop that already got here would hand keptGivenUp a null
+            return;
+        }
         keptGivenUp = givenUp;
         keptName = name;
         keptOrigin = origin;
