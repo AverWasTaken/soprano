@@ -29,8 +29,9 @@ def main():
 
     body = (release.get("body") or "").strip()
     first, _, rest = body.partition("\n")
-    # the first line is the "for minecraft x" line, it reads better as its own field
-    mc_line = first if first.lower().startswith("for minecraft") else ""
+    # the first line is the "for minecraft x" line, it reads better as its own field.
+    # the any version build says "this version is base 26.3 mc..." there instead
+    mc_line = first if first.lower().startswith(("for minecraft", "this version is base")) else ""
     notes = (rest if mc_line else body).strip()
     # discord caps descriptions at 4096
     if len(notes) > 3900:
