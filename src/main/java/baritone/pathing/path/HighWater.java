@@ -24,19 +24,26 @@ final class HighWater {
 
     private int high = -1;
     private int ticks;
+    // the budget in half ticks, see tick
+    private int halves;
     private double cost;
 
     // once per tick a movement runs, same spot as ticksOnCurrent. cost is the original estimate of the movement at
     // pathPosition, only kept when that's a new high. true once we've been stuck at or behind the high for longer than the
-    // high movement should take plus the timeout, same budget the per movement timeout gives it
+    // high movement should take plus the timeout, same budget the per movement timeout gives it.
+    // a tick behind the high only counts half: knockback or an overshoot puts us back a movement for a second and then
+    // we carry on, and at full rate a few of those cancelled a path that was getting somewhere. a real bounce still
+    // spends some of every lap on the high, so it runs out within about twice the budget
     boolean tick(int pathPosition, double costHere, int timeout) {
         if (pathPosition > high) {
             high = pathPosition;
             cost = costHere;
             ticks = 0;
+            halves = 0;
         }
         ticks++;
-        return ticks > cost + timeout;
+        halves += pathPosition == high ? 2 : 1;
+        return halves > 2 * (cost + timeout);
     }
 
     int high() {
@@ -62,5 +69,6 @@ final class HighWater {
     void forget() {
         high = -1;
         ticks = 0;
+        halves = 0;
     }
 }

@@ -37,8 +37,48 @@ public class HighWaterTest {
         }
         assertTrue(stuck);
         assertEquals(1, water.high());
-        // the high was set on the second tick, and 110 is the budget
-        assertEquals(112, ticks);
+        // the high was set on the second tick and every lap is a full tick and a half one, so the 110 tick budget
+        // runs out 146 ticks after it
+        assertEquals(148, ticks);
+    }
+
+    @Test
+    public void knockbackDoesntCancelAProgressingPath() {
+        HighWater water = new HighWater();
+        for (int i = 0; i < 30; i++) {
+            assertFalse(water.tick(5, 10, 100));
+        }
+        // knocked back a movement three times for a second each, walking back up to the high in between. 120 ticks
+        // all told, which full rate called stuck
+        for (int bounce = 0; bounce < 3; bounce++) {
+            for (int i = 0; i < 20; i++) {
+                assertFalse(water.tick(4, 10, 100));
+            }
+            for (int i = 0; i < 10; i++) {
+                assertFalse(water.tick(5, 10, 100));
+            }
+        }
+        // and then it got past
+        for (int i = 0; i < 50; i++) {
+            assertFalse(water.tick(6, 10, 100));
+        }
+    }
+
+    @Test
+    public void mostlyBehindStillRunsOut() {
+        HighWater water = new HighWater();
+        water.tick(4, 10, 100);
+        // a tick on the high and ten behind it, over and over
+        int ticks = 0;
+        boolean stuck = false;
+        while (!stuck && ticks < 1000) {
+            stuck = water.tick(ticks % 11 == 0 ? 5 : 4, 10, 100);
+            ticks++;
+        }
+        assertTrue(stuck);
+        assertEquals(5, water.high());
+        // within twice the 110 tick budget
+        assertTrue(ticks <= 220);
     }
 
     @Test
@@ -60,8 +100,9 @@ public class HighWaterTest {
         for (int i = 0; i < 100; i++) {
             water.tick(3, 10, 100);
         }
-        // a resync back to 2 is not progress, the cost there doesn't matter either
-        for (int i = 0; i < 10; i++) {
+        // a resync back to 2 is not progress, the cost there doesn't matter either. 100 ticks on the high spent 200 of
+        // the 220 half ticks, and a tick behind is one of them
+        for (int i = 0; i < 20; i++) {
             assertFalse(water.tick(2, 1000, 100));
         }
         assertTrue(water.tick(2, 1000, 100));
