@@ -95,10 +95,11 @@ final class KitSurface {
     }
 
     // the kit's design px are at 1080p with the gui at 2x. this follows the gui scale instead so the card sits next to
-    // vanilla's buttons at roughly their size whatever the window is: 2 -> 1.0, 3 -> 1.25, 4 -> 1.5, 5 and up -> 2.0.
-    // quarter steps keep the glyph atlases cached, same reason as Theme.scaleFor
+    // vanilla's buttons at about three quarters of their height whatever the window is: 2 -> 1.0, 3 -> 1.5, 4 and up
+    // -> 2.0. the top stays at 2.0 so the card still clears the logo at 1440p's auto scale of 6. quarter steps keep
+    // the glyph atlases cached, same reason as Theme.scaleFor
     static float scaleFor(int guiScale) {
-        float raw = Math.max(1, guiScale) * 0.4f;
+        float raw = Math.max(1, guiScale) * 0.5f;
         float stepped = Math.round(raw * 4f) / 4f;
         return Math.max(0.75f, Math.min(2.0f, stepped));
     }

@@ -66,6 +66,15 @@ public final class WhatsNewScreen extends Screen {
         mc.gui.setScreen(parent);
     }
 
+    // the kit would not come up: nothing to read here, so back to the title screen. from the tick and not from the
+    // render, swapping screens in the middle of extraction is asking for it
+    @Override
+    public void tick() {
+        if (!ok) {
+            onClose();
+        }
+    }
+
     @Override
     public void removed() {
         McAtlases.releaseAll();
@@ -82,8 +91,6 @@ public final class WhatsNewScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         if (!ok) {
-            // the kit would not come up: nothing to read here, so back to the title screen rather than a blank panorama
-            onClose();
             return;
         }
         Window win = mc.getWindow();

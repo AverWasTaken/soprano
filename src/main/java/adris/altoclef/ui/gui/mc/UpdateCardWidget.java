@@ -1,5 +1,7 @@
 package adris.altoclef.ui.gui.mc;
 
+import adris.altoclef.ui.gui.kit.Canvas;
+import adris.altoclef.ui.gui.kit.FadeCanvas;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Safe;
@@ -31,8 +33,9 @@ import java.util.Locale;
 // the two agree because the box is the card's pixel size rounded up. nothing in here may throw into the title screen
 public final class UpdateCardWidget extends AbstractWidget {
 
-    // gui units in from the corner. vanilla's version line is bottom left and the logo is centred, so this is free
-    private static final int MARGIN = 6;
+    // gui units in from the corner. vanilla's version line is bottom left and the logo is centred, so this is free. 4
+    // and not more because at 1080p on gui scale 4 every unit here is one less for the card before the logo starts
+    private static final int MARGIN = 4;
     // the logo texture is 256 wide and centred, anything to its left is ours
     private static final int LOGO_HALF_W = 128;
 
@@ -41,6 +44,7 @@ public final class UpdateCardWidget extends AbstractWidget {
     private final int guiScale;
     private KitSurface surface;
     private UpdateCard card;
+    private final FadeCanvas fade = new FadeCanvas();
     private boolean ok;
     // a click focuses the widget too, and that must not put the ring on the first button
     private boolean mouseFocus;
@@ -120,7 +124,9 @@ public final class UpdateCardWidget extends AbstractWidget {
             float mx = KitSurface.pointerX();
             float my = KitSurface.pointerY();
             card.mouseMove(mx, my);
-            card.draw(surface.canvas(), new Frame(now, dt, mx, my));
+            // the first title screen fades its widgets in through setAlpha, the card comes along
+            Canvas c = alpha < 1f ? fade.reset(surface.canvas(), alpha, 0f) : surface.canvas();
+            card.draw(c, new Frame(now, dt, mx, my));
         } catch (Throwable t) {
             Safe.report("update card render", t);
         } finally {
@@ -166,7 +172,7 @@ public final class UpdateCardWidget extends AbstractWidget {
 
     @Override
     public ComponentPath nextFocusPath(FocusNavigationEvent event) {
-        if (!ok || !card.hasFocusable()) {
+        if (!ok || !Safe.test("update card focusable", card::hasFocusable)) {
             return null;
         }
         if (event instanceof FocusNavigationEvent.TabNavigation tab) {
@@ -181,13 +187,15 @@ public final class UpdateCardWidget extends AbstractWidget {
         if (!ok) {
             return;
         }
-        if (!focused) {
-            card.blur();
-        } else if (mouseFocus) {
-            mouseFocus = false;
-        } else {
-            card.focusEnd(tabBackwards);
-        }
+        Safe.run("update card focus", () -> {
+            if (!focused) {
+                card.blur();
+            } else if (mouseFocus) {
+                mouseFocus = false;
+            } else {
+                card.focusEnd(tabBackwards);
+            }
+        });
     }
 
     @Override

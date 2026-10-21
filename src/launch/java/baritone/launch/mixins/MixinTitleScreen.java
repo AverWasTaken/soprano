@@ -28,8 +28,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// the update card in the corner of the title screen. two hooks, both at the end of a public vanilla method, so mod menu
-// and friends can rearrange the buttons all they like and we still land after them
+// the update card in the corner of the title screen. two hooks, both at the tail of a plain vanilla method that every
+// loader has, after vanilla's own buttons are in. mod menu and friends can rearrange those all they like, the card is
+// its own widget in its own corner
 @Mixin(TitleScreen.class)
 public abstract class MixinTitleScreen extends Screen {
 
