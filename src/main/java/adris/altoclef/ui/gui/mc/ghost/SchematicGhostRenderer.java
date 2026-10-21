@@ -17,7 +17,9 @@ import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.schematic.ISchematic;
 import baritone.utils.IRenderer;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -78,6 +80,9 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     private final List<Placed> visible = new ArrayList<>();
     private final List<BakedQuad> quads = new ArrayList<>();
     private final RandomSource random = RandomSource.create();
+    // the ghost's own bytes, not IRenderer's tesselator: the sort below needs the buffer the mesh was built in. made on
+    // the first draw and kept, it grows to fit the biggest frame
+    private ByteBufferBuilder modelBytes;
     private final BlockPos.MutableBlockPos seedPos = new BlockPos.MutableBlockPos();
 
     // where the last frame looked from. the tick goes by this, the camera is a render thing (third person, spectating)
@@ -413,16 +418,21 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     }
 
     private void drawModels(PoseStack stack, float alpha, double cx, double cy, double cz) {
-        // lines and quads take turns on IRenderer's tesselator, one draw open at a time, so this one is finished before
-        // the boxes
-        BufferBuilder buf = IRenderer.tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
-        // a throw half way would leave the tesselator's draw open for whoever renders next, so it's always closed
+        RenderType type = RenderType.translucentMovingBlock();
+        if (modelBytes == null) {
+            modelBytes = new ByteBufferBuilder(type.bufferSize());
+        }
+        BufferBuilder buf = new BufferBuilder(modelBytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+        // a throw half way would leave the half built mesh sitting in the bytes for the next frame, so it's always closed
         try {
             pushModels(buf, stack, alpha, cx, cy, cz);
         } finally {
             MeshData mesh = buf.build();
             if (mesh != null) {
-                RenderType.translucentMovingBlock().draw(mesh);
+                // see-through faces have to go back to front or a stair's far side paints over its near one. a
+                // BufferSource sorts this type on its way out, a plain draw doesn't, so it's done here
+                mesh.sortQuads(modelBytes, RenderSystem.getProjectionType().vertexSorting());
+                type.draw(mesh);
             }
         }
     }

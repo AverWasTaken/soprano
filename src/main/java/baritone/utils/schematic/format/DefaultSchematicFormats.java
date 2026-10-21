@@ -25,6 +25,7 @@ import baritone.utils.schematic.format.defaults.SpongeSchematic;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.Tag;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
@@ -79,7 +80,8 @@ public enum DefaultSchematicFormats implements ISchematicFormat {
         @Override
         public IStaticSchematic parse(InputStream input) throws IOException {
             CompoundTag nbt = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
-            int version = nbt.getInt("Version");
+            // getInt says 0 for a missing key on this version, -1 is what the message should show
+            int version = nbt.contains("Version", Tag.TAG_ANY_NUMERIC) ? nbt.getInt("Version") : -1;
             // 5 and 6 (1.13 to 1.20) pack the palette and the long array exactly like 7. what moved is the content:
             // block ids that got renamed and property values that changed, both of which get reported instead of
             // failing the load

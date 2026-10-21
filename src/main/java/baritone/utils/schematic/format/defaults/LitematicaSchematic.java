@@ -26,6 +26,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -59,7 +60,7 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
      */
     public LitematicaSchematic(CompoundTag nbt) {
         super(0, 0, 0);
-        this.version = nbt.getInt("Version");
+        this.version = nbt.contains("Version", Tag.TAG_ANY_NUMERIC) ? nbt.getInt("Version") : -1;
         fillInSchematic(nbt);
     }
 

@@ -65,7 +65,7 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
     private static final Set<String> CREATIVE_ONLY = Set.of(
         "bedrock", "barrier", "light", "command_block", "chain_command_block", "repeating_command_block",
         "structure_block", "structure_void", "jigsaw", "spawner", "trial_spawner", "vault", "budding_amethyst",
-        "reinforced_deepslate", "end_portal_frame", "petrified_oak_slab", "test_block", "test_instance_block"
+        "reinforced_deepslate", "end_portal_frame", "petrified_oak_slab"
     );
 
     private static final List<BooleanProperty> FACES = List.of(
