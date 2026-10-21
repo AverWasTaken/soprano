@@ -75,6 +75,8 @@ import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.piston.MovingPistonBlock;
+import net.minecraft.world.level.block.piston.PistonHeadBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.Property;
@@ -3504,6 +3506,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (desired == null) {
             return true;
         }
+        if (pistonPart(current)) {
+            // breaking a head breaks its base too, and nothing else fits in this cell while the piston's out anyway.
+            // if the base is the wrong thing it gets broken on its own and takes the head with it. moving_piston is
+            // gone in two ticks and can't be mined. a head from a piston outside the file poking into a cell that
+            // wants a block stays "right" forever, but that's a stall, not a loop
+            return true;
+        }
+        if (pistonPart(desired) && current.getBlock() instanceof AirBlock) {
+            // the file got saved with the piston out. a head isn't an item, it shows up when the piston gets power
+            return true;
+        }
         if (desired.getBlock() instanceof LiquidBlock && desired.getValue(LiquidBlock.LEVEL) != 0
                 && (current.getBlock() instanceof AirBlock || current.getBlock() == desired.getBlock())) {
             // flowing is whatever the source next to it makes of it, at whatever level it feels like. a bucket only
@@ -3532,6 +3545,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return true;
         }
         return sameBlockstate(current, desired);
+    }
+
+    // the bits of a piston nobody places: the head and the block it's halfway through being
+    private static boolean pistonPart(BlockState state) {
+        return state.getBlock() instanceof PistonHeadBlock || state.getBlock() instanceof MovingPistonBlock;
     }
 
     // where the other half of a chest the file wants paired goes, null for anything that isn't half a pair
@@ -3714,6 +3732,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // and then, and a path that mines the scaffold it just put up is a loop that places it again. not INF
                 // though, standing on top of a tall pillar with no bucket the only way down is through it. the round
                 // the cleanup takes down isn't in kept, that one prices like any block the file wants gone
+                return 1000;
+            }
+            if (current.getBlock() instanceof PistonHeadBlock) {
+                // same reason as kept: a path that mines a head mines the piston, which gets placed again, extends
+                // again, and the next path mines it again. not INF, a bot shut in by a piston door still gets out
                 return 1000;
             }
             BlockState sch = getSchematic(x, y, z, current);
