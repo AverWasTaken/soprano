@@ -180,20 +180,43 @@ public class UpdateCardPreviewTest {
         }
     }
 
-    // 1080p at gui scale 4 is the common default: the card is at 1.5 and the logo starts 112 gui units in, which leaves
-    // 400 px, or 266 design px. the available buttons sit side by side, the dev ones stack
+    // 1080p at gui scale 4 is the common default: the card is at 2.0, the logo starts 112 gui units in and the margin is
+    // 4, which leaves 416 px, or 208 design px. the available buttons sit side by side, the dev ones stack
     @Test
     public void narrowCapStacksTheButtons() throws Exception {
-        Harness h = new Harness(1.5f, 1920, 1080);
-        h.show(snap(UpdateState.AVAILABLE, true, null, RELEASE, 0, 0, null, false), 266);
+        Harness h = new Harness(2f, 1920, 1080);
+        h.show(snap(UpdateState.AVAILABLE, true, null, RELEASE, 0, 0, null, false), 208);
         h.save("update_available_1080p_scale4");
-        assertTrue(h.card.w() <= 400);
+        assertTrue(h.card.w() <= 416);
         assertEquals(2, h.card.buttons().size());
         assertEquals(h.card.buttons().get(0).y(), h.card.buttons().get(1).y());
-        h.show(snap(UpdateState.AVAILABLE, false, "pretending to be 1.1.5, install is off", RELEASE, 0, 0, null, false), 266);
+        h.show(snap(UpdateState.AVAILABLE, false, "pretending to be 1.1.5, install is off", RELEASE, 0, 0, null, false), 208);
         h.save("update_available_dev_1080p_scale4");
-        assertTrue(h.card.w() <= 400);
+        assertTrue(h.card.w() <= 416);
         assertTrue(h.card.buttons().get(0).y() < h.card.buttons().get(1).y());
+    }
+
+    // the default 854x480 window at gui scale 2: the card is at 1.0 and only 146 design px fit before the logo, which is
+    // under the 180 floor. the card goes as narrow as the floor lets it and no wider, buttons stacked, text wrapped
+    @Test
+    public void tinyWindowKeepsTheCardAtTheFloor() throws Exception {
+        Harness h = new Harness(1f, 854, 480);
+        for (Object[] s : states()) {
+            h.show((Snapshot) s[1], 146);
+            assertTrue("card over the floor: " + s[0], h.card.w() <= h.theme.px(UpdateCard.MIN_W) || h.card.compact());
+        }
+        h.show(snap(UpdateState.AVAILABLE, false, "pretending to be 1.1.5, install is off", RELEASE, 0, 0, null, false), 146);
+        h.save("update_available_dev_854x480");
+        assertTrue(h.card.buttons().get(0).y() < h.card.buttons().get(1).y());
+        // the floor is the floor because the longest button has to fit on it whole
+        for (Button b : h.card.buttons()) {
+            assertTrue(b.text() + " ellipsized at the floor", b.w() >= b.preferredWidth());
+        }
+        // a cap between the floor and the rich minimum is honoured exactly
+        h.show(snap(UpdateState.STUCK, false, null, BARE, 0, 0, null, true), 200);
+        h.save("update_stuck_cap200");
+        assertTrue(h.card.w() <= h.theme.px(200));
+        assertTrue(h.card.w() > h.theme.px(UpdateCard.MIN_W));
     }
 
     @Test

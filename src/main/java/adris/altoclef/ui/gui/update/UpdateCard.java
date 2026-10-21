@@ -37,7 +37,8 @@ public final class UpdateCard extends Widget {
 
     // design px. the card never asks for more than RICH_W, and the host can pull that down to stay clear of the logo
     public static final int RICH_W = 300;
-    public static final int MIN_W = 180;
+    // wide enough that "Open download page" on its own row never ellipsizes (it needs about 164 inside the padding)
+    public static final int MIN_W = 196;
     // a rich card fits its words and buttons, but never gets narrower than this so the states don't jump around
     public static final int MIN_RICH_W = 240;
     private static final int PAD = 12;
@@ -268,6 +269,10 @@ public final class UpdateCard extends Widget {
         if (s.canInstall()) {
             finish(y, new Button(theme, "Retry", Button.Kind.PRIMARY, null, actions::update), pageButton(s, Button.Kind.GHOST));
         } else {
+            // no retry when a retry would do nothing, and the line says why
+            if (s.cannotInstallReason() != null && !s.cannotInstallReason().isBlank()) {
+                y = small(s.cannotInstallReason(), Theme.TEXT_3, y);
+            }
             finish(y, pageButton(s, Button.Kind.PRIMARY));
         }
     }
@@ -292,10 +297,11 @@ public final class UpdateCard extends Widget {
         needW = Math.max(needW, dx + theme.measurer.measure(text, style));
     }
 
-    // the card is as wide as the widest thing in it, within the floor and the room before the logo
+    // the card is as wide as the widest thing in it, within the floor and the room before the logo. the room wins over
+    // the floor: a card that is too wide for the window is under the logo, a narrow one is just narrow
     private void settle() {
         int pad = theme.px(PAD);
-        int floor = theme.px(MIN_RICH_W) - 2 * pad;
+        int floor = Math.min(theme.px(MIN_RICH_W) - 2 * pad, innerW());
         innerUsed = Math.max(floor, Math.min(innerW(), (int) Math.ceil(needW) - pad));
         cardW = pad * 2 + innerUsed;
     }
