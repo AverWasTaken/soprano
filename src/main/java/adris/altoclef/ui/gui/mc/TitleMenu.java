@@ -35,23 +35,25 @@ import java.util.Objects;
 import java.util.Set;
 
 // the title screen, ours: blurred panorama, a backdrop, the brand block, a dock of tiles that grow under the mouse,
-// two round corner buttons and the two corner lines. one of these lives as long as its TitleScreen (MixinTitleScreen
+// three round corner buttons and the two corner lines. one of these lives as long as its TitleScreen (MixinTitleScreen
 // keeps it), so the entry animation, the springs and the parallax survive init re-running on resize and when the
 // boot overlay re-inits the screen. vanilla's buttons stay in the screen, just invisible, and each gets a TitleTile
-// that presses it. the layout and animation numbers are gui-mock/title/title.js, keep the two in step.
+// that presses it (the music button's is one of our own that never joins the screen). the layout and animation
+// numbers are gui-mock/title/title.js, keep the two in step.
 // friend request badges and the realms notification icons are dropped for now, they'd need vanilla's sprites
 public final class TitleMenu {
 
-    private enum Role { PLAY, SECOND, FRIENDS, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, COPYRIGHT }
+    private enum Role { PLAY, SECOND, FRIENDS, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, MUSIC, COPYRIGHT }
 
     private static final class Piece {
         final TitleTile tile;
         final Role role;
-        final Icon icon;
+        // the music button swaps both when it's flipped
+        Icon icon;
         final int top;
         final int bottom;
         final String id;
-        final String label;
+        String label;
         // multiplayer and realms show vanilla's "why not" while they're off
         final boolean mpTip;
         // device px rect and corner radius from the last layout
@@ -109,6 +111,8 @@ public final class TitleMenu {
     private final List<Piece> dock = new ArrayList<>();
     private Piece language;
     private Piece accessibility;
+    private Piece music;
+    private boolean musicOn;
     private Piece copyright;
     private final Map<String, Spring> springs = new HashMap<>();
     private String mpReason;
@@ -213,9 +217,42 @@ public final class TitleMenu {
         accessibility = null;
         copyright = null;
         classify(children);
+        music = musicPiece();
     }
 
-    // the tiles to add before the update card: the dock in order, then the two corner buttons. tab walks the screen's
+    // ours, not vanilla's: a button that never joins the screen, it's only there so the tile has something to press
+    private Piece musicPiece() {
+        boolean on = SopranoMenus.music();
+        String label = musicLabel(on);
+        Button b = Button.builder(Component.literal(label), btn -> MenuMusic.toggle()).build();
+        musicOn = on;
+        return new Piece(new TitleTile(b, guiScale), Role.MUSIC, musicIcon(on), 0, 0, "music", label, false);
+    }
+
+    // #set can flip it too, so the button follows the setting and not its own clicks
+    private void syncMusic() {
+        boolean on = SopranoMenus.music();
+        if (music == null || on == musicOn) {
+            return;
+        }
+        musicOn = on;
+        music.label = musicLabel(on);
+        music.icon = musicIcon(on);
+        Component msg = Component.literal(music.label);
+        music.tile.target.setMessage(msg);
+        music.tile.setMessage(msg);
+    }
+
+    // what a press would do, like a play/pause button
+    private static String musicLabel(boolean on) {
+        return on ? "Mute music" : "Play music";
+    }
+
+    private static Icon musicIcon(boolean on) {
+        return on ? Icon.SPEAKER : Icon.SPEAKER_OFF;
+    }
+
+    // the tiles to add before the update card: the dock in order, then the three corner buttons. tab walks the screen's
     // children in the order they were added, so this is the tab order too
     public List<TitleTile> tilesBeforeCard() {
         List<TitleTile> out = new ArrayList<>();
@@ -227,6 +264,9 @@ public final class TitleMenu {
         }
         if (accessibility != null) {
             out.add(accessibility.tile);
+        }
+        if (music != null) {
+            out.add(music.tile);
         }
         return out;
     }
@@ -245,6 +285,7 @@ public final class TitleMenu {
     // put back what we hid and hand over our tiles so the mixin can take them out again
     public List<TitleTile> undress() {
         broken = true;
+        MenuMusic.titleGone();
         for (Button b : hidden) {
             b.visible = true;
         }
@@ -256,6 +297,7 @@ public final class TitleMenu {
         dock.clear();
         language = null;
         accessibility = null;
+        music = null;
         copyright = null;
         return ours;
     }
@@ -318,7 +360,8 @@ public final class TitleMenu {
             case LANGUAGE -> new Piece(tile, role, Icon.LANGUAGE, 0, 0, "language", label, false);
             case ACCESSIBILITY -> new Piece(tile, role, Icon.ACCESSIBILITY, 0, 0, "accessibility", label, false);
             case COPYRIGHT -> new Piece(tile, role, null, 0, 0, "copyright", label, false);
-            case EXTRA -> new Piece(tile, role, Icon.PUZZLE, TILE_0, TILE_1, extraId(label), label, false);
+            // roleOf never says music, the music button isn't a vanilla one
+            case EXTRA, MUSIC -> new Piece(tile, role, Icon.PUZZLE, TILE_0, TILE_1, extraId(label), label, false);
         };
         switch (role) {
             case LANGUAGE -> language = p;
@@ -518,6 +561,9 @@ public final class TitleMenu {
                 hover = hit(accessibility);
             }
             if (hover == null) {
+                hover = hit(music);
+            }
+            if (hover == null) {
                 hover = hit(copyright);
             }
         }
@@ -525,7 +571,7 @@ public final class TitleMenu {
     }
 
     // a soft note when the pointer or tab lands on something new. dock tiles climb a pentatonic scale left to right so
-    // a sweep along the dock plays a little run, the two corner buttons sit in the middle of it. tracked by id, not by
+    // a sweep along the dock plays a little run, the three corner buttons climb along with it. tracked by id, not by
     // Piece: a resize rebuilds every piece and that must not replay the note you're already on. the first frame after
     // the boot overlay only takes note of where the mouse is, a menu opening under a resting cursor shouldn't ding
     private void sound(boolean present) {
@@ -549,7 +595,7 @@ public final class TitleMenu {
             return;
         }
         int step = dock.indexOf(target);
-        MenuSounds.hover(MenuSounds.note(step >= 0 ? step : target == language ? 3 : 4));
+        MenuSounds.hover(MenuSounds.note(step >= 0 ? step : target == language ? 3 : target == accessibility ? 4 : 5));
     }
 
     private Piece hit(Piece p) {
@@ -629,13 +675,16 @@ public final class TitleMenu {
         }
     }
 
-    // top right: accessibility hugging the corner, language left of it. the update card has the top left
+    // top right, left to right: language, accessibility, music hugging the corner. the update card has the top left
     private void layoutCorners(Canvas c, int w, int h) {
         int b = r(40);
         int inset = r(24);
         int gap = r(10);
-        int a11yX = w - inset - b;
+        int musicX = w - inset - b;
+        int a11yX = musicX - gap - b;
         int langX = a11yX - gap - b;
+        syncMusic();
+        corner(music, musicX, inset, b);
         corner(accessibility, a11yX, inset, b);
         corner(language, langX, inset, b);
         if (copyright != null) {
@@ -770,6 +819,7 @@ public final class TitleMenu {
     private void paintCorners(Canvas c) {
         glass(c, language);
         glass(c, accessibility);
+        glass(c, music);
     }
 
     private void glass(Canvas c, Piece p) {
@@ -818,6 +868,9 @@ public final class TitleMenu {
         if (accessibility != null && accessibility.tile.isFocused()) {
             return accessibility;
         }
+        if (music != null && music.tile.isFocused()) {
+            return music;
+        }
         if (copyright != null && copyright.tile.isFocused()) {
             return copyright;
         }
@@ -829,7 +882,7 @@ public final class TitleMenu {
         if (p == null || p == copyright) {
             return;
         }
-        boolean corner = p == language || p == accessibility;
+        boolean corner = p == language || p == accessibility || p == music;
         int col = Theme.fade(RING, corner ? eCorner : eDock);
         int off = r(3);
         for (int k = 2; k >= 1; k--) {
@@ -847,7 +900,7 @@ public final class TitleMenu {
         if (lid == null) {
             return;
         }
-        boolean below = lid == language || lid == accessibility;
+        boolean below = lid == language || lid == accessibility || lid == music;
         String tip = lid.mpTip && !lid.tile.target.active ? mpReason : null;
         int px10 = r(10);
         int py5 = r(5);

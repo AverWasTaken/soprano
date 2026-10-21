@@ -45,5 +45,7 @@ public enum Icon {
     PUZZLE,         // a button some other mod put on the title screen
     POWER,          // quit
     LANGUAGE,       // a small globe and an A
-    ACCESSIBILITY   // arms out in a ring
+    ACCESSIBILITY,  // arms out in a ring
+    SPEAKER,        // menu music on: a speaker and two waves
+    SPEAKER_OFF     // menu music off: the same speaker and an x
 }
