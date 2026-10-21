@@ -54,6 +54,9 @@ input { font: inherit; color: inherit; }
   font-size: 20px; line-height: 24px; font-weight: 600;
   display: flex; align-items: center;
 }
+/* Shell.drawLogo: the title screen's white png tinted with the text colour. a css mask would be the 1:1 copy but
+   file:// pages can't mask with a local image, so light mode squashes it to black and lifts it to --text (#1D1D1F) */
+.wordmark .logo { width: 26px; height: 26px; display: block; }
 .nav { position: relative; width: var(--sidebar-w); padding-top: 1px; }
 .nav-group { margin-top: 11px; }  /* collapses with the last row's 2px margin, so 11 total */
 .nav-pill + .nav-group { margin-top: 0; }
@@ -142,3 +145,4 @@ input { font: inherit; color: inherit; }
   transition: background-color var(--anim-slow) var(--ease), color var(--anim-slow) var(--ease),
               border-color var(--anim-slow) var(--ease), box-shadow var(--anim-slow) var(--ease) !important;
 }
+:root[data-theme="light"] .wordmark .logo { filter: brightness(0) invert(0.114); }

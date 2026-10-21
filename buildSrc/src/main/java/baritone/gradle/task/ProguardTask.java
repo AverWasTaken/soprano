@@ -136,6 +136,8 @@ public class ProguardTask extends BaritoneGradleTask {
         template.add(2, "-libraryjars  <java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)");
         template.add(3, "-libraryjars  <java.home>/jmods/java.desktop.jmod(!**.jar;!module-info.class)");
         template.add(4, "-libraryjars  <java.home>/jmods/jdk.unsupported.jmod(!**.jar;!module-info.class)");
+        // java.net.http is the updater's http client. proguard refuses to run at all if it can't see it
+        template.add(5, "-libraryjars  <java.home>/jmods/java.net.http.jmod(!**.jar;!module-info.class)");
 
         {
             final Stream<File> libraries;

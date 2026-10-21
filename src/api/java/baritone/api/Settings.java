@@ -2115,6 +2115,28 @@ public final class Settings {
      */
     public final Setting<Boolean> guiAnimations = new Setting<>(true);
 
+    /**
+     * Draw Soprano's own boot screen and title screen instead of the vanilla ones. Turn this off if another mod
+     * restyles those screens, or to get the vanilla look back. The title screen switches the next time it opens.
+     */
+    public final Setting<Boolean> guiMenus = new Setting<>(true);
+
+    /**
+     * Play Soprano's own background music on the title screen and the other menus instead of the vanilla menu music.
+     * The speaker button in the top right corner of the title screen turns this on and off. Only does anything while
+     * {@link #guiMenus} is on, in game the vanilla music plays as usual.
+     */
+    public final Setting<Boolean> guiMenuMusic = new Setting<>(true);
+
+    /**
+     * Ask GitHub once per session, when the title screen first opens, whether a newer Soprano release exists for the
+     * Minecraft version and release channel you are on, so the title screen can offer to update. Nothing is
+     * downloaded unless you click update.
+     * <p>
+     * Turning this off stops the check, but an update that was already downloaded still gets finished.
+     */
+    public final Setting<Boolean> checkForUpdates = new Setting<>(true);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
