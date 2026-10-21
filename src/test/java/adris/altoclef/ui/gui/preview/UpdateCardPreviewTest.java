@@ -159,10 +159,10 @@ public class UpdateCardPreviewTest {
 
     private static final Snapshot.Release NIGHTLY = new Snapshot.Release("1.1.7-nightly.1", "Soprano v1.1.7-nightly.1 (26.3)", NOTES,
             "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1", 10_300_000L);
-    private static final Snapshot.Release STABLE = new Snapshot.Release("1.1.6", "Soprano v1.1.6 (26.3)", NOTES,
-            "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.6", 10_200_000L);
-    private static final Snapshot.Release STABLE_ANY = new Snapshot.Release("1.1.6-anyversion", "Soprano v1.1.6 Any Version (base 26.3)",
-            NOTES, "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.6-anyversion", 10_200_000L);
+    private static final Snapshot.Release STABLE = new Snapshot.Release("1.1.7", "Soprano v1.1.7 (26.3)", NOTES,
+            "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7", 10_200_000L);
+    private static final Snapshot.Release STABLE_ANY = new Snapshot.Release("1.1.7-anyversion", "Soprano v1.1.7 Any Version (base 26.3)",
+            NOTES, "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-anyversion", 10_200_000L);
 
     // up to date with a way over to the other track
     private static Snapshot upToDate(String current, Snapshot.Release target) {
@@ -326,7 +326,7 @@ public class UpdateCardPreviewTest {
         h.card.focusEnd(false);
         assertEquals("Switch to nightly", h.card.focusedLabel());
         assertEquals("Soprano v1.1.6, up to date", h.card.summary());
-        h.show(upToDate("1.1.7-nightly.2", STABLE), ROOMY);
+        h.show(upToDate("1.1.8-nightly.2", STABLE), ROOMY);
         h.save("update_up_to_date_switch_stable");
         assertEquals("Switch to stable", h.card.buttons().get(0).text());
         assertEquals(plainH, h.card.h());
@@ -339,7 +339,7 @@ public class UpdateCardPreviewTest {
     // the longest name there is, on the widest cap and the narrowest ones. the button never takes the card under the logo
     @Test
     public void longNightlyNameKeepsClearOfTheLogo() throws Exception {
-        Snapshot s = upToDate("1.1.7-nightly.1-anyversion", STABLE_ANY);
+        Snapshot s = upToDate("1.1.8-nightly.1-anyversion", STABLE_ANY);
         Harness h = new Harness(1f, 960, 540);
         h.show(s, ROOMY);
         h.save("update_up_to_date_switch_long");
@@ -375,9 +375,9 @@ public class UpdateCardPreviewTest {
             h.click(b);
         }
         assertEquals(List.of("update", "whatsNew", "cancelSwitch"), h.actions);
-        h.show(switching(UpdateState.AVAILABLE, "1.1.7-nightly.2", STABLE, true, null, null), UpdateCard.RICH_W);
+        h.show(switching(UpdateState.AVAILABLE, "1.1.8-nightly.2", STABLE, true, null, null), UpdateCard.RICH_W);
         h.save("update_switch_to_stable");
-        assertTrue(h.card.summary(), h.card.summary().startsWith("Stable v1.1.6, you have v1.1.7-nightly.2"));
+        assertTrue(h.card.summary(), h.card.summary().startsWith("Stable v1.1.7, you have v1.1.8-nightly.2"));
         assertEquals(List.of("Switch", "What's new", "Cancel"), labels(h));
         // can't install: the page instead of switch, cancel still there
         h.show(switching(UpdateState.AVAILABLE, "1.1.6", NIGHTLY, false, "pretending to be 1.1.6, install is off", null),
@@ -392,7 +392,7 @@ public class UpdateCardPreviewTest {
         assertTrue(h.card.summary().startsWith("The switch didn't finish"));
         // the narrow caps stack and stay inside
         for (int cap : new int[]{UpdateCard.MIN_W, 208}) {
-            h.show(switching(UpdateState.AVAILABLE, "1.1.7-nightly.1-anyversion", STABLE_ANY, true, null, null), cap);
+            h.show(switching(UpdateState.AVAILABLE, "1.1.8-nightly.1-anyversion", STABLE_ANY, true, null, null), cap);
             assertTrue(h.card.w() <= h.theme.px(cap));
         }
         h.save("update_switch_to_stable_narrow");
