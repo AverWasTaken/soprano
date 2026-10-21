@@ -16,6 +16,9 @@ import java.util.function.IntConsumer;
 // once, the panel stays up
 public class Shell extends Widget implements ShellContext {
 
+    // design px, about the height of the word it replaced plus its descender room
+    private static final int LOGO = 26;
+
     private final List<Tab> tabs;
     private final Widget[] contents;
     private final StatusAccess status;
@@ -59,6 +62,12 @@ public class Shell extends Widget implements ShellContext {
 
     private int sideW;
     private int headerH;
+    // the title screen's logo in the sidebar header instead of the word. baked at the device size it's drawn at, a
+    // new scale bakes a new one (the old texture waits for the atlases' next release, it's 26 px, whatever).
+    // null + logoBroken = the png didn't load, so the header falls back to the word
+    private PixelImage logo;
+    private int logoPx;
+    private boolean logoBroken;
     private int statusH;
     private int contentX;
     private int contentY;
@@ -676,6 +685,26 @@ public class Shell extends Widget implements ShellContext {
         return fade.reset(c, a, (1f - a) * theme.px(8));
     }
 
+    // the png is white, so the text colour as the tint gives a white logo in dark mode and a near black one in light
+    private void drawLogo(Canvas g, int pad) {
+        int lp = theme.px(LOGO);
+        if (!logoBroken && (logo == null || logoPx != lp)) {
+            try {
+                logo = BrandArt.logo(lp);
+                logoPx = lp;
+            } catch (RuntimeException e) {
+                Safe.report("sidebar logo", e);
+                logo = null;
+                logoBroken = true;
+            }
+        }
+        if (logo == null) {
+            g.text("soprano", x + pad, baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT));
+            return;
+        }
+        g.image(logo, x + pad, y + Math.round((headerH - lp) / 2f), lp, lp, theme.color(Theme.TEXT));
+    }
+
     private void drawSidebar(Canvas g, Frame f, long now, float r) {
         // only the top left corner is round: the panel's own corners cover the rest, so square off the others
         g.fillRoundRect(x, y, sideW, h - statusH, r, theme.color(Theme.SIDEBAR));
@@ -687,7 +716,7 @@ public class Shell extends Widget implements ShellContext {
         // start at pad. rows are inset by half of it so the selection pill has a margin
         int pad = theme.px(Theme.PAD);
         int rowInset = theme.px(Theme.SPACE_2);
-        g.text("soprano", x + pad, baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT));
+        drawLogo(g, pad);
 
         int rowH = tabRowH();
         // the selected row is the one lit thing in the sidebar, and it follows the same spring as the segment and
