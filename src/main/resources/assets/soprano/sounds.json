@@ -1,0 +1,18 @@
+{
+  "ui.hover": {
+    "sounds": [
+      {
+        "name": "soprano:ui/hover",
+        "preload": true
+      }
+    ]
+  },
+  "ui.click": {
+    "sounds": [
+      {
+        "name": "soprano:ui/click",
+        "preload": true
+      }
+    ]
+  }
+}

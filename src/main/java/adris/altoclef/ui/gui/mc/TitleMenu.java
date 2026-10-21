@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 // the title screen, ours: blurred panorama, a backdrop, the brand block, a dock of tiles that grow under the mouse,
@@ -165,6 +166,8 @@ public final class TitleMenu {
     private DockLayout.Row row;
     private int divBefore = -1;
     private Piece hover;
+    private String soundedId;
+    private boolean soundPrimed;
 
     private TitleMenu(boolean fading) {
         this.entryPending = fading;
@@ -515,6 +518,35 @@ public final class TitleMenu {
                 hover = hit(copyright);
             }
         }
+        sound(present);
+    }
+
+    // a soft note when the pointer or tab lands on something new. dock tiles climb a pentatonic scale left to right so
+    // a sweep along the dock plays a little run, the two corner buttons sit in the middle of it. tracked by id, not by
+    // Piece: a resize rebuilds every piece and that must not replay the note you're already on. the first frame after
+    // the boot overlay only takes note of where the mouse is, a menu opening under a resting cursor shouldn't ding
+    private void sound(boolean present) {
+        if (!present) {
+            soundPrimed = false;
+            return;
+        }
+        Piece target = hover != null ? hover : focused();
+        String id = target == null ? null : target.id;
+        if (!soundPrimed) {
+            soundPrimed = true;
+            soundedId = id;
+            return;
+        }
+        if (Objects.equals(id, soundedId)) {
+            return;
+        }
+        soundedId = id;
+        // disabled tiles stay quiet like they stay small, and the copyright line is just text
+        if (target == null || target == copyright || !target.tile.target.active) {
+            return;
+        }
+        int step = dock.indexOf(target);
+        MenuSounds.hover(MenuSounds.note(step >= 0 ? step : target == language ? 3 : 4));
     }
 
     private Piece hit(Piece p) {

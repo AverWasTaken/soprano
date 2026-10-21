@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.sounds.SoundManager;
 
 // the clickable stand-in for one hidden vanilla title button (a dock tile, a corner button, the copyright line). it
 // draws nothing, TitleMenu draws everything in one kit pass and moves these boxes to wherever it drew last frame. a
@@ -79,6 +80,12 @@ public final class TitleTile extends AbstractButton {
     public void onRelease(MouseButtonEvent event) {
         held = false;
         super.onRelease(event);
+    }
+
+    // vanilla calls this for both a click and enter/space, so one override swaps the whole button sound
+    @Override
+    public void playDownSound(SoundManager sounds) {
+        MenuSounds.click(sounds);
     }
 
     @Override
