@@ -18,6 +18,7 @@
 package baritone.launch.mixins;
 
 import adris.altoclef.ui.gui.kit.Safe;
+import adris.altoclef.ui.gui.mc.MenuMusic;
 import adris.altoclef.ui.gui.mc.TitleMenu;
 import adris.altoclef.ui.gui.mc.TitleTile;
 import adris.altoclef.ui.gui.mc.UpdateCardWidget;
@@ -73,6 +74,10 @@ public abstract class MixinTitleScreen extends Screen {
                 soprano$menu = TitleMenu.create(fading);
             } catch (Throwable t) {
                 Safe.report("title menu", t);
+            }
+            // a vanilla title has no speaker button, so it gets vanilla's music too
+            if (soprano$menu == null) {
+                MenuMusic.titleGone();
             }
         }
         TitleMenu menu = soprano$menu;
