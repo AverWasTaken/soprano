@@ -138,15 +138,18 @@ public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
                 Optional<Slot> bestPotential = getBestSlotToTransfer(mod, target, count, potentials, stack -> mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, false).isPresent());
                 ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
                 if (!cursorStack.isEmpty()) {
-                    Optional<Slot> toPlace = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false).or(() -> StorageHelper.getGarbageSlot(mod));
-                    if (toPlace.isPresent() && target.matches(cursorStack.getItem())) {
-                        mod.getSlotHandler().clickSlot(toPlace.get(), 0, ContainerInput.PICKUP);
+                    Optional<Slot> fit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
+                    if (fit.isPresent() && target.matches(cursorStack.getItem())) {
+                        mod.getSlotHandler().clickSlot(fit.get(), 0, ContainerInput.PICKUP);
                         return null;
                     }
+                    // throw before the garbage click, same order as EnsureFreeCursorSlotTask. the other way round a cursor
+                    // that is as much junk as the garbage pick (cobble on cobble) just trades places with it every tick
                     if (ItemHelper.canDropStack(mod, cursorStack)) {
                         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                         return null;
                     }
+                    Optional<Slot> toPlace = fit.or(() -> StorageHelper.getGarbageSlot(mod));
                     if (toPlace.isPresent()) {
                         mod.getSlotHandler().clickSlot(toPlace.get(), 0, ContainerInput.PICKUP);
                         return null;

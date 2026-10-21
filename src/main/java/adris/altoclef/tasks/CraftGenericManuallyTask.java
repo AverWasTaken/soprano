@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.trackers.storage.ItemStorageTracker;
 import adris.altoclef.tasks.slot.DragSplitToSlotsTask;
+import adris.altoclef.tasks.slot.EnsureFreeCursorSlotTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
@@ -203,9 +204,12 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             ItemStack present = StorageHelper.getItemStackInSlot(currentCraftSlot);
             if (toFill == null || toFill.isEmpty()) {
                 if (present.getItem() != Items.AIR) {
+                    // a held stack would just trade places with the stray one, hands free first
+                    if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) return putDownCursor();
                     // Move this item OUT if it should be empty
                     setDebugState("Found INVALID slot");
                     mod.getSlotHandler().clickSlot(currentCraftSlot, 0, ContainerInput.PICKUP);
+                    return null;
                 }
             } else {
                 boolean correctItem = toFill.matches(present.getItem());
@@ -231,22 +235,22 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 // We could be OVER satisfied
                 boolean oversatisfies = present.getCount() > requiredPerSlot;
                 if (oversatisfies) {
+                    // right click with something held drops one in or swaps, not the half-out we want
+                    if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) return putDownCursor();
                     setDebugState("OVER SATISFIED slot! Right clicking slot to extract half and spread it out more.");
                     mod.getSlotHandler().clickSlot(currentCraftSlot, 1, ContainerInput.PICKUP);
+                    return null;
                 }
             }
         }
 
-        // Ensure our cursor is empty/can receive our item
+        // Ensure our cursor is empty/can receive our item. this used to click fit-or-garbage inline every tick, which with a
+        // full bag just traded two junk stacks through the cursor forever (nothing ever got thrown), and its click ate the
+        // one shared slot cooldown so the cursor task under ReceiveCraftingOutputSlotTask never got a turn. that task
+        // knows how to throw, let it have the cursor
         ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        if (!ItemHelper.canStackTogether(StorageHelper.getItemStackInSlot(outputSlot), cursor)) {
-            Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false).or(() -> StorageHelper.getGarbageSlot(mod));
-            if (toFit.isPresent()) {
-                mod.getSlotHandler().clickSlot(toFit.get(), 0, ContainerInput.PICKUP);
-            } else {
-                // Eh screw it
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-            }
+        if (!cursor.isEmpty() && !ItemHelper.canStackTogether(StorageHelper.getItemStackInSlot(outputSlot), cursor)) {
+            return putDownCursor();
         }
 
         if (!StorageHelper.getItemStackInSlot(outputSlot).isEmpty()) {
@@ -255,6 +259,11 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             // Wait
             return null;
         }
+    }
+
+    private Task putDownCursor() {
+        setDebugState("Putting down the held stack first");
+        return new EnsureFreeCursorSlotTask();
     }
 
     private Slot gridSlot(int craftSlot, boolean bigCrafting) {
