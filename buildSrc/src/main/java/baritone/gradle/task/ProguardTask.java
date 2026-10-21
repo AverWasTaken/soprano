@@ -127,16 +127,20 @@ public class ProguardTask extends BaritoneGradleTask {
         return toolchain;
     }
 
+    // java.net.http is the updater's http client. proguard refuses to run at all if it can't see it
+    private static final List<String> JDK_MODULES = List.of("java.base", "java.desktop", "jdk.unsupported", "java.net.http");
+
     private Path extractJdkClasses() throws IOException {
         Path home = getJavaLauncherForProguard().getMetadata().getInstallationPath().getAsFile().toPath();
-        Path jar = getTemporaryFile("jdk-classes-" + getProject().findProperty("java_version") + ".jar");
+        // the module count is in the name so a cached jar from before a module got added isn't quietly reused
+        Path jar = getTemporaryFile("jdk-classes-" + getProject().findProperty("java_version") + "-" + JDK_MODULES.size() + ".jar");
         if (Files.exists(jar)) {
             return jar;
         }
         // jrt: of another jdk than the one gradle runs on, it only reads the classfiles so the version gap doesn't matter
         try (FileSystem jrt = FileSystems.newFileSystem(URI.create("jrt:/"), Map.of("java.home", home.toString()));
              ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
-            for (String module : List.of("java.base", "java.desktop", "jdk.unsupported")) {
+            for (String module : JDK_MODULES) {
                 Path root = jrt.getPath("/modules", module);
                 List<Path> classes;
                 try (Stream<Path> files = Files.walk(root)) {
@@ -161,11 +165,11 @@ public class ProguardTask extends BaritoneGradleTask {
         template.add(1, "-outjars '" + this.getTemporaryFile(PROGUARD_EXPORT_PATH) + "'");
 
         if (Files.exists(getJavaLauncherForProguard().getMetadata().getInstallationPath().getAsFile().toPath().resolve("jmods/java.base.jmod"))) {
-            template.add(2, "-libraryjars  <java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)");
-            template.add(3, "-libraryjars  <java.home>/jmods/java.desktop.jmod(!**.jar;!module-info.class)");
-            template.add(4, "-libraryjars  <java.home>/jmods/jdk.unsupported.jmod(!**.jar;!module-info.class)");
+            for (int i = 0; i < JDK_MODULES.size(); i++) {
+                template.add(2 + i, "-libraryjars  <java.home>/jmods/" + JDK_MODULES.get(i) + ".jmod(!**.jar;!module-info.class)");
+            }
         } else {
-            // temurin 25 doesn't ship jmods anymore (zulu still does), so read the same three modules out of the runtime image
+            // temurin 25 doesn't ship jmods anymore (zulu still does), so read the same modules out of the runtime image
             template.add(2, "-libraryjars '" + extractJdkClasses() + "'");
         }
 
