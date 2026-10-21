@@ -52,13 +52,16 @@ public abstract class MixinLoadingOverlay {
     @Shadow
     private float currentProgress;
 
-    // all three reads of the brand colour: the first boot clear colour and the two fade fills. no ordinal on purpose
+    // all three reads of the brand colour: the first boot clear colour and the two fade fills. no ordinal on purpose.
+    // require 0 on both redirects: a loading screen mod redirecting the same call would otherwise kill the boot. this
+    // way ours just skips and BootScreen draws over whatever that mod paints
     @Redirect(
             method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
             at = @At(
                     value = "INVOKE",
                     target = "Ljava/util/function/IntSupplier;getAsInt()I"
-            )
+            ),
+            require = 0
     )
     private int soprano$background(IntSupplier brand) {
         return BootScreen.drawing() ? 0xFF000000 : brand.getAsInt();
@@ -70,7 +73,8 @@ public abstract class MixinLoadingOverlay {
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/gui/GuiGraphicsExtractor;blit(Lcom/mojang/renderpearl/api/pipeline/RenderPipeline;Lnet/minecraft/resources/Identifier;IIFFIIIIIII)V"
-            )
+            ),
+            require = 0
     )
     private void soprano$logo(GuiGraphicsExtractor g, RenderPipeline pipeline, Identifier texture, int x, int y,
                               float u, float v, int w, int h, int uw, int vh, int tw, int th, int color) {

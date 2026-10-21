@@ -278,7 +278,8 @@ public final class TitleMenu {
     private List<TitleTile> classify(List<? extends GuiEventListener> children) {
         List<Button> found = new ArrayList<>();
         for (GuiEventListener child : new ArrayList<>(children)) {
-            if (child instanceof Button b && !(child instanceof TitleTile) && seen.add(b)) {
+            // one somebody else hid stays unseen, so it gets its tile the frame they show it again
+            if (child instanceof Button b && !(child instanceof TitleTile) && b.visible && seen.add(b)) {
                 found.add(b);
             }
         }
@@ -325,7 +326,7 @@ public final class TitleMenu {
             case LANGUAGE -> new Piece(tile, role, Icon.LANGUAGE, 0, 0, "language", label, false);
             case ACCESSIBILITY -> new Piece(tile, role, Icon.ACCESSIBILITY, 0, 0, "accessibility", label, false);
             case COPYRIGHT -> new Piece(tile, role, null, 0, 0, "copyright", label, false);
-            case EXTRA -> new Piece(tile, role, Icon.PUZZLE, ORANGE_0, ORANGE_1, "extra:" + label, label, false);
+            case EXTRA -> new Piece(tile, role, Icon.PUZZLE, ORANGE_0, ORANGE_1, extraId(label), label, false);
         };
         switch (role) {
             case LANGUAGE -> language = p;
@@ -334,6 +335,17 @@ public final class TitleMenu {
             default -> dock.add(p);
         }
         return p;
+    }
+
+    // the spring's key. two mods can both call their button "Mods", and two tiles on one spring would fight over it
+    private String extraId(String label) {
+        int same = 0;
+        for (Piece p : dock) {
+            if (p.role == Role.EXTRA && p.label.equals(label)) {
+                same++;
+            }
+        }
+        return "extra:" + label + "#" + same;
     }
 
     private static Role roleOf(String key) {

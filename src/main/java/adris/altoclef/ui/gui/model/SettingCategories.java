@@ -65,7 +65,7 @@ public final class SettingCategories {
             "renderPathIgnoreDepth", "renderGoalIgnoreDepth", "renderSelectionBoxesIgnoreDepth",
             "prefix", "prefixControl", "shortBaritonePrefix", "chatControl", "chatControlAnyway", "logAsToast",
             "censorCoordinates", "censorRanCommands", "echoCommands", "desktopNotifications", "notificationOnPathComplete",
-            "guiKey", "guiKeyEnabled", "guiDarkMode", "guiAnimations", "keepFpsWhileBotting", "doBedWaypoints", "doDeathWaypoints", "backfill", "autoTorch",
+            "guiKey", "guiKeyEnabled", "guiDarkMode", "guiAnimations", "guiMenus", "keepFpsWhileBotting", "doBedWaypoints", "doDeathWaypoints", "backfill", "autoTorch",
             "followRadius", "followOffsetDistance", "followOffsetDirection", "disconnectOnArrival", "enterPortal",
             "rightClickContainerOnArrival", "splicePath", "askToGatherForPath",
             "elytraAutoJump", "elytraAutoSwap", "elytraConserveFireworks", "elytraPitchRange", "elytraFireworkSpeed",
