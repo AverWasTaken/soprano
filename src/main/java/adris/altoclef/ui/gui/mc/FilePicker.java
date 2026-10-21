@@ -14,8 +14,9 @@ import java.util.concurrent.TimeUnit;
 
 // the os's own "open files" dialog, run as a child process. this version still has lwjgl-tinyfd, the 26.3 build doesn't
 // (the game moved to sdl there), and one picker for both beats two that drift apart. a child process also means the
-// game keeps drawing while the dialog is open, and a dialog that hangs can't take the jvm with it. windows uses the winforms dialog through powershell, mac uses osascript, linux tries
-// zenity and then kdialog. blocking: call it from a helper thread
+// game keeps drawing while the dialog is open, and a dialog that hangs can't take the jvm with it. windows uses the
+// winforms dialog through powershell, mac uses osascript, linux tries zenity and then kdialog. blocking: call it from a
+// helper thread
 final class FilePicker {
 
     // files empty and error null: the dialog was closed without choosing. error set: no dialog could be opened at all
