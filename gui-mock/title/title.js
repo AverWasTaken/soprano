@@ -634,6 +634,7 @@
         if (frozen || !mouse) hoverId = opt.hover;
         else hoverId = v.boot ? null : hitTest(mouse.x, mouse.y, newHits);
         bootUp = !!v.boot;
+        soundHover(!v.boot);
         hits = newHits;
 
         // ----- focus ring -----
@@ -733,7 +734,37 @@
     }
     function activate(id) {
         if (!id || isOff(id)) return;
+        if (id !== 'card') playSnd('click', 1, 0.8);
         $('dv-said').textContent = 'pressed: ' + nameOf(id);
+    }
+    // ----- sounds: the same oggs the game plays, same rules as MenuSounds + TitleMenu.sound. browsers keep audio
+    // muted until the first click or key, so hovering before that is silent
+    var SND = '../../src/main/resources/assets/soprano/sounds/ui/';
+    var SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19];
+    var sounded, soundPrimed = false, lastHoverSnd = -1e9;
+    function note(step) { var i = Math.max(0, Math.min(step, SCALE.length - 1)); return Math.pow(2, (SCALE[i] - 7) / 12); }
+    function playSnd(name, pitch, vol) {
+        if (frozen) return;
+        var a = new Audio(SND + name + '.ogg');
+        // vanilla pitch is playback speed, so it shortens the sound too. preservesPitch off does the same thing
+        a.preservesPitch = false;
+        a.playbackRate = pitch;
+        a.volume = vol;
+        a.play().catch(function () {});
+    }
+    function soundHover(present) {
+        if (!present) { soundPrimed = false; return; }
+        var id = hoverId || focusId || null;
+        if (!soundPrimed) { soundPrimed = true; sounded = id; return; }
+        if (id === sounded) return;
+        sounded = id;
+        if (!id || id === 'copyright' || id === 'card' || isOff(id)) return;
+        var now = performance.now();
+        if (now - lastHoverSnd < 30) return;
+        lastHoverSnd = now;
+        var step = -1;
+        for (var i = 0; i < tiles.length; i++) if (tiles[i].id === id) step = i;
+        playSnd('hover', note(step >= 0 ? step : id === 'lang' ? 3 : 4), 0.6);
     }
     function focusOrder() {
         var o = [];
