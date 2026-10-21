@@ -11,11 +11,10 @@ import adris.altoclef.ui.gui.mc.move.MoveSession;
 import baritone.Baritone;
 import baritone.api.Settings;
 import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 // the move mode screen: see-through, no blur, no pause, so the world is the whole picture and the free camera
@@ -23,10 +22,10 @@ import net.minecraft.network.chat.Component;
 // along the bottom is the click gui's kit on the same canvases GuiScreen uses
 public final class MoveScreen extends Screen implements MoveSession.MoveScreenMarker {
 
-    // kit buttons: 0 left, 1 middle, 2 right
+    // glfw's buttons, which the screen gets as they are: 0 left, 1 right, 2 middle
     private static final int LEFT = 0;
-    private static final int MIDDLE = 1;
-    private static final int RIGHT = 2;
+    private static final int RIGHT = 1;
+    private static final int MIDDLE = 2;
     private static final int W = 87;
     private static final int A = 65;
     private static final int S = 83;
@@ -66,7 +65,7 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
                 schematics.stopMoving();
                 return;
             }
-            mc.gui.setScreen(new MoveScreen(s));
+            mc.setScreen(new MoveScreen(s));
         } catch (Throwable t) {
             Safe.report("move screen open", t);
             MoveSession.end();
@@ -133,8 +132,8 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
     private void finish() {
         closing = true;
         MoveSession.end();
-        if (mc.gui.screen() == this) {
-            mc.gui.setScreen(null);
+        if (mc.screen == this) {
+            mc.setScreen(null);
         }
     }
 
@@ -157,11 +156,11 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
 
     // no blur and no dim, the world is what you're here to look at
     @Override
-    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
     }
 
     @Override
-    public void resize(int w, int h) {
+    public void resize(Minecraft minecraft, int w, int h) {
         this.width = w;
         this.height = h;
     }
@@ -169,13 +168,16 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
     // ----- drawing
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
         Window win = mc.getWindow();
         int winW = win.getWidth();
         int winH = win.getHeight();
-        float inv = 1f / Math.max(1, win.getGuiScale());
-        g.pose().pushMatrix();
-        g.pose().scale(inv, inv);
+        float inv = (float) (1.0 / Math.max(1, win.getGuiScale()));
+        // the hotbar's items leave depth behind right where the bar sits, same clean start as GuiScreen
+        g.flush();
+        RenderSystem.clear(256);
+        g.pose().pushPose();
+        g.pose().scale(inv, inv, 1f);
         boolean began = false;
         try {
             if (atlasCanvas != null) {
@@ -208,7 +210,7 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
             } catch (Throwable t) {
                 Safe.report("move screen render end", t);
             }
-            g.pose().popMatrix();
+            g.pose().popPose();
         }
         if (atlasCanvas != null && atlasCanvas.broken) {
             // same way out as GuiScreen: the bar goes plain rather than wordless
@@ -240,13 +242,12 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
     }
 
     @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+    public boolean mouseClicked(double x, double y, int button) {
         Safe.run("move mouse down", () -> {
-            int button = McKeys.buttonToKit(event.button());
             float px = pointerX();
             float py = pointerY();
             if (bar.covers(px, py)) {
-                bar.mouseDown(px, py, button, McKeys.mods(event));
+                bar.mouseDown(px, py, button, GuiScreen.mods());
                 return;
             }
             worldButtons |= 1 << button;
@@ -258,9 +259,8 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
     }
 
     @Override
-    public boolean mouseReleased(MouseButtonEvent event) {
+    public boolean mouseReleased(double x, double y, int button) {
         Safe.run("move mouse up", () -> {
-            int button = McKeys.buttonToKit(event.button());
             float px = pointerX();
             float py = pointerY();
             boolean world = (worldButtons & (1 << button)) != 0;
@@ -270,16 +270,15 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
                 session.release();
             }
             if (!world) {
-                bar.mouseUp(px, py, button, McKeys.mods(event));
+                bar.mouseUp(px, py, button, GuiScreen.mods());
             }
         });
         return true;
     }
 
     @Override
-    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+    public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         Safe.run("move mouse drag", () -> {
-            int button = McKeys.buttonToKit(event.button());
             if ((worldButtons & (1 << button)) == 0) {
                 return;
             }
@@ -313,9 +312,8 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
 
     // always true, nothing typed here reaches the game. esc and the gui key both leave
     @Override
-    public boolean keyPressed(KeyEvent event) {
+    public boolean keyPressed(int key, int scancode, int mods) {
         Safe.run("move key down", () -> {
-            int key = McKeys.toKit(event.key());
             if (key == Keys.ESCAPE) {
                 finish();
                 return;
@@ -326,7 +324,7 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
                 // straight to the gui, no null screen in between, or the mouse gets grabbed and let go and the
                 // cursor jumps to the middle
                 closing = true;
-                mc.gui.setScreen(new GuiScreen());
+                mc.setScreen(new GuiScreen());
                 return;
             }
             held(key, true);
@@ -335,8 +333,8 @@ public final class MoveScreen extends Screen implements MoveSession.MoveScreenMa
     }
 
     @Override
-    public boolean keyReleased(KeyEvent event) {
-        Safe.run("move key up", () -> held(McKeys.toKit(event.key()), false));
+    public boolean keyReleased(int key, int scancode, int mods) {
+        Safe.run("move key up", () -> held(key, false));
         return true;
     }
 

@@ -59,24 +59,28 @@ public final class MoveGizmo implements AbstractGameEventListener {
         double len = s.arrowLength();
         int hot = s.hoverAxis();
 
-        BufferBuilder lines = IRenderer.startLines(Color.WHITE, 0.9f);
-        try {
-            if (box != null) {
-                IRenderer.glColor(new Color(s.dragging() ? HOT : 0xFFFFFF), 0.9f);
+        // line width is per draw on this version, not per vertex, so the box and each shaft get their own
+        if (box != null) {
+            BufferBuilder lines = IRenderer.startLines(new Color(s.dragging() ? HOT : 0xFFFFFF), 0.9f, 2f, true);
+            try {
                 emitBox(lines, stack, box[0] - cx, box[1] - cy, box[2] - cz, box[3], box[4], box[5]);
+            } finally {
+                IRenderer.endLines(lines, true);
             }
-            for (int i = 0; i < 3; i++) {
-                IRenderer.glColor(new Color(i == hot ? HOT : RGB[i]), 1f);
+        }
+        for (int i = 0; i < 3; i++) {
+            BufferBuilder lines = IRenderer.startLines(new Color(i == hot ? HOT : RGB[i]), 1f, i == hot ? 6f : 4f, true);
+            try {
                 double[] a = MoveSession.AXES[i];
                 double shaft = len * (1 - CONE_LEN);
                 IRenderer.emitLine(lines, stack, o[0] - cx, o[1] - cy, o[2] - cz,
-                    o[0] + a[0] * shaft - cx, o[1] + a[1] * shaft - cy, o[2] + a[2] * shaft - cz, i == hot ? 6f : 4f);
+                    o[0] + a[0] * shaft - cx, o[1] + a[1] * shaft - cy, o[2] + a[2] * shaft - cz);
+            } finally {
+                IRenderer.endLines(lines, true);
             }
-        } finally {
-            IRenderer.endLines(lines, true);
         }
 
-        BufferBuilder quads = IRenderer.startQuads();
+        BufferBuilder quads = IRenderer.startQuads(true);
         try {
             PoseStack.Pose pose = stack.last();
             for (int i = 0; i < 3; i++) {
@@ -92,18 +96,18 @@ public final class MoveGizmo implements AbstractGameEventListener {
         double x1 = x + sx;
         double y1 = y + sy;
         double z1 = z + sz;
-        IRenderer.emitLine(buf, stack, x, y, z, x1, y, z, 1, 0, 0, 2f);
-        IRenderer.emitLine(buf, stack, x1, y, z, x1, y, z1, 0, 0, 1, 2f);
-        IRenderer.emitLine(buf, stack, x1, y, z1, x, y, z1, -1, 0, 0, 2f);
-        IRenderer.emitLine(buf, stack, x, y, z1, x, y, z, 0, 0, -1, 2f);
-        IRenderer.emitLine(buf, stack, x, y1, z, x1, y1, z, 1, 0, 0, 2f);
-        IRenderer.emitLine(buf, stack, x1, y1, z, x1, y1, z1, 0, 0, 1, 2f);
-        IRenderer.emitLine(buf, stack, x1, y1, z1, x, y1, z1, -1, 0, 0, 2f);
-        IRenderer.emitLine(buf, stack, x, y1, z1, x, y1, z, 0, 0, -1, 2f);
-        IRenderer.emitLine(buf, stack, x, y, z, x, y1, z, 0, 1, 0, 2f);
-        IRenderer.emitLine(buf, stack, x1, y, z, x1, y1, z, 0, 1, 0, 2f);
-        IRenderer.emitLine(buf, stack, x1, y, z1, x1, y1, z1, 0, 1, 0, 2f);
-        IRenderer.emitLine(buf, stack, x, y, z1, x, y1, z1, 0, 1, 0, 2f);
+        IRenderer.emitLine(buf, stack, x, y, z, x1, y, z, 1, 0, 0);
+        IRenderer.emitLine(buf, stack, x1, y, z, x1, y, z1, 0, 0, 1);
+        IRenderer.emitLine(buf, stack, x1, y, z1, x, y, z1, -1, 0, 0);
+        IRenderer.emitLine(buf, stack, x, y, z1, x, y, z, 0, 0, -1);
+        IRenderer.emitLine(buf, stack, x, y1, z, x1, y1, z, 1, 0, 0);
+        IRenderer.emitLine(buf, stack, x1, y1, z, x1, y1, z1, 0, 0, 1);
+        IRenderer.emitLine(buf, stack, x1, y1, z1, x, y1, z1, -1, 0, 0);
+        IRenderer.emitLine(buf, stack, x, y1, z1, x, y1, z, 0, 0, -1);
+        IRenderer.emitLine(buf, stack, x, y, z, x, y1, z, 0, 1, 0);
+        IRenderer.emitLine(buf, stack, x1, y, z, x1, y1, z, 0, 1, 0);
+        IRenderer.emitLine(buf, stack, x1, y, z1, x1, y1, z1, 0, 1, 0);
+        IRenderer.emitLine(buf, stack, x, y, z1, x, y1, z1, 0, 1, 0);
     }
 
     // a cone out of quads: the topology is quads, so each triangle is a quad with the tip twice. the base gets the

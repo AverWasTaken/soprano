@@ -18,17 +18,18 @@ import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.schematic.ISchematic;
 import baritone.utils.IRenderer;
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.QuadInstance;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockColors;
-import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.block.BlockStateModelSet;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.block.BlockModelShaper;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
@@ -74,10 +75,9 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
 
     private final GhostField<Placed> field = new GhostField<>(this::bake);
     private final LevelWorld world = new LevelWorld();
-    private final QuadInstance instance = new QuadInstance();
     private final List<Placed> visible = new ArrayList<>();
-    private final List<BlockStateModelPart> parts = new ArrayList<>();
     private final List<BakedQuad> quads = new ArrayList<>();
+    private final RandomSource random = RandomSource.create();
     private final BlockPos.MutableBlockPos seedPos = new BlockPos.MutableBlockPos();
 
     // where the last frame looked from. the tick goes by this, the camera is a render thing (third person, spectating)
@@ -86,8 +86,9 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     private double camY;
     private double camZ;
 
-    // a resource pack reload swaps the model set and the atlas under the baked quads, so everything gets baked again
-    private BlockStateModelSet bakedWith;
+    // a resource pack reload swaps the models and the atlas under the baked quads, so everything gets baked again.
+    // the shaper itself survives a reload, the missing model is rebaked every time, so that's the tell
+    private BakedModel bakedWith;
     // the path the field holds, for reparsing. the field's own copy is an Object for the tests
     private String currentPath;
 
@@ -100,8 +101,6 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     private int scanTicks;
 
     private SchematicGhostRenderer() {
-        instance.setLightCoords(FULL_BRIGHT);
-        instance.setOverlayCoords(OverlayTexture.NO_OVERLAY);
     }
 
     // runs inside Minecraft's constructor with the rest of the bridge. a ghost that can't start is no reason for
@@ -173,7 +172,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         }
         field.target(t.path(), t.schematic(), t.x(), t.y(), t.z());
         currentPath = t.path();
-        BlockStateModelSet models = Minecraft.getInstance().getModelManager().getBlockStateModelSet();
+        BakedModel models = Minecraft.getInstance().getModelManager().getMissingModel();
         if (models != bakedWith) {
             bakedWith = models;
             field.dirtyAll();
@@ -261,7 +260,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
 
     private List<Placed> bake(List<Ghost> ghosts) {
         Minecraft mc = Minecraft.getInstance();
-        BlockStateModelSet models = mc.getModelManager().getBlockStateModelSet();
+        BlockModelShaper models = mc.getModelManager().getBlockModelShaper();
         BlockColors colors = mc.getBlockColors();
         List<Placed> out = new ArrayList<>(ghosts.size());
         for (Ghost g : ghosts) {
@@ -273,25 +272,26 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         return out;
     }
 
-    private Placed model(Ghost g, BlockStateModelSet models, BlockColors colors) {
+    private Placed model(Ghost g, BlockModelShaper models, BlockColors colors) {
         BlockState want = g.want();
         int kindRgb = kindRgb(g.kind());
-        parts.clear();
         quads.clear();
-        models.get(want).collectParts(RandomSource.create(want.getSeed(seedPos.set(g.x(), g.y(), g.z()))), parts);
+        BakedModel baked = models.getBlockModel(want);
+        long seed = want.getSeed(seedPos.set(g.x(), g.y(), g.z()));
         boolean anyQuads = false;
-        for (BlockStateModelPart part : parts) {
-            for (Direction d : DIRECTIONS) {
-                List<BakedQuad> side = part.getQuads(d);
-                anyQuads |= !side.isEmpty();
-                if ((g.faces() & (1 << d.get3DDataValue())) != 0) {
-                    quads.addAll(side);
-                }
+        for (Direction d : DIRECTIONS) {
+            // reseeded per side like ModelBlockRenderer does, or a random variant picks a different model per face
+            random.setSeed(seed);
+            List<BakedQuad> side = baked.getQuads(want, d, random);
+            anyQuads |= !side.isEmpty();
+            if ((g.faces() & (1 << d.get3DDataValue())) != 0) {
+                quads.addAll(side);
             }
-            List<BakedQuad> inside = part.getQuads(null);
-            anyQuads |= !inside.isEmpty();
-            quads.addAll(inside);
         }
+        random.setSeed(seed);
+        List<BakedQuad> inside = baked.getQuads(want, null, random);
+        anyQuads |= !inside.isEmpty();
+        quads.addAll(inside);
         if (!anyQuads) {
             return box(g, kindRgb, false);
         }
@@ -303,8 +303,8 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         int[] rgb = new int[model.length];
         for (int i = 0; i < model.length; i++) {
             BakedQuad q = model[i];
-            Direction shadeDir = q.materialInfo().shadeDirectionOverride() != null ? q.materialInfo().shadeDirectionOverride() : q.direction();
-            rgb[i] = multiply(multiply(kindRgb, tint(colors, want, q.materialInfo().tintIndex())), shade(shadeDir));
+            Direction shadeDir = q.isShade() ? q.getDirection() : null;
+            rgb[i] = multiply(multiply(kindRgb, tint(colors, want, q.getTintIndex())), shade(shadeDir));
         }
         return new Placed(g.x(), g.y(), g.z(), model, rgb, g.kind() != Kind.MISSING, 0, false, g.faces());
     }
@@ -328,8 +328,9 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             return 0xFFFFFF;
         }
         try {
-            BlockTintSource source = colors.getTintSource(state, tintIndex);
-            return source == null ? 0xFFFFFF : source.color(state) & 0xFFFFFF;
+            // -1 is "no colour for this block", the grass and foliage ones answer their default for a null level
+            int color = colors.getColor(state, null, null, tintIndex);
+            return color == -1 ? 0xFFFFFF : color & 0xFFFFFF;
         } catch (Throwable t) {
             return 0xFFFFFF;
         }
@@ -377,7 +378,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
 
     private void draw(RenderEvent event) {
         float alpha = Math.max(0f, Math.min(1f, settings().schematicGhostAlpha.value));
-        // the block shader throws away anything under 0.1 anyway
+        // under 0.1 there's next to nothing to see, not worth the frame
         if (alpha < 0.1f) {
             return;
         }
@@ -391,7 +392,6 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             return;
         }
         PoseStack stack = event.getModelViewStack();
-        int a = Math.round(alpha * 255) << 24;
         boolean anyModel = false;
         boolean anyBox = false;
         for (Placed p : visible) {
@@ -399,7 +399,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             anyBox |= p.model() == null;
         }
         if (anyModel) {
-            drawModels(stack, a, cx, cy, cz);
+            drawModels(stack, alpha, cx, cy, cz);
         }
         if (anyBox) {
             drawBoxes(stack, alpha, cx, cy, cz);
@@ -412,18 +412,22 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         }
     }
 
-    private void drawModels(PoseStack stack, int a, double cx, double cy, double cz) {
-        // lines and quads take turns in IRenderer, one draw open at a time, so this one is finished before the boxes
-        BufferBuilder buf = IRenderer.startBlockQuads();
-        // a throw half way would leave IRenderer's draw open for whoever renders next, so it's always closed
+    private void drawModels(PoseStack stack, float alpha, double cx, double cy, double cz) {
+        // lines and quads take turns on IRenderer's tesselator, one draw open at a time, so this one is finished before
+        // the boxes
+        BufferBuilder buf = IRenderer.tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+        // a throw half way would leave the tesselator's draw open for whoever renders next, so it's always closed
         try {
-            pushModels(buf, stack, a, cx, cy, cz);
+            pushModels(buf, stack, alpha, cx, cy, cz);
         } finally {
-            IRenderer.endBuffer(buf, RenderTypes.translucentMovingBlock());
+            MeshData mesh = buf.build();
+            if (mesh != null) {
+                RenderType.translucentMovingBlock().draw(mesh);
+            }
         }
     }
 
-    private void pushModels(BufferBuilder buf, PoseStack stack, int a, double cx, double cy, double cz) {
+    private void pushModels(BufferBuilder buf, PoseStack stack, float alpha, double cx, double cy, double cz) {
         for (Placed p : visible) {
             if (p.model() == null) {
                 continue;
@@ -439,15 +443,16 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             BakedQuad[] model = p.model();
             int[] rgb = p.rgb();
             for (int i = 0; i < model.length; i++) {
-                instance.setColor(a | rgb[i]);
-                buf.putBakedQuad(pose, model[i], instance);
+                int c = rgb[i];
+                buf.putBulkData(pose, model[i], ((c >> 16) & 0xFF) / 255f, ((c >> 8) & 0xFF) / 255f, (c & 0xFF) / 255f,
+                    alpha, FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
             }
             stack.popPose();
         }
     }
 
     private void drawBoxes(PoseStack stack, float alpha, double cx, double cy, double cz) {
-        BufferBuilder buf = IRenderer.startQuads();
+        BufferBuilder buf = IRenderer.startQuads(false);
         try {
             pushBoxes(buf, stack.last(), alpha, cx, cy, cz);
         } finally {

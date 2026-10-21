@@ -154,7 +154,7 @@ public final class MoveSession {
             return false;
         }
         Minecraft mc = Minecraft.getInstance();
-        return mc.gui.screen() instanceof MoveScreenMarker && mc.player != null;
+        return mc.screen instanceof MoveScreenMarker && mc.player != null;
     }
 
     // x y z yaw pitch for the camera mixin, null for "leave the camera alone". the slide from held keys happens

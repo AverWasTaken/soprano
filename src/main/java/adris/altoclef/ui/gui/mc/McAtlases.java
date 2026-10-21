@@ -16,7 +16,6 @@ import net.minecraft.resources.ResourceLocation;
 import java.awt.image.DataBufferInt;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 
 // the cpu side atlases (they are kept between opens, rasterising inter is the slow part) and the gpu side of each page.
@@ -45,6 +44,8 @@ final class McAtlases {
     private final Map<Integer, Slot> slots = new HashMap<>();
     // hand drawn pictures (the placement map), one texture each, keyed by the picture itself
     private final Map<PixelImage, Slot> images = new IdentityHashMap<>();
+    // a picture has no id of its own, so each one gets the next number for its texture name
+    private int pictures;
     private AtlasPage lastPage;
     private Slot lastSlot;
 
@@ -145,12 +146,15 @@ final class McAtlases {
     }
 
     // what to bind for a picture, uploaded on first sight and again whenever its version moved
-    TextureSetup setup(PixelImage picture) {
+    ResourceLocation texture(PixelImage picture) {
         Slot slot = images.get(picture);
         if (slot == null) {
-            DynamicTexture tex = new DynamicTexture(() -> "soprano gui picture",
-                    new NativeImage(picture.width(), picture.height(), true));
-            slot = new Slot(tex);
+            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("soprano", "gui/picture_" + pictures++);
+            DynamicTexture tex = new DynamicTexture(new NativeImage(picture.width(), picture.height(), true));
+            Minecraft.getInstance().getTextureManager().register(rl, tex);
+            // nearest like the pages, the map is drawn at its own size
+            tex.setFilter(false, false);
+            slot = new Slot(tex, rl);
             images.put(picture, slot);
         }
         int version = picture.version();
@@ -159,7 +163,7 @@ final class McAtlases {
             slot.texture.upload();
             slot.version = version;
         }
-        return slot.setup;
+        return slot.location;
     }
 
     static void releaseAll() {
@@ -178,7 +182,11 @@ final class McAtlases {
             }
         }
         for (Slot slot : images.values()) {
-            dead.add(slot.texture);
+            try {
+                mc.getTextureManager().release(slot.location);
+            } catch (Throwable t) {
+                Safe.report("gui texture release", t);
+            }
         }
         slots.clear();
         images.clear();

@@ -30,13 +30,13 @@ import baritone.utils.schematic.library.SchematicImporter;
 import baritone.utils.schematic.library.SchematicInfo;
 import baritone.utils.schematic.library.SchematicLibrary;
 import baritone.utils.schematic.library.SchematicPlacement;
-import com.mojang.blaze3d.Blaze3D;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
@@ -399,7 +399,7 @@ public final class McSchematics implements SchematicsAccess {
     // ----- names and icons
 
     private static Item itemOf(String id) {
-        Identifier key = Identifier.tryParse(id);
+        ResourceLocation key = ResourceLocation.tryParse(id);
         return key == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(key);
     }
 
@@ -421,7 +421,7 @@ public final class McSchematics implements SchematicsAccess {
 
     private static String blockName(String id) {
         try {
-            Identifier key = Identifier.tryParse(id);
+            ResourceLocation key = ResourceLocation.tryParse(id);
             Block block = key == null ? Blocks.AIR : BuiltInRegistries.BLOCK.getValue(key);
             if (block != Blocks.AIR) {
                 String name = block.getName().getString();
@@ -1099,7 +1099,7 @@ public final class McSchematics implements SchematicsAccess {
         try {
             Path dir = library.directory().toPath();
             Files.createDirectories(dir);
-            Blaze3D.openPath(dir);
+            Util.getPlatform().openPath(dir);
             return Result.ok("Opened the schematics folder");
         } catch (Throwable t) {
             Safe.report("gui schematic folder", t);
@@ -1119,7 +1119,7 @@ public final class McSchematics implements SchematicsAccess {
         @Override
         public String dimension() {
             ClientLevel level = Minecraft.getInstance().level;
-            return level == null ? null : level.dimension().identifier().toString();
+            return level == null ? null : level.dimension().location().toString();
         }
 
         @Override

@@ -91,7 +91,8 @@ final class McCanvas extends TexturedCanvas {
             return;
         }
         try {
-            draw.blit(atlases.setup(image), image.width(), image.height(), 0, 0, image.width(), image.height(), x0, y0, dw, dh, tint);
+            draw.g.blit(RenderType::guiTextured, atlases.texture(image), x0, y0, 0f, 0f, dw, dh, image.width(), image.height(),
+                    image.width(), image.height(), tint);
         } catch (Throwable t) {
             Safe.report("gui image blit", t);
             broken = true;

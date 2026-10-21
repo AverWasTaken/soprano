@@ -355,7 +355,7 @@ public class GuiScreen extends Screen {
         return mc.getWindow().getGuiScale();
     }
 
-    private static int mods() {
+    static int mods() {
         int m = 0;
         if (hasShiftDown()) {
             m |= Keys.MOD_SHIFT;

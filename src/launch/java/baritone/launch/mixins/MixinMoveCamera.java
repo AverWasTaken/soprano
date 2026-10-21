@@ -3,16 +3,16 @@ package baritone.launch.mixins;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.mc.move.MoveSession;
 import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.BlockGetter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// the free camera of the schematic move mode. right after alignWithEntity, not at the tail: update goes on to work out
-// the fov, the cull frustum and the projection from where the camera is, and they all have to agree with ours or
-// chunks behind the player's back get culled out of a view that's looking right at them
+// the free camera of the schematic move mode. the tail of setup is fine on this version: it only places and turns the
+// camera, the cull frustum gets built from it afterwards, so chunks get culled for the view we're actually showing
 @Mixin(Camera.class)
 public abstract class MixinMoveCamera {
 
@@ -27,14 +27,11 @@ public abstract class MixinMoveCamera {
     protected abstract void setRotation(float yRot, float xRot);
 
     @Inject(
-            method = "update",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/Camera;alignWithEntity(F)V",
-                    shift = At.Shift.AFTER
-            )
+            method = "setup",
+            at = @At("TAIL")
     )
-    private void soprano$moveCamera(final DeltaTracker deltaTracker, final CallbackInfo ci) {
+    private void soprano$moveCamera(final BlockGetter level, final Entity entity, final boolean thirdPerson,
+                                    final boolean thirdPersonReverse, final float partialTick, final CallbackInfo ci) {
         try {
             double[] pose = MoveSession.pose();
             if (pose == null) {
