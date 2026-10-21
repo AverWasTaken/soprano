@@ -71,7 +71,7 @@ public final class BucketPour {
         return waterGoesTo(hitPos, hitFace, inside, takesWater(world, hitPos.relative(hitFace)));
     }
 
-    // air, something water washes away (grass, a torch), or a waterloggable block. 26.3's canPlaceLiquid says yes to
+    // air, something water washes away (grass, a torch), or a waterloggable block. canPlaceLiquid says yes to
     // water even when it's waterlogged already, and so does the bucket
     static boolean takesWater(BlockGetter world, BlockPos pos) {
         BlockState state = world.getBlockState(pos);
