@@ -734,7 +734,7 @@
     }
     function activate(id) {
         if (!id || isOff(id)) return;
-        if (id !== 'card') playSnd('click', 1, 0.8);
+        if (id !== 'card') playSnd('click', 1, 0.32);
         $('dv-said').textContent = 'pressed: ' + nameOf(id);
     }
     // ----- sounds: the same oggs the game plays, same rules as MenuSounds + TitleMenu.sound. browsers keep audio
@@ -764,7 +764,7 @@
         lastHoverSnd = now;
         var step = -1;
         for (var i = 0; i < tiles.length; i++) if (tiles[i].id === id) step = i;
-        playSnd('hover', note(step >= 0 ? step : id === 'lang' ? 3 : 4), 0.6);
+        playSnd('hover', note(step >= 0 ? step : id === 'lang' ? 3 : 4), 0.22);
     }
     function focusOrder() {
         var o = [];

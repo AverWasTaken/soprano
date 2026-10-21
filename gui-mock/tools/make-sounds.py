@@ -1,5 +1,6 @@
 # synthesizes the title screen's ui sounds into src/main/resources/assets/soprano/sounds/ui/ (mono ogg vorbis via
-# ffmpeg) plus wav copies in gui-mock/assets/sounds/ for the mock. run: python -I gui-mock/tools/make-sounds.py
+# ffmpeg) plus wav copies in gui-mock/assets/sounds/. run: python -I gui-mock/tools/make-sounds.py
+# both files peak at -1 dBFS like vanilla's own; how loud they play is MenuSounds' volume, not the file
 # everything is a couple of sines and some filtered noise, no samples, so there's nothing to license
 import os
 import subprocess
@@ -47,10 +48,13 @@ def hover():
     n = int(SR * 0.16)
     t = np.arange(n) / SR
     f = 659.25
-    tone = np.sin(2 * np.pi * f * t) + 0.22 * np.sin(2 * np.pi * 2 * f * t) * np.exp(-t / 0.02)
+    # the octave and a bit of the twelfth die fast, they're what makes it audible on laptop speakers that can't do e5
+    tone = (np.sin(2 * np.pi * f * t)
+            + 0.30 * np.sin(2 * np.pi * 2 * f * t) * np.exp(-t / 0.025)
+            + 0.10 * np.sin(2 * np.pi * 3 * f * t) * np.exp(-t / 0.012))
     x = tone * env(n, 0.004, 0.045)
-    x = lowpass(x, 1600, 2)
-    return fade_tail(norm(x, -15.0))
+    x = lowpass(x, 2400, 2)
+    return fade_tail(norm(x, -1.0))
 
 
 def click():
@@ -65,7 +69,7 @@ def click():
     tick = bandpass(rng.standard_normal(n), 2500, 6000) * env(n, 0.0005, 0.0025)
     x = x + 0.35 * tick / np.max(np.abs(tick))
     x = lowpass(x, 6000, 2)
-    return fade_tail(norm(x, -11.0))
+    return fade_tail(norm(x, -1.0))
 
 
 def write(name, x):

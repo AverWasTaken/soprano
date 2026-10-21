@@ -50,6 +50,7 @@
     "MixinRenderPipelines",
     "MixinRenderType",
     "MixinScreen",
+    "MixinSoundBufferLibrary",
     "MixinTitleScreen",
     "MixinWorldRenderer",
     "MixinVec3i"
