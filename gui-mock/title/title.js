@@ -62,8 +62,16 @@
         while (i < w && i < h && Math.floor(w / (i + 1)) >= 320 && Math.floor(h / (i + 1)) >= 240) i++;
         return i;
     }
-    // KitSurface.scaleFor: half the gui scale in quarter steps, 0.75..2. design px * this = framebuffer px, which is
-    // what UpdateCardWidget draws in (it scales the pose by 1/guiScale and hands the kit raw pixels)
+    // Theme.scaleFor, the click gui's rule: window height over 1234 in quarter steps, 0.75..2. the title chrome and
+    // the boot screen both size by this, so 1080p is 1.0 and not the 2.0 the gui scale chain hands out. fround +
+    // floor(x + 0.5) is java's float Math.round, so the steps flip at the same heights
+    function themeScaleFor(h) {
+        var raw = Math.fround(h / 1234);
+        var stepped = Math.floor(Math.fround(raw * 4) + 0.5) / 4;
+        return Math.max(0.75, Math.min(2.0, stepped));
+    }
+    // KitSurface.scaleFor: half the gui scale in quarter steps, 0.75..2. only the update card still uses it, the real
+    // UpdateCardWidget keeps its own scale (it scales the pose by 1/guiScale and hands the kit raw pixels)
     function kitScaleFor(g) {
         var raw = Math.max(1, g) * 0.5;
         var stepped = Math.round(raw * 4) / 4;
@@ -100,8 +108,10 @@
     // ---------- dom helpers ----------
     var $ = function (id) { return document.getElementById(id); };
     var stage = $('stage'), ui = $('ui');
-    var W = 0, H = 0, dpr = 1, gui = 1, S = 1;
+    var W = 0, H = 0, dpr = 1, gui = 1, S = 1, KS = 1;
     function R(design) { return Math.round(design * S); }
+    // the update card's own px, see kitScaleFor
+    function RK(design) { return Math.round(design * KS); }
     function css(px) { return (px / dpr) + 'px'; }
     function box(el, x, y, w, h) {
         el.style.left = css(x); el.style.top = css(y);
@@ -128,8 +138,8 @@
     }
     function textW(str, weight, px) { meas.font = fontOf(weight, px); meas.letterSpacing = '0px'; return Math.ceil(meas.measureText(str).width); }
     // sets the text and font, returns its box. caller places it
-    function text(el, str, weight, design, color) {
-        var px = R(design), m = metrics(weight, px);
+    function text(el, str, weight, design, color, scale) {
+        var px = (scale || R)(design), m = metrics(weight, px);
         if (el.textContent !== str) el.textContent = str;
         el.style.font = fontOf(weight, px / dpr);
         el.style.lineHeight = css(m.h);
@@ -465,13 +475,15 @@
         }
 
         // frozen hover: aim the mouse at the thing's resting centre. two rounds because parallax moves the dock
+        // top right, accessibility hugging the corner and language left of it. the update card has the top left
         var cornerB = R(36), inset = R(24), cornerGap = R(10);
+        var a11yX = W - inset - cornerB, langX = a11yX - cornerGap - cornerB;
         function restCentre(id, dx, dy) {
             var rest = dockRow(tiles.map(function () { return tPx; }), Math.round(dx));
             var bottom = H - R(72) + Math.round(dy);
             for (var i = 0; i < n; i++) if (tiles[i].id === id) return { x: rest.xs[i] + tPx / 2, y: bottom - pad - tPx / 2 };
-            if (id === 'lang') return { x: inset + cornerB / 2, y: inset + cornerB / 2 };
-            if (id === 'a11y') return { x: inset + cornerB + cornerGap + cornerB / 2, y: inset + cornerB / 2 };
+            if (id === 'lang') return { x: langX + cornerB / 2, y: inset + cornerB / 2 };
+            if (id === 'a11y') return { x: a11yX + cornerB / 2, y: inset + cornerB / 2 };
             if (id === 'copyright') return { x: W - inset - R(100), y: H - inset - R(8) };
             return null;
         }
@@ -560,8 +572,8 @@
 
         // ----- corners -----
         var aLang = (hoverId === 'lang'), aA11y = (hoverId === 'a11y');
-        glass(el.lang, el.langSh, inset, inset, cornerB, aLang, eCorner);
-        glass(el.a11y, el.a11ySh, inset + cornerB + cornerGap, inset, cornerB, aA11y, eCorner);
+        glass(el.lang, el.langSh, langX, inset, cornerB, aLang, eCorner);
+        glass(el.a11y, el.a11ySh, a11yX, inset, cornerB, aA11y, eCorner);
         var cg = Math.round(cornerB * 0.5);
         glyph(el.lang, 'c', 'language', cg);
         glyph(el.a11y, 'c', 'accessibility', cg);
@@ -570,11 +582,11 @@
             s.style.left = css(Math.round((cornerB - cg) / 2)); s.style.top = css(Math.round((cornerB - cg) / 2));
         });
         var cornerRects = {
-            lang: { x: inset, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) },
-            a11y: { x: inset + cornerB + cornerGap, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) }
+            lang: { x: langX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) },
+            a11y: { x: a11yX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) }
         };
-        newHits.push({ id: 'lang', x: inset, y: inset, w: cornerB, h: cornerB });
-        newHits.push({ id: 'a11y', x: inset + cornerB + cornerGap, y: inset, w: cornerB, h: cornerB });
+        newHits.push({ id: 'lang', x: langX, y: inset, w: cornerB, h: cornerB });
+        newHits.push({ id: 'a11y', x: a11yX, y: inset, w: cornerB, h: cornerB });
 
         var ver = text(el.ver, 'Soprano ' + MOD_VERSION, 'medium', 13, 'rgba(255,255,255,0.70)');
         box(el.ver, inset, H - inset - ver.h, ver.w + 2, null);
@@ -593,20 +605,32 @@
             el.under.style.opacity = eCorner;
         }
 
-        // the update card is its own widget and unchanged, this is only where it goes and about how big it is
+        // the update card is its own widget and unchanged, this is only where it goes and about how big it is.
+        // UpdateCardWidget: 4 gui units in from the top left, at kit scale, never wider than the room left of
+        // vanilla's 256 wide logo. screen.width is the gui width rounded up, like Window does it
         show(el.card, opt.card); show(el.cardSh, opt.card);
         var cardRect = null;
         if (opt.card) {
-            var cw = R(300), ch = R(88);
-            box(el.card, W - inset - cw, inset, cw, ch);
-            el.card.style.borderRadius = css(R(12));
+            var guiW = Math.ceil(W / gui), cm = 4 * gui;
+            var capD = Math.floor((Math.floor(guiW / 2) - 128 - 2 * 4) * gui / KS);
+            var cw = RK(Math.max(0, Math.min(300, capD))), ch = RK(88);
+            box(el.card, cm, cm, cw, ch);
+            el.card.style.borderRadius = css(RK(12));
             el.card.style.boxShadow = 'inset 0 0 0 ' + css(1) + ' rgba(255,255,255,0.10)';
-            kitShadow(el.cardSh, W - inset - cw, inset, cw, ch, R(12), 0.5, eCorner);
-            cardRect = { x: W - inset - cw, y: inset, w: cw, h: ch, r: R(12) };
+            kitShadow(el.cardSh, cm, cm, cw, ch, RK(12), 0.5, eCorner);
+            cardRect = { x: cm, y: cm, w: cw, h: ch, r: RK(12) };
             newHits.push({ id: 'card', x: cardRect.x, y: cardRect.y, w: cw, h: ch });
             el.card.style.opacity = eCorner;
-            var ct = text(el.cardTxt, 'update card (existing)', 'regular', 12);
-            box(el.cardTxt, Math.round((cw - ct.w) / 2), Math.round((ch - ct.h) / 2), ct.w + 2, null);
+            // a narrow window squeezes the cap down to a sliver, so the placeholder wraps (and the card clips)
+            // instead of spilling its label over the panorama. the real card does its own thing in there
+            var ct = text(el.cardTxt, '', 'regular', 12, null, RK);
+            var cl = wrap('update card (existing)', 'regular', ct.px, Math.max(1, cw - 2 * RK(8)));
+            el.cardTxt.innerHTML = '';
+            cl.forEach(function (s, k) { if (k) el.cardTxt.appendChild(document.createElement('br')); el.cardTxt.appendChild(document.createTextNode(s)); });
+            var ctw = 0; cl.forEach(function (s) { ctw = Math.max(ctw, textW(s, 'regular', ct.px)); });
+            el.cardTxt.style.height = css(ct.h * cl.length);
+            el.cardTxt.style.textAlign = 'center';
+            box(el.cardTxt, Math.round((cw - ctw) / 2), Math.round((ch - ct.h * cl.length) / 2), ctw + 2, null);
         }
 
         // hover comes from what was drawn (magnified rects), frozen shots say it outright
@@ -619,7 +643,7 @@
         var fr = focusId && (tileRects[focusId] || cornerRects[focusId] || (focusId === 'card' && cardRect));
         show(el.ring, !!fr);
         if (fr) {
-            var off = R(3), thk = 2;
+            var off = focusId === 'card' ? RK(3) : R(3), thk = 2;
             box(el.ring, fr.x - off - thk, fr.y - off - thk, fr.w + 2 * (off + thk), fr.h + 2 * (off + thk));
             el.ring.style.borderWidth = css(thk);
             el.ring.style.borderRadius = css(fr.r + off + thk);
@@ -684,7 +708,8 @@
         dpr = window.devicePixelRatio || 1;
         W = Math.round(stage.clientWidth * dpr); H = Math.round(stage.clientHeight * dpr);
         gui = guiScaleFor(W, H);
-        S = kitScaleFor(gui);
+        S = themeScaleFor(H);
+        KS = kitScaleFor(gui);
     }
     function frame(now) {
         measure();
@@ -692,7 +717,7 @@
         drawPanorama(now, v.title);
         drawBoot(v.boot);
         drawTitle(v, now);
-        $('dv-size').textContent = W + 'x' + H + '  gui ' + gui + '  kit ' + S + 'x';
+        $('dv-size').textContent = W + 'x' + H + '  gui ' + gui + '  title ' + S + 'x  card ' + KS + 'x';
     }
     function loop(now) {
         frame(now);
