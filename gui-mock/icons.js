@@ -262,14 +262,79 @@
             return line(12, 4, 12, 20) + line(4, 12, 20, 12)
                 + poly(false, [9.5, 6.5, 12, 4, 14.5, 6.5]) + poly(false, [9.5, 17.5, 12, 20, 14.5, 17.5])
                 + poly(false, [6.5, 9.5, 4, 12, 6.5, 14.5]) + poly(false, [17.5, 9.5, 20, 12, 17.5, 14.5]);
+        },
+
+        // ===== title screen glyphs (gui-mock/title). NOT in Icons.java yet, port these 1:1 =====
+        // same grid and helpers as everything above: line/poly/ell/fillEll/dot and P() with moveTo, lineTo,
+        // curveTo and arc (= Path2D.append(new Arc2D.Float(x, y, w, h, start, extent, OPEN), connect)). no fills
+        // except fillEll, no transforms. singleplayer reuses player and reset demo world reuses reset (it already
+        // goes counter clockwise)
+
+        // eight teeth off a circle: inner radius 7, outer 9.5, valleys are arcs so it reads as a gear and not a
+        // stop sign at 30px
+        gear: function () {
+            var cx = 12, cy = 12, ri = 7, ro = 9.5, p = P();
+            for (var k = 0; k < 8; k++) {
+                var a = k * 45, rad = Math.PI / 180;
+                var a0 = (a - 13) * rad, a1 = (a - 8) * rad, a2 = (a + 8) * rad;
+                if (k === 0) p.moveTo(cx + ri * Math.cos(a0), cy - ri * Math.sin(a0));
+                else p.lineTo(cx + ri * Math.cos(a0), cy - ri * Math.sin(a0));
+                p.lineTo(cx + ro * Math.cos(a1), cy - ro * Math.sin(a1));
+                p.lineTo(cx + ro * Math.cos(a2), cy - ro * Math.sin(a2));
+                // tooth k ends at a+13 on the inner circle, the valley runs to the next tooth's a+45-13
+                p.arc(cx - ri, cy - ri, 2 * ri, 2 * ri, a + 13, 19, true);
+            }
+            return path(p.close()) + ell(9, 9, 6, 6);
+        },
+        globe: function () {
+            return ell(3, 3, 18, 18) + ell(8, 3, 8, 18) + line(3, 12, 21, 12);
+        },
+        // the follow body for the one in front, the one behind only gets a head and a shoulder
+        people: function () {
+            var front = P().moveTo(2.5, 20.5).lineTo(2.5, 19).quadTo(2.5, 15, 6.5, 15).lineTo(11.5, 15)
+                .quadTo(15.5, 15, 15.5, 19).lineTo(15.5, 20.5);
+            var back = P().moveTo(17, 13.5).quadTo(21.5, 13.5, 21.5, 18).lineTo(21.5, 20.5);
+            return ell(5.5, 5, 7, 7) + path(front) + ell(14, 4.5, 6, 6) + path(back);
+        },
+        cloud: function () {
+            var c = P().moveTo(7, 18.5).lineTo(17.5, 18.5)
+                .curveTo(19.5, 18.5, 21, 17, 21, 15).curveTo(21, 13, 19.5, 11.5, 17.5, 11.5)
+                .curveTo(17, 8, 14.5, 5.5, 11.5, 5.5).curveTo(8.5, 5.5, 6.2, 7.8, 6, 10.7)
+                .curveTo(4.2, 11.2, 3, 12.8, 3, 14.7).curveTo(3, 16.8, 4.8, 18.5, 7, 18.5).close();
+            return path(c);
+        },
+        // a square piece with a knob on top and one on the right, the knobs are 270 degree arcs
+        puzzle: function () {
+            var p = P().moveTo(3.5, 8.5).lineTo(8.4, 8.5)
+                .arc(8.2, 3.5, 4.6, 4.6, 225, -270, true)
+                .lineTo(12.6, 8.5).lineTo(17, 8.5).lineTo(17, 12.4)
+                .arc(16.8, 11.9, 4.6, 4.6, 135, -270, true)
+                .lineTo(17, 16).lineTo(17, 20.5).lineTo(3.5, 20.5).close();
+            return path(p);
+        },
+        // the gap is centred on the top, 60 degrees wide, the stem drops into it
+        power: function () {
+            return path(P().arc(4.5, 5.5, 15, 15, 60, -300, false)) + line(12, 3.5, 12, 12);
+        },
+        // globe in the top left, an A in the bottom right, the A's left leg just clears the globe
+        language: function () {
+            return ell(3, 3, 12, 12) + ell(6.5, 3, 5, 12) + line(3, 9, 15, 9)
+                + poly(false, [13, 21, 17, 11.5, 21, 21]) + line(14.4, 17.7, 19.6, 17.7);
+        },
+        // the arms-out figure in a ring
+        accessibility: function () {
+            return ell(3, 3, 18, 18) + fillEll(10.5, 5.6, 3, 3) + line(7.5, 10, 16.5, 10) + line(12, 10, 12, 14)
+                + poly(false, [9, 18.5, 12, 14, 15, 18.5]);
         }
+        // ===== end of title screen glyphs =====
     };
 
     var NAMES = ['get', 'goto', 'follow', 'waypoints', 'help', 'settings', 'stats', 'search', 'close', 'plus', 'minus',
         'chevron_down', 'chevron_right', 'check', 'copy', 'reset', 'stop', 'key', 'dot', 'ring', 'trash', 'pin',
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
         'ladder', 'eye', 'schematics', 'warning', 'chevron_up', 'chevron_left', 'rotate_left', 'rotate_right', 'flip',
-        'level_up', 'level_down', 'move'];
+        'level_up', 'level_down', 'move', 'gear', 'globe', 'people', 'cloud', 'puzzle', 'power', 'language',
+        'accessibility'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on
