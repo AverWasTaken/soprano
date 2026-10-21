@@ -33,7 +33,7 @@ public final class BuildInfo {
         return built;
     }
 
-    // "1.1.6" or "1.1.6-anyversion", whatever -Prelease_version said. the updater compares against this
+    // "1.1.6", "1.1.6-anyversion" or "1.1.7-nightly.1", whatever -Prelease_version said. the updater compares against this
     public static synchronized String version() {
         if (version == null) {
             version = read(RESOURCE, "version");
