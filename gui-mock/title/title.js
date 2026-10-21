@@ -476,7 +476,7 @@
 
         // frozen hover: aim the mouse at the thing's resting centre. two rounds because parallax moves the dock
         // top right, accessibility hugging the corner and language left of it. the update card has the top left
-        var cornerB = R(36), inset = R(24), cornerGap = R(10);
+        var cornerB = R(40), inset = R(24), cornerGap = R(10);
         var a11yX = W - inset - cornerB, langX = a11yX - cornerGap - cornerB;
         function restCentre(id, dx, dy) {
             var rest = dockRow(tiles.map(function () { return tPx; }), Math.round(dx));
@@ -588,10 +588,10 @@
         newHits.push({ id: 'lang', x: langX, y: inset, w: cornerB, h: cornerB });
         newHits.push({ id: 'a11y', x: a11yX, y: inset, w: cornerB, h: cornerB });
 
-        var ver = text(el.ver, 'Soprano ' + MOD_VERSION, 'medium', 13, 'rgba(255,255,255,0.70)');
+        var ver = text(el.ver, 'Soprano ' + MOD_VERSION, 'medium', 14, 'rgba(255,255,255,0.70)');
         box(el.ver, inset, H - inset - ver.h, ver.w + 2, null);
         el.ver.style.opacity = eCorner;
-        var cp = text(el.copy, 'Copyright Mojang AB. Do not distribute!', 'regular', 13, 'rgba(255,255,255,0.50)');
+        var cp = text(el.copy, 'Copyright Mojang AB. Do not distribute!', 'regular', 14, 'rgba(255,255,255,0.60)');
         var cpx = W - inset - cp.w, cpy = H - inset - cp.h;
         box(el.copy, cpx, cpy, cp.w + 2, null);
         el.copy.style.opacity = eCorner;
@@ -601,7 +601,7 @@
         if (ul) {
             var th = Math.max(1, Math.round(S));
             box(el.under, cpx, cpy + Math.round(cp.asc) + th, cp.w, th);
-            el.under.style.color = 'rgba(255,255,255,0.50)';
+            el.under.style.color = 'rgba(255,255,255,0.60)';
             el.under.style.opacity = eCorner;
         }
 

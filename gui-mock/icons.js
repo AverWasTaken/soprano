@@ -264,7 +264,7 @@
                 + poly(false, [6.5, 9.5, 4, 12, 6.5, 14.5]) + poly(false, [17.5, 9.5, 20, 12, 17.5, 14.5]);
         },
 
-        // ===== title screen glyphs (gui-mock/title). NOT in Icons.java yet, port these 1:1 =====
+        // ===== title screen glyphs (gui-mock/title). ported 1:1 to Icons.java, change both together =====
         // same grid and helpers as everything above: line/poly/ell/fillEll/dot and P() with moveTo, lineTo,
         // curveTo and arc (= Path2D.append(new Arc2D.Float(x, y, w, h, start, extent, OPEN), connect)). no fills
         // except fillEll, no transforms. singleplayer reuses player and reset demo world reuses reset (it already
