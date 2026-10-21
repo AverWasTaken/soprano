@@ -36,5 +36,14 @@ public enum Icon {
     FLIP,           // two wings either side of a dashed axis
     LEVEL_UP,       // a chevron over a bar: one layer up
     LEVEL_DOWN,
-    MOVE            // four arrows out of a cross, the move gizmo
+    MOVE,           // four arrows out of a cross, the move gizmo
+    // the title screen's dock and corner buttons
+    GEAR,           // options
+    GLOBE,          // multiplayer
+    PEOPLE,         // friends: one in front, one peeking over its shoulder
+    CLOUD,          // realms
+    PUZZLE,         // a button some other mod put on the title screen
+    POWER,          // quit
+    LANGUAGE,       // a small globe and an A
+    ACCESSIBILITY   // arms out in a ring
 }
