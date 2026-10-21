@@ -25,6 +25,7 @@ import baritone.utils.schematic.format.defaults.SpongeSchematic;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.Tag;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
@@ -60,13 +61,14 @@ public enum DefaultSchematicFormats implements ISchematicFormat {
         @Override
         public IStaticSchematic parse(InputStream input) throws IOException {
             CompoundTag nbt = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
-            int version = nbt.getInt("Version");
+            int version = SpongeSchematic.versionOf(nbt);
             switch (version) {
                 case 1:
                 case 2:
+                case 3:
                     return new SpongeSchematic(nbt);
                 default:
-                    throw new UnsupportedOperationException("Unsupported Version of a Sponge Schematic");
+                    throw new UnsupportedOperationException("Unsupported Sponge schematic version " + version + " (1 to 3 work)");
             }
         }
     },
@@ -78,18 +80,18 @@ public enum DefaultSchematicFormats implements ISchematicFormat {
         @Override
         public IStaticSchematic parse(InputStream input) throws IOException {
             CompoundTag nbt = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
-            int version = nbt.getInt("Version");
-            switch (version) {
-                case 4: //1.12
-                case 5: //1.13-1.17
-                    throw new UnsupportedOperationException("This litematic Version is too old.");
-                case 6: //1.18-1.20
-                    throw new UnsupportedOperationException("This litematic Version is too old.");
-                case 7: //1.21+
-                    return new LitematicaSchematic(nbt);
-                default:
-                    throw new UnsupportedOperationException("Unsuported Version of a Litematica Schematic");
+            // getInt says 0 for a missing key on this version, -1 is what the message should show
+            int version = nbt.contains("Version", Tag.TAG_ANY_NUMERIC) ? nbt.getInt("Version") : -1;
+            // 5 and 6 (1.13 to 1.20) pack the palette and the long array exactly like 7. what moved is the content:
+            // block ids that got renamed and property values that changed, both of which get reported instead of
+            // failing the load
+            if (version >= 5 && version <= 7) {
+                return new LitematicaSchematic(nbt);
             }
+            if (version >= 1 && version < 5) {
+                throw new UnsupportedOperationException("Litematica version " + version + " is from before 1.13 (block ids and properties are pre-flattening), only 5 to 7 work");
+            }
+            throw new UnsupportedOperationException("Unsupported Litematica schematic version " + version + " (5 to 7 work)");
         }
     };
 

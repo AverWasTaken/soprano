@@ -9,6 +9,8 @@ public enum Icon {
     HELP,           // question mark in a ring
     SETTINGS,       // two sliders
     STATS,          // three bars, ascending
+    SCHEMATICS,     // a wall of bricks, what a schematic turns into
+    WARNING,        // triangle with a bang
     SEARCH,         // magnifier
     CLOSE,          // x
     PLUS,
@@ -26,5 +28,13 @@ public enum Icon {
     PIN,            // my position
     PLAYER,         // head and shoulders
     ENTITY,         // paw
-    BOAT, PARKOUR, BOLT, RUN, PICKAXE, BLOCK, WRENCH, BACKPACK, WATER, LADDER, EYE
+    BOAT, PARKOUR, BOLT, RUN, PICKAXE, BLOCK, WRENCH, BACKPACK, WATER, LADDER, EYE,
+    CHEVRON_UP,
+    CHEVRON_LEFT,
+    ROTATE_LEFT,    // a turn about a dot (the dot is what tells it from RESET)
+    ROTATE_RIGHT,
+    FLIP,           // two wings either side of a dashed axis
+    LEVEL_UP,       // a chevron over a bar: one layer up
+    LEVEL_DOWN,
+    MOVE            // four arrows out of a cross, the move gizmo
 }

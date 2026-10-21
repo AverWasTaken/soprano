@@ -1,6 +1,7 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.AtlasPage;
+import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TexturedCanvas;
@@ -72,6 +73,28 @@ final class McCanvas extends TexturedCanvas {
                     page.width(), page.height(), argb);
         } catch (Throwable t) {
             Safe.report("gui atlas blit", t);
+            broken = true;
+        }
+    }
+
+    // same path as a glyph, with the picture's own texture bound and the tint left white so the colours come through
+    @Override
+    public void image(PixelImage image, float x, float y, float w, float h, int tint) {
+        if (broken) {
+            return;
+        }
+        int x0 = Math.round(x);
+        int y0 = Math.round(y);
+        int dw = Math.round(x + w) - x0;
+        int dh = Math.round(y + h) - y0;
+        if (dw <= 0 || dh <= 0) {
+            return;
+        }
+        try {
+            draw.g.blit(RenderType::guiTextured, atlases.texture(image), x0, y0, 0f, 0f, dw, dh, image.width(), image.height(),
+                    image.width(), image.height(), tint);
+        } catch (Throwable t) {
+            Safe.report("gui image blit", t);
             broken = true;
         }
     }

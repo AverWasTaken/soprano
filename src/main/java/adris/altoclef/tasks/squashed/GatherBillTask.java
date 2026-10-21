@@ -77,6 +77,13 @@ public class GatherBillTask extends Task {
     // the tool being made right now and how many the bag had before, so one that worked gives its try back
     private String _makingTool;
     private int _toolsBefore;
+    // the leaves we're out fetching right now, so progress() can see the bag fill up before anything is crafted
+    private List<RecipeBill.Fetch> _fetching = List.of();
+    // same for the tool or the level being made right now. 128 stone out of a furnace is a long time with no new stage
+    private List<ItemTarget> _making = List.of();
+    // one per task next() hands out. the stage and _made both go backwards on a loop-back now, this never does
+    private int _steps;
+    private boolean _finalCounted;
     private BotBehaviour.State _level;
     // the wood the first bill gave the sticks and the table, kept for every bill after (RecipeBill.of's latched says why)
     private String _mainWood;
@@ -227,6 +234,8 @@ public class GatherBillTask extends Task {
         _makingTool = tool;
         _toolsBefore = have;
         reserve(mod, tool, want);
+        _making = List.of(new ItemTarget(tool, want));
+        _steps++;
         setDebugState("Getting a " + tool + " for the job");
         return TaskCatalogue.getItemTask(tool, want);
     }
@@ -258,6 +267,8 @@ public class GatherBillTask extends Task {
         if (fetch.isEmpty()) {
             return null;
         }
+        _fetching = fetch;
+        _steps++;
         _axeLeaves.clear();
         _shovelLeaves.clear();
         List<ItemTarget> targets = new ArrayList<>();
@@ -311,6 +322,8 @@ public class GatherBillTask extends Task {
         for (String name : RecipeBill.consumersFirst(bill, todo)) {
             targets.add(new ItemTarget(name, bill.need(name)));
         }
+        _making = targets;
+        _steps++;
         setDebugState("Making the in-betweens");
         return TaskCatalogue.getSquashedItemTask(targets.toArray(ItemTarget[]::new));
     }
@@ -319,6 +332,11 @@ public class GatherBillTask extends Task {
     // crafts up front, but those are consumers anyway, and stairs-before-planks survives since both are Collect* tasks
     private Task finalTask(RecipeBill.Bill bill) {
         setDebugState("Finishing up the old way");
+        // once, a final task that keeps finishing short gets handed out every tick and that's not getting anywhere
+        if (!_finalCounted) {
+            _finalCounted = true;
+            _steps++;
+        }
         if (_targets.length == 1) {
             return TaskCatalogue.getItemTask(_targets[0]);
         }
@@ -432,6 +450,20 @@ public class GatherBillTask extends Task {
             _reserved.merge(item, count, Math::max);
         }
         mod.getBehaviour().reserveProtectedItems(_level, _reserved);
+    }
+
+    // a number that goes up while the bill gets somewhere, for a caller with a "stuck" clock (SchematicBuildTask's
+    // GatherGuard). the targets only show up at the very end now, a whole batch's worth of ore and cobble comes first,
+    // and that trip is not being stuck. _steps only ever grows, so does this, minus crafting eating leaves
+    public long progress(AltoClef mod) {
+        long held = 0;
+        for (RecipeBill.Fetch f : _fetching) {
+            held += Math.min(mod.getItemStorage().getItemCount(TaskCatalogue.getItemMatches(f.name())), f.target());
+        }
+        for (ItemTarget t : _making) {
+            held += Math.min(mod.getItemStorage().getItemCount(t.getMatches()), t.getTargetCount());
+        }
+        return _steps * 1_000_000L + held;
     }
 
     @Override

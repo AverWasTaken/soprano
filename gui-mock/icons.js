@@ -110,6 +110,13 @@
         stats: function () {
             return line(5, 20, 5, 15) + line(12, 20, 12, 9) + line(19, 20, 19, 4);
         },
+        schematics: function () {
+            // a wall of bricks: two courses, the joints offset. the thing a schematic turns into
+            return rrect(3, 6, 18, 12, 2, 2) + line(3, 12, 21, 12) + line(12, 6, 12, 12) + line(7.5, 12, 7.5, 18) + line(16.5, 12, 16.5, 18);
+        },
+        warning: function (w) {
+            return poly(true, [12, 3.5, 21, 19.5, 3, 19.5]) + line(12, 9, 12, 13.5) + dot(12, 16.5, w);
+        },
         search: function () {
             return ell(3.5, 3.5, 14, 14) + line(15.5, 15.5, 20.5, 20.5);
         },
@@ -221,13 +228,48 @@
         eye: function () {
             var eye = P().moveTo(3, 12).quadTo(12, 1, 21, 12).quadTo(12, 23, 3, 12);
             return path(eye) + ell(8.5, 8.5, 7, 7);
+        },
+        chevron_up: function () {
+            return poly(false, [6, 15, 12, 9, 18, 15]);
+        },
+        chevron_left: function () {
+            return poly(false, [15, 6, 9, 12, 15, 18]);
+        },
+        // a turn about a dot: the dot is what tells it apart from reset, which is the same arc without a pivot
+        rotate_left: function () {
+            var cx = 12, cy = 12, r = 7;
+            var th = 45 * Math.PI / 180;
+            var px = cx + r * Math.cos(th), py = cy - r * Math.sin(th);
+            return path(P().arc(cx - r, cy - r, 2 * r, 2 * r, 135, 270, false))
+                + head(px, py, -Math.sin(th), -Math.cos(th), 3.5, 2.75) + dot(cx, cy, 3);
+        },
+        rotate_right: function () {
+            return '<g transform="translate(24 0) scale(-1 1)">' + ART.rotate_left() + '</g>';
+        },
+        // two wings either side of a dashed axis
+        flip: function () {
+            return line(12, 4, 12, 7) + line(12, 10.5, 12, 13.5) + line(12, 17, 12, 20)
+                + poly(true, [9, 6, 9, 18, 3.5, 12]) + poly(true, [15, 6, 15, 18, 20.5, 12]);
+        },
+        level_up: function () {
+            return poly(false, [6, 13, 12, 7, 18, 13]) + line(6, 18, 18, 18);
+        },
+        level_down: function () {
+            return line(6, 6, 18, 6) + poly(false, [6, 11, 12, 17, 18, 11]);
+        },
+        // four arrows out of a cross, the move gizmo
+        move: function () {
+            return line(12, 4, 12, 20) + line(4, 12, 20, 12)
+                + poly(false, [9.5, 6.5, 12, 4, 14.5, 6.5]) + poly(false, [9.5, 17.5, 12, 20, 14.5, 17.5])
+                + poly(false, [6.5, 9.5, 4, 12, 6.5, 14.5]) + poly(false, [17.5, 9.5, 20, 12, 17.5, 14.5]);
         }
     };
 
     var NAMES = ['get', 'goto', 'follow', 'waypoints', 'help', 'settings', 'stats', 'search', 'close', 'plus', 'minus',
         'chevron_down', 'chevron_right', 'check', 'copy', 'reset', 'stop', 'key', 'dot', 'ring', 'trash', 'pin',
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
-        'ladder', 'eye'];
+        'ladder', 'eye', 'schematics', 'warning', 'chevron_up', 'chevron_left', 'rotate_left', 'rotate_right', 'flip',
+        'level_up', 'level_down', 'move'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on

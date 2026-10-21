@@ -22,6 +22,7 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
+import baritone.process.PlaceRules;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.client.player.LocalPlayer;
@@ -47,7 +48,6 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
-import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
 public final class InventoryBehavior extends Behavior implements Helper {
@@ -91,10 +91,11 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return;
         }
         ticksSinceLastInventoryMove++;
-        if (clutch && baritone.getPathingBehavior().isPathing()) {
+        boolean creativeBuild = creativeBuild();
+        if (clutch && !creativeBuild && baritone.getPathingBehavior().isPathing()) {
             keepClutchItemOnHotbar();
         }
-        if (shuffle && baritone.getPathingBehavior().isPathing()) {
+        if (shuffle && !creativeBuild && baritone.getPathingBehavior().isPathing()) {
             if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
                 requestSwapWithHotBar(firstValidThrowaway(), 8, "tool");
             }
@@ -123,6 +124,13 @@ public final class InventoryBehavior extends Behavior implements Helper {
         lastHeld = held;
     }
 
+    // a creative build hands itself every block it places into the hotbar (BuilderProcess.creativeSlot), breaks anything in
+    // one hit and can't take fall damage. a pickaxe, a clutch ladder or a bag swap into slot 7 would just land on one of
+    // its blocks and it'd hand it back next click, so while it runs the hotbar is the builder's
+    private boolean creativeBuild() {
+        return ctx.player() != null && ctx.player().hasInfiniteMaterials() && baritone.getBuilderProcess().isActive();
+    }
+
     // ladders crafted or picked up land wherever there was room, and the clutch only looks at the hotbar
     private void keepClutchItemOnHotbar() {
         if (pickClutchItem(false) != null) {
@@ -131,6 +139,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
+                // fetchClutchItemNow is the one for an actual fall, this is the calm version
                 attemptToPutOnHotbar(i, slot -> false, "clutch");
                 return;
             }
@@ -145,6 +154,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
         if (pickClutchItem(false) != null) {
             return true; // already there
+        }
+        if (creativeBuild()) {
+            return false; // no fall damage to clutch against, and the slot it'd take is one of the builder's
         }
         NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 9; i < 36; i++) {
@@ -171,34 +183,18 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         OptionalInt destination = getTempHotbarSlot(disallowedHotbar);
-        if (destination.isPresent()) {
-            if (!requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who)) {
-                return false;
-            }
+        if (destination.isEmpty()) {
+            // nowhere to put it is not "it's on the hotbar". this said true and the builder went on to stand in the goal
+            // with nothing to click. movePending tells this apart from a swap that's only throttled
+            return false;
         }
-        return true;
+        return requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who);
     }
 
-    // attemptToPutOnHotbar for someone who wants to know where it went (or is going, a throttled one lands later).
-    // tiers are disallowed sets tried in order until one leaves a slot. a move from inMainInvy that's already pending
-    // keeps its slot, picking a fresh random one every tick it waits was a swap fight all by itself
-    public OptionalInt fetchToHotbar(int inMainInvy, List<IntPredicate> tiers, String who) {
-        if (AltoClefSettings.getInstance().isInteractionPaused()) {
-            return OptionalInt.empty();
-        }
-        OptionalInt destination = OptionalInt.empty();
-        // the loosest tier, a pending slot that turned useful meanwhile is still off limits
-        if (lastTickRequestedMove != null && lastTickRequestedMove[0] == inMainInvy && !tiers.isEmpty()
-                && !tiers.get(tiers.size() - 1).test(lastTickRequestedMove[1])) {
-            destination = OptionalInt.of(lastTickRequestedMove[1]);
-        }
-        for (int i = 0; i < tiers.size() && destination.isEmpty(); i++) {
-            destination = getTempHotbarSlot(tiers.get(i)::test);
-        }
-        if (destination.isPresent()) {
-            requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who);
-        }
-        return destination;
+    // a swap somebody asked for that the move delay is still holding back. the builder's stall check counts it as
+    // something happening
+    public boolean movePending() {
+        return lastTickRequestedMove != null;
     }
 
     // the one place a placement click is vetted (see InputOverrideHandler): throwaway() selects slot 7 even when the swap into
@@ -401,6 +397,20 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return ThrowawayPicks.classify(alto.isInteractionPaused(), alto.shouldAvoidPlacingAt(x, y, z), haveAny, haveUsable, usableOnHotbar).why;
     }
 
+    // a clutch is a parachute for fall damage. creative and friends take none, and the builder's ladders are schematic
+    // blocks, a clutch would hang one where the file wants air and the builder would break it again right under us
+    public boolean clutchAllowed() {
+        return ExperimentalMovement.allowLadderClutch() && clutchWanted();
+    }
+
+    // the half of that altoclef's water bucket clutch asks too (MLGBucketFallChain), its bucket or hay bale is just as
+    // much a block in the build as our ladder
+    public boolean clutchWanted() {
+        LocalPlayer player = ctx.player();
+        return player != null && !player.getAbilities().invulnerable
+                && baritone.getPathingControlManager().mostRecentInControl().orElse(null) != baritone.getBuilderProcess();
+    }
+
     // vine first, it has no collision box so we can't land on top of it or get the placement refused for standing in it
     // hotbar only, same as the water bucket: there's no time to shuffle the inventory in the middle of a fall
     public Item pickClutchItem(boolean select) {
@@ -421,11 +431,33 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         BlockState maybe = baritone.getBuilderProcess().placeAt(x, y, z, baritone.bsi.get0(x, y, z));
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
+        // only on the builder's own paths, its costOfPlacingAt already went around these cells. anybody else's planner
+        // priced them like any other cell and would just fail the movement over and over
+        boolean builderPath = maybe != null && baritone.getPathingControlManager().mostRecentInControl().orElse(null) == baritone.getBuilderProcess();
+        if (builderPath && !PlaceRules.aimProof(maybe)) {
+            // anything short of aim proof: a stair or a slab from a movement comes out however it's aimed, and a fence
+            // isn't a full cube so it isn't aim proof either. the builder does all of those itself
+            return false;
+        }
+        // somebody else's movement placing an aimed block puts it down however it happened to be looking (a ladder facing
+        // wherever we were turned, the guess below fakes the click), so those get a plain throwaway and the builder sorts
+        // the cell out later. slabs count as aimed too (type, see PlaceRules.AIMED). a fence or a wall has nothing to
+        // aim and still gets the real thing
+        boolean aimed = maybe != null && PlaceRules.aimed(maybe);
+        if (maybe != null && !aimed && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
         }
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
+        if (maybe != null && !aimed && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
+        }
+        // creative and not on the hotbar yet: the builder hands it over like one of its own clicks. its costOfPlacingAt
+        // already priced this cell as placeable, so saying no here would be the recalc forever from above
+        if (builderPath && baritone.getBuilderProcess().creativeHand(maybe, select)) {
+            return true;
+        }
+        if (builderPath) {
+            // no cobble in a cell the build wants filled: it got kept as scaffolding and broken back out at cleanup
+            return false;
         }
         for (Item item : movementThrowaways(allowProtected)) {
             if (throwaway(select, stack -> item.equals(stack.getItem()))) {
@@ -436,7 +468,8 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean throwaway(boolean select, Predicate<? super ItemStack> desired) {
-        return throwaway(select, desired, Baritone.settings().allowInventory.value);
+        // no bag swaps into slot 7 during a creative build, see creativeBuild
+        return throwaway(select, desired, Baritone.settings().allowInventory.value && !creativeBuild());
     }
 
     public boolean throwaway(boolean select, Predicate<? super ItemStack> desired, boolean allowInventory) {

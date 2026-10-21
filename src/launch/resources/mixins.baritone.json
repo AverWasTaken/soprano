@@ -8,6 +8,7 @@
     "defaultRequire": 1
   },
   "client": [
+    "MixinAbstractSignEditScreen",
     "MixinAltoClefAbstractArrow",
     "MixinAltoClefAbstractFurnaceMenu",
     "MixinAltoClefBlock",
@@ -22,6 +23,7 @@
     "MixinAltoClefOptions",
     "MixinAltoClefPlayerTouch",
     "MixinAltoClefScreen",
+    "MixinBlockItem",
     "MixinBlockStateBase",
     "MixinChunkArray",
     "MixinClientChunkProvider",
@@ -37,6 +39,9 @@
     "MixinLootContextBuilder",
     "MixinLootTable",
     "MixinMinecraft",
+    "MixinMoveCamera",
+    "MixinMoveHand",
+    "MixinMoveHud",
     "MixinNetworkManager",
     "MixinPalettedContainer",
     "MixinPalettedContainer$Data",

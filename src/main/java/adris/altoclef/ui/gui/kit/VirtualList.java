@@ -48,6 +48,12 @@ public class VirtualList<T> extends VirtualView<T> {
         return selected;
     }
 
+    // the cursor is an index, so an owner that keys its selection by something stabler points it back at the right
+    // row after a refresh or a search moved things. out of range means no cursor
+    public void setSelected(int index) {
+        selected = selectable && index >= 0 && index < items.size() ? index : -1;
+    }
+
     public int rowHeight() {
         return rowH;
     }
@@ -80,6 +86,11 @@ public class VirtualList<T> extends VirtualView<T> {
 
     public void ensureVisible(int index) {
         scroller.ensureVisible(index * (float) rowH, (index + 1) * (float) rowH, now);
+    }
+
+    // the middle of a row on screen, scroll taken off: where to click a row that isn't on the first page
+    public float rowMidY(int index) {
+        return y + (index + 0.5f) * rowH - scroller.offset(now);
     }
 
     @Override

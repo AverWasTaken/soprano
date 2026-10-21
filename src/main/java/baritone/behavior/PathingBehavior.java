@@ -32,6 +32,7 @@ import baritone.pathing.calc.AStarPathFinder;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.SwimStalls;
 import baritone.pathing.path.PathExecutor;
 import baritone.process.ElytraProcess;
@@ -89,6 +90,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private long tickCount;
 
     private final SwimStalls swimStalls = new SwimStalls();
+    private final FailedMoves failedMoves = new FailedMoves();
 
     // the cancel-and-ask-again-every-tick guard (SearchHold). everything that touches it holds pathCalcLock
     private final SearchHold hold = new SearchHold();
@@ -118,6 +120,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public SwimStalls swimStalls() {
         return swimStalls;
+    }
+
+    public FailedMoves failedMoves() {
+        return failedMoves;
     }
 
     private void queuePathEvent(PathEvent event) {
@@ -595,41 +601,63 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     public BetterBlockPos pathStart() { // TODO move to a helper or util class
         BetterBlockPos feet = ctx.playerFeet();
         if (!MovementHelper.canWalkOn(ctx, feet.below())) {
-            if (ctx.player().onGround()) {
-                double playerX = ctx.player().position().x;
-                double playerZ = ctx.player().position().z;
-                ArrayList<BetterBlockPos> closest = new ArrayList<>();
-                for (int dx = -1; dx <= 1; dx++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        closest.add(new BetterBlockPos(feet.x + dx, feet.y, feet.z + dz));
-                    }
-                }
-                closest.sort(Comparator.comparingDouble(pos -> ((pos.x + 0.5D) - playerX) * ((pos.x + 0.5D) - playerX) + ((pos.z + 0.5D) - playerZ) * ((pos.z + 0.5D) - playerZ)));
-                for (int i = 0; i < 4; i++) {
-                    BetterBlockPos possibleSupport = closest.get(i);
-                    double xDist = Math.abs((possibleSupport.x + 0.5D) - playerX);
-                    double zDist = Math.abs((possibleSupport.z + 0.5D) - playerZ);
-                    if (xDist > 0.8 && zDist > 0.8) {
-                        // can't possibly be sneaking off of this one, we're too far away
-                        continue;
-                    }
-                    if (MovementHelper.canWalkOn(ctx, possibleSupport.below()) && MovementHelper.canWalkThrough(ctx, possibleSupport) && MovementHelper.canWalkThrough(ctx, possibleSupport.above())) {
-                        // this is plausible
-                        //logDebug("Faking path start assuming player is standing off the edge of a block");
-                        return possibleSupport;
-                    }
-                }
-
-            } else {
-                // !onGround
-                // we're in the middle of a jump
-                if (MovementHelper.canWalkOn(ctx, feet.below().below())) {
-                    //logDebug("Faking path start assuming player is midair and falling");
-                    return feet.below();
-                }
+            // the lip search runs whether or not onGround says so. onGround blinks on a lip, and every blink used to flip the
+            // start between the lip and the block under us, a block lower, which plans a whole different path from a spot
+            // we aren't standing at
+            // but only at rest height. a bot hanging off a lip sits exactly on the block line, one walking off a ledge or at
+            // the top of a jump is a bit off it and still right next to the block it left, which isn't a start. and not going
+            // up: the third tick of a jump is +1.0013, right on the next line, the famous number that gets you onto a block.
+            // and not falling fast either, a fall past a ledge crosses block lines too. a perch has one tick of gravity, -0.08
+            BetterBlockPos support = ctx.player().onGround() || perched(feet) ? lipSupport(feet) : null;
+            if (support != null) {
+                return support;
+            }
+            // nothing to be hanging off of, so we're in the middle of a jump
+            if (!ctx.player().onGround() && MovementHelper.canWalkOn(ctx, feet.below().below())) {
+                //logDebug("Faking path start assuming player is midair and falling");
+                return feet.below();
             }
         }
         return feet;
+    }
+
+    // off the ground but sitting still on a block line, which is what hanging off a lip looks like. so does hanging on a
+    // ladder or a vine with air under it, hovering in creative flight and bobbing in water, and for those the lip search
+    // finds some open cell next to us and the start flips between it and our feet every tick
+    private boolean perched(BetterBlockPos feet) {
+        double vy = ctx.player().getDeltaMovement().y;
+        if (Math.abs(ctx.player().position().y - feet.y) >= 0.01 || vy > 0 || vy <= -0.1) {
+            return false;
+        }
+        return !ctx.player().onClimbable() && !ctx.player().getAbilities().flying && !ctx.player().isInWater();
+    }
+
+    // the block we're sneaking (or just standing) off the edge of, if there's a plausible one
+    private BetterBlockPos lipSupport(BetterBlockPos feet) {
+        double playerX = ctx.player().position().x;
+        double playerZ = ctx.player().position().z;
+        ArrayList<BetterBlockPos> closest = new ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                closest.add(new BetterBlockPos(feet.x + dx, feet.y, feet.z + dz));
+            }
+        }
+        closest.sort(Comparator.comparingDouble(pos -> ((pos.x + 0.5D) - playerX) * ((pos.x + 0.5D) - playerX) + ((pos.z + 0.5D) - playerZ) * ((pos.z + 0.5D) - playerZ)));
+        for (int i = 0; i < 4; i++) {
+            BetterBlockPos possibleSupport = closest.get(i);
+            double xDist = Math.abs((possibleSupport.x + 0.5D) - playerX);
+            double zDist = Math.abs((possibleSupport.z + 0.5D) - playerZ);
+            if (xDist > 0.8 && zDist > 0.8) {
+                // can't possibly be sneaking off of this one, we're too far away
+                continue;
+            }
+            if (MovementHelper.canWalkOn(ctx, possibleSupport.below()) && MovementHelper.canWalkThrough(ctx, possibleSupport) && MovementHelper.canWalkThrough(ctx, possibleSupport.above())) {
+                // this is plausible
+                //logDebug("Faking path start assuming player is standing off the edge of a block");
+                return possibleSupport;
+            }
+        }
+        return null;
     }
 
     /**

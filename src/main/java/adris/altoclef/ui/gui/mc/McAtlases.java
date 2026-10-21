@@ -3,6 +3,7 @@ package adris.altoclef.ui.gui.mc;
 import adris.altoclef.ui.gui.kit.AtlasPage;
 import adris.altoclef.ui.gui.kit.AwtFonts;
 import adris.altoclef.ui.gui.kit.GlyphAtlas;
+import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.ShapeAtlas;
 import adris.altoclef.ui.gui.kit.TextStyle;
@@ -14,6 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.awt.image.DataBufferInt;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 
 // the cpu side atlases (they are kept between opens, rasterising inter is the slow part) and the gpu side of each page.
@@ -40,6 +42,10 @@ final class McAtlases {
     final ShapeAtlas shapes;
 
     private final Map<Integer, Slot> slots = new HashMap<>();
+    // hand drawn pictures (the placement map), one texture each, keyed by the picture itself
+    private final Map<PixelImage, Slot> images = new IdentityHashMap<>();
+    // a picture has no id of its own, so each one gets the next number for its texture name
+    private int pictures;
     private AtlasPage lastPage;
     private Slot lastSlot;
 
@@ -125,15 +131,39 @@ final class McAtlases {
     private static void copy(AtlasPage page, DynamicTexture texture) {
         NativeImage image = texture.getPixels();
         int[] argb = ((DataBufferInt) page.image().getRaster().getDataBuffer()).getData();
-        int w = page.width();
-        int h = page.height();
+        copy(argb, page.width(), page.height(), image);
+        texture.upload();
+    }
+
+    // setPixel takes argb (setPixelABGR is the other one), which is what the map colours are
+    private static void copy(int[] argb, int w, int h, NativeImage image) {
         for (int y = 0; y < h; y++) {
             int row = y * w;
             for (int x = 0; x < w; x++) {
                 image.setPixel(x, y, argb[row + x]);
             }
         }
-        texture.upload();
+    }
+
+    // what to bind for a picture, uploaded on first sight and again whenever its version moved
+    ResourceLocation texture(PixelImage picture) {
+        Slot slot = images.get(picture);
+        if (slot == null) {
+            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("soprano", "gui/picture_" + pictures++);
+            DynamicTexture tex = new DynamicTexture(new NativeImage(picture.width(), picture.height(), true));
+            Minecraft.getInstance().getTextureManager().register(rl, tex);
+            // nearest like the pages, the map is drawn at its own size
+            tex.setFilter(false, false);
+            slot = new Slot(tex, rl);
+            images.put(picture, slot);
+        }
+        int version = picture.version();
+        if (slot.version != version) {
+            copy(picture.pixels(), picture.width(), picture.height(), slot.texture.getPixels());
+            slot.texture.upload();
+            slot.version = version;
+        }
+        return slot.location;
     }
 
     static void releaseAll() {
@@ -151,7 +181,15 @@ final class McAtlases {
                 Safe.report("gui texture release", t);
             }
         }
+        for (Slot slot : images.values()) {
+            try {
+                mc.getTextureManager().release(slot.location);
+            } catch (Throwable t) {
+                Safe.report("gui texture release", t);
+            }
+        }
         slots.clear();
+        images.clear();
         lastPage = null;
         lastSlot = null;
     }

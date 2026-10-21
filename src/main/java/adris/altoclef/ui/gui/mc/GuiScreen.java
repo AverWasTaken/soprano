@@ -221,6 +221,13 @@ public class GuiScreen extends Screen {
         this.height = h;
     }
 
+    // files dropped on the window land in the schematics folder whichever tab is showing, and the toast says what
+    // happened. the schematics tab sees the new rows by itself, the import refreshes the list
+    @Override
+    public void onFilesDrop(List<java.nio.file.Path> files) {
+        Safe.run("gui drop", () -> shell.toast(facade.schematics().importDropped(files).toResult()));
+    }
+
     // ----- drawing
 
     @Override
@@ -348,7 +355,7 @@ public class GuiScreen extends Screen {
         return mc.getWindow().getGuiScale();
     }
 
-    private static int mods() {
+    static int mods() {
         int m = 0;
         if (hasShiftDown()) {
             m |= Keys.MOD_SHIFT;
