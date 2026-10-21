@@ -1,0 +1,45 @@
+package adris.altoclef.ui.gui.mc;
+
+import adris.altoclef.ui.gui.kit.Safe;
+import baritone.Baritone;
+
+// whether our boot screen and title screen are on. the very first frame of the boot overlay is drawn from inside
+// Minecraft's constructor, before baritone (and its settings file) exists, so until the constructor returns the answer
+// is just yes. that also keeps a settings class init failure out of a render call
+public final class SopranoMenus {
+
+    private static volatile boolean ready;
+
+    private SopranoMenus() {
+    }
+
+    // MixinMinecraft calls this at the end of the constructor, right after baritone is up
+    public static void markReady() {
+        ready = true;
+    }
+
+    public static boolean enabled() {
+        if (!ready) {
+            return true;
+        }
+        try {
+            return Baritone.settings().guiMenus.value;
+        } catch (Throwable t) {
+            Safe.report("menus setting", t);
+            return true;
+        }
+    }
+
+    // reduced motion for the boot screen, which has no KitSurface to sync Anim.enabled for it
+    static boolean animations() {
+        if (!ready) {
+            return true;
+        }
+        try {
+            return Baritone.settings().guiAnimations.value;
+        } catch (Throwable t) {
+            Safe.report("menus animation setting", t);
+            return true;
+        }
+    }
+}
