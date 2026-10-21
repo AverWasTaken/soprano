@@ -3,6 +3,10 @@
 -keepattributes InnerClasses
 
 -optimizationpasses 5
+# no narrowing parameter/return/field types. the title screen mixin was the only thing ever handed to
+# UpdateCardWidget's constructor, so proguard rewrote Screen into MixinTitleScreen. loading a mixin class for real is
+# illegal, so the card died on every release jar and worked fine in dev where proguard never runs
+-optimizations !method/specialization/parametertype,!method/specialization/returntype,!field/specialization/type
 -verbose
 
 -allowaccessmodification # anything not kept can be changed from public to private and inlined etc
