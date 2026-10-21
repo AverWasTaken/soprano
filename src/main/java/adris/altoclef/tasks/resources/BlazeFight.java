@@ -12,8 +12,10 @@ import adris.altoclef.util.helpers.LookHelper;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -53,9 +55,16 @@ final class BlazeFight {
     private Mode mode = Mode.CAMP;
     // when the current mode started, game time. the dwell in BlazeFightRules.decide counts from here
     private long modeSince;
-    private final Map<Integer, LineCheck> lines = new HashMap<>();
+    // per blaze by entity id: is it in reach and what its swing line has been doing. this is what makes reach sticky,
+    // see BlazeFightRules.reachableNow. dropped the scan a blaze is dead or out of range, the ids get reused
+    private final Map<Integer, Reach> reach = new HashMap<>();
     private Mode loggedMode = Mode.CAMP;
     private boolean retreating;
+    // the retreat stall watch: when the idle retreat started (or last gained hp), what hp was last tick, and whether we
+    // gave up waiting. MIN_VALUE is not watching
+    private long retreatIdleSince = Long.MIN_VALUE;
+    private float lastHealth = Float.NaN;
+    private boolean retreatGaveUp;
     private final List<Blaze> threats = new ArrayList<>();
     private int reachable;
     // blazes worth walking to, nearest first, and every live blaze within MAX_CHASE_DISTANCE (that one is just for the hud)
@@ -82,7 +91,14 @@ final class BlazeFight {
         return mode;
     }
 
-    private record LineCheck(long tick, boolean clear) {
+    private static final class Reach {
+        long rayTick = Long.MIN_VALUE;
+        boolean clear;
+        // rays in a row that hit something
+        int blocked;
+        boolean reachable;
+        // from the floor under it to the spawner, NaN for no floor or no spawner
+        double fromSpawner = Double.NaN;
     }
 
     // what is under a blaze: the block we would stand on (null for none within the scan), how high it hovers over that,
@@ -110,6 +126,18 @@ final class BlazeFight {
         campSpot = null;
     }
 
+    // the walk back to campSpot is going nowhere. same as a cover spot we could not get to: mark it so the next cover pick
+    // finds a different one, and camp by the spawner until then
+    void campSpotUnreachable() {
+        if (campSpot == null) return;
+        markBad(campSpot);
+        campSpot = null;
+    }
+
+    boolean retreatGaveUp() {
+        return retreatGaveUp;
+    }
+
     Task tick(AltoClef mod, BlockPos spawner) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
@@ -119,21 +147,42 @@ final class BlazeFight {
         long dwelled = now >= modeSince ? now - modeSince : Long.MAX_VALUE;
         // same deal for the hide hold, a clock that went backwards means the last look was long ago
         long sinceThreat = lastThreatTick != Long.MIN_VALUE && now >= lastThreatTick ? now - lastThreatTick : Long.MAX_VALUE;
-        Mode next = BlazeFightRules.decide(health, retreating, threats.size(), reachable, huntable.size(), sinceThreat, mode, dwelled);
+        // hp going up is what the retreat waits for, so any rise means it is working again
+        if (health > lastHealth) retreatGaveUp = false;
+        Mode next = BlazeFightRules.decide(health, retreating, retreatGaveUp, threats.size(), reachable, huntable.size(), sinceThreat,
+                mode, dwelled);
         retreating = next == Mode.RETREAT;
         if (next != mode) modeSince = now;
         mode = next;
+        watchRetreat(now, health);
+        lastHealth = health;
         // a real fight starts the next hunt fresh. CAMP does not: a blaze blinking over the lava edge for a tick would
-        // restart the give up clock for ever
-        if (mode == Mode.KILL || mode == Mode.COVER || mode == Mode.RETREAT) huntTarget = null;
+        // restart the give up clock for ever. COVER does not either, the blaze we walked at seeing us and making us hide is
+        // the hunt loop, clearing here was what kept the give up from ever firing
+        if (mode == Mode.KILL || mode == Mode.RETREAT) huntTarget = null;
         logChange(health);
         return switch (mode) {
             case CAMP -> null;
-            case KILL -> new KillEntitiesTask(e -> e instanceof Blaze blaze && isReachable(mod, blaze), Blaze.class);
+            case KILL -> new KillEntitiesTask(e -> e instanceof Blaze blaze && fightable(mod, blaze), Blaze.class);
             case COVER -> cover(mod, now, spawner);
             case RETREAT -> retreat(mod, now, spawner);
             case HUNT -> hunt(now);
         };
+    }
+
+    // an idle retreat (nobody looking, just healing) that has not gained hp in RETREAT_GIVE_UP_TICKS gives up. runs after
+    // decide, the flag is read by the next one
+    private void watchRetreat(long now, float health) {
+        boolean rose = health > lastHealth;
+        boolean idle = mode == Mode.RETREAT && threats.isEmpty();
+        boolean stalled = false;
+        if (!idle || rose || now < retreatIdleSince) {
+            retreatIdleSince = idle ? now : Long.MIN_VALUE;
+        } else {
+            if (retreatIdleSince == Long.MIN_VALUE) retreatIdleSince = now;
+            stalled = BlazeFightRules.retreatStalled(now - retreatIdleSince);
+        }
+        retreatGaveUp = BlazeFightRules.retreatGaveUpNext(retreatGaveUp, mode == Mode.RETREAT, rose, stalled);
     }
 
     private void logChange(float health) {
@@ -159,8 +208,6 @@ final class BlazeFight {
         reachable = 0;
         huntable.clear();
         around = 0;
-        // forget blazes that died or left, the ids get reused
-        lines.values().removeIf(check -> now - check.tick() > LINE_EVERY * 4L);
         skippedHunts.values().removeIf(when -> now < when || now - when > BAD_SPOT_TICKS);
         List<Blaze> blazes;
         try {
@@ -169,37 +216,54 @@ final class BlazeFight {
             // the tracker rebuilds on another thread sometimes, one tick of stale blazes is fine
             return;
         }
+        Set<Integer> seen = new HashSet<>();
         for (Blaze blaze : blazes) {
             if (!blaze.isAlive()) continue;
             double distance = player.distanceTo(blaze);
             if (distance > BlazeFightRules.MAX_CHASE_DISTANCE) continue;
             around++;
+            seen.add(blaze.getId());
             Floor floor = floorUnder(mod.getWorld(), blaze);
-            if (isReachable(mod, blaze, floor, distance, now)) reachable++;
+            BlockPos stand = floor.pos() == null ? null : floor.pos().above();
+            double fromSpawner = spawner == null || stand == null ? Double.NaN : Math.sqrt(stand.distSqr(spawner));
+            updateReach(mod, blaze, floor, distance, fromSpawner, now);
+            if (fightable(mod, blaze)) reachable++;
             // raycasts only for the ones that could actually hit us from where they are
             if (distance <= BlazeFightRules.SIGHT_RANGE && LookHelper.seesPlayer(blaze, player, BlazeFightRules.SIGHT_RANGE)) {
                 threats.add(blaze);
             }
-            BlockPos stand = floor.pos() == null ? null : floor.pos().above();
-            double fromSpawner = spawner == null || stand == null ? Double.NaN : Math.sqrt(stand.distSqr(spawner));
             boolean banned = !mod.getEntityTracker().isEntityReachable(blaze) || skippedHunts.containsKey(blaze.getId());
             if (BlazeFightRules.isHuntable(stand != null, floor.lava(), distance, banned, fromSpawner)) {
                 huntable.add(new Hunt(blaze, stand));
             }
         }
+        // forget blazes that died or left, the ids get reused
+        reach.keySet().retainAll(seen);
         threats.sort(Comparator.comparingDouble(player::distanceToSqr));
         huntable.sort(Comparator.comparingDouble(h -> player.distanceToSqr(h.blaze())));
         if (!threats.isEmpty()) lastThreatTick = now;
     }
 
-    private boolean isReachable(AltoClef mod, Blaze blaze) {
-        return isReachable(mod, blaze, floorUnder(mod.getWorld(), blaze), mod.getPlayer().distanceTo(blaze), mod.getWorld().getGameTime());
+    // the one "can we go hit it" for both the reachable count and the kill task's picker. the picker reads what the scan
+    // worked out this tick instead of redoing it, the sticky memory only moves once per scan
+    private boolean fightable(AltoClef mod, Blaze blaze) {
+        Reach r = reach.get(blaze.getId());
+        if (r == null) return false;
+        return BlazeFightRules.isFightable(r.reachable, !mod.getEntityTracker().isEntityReachable(blaze), r.fromSpawner);
     }
 
-    private boolean isReachable(AltoClef mod, Blaze blaze, Floor floor, double distance, long now) {
+    private void updateReach(AltoClef mod, Blaze blaze, Floor floor, double distance, double fromSpawner, long now) {
+        Reach r = reach.computeIfAbsent(blaze.getId(), id -> new Reach());
+        r.fromSpawner = fromSpawner;
+        double ceiling = r.reachable ? BlazeFightRules.STAY_REACHABLE_HEIGHT : BlazeFightRules.MAX_REACHABLE_HEIGHT;
         // cheap rejects first, the ray is the only part that costs anything
-        if (!BlazeFightRules.isReachable(floor.height(), floor.lava(), distance, true)) return false;
-        return meleeLineClear(mod, blaze, now);
+        if (floor.lava() || distance > BlazeFightRules.MAX_CHASE_DISTANCE || floor.height() > ceiling) {
+            r.reachable = false;
+            r.blocked = 0;
+            return;
+        }
+        meleeLine(mod, blaze, r, now);
+        r.reachable = BlazeFightRules.reachableNow(r.reachable, floor.height(), floor.lava(), distance, r.clear, r.blocked);
     }
 
     // walk straight down from the blaze to whatever it is hovering over. lava is a no, a floor is how high it is
@@ -218,14 +282,14 @@ final class BlazeFight {
         return new Floor(null, Double.POSITIVE_INFINITY, false);
     }
 
-    // collision shapes, not visual ones: a nether brick fence is see through and swing proof. cached a few ticks per blaze
-    private boolean meleeLineClear(AltoClef mod, Blaze blaze, long now) {
-        LineCheck cached = lines.get(blaze.getId());
-        if (cached != null && now >= cached.tick() && now - cached.tick() < LINE_EVERY) return cached.clear();
+    // collision shapes, not visual ones: a nether brick fence is see through and swing proof. cached a few ticks per blaze,
+    // and only a fresh ray moves the blocked streak, a cached answer is not a second opinion
+    private static void meleeLine(AltoClef mod, Blaze blaze, Reach r, long now) {
+        if (r.rayTick != Long.MIN_VALUE && now >= r.rayTick && now - r.rayTick < LINE_EVERY) return;
         LocalPlayer player = mod.getPlayer();
-        boolean clear = !clipped(mod.getWorld(), player, player.getEyePosition(), blaze.getBoundingBox().getCenter());
-        lines.put(blaze.getId(), new LineCheck(now, clear));
-        return clear;
+        r.rayTick = now;
+        r.clear = !clipped(mod.getWorld(), player, player.getEyePosition(), blaze.getBoundingBox().getCenter());
+        r.blocked = r.clear ? 0 : Math.min(r.blocked + 1, BlazeFightRules.BLOCKED_CHECKS_TO_DROP);
     }
 
     // the nearest one that is winding up a volley, that is the one the shield goes toward
@@ -264,8 +328,10 @@ final class BlazeFight {
     // path pillars or fails and the tracker bans it. the mode is re-decided every tick, so the walk ends the moment one
     // sees us (COVER) or gets in reach (KILL)
     private Task hunt(long now) {
-        // a long break with nothing worth the walk is a fresh start too, the old clock is not this hunt's fault
-        boolean longBreak = lastHuntTick == Long.MIN_VALUE || now < lastHuntTick || now - lastHuntTick > BlazeFightRules.HIDE_HOLD_TICKS;
+        // a long break with nothing worth the walk is a fresh start too, the old clock is not this hunt's fault. a cover
+        // break is not long, see huntBreakIsFreshStart
+        boolean longBreak = lastHuntTick == Long.MIN_VALUE || now < lastHuntTick
+                || BlazeFightRules.huntBreakIsFreshStart(now - lastHuntTick);
         if (longBreak) huntTarget = null;
         lastHuntTick = now;
         if (huntTarget != null && BlazeFightRules.huntTakingTooLong(now >= huntSince ? now - huntSince : 0)) {

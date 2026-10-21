@@ -12,6 +12,8 @@ import adris.altoclef.util.time.TimerGame;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.Optional;
+
 public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraftingGrid {
 
     private final int _toTake;
@@ -128,6 +130,21 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
             setDebugState("Quick moving output");
             click(mod, inOutput, cursor, ClickType.QUICK_MOVE);
             return null;
+        }
+        // picking it up into a bag with no room parks the result on the cursor (the iron pickaxe, say), and the cursor task then has
+        // to find it a home with nothing free. so make the room first, while the good stuff is still in the output. a THROW on the
+        // garbage slot drops it in one click without touching the cursor: going through the cursor (EnsureFreeInventorySlotTask)
+        // leaves the garbage up there for a tick, and the craft task above us puts it straight back in the slot it just left.
+        // empty cursor only (a THROW with something held does nothing, and a same kind stack just grows), and only with garbage.
+        // some room is not enough room: 3 free spots on a partial stack take 3 of the 4 sticks and the 4th sits on the cursor.
+        // one throw frees a whole slot and an output is never more than a stack, so this goes at most once per output
+        if (cursor.isEmpty() && inventoryRoomFor(mod, inOutput) < inOutput.getCount()) {
+            Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
+            if (garbage.isPresent()) {
+                setDebugState("Making room for the output");
+                mod.getSlotHandler().clickSlot(garbage.get(), 1, ClickType.THROW);
+                return null;
+            }
         }
         setDebugState("Picking up output");
         click(mod, inOutput, cursor, ClickType.PICKUP);

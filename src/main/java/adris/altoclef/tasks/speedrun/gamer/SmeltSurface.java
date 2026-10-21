@@ -27,6 +27,8 @@ public final class SmeltSurface {
     private long climbSince;
     private int bestDepth;
     private Task climb;
+    // the y `climb` walks to. MAX_VALUE = no climb, so nothing ever counts as reaching it
+    private int climbY = Integer.MAX_VALUE;
     private Why climbWhy = Why.IRON;
 
     public void reset() {
@@ -34,6 +36,7 @@ public final class SmeltSurface {
         settled[0] = settled[1] = false;
         gaveUp[0] = gaveUp[1] = false;
         climb = null;
+        climbY = Integer.MAX_VALUE;
     }
 
     public boolean climbing() {
@@ -73,6 +76,25 @@ public final class SmeltSurface {
 
     public static boolean wantsUp(boolean alreadyClimbing, int depth) {
         return alreadyClimbing ? depth > ARRIVED_DEPTH : depth > GO_UP_DEPTH;
+    }
+
+    // where a climb that is already going stands
+    public enum Climb {
+        ARRIVED, ON, RETARGET
+    }
+
+    // the climb walks to a y, and that y is the sky over the column we started in. GoalYLevel does not care about x/z, so the
+    // path can end at that y in a cave under a hill, and then the goal is already met and nothing moves. once we are at (or
+    // past, an overhang does that) the y we were sent to: a few blocks under this column is out of the mine, call it done.
+    // still deep means a new y from the sky over here. not done yet is just keep climbing
+    public static Climb climbStep(int feetY, int climbY, int depth) {
+        if (depth <= ARRIVED_DEPTH) {
+            return Climb.ARRIVED;
+        }
+        if (feetY >= climbY) {
+            return shallow(depth) ? Climb.ARRIVED : Climb.RETARGET;
+        }
+        return Climb.ON;
     }
 
     // what is waiting for the surface
@@ -161,6 +183,7 @@ public final class SmeltSurface {
         if (why == Why.NONE) {
             climbing = false;
             climb = null;
+            climbY = Integer.MAX_VALUE;
             return null;
         }
         int kind = why == Why.IRON ? IRON : COOK;
@@ -168,23 +191,31 @@ public final class SmeltSurface {
         int surface = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
         int depth = depth(surface, feet.getY());
         long now = f.gameTime();
-        if (!wantsUp(climbing, depth)) {
+        Climb step = climbing ? climbStep(feet.getY(), climbY, depth) : null;
+        if (climbing ? step == Climb.ARRIVED : !wantsUp(false, depth)) {
             if (climbing) {
                 settled[kind] = true;
                 ctx.log(why == Why.IRON ? "up at the surface, smelting here" : "up at the surface, cooking here");
             }
             climbing = false;
             climb = null;
+            climbY = Integer.MAX_VALUE;
             return null;
         }
         if (!climbing) {
             climbing = true;
             climbSince = now;
             bestDepth = depth;
+            climbY = surface;
             climb = new GetToYTask(surface);
             adris.altoclef.Debug.logInternal(why == Why.IRON
                     ? "smelting: " + f.count(Items.RAW_IRON) + " raw iron in the bag and " + depth + " blocks under the surface, going up first"
                     : "cooking: " + CookGate.raw(f) + " raw meat in the bag and " + depth + " blocks under the surface, going up first");
+        } else if (step == Climb.RETARGET) {
+            // the old y is met and we are still in a cave, aim for the sky over here instead (deeper than GO_UP_DEPTH, so
+            // strictly above our feet). climbSince stays: the give up still caps the whole climb, not each leg of it
+            climbY = surface;
+            climb = new GetToYTask(surface);
         }
         climbWhy = why;
         if (depth < bestDepth) {
@@ -195,6 +226,7 @@ public final class SmeltSurface {
             gaveUp[kind] = true;
             climbing = false;
             climb = null;
+            climbY = Integer.MAX_VALUE;
             ctx.log(why == Why.IRON ? "could not get up to the surface, smelting down here" : "could not get up to the surface, cooking down here");
             return null;
         }

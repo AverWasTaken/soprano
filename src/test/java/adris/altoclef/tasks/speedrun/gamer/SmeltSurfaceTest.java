@@ -52,6 +52,34 @@ public class SmeltSurfaceTest {
         assertFalse(SmeltSurface.wantsUp(false, SmeltSurface.depth(64, 70)));
     }
 
+    // a climb aimed off a low column can end at that y in a cave under a hill
+    @Test
+    public void reachingTheClimbYStillDeepAimsAgain() {
+        assertEquals(SmeltSurface.Climb.RETARGET, SmeltSurface.climbStep(63, 63, 10));
+    }
+
+    @Test
+    public void reachingTheClimbYAFewUnderIsOut() {
+        assertEquals(SmeltSurface.Climb.ARRIVED, SmeltSurface.climbStep(63, 63, 5));
+        // edge of the line: GO_UP_DEPTH is the deepest that still counts as out
+        assertEquals(SmeltSurface.Climb.ARRIVED, SmeltSurface.climbStep(63, 63, SmeltSurface.GO_UP_DEPTH));
+        assertEquals(SmeltSurface.Climb.RETARGET, SmeltSurface.climbStep(63, 63, SmeltSurface.GO_UP_DEPTH + 1));
+    }
+
+    // past the y under an overhang must not get walked back down to it
+    @Test
+    public void overshootingTheClimbYIsNotACallBackDown() {
+        assertEquals(SmeltSurface.Climb.ARRIVED, SmeltSurface.climbStep(66, 63, 1));
+        assertEquals(SmeltSurface.Climb.RETARGET, SmeltSurface.climbStep(66, 63, 12));
+    }
+
+    @Test
+    public void belowTheClimbYKeepsClimbingUntilNearlyOut() {
+        assertEquals(SmeltSurface.Climb.ON, SmeltSurface.climbStep(62, 63, 10));
+        assertEquals(SmeltSurface.Climb.ARRIVED, SmeltSurface.climbStep(50, 63, 2));
+        assertEquals(SmeltSurface.Climb.ON, SmeltSurface.climbStep(50, 63, SmeltSurface.ARRIVED_DEPTH + 1));
+    }
+
     private static KitNeed cook() {
         return new KitNeed(KitNeed.COOK_SMOKER, CookGate.MIN_RAW);
     }

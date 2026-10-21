@@ -13,12 +13,16 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.time.TimerGame;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,6 +30,7 @@ import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 // after a death: walk back to where we died and pick up whatever is lying around there. bounded on purpose, the pile might
 // be in lava or the void and a bot that stares at it for ten minutes helps nobody
@@ -37,6 +42,8 @@ public class RecoverItemsTask extends Task {
     private final double _budgetSeconds;
     private final TimerGame _empty = new TimerGame(EMPTY_SECONDS);
     private final Task _walk;
+    // the armor we would put on (KitPlanner.toEquip), asked fresh every tick. empty for a caller that has no kit to go by
+    private final Supplier<List<Item>> _toWear;
     private final RecoverRules.Gate _gate = new RecoverRules.Gate();
     private final RecoverRules.Chase _chase = new RecoverRules.Chase();
     private Task _standOff;
@@ -48,8 +55,13 @@ public class RecoverItemsTask extends Task {
     private boolean _wentForADrop;
 
     public RecoverItemsTask(BlockPos deathPos, double budgetSeconds) {
+        this(deathPos, budgetSeconds, List::of);
+    }
+
+    public RecoverItemsTask(BlockPos deathPos, double budgetSeconds, Supplier<List<Item>> toWear) {
         _deathPos = deathPos;
         _budgetSeconds = budgetSeconds;
+        _toWear = toWear;
         _walk = new GetWithinRangeOfBlockTask(deathPos, (int) RecoverRules.ARRIVE_RANGE);
     }
 
@@ -105,6 +117,15 @@ public class RecoverItemsTask extends Task {
             _chase.idle();
             setDebugState("Walking back to where we died.", "Going back for our stuff");
             return _walk;
+        }
+        // armor off the pile goes on before anything else. in the bag it is one more stack a full bag would rather throw, and the
+        // slot it frees is room the next pickup does not have to make
+        Task wear = WearFromBag.task(mod, _toWear.get());
+        if (wear != null) {
+            _empty.reset();
+            _chase.idle();
+            setDebugState("Putting on armor from the pile.", "Putting on armor");
+            return wear;
         }
         if (step == RecoverRules.Step.LOOK) {
             _chase.idle();
@@ -247,17 +268,49 @@ public class RecoverItemsTask extends Task {
         Level level = mod.getWorld();
         ItemEntity best = null;
         double bestDist = Double.MAX_VALUE;
+        FullBag full = new FullBag(mod);
         for (ItemEntity e : drops) {
             double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
+            if (d > RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS || d >= bestDist) {
+                continue;
+            }
             // a drop that slid into lava is a drop we are not going swimming for
             boolean lost = RecoverRules.hopeless(level.getFluidState(e.blockPosition()).is(FluidTags.LAVA), e.blockPosition().getY(), level.getMinY());
-            if (d <= RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS && d < bestDist && !lost
-                    && mod.getEntityTracker().isEntityReachable(e)) {
+            // the bag question last, every drop in the world goes through this loop and most are not ours
+            if (!lost && mod.getEntityTracker().isEntityReachable(e) && !full.skips(e.getItem())) {
                 bestDist = d;
                 best = e;
             }
         }
         return best;
+    }
+
+    // a full bag at the pile: the drop that would be the next thing thrown is not worth making room for (see RecoverRules.skipWhenFull).
+    // the bag is only read once a pile drop does not fit, and then once per tick no matter how many drops ask
+    private static final class FullBag {
+        private final AltoClef _mod;
+        private StorageHelper.GarbageView _view;
+        private int _blocksHeld;
+
+        FullBag(AltoClef mod) {
+            _mod = mod;
+        }
+
+        boolean skips(ItemStack drop) {
+            if (PickupDroppedItemTask.hasRoomFor(_mod, drop)) {
+                return false;
+            }
+            if (_view == null) {
+                _view = StorageHelper.garbageView(_mod);
+                _blocksHeld = _view.throwawayBlocksHeld();
+            }
+            Item item = drop.getItem();
+            // any throwaway that is not a block, or a block once the reserve is full. the pick alone would let two block kinds take
+            // turns (cobble in pushes the first block stack out, which is the netherrack, and round again)
+            boolean junk = _view.isThrowaway(item)
+                    && (!(item instanceof BlockItem) || _blocksHeld >= Baritone.settings().altoReservedBuildingBlockCount.value);
+            return RecoverRules.skipWhenFull(false, junk, !junk && _view.dropIsNext(drop));
+        }
     }
 
     @Override

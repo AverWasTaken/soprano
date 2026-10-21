@@ -320,7 +320,8 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         return new GetToEntityTask(itemEntity);
     }
 
-    private static boolean hasRoomFor(AltoClef mod, ItemStack drop) {
+    // public for RecoverItemsTask, which skips a drop that would only be thrown again
+    public static boolean hasRoomFor(AltoClef mod, ItemStack drop) {
         NonNullList<ItemStack> slots = mod.getPlayer().getInventory().items;
         int[] counts = new int[slots.size()];
         boolean[] sameKind = new boolean[slots.size()];

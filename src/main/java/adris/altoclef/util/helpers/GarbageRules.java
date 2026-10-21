@@ -1,6 +1,12 @@
 package adris.altoclef.util.helpers;
 
+import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -73,6 +79,192 @@ public final class GarbageRules {
         for (int i = 0; i < cands.size(); i++) {
             Cand c = cands.get(i);
             if (c.reserved() || keepsFood(bagUnits, c.keepUnits(), floor)) {
+                continue;
+            }
+            if (best < 0 || compare(c, cands.get(best)) < 0) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    // the window slots of the 36 real bag slots (hotbar and main) in whatever menu is open. the menu's own slot list also has the
+    // craft result and the 2x2 grid with no screen up: the result clicked with something else on the cursor does nothing (the
+    // cursor task clicked it forever), and a grid slot takes the stack only for the grid clearer to hand it right back.
+    // isSlotInPlayerInventory says yes to all of those, and the inventory index mapping guesses wrong under any menu Slot has no
+    // type for (a shulker box), so ask each slot whose it is
+    public static List<Integer> bagWindowSlots(AbstractContainerMenu menu, Container inventory) {
+        List<Integer> out = new ArrayList<>(Inventory.INVENTORY_SIZE);
+        for (int i = 0; i < menu.slots.size(); i++) {
+            Slot slot = menu.slots.get(i);
+            if (slot.container == inventory && slot.getContainerSlot() < Inventory.INVENTORY_SIZE) {
+                out.add(i);
+            }
+        }
+        return out;
+    }
+
+    // one armor piece in the bag: its equip slot (-1 for anything that is not armor), what it gives, and wouldWear's say
+    public record Armor(int equipSlot, double points, double toughness, boolean wouldWear) {
+        public static final Armor NONE = new Armor(-1, 0, 0, false);
+    }
+
+    // of the pieces wouldWear likes, only the best one per equip slot is kept (first wins a tie). two iron helmets and no helmet
+    // on: one goes on, the other is a spare like any other
+    public static boolean[] keptArmor(List<Armor> pieces) {
+        boolean[] kept = new boolean[pieces.size()];
+        java.util.Map<Integer, Integer> best = new java.util.HashMap<>();
+        for (int i = 0; i < pieces.size(); i++) {
+            Armor a = pieces.get(i);
+            if (a.equipSlot() < 0 || !a.wouldWear()) {
+                continue;
+            }
+            Integer at = best.get(a.equipSlot());
+            if (at == null || beats(a, pieces.get(at))) {
+                best.put(a.equipSlot(), i);
+            }
+        }
+        for (int i : best.values()) {
+            kept[i] = true;
+        }
+        return kept;
+    }
+
+    private static boolean beats(Armor l, Armor r) {
+        return l.points() != r.points() ? l.points() > r.points() : l.toughness() > r.toughness();
+    }
+
+    // one bag slot as the garbage pick sees it. mayGo is everything the game side asks first (canDropStack, not armor we would wear),
+    // throwRank is where it sits on altoThrowawayItems (-1 = not on it). the list order is the junk order: gravel and sand sit
+    // ahead of cobble so the blocks that fall on our head go first
+    public record Entry(ItemStack stack, boolean mayGo, int throwRank) {
+        public boolean throwaway() {
+            return throwRank >= 0;
+        }
+    }
+
+    // item -> first spot on the throwaway list, what Entry.throwRank reads from
+    public static java.util.Map<Item, Integer> throwRanks(Item[] throwaways) {
+        java.util.Map<Item, Integer> out = new java.util.HashMap<>();
+        for (int i = 0; i < throwaways.length; i++) {
+            out.putIfAbsent(throwaways[i], i);
+        }
+        return out;
+    }
+
+    // the whole garbage pick in one place, index into bag or -1: junk (a throwaway that is not a block, else the first throwaway
+    // block once they are past the building reserve), then the worse of two tools of a family, then with throwUnused anything by
+    // pick's order. StorageHelper used to do this over live slots, here it can also be asked about a bag that does not exist yet
+    public static int nextPick(List<Entry> bag, int reserve, boolean throwUnused, int foodUnits, int foodFloor) {
+        int junk = junkPick(bag, reserve);
+        if (junk >= 0) {
+            return junk;
+        }
+        int tool = toolPick(bag);
+        if (tool >= 0 || !throwUnused) {
+            return tool;
+        }
+        return restPick(bag, foodUnits, foodFloor);
+    }
+
+    // by throwaway list order, bag order only breaks a tie. the old getJunkSlot walked the list item by item, and going by bag
+    // order instead threw the cobble in the hotbar while the gravel sat in the main bag
+    public static int junkPick(List<Entry> bag, int reserve) {
+        int item = -1;
+        int block = -1;
+        int blocks = 0;
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (!e.throwaway() || !e.mayGo()) {
+                continue;
+            }
+            if (e.stack().getItem() instanceof BlockItem) {
+                blocks += e.stack().getCount();
+                block = earlierRank(bag, block, i);
+            } else {
+                // not a block, so it is no use for building either, it goes no matter the reserve
+                item = earlierRank(bag, item, i);
+            }
+        }
+        if (item >= 0) {
+            return item;
+        }
+        return blocks > reserve ? block : -1;
+    }
+
+    private static int earlierRank(List<Entry> bag, int best, int i) {
+        return best < 0 || bag.get(i).throwRank() < bag.get(best).throwRank() ? i : best;
+    }
+
+    private static int toolPick(List<Entry> bag) {
+        List<Integer> at = new ArrayList<>();
+        List<Item> tools = new ArrayList<>();
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (e.mayGo() && ItemHelper.isTool(e.stack().getItem())) {
+                at.add(i);
+                tools.add(e.stack().getItem());
+            }
+        }
+        int worse = worseTool(tools);
+        return worse < 0 ? -1 : at.get(worse);
+    }
+
+    private static int restPick(List<Entry> bag, int foodUnits, int foodFloor) {
+        List<Integer> at = new ArrayList<>();
+        List<Cand> cands = new ArrayList<>();
+        for (int i = 0; i < bag.size(); i++) {
+            Entry e = bag.get(i);
+            if (e.mayGo()) {
+                at.add(i);
+                cands.add(cand(e.stack()));
+            }
+        }
+        int pick = pick(cands, foodUnits, foodFloor);
+        return pick < 0 ? -1 : at.get(pick);
+    }
+
+    // a full bag, and the pick at `pick` gets thrown so `drop` can come in. would the drop be the next thing out? it would if the
+    // same pick lands on it, or on the same item somewhere else (another netherrack stack). this is the whole pick run again with
+    // the drop in the pick's slot, so a stone sword in the bag makes a wooden sword drop the next garbage even while the current
+    // pick is a string in the "anything" tier. checking tiers one at a time missed that and the two took turns on the floor
+    public static boolean dropIsNextPick(List<Entry> bag, int pick, Entry drop, int reserve, boolean throwUnused, int foodUnits, int foodFloor) {
+        if (pick < 0) {
+            return false;
+        }
+        List<Entry> after = new ArrayList<>(bag);
+        after.set(pick, drop);
+        int next = nextPick(after, reserve, throwUnused, foodUnits, foodFloor);
+        return next == pick || (next >= 0 && after.get(next).stack().getItem() == drop.stack().getItem());
+    }
+
+    // the food total once `thrown` is on the floor and `drop` is in. what dropIsNextPick wants for foodUnits: the bag total
+    // as it is still counts the stack that is about to go, and 2 bread off the pile looked like food we had to keep
+    public static int unitsAfterSwap(int foodUnits, ItemStack thrown, ItemStack drop) {
+        return foodUnits - keepUnits(thrown) + keepUnits(drop);
+    }
+
+    // a bag piece we would put on is not garbage: its slot is bare, or it beats what is on it (points first, toughness breaks a
+    // tie). an unworn single piece always won "smallest count" below, so the iron chestplate fresh off the pile was the first
+    // thing out the door. a spare (what is worn is as good or better) can still go
+    public static boolean wouldWear(boolean slotBare, double bagPoints, double bagToughness, double wornPoints, double wornToughness) {
+        if (slotBare) {
+            return true;
+        }
+        if (bagPoints != wornPoints) {
+            return bagPoints > wornPoints;
+        }
+        return bagToughness > wornToughness;
+    }
+
+    // the cursor holds something we keep, nothing can be thrown and nowhere takes it. the stack that goes in its place is the
+    // lowest one by the usual order, only now the food floor does not get a say (the cands are already free of the important
+    // list and the gamer protect list is not asked). -1 = nothing to swap with, throw the cursor, it is that or click forever
+    public static int lastResort(List<Cand> cands) {
+        int best = -1;
+        for (int i = 0; i < cands.size(); i++) {
+            Cand c = cands.get(i);
+            if (c.reserved()) {
                 continue;
             }
             if (best < 0 || compare(c, cands.get(best)) < 0) {

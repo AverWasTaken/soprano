@@ -239,4 +239,19 @@ public class RecoverRulesTest {
         assertFalse(a.expired(1100, 400));
         assertTrue(a.expired(1300, 400));
     }
+
+    // ---- full bag at the pile
+
+    // args: fits, junk (a throwaway, or a block past the reserve), the drop would be the next garbage pick
+    @Test
+    public void junkAndTheNextPickAreLeftWhenTheBagIsFull() {
+        assertTrue(RecoverRules.skipWhenFull(false, true, false));
+        assertTrue(RecoverRules.skipWhenFull(false, false, true));
+        assertFalse(RecoverRules.skipWhenFull(false, false, false));
+    }
+
+    @Test
+    public void aDropThatFitsIsAlwaysTaken() {
+        assertFalse(RecoverRules.skipWhenFull(true, true, true));
+    }
 }

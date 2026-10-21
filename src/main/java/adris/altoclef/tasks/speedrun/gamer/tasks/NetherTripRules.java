@@ -17,9 +17,6 @@ public final class NetherTripRules {
     public static final int HOME_SECONDS = 120;
     // a second death this close to the last pile is the same hazard, not a new pile
     public static final int SAME_SPOT_BLOCKS = 8;
-    // putting the armor from the pile on: it is in the bag after the pickup and armor points only count what is worn
-    public static final int WEAR_SECONDS = 15;
-
     private NetherTripRules() {
     }
 
@@ -189,19 +186,28 @@ public final class NetherTripRules {
         if (!in.recoverFinished()) {
             return stay(Stage.RECOVER);
         }
-        if (in.itemsGained() <= 0) {
-            return giveUp(in, "nothing left at the pile");
+        // armor in the bag counts for nothing until it is on, so wear it before judging the kit. and before the "nothing came back"
+        // check too: the gain is measured off the bag's low point, and a pile that only gave armor can read as nothing
+        if (in.toWear() > 0) {
+            return new Step(Stage.WEAR, null, false);
         }
-        // armor in the bag counts for nothing until it is on, so wear it before judging the kit
-        return in.toWear() > 0 ? new Step(Stage.WEAR, null, false) : verdict(in);
+        return pileVerdict(in);
     }
 
     private static Step wear(Inputs in) {
         if (in.dim() != Dimension.NETHER) {
             return giveUp(in, "left the nether");
         }
-        if (in.toWear() > 0 && in.stageTicks() <= WEAR_SECONDS * 20L) {
+        // no clock of its own: a piece still in the bag is a piece we have, and the trip budget above ends this if it never goes on
+        if (in.toWear() > 0) {
             return stay(Stage.WEAR);
+        }
+        return pileVerdict(in);
+    }
+
+    private static Step pileVerdict(Inputs in) {
+        if (in.itemsGained() <= 0) {
+            return giveUp(in, "nothing left at the pile");
         }
         return verdict(in);
     }

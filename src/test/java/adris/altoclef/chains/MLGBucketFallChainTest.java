@@ -49,4 +49,46 @@ public class MLGBucketFallChainTest {
             }
         }
     }
+
+    // a cell that's held water on our side, landed a while ago
+    private static MLGBucketFallChain.CellEnd seen(boolean stillSource, boolean gained, double distance) {
+        return MLGBucketFallChain.cellEnd(stillSource, true, true, gained, distance);
+    }
+
+    @Test
+    public void ourSourceGoneWithABucketGainedIsThePickup() {
+        assertEquals(MLGBucketFallChain.CellEnd.PICKED_UP, seen(false, true, 1));
+        // gone is gone, however far off we are
+        assertEquals(MLGBucketFallChain.CellEnd.PICKED_UP, seen(false, true, 10));
+        // and that's not waiting on the settle time either
+        assertEquals(MLGBucketFallChain.CellEnd.PICKED_UP, MLGBucketFallChain.cellEnd(false, true, false, true, 1));
+    }
+
+    @Test
+    public void goneWithoutABucketIsJustGone() {
+        // flowed off a ledge, a block on it, someone else's bucket
+        assertEquals(MLGBucketFallChain.CellEnd.GONE, seen(false, false, 1));
+    }
+
+    @Test
+    public void aSourceInReachStaysOnTheList() {
+        // a tick we couldn't click (no aim yet, somebody else had the wheel) is not the end of it
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, seen(true, false, 0.5));
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, seen(true, true, MLGBucketFallChain.CLEANUP_REACH));
+    }
+
+    @Test
+    public void walkingOffLeavesIt() {
+        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, seen(true, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
+        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, MLGBucketFallChain.cellEnd(false, false, false, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
+    }
+
+    @Test
+    public void waterThatHasntShownUpYetGetsARoundTrip() {
+        // a waterlogged block fills on the server only, so right after landing ours still says dry
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, MLGBucketFallChain.cellEnd(false, false, false, false, 1));
+        // once the round trip is over and it never came, the server said no
+        assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, false, 1));
+        assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, true, 1));
+    }
 }

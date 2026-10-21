@@ -18,7 +18,9 @@ import adris.altoclef.tasks.speedrun.gamer.portal.PortalMold.P;
 import adris.altoclef.tasks.speedrun.gamer.portal.PortalMold.Step;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.input.Input;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,10 +30,13 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 // the lava pool portal (see PortalMold for the geometry). this class is the hands: it asks PortalMold what the next
 // step is from nothing but what the world looks like, does that one step, and asks again. no counters decide what is
@@ -49,6 +54,12 @@ public class LavaPoolPortalTask extends Task {
     private static final int WAIT_TICKS = 20 * 6;
     private static final int FALLBACK_TICKS = 20 * 45;
     private static final int STRIKES = 3;
+    // on the stand and the click still can't reach or can't get its aim right. a second is plenty, the stand was picked so
+    // the face is right there
+    private static final int REACH_TICKS = 20;
+    private static final int BLOCKED_READS = 5;
+    // running out of lava, or stepping off a stand that didn't work. the walk gets this long before we look again
+    private static final int RETREAT_TICKS = 20 * 5;
     private static final int[][] SIDE_FRAME = {{0, 1, 0}, {0, 2, 0}, {0, 3, 0}, {3, 1, 0}, {3, 2, 0}, {3, 3, 0}, {0, 4, 0}, {3, 4, 0}};
 
     private final Consumer<String> log;
@@ -75,6 +86,22 @@ public class LavaPoolPortalTask extends Task {
     // why we are giving up, while the loose lava gets scooped back up first
     private String pendingFail;
     private TimeoutWanderTask unstick;
+    // the pour or scoop we hand out from a stand. kept as the same object so its click status is the one it really had
+    // last tick, a fresh copy has never ticked and always reads CANT_REACH
+    private InteractWithBlockTask reachChild;
+    private String reachKey = "";
+    private int reachLastTick = -1;
+    // first tick on the stand for this step and whether its click ever went out. goStand swapping the child in and out
+    // doesn't restart this, or a bot that keeps slipping off the stand would never time out
+    private String standKey = "";
+    private int standSince;
+    private boolean reachClicked;
+    private int blockedReads;
+    private P stepBackTo;
+    private int stepBackSince;
+    private P retreatTo;
+    private int retreatSince;
+    private boolean nudging;
 
     public LavaPoolPortalTask(Consumer<String> log) {
         this.log = log;
@@ -104,6 +131,7 @@ public class LavaPoolPortalTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(Blocks.LAVA);
         mod.getBehaviour().pop();
+        letGoOfTheNudge(mod);
     }
 
     private boolean isMade(AltoClef mod, BlockPos p) {
@@ -145,8 +173,22 @@ public class LavaPoolPortalTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         tick++;
+        letGoOfTheNudge(mod);
         if (failReason != null || finished) {
             return null;
+        }
+        // before everything, wandering and the slow cast included: nothing else matters while we're standing in lava
+        if (layout != null) {
+            LiveTerrain here = new LiveTerrain(mod.getWorld());
+            boolean burning = PortalMold.lavaOnUs(here, body(mod));
+            Task run = retreat(mod, here, burning);
+            if (run != null || burning) {
+                setDebugState("getting out of the lava");
+                // the time out here isn't the step's fault
+                stepKey = "";
+                standKey = "";
+                return run;
+            }
         }
         if (unstick != null && unstick.isActive() && !unstick.isFinished(mod)) {
             setDebugState("shaking loose");
@@ -154,6 +196,14 @@ public class LavaPoolPortalTask extends Task {
         }
         if (layout == null) {
             return search(mod);
+        }
+        if (stepBackTo != null) {
+            if (toP(mod.getPlayer().blockPosition()).equals(stepBackTo) || tick - stepBackSince > RETREAT_TICKS) {
+                stepBackTo = null;
+            } else {
+                setDebugState("stepping off the stand to try it again");
+                return new GetToBlockTask(toPos(stepBackTo), false);
+            }
         }
         if (tick - buildStart > BUILD_TICKS) {
             return giveUp(mod, "ran out of time");
@@ -254,10 +304,10 @@ public class LavaPoolPortalTask extends Task {
                 if (!baseDone(mod)) {
                     skinBurned = true;
                 }
-                return scoop(mod, step.cell(), null);
+                return scoop(mod, step, null);
             }
             case WATER_SCOOP, LAVA_SCOOP, LAVA_UNDO -> {
-                return scoop(mod, step.cell(), step.stand());
+                return scoop(mod, step, step.stand());
             }
             case SKIN_PLACE -> {
                 if (skinBurned) {
@@ -276,10 +326,18 @@ public class LavaPoolPortalTask extends Task {
                 if (there != null) {
                     return there;
                 }
+                // a side cast's water goes in straight after its lava, so it has to be in the bag before the lava goes
+                // out. the planner already asks for that, this is the hands double checking
+                if (step.kind() == Kind.LAVA_PLACE && !step.cast().top && !mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
+                    return null;
+                }
+                if (PortalMold.inTheWay(layout, body(mod), step.cast())) {
+                    return nudgeBack(mod, step);
+                }
                 mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.NONE);
                 Item bucket = step.kind() == Kind.LAVA_PLACE ? Items.LAVA_BUCKET : Items.WATER_BUCKET;
                 Direction face = faceOf(step.fx(), step.fy(), step.fz());
-                return new InteractWithBlockTask(new ItemTarget(bucket, 1), face, toPos(step.support()), false);
+                return watchReach(mod, step, () -> new InteractWithBlockTask(new ItemTarget(bucket, 1), face, toPos(step.support()), false).stayPut());
             }
             case GUIDE_PLACE -> {
                 mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.NONE);
@@ -311,16 +369,112 @@ public class LavaPoolPortalTask extends Task {
     }
 
     // the bucket scoop. ClearLiquidTask sets the ray to hit sources itself, and puts a block in the liquid if we have no
-    // bucket, which is why the planner never asks for a scoop without one
-    private Task scoop(AltoClef mod, P cell, P stand) {
+    // bucket, which is why the planner never asks for a scoop without one. from a stand it's the same click minus the
+    // walking: ClearLiquidTask's own goal is the cell over the liquid, i.e. standing in it
+    private Task scoop(AltoClef mod, Step step, P stand) {
         if (mod.getItemStorage().getItemCount(Items.BUCKET) < 1) {
             return giveUp(mod, "nothing to scoop with");
         }
-        Task there = stand == null ? null : goStand(mod, stand);
+        if (stand == null) {
+            return new ClearLiquidTask(toPos(step.cell()));
+        }
+        Task there = goStand(mod, stand);
         if (there != null) {
             return there;
         }
-        return new ClearLiquidTask(toPos(cell));
+        mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.SOURCE_ONLY);
+        return watchReach(mod, step, () -> new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), toPos(step.cell()), false).stayPut());
+    }
+
+    // the click from a stand, which never walks (stayPut). if it can't reach or can't aim for REACH_TICKS from the first
+    // tick we stood there, that's a strike and we step off and stand again
+    private Task watchReach(AltoClef mod, Step step, Supplier<InteractWithBlockTask> make) {
+        String key = step.kind() + String.valueOf(step.cell());
+        if (!key.equals(standKey)) {
+            standKey = key;
+            standSince = tick;
+            reachClicked = false;
+        }
+        if (reachChild == null || !key.equals(reachKey) || reachLastTick != tick - 1) {
+            reachChild = make.get();
+            reachKey = key;
+            blockedReads = 0;
+        } else {
+            // it ran last tick, so this is what it really saw
+            InteractWithBlockTask.ClickResponse r = reachChild.getClickStatus();
+            reachClicked |= r == InteractWithBlockTask.ClickResponse.CLICK_ATTEMPTED;
+            boolean blocked = r == InteractWithBlockTask.ClickResponse.CANT_REACH || reachChild.stillAiming();
+            blockedReads = blocked ? blockedReads + 1 : 0;
+            // a few in a row, a fresh click spends its first tick or two turning to the face and that's not stuck
+            if (blockedReads >= BLOCKED_READS && !reachClicked && tick - standSince >= REACH_TICKS) {
+                reachLastTick = -1;
+                return reachStrike(mod, step);
+            }
+        }
+        reachLastTick = tick;
+        return reachChild;
+    }
+
+    // same strikes as the watchdog. the stand gets another go from a step back, a new spot in the cell is often all it
+    // takes since baritone parks us wherever in it. the last strike goes where the watchdog's does: the slow cast for
+    // this one cell, which only gives the whole mold up if that was one too many
+    private Task reachStrike(AltoClef mod, Step step) {
+        standKey = "";
+        if (strikes + 1 >= STRIKES) {
+            if (step.cast() != null) {
+                startFallback(mod, step.cast(), "can't reach it from the stand");
+                return null;
+            }
+            strikes++;
+            return giveUp(mod, "can't reach " + step + " from its stand");
+        }
+        strikes++;
+        P back = PortalMold.stepBackSpot(layout, new LiveTerrain(mod.getWorld()), layout.local(step.stand()));
+        if (back == null) {
+            unstick = new TimeoutWanderTask(3);
+            return null;
+        }
+        stepBackTo = back;
+        stepBackSince = tick;
+        return null;
+    }
+
+    // the body pokes into the cell the bucket fills. back off it, away from the frame: looking at the block we click and
+    // walking backwards is exactly that
+    private Task nudgeBack(AltoClef mod, Step step) {
+        setDebugState("backing off the cast cell");
+        LookHelper.lookAt(mod, Vec3.atCenterOf(toPos(step.support())));
+        mod.getInputControls().hold(Input.MOVE_BACK);
+        nudging = true;
+        return null;
+    }
+
+    private void letGoOfTheNudge(AltoClef mod) {
+        if (nudging) {
+            nudging = false;
+            mod.getInputControls().release(Input.MOVE_BACK);
+        }
+    }
+
+    // standing in lava: walk to a spot that isn't, and keep walking there until we arrive (or it stops being safe, or it
+    // takes too long). no spot means null and the survival chain's lava escape does its thing
+    private Task retreat(AltoClef mod, LiveTerrain terrain, boolean burning) {
+        if (retreatTo != null) {
+            boolean there = toP(mod.getPlayer().blockPosition()).equals(retreatTo);
+            if (there || tick - retreatSince > RETREAT_TICKS || !PortalMold.safeToStand(terrain, retreatTo)) {
+                retreatTo = null;
+            }
+        }
+        if (retreatTo == null && burning) {
+            retreatTo = PortalMold.retreatSpot(layout, terrain, toP(mod.getPlayer().blockPosition()));
+            retreatSince = tick;
+        }
+        return retreatTo == null ? null : new GetToBlockTask(toPos(retreatTo), false);
+    }
+
+    private static PortalMold.Box body(AltoClef mod) {
+        AABB b = mod.getPlayer().getBoundingBox();
+        return new PortalMold.Box(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ);
     }
 
     // null when we are already on the cell, otherwise the walk there. the top row sights only work from the exact spot
@@ -423,22 +577,47 @@ public class LavaPoolPortalTask extends Task {
     }
 
     private Task cleanup(AltoClef mod) {
-        P stray = strayLava(mod);
-        if (stray == null || tick - cleanupSince > 20 * 8 || mod.getItemStorage().getItemCount(Items.BUCKET) < 1) {
+        Cast stray = strayCast(mod);
+        LiveTerrain terrain = new LiveTerrain(mod.getWorld());
+        P stand = stray == null ? null : layout.cell(stray.stand);
+        // a top cast whose pad is gone has no stand left to use, that one gets the old scoop
+        boolean padGone = stand != null && !terrain.at(stand.x(), stand.y() - 1, stand.z()).solid();
+        // a stand the lava already spread over is no stand, walking at it just bounces off the retreat until the clock
+        // runs out. leave it, the survival chain knows where the lava is
+        boolean standGone = stand != null && !padGone && !toP(mod.getPlayer().blockPosition()).equals(stand)
+                && !PortalMold.safeToStand(terrain, stand);
+        if (stray == null || standGone || tick - cleanupSince > 20 * 8 || mod.getItemStorage().getItemCount(Items.BUCKET) < 1) {
             cleanupSince = -1;
             failReason = pendingFail == null ? "gave up" : pendingFail;
             log.accept("portal: lava pool method failed (" + failReason + "), going back to the cast");
             return null;
         }
         setDebugState("scooping loose lava back up");
-        return new ClearLiquidTask(toPos(stray));
+        if (padGone) {
+            return new ClearLiquidTask(toPos(layout.cell(stray.t)));
+        }
+        // from the cast's own stand, same as the build's scoops. ClearLiquidTask would walk to the cell over the lava,
+        // which is the frame cell next to it. the 8 s clock above is this one's timeout
+        Task there = goStand(mod, stand);
+        if (there != null) {
+            return there;
+        }
+        mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.SOURCE_ONLY);
+        return new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), toPos(layout.cell(stray.t)), false).stayPut();
     }
 
     private P strayLava(AltoClef mod) {
+        Cast c = strayCast(mod);
+        return c == null ? null : layout.cell(c.t);
+    }
+
+    private Cast strayCast(AltoClef mod) {
         for (Cast c : PortalMold.CASTS) {
             P t = layout.cell(c.t);
-            if (mod.getWorld().getBlockState(toPos(t)).getBlock() == Blocks.LAVA) {
-                return t;
+            // a flow can't be scooped, waiting on one would eat the whole cleanup clock
+            BlockState s = mod.getWorld().getBlockState(toPos(t));
+            if (s.is(Blocks.LAVA) && s.getFluidState().isSource()) {
+                return c;
             }
         }
         return null;

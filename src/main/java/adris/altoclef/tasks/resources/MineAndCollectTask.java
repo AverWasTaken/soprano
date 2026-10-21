@@ -40,6 +40,7 @@ import adris.altoclef.ui.HudText;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -61,6 +62,25 @@ public class MineAndCollectTask extends ResourceTask {
 
     private final MineOrCollectTask _subtask;
 
+    // the catalogue's ores, the ones CataloguedResourceTask is allowed to mine as one (see together)
+    private boolean _ore;
+
+    // a together task's ores and which of them each block counts for. null on every other task, which is the whole point:
+    // a plain miner never looks at any of this
+    private final List<Part> _parts;
+    private final Map<Block, List<Part>> _partsOf;
+    // what is still short, worked out once a tick (see refreshShort). the pick asks per tracked block, and an inventory
+    // count per block per ore per tick adds up fast
+    private int _shortAt = Integer.MIN_VALUE;
+    private Set<Block> _wantedNow = new HashSet<>();
+    private Block[] _shortBlocks = new Block[0];
+    private ItemTarget[] _shortTargets = new ItemTarget[0];
+    private MiningRequirement _requirementNow;
+
+    // one ore of a together task: what we want out of it, the pick it takes, the blocks it comes out of
+    record Part(ItemTarget target, MiningRequirement requirement, Block[] blocks) {
+    }
+
     // blocks to build a tower with, dug by hand before the log that needs one (see dirtFirst)
     private Task _dirtTask;
     private int _dirtSince;
@@ -72,10 +92,148 @@ public class MineAndCollectTask extends ResourceTask {
     private static final int DIRT_TREE_TICKS = 3600;
 
     public MineAndCollectTask(ItemTarget[] itemTargets, Block[] blocksToMine, MiningRequirement requirement) {
+        this(itemTargets, blocksToMine, requirement, null);
+    }
+
+    private MineAndCollectTask(ItemTarget[] itemTargets, Block[] blocksToMine, MiningRequirement requirement, List<Part> parts) {
         super(itemTargets);
         _requirement = requirement;
         _blocksToMine = blocksToMine;
         _subtask = new MineOrCollectTask(_blocksToMine, _itemTargets);
+        _parts = parts;
+        _partsOf = parts == null ? null : partsOf(parts);
+        _requirementNow = requirement;
+        if (parts != null) {
+            // a met ore's blocks stop being picks and its drops stop being worth a walk, or it eats the bag space the bill
+            // planned for the others
+            _subtask._only = this::wantedAt;
+            _subtask._dropsFor = () -> {
+                refreshShort(AltoClef.getInstance());
+                return _shortTargets;
+            };
+        }
+    }
+
+    // several catalogue ores as one task that always goes for the nearest block of whichever ores are still short. one
+    // at a time walked right past the diamonds on the way to the iron, then all the way back for them
+    public static MineAndCollectTask together(List<MineAndCollectTask> ores) {
+        List<Part> parts = new ArrayList<>();
+        List<ItemTarget> targets = new ArrayList<>();
+        // insertion order, so the same ores rebuilt next pass are the same task (isEqualResource is an array compare)
+        Set<Block> blocks = new LinkedHashSet<>();
+        MiningRequirement lowest = null;
+        for (MineAndCollectTask ore : ores) {
+            for (ItemTarget target : ore._itemTargets) {
+                parts.add(new Part(target, ore._requirement, ore._blocksToMine));
+                targets.add(target);
+            }
+            blocks.addAll(Arrays.asList(ore._blocksToMine));
+            if (lowest == null || ore._requirement.ordinal() < lowest.ordinal()) {
+                lowest = ore._requirement;
+            }
+        }
+        return new MineAndCollectTask(targets.toArray(ItemTarget[]::new), blocks.toArray(Block[]::new), lowest, parts);
+    }
+
+    public MineAndCollectTask ore() {
+        _ore = true;
+        return this;
+    }
+
+    public boolean isOre() {
+        return _ore;
+    }
+
+    // block -> the ores it counts for. usually one, but two parts can be the same ore (a coal 5 next to a coal 10)
+    static Map<Block, List<Part>> partsOf(List<Part> parts) {
+        Map<Block, List<Part>> out = new LinkedHashMap<>();
+        for (Part part : parts) {
+            for (Block block : part.blocks()) {
+                out.computeIfAbsent(block, k -> new ArrayList<>()).add(part);
+            }
+        }
+        return out;
+    }
+
+    // the cheapest pick among the ores still short, null when none are. iron + diamond on a stone pick mines the iron
+    // first and only then goes for the iron pick, which is where the one at a time order ended up anyway
+    static MiningRequirement lowestShort(List<Part> parts, Predicate<Part> isShort) {
+        MiningRequirement lowest = null;
+        for (Part part : parts) {
+            if (isShort.test(part) && (lowest == null || part.requirement().ordinal() < lowest.ordinal())) {
+                lowest = part.requirement();
+            }
+        }
+        return lowest;
+    }
+
+    // blocks worth breaking right now: some ore they count for is short and we hold the pick for it
+    static Set<Block> wantedBlocks(Map<Block, List<Part>> partsOf, Predicate<Part> isShort, Predicate<MiningRequirement> canMine) {
+        Set<Block> out = new HashSet<>();
+        for (Map.Entry<Block, List<Part>> entry : partsOf.entrySet()) {
+            for (Part part : entry.getValue()) {
+                if (isShort.test(part) && canMine.test(part.requirement())) {
+                    out.add(entry.getKey());
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    // the blocks of every short ore, pick or no pick. a world that only has the met ores in it is still the wrong one
+    static Block[] shortBlocks(List<Part> parts, Predicate<Part> isShort) {
+        Set<Block> out = new LinkedHashSet<>();
+        for (Part part : parts) {
+            if (isShort.test(part)) {
+                out.addAll(Arrays.asList(part.blocks()));
+            }
+        }
+        return out.toArray(Block[]::new);
+    }
+
+    // the drops still worth chasing, in part order
+    static ItemTarget[] shortTargets(List<Part> parts, Predicate<Part> isShort) {
+        List<ItemTarget> out = new ArrayList<>();
+        for (Part part : parts) {
+            if (isShort.test(part)) {
+                out.add(part.target());
+            }
+        }
+        return out.toArray(ItemTarget[]::new);
+    }
+
+    // short the way isFinished counts it. getItemCount counts the cursor and an open grid too, so an ore could look met
+    // while the task isn't done, every block gets filtered out and we wander forever
+    private static boolean isShort(AltoClef mod, Part part) {
+        return !StorageHelper.itemTargetsMetInventoryNoCursor(mod, part.target());
+    }
+
+    private void refreshShort(AltoClef mod) {
+        int now = WorldHelper.getTicks();
+        if (now == _shortAt) {
+            return;
+        }
+        _shortAt = now;
+        Predicate<Part> isShort = part -> isShort(mod, part);
+        _wantedNow = wantedBlocks(_partsOf, isShort, req -> StorageHelper.miningRequirementMet(mod, req));
+        _shortBlocks = shortBlocks(_parts, isShort);
+        _shortTargets = shortTargets(_parts, isShort);
+        MiningRequirement lowest = lowestShort(_parts, isShort);
+        // nothing short means we're done, isFinished gets there before this matters
+        _requirementNow = lowest != null ? lowest : _requirement;
+    }
+
+    // the block at pos is one of an ore we still want and can mine
+    private boolean wantedAt(BlockPos pos) {
+        AltoClef mod = AltoClef.getInstance();
+        refreshShort(mod);
+        if (mod.getChunkTracker().isChunkLoaded(pos)) {
+            return _wantedNow.contains(mod.getWorld().getBlockState(pos).getBlock());
+        }
+        // out past render distance the world says air, which would make every remembered vein over there a no. the
+        // tracker still knows what it saw (same trust blockIsValid gives an unloaded spot)
+        return _wantedNow.contains(mod.getBlockTracker().knownBlockAt(pos));
     }
 
     public MineAndCollectTask(ItemTarget[] blocksToMine, MiningRequirement requirement) {
@@ -93,7 +251,8 @@ public class MineAndCollectTask extends ResourceTask {
     // only ever pick blocks that pass this as the next one to break (the coal detour: only coal we can see). a block already
     // being broken is not asked again, the swing that is halfway through finishes
     public MineAndCollectTask onlyWhere(Predicate<BlockPos> only) {
-        _subtask._only = only;
+        // on top of the together filter, not instead of it
+        _subtask._only = _subtask._only.and(only);
         return this;
     }
 
@@ -144,8 +303,13 @@ public class MineAndCollectTask extends ResourceTask {
     protected Task onResourceTick(AltoClef mod) {
         // an axe for wood, a shovel for dirt and sand, out of the bag and into the hotbar where ToolSet can see them
         HotbarTools.forBlocks(mod, _blocksToMine);
-        if (!StorageHelper.miningRequirementMet(mod, _requirement)) {
-            return new SatisfyMiningRequirementTask(_requirement);
+        MiningRequirement requirement = _requirement;
+        if (_parts != null) {
+            refreshShort(mod);
+            requirement = _requirementNow;
+        }
+        if (!StorageHelper.miningRequirementMet(mod, requirement)) {
+            return new SatisfyMiningRequirementTask(requirement);
         }
 
         Task dirt = dirtFirst(mod);
@@ -159,7 +323,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         // Wrong dimension check.
-        if (_subtask.wasWandering() && isInWrongDimension(mod) && !mod.getBlockTracker().anyFound(_blocksToMine)) {
+        if (_subtask.wasWandering() && isInWrongDimension(mod) && !mod.getBlockTracker().anyFound(_parts != null ? _shortBlocks : _blocksToMine)) {
             return getToCorrectDimensionTask(mod);
         }
 
@@ -219,7 +383,7 @@ public class MineAndCollectTask extends ResourceTask {
 
     @Override
     protected String toDebugStringName() {
-        return "Mine And Collect";
+        return _parts != null ? "Mine Ores Together" : "Mine And Collect";
     }
 
     @Override
@@ -269,7 +433,11 @@ public class MineAndCollectTask extends ResourceTask {
         // empty searches since we handed baritone this block, and the tick we were last driving (see noPathVerdict)
         private final NoPathScope.Watch _noPath = new NoPathScope.Watch();
         private int _lastTickAt = Integer.MIN_VALUE / 2;
-        private final Task _pickupTask;
+        private Task _pickupTask;
+        // what _pickupTask was built for
+        private ItemTarget[] _pickupFor;
+        // the targets whose drops are worth chasing, null for all of them. a together task hands in only the short ones
+        private Supplier<ItemTarget[]> _dropsFor;
         private final MineStick _stick = new MineStick();
         private final DropPatience _patience = new DropPatience();
         private final boolean _logsOnly;
@@ -302,6 +470,21 @@ public class MineAndCollectTask extends ResourceTask {
             _logsOnly = MineAnchor.logsOnly(blocks);
             _targets = targets;
             _pickupTask = new PickupDroppedItemTask(_targets, true);
+            _pickupFor = _targets;
+        }
+
+        private ItemTarget[] dropTargets() {
+            return _dropsFor == null ? _targets : _dropsFor.get();
+        }
+
+        // the same pickup task while the wanted drops stay the same, a fresh one once an ore is met and its drops stop counting
+        private Task pickupTask() {
+            ItemTarget[] want = dropTargets();
+            if (!Arrays.equals(want, _pickupFor)) {
+                _pickupFor = want;
+                _pickupTask = new PickupDroppedItemTask(want, true);
+            }
+            return _pickupTask;
         }
 
         @Override
@@ -696,7 +879,8 @@ public class MineAndCollectTask extends ResourceTask {
         // the nearest drop we want. skipInReach leaves out the ones vanilla is about to put in the bag for us, as long as
         // there is room for them (a full bag is the pickup task's job, it frees a slot when it is touching the drop)
         private Optional<ItemEntity> nearestDrop(AltoClef mod, Vec3 pos, boolean skipInReach) {
-            if (!mod.getEntityTracker().itemDropped(_targets)) {
+            ItemTarget[] wanted = dropTargets();
+            if (wanted.length == 0 || !mod.getEntityTracker().itemDropped(wanted)) {
                 return Optional.empty();
             }
             Vec3 feet = mod.getPlayer().position();
@@ -707,7 +891,7 @@ public class MineAndCollectTask extends ResourceTask {
                 return !DropPatience.alreadyInReach(at.x - feet.x, at.y - feet.y, at.z - feet.z)
                         || mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(drop.getItem(), false).isEmpty();
             };
-            return mod.getEntityTracker().getClosestItemDrop(pos, worthIt, _targets);
+            return mod.getEntityTracker().getClosestItemDrop(pos, worthIt, wanted);
         }
 
         // 6 blocks, squared. anything this close gets picked up before we mine another block
@@ -1035,7 +1219,7 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof ItemEntity drop) {
                 _miningPos = null;
                 BlockPos leaf = leafUnder(drop);
-                return leaf != null ? new DestroyBlockTask(leaf) : _pickupTask;
+                return leaf != null ? new DestroyBlockTask(leaf) : pickupTask();
             }
             throw new UnsupportedOperationException("Shouldn't try to get the goal from object " + obj + " of type " + (obj != null ? obj.getClass().toString() : "(null object)"));
         }
@@ -1068,8 +1252,9 @@ public class MineAndCollectTask extends ResourceTask {
                 // in the water the pickup task can't see it anymore and would wander until the patience ran out
                 if (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.isPickupSafe(drop)) return false;
                 Item item = drop.getItem().getItem();
-                if (_targets != null) {
-                    for (ItemTarget target : _targets) {
+                ItemTarget[] wanted = dropTargets();
+                if (wanted != null) {
+                    for (ItemTarget target : wanted) {
                         if (target.matches(item)) return true;
                     }
                 }

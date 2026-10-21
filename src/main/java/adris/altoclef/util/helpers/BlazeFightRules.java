@@ -12,6 +12,11 @@ public final class BlazeFightRules {
     public static final double SIGHT_RANGE = 20;
     // above the floor, in blocks, a blaze can still be hit by a bot standing under it
     public static final double MAX_REACHABLE_HEIGHT = 3.5;
+    // once a blaze is in reach it stays in reach up to here. blazes bob, and one hovering right at 3.5 was flipping KILL and
+    // COVER about once a second, forever
+    public static final double STAY_REACHABLE_HEIGHT = 4.5;
+    // one blocked ray is a fence post sliding past, two in a row is a fence
+    public static final int BLOCKED_CHECKS_TO_DROP = 2;
     // blazes further than this are not worth the walk, the ones that matter come to us
     public static final double MAX_CHASE_DISTANCE = 32;
 
@@ -30,6 +35,10 @@ public final class BlazeFightRules {
     // walking at one blaze for this long without it seeing us means its floor is somewhere we cannot get to (the roof,
     // the far side of a wall). try another one
     public static final long HUNT_GIVE_UP_TICKS = 600;
+
+    // sitting out of sight with no blaze looking and hp not going up for this long means it is not going to go up (no
+    // food, hunger too low to regen). waiting for 14 hp then is waiting for ever
+    public static final long RETREAT_GIVE_UP_TICKS = 600;
 
     // at or below this with a blaze looking at us, leave
     public static final float RETREAT_HEALTH = 12;
@@ -69,11 +78,33 @@ public final class BlazeFightRules {
         return heightAboveFloor <= MAX_REACHABLE_HEIGHT;
     }
 
+    // isReachable with a memory. getting in needs the strict rule, staying in only needs to stay under STAY_REACHABLE_HEIGHT
+    // with the swing line not blocked on BLOCKED_CHECKS_TO_DROP checks in a row. lava and distance are never sticky, we are
+    // not following anything into lava because it used to be hittable
+    public static boolean reachableNow(boolean wasReachable, double heightAboveFloor, boolean overLava, double distance,
+                                       boolean meleeLineClear, int blockedChecks) {
+        if (overLava || distance > MAX_CHASE_DISTANCE) return false;
+        if (wasReachable && heightAboveFloor <= STAY_REACHABLE_HEIGHT && blockedChecks < BLOCKED_CHECKS_TO_DROP) return true;
+        return isReachable(heightAboveFloor, overLava, distance, meleeLineClear);
+    }
+
+    // spawnerDistance is from the floor under the blaze, NaN with no spawner known (then there is no cap)
+    public static boolean nearSpawner(double spawnerDistance) {
+        return Double.isNaN(spawnerDistance) || spawnerDistance <= HUNT_SPAWNER_RADIUS;
+    }
+
+    // what KILL goes after and what counts toward reachable, the same answer for both. they used to disagree (the count
+    // ignored bans), so KILL would start with nothing it was willing to hit and wander off. banned is the kill picker's
+    // own ban check, and out past the spawner radius there is no cover to fall back on when it goes wrong
+    public static boolean isFightable(boolean reachable, boolean banned, double spawnerDistance) {
+        return reachable && !banned && nearSpawner(spawnerDistance);
+    }
+
     // worth walking over to: a floor to stand on under it, not over lava, not too far, not something the tracker gave up
     // on, and close enough to the spawner that cover is still around. spawnerDistance is NaN with no spawner known
     public static boolean isHuntable(boolean hasFloor, boolean overLava, double distance, boolean banned, double spawnerDistance) {
         if (!hasFloor || overLava || banned || distance > MAX_CHASE_DISTANCE) return false;
-        return Double.isNaN(spawnerDistance) || spawnerDistance <= HUNT_SPAWNER_RADIUS;
+        return nearSpawner(spawnerDistance);
     }
 
     // rebuild the hunt goal only for a new target or one that moved off, otherwise the path restarts every tick.
@@ -86,6 +117,25 @@ public final class BlazeFightRules {
         return ticksOnTarget >= HUNT_GIVE_UP_TICKS;
     }
 
+    // a gap between hunt ticks this long starts the hunt over. it used to be HIDE_HOLD_TICKS, which is exactly how long a
+    // cover break lasts, so HUNT -> it sees us -> COVER -> HUNT reset the give up clock every lap and an unreachable blaze
+    // got walked at for ever. cover time counts toward giving up now, only a proper quiet spell is a fresh start
+    public static boolean huntBreakIsFreshStart(long ticksSinceLastHunt) {
+        return ticksSinceLastHunt > HUNT_GIVE_UP_TICKS;
+    }
+
+    public static boolean retreatStalled(long ticksWithoutHealing) {
+        return ticksWithoutHealing >= RETREAT_GIVE_UP_TICKS;
+    }
+
+    // the give up is only for getting us out of the retreat we are stuck in. once out it has done its job: left on, the
+    // next 11 hp retreat skips the wait-for-14 and walks back out the moment the blaze loses sight, every time. a panic
+    // retreat (8 hp) stays in RETREAT with it on, so the rods task still knows it is dead time
+    public static boolean retreatGaveUpNext(boolean gaveUp, boolean inRetreat, boolean healthRose, boolean stalled) {
+        if (healthRose || !inRetreat) return false;
+        return gaveUp || stalled;
+    }
+
     // threats is blazes with a line of sight to us inside SIGHT_RANGE, reachable is blazes we could hit right now
     // (threatening or not, a quiet reachable blaze is still a rod)
     public static Mode decide(float health, boolean retreating, int threats, int reachable) {
@@ -94,7 +144,14 @@ public final class BlazeFightRules {
 
     // huntable is blazes worth walking to (isHuntable), ticksSinceThreat is how long since one last could see us
     public static Mode decide(float health, boolean retreating, int threats, int reachable, int huntable, long ticksSinceThreat) {
-        boolean leave = retreating
+        return decide(health, retreating, false, threats, reachable, huntable, ticksSinceThreat);
+    }
+
+    // retreatGaveUp: the retreat stopped healing us (retreatStalled). then we are not retreating any more, only the fresh
+    // hp rules can send us back, so 12 hp with nothing looking goes back to work instead of waiting for a 14 that never comes
+    public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, int threats, int reachable, int huntable,
+                              long ticksSinceThreat) {
+        boolean leave = retreating && !retreatGaveUp
                 ? health < RECOVERED_HEALTH
                 : (health <= RETREAT_HEALTH && threats > 0) || health <= PANIC_HEALTH;
         if (leave) return Mode.RETREAT;
@@ -112,7 +169,12 @@ public final class BlazeFightRules {
 
     public static Mode decide(float health, boolean retreating, int threats, int reachable, int huntable, long ticksSinceThreat,
                               Mode current, long ticksInMode) {
-        Mode next = decide(health, retreating, threats, reachable, huntable, ticksSinceThreat);
+        return decide(health, retreating, false, threats, reachable, huntable, ticksSinceThreat, current, ticksInMode);
+    }
+
+    public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, int threats, int reachable, int huntable,
+                              long ticksSinceThreat, Mode current, long ticksInMode) {
+        Mode next = decide(health, retreating, retreatGaveUp, threats, reachable, huntable, ticksSinceThreat);
         boolean flip = (current == Mode.KILL && next == Mode.COVER) || (current == Mode.COVER && next == Mode.KILL);
         if (flip && ticksInMode < MIN_DWELL_TICKS) return current;
         return next;

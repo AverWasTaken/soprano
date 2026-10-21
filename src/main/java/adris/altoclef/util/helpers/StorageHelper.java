@@ -23,6 +23,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -204,95 +205,185 @@ public class StorageHelper {
         return sum;
     }
 
-    // Gets a slot with an item we can throw away
+    // Gets a slot with an item we can throw away. the order lives in GarbageRules.nextPick so a test can lean on it
     public static Optional<Slot> getGarbageSlot(AltoClef mod) {
-        Optional<Slot> junk = getJunkSlot(mod);
-        if (junk.isPresent()) {
-            return junk;
+        Bag bag = bag(mod);
+        int units = bagFoodUnits(mod);
+        return at(bag, GarbageRules.nextPick(entries(mod, bag, units), reserve(), Baritone.settings().altoThrowAwayUnusedItems.value,
+                units, Baritone.settings().altoFoodKeepUnits.value));
+    }
+
+    // one look at the bag: its slots, what is in them (read off the menu slot itself: under a menu Slot has no type for, window 45
+    // is a bag slot and getItemStackInSlot would hand back the offhand), and which armor pieces are the ones we would put on
+    private record Bag(List<Slot> slots, List<ItemStack> stacks, boolean[] wear) {
+    }
+
+    private static Bag bag(AltoClef mod) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return new Bag(List.of(), List.of(), new boolean[0]);
         }
-        return getGarbageSlotPastJunk(mod);
+        AbstractContainerMenu menu = player.containerMenu;
+        List<Slot> slots = new ArrayList<>();
+        List<ItemStack> stacks = new ArrayList<>();
+        List<GarbageRules.Armor> armor = new ArrayList<>();
+        for (int window : GarbageRules.bagWindowSlots(menu, player.getInventory())) {
+            Slot slot = Slot.getFromCurrentScreen(window);
+            ItemStack stack = menu.getSlot(window).getItem();
+            slots.add(slot);
+            stacks.add(stack);
+            armor.add(armorOf(mod, stack));
+        }
+        return new Bag(slots, stacks, GarbageRules.keptArmor(armor));
+    }
+
+    private static GarbageRules.Armor armorOf(AltoClef mod, ItemStack stack) {
+        if (stack.isEmpty() || !(stack.getItem() instanceof ArmorItem)) {
+            return GarbageRules.Armor.NONE;
+        }
+        EquipmentSlot slot = ItemHelper.getEquipSlot(stack.getItem());
+        if (slot == null) {
+            return GarbageRules.Armor.NONE;
+        }
+        return new GarbageRules.Armor(slot.ordinal(), ItemHelper.getArmorPoints(stack.getItem()), ItemHelper.getArmorToughness(stack.getItem()),
+                wouldWear(mod, stack));
+    }
+
+    // armor we would put on (bare slot, or it beats what is worn), the rule is GarbageRules.wouldWear. this one asks about a single
+    // stack (the cursor, a drop), the garbage tiers go through bag() so a second identical piece still counts as a spare
+    public static boolean wouldWear(AltoClef mod, ItemStack stack) {
+        if (stack.isEmpty() || mod.getPlayer() == null || !(stack.getItem() instanceof ArmorItem)) {
+            return false;
+        }
+        EquipmentSlot slot = ItemHelper.getEquipSlot(stack.getItem());
+        if (slot == null) {
+            return false;
+        }
+        ItemStack worn = mod.getPlayer().getItemBySlot(slot);
+        return GarbageRules.wouldWear(worn.isEmpty(), ItemHelper.getArmorPoints(stack.getItem()), ItemHelper.getArmorToughness(stack.getItem()),
+                ItemHelper.getArmorPoints(worn.getItem()), ItemHelper.getArmorToughness(worn.getItem()));
+    }
+
+    // what every garbage tier asks of a bag stack. foodUnits is the bag total the food floor is held against
+    private static boolean mayGo(AltoClef mod, Bag bag, int i, int foodUnits) {
+        return !bag.wear[i] && ItemHelper.canDropStack(mod, bag.stacks.get(i), foodUnits);
+    }
+
+    private static List<GarbageRules.Entry> entries(AltoClef mod, Bag bag, int foodUnits) {
+        return entries(mod, bag, foodUnits, GarbageRules.throwRanks(AltoSettings.getThrowawayItems(mod)));
+    }
+
+    private static List<GarbageRules.Entry> entries(AltoClef mod, Bag bag, int foodUnits, Map<Item, Integer> ranks) {
+        List<GarbageRules.Entry> out = new ArrayList<>(bag.slots.size());
+        for (int i = 0; i < bag.slots.size(); i++) {
+            ItemStack stack = bag.stacks.get(i);
+            out.add(new GarbageRules.Entry(stack, mayGo(mod, bag, i, foodUnits), ranks.getOrDefault(stack.getItem(), -1)));
+        }
+        return out;
+    }
+
+    private static int reserve() {
+        return Baritone.settings().altoReservedBuildingBlockCount.value;
+    }
+
+    private static Optional<Slot> at(Bag bag, int i) {
+        return i < 0 ? Optional.empty() : Optional.of(bag.slots.get(i));
     }
 
     // the cheap half of getGarbageSlot: throwaway items (dirt, cobble past the building reserve, rotten flesh). what comes after is
     // worse tools and, with altoThrowAwayUnusedItems, anything the task is not using, which is not room anybody should plan on
     public static Optional<Slot> getJunkSlot(AltoClef mod) {
-        // Throwaway items, but keep a few for building.
-        final List<Slot> throwawayBlockItems = new ArrayList<>();
-        int totalBlockThrowaways = 0;
-        if (!mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod)).isEmpty()) {
-            for (Slot slot : mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod))) {
-                // Our cursor slot is NOT a garbage slot
-                if (Slot.isCursor(slot))
-                    continue;
-                ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canDropStack(mod, stack))
-                    continue;
-                if (stack.getItem() instanceof BlockItem) {
-                    totalBlockThrowaways += stack.getCount();
-                    throwawayBlockItems.add(slot);
-                } else {
-                    // Throw away this non-block immediately.
-                    return Optional.of(slot);
-                }
-            }
-        }
-        if (!throwawayBlockItems.isEmpty() && totalBlockThrowaways > Baritone.settings().altoReservedBuildingBlockCount.value) {
-            for (Slot throwawayBlockItem : throwawayBlockItems) {
-                return Optional.ofNullable(throwawayBlockItem);
-            }
-        }
-        return Optional.empty();
+        Bag bag = bag(mod);
+        return at(bag, GarbageRules.junkPick(entries(mod, bag, bagFoodUnits(mod)), reserve()));
     }
 
-    private static Optional<Slot> getGarbageSlotPastJunk(AltoClef mod) {
-        // Try throwing away lower tier tools. which one is worse is GarbageRules.worseTool, per tool family
-        if (PlayerSlot.getCurrentScreenSlots() != null) {
-            final List<Slot> toolSlots = new ArrayList<>();
-            final List<Item> toolItems = new ArrayList<>();
-            for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
-                ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canDropStack(mod, stack) || !ItemHelper.isTool(stack.getItem()))
-                    continue;
-                toolSlots.add(slot);
-                toolItems.add(stack.getItem());
-            }
-            int worse = GarbageRules.worseTool(toolItems);
-            if (worse >= 0) {
-                return Optional.of(toolSlots.get(worse));
-            }
+    // one look at the bag and its garbage pick, held for a tick of pile drops so each drop does not read the bag again
+    public static GarbageView garbageView(AltoClef mod) {
+        return new GarbageView(mod);
+    }
+
+    public static final class GarbageView {
+        private final AltoClef _mod;
+        private final Bag _bag;
+        private final Map<Item, Integer> _ranks;
+        private final List<GarbageRules.Entry> _entries;
+        private final int _foodUnits;
+        private final int _floor;
+        private final boolean _throwUnused;
+        private final int _reserve;
+        private final int _pick;
+
+        private GarbageView(AltoClef mod) {
+            _mod = mod;
+            _bag = bag(mod);
+            _ranks = GarbageRules.throwRanks(AltoSettings.getThrowawayItems(mod));
+            _foodUnits = bagFoodUnits(mod);
+            _entries = entries(mod, _bag, _foodUnits, _ranks);
+            _floor = Baritone.settings().altoFoodKeepUnits.value;
+            _throwUnused = Baritone.settings().altoThrowAwayUnusedItems.value;
+            _reserve = reserve();
+            _pick = GarbageRules.nextPick(_entries, _reserve, _throwUnused, _foodUnits, _floor);
         }
 
-        // Now we're getting desparate
-        if (Baritone.settings().altoThrowAwayUnusedItems.value) {
+        public boolean isThrowaway(Item item) {
+            return _ranks.containsKey(item);
+        }
 
-            // Get all non-important items. For now there is no measure of value.
-            final List<Slot> possibleSlots = new ArrayList<>();
-            final List<GarbageRules.Cand> cands = new ArrayList<>();
-            if (PlayerSlot.getCurrentScreenSlots() != null) {
-                for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
-                    ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                    // If we're an armor slot, don't count us.
-                    if (slot instanceof PlayerSlot playerSlot) {
-                        if (ArrayUtils.contains(PlayerSlot.ARMOR_SLOTS, playerSlot) ||
-                                playerSlot.getWindowSlot() == PlayerSlot.OFFHAND_SLOT.getWindowSlot()) {
-                            continue;
-                        }
-                    }
-                    // Throw away-able slots are good!
-                    if (ItemHelper.canDropStack(mod, stack)) {
-                        possibleSlots.add(slot);
-                        cands.add(GarbageRules.cand(stack));
-                    }
+        // the throwaway blocks junkPick weighs against the building reserve
+        public int throwawayBlocksHeld() {
+            int total = 0;
+            for (GarbageRules.Entry e : _entries) {
+                if (e.throwaway() && e.mayGo() && e.stack().getItem() instanceof BlockItem) {
+                    total += e.stack().getCount();
                 }
             }
-
-            // the ranking (and the food floor, once more) lives in GarbageRules so a test can lean on it
-            int pick = GarbageRules.pick(cands, bagFoodUnits(mod), Baritone.settings().altoFoodKeepUnits.value);
-            if (pick >= 0) {
-                return Optional.of(possibleSlots.get(pick));
-            }
+            return total;
         }
-        return Optional.empty();
+
+        // a full bag at a death pile: making room for this drop would throw the current pick, and would the drop then be the next
+        // thing thrown? RecoverItemsTask leaves those, see GarbageRules.dropIsNextPick. the food floor is asked of the bag after
+        // the swap: the old total still counts the stack that is about to hit the floor
+        public boolean dropIsNext(ItemStack drop) {
+            if (_pick < 0) {
+                return false;
+            }
+            int after = GarbageRules.unitsAfterSwap(_foodUnits, _bag.stacks.get(_pick), drop);
+            GarbageRules.Entry in = new GarbageRules.Entry(drop, ItemHelper.canDropStack(_mod, drop, after) && !wouldWear(_mod, drop),
+                    _ranks.getOrDefault(drop.getItem(), -1));
+            return GarbageRules.dropIsNextPick(entriesAt(after), _pick, in, _reserve, _throwUnused, after, _floor);
+        }
+
+        // only food stacks answer mayGo differently for another total, so the rest is reused as is
+        private List<GarbageRules.Entry> entriesAt(int units) {
+            if (units == _foodUnits) {
+                return _entries;
+            }
+            List<GarbageRules.Entry> out = new ArrayList<>(_entries);
+            for (int i = 0; i < out.size(); i++) {
+                GarbageRules.Entry e = out.get(i);
+                if (GarbageRules.keepUnits(e.stack()) > 0) {
+                    out.set(i, new GarbageRules.Entry(e.stack(), mayGo(_mod, _bag, i, units), e.throwRank()));
+                }
+            }
+            return out;
+        }
+    }
+
+    // EnsureFreeCursorSlotTask's way out when it holds something we keep and getGarbageSlot has nothing: the lowest bag stack that
+    // is not on the important list (or armor we would wear). the food floor and the protect list are soft, a deadlock is not
+    public static Optional<Slot> getLastResortSlot(AltoClef mod) {
+        Bag bag = bag(mod);
+        final List<Slot> slots = new ArrayList<>();
+        final List<GarbageRules.Cand> cands = new ArrayList<>();
+        for (int i = 0; i < bag.slots.size(); i++) {
+            ItemStack stack = bag.stacks.get(i);
+            if (stack.isEmpty() || bag.wear[i] || AltoSettings.isImportant(stack.getItem()))
+                continue;
+            slots.add(bag.slots.get(i));
+            cands.add(GarbageRules.cand(stack));
+        }
+        int pick = GarbageRules.lastResort(cands);
+        return pick < 0 ? Optional.empty() : Optional.of(slots.get(pick));
     }
 
     /**

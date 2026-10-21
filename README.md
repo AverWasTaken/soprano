@@ -17,6 +17,9 @@
 
 </div>
 
+<img width="1040" height="680" alt="get-dark CnjDq7rR_ZULPW5" src="https://github.com/user-attachments/assets/bd1b83fd-c8cf-470e-919e-086383108e33" />
+
+
 ---
 
 > [!IMPORTANT]
@@ -26,10 +29,10 @@
 
 | Minecraft | Latest Soprano | Loaders | Download |
 |:--|:--|:--|:--|
-| 26.3 | 1.1.5 | Fabric, Forge, NeoForge | [Soprano v1.1.5](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.5) |
+| 26.3 | 1.1.6 | Fabric, Forge, NeoForge | [Soprano v1.1.6](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.6) |
 | 1.21.11 | 1.2.0 | Fabric, Forge, NeoForge | [Soprano v1.2.0](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.2.0) |
 | 1.21.4 (2b2t) | 1.0.3 | Fabric, Forge, NeoForge | [Soprano v1.0.3](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.0.3) |
-| Any Version (beta, 26.3 client joins any server) | 1.1.5 | Fabric | [Soprano v1.1.5 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.5-anyversion) |
+| Any Version (beta, 26.3 client joins any server) | 1.1.6 | Fabric | [Soprano v1.1.6 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.6-anyversion) |
 
 <details>
 <summary><b>The version I want isn't here</b></summary>
