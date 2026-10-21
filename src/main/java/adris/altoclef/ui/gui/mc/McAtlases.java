@@ -152,8 +152,15 @@ final class McAtlases {
             ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("soprano", "gui/picture_" + pictures++);
             DynamicTexture tex = new DynamicTexture(new NativeImage(picture.width(), picture.height(), true));
             Minecraft.getInstance().getTextureManager().register(rl, tex);
-            // nearest like the pages, the map is drawn at its own size
-            tex.setFilter(false, false);
+            if (picture.isSmooth()) {
+                // a smooth picture gets drawn a bit off its baked size (a dock tile mid magnification), nearest would
+                // make its round corners crawl. clamped so the linear sample doesn't pull in the opposite edge
+                tex.setFilter(true, false);
+                tex.setClamp(true);
+            } else {
+                // nearest like the pages, the map is drawn at its own size
+                tex.setFilter(false, false);
+            }
             slot = new Slot(tex, rl);
             images.put(picture, slot);
         }
@@ -192,5 +199,24 @@ final class McAtlases {
         images.clear();
         lastPage = null;
         lastSlot = null;
+    }
+
+    // one picture that is done for good (a dock tile baked at a size the window no longer has). released a couple of
+    // frames late: this frame may already have queued a blit of it, and a released name draws as the missing texture
+    static void release(PixelImage picture) {
+        if (instance == null || picture == null) {
+            return;
+        }
+        Slot slot = instance.images.remove(picture);
+        if (slot != null) {
+            Minecraft mc = Minecraft.getInstance();
+            mc.schedule(() -> mc.schedule(() -> {
+                try {
+                    mc.getTextureManager().release(slot.location);
+                } catch (Throwable t) {
+                    Safe.report("gui texture release", t);
+                }
+            }));
+        }
     }
 }

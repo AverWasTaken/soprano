@@ -354,7 +354,110 @@ public final class Icons {
                 poly(g, false, 6.5f, 9.5f, 4, 12, 6.5f, 14.5f);
                 poly(g, false, 17.5f, 9.5f, 20, 12, 17.5f, 14.5f);
             }
+            // the title screen set, ported call for call from gui-mock/icons.js so the mock can't drift
+            case GEAR -> gear(g);
+            case GLOBE -> {
+                g.draw(new Ellipse2D.Float(3, 3, 18, 18));
+                g.draw(new Ellipse2D.Float(8, 3, 8, 18));
+                line(g, 3, 12, 21, 12);
+            }
+            case PEOPLE -> {
+                // the full body for the one in front, the one behind only gets a head and a shoulder
+                g.draw(new Ellipse2D.Float(5.5f, 5, 7, 7));
+                Path2D.Float front = new Path2D.Float();
+                front.moveTo(2.5f, 20.5f);
+                front.lineTo(2.5f, 19);
+                front.quadTo(2.5f, 15, 6.5f, 15);
+                front.lineTo(11.5f, 15);
+                front.quadTo(15.5f, 15, 15.5f, 19);
+                front.lineTo(15.5f, 20.5f);
+                g.draw(front);
+                g.draw(new Ellipse2D.Float(14, 4.5f, 6, 6));
+                Path2D.Float back = new Path2D.Float();
+                back.moveTo(17, 13.5f);
+                back.quadTo(21.5f, 13.5f, 21.5f, 18);
+                back.lineTo(21.5f, 20.5f);
+                g.draw(back);
+            }
+            case CLOUD -> {
+                Path2D.Float c = new Path2D.Float();
+                c.moveTo(7, 18.5f);
+                c.lineTo(17.5f, 18.5f);
+                c.curveTo(19.5f, 18.5f, 21, 17, 21, 15);
+                c.curveTo(21, 13, 19.5f, 11.5f, 17.5f, 11.5f);
+                c.curveTo(17, 8, 14.5f, 5.5f, 11.5f, 5.5f);
+                c.curveTo(8.5f, 5.5f, 6.2f, 7.8f, 6, 10.7f);
+                c.curveTo(4.2f, 11.2f, 3, 12.8f, 3, 14.7f);
+                c.curveTo(3, 16.8f, 4.8f, 18.5f, 7, 18.5f);
+                c.closePath();
+                g.draw(c);
+            }
+            case PUZZLE -> {
+                // a square piece with a knob on top and one on the right, the knobs are 270 degree arcs
+                Path2D.Float p = new Path2D.Float();
+                p.moveTo(3.5f, 8.5f);
+                p.lineTo(8.4f, 8.5f);
+                p.append(new Arc2D.Float(8.2f, 3.5f, 4.6f, 4.6f, 225, -270, Arc2D.OPEN), true);
+                p.lineTo(12.6f, 8.5f);
+                p.lineTo(17, 8.5f);
+                p.lineTo(17, 12.4f);
+                p.append(new Arc2D.Float(16.8f, 11.9f, 4.6f, 4.6f, 135, -270, Arc2D.OPEN), true);
+                p.lineTo(17, 16);
+                p.lineTo(17, 20.5f);
+                p.lineTo(3.5f, 20.5f);
+                p.closePath();
+                g.draw(p);
+            }
+            case POWER -> {
+                // the gap is centred on the top, 60 degrees wide, the stem drops into it
+                g.draw(new Arc2D.Float(4.5f, 5.5f, 15, 15, 60, -300, Arc2D.OPEN));
+                line(g, 12, 3.5f, 12, 12);
+            }
+            case LANGUAGE -> {
+                // globe in the top left, an A in the bottom right, the A's left leg just clears the globe
+                g.draw(new Ellipse2D.Float(3, 3, 12, 12));
+                g.draw(new Ellipse2D.Float(6.5f, 3, 5, 12));
+                line(g, 3, 9, 15, 9);
+                poly(g, false, 13, 21, 17, 11.5f, 21, 21);
+                line(g, 14.4f, 17.7f, 19.6f, 17.7f);
+            }
+            case ACCESSIBILITY -> {
+                g.draw(new Ellipse2D.Float(3, 3, 18, 18));
+                g.fill(new Ellipse2D.Float(10.5f, 5.6f, 3, 3));
+                line(g, 7.5f, 10, 16.5f, 10);
+                line(g, 12, 10, 12, 14);
+                poly(g, false, 9, 18.5f, 12, 14, 15, 18.5f);
+            }
         }
+    }
+
+    // eight teeth off a circle: inner radius 7, outer 9.5, the valleys are arcs so it reads as a gear and not a stop
+    // sign at 30px. tooth k ends at a+13 on the inner circle, the valley runs to the next tooth's a+45-13
+    private static void gear(Graphics2D g) {
+        float cx = 12f;
+        float cy = 12f;
+        float ri = 7f;
+        float ro = 9.5f;
+        Path2D.Float p = new Path2D.Float();
+        for (int k = 0; k < 8; k++) {
+            int a = k * 45;
+            double a0 = Math.toRadians(a - 13);
+            double a1 = Math.toRadians(a - 8);
+            double a2 = Math.toRadians(a + 8);
+            float x0 = cx + ri * (float) Math.cos(a0);
+            float y0 = cy - ri * (float) Math.sin(a0);
+            if (k == 0) {
+                p.moveTo(x0, y0);
+            } else {
+                p.lineTo(x0, y0);
+            }
+            p.lineTo(cx + ro * (float) Math.cos(a1), cy - ro * (float) Math.sin(a1));
+            p.lineTo(cx + ro * (float) Math.cos(a2), cy - ro * (float) Math.sin(a2));
+            p.append(new Arc2D.Float(cx - ri, cy - ri, 2 * ri, 2 * ri, a + 13, 19, Arc2D.OPEN), true);
+        }
+        p.closePath();
+        g.draw(p);
+        g.draw(new Ellipse2D.Float(9, 9, 6, 6));
     }
 
     // three quarters of a circle open at the top, the arrow on the loose end going counter clockwise, and a dot for
