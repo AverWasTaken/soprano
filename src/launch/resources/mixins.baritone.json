@@ -49,6 +49,7 @@
     "MixinPlayer",
     "MixinPlayerController",
     "MixinScreen",
+    "MixinSoundBufferLibrary",
     "MixinTitleScreen",
     "MixinWorldRenderer",
     "MixinVec3i"

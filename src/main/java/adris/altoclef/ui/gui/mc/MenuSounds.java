@@ -1,27 +1,40 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.Safe;
+import com.mojang.blaze3d.audio.SoundBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.client.resources.sounds.Sound;
+import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.client.sounds.JOrbisAudioStream;
 import net.minecraft.client.sounds.SoundManager;
+import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.resources.Identifier;
-import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.valueproviders.ConstantFloat;
 
-// the title screen's two sounds, both ours: gui-mock/tools/make-sounds.py synthesizes them, assets/soprano/sounds.json
-// names them. forUI puts them on the interface channel, so the "Interface" slider turns them down with vanilla's button
-// click. the SoundEvents are just names, client side playback never asks the registry about them
-final class MenuSounds {
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.util.concurrent.CompletableFuture;
 
-    private static final SoundEvent HOVER =
-            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath("soprano", "ui.hover"));
-    private static final SoundEvent CLICK =
-            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath("soprano", "ui.click"));
+// the title screen's two sounds, both ours (gui-mock/tools/make-sounds.py synthesizes them). fabric only turns a mod's
+// assets into a resource pack when fabric api is installed and we don't need fabric api, so there is no sounds.json:
+// each play brings its own Sound (Instance below, the sound registry never gets asked) and MixinSoundBufferLibrary
+// hands the engine our ogg straight off the classpath. same everywhere, fabric with or without api, forge, neoforge.
+// they play on the interface channel, so the "Interface" slider turns them down with vanilla's button click
+public final class MenuSounds {
+
+    private static final String NAMESPACE = "soprano";
+    private static final Clip HOVER = Clip.of("hover");
+    private static final Clip CLICK = Clip.of("click");
 
     // major pentatonic, any run of it sounds like it meant to. the hover sample is an e5 and the dock starts 7 below,
     // on an a4, so the middle of a normal dock sits on the sample's own pitch
     private static final int[] SCALE = {0, 2, 4, 7, 9, 12, 14, 16, 19};
-    private static final float HOVER_VOLUME = 0.6f;
-    private static final float CLICK_VOLUME = 0.8f;
+    // both files peak at -1 dBFS like vanilla's. vanilla plays its click at 0.25, ours sits a touch over it and the
+    // hover a touch under, it's the thing that happens fifty times a minute
+    private static final float HOVER_VOLUME = 0.22f;
+    private static final float CLICK_VOLUME = 0.32f;
     // two notes closer than this are the mouse wobbling on a tile edge, not a sweep along the dock
     private static final long HOVER_GAP_NANOS = 30_000_000L;
 
@@ -49,12 +62,67 @@ final class MenuSounds {
         play(sounds, CLICK, 1f, CLICK_VOLUME);
     }
 
+    // MixinSoundBufferLibrary asks this before vanilla goes looking in the resource packs
+    public static boolean owns(Identifier path) {
+        return NAMESPACE.equals(path.getNamespace());
+    }
+
+    // what vanilla's getCompleteBuffer does with a resource pack file, done with the mod jar instead. path is the
+    // Sound's file path, soprano:sounds/ui/hover.ogg. it goes in vanilla's own buffer cache, so a sound reload or a
+    // device switch frees it with everything else and the next play just decodes it again (5 kb, nothing)
+    public static CompletableFuture<SoundBuffer> load(Identifier path) {
+        String res = "/assets/" + path.getNamespace() + "/" + path.getPath();
+        try (InputStream in = MenuSounds.class.getResourceAsStream(res)) {
+            if (in == null) {
+                throw new FileNotFoundException(res);
+            }
+            try (JOrbisAudioStream ogg = new JOrbisAudioStream(in)) {
+                return CompletableFuture.completedFuture(new SoundBuffer(ogg.readAll(), ogg.getFormat()));
+            }
+        } catch (Throwable t) {
+            Safe.report("title sound load", t);
+            return CompletableFuture.failedFuture(t);
+        }
+    }
+
     // a sound that can't play is not worth losing the menu over, so this never throws into the draw path
-    private static void play(SoundManager sounds, SoundEvent sound, float pitch, float volume) {
+    private static void play(SoundManager sounds, Clip clip, float pitch, float volume) {
         try {
-            sounds.play(SimpleSoundInstance.forUI(sound, pitch, volume));
+            sounds.play(new Instance(clip, pitch, volume));
         } catch (Throwable t) {
             Safe.report("title sound", t);
+        }
+    }
+
+    // one sound file and the one-entry event around it, built once. Sound's location is soprano:ui/hover, its path
+    // (what the buffer library gets asked for) is soprano:sounds/ui/hover.ogg
+    private record Clip(Identifier id, Sound sound, WeighedSoundEvents events) {
+        static Clip of(String name) {
+            Identifier id = Identifier.fromNamespaceAndPath(NAMESPACE, "ui/" + name);
+            Sound sound = new Sound(id, ConstantFloat.of(1f), ConstantFloat.of(1f), 1, Sound.Type.FILE, false, false, 16);
+            // no subtitle: a menu blip in the subtitles box would be silly
+            WeighedSoundEvents events = new WeighedSoundEvents(id, null);
+            events.addSound(sound);
+            return new Clip(id, sound, events);
+        }
+    }
+
+    // forUI with the lookup swapped out: vanilla resolves the id through the sound registry, which has never heard of
+    // us. everything after that (volume, pitch, channel, the ui slider) is the vanilla path
+    private static final class Instance extends SimpleSoundInstance {
+        private final Clip clip;
+
+        Instance(Clip clip, float pitch, float volume) {
+            super(clip.id(), SoundSource.UI, volume, pitch, SoundInstance.createUnseededRandom(), false, 0,
+                    SoundInstance.Attenuation.NONE, 0.0, 0.0, 0.0, true);
+            this.clip = clip;
+        }
+
+        @Override
+        public WeighedSoundEvents getOrResolve(SoundManager manager) {
+            this.soundEvent = clip.events();
+            this.sound = clip.sound();
+            return clip.events();
         }
     }
 }
