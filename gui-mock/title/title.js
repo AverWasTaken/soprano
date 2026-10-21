@@ -198,23 +198,26 @@
     // ---------- the dock's tiles ----------
     var EXTRA_MODS = ['Mods', 'Replay Viewer', 'Voice Chat'];
     var MP_TIP = 'Multiplayer is disabled. Please check your Microsoft account settings.';
+    // every tile the same graphite, white glyph. a row of six different gradients looked like a phone's home screen,
+    // one colour reads as one dock and matches the black boot screen
+    var TILE_0 = '#2C2C2E', TILE_1 = '#161618';
     // vanilla's button messages with the trailing "..." dropped, a dock label with an ellipsis looks like a typo
     function tileList() {
         var t = [];
         if (opt.demo) {
-            t.push({ id: 'demo', label: 'Play Demo World', glyph: 'player', c0: '#5AC8FA', c1: '#0A84FF' });
-            t.push({ id: 'reset', label: 'Reset Demo World', glyph: 'reset', c0: '#FF9F0A', c1: '#C93400', off: !opt.dw });
+            t.push({ id: 'demo', label: 'Play Demo World', glyph: 'player', c0: TILE_0, c1: TILE_1 });
+            t.push({ id: 'reset', label: 'Reset Demo World', glyph: 'reset', c0: TILE_0, c1: TILE_1, off: !opt.dw });
             // vanilla never hides friends, demo just makes it inactive
-            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: '#FF6482', c1: '#D6336C', off: true });
+            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: TILE_0, c1: TILE_1, off: true });
         } else {
-            t.push({ id: 'sp', label: 'Singleplayer', glyph: 'player', c0: '#5AC8FA', c1: '#0A84FF' });
-            t.push({ id: 'mp', label: 'Multiplayer', glyph: 'globe', c0: '#34C759', c1: '#248A3D', off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
-            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: '#FF6482', c1: '#D6336C', off: !opt.friends });
-            t.push({ id: 'realms', label: 'Minecraft Realms', glyph: 'cloud', c0: '#BF5AF2', c1: '#8944AB', off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
+            t.push({ id: 'sp', label: 'Singleplayer', glyph: 'player', c0: TILE_0, c1: TILE_1 });
+            t.push({ id: 'mp', label: 'Multiplayer', glyph: 'globe', c0: TILE_0, c1: TILE_1, off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
+            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: TILE_0, c1: TILE_1, off: !opt.friends });
+            t.push({ id: 'realms', label: 'Minecraft Realms', glyph: 'cloud', c0: TILE_0, c1: TILE_1, off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
         }
-        for (var i = 0; i < opt.mods; i++) t.push({ id: 'mod' + (i + 1), label: EXTRA_MODS[i], glyph: 'puzzle', c0: '#FF9F0A', c1: '#C93400' });
-        t.push({ id: 'options', label: 'Options', glyph: 'gear', c0: '#AEAEB2', c1: '#636366' });
-        t.push({ id: 'quit', label: 'Quit Game', glyph: 'power', c0: '#3A3A3C', c1: '#1C1C1E' });
+        for (var i = 0; i < opt.mods; i++) t.push({ id: 'mod' + (i + 1), label: EXTRA_MODS[i], glyph: 'puzzle', c0: TILE_0, c1: TILE_1 });
+        t.push({ id: 'options', label: 'Options', glyph: 'gear', c0: TILE_0, c1: TILE_1 });
+        t.push({ id: 'quit', label: 'Quit Game', glyph: 'power', c0: TILE_0, c1: TILE_1 });
         return t;
     }
     // disabled tiles go grey: each stop becomes its own rec. 709 luma, so light stays light and dark stays dark

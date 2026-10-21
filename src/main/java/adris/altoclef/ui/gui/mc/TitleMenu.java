@@ -76,21 +76,10 @@ public final class TitleMenu {
         }
     }
 
-    // gradient stops, top then bottom
-    private static final int BLUE_0 = 0xFF5AC8FA;
-    private static final int BLUE_1 = 0xFF0A84FF;
-    private static final int GREEN_0 = 0xFF34C759;
-    private static final int GREEN_1 = 0xFF248A3D;
-    private static final int PINK_0 = 0xFFFF6482;
-    private static final int PINK_1 = 0xFFD6336C;
-    private static final int PURPLE_0 = 0xFFBF5AF2;
-    private static final int PURPLE_1 = 0xFF8944AB;
-    private static final int ORANGE_0 = 0xFFFF9F0A;
-    private static final int ORANGE_1 = 0xFFC93400;
-    private static final int GREY_0 = 0xFFAEAEB2;
-    private static final int GREY_1 = 0xFF636366;
-    private static final int DARK_0 = 0xFF3A3A3C;
-    private static final int DARK_1 = 0xFF1C1C1E;
+    // gradient stops, top then bottom. every tile the same graphite under a white glyph: a row of six different
+    // gradients looked like a phone home screen, one colour reads as one dock and matches the black boot screen
+    private static final int TILE_0 = 0xFF2C2C2E;
+    private static final int TILE_1 = 0xFF161618;
 
     private static final int WHITE = 0xFFFFFFFF;
     private static final int GLASS = 0x24FFFFFF;
@@ -315,18 +304,18 @@ public final class TitleMenu {
         String label = label(text);
         TitleTile tile = new TitleTile(b, guiScale);
         Piece p = switch (role) {
-            case PLAY -> new Piece(tile, role, Icon.PLAYER, BLUE_0, BLUE_1, "play", label, false);
+            case PLAY -> new Piece(tile, role, Icon.PLAYER, TILE_0, TILE_1, "play", label, false);
             case SECOND -> "menu.resetdemo".equals(key)
-                    ? new Piece(tile, role, Icon.RESET, ORANGE_0, ORANGE_1, "reset", label, false)
-                    : new Piece(tile, role, Icon.GLOBE, GREEN_0, GREEN_1, "multiplayer", label, true);
-            case FRIENDS -> new Piece(tile, role, Icon.PEOPLE, PINK_0, PINK_1, "friends", label, false);
-            case REALMS -> new Piece(tile, role, Icon.CLOUD, PURPLE_0, PURPLE_1, "realms", label, true);
-            case OPTIONS -> new Piece(tile, role, Icon.GEAR, GREY_0, GREY_1, "options", label, false);
-            case QUIT -> new Piece(tile, role, Icon.POWER, DARK_0, DARK_1, "quit", label, false);
+                    ? new Piece(tile, role, Icon.RESET, TILE_0, TILE_1, "reset", label, false)
+                    : new Piece(tile, role, Icon.GLOBE, TILE_0, TILE_1, "multiplayer", label, true);
+            case FRIENDS -> new Piece(tile, role, Icon.PEOPLE, TILE_0, TILE_1, "friends", label, false);
+            case REALMS -> new Piece(tile, role, Icon.CLOUD, TILE_0, TILE_1, "realms", label, true);
+            case OPTIONS -> new Piece(tile, role, Icon.GEAR, TILE_0, TILE_1, "options", label, false);
+            case QUIT -> new Piece(tile, role, Icon.POWER, TILE_0, TILE_1, "quit", label, false);
             case LANGUAGE -> new Piece(tile, role, Icon.LANGUAGE, 0, 0, "language", label, false);
             case ACCESSIBILITY -> new Piece(tile, role, Icon.ACCESSIBILITY, 0, 0, "accessibility", label, false);
             case COPYRIGHT -> new Piece(tile, role, null, 0, 0, "copyright", label, false);
-            case EXTRA -> new Piece(tile, role, Icon.PUZZLE, ORANGE_0, ORANGE_1, extraId(label), label, false);
+            case EXTRA -> new Piece(tile, role, Icon.PUZZLE, TILE_0, TILE_1, extraId(label), label, false);
         };
         switch (role) {
             case LANGUAGE -> language = p;
