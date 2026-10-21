@@ -8,7 +8,7 @@ import baritone.Baritone;
 import baritone.api.Settings;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
 // the canvas and theme a small kit thing on a vanilla screen needs (the title screen's update card, the release notes):
 // the atlas canvas when it comes up, the plain one when it does not, and the same swap GuiScreen does when a page
@@ -42,7 +42,7 @@ final class KitSurface {
         return canvas;
     }
 
-    void begin(GuiGraphicsExtractor g, int w, int h) {
+    void begin(GuiGraphics g, int w, int h) {
         if (atlasCanvas != null) {
             atlasCanvas.begin(g, w, h);
         } else {

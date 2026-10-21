@@ -8,11 +8,9 @@ import baritone.utils.update.Snapshot;
 import baritone.utils.update.Updater;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.net.URI;
@@ -35,7 +33,7 @@ public final class WhatsNewScreen extends Screen {
         super(Component.literal("What's new in Soprano"));
         this.parent = parent;
         this.snapshot = snapshot;
-        this.guiScale = Math.max(1, mc.getWindow().getGuiScale());
+        this.guiScale = Math.max(1, (int) mc.getWindow().getGuiScale());
         try {
             surface = new KitSurface(KitSurface.scaleFor(guiScale));
             panel = new WhatsNewPanel(surface.theme, snapshot, new WhatsNewPanel.Actions() {
@@ -63,11 +61,11 @@ public final class WhatsNewScreen extends Screen {
 
     @Override
     public void onClose() {
-        mc.gui.setScreen(parent);
+        mc.setScreen(parent);
     }
 
     // the kit would not come up: nothing to read here, so back to the title screen. from the tick and not from the
-    // render, swapping screens in the middle of extraction is asking for it
+    // render, swapping screens in the middle of a frame is asking for it
     @Override
     public void tick() {
         if (!ok) {
@@ -81,7 +79,7 @@ public final class WhatsNewScreen extends Screen {
     }
 
     @Override
-    public void resize(int w, int h) {
+    public void resize(Minecraft minecraft, int w, int h) {
         this.width = w;
         this.height = h;
     }
@@ -89,7 +87,9 @@ public final class WhatsNewScreen extends Screen {
     // ----- drawing
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        // render doesn't go through super, so the background (panorama, blur, the dim) is asked for here
+        renderBackground(g, mouseX, mouseY, partial);
         if (!ok) {
             return;
         }
@@ -100,8 +100,8 @@ public final class WhatsNewScreen extends Screen {
         float dt = lastNanos == 0 ? 0f : Math.min(0.1f, (now - lastNanos) / 1_000_000_000f);
         lastNanos = now;
         float inv = 1f / guiScale;
-        g.pose().pushMatrix();
-        g.pose().scale(inv, inv);
+        g.pose().pushPose();
+        g.pose().scale(inv, inv, 1f);
         boolean began = false;
         try {
             surface.begin(g, winW, winH);
@@ -125,7 +125,7 @@ public final class WhatsNewScreen extends Screen {
             } catch (Throwable t) {
                 Safe.report("whats new render end", t);
             }
-            g.pose().popMatrix();
+            g.pose().popPose();
         }
         surface.afterFrame();
     }
@@ -133,19 +133,19 @@ public final class WhatsNewScreen extends Screen {
     // ----- input, in framebuffer pixels like the gui. always consumed, there are no vanilla widgets on this screen
 
     @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+    public boolean mouseClicked(double x, double y, int button) {
         if (ok) {
             Safe.run("whats new mouse down", () -> panel.mouseDown(KitSurface.pointerX(), KitSurface.pointerY(),
-                    McKeys.buttonToKit(event.button()), McKeys.mods(event)));
+                    button, GuiScreen.mods()));
         }
         return true;
     }
 
     @Override
-    public boolean mouseReleased(MouseButtonEvent event) {
+    public boolean mouseReleased(double x, double y, int button) {
         if (ok) {
             Safe.run("whats new mouse up", () -> panel.mouseUp(KitSurface.pointerX(), KitSurface.pointerY(),
-                    McKeys.buttonToKit(event.button()), McKeys.mods(event)));
+                    button, GuiScreen.mods()));
         }
         return true;
     }
@@ -159,17 +159,16 @@ public final class WhatsNewScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(KeyEvent event) {
+    public boolean keyPressed(int key, int scancode, int mods) {
         if (!ok) {
             return true;
         }
         Safe.run("whats new key", () -> {
-            int key = McKeys.toKit(event.key());
             if (key == Keys.ESCAPE) {
                 onClose();
                 return;
             }
-            panel.keyDown(key, McKeys.mods(event));
+            panel.keyDown(key, mods & 15);
         });
         return true;
     }

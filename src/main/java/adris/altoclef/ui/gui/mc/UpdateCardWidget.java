@@ -8,19 +8,17 @@ import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.update.UpdateCard;
 import baritone.utils.update.Snapshot;
 import baritone.utils.update.Updater;
-import com.mojang.blaze3d.Blaze3D;
 import com.mojang.blaze3d.platform.Window;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ComponentPath;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.navigation.FocusNavigationEvent;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.network.chat.Component;
 
@@ -54,7 +52,7 @@ public final class UpdateCardWidget extends AbstractWidget {
     public UpdateCardWidget(Screen screen) {
         super(MARGIN, MARGIN, 1, 1, Component.literal("Soprano update"));
         this.screen = screen;
-        this.guiScale = Math.max(1, mc.getWindow().getGuiScale());
+        this.guiScale = Math.max(1, (int) mc.getWindow().getGuiScale());
         try {
             surface = new KitSurface(KitSurface.scaleFor(guiScale));
             card = new UpdateCard(surface.theme, new Actions());
@@ -98,7 +96,7 @@ public final class UpdateCardWidget extends AbstractWidget {
     // ----- drawing
 
     @Override
-    protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partial) {
         if (!ok) {
             return;
         }
@@ -109,8 +107,8 @@ public final class UpdateCardWidget extends AbstractWidget {
         float dt = lastNanos == 0 ? 0f : Math.min(0.1f, (now - lastNanos) / 1_000_000_000f);
         lastNanos = now;
         float inv = 1f / guiScale;
-        g.pose().pushMatrix();
-        g.pose().scale(inv, inv);
+        g.pose().pushPose();
+        g.pose().scale(inv, inv, 1f);
         boolean began = false;
         try {
             Snapshot s = Updater.get().snapshot();
@@ -137,7 +135,7 @@ public final class UpdateCardWidget extends AbstractWidget {
             } catch (Throwable t) {
                 Safe.report("update card render end", t);
             }
-            g.pose().popMatrix();
+            g.pose().popPose();
         }
         surface.afterFrame();
     }
@@ -145,21 +143,21 @@ public final class UpdateCardWidget extends AbstractWidget {
     // ----- mouse. the screen already checked the click is on our box and it was the left button
 
     @Override
-    public void onClick(MouseButtonEvent event, boolean doubleClick) {
+    public void onClick(double mouseX, double mouseY) {
         if (!ok) {
             return;
         }
         mouseFocus = true;
-        Safe.run("update card mouse down", () -> card.mouseDown(KitSurface.pointerX(), KitSurface.pointerY(), 0, McKeys.mods(event)));
+        Safe.run("update card mouse down", () -> card.mouseDown(KitSurface.pointerX(), KitSurface.pointerY(), 0, GuiScreen.mods()));
     }
 
     @Override
-    public void onRelease(MouseButtonEvent event) {
+    public void onRelease(double mouseX, double mouseY) {
         if (!ok) {
             return;
         }
         mouseFocus = false;
-        Safe.run("update card mouse up", () -> card.mouseUp(KitSurface.pointerX(), KitSurface.pointerY(), 0, McKeys.mods(event)));
+        Safe.run("update card mouse up", () -> card.mouseUp(KitSurface.pointerX(), KitSurface.pointerY(), 0, GuiScreen.mods()));
     }
 
     @Override
@@ -199,13 +197,12 @@ public final class UpdateCardWidget extends AbstractWidget {
     }
 
     @Override
-    public boolean keyPressed(KeyEvent event) {
+    public boolean keyPressed(int key, int scancode, int modifiers) {
         if (!ok || !isFocused()) {
             return false;
         }
         return Safe.test("update card key", () -> {
-            int key = McKeys.toKit(event.key());
-            int mods = McKeys.mods(event);
+            int mods = modifiers & 15;
             if (key == Keys.TAB) {
                 return card.cycleFocus(Keys.shift(mods));
             }
@@ -242,7 +239,7 @@ public final class UpdateCardWidget extends AbstractWidget {
 
         @Override
         public void whatsNew() {
-            mc.gui.setScreen(new WhatsNewScreen(screen, Updater.get().snapshot()));
+            mc.setScreen(new WhatsNewScreen(screen, Updater.get().snapshot()));
         }
 
         // through vanilla's "open this link?" screen, which comes back to the title screen afterwards
@@ -258,7 +255,7 @@ public final class UpdateCardWidget extends AbstractWidget {
 
         @Override
         public void openMods(Path folder) {
-            Blaze3D.openPath(folder);
+            Util.getPlatform().openPath(folder);
         }
     }
 }
