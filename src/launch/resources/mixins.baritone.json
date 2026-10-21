@@ -35,6 +35,7 @@
     "MixinItemStack",
     "MixinKeyboardHandler",
     "MixinLivingEntity",
+    "MixinLoadingOverlay",
     "MixinLootContextBuilder",
     "MixinLootTable",
     "MixinMinecraft",
