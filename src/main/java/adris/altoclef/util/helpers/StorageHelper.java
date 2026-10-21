@@ -23,6 +23,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -237,7 +238,7 @@ public class StorageHelper {
     }
 
     private static GarbageRules.Armor armorOf(AltoClef mod, ItemStack stack) {
-        if (stack.isEmpty() || !ItemHelper.isArmor(stack.getItem())) {
+        if (stack.isEmpty() || !(stack.getItem() instanceof ArmorItem)) {
             return GarbageRules.Armor.NONE;
         }
         EquipmentSlot slot = ItemHelper.getEquipSlot(stack.getItem());
@@ -251,7 +252,7 @@ public class StorageHelper {
     // armor we would put on (bare slot, or it beats what is worn), the rule is GarbageRules.wouldWear. this one asks about a single
     // stack (the cursor, a drop), the garbage tiers go through bag() so a second identical piece still counts as a spare
     public static boolean wouldWear(AltoClef mod, ItemStack stack) {
-        if (stack.isEmpty() || mod.getPlayer() == null || !ItemHelper.isArmor(stack.getItem())) {
+        if (stack.isEmpty() || mod.getPlayer() == null || !(stack.getItem() instanceof ArmorItem)) {
             return false;
         }
         EquipmentSlot slot = ItemHelper.getEquipSlot(stack.getItem());

@@ -142,7 +142,7 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             if (garbage.isPresent()) {
                 setDebugState("Making room for the output");
-                mod.getSlotHandler().clickSlot(garbage.get(), 1, ContainerInput.THROW);
+                mod.getSlotHandler().clickSlot(garbage.get(), 1, ClickType.THROW);
                 return null;
             }
         }

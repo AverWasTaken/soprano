@@ -9,6 +9,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import java.util.Optional;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -117,7 +118,7 @@ public class EnsureFreeCursorSlotTask extends Task {
     }
 
     static boolean isGear(Item item) {
-        return ItemHelper.isTool(item) || ItemHelper.isArmor(item)
+        return ItemHelper.isTool(item) || item instanceof ArmorItem
                 || item == Items.SHIELD || item == Items.BOW || item == Items.CROSSBOW || item == Items.ELYTRA;
     }
 
