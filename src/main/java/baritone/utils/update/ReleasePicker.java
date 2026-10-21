@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.util.Map;
 import java.util.regex.Pattern;
 
 // picks our next release out of GET /repos/AverWasTaken/soprano/releases. every mc line shares one repo and the
@@ -79,7 +80,7 @@ public final class ReleasePicker {
                     best = r;
                     bestVersion = v;
                 }
-            } else if (switchable(v, running) && (otherVersion == null || v.newerThan(otherVersion))) {
+            } else if (switchable(v, running, minecraftVersion) && (otherVersion == null || v.newerThan(otherVersion))) {
                 other = r;
                 otherVersion = v;
             }
@@ -91,18 +92,21 @@ public final class ReleasePicker {
         return new Result(update, target != null && target.asset() != null ? target : null);
     }
 
-    // v1.1.6 and older never wrote their own version into build-id.properties, so JarCheck turns them down after the
-    // whole download, and they have no updater to come back with anyway. 1.1.7 is the first stable worth switching to
-    static final ModVersion OLDEST_SWITCHABLE_STABLE = ModVersion.parse("1.1.7");
+    // the first stable on each line that wrote its own version into build-id.properties. anything older (v1.1.6 on
+    // 26.3, every 1.0.x and 1.2.x so far) gets turned down by JarCheck after the whole download, and has no updater to
+    // come back with anyway. a line that isn't here has no stable worth switching to. nightlies only come from 26.3
+    // and version-agnostic, which is the 26.3 line too
+    private static final Map<String, ModVersion> OLDEST_SWITCHABLE_STABLE = Map.of("26.3", ModVersion.parse("1.1.7"));
 
     // going to nightly has to be a step forward: once 1.1.7 is out, 1.1.7-nightly.3 is the older buggier one and
     // nobody should be offered that. going back to stable is the escape hatch, so any stable will do, older included,
     // as long as it's one that can actually be installed from here
-    static boolean switchable(ModVersion target, ModVersion running) {
+    static boolean switchable(ModVersion target, ModVersion running, String minecraftVersion) {
         if (target.isNightly()) {
             return target.newerThan(running);
         }
-        return !OLDEST_SWITCHABLE_STABLE.newerThan(target);
+        ModVersion oldest = OLDEST_SWITCHABLE_STABLE.get(minecraftVersion);
+        return oldest != null && !oldest.newerThan(target);
     }
 
     // "(26.3)" for the normal ones, "(base 26.3)" for anyversion. quoted so the dot in 26.3 doesn't also match 26x3
