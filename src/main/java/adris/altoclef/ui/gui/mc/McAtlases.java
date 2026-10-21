@@ -150,7 +150,8 @@ final class McAtlases {
         Slot slot = images.get(picture);
         if (slot == null) {
             ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("soprano", "gui/picture_" + pictures++);
-            DynamicTexture tex = new DynamicTexture(new NativeImage(picture.width(), picture.height(), true));
+            NativeImage pixels = new NativeImage(picture.width(), picture.height(), true);
+            DynamicTexture tex = picture.isSmooth() ? new SmoothTexture(pixels) : new DynamicTexture(pixels);
             Minecraft.getInstance().getTextureManager().register(rl, tex);
             if (picture.isSmooth()) {
                 // a smooth picture gets drawn a bit off its baked size (a dock tile mid magnification), nearest would
@@ -199,6 +200,19 @@ final class McAtlases {
         images.clear();
         lastPage = null;
         lastSlot = null;
+    }
+
+    // guiTextured sets nearest on its texture before every batch it draws, so a linear filter set once at upload
+    // lasts exactly zero frames. this one just says no
+    private static final class SmoothTexture extends DynamicTexture {
+        SmoothTexture(NativeImage pixels) {
+            super(pixels);
+        }
+
+        @Override
+        public void setFilter(boolean blur, boolean mipmap) {
+            super.setFilter(true, false);
+        }
     }
 
     // one picture that is done for good (a dock tile baked at a size the window no longer has). released a couple of
