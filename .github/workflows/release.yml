@@ -1,7 +1,7 @@
 # builds the jars and makes a github release when a tag like soprano-v1.1.0 is pushed
 # the api jar per loader plus unoptimized fabric, and a one line note saying which minecraft
 # version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4, 1.1.x is 26.3, 1.2.x is 1.21.11), see CONTRIBUTING.md
-# soprano-v1.1.7-nightly.1 (and -nightly.1-anyversion) is a nightly: pre-release, an "expect bugs" line on top, no discord post
+# soprano-v1.1.7-nightly.1 (and -nightly.1-anyversion) is a nightly: pre-release, an "expect bugs" line on top
 
 name: Release
 
@@ -23,7 +23,6 @@ jobs:
         fetch-depth: 0
 
     - name: Work out the version from the tag
-      id: version
       run: |
         TAG="${GITHUB_REF_NAME}"
         VERSION="${TAG#soprano-v}"
@@ -41,8 +40,6 @@ jobs:
           *-nightly.*) NIGHTLY=1 ;;
         esac
         echo "NIGHTLY=${NIGHTLY}" >> "$GITHUB_ENV"
-        # and as a step output, the discord step's if reads it from there
-        echo "nightly=${NIGHTLY}" >> "$GITHUB_OUTPUT"
         JAVA_VERSION="$(grep '^java_version=' gradle.properties | cut -d= -f2)"
         echo "MC_VERSION=${MC_VERSION}" >> "$GITHUB_ENV"
         echo "JAVA_VERSION=${JAVA_VERSION}" >> "$GITHUB_ENV"
@@ -73,7 +70,7 @@ jobs:
         ls dist/soprano-api-fabric-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Fabric is supported."
         ls dist/soprano-api-neoforge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} NeoForge is supported."
         # the any version build only ships fabric and runs on a 26.3 client against any server,
-        # so the usual line would be lying. discord_release.py reads this one for "Supports" too
+        # so the usual line would be lying
         if [ "$ANYVERSION" = "1" ]; then
           NOTES="This version is base ${MC_VERSION} MC that is compatible with every server version. May be bug prone. Fabric only."
         fi
@@ -125,13 +122,3 @@ jobs:
         echo "flags: $FLAGS"
         echo "files:$FILES"
         gh release create "$GITHUB_REF_NAME" --title "$TITLE" $FLAGS --notes-file release-notes.md $FILES
-
-    # a release made with this token never fires the release event, so discord.yml wouldn't see it
-    - name: Post the release to discord
-      # set the repo variable DISCORD_RELEASE_POST to false to skip the post, e.g. when several lines ship at once.
-      # nightlies never post, nobody wants an @everyone for a build that's allowed to be broken
-      if: ${{ vars.DISCORD_RELEASE_POST != 'false' && steps.version.outputs.nightly != '1' }}
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      run: python3 .github/scripts/discord_release.py "$GITHUB_REF_NAME" "${{ github.repository }}"
