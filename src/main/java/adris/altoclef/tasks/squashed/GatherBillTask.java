@@ -193,7 +193,7 @@ public class GatherBillTask extends Task {
         CatalogueBook book = new CatalogueBook(items -> mod.getItemStorage().getItemCount(items));
         RecipeBill.World world = new RecipeBill.World(stationNear(mod, Blocks.CRAFTING_TABLE), stationNear(mod, Blocks.FURNACE),
                 otherFuelSmelts(mod), n -> CollectIronIngotTask.wouldBuildBlast(n, mod));
-        RecipeBill.Bill bill = RecipeBill.of(_wanted, book, world);
+        RecipeBill.Bill bill = latch(RecipeBill.of(_wanted, book, world, _mainWood));
         List<String> later = RecipeBill.laterTools(bill.leaves, bag);
         if (later.isEmpty()) {
             return bill;
@@ -202,7 +202,13 @@ public class GatherBillTask extends Task {
         for (String tool : later) {
             withTools.merge(tool, book.held(tool) + 1, Math::max);
         }
-        return RecipeBill.of(withTools, book, world);
+        return latch(RecipeBill.of(withTools, book, world, _mainWood));
+    }
+
+    // a bill with no generic planks left says null, that's not a reason to forget the wood. a broken axe brings it back
+    private RecipeBill.Bill latch(RecipeBill.Bill bill) {
+        if (bill.mainWood() != null) _mainWood = bill.mainWood();
+        return bill;
     }
 
     // the wooden pick, the axe and the shovel. a stone pick and up waits in the LEAVES stage until this tier's leaves are

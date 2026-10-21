@@ -387,6 +387,27 @@ public class RecipeBillTest {
     }
 
     @Test
+    public void aLatchedWoodKeepsTheGenericShare() {
+        // birch is one plank ahead, so a fresh bill hands it the sticks
+        Map<String, Integer> close = want("oak_planks", 12, "birch_planks", 13, "stick", 4);
+        assertEquals("birch", RecipeBill.of(close, bag(), ALL_NEAR).mainWood());
+        // but the job started on oak, and oak is still on the list: it stays oak
+        RecipeBill.Bill latched = RecipeBill.of(close, bag(), ALL_NEAR, "oak");
+        assertEquals("oak", latched.mainWood());
+        assertEquals(14, latched.need("oak_planks"));
+        assertEquals(13, latched.need("birch_planks"));
+        assertEquals(0, latched.need("planks"));
+        // oak stairs already crafted: the oak planks ask goes to 0 but the job still wants oak stairs, so oak keeps it
+        Map<String, Integer> stairs = want("oak_stairs", 8, "birch_stairs", 9, "stick", 4);
+        assertEquals("birch", RecipeBill.of(stairs, bag(Items.OAK_STAIRS, 8), ALL_NEAR).mainWood());
+        assertEquals("oak", RecipeBill.of(stairs, bag(Items.OAK_STAIRS, 8), ALL_NEAR, "oak").mainWood());
+        // a latch on a wood the job doesn't want anymore is dropped, the pick goes back to the biggest
+        assertEquals("birch", RecipeBill.of(close, bag(), ALL_NEAR, "spruce").mainWood());
+        // and a nether stem never takes it, latched or not
+        assertEquals("birch", RecipeBill.of(want("crimson_planks", 20, "birch_planks", 13, "stick", 4), bag(), ALL_NEAR, "crimson").mainWood());
+    }
+
+    @Test
     public void consumersGoFirst() {
         RecipeBill.Bill bill = RecipeBill.of(cabin(), bag(), ALL_NEAR);
         List<String> order = RecipeBill.consumersFirst(bill, List.of("spruce_planks", "spruce_stairs", "spruce_fence", "crafting_table"));
