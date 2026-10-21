@@ -9,6 +9,8 @@ import adris.altoclef.ui.gui.kit.ShapeAtlas;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -34,9 +36,16 @@ final class McAtlases {
         int version = -1;
 
         Slot(DynamicTexture texture) {
+            this(texture, false);
+        }
+
+        Slot(DynamicTexture texture, boolean smooth) {
             this.texture = texture;
-            // a dynamic texture already samples nearest and repeat, which is what a pixel exact atlas wants
-            this.setup = TextureSetup.singleTexture(texture.getTextureView(), texture.getSampler());
+            // a dynamic texture already samples nearest and repeat, which is what a pixel exact atlas wants. a smooth
+            // picture gets drawn a bit off its baked size (a dock tile mid magnification), nearest would make its
+            // round corners crawl, so that one borrows the shared linear clamp sampler (the cache owns it, never close it)
+            this.setup = TextureSetup.singleTexture(texture.getTextureView(),
+                    smooth ? RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR) : texture.getSampler());
         }
     }
 
@@ -150,7 +159,7 @@ final class McAtlases {
         if (slot == null) {
             DynamicTexture tex = new DynamicTexture(() -> "soprano gui picture",
                     new NativeImage(picture.width(), picture.height(), true));
-            slot = new Slot(tex);
+            slot = new Slot(tex, picture.isSmooth());
             images.put(picture, slot);
         }
         int version = picture.version();
@@ -184,6 +193,24 @@ final class McAtlases {
         images.clear();
         lastPage = null;
         lastSlot = null;
+        closeLater(mc, dead);
+    }
+
+    // one picture that is done for good (a dock tile baked at a size the window no longer has), same delayed close as
+    // release(): this frame may already have queued a blit of it
+    static void release(PixelImage picture) {
+        if (instance == null || picture == null) {
+            return;
+        }
+        Slot slot = instance.images.remove(picture);
+        if (slot != null) {
+            List<DynamicTexture> dead = new ArrayList<>();
+            dead.add(slot.texture);
+            closeLater(Minecraft.getInstance(), dead);
+        }
+    }
+
+    private static void closeLater(Minecraft mc, List<DynamicTexture> dead) {
         if (!dead.isEmpty()) {
             mc.schedule(() -> mc.schedule(() -> {
                 for (DynamicTexture tex : dead) {
