@@ -125,4 +125,109 @@ public class ReleasePickerTest {
         String hex = "29ce088e334eceae5f7d2e51b189e9175659878b8b2a44e2f6add9c29b58d706";
         assertEquals(hex, ReleasePicker.sha256("sha256:" + hex.toUpperCase()));
     }
+
+    // ----- stable <-> nightly
+
+    private static ReleasePicker.Result check(String running, String mc, Flavor f) throws IOException {
+        return ReleasePicker.check(fixture(), ModVersion.parse(running), mc, f);
+    }
+
+    private static String tagOf(ReleasePicker.Pick p) {
+        return p == null ? null : p.tag();
+    }
+
+    @Test
+    public void stableNeverSeesANightlyAsAnUpdate() throws IOException {
+        ReleasePicker.Result r = check("1.1.6", "26.3", API_FABRIC);
+        assertNull(r.pick());
+        // the newest nightly is the way over, not an update. nightly.3 is a draft
+        assertEquals("soprano-v1.1.7-nightly.2", tagOf(r.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.7-nightly.2.jar", r.switchTarget().asset().name());
+        // an older stable still gets its stable update, and still has the switch on the side
+        ReleasePicker.Result older = check("1.1.5", "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.6", tagOf(older.pick()));
+        assertEquals("soprano-v1.1.7-nightly.2", tagOf(older.switchTarget()));
+    }
+
+    // the fixture a version on: stable 1.1.8, nightlies 1.1.9-nightly.1 and .2, so there is a stable new enough to switch to
+    private static String later() throws IOException {
+        return fixture().replace("1.1.7-nightly", "1.1.9-nightly").replace("1.1.6", "1.1.8");
+    }
+
+    @Test
+    public void nightlySeesNewerNightlies() throws IOException {
+        ReleasePicker.Result r = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.1"), "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.9-nightly.2", tagOf(r.pick()));
+        // back to stable is allowed to go down a version
+        assertEquals("soprano-v1.1.8", tagOf(r.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.8.jar", r.switchTarget().asset().name());
+        ReleasePicker.Result newest = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.2"), "26.3", API_FABRIC);
+        assertNull(newest.pick());
+        assertEquals("soprano-v1.1.8", tagOf(newest.switchTarget()));
+    }
+
+    @Test
+    public void noSwitchBackToAStableWithoutAnUpdater() throws IOException {
+        // 1.1.6 never wrote its version into the jar, JarCheck would refuse it after the download
+        ReleasePicker.Result r = check("1.1.7-nightly.1", "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.7-nightly.2", tagOf(r.pick()));
+        assertNull(r.switchTarget());
+        assertNull(check("1.1.7-nightly.2-anyversion", "26.3", API_FABRIC).switchTarget());
+    }
+
+    @Test
+    public void toNightlyOnlyWhenItIsAStepForward() throws IOException {
+        // once 1.1.7 is out the 1.1.7 nightlies are behind it, no button
+        ReleasePicker.Result r = check("1.1.7", "26.3", API_FABRIC);
+        assertNull(r.pick());
+        assertNull(r.switchTarget());
+    }
+
+    @Test
+    public void aSwitchTargetHasToBeInstallable() throws IOException {
+        // nightly.2 has no forge jar. nightly.1 does, but we don't go back to an older one for it
+        ReleasePicker.Result forge = check("1.1.6", "26.3", new Flavor("api", "forge"));
+        assertNull(forge.pick());
+        assertNull(forge.switchTarget());
+        // no flavor (dev run) can't install anything, so no switch either
+        assertNull(check("1.1.6", "26.3", null).switchTarget());
+        String noDigests = fixture().replaceAll("\"digest\": \"sha256:[0-9a-f]+\"", "\"digest\": null");
+        assertNull(ReleasePicker.check(noDigests, ModVersion.parse("1.1.6"), "26.3", API_FABRIC).switchTarget());
+    }
+
+    @Test
+    public void noOtherTrackNoTarget() throws IOException {
+        // 1.21.4 only ever had stables
+        ReleasePicker.Result r = check("1.0.3", "1.21.4", API_FABRIC);
+        assertNull(r.pick());
+        assertNull(r.switchTarget());
+        // and 1.21.11's nightly stays on 1.21.11. 1.2.0 never wrote its version into the jar, so no way back to it
+        assertEquals("soprano-v1.2.1-nightly.1", tagOf(check("1.2.0", "1.21.11", API_FABRIC).switchTarget()));
+        assertNull(check("1.2.1-nightly.1", "1.21.11", API_FABRIC).switchTarget());
+    }
+
+    @Test
+    public void anyversionKeepsToItself() throws IOException {
+        ReleasePicker.Result stable = check("1.1.6-anyversion", "26.3", API_FABRIC);
+        assertNull(stable.pick());
+        assertEquals("soprano-v1.1.7-nightly.2-anyversion", tagOf(stable.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.7-nightly.2-anyversion.jar", stable.switchTarget().asset().name());
+        ReleasePicker.Result nightly = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.1-anyversion"), "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.9-nightly.2-anyversion", tagOf(nightly.pick()));
+        assertEquals("soprano-v1.1.8-anyversion", tagOf(nightly.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.8-anyversion.jar", nightly.switchTarget().asset().name());
+        // and the base nightlies never show up for anyversion or the other way round
+        assertNull(check("1.1.7-nightly.2-anyversion", "26.3", API_FABRIC).pick());
+        assertEquals("soprano-v1.1.7-nightly.2", tagOf(check("1.1.7-nightly.1", "26.3", API_FABRIC).pick()));
+    }
+
+    @Test
+    public void nightlyJarNamesReadBack() {
+        Flavor f = Flavor.fromFileName("soprano-api-fabric-1.1.7-nightly.1-anyversion.jar");
+        assertNotNull(f);
+        assertEquals("api", f.variant());
+        assertEquals("fabric", f.loader());
+        assertEquals("soprano-unoptimized-neoforge-1.1.7-nightly.2.jar", new Flavor("unoptimized", "neoforge").assetName("1.1.7-nightly.2"));
+        assertEquals("neoforge", Flavor.fromFileName("soprano-api-neoforge-1.1.7-nightly.2.jar").loader());
+    }
 }

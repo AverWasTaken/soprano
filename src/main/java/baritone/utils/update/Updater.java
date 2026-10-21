@@ -60,6 +60,11 @@ public final class Updater {
     private ReleasePicker.Pick pick;
     // built once per pick, the markdown strip is not something to redo every progress tick
     private Snapshot.Release release;
+    // the other track's newest build from the last check, and its card copy. beginSwitch moves it into pick
+    private ReleasePicker.Pick switchPick;
+    private Snapshot.Release switchRelease;
+    // pick is the switch target, not an update. stays on through DOWNLOADING and FAILED so a retry is still a switch
+    private boolean switching;
     private long downloaded;
     private long total;
     private String error;
@@ -127,6 +132,8 @@ public final class Updater {
             if (!retryable || running == null) {
                 return;
             }
+            // a fresh look forgets the old switch target, the check says again whether there is one
+            clearSwitch();
             if (!enabledNow) {
                 state = UpdateState.DISABLED;
                 error = null;
@@ -138,6 +145,45 @@ public final class Updater {
             publish();
         }
         submit(this::runCheck);
+    }
+
+    // stable <-> nightly from the up to date card. no network, the check already found the build, this just puts it
+    // where an update would be so the normal install path (download, verify, stage, swap) does the rest
+    public void beginSwitch() {
+        synchronized (this) {
+            if (state != UpdateState.UP_TO_DATE || switchPick == null) {
+                return;
+            }
+            pick = switchPick;
+            release = switchRelease;
+            switching = true;
+            state = UpdateState.AVAILABLE;
+            error = null;
+            publish();
+        }
+    }
+
+    // changed their mind, back to the up to date row with the switch button still on it
+    public void cancelSwitch() {
+        synchronized (this) {
+            boolean cancellable = state == UpdateState.AVAILABLE || state == UpdateState.FAILED;
+            if (!switching || !cancellable) {
+                return;
+            }
+            pick = null;
+            release = null;
+            switching = false;
+            state = UpdateState.UP_TO_DATE;
+            error = null;
+            publish();
+        }
+    }
+
+    // callers hold the lock. recheck only runs from states where we aren't mid switch, so pick has nothing of it
+    private void clearSwitch() {
+        switching = false;
+        switchPick = null;
+        switchRelease = null;
     }
 
     private void submit(Runnable r) {
@@ -198,7 +244,7 @@ public final class Updater {
     }
 
     private void runCheck() {
-        ReleasePicker.Pick found;
+        ReleasePicker.Result found;
         try {
             found = fetchPick();
         } catch (UpdateHttp.Failed e) {
@@ -221,22 +267,29 @@ public final class Updater {
                 // reconcile found a staged jar while this check sat in the queue, that answer beats this one
                 return;
             }
-            pick = found;
-            release = found == null ? null : new Snapshot.Release(found.version().raw(), found.title(),
-                    Markdown.plain(found.body()), found.htmlUrl(), found.asset() == null ? 0 : found.asset().size());
-            state = found == null ? UpdateState.UP_TO_DATE : UpdateState.AVAILABLE;
+            pick = found.pick();
+            release = display(pick);
+            switching = false;
+            switchPick = found.switchTarget();
+            switchRelease = display(switchPick);
+            state = pick == null ? UpdateState.UP_TO_DATE : UpdateState.AVAILABLE;
             error = null;
             publish();
         }
     }
 
-    private ReleasePicker.Pick fetchPick() throws IOException, InterruptedException {
+    private static Snapshot.Release display(ReleasePicker.Pick p) {
+        return p == null ? null : new Snapshot.Release(p.version().raw(), p.title(), Markdown.plain(p.body()), p.htmlUrl(),
+                p.asset() == null ? 0 : p.asset().size());
+    }
+
+    private ReleasePicker.Result fetchPick() throws IOException, InterruptedException {
         Flavor flavor;
         synchronized (this) {
             flavor = self.flavor();
         }
         String json = http().releasesJson();
-        return ReleasePicker.pick(json, running, minecraftVersion, flavor);
+        return ReleasePicker.check(json, running, minecraftVersion, flavor);
     }
 
     private synchronized void checkFailed(String why) {
@@ -349,7 +402,8 @@ public final class Updater {
         boolean can = installable();
         snapshot = new Snapshot(state, running == null ? realVersion : running.raw(), can, can ? null : cannotInstallReason(),
                 release, downloaded, total, error, unfinished, jar == null ? null : jar.getParent(),
-                jar == null ? null : jar.getFileName().toString(), stagedName, finalName, Snapshot.RELEASES_PAGE);
+                jar == null ? null : jar.getFileName().toString(), stagedName, finalName, Snapshot.RELEASES_PAGE,
+                switchRelease, switching);
     }
 
     private synchronized UpdateHttp http() {
