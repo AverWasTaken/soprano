@@ -43,6 +43,7 @@
     "MixinMoveCamera",
     "MixinMoveHand",
     "MixinMoveHud",
+    "MixinMusicManager",
     "MixinNetworkManager",
     "MixinPalettedContainer",
     "MixinPalettedContainer$Data",

@@ -19,6 +19,7 @@ package baritone.launch.mixins;
 
 import adris.altoclef.ui.gui.mc.MenuSounds;
 import com.mojang.blaze3d.audio.SoundBuffer;
+import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.client.sounds.SoundBufferLibrary;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Final;
@@ -33,7 +34,8 @@ import java.util.concurrent.CompletableFuture;
 
 // the title screen's sounds come off our classpath, not a resource pack: on fabric a mod's assets only become a pack
 // with fabric api installed, and we don't need fabric api. soprano: paths get decoded by MenuSounds into vanilla's own
-// cache, everything else goes the vanilla way. require 0: if this ever stops applying the menu is just quiet
+// cache (the blips) or streamed straight off the jar (the menu music), everything else goes the vanilla way. require
+// 0 on both: if one ever stops applying the menu is just quiet
 @Mixin(SoundBufferLibrary.class)
 public abstract class MixinSoundBufferLibrary {
 
@@ -50,6 +52,20 @@ public abstract class MixinSoundBufferLibrary {
     private void soprano$ourSounds(Identifier path, CallbackInfoReturnable<CompletableFuture<SoundBuffer>> cir) {
         if (MenuSounds.owns(path)) {
             cir.setReturnValue(cache.computeIfAbsent(path, MenuSounds::load));
+        }
+    }
+
+    // looping is what the engine worked out (looping and no delay), MenuSounds.stream passes it on like vanilla does
+    @Inject(
+            method = "getStream(Lnet/minecraft/resources/Identifier;Z)Ljava/util/concurrent/CompletableFuture;",
+            at = @At("HEAD"),
+            cancellable = true,
+            require = 0
+    )
+    private void soprano$ourStreams(Identifier path, boolean looping,
+                                    CallbackInfoReturnable<CompletableFuture<AudioStream>> cir) {
+        if (MenuSounds.owns(path)) {
+            cir.setReturnValue(MenuSounds.stream(path, looping));
         }
     }
 }

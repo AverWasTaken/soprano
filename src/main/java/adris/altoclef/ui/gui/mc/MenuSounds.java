@@ -6,16 +6,21 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.client.sounds.JOrbisAudioStream;
+import net.minecraft.client.sounds.LoopingAudioStream;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Util;
 import net.minecraft.util.valueproviders.ConstantFloat;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 // the title screen's two sounds, both ours (gui-mock/tools/make-sounds.py synthesizes them). fabric only turns a mod's
 // assets into a resource pack when fabric api is installed and we don't need fabric api, so there is no sounds.json:
@@ -82,6 +87,39 @@ public final class MenuSounds {
         } catch (Throwable t) {
             Safe.report("title sound load", t);
             return CompletableFuture.failedFuture(t);
+        }
+    }
+
+    // getStream's twin of load, for MenuMusic's streamed track: vanilla's own lambda with the jar for a resource
+    // pack. looping is the engine's call (looping and no delay), it has to be honoured or the track plays once and
+    // stops. opened on the io pool like vanilla, not cached, vanilla doesn't cache streams either
+    public static CompletableFuture<AudioStream> stream(Identifier path, boolean looping) {
+        String res = "/assets/" + path.getNamespace() + "/" + path.getPath();
+        return CompletableFuture.supplyAsync(() -> open(res, looping), Util.nonCriticalIoPool());
+    }
+
+    private static AudioStream open(String res, boolean looping) {
+        InputStream in = MenuSounds.class.getResourceAsStream(res);
+        try {
+            if (in == null) {
+                throw new FileNotFoundException(res);
+            }
+            return looping ? new LoopingAudioStream(JOrbisAudioStream::new, in) : new JOrbisAudioStream(in);
+        } catch (IOException e) {
+            closeQuietly(in);
+            Safe.report("menu music stream", e);
+            throw new CompletionException(e);
+        }
+    }
+
+    private static void closeQuietly(InputStream in) {
+        if (in == null) {
+            return;
+        }
+        try {
+            in.close();
+        } catch (IOException ignored) {
+            // it never opened as an ogg, nothing to lose here
         }
     }
 
