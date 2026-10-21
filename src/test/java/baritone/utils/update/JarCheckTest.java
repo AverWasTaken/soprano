@@ -76,4 +76,15 @@ public class JarCheckTest {
         Files.write(p, "abc".getBytes(StandardCharsets.UTF_8));
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", JarCheck.sha256(p));
     }
+
+    @Test
+    public void nightlyJarsVerify() throws Exception {
+        assertNull(JarCheck.verify(jar(TestJars.soprano("fabric", "1.1.7-nightly.1", "26.3")), "fabric", "1.1.7-nightly.1", "26.3", ""));
+        assertNull(JarCheck.verify(jar(TestJars.soprano("fabric", "1.1.7-nightly.1-anyversion", "26.3")), "fabric",
+                "1.1.7-nightly.1-anyversion", "26.3", "anyversion"));
+        // the stable jar under a nightly release (or the other way round) is the wrong jar
+        assertNotNull(JarCheck.verify(jar(TestJars.soprano("fabric", "1.1.7", "26.3")), "fabric", "1.1.7-nightly.1", "26.3", ""));
+        assertNotNull(JarCheck.verify(jar(TestJars.soprano("fabric", "1.1.7-nightly.1-anyversion", "26.3")), "fabric",
+                "1.1.7-nightly.1-anyversion", "26.3", ""));
+    }
 }

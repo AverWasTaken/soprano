@@ -260,5 +260,15 @@ public final class UpdateCardWidget extends AbstractWidget {
         public void openMods(Path folder) {
             Blaze3D.openPath(folder);
         }
+
+        @Override
+        public void beginSwitch() {
+            Updater.get().beginSwitch();
+        }
+
+        @Override
+        public void cancelSwitch() {
+            Updater.get().cancelSwitch();
+        }
     }
 }

@@ -122,5 +122,151 @@
         "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.6-anyversion/soprano-unoptimized-fabric-1.1.6-anyversion.jar"
       }
     ]
+  },
+  {
+    "tag_name": "soprano-v1.1.7-nightly.2",
+    "name": "Soprano v1.1.7-nightly.2 (26.3)",
+    "draft": false,
+    "prerelease": true,
+    "html_url": "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.2",
+    "body": "**Nightly build.** Expect bugs. This is not a confirmed stable release.\n\nFor Minecraft 26.3.",
+    "assets": [
+      {
+        "name": "soprano-api-fabric-1.1.7-nightly.2.jar",
+        "size": 3900000,
+        "digest": "sha256:4e022095633e1eda7267148c6360b465dfff3c1ece592696830915fe2a7b35b1",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.2/soprano-api-fabric-1.1.7-nightly.2.jar"
+      },
+      {
+        "name": "soprano-unoptimized-fabric-1.1.7-nightly.2.jar",
+        "size": 3900001,
+        "digest": "sha256:0725b8d8fe4e183479671b84325b45cf27d045e73b67577396fcbac07833af2a",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.2/soprano-unoptimized-fabric-1.1.7-nightly.2.jar"
+      }
+    ]
+  },
+  {
+    "tag_name": "soprano-v1.1.7-nightly.1",
+    "name": "Soprano v1.1.7-nightly.1 (26.3)",
+    "draft": false,
+    "prerelease": true,
+    "html_url": "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1",
+    "body": "**Nightly build.** Expect bugs. This is not a confirmed stable release.\n\nFor Minecraft 26.3.",
+    "assets": [
+      {
+        "name": "soprano-api-fabric-1.1.7-nightly.1.jar",
+        "size": 3900000,
+        "digest": "sha256:0fe2f69e765e528b75c71c1a77ccddc465fe79be25642081ecb5508de08ca7ab",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.1/soprano-api-fabric-1.1.7-nightly.1.jar"
+      },
+      {
+        "name": "soprano-api-forge-1.1.7-nightly.1.jar",
+        "size": 3900001,
+        "digest": "sha256:37604bdf9f8a171b49e1cb25ba25e91e1485a683669c330ed1e30070dd0e8ac4",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.1/soprano-api-forge-1.1.7-nightly.1.jar"
+      },
+      {
+        "name": "soprano-api-neoforge-1.1.7-nightly.1.jar",
+        "size": 3900002,
+        "digest": "sha256:2dc934b281b9eb98ced6ecc07f97eee83c0bc39343078e62cc5b0468c1f6a731",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.1/soprano-api-neoforge-1.1.7-nightly.1.jar"
+      },
+      {
+        "name": "soprano-unoptimized-fabric-1.1.7-nightly.1.jar",
+        "size": 3900003,
+        "digest": "sha256:379679a4bf4e5bafe5cf883523615e8a566d31f58415d0ce6970286e7091383e",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.1/soprano-unoptimized-fabric-1.1.7-nightly.1.jar"
+      }
+    ]
+  },
+  {
+    "tag_name": "soprano-v1.1.7-nightly.3",
+    "name": "Soprano v1.1.7-nightly.3 (26.3)",
+    "draft": true,
+    "prerelease": true,
+    "html_url": "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.3",
+    "body": "**Nightly build.** Expect bugs. This is not a confirmed stable release.\n\nFor Minecraft 26.3.",
+    "assets": [
+      {
+        "name": "soprano-api-fabric-1.1.7-nightly.3.jar",
+        "size": 3900000,
+        "digest": "sha256:4df53410ccb36e8396be7c13a2193d15d4b1ed7885f56c2848aecb549bef19d5",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.3/soprano-api-fabric-1.1.7-nightly.3.jar"
+      },
+      {
+        "name": "soprano-api-forge-1.1.7-nightly.3.jar",
+        "size": 3900001,
+        "digest": "sha256:de3d32c81b160add573b32728410af88d607dc1a256a3588a935e5d8d7374be9",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.3/soprano-api-forge-1.1.7-nightly.3.jar"
+      },
+      {
+        "name": "soprano-api-neoforge-1.1.7-nightly.3.jar",
+        "size": 3900002,
+        "digest": "sha256:6af3515ab74863c08ea650d8e16670e9625ee3e566ee2022a729a4b5e9f3b77f",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.3/soprano-api-neoforge-1.1.7-nightly.3.jar"
+      },
+      {
+        "name": "soprano-unoptimized-fabric-1.1.7-nightly.3.jar",
+        "size": 3900003,
+        "digest": "sha256:d2313fad1b11cca300647a48ccce5fb78ad3b0c364f19d79457e066af7d87168",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.3/soprano-unoptimized-fabric-1.1.7-nightly.3.jar"
+      }
+    ]
+  },
+  {
+    "tag_name": "soprano-v1.1.7-nightly.2-anyversion",
+    "name": "Soprano v1.1.7-nightly.2 Any Version (base 26.3)",
+    "draft": false,
+    "prerelease": true,
+    "html_url": "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.2-anyversion",
+    "body": "**Nightly build.** Expect bugs. This is not a confirmed stable release.\n\nFor Minecraft 26.3.",
+    "assets": [
+      {
+        "name": "soprano-api-fabric-1.1.7-nightly.2-anyversion.jar",
+        "size": 3900000,
+        "digest": "sha256:95da5d9c4bc2b4326278a2516ce140c9c81662de74ba923d1115b87212fe981b",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.2-anyversion/soprano-api-fabric-1.1.7-nightly.2-anyversion.jar"
+      },
+      {
+        "name": "soprano-unoptimized-fabric-1.1.7-nightly.2-anyversion.jar",
+        "size": 3900001,
+        "digest": "sha256:053499f9942bd64b045d1667211c9b237b2fdbefe1a148f0eb6632fbb19472d3",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.1.7-nightly.2-anyversion/soprano-unoptimized-fabric-1.1.7-nightly.2-anyversion.jar"
+      }
+    ]
+  },
+  {
+    "tag_name": "soprano-v1.2.1-nightly.1",
+    "name": "Soprano v1.2.1-nightly.1 (1.21.11)",
+    "draft": false,
+    "prerelease": true,
+    "html_url": "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.2.1-nightly.1",
+    "body": "**Nightly build.** Expect bugs. This is not a confirmed stable release.\n\nFor Minecraft 26.3.",
+    "assets": [
+      {
+        "name": "soprano-api-fabric-1.2.1-nightly.1.jar",
+        "size": 3900000,
+        "digest": "sha256:7d3b62b3a28b12111c7775d0b8926f62cf7b388386558dcc58c856e1ef14c1bc",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.2.1-nightly.1/soprano-api-fabric-1.2.1-nightly.1.jar"
+      },
+      {
+        "name": "soprano-api-forge-1.2.1-nightly.1.jar",
+        "size": 3900001,
+        "digest": "sha256:e38db8de97d7e26f31b6912b325dca8dac51a687e8a4ab542457637651e351e3",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.2.1-nightly.1/soprano-api-forge-1.2.1-nightly.1.jar"
+      },
+      {
+        "name": "soprano-api-neoforge-1.2.1-nightly.1.jar",
+        "size": 3900002,
+        "digest": "sha256:df5cdcb5fdcef09b29f2c62f9227fd5cfe0168b1673b03347385719dd5529cc2",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.2.1-nightly.1/soprano-api-neoforge-1.2.1-nightly.1.jar"
+      },
+      {
+        "name": "soprano-unoptimized-fabric-1.2.1-nightly.1.jar",
+        "size": 3900003,
+        "digest": "sha256:a362c037db6b2902ad19c76a5218af30fa0cb7816d932e48e2c2ed00d9463a60",
+        "browser_download_url": "https://github.com/AverWasTaken/soprano/releases/download/soprano-v1.2.1-nightly.1/soprano-unoptimized-fabric-1.2.1-nightly.1.jar"
+      }
+    ]
   }
 ]

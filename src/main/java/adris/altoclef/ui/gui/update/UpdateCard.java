@@ -8,6 +8,7 @@ import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TextWrap;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Widget;
+import baritone.utils.update.ModVersion;
 import baritone.utils.update.Snapshot;
 import baritone.utils.update.UpdateState;
 
@@ -33,6 +34,10 @@ public final class UpdateCard extends Widget {
         void quit();
 
         void openMods(Path folder);
+
+        void beginSwitch();
+
+        void cancelSwitch();
     }
 
     // design px. the card never asks for more than RICH_W, and the host can pull that down to stay clear of the logo
@@ -58,6 +63,9 @@ public final class UpdateCard extends Widget {
     private Snapshot current;
     private String key = "";
     private int maxDesignW = RICH_W;
+    // the real room before the logo, not capped at RICH_W. the compact row isn't a rich card and only has to stay off
+    // the logo, which on a normal window leaves the switch button room to sit on the one row
+    private int roomDesignW = RICH_W;
     private int cardW;
     private int cardH;
     private boolean compact;
@@ -79,8 +87,10 @@ public final class UpdateCard extends Widget {
     // the host knows how much room there is before the logo starts
     public void setMaxWidth(int designPx) {
         int clamped = Math.max(MIN_W, Math.min(RICH_W, designPx));
-        if (clamped != maxDesignW) {
+        int room = Math.max(MIN_W, designPx);
+        if (clamped != maxDesignW || room != roomDesignW) {
             maxDesignW = clamped;
+            roomDesignW = room;
             key = "";
         }
     }
@@ -107,7 +117,8 @@ public final class UpdateCard extends Widget {
         Snapshot.Release r = s.release();
         return s.state() + "|" + s.canInstall() + "|" + s.cannotInstallReason() + "|" + (r == null ? "" : r.version())
                 + "|" + s.error() + "|" + s.unfinishedLastTime() + "|" + s.oldJarName() + "|" + s.stagedName() + "|"
-                + s.finalName() + "|" + s.currentVersion() + "|" + maxDesignW;
+                + s.finalName() + "|" + s.currentVersion() + "|" + s.switching() + "|"
+                + (s.switchTarget() == null ? "" : s.switchTarget().version()) + "|" + maxDesignW + "|" + roomDesignW;
     }
 
     @Override
@@ -152,9 +163,15 @@ public final class UpdateCard extends Widget {
         switch (s.state()) {
             case DISABLED -> compactRow(name, null, null);
             case CHECKING -> compactRow(name, "checking…", null);
-            case UP_TO_DATE -> compactRow(name, "up to date", null);
+            case UP_TO_DATE -> compactRow(name, "up to date", switchButton(s));
             case CHECK_FAILED -> compactRow(name, "couldn't check", new Button(theme, "Retry", Button.Kind.GHOST, null, actions::recheck));
-            case AVAILABLE -> available(s, have, next);
+            case AVAILABLE -> {
+                if (s.switching()) {
+                    switching(s, have, next);
+                } else {
+                    available(s, have, next);
+                }
+            }
             case DOWNLOADING -> downloading(next);
             case READY -> ready(s, next);
             case STUCK -> stuck(s);
@@ -162,29 +179,97 @@ public final class UpdateCard extends Widget {
         }
     }
 
+    // a word on the compact card and the row it ended up on
+    private record Bit(int row, int dx, String text, TextStyle style, int colour) {
+    }
+
+    // one row when it fits, which is every normal name. past the logo it flows instead of running under it: the name
+    // wraps at its space, then the status and the button drop to the next row. "Soprano v1.1.7-nightly.1-anyversion up
+    // to date" plus a switch button is the long one
     private void compactRow(String name, String status, Button b) {
         compact = true;
         TextMeasurer m = theme.measurer;
         int pad = theme.px(PAD_COMPACT);
         int gap = theme.px(Theme.GAP);
-        int rowH = theme.px(Theme.CONTROL_H);
-        float base = pad + rowH / 2f + (m.ascent(theme.label) - m.descent(theme.label)) / 2f;
+        int right = theme.px(roomDesignW) - pad;
+        // which row each bit lands on, the rows get their heights once we know what's on them
+        List<Bit> placed = new ArrayList<>();
+        int row = 0;
+        int widest = 0;
         int cx = pad;
-        lines.add(new Line(name, theme.label, Theme.TEXT, cx, base));
-        cx += Math.round(m.measure(name, theme.label));
+        List<String> nameLines = TextWrap.wrap(m, name, theme.label, right - pad);
+        for (int i = 0; i < nameLines.size(); i++) {
+            String l = nameLines.get(i);
+            if (i > 0) {
+                widest = Math.max(widest, cx);
+                row++;
+            }
+            placed.add(new Bit(row, pad, l, theme.label, Theme.TEXT));
+            cx = pad + Math.round(m.measure(l, theme.label));
+        }
         if (status != null) {
-            cx += gap;
-            float sb = pad + rowH / 2f + (m.ascent(theme.small) - m.descent(theme.small)) / 2f;
-            lines.add(new Line(status, theme.small, Theme.TEXT_2, cx, sb));
-            cx += Math.round(m.measure(status, theme.small));
+            int sw = Math.round(m.measure(status, theme.small));
+            if (cx + gap + sw > right) {
+                widest = Math.max(widest, cx);
+                row++;
+                cx = pad;
+            } else {
+                cx += gap;
+            }
+            placed.add(new Bit(row, cx, status, theme.small, Theme.TEXT_2));
+            cx += sw;
+        }
+        int buttonRow = -1;
+        int bx = 0;
+        int bw = 0;
+        if (b != null) {
+            bw = b.preferredWidth();
+            if (cx + theme.px(Theme.SPACE_1) + bw > right) {
+                widest = Math.max(widest, cx);
+                row++;
+                cx = pad;
+                bw = Math.min(bw, right - pad);
+            } else {
+                cx += theme.px(Theme.SPACE_1);
+            }
+            buttonRow = row;
+            bx = cx;
+            cx += bw;
+        }
+        widest = Math.max(widest, cx);
+        // a single row is control height like it always was. once it wraps, the word only rows are a line tall and
+        // the button's row is a control tall, control height everywhere looked like a list with gaps in it
+        int rows = row + 1;
+        int[] top = new int[rows + 1];
+        top[0] = pad;
+        for (int r = 0; r < rows; r++) {
+            boolean control = rows == 1 || r == buttonRow;
+            top[r + 1] = top[r] + (control ? theme.px(Theme.CONTROL_H) : Math.round(m.lineHeight(theme.label)));
+        }
+        for (Bit p : placed) {
+            float mid = (top[p.row] + top[p.row + 1]) / 2f;
+            lines.add(new Line(p.text, p.style, p.colour, p.dx, mid + (m.ascent(p.style) - m.descent(p.style)) / 2f));
         }
         if (b != null) {
-            cx += theme.px(Theme.SPACE_1);
-            add(b, cx, pad, b.preferredWidth(), rowH);
-            cx += b.preferredWidth();
+            add(b, bx, top[buttonRow], bw, theme.px(Theme.CONTROL_H));
         }
-        cardW = cx + pad;
-        cardH = rowH + 2 * pad;
+        cardW = widest + pad;
+        cardH = top[rows] + pad;
+    }
+
+    // the small way over to the other track. only on the up to date row, an update always beats a switch
+    private Button switchButton(Snapshot s) {
+        Snapshot.Release t = s.switchTarget();
+        if (t == null) {
+            return null;
+        }
+        String label = nightly(t) ? "Switch to nightly" : "Switch to stable";
+        return new Button(theme, label, Button.Kind.GHOST, null, actions::beginSwitch);
+    }
+
+    private static boolean nightly(Snapshot.Release r) {
+        ModVersion v = r == null ? null : ModVersion.parse(r.version());
+        return v != null && v.isNightly();
     }
 
     private void available(Snapshot s, String have, String next) {
@@ -203,6 +288,29 @@ public final class UpdateCard extends Widget {
         }
         Button notes = new Button(theme, "What's new", Button.Kind.GHOST, null, actions::whatsNew);
         finish(y, first, notes);
+    }
+
+    // same bones as available, but the headline says which track you're going to and the buggy warning is up front
+    private void switching(Snapshot s, String have, String next) {
+        boolean toNightly = nightly(s.release());
+        int y = headline((toNightly ? "Nightly " : "Stable ") + next);
+        if (toNightly) {
+            y = small("nightly builds can be buggy", Theme.TEXT_2, y);
+        } else if (!have.isEmpty()) {
+            y = small("you have " + have, Theme.TEXT_2, y);
+        }
+        Button first;
+        if (s.canInstall()) {
+            first = new Button(theme, "Switch", Button.Kind.PRIMARY, null, actions::update);
+        } else {
+            if (s.cannotInstallReason() != null && !s.cannotInstallReason().isBlank()) {
+                y = small(s.cannotInstallReason(), Theme.TEXT_3, y);
+            }
+            first = pageButton(s, Button.Kind.PRIMARY);
+        }
+        Button notes = new Button(theme, "What's new", Button.Kind.GHOST, null, actions::whatsNew);
+        Button cancel = new Button(theme, "Cancel", Button.Kind.GHOST, null, actions::cancelSwitch);
+        finish(y, first, notes, cancel);
     }
 
     private void downloading(String next) {
@@ -262,19 +370,33 @@ public final class UpdateCard extends Widget {
     }
 
     private void failed(Snapshot s) {
-        int y = headline("The update didn't finish");
+        int y = headline(s.switching() ? "The switch didn't finish" : "The update didn't finish");
         if (s.error() != null && !s.error().isBlank()) {
             y = small(s.error(), Theme.DANGER, y);
         }
+        // a failed switch can still be called off, a failed update has nowhere to go back to
+        Button cancel = s.switching() ? new Button(theme, "Cancel", Button.Kind.GHOST, null, actions::cancelSwitch) : null;
         if (s.canInstall()) {
-            finish(y, new Button(theme, "Retry", Button.Kind.PRIMARY, null, actions::update), pageButton(s, Button.Kind.GHOST));
+            Button retry = new Button(theme, "Retry", Button.Kind.PRIMARY, null, actions::update);
+            finish(y, present(retry, pageButton(s, Button.Kind.GHOST), cancel));
         } else {
             // no retry when a retry would do nothing, and the line says why
             if (s.cannotInstallReason() != null && !s.cannotInstallReason().isBlank()) {
                 y = small(s.cannotInstallReason(), Theme.TEXT_3, y);
             }
-            finish(y, pageButton(s, Button.Kind.PRIMARY));
+            finish(y, present(pageButton(s, Button.Kind.PRIMARY), cancel));
         }
+    }
+
+    // the buttons minus the ones that aren't there
+    private static Button[] present(Button... bs) {
+        List<Button> out = new ArrayList<>();
+        for (Button b : bs) {
+            if (b != null) {
+                out.add(b);
+            }
+        }
+        return out.toArray(new Button[0]);
     }
 
     private Button pageButton(Snapshot s, Button.Kind kind) {

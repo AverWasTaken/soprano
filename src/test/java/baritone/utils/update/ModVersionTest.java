@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -45,5 +46,64 @@ public class ModVersionTest {
         assertEquals(ModVersion.parse("1.1"), ModVersion.parse("1.1.0"));
         assertEquals(ModVersion.parse("1.1").hashCode(), ModVersion.parse("1.1.0").hashCode());
         assertTrue(ModVersion.parse("1.1.6.1").newerThan(ModVersion.parse("1.1.6")));
+    }
+
+    @Test
+    public void nightliesParse() {
+        ModVersion n = ModVersion.parse("1.1.7-nightly.1");
+        ModVersion na = ModVersion.parse("1.1.7-nightly.12-anyversion");
+        assertNotNull(n);
+        assertNotNull(na);
+        assertTrue(n.isNightly());
+        assertEquals("", n.channel());
+        assertTrue(na.isNightly());
+        assertEquals("anyversion", na.channel());
+        assertEquals("1.1.7-nightly.12-anyversion", na.raw());
+        assertFalse(ModVersion.parse("1.1.7").isNightly());
+        assertFalse(ModVersion.parse("1.1.7-anyversion").isNightly());
+        assertTrue(n.sameTrack(ModVersion.parse("1.1.6-nightly.4")));
+        assertFalse(n.sameTrack(ModVersion.parse("1.1.7")));
+        assertFalse(n.sameChannel(na));
+    }
+
+    @Test
+    public void brokenNightliesAreNull() {
+        // anyversion goes last, release.yml strips it off the end
+        assertNull(ModVersion.parse("1.1.7-anyversion-nightly.1"));
+        assertNull(ModVersion.parse("1.1.7-nightly"));
+        assertNull(ModVersion.parse("1.1.7-nightly."));
+        assertNull(ModVersion.parse("1.1.7-nightly.x"));
+        assertNull(ModVersion.parse("1.1.7-nightly.1.2"));
+        assertNull(ModVersion.parse("1.1.7-nightly-1"));
+        assertNull(ModVersion.parse("1.1.7-nightly.0"));
+        assertNull(ModVersion.parse("1.1.7-Nightly.1"));
+        assertNull(ModVersion.parse("1.1.7-nightly.99999999999"));
+        assertNull(ModVersion.parse("1.1.7-nightly.1-beta"));
+    }
+
+    @Test
+    public void stableBeatsItsNightlies() {
+        ModVersion stable = ModVersion.parse("1.1.7");
+        ModVersion n3 = ModVersion.parse("1.1.7-nightly.3");
+        ModVersion n2 = ModVersion.parse("1.1.7-nightly.2");
+        ModVersion old = ModVersion.parse("1.1.6");
+        assertTrue(stable.newerThan(n3));
+        assertTrue(n3.newerThan(n2));
+        assertTrue(n2.newerThan(old));
+        assertTrue(ModVersion.parse("1.1.7-nightly.10").newerThan(ModVersion.parse("1.1.7-nightly.9")));
+        assertTrue(ModVersion.parse("1.1.8-nightly.1").newerThan(stable));
+        assertFalse(n2.newerThan(n2));
+        // channel still isn't part of the order
+        assertEquals(0, n2.compareTo(ModVersion.parse("1.1.7-nightly.2-anyversion")));
+    }
+
+    @Test
+    public void aNightlyIsNotItsStable() {
+        assertNotEquals(ModVersion.parse("1.1.7"), ModVersion.parse("1.1.7-nightly.1"));
+        assertNotEquals(ModVersion.parse("1.1.7-nightly.1"), ModVersion.parse("1.1.7-nightly.2"));
+        assertNotEquals(ModVersion.parse("1.1.7-nightly.1"), ModVersion.parse("1.1.7-nightly.1-anyversion"));
+        assertEquals(ModVersion.parse("1.1.7-nightly.1"), ModVersion.parse("1.1.7.0-nightly.1"));
+        assertEquals(ModVersion.parse("1.1.7-nightly.1").hashCode(), ModVersion.parse("1.1.7.0-nightly.1").hashCode());
+        assertNotEquals(ModVersion.parse("1.1.7").hashCode(), ModVersion.parse("1.1.7-nightly.1").hashCode());
     }
 }

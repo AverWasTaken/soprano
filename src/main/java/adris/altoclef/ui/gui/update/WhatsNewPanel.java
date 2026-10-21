@@ -72,7 +72,8 @@ public final class WhatsNewPanel extends Control {
         subtitle = sub.toString();
         back = new Button(theme, "Back", Button.Kind.GHOST, null, actions::back);
         if (s.canInstall()) {
-            primary = new Button(theme, "Update", Button.Kind.PRIMARY, null, actions::update);
+            // same install either way, a switch just shouldn't call itself an update
+            primary = new Button(theme, s.switching() ? "Switch" : "Update", Button.Kind.PRIMARY, null, actions::update);
         } else {
             String url = r != null && r.htmlUrl() != null && !r.htmlUrl().isBlank() ? r.htmlUrl() : s.releasesPageUrl();
             primary = new Button(theme, "Open download page", Button.Kind.PRIMARY, null, () -> actions.openPage(url));

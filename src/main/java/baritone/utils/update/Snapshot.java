@@ -36,7 +36,11 @@ public record Snapshot(
         String oldJarName,
         String stagedName,
         String finalName,
-        String releasesPageUrl
+        String releasesPageUrl,
+        // the other track's newest build (stable <-> nightly), only offered from UP_TO_DATE. null when there isn't one
+        Release switchTarget,
+        // release is the switch target and not an update, the card words it as a switch
+        boolean switching
 ) {
 
     public static final String RELEASES_PAGE = "https://github.com/AverWasTaken/soprano/releases";
