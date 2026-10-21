@@ -24,10 +24,12 @@ import baritone.utils.accessor.IPlayerControllerMP;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.component.SwingAnimation;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -83,6 +85,23 @@ public final class BlockBreakHelper {
         }
     }
 
+    // type only, on purpose. the executor breaks plenty of blocks the planner already ok'd with its fancier rules
+    // (next to water and so on), only the never break list is a hard no at click time
+    static boolean neverBreak(BlockState aimed, List<Block> disallowed) {
+        return disallowed.contains(aimed.getBlock());
+    }
+
+    private void refuse() {
+        // stopDestroyBlock does nothing unless it thinks we're mid break, and we told it we aren't at the end of last
+        // tick. so say yes for a moment and let it send the abort, no half cracked log turning into a half cracked nest
+        if (ctx.player() != null && wasHitting) {
+            ctx.playerController().setHittingBlock(true);
+            ctx.playerController().resetBlockRemoving();
+        }
+        ctx.playerController().setHittingBlock(false);
+        wasHitting = false;
+    }
+
     public void tick(boolean isLeftClick) {
         tick(isLeftClick, null);
     }
@@ -96,6 +115,12 @@ public final class BlockBreakHelper {
         HitResult trace = ctx.objectMouseOver();
         boolean isBlockTrace = trace != null && trace.getType() == HitResult.Type.BLOCK;
 
+        if (isLeftClick && isBlockTrace && neverBreak(ctx.world().getBlockState(((BlockHitResult) trace).getBlockPos()), BaritoneAPI.getSettings().blocksToDisallowBreaking.value)) {
+            // a few callers just hold the button and break whatever the crosshair lands on, plan or no plan. so ask every
+            // tick, not just on the first click: the aim can slide off a log onto the nest mid swing
+            refuse();
+            return;
+        }
         if (isLeftClick && isBlockTrace) {
             ctx.playerController().setHittingBlock(wasHitting);
             if (ctx.playerController().hasBrokenBlock()) {
