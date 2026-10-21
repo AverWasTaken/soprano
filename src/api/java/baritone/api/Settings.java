@@ -2117,6 +2117,13 @@ public final class Settings {
     public final Setting<Boolean> guiMenus = new Setting<>(true);
 
     /**
+     * Play Soprano's own background music on the title screen and the other menus instead of the vanilla menu music.
+     * The speaker button in the top right corner of the title screen turns this on and off. Only does anything while
+     * {@link #guiMenus} is on, in game the vanilla music plays as usual.
+     */
+    public final Setting<Boolean> guiMenuMusic = new Setting<>(true);
+
+    /**
      * Ask GitHub once per session, when the title screen first opens, whether a newer Soprano release exists for the
      * Minecraft version and release channel you are on, so the title screen can offer to update. Nothing is
      * downloaded unless you click update.
