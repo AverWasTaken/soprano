@@ -651,7 +651,7 @@ public final class TitleMenu {
         int ip = r(72);
         if (icon == null || iconPx != ip) {
             McAtlases.release(icon);
-            icon = BrandArt.appIcon(ip);
+            icon = BrandArt.logo(ip);
             iconPx = ip;
         }
         int wp = r(88);

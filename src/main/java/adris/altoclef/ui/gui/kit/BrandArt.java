@@ -1,69 +1,100 @@
 package adris.altoclef.ui.gui.kit;
 
-import java.awt.BasicStroke;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.font.TextAttribute;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 
-// the boot screen's and title screen's pictures, baked with java2d because the canvas has no gradients, no tracking
-// and no curves that aren't an icon. every one comes out at the device size it gets drawn at, so they're as sharp as
-// the text next to them. the numbers are the soprano site's favicon and gui-mock/title, keep the three in step
+import javax.imageio.ImageIO;
+
+// the boot screen's and title screen's pictures, baked with java2d because the canvas has no gradients and no
+// tracking. every one comes out at the device size it gets drawn at, so they're as sharp as the text next to them.
+// the numbers are gui-mock/title's, keep the two in step
 public final class BrandArt {
 
-    private static final int ICON_BLUE = 0xFF0A73E8;
-    private static final int CURVE = 0xFFFFFFFF;
-    private static final int START = 0xFF34C759;
-    private static final int GOAL = 0xFFFF453A;
+    private static final String LOGO = "/adris/altoclef/ui/gui/brand/soprano-mark.png";
     private static final int WORDMARK = 0xFFF5F5F7;
+
+    // the 512 px master, read once. white everywhere, the whole logo lives in the alpha
+    private static BufferedImage logoSource;
 
     private BrandArt() {
     }
 
-    // the favicon: blue rounded square, white path from the green dot to the red one
-    public static PixelImage appIcon(int px) {
-        return mark(px, true);
-    }
-
-    // the same path without the square, for the black boot screen
-    public static PixelImage bootMark(int px) {
-        return mark(px, false);
-    }
-
-    private static PixelImage mark(int px, boolean square) {
+    // Soprano.png (white cube on black) as a white mark on nothing, px square. the boot screen draws it on black so it
+    // looks exactly like the original, the title draws the same one over the panorama, so the boot mark fading out
+    // hands straight over to the title's
+    public static PixelImage logo(int px) {
         int size = Math.max(1, px);
-        BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = img.createGraphics();
-        try {
-            smooth(g);
-            // the art is on a 64 grid
-            g.scale(size / 64.0, size / 64.0);
-            if (square) {
-                g.setColor(new Color(ICON_BLUE, true));
-                g.fill(new RoundRectangle2D.Float(0, 0, 64, 64, 28, 28));
+        BufferedImage img = logoSource();
+        // halving down to the size keeps the thin cuts in the cube crisp, one bicubic jump from 512 to 72 reads maybe
+        // one source pixel in seven and the cuts go fuzzy
+        while (img.getWidth() / 2 >= size) {
+            img = resize(img, img.getWidth() / 2);
+        }
+        if (img.getWidth() != size) {
+            img = resize(img, size);
+        }
+        int[] src = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        PixelImage out = new PixelImage(size, size).smooth();
+        int[] dst = out.pixels();
+        for (int i = 0; i < dst.length; i++) {
+            // java2d filters the colour of see-through pixels too and the edges come out grey. it's all white, say so
+            dst[i] = src[i] | 0x00FFFFFF;
+        }
+        out.bump();
+        return out;
+    }
+
+    private static synchronized BufferedImage logoSource() {
+        if (logoSource != null) {
+            return logoSource;
+        }
+        try (InputStream in = BrandArt.class.getResourceAsStream(LOGO)) {
+            if (in == null) {
+                throw new IllegalStateException("missing " + LOGO);
             }
-            Path2D.Float path = new Path2D.Float();
-            path.moveTo(16, 44);
-            path.curveTo(30, 44, 26, 20, 48, 20);
-            g.setColor(new Color(CURVE, true));
-            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.draw(path);
-            g.setColor(new Color(START, true));
-            g.fill(new Ellipse2D.Float(16 - 5.5f, 44 - 5.5f, 11, 11));
-            g.setColor(new Color(GOAL, true));
-            g.fill(new Ellipse2D.Float(48 - 5.5f, 20 - 5.5f, 11, 11));
+            BufferedImage raw = ImageIO.read(in);
+            if (raw == null) {
+                throw new IllegalStateException("unreadable " + LOGO);
+            }
+            BufferedImage argb = new BufferedImage(raw.getWidth(), raw.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = argb.createGraphics();
+            try {
+                g.setComposite(AlphaComposite.Src);
+                g.drawImage(raw, 0, 0, null);
+            } finally {
+                g.dispose();
+            }
+            logoSource = argb;
+            return argb;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static BufferedImage resize(BufferedImage src, int size) {
+        BufferedImage dst = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = dst.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setComposite(AlphaComposite.Src);
+            g.drawImage(src, 0, 0, size, size, null);
         } finally {
             g.dispose();
         }
-        return toImage(img, 0, 0, size, size);
+        return dst;
     }
 
     // "soprano" in semibold at -0.04em, cropped to the ink. the crop is what the gaps around it are measured from,

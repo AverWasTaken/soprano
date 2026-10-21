@@ -159,16 +159,10 @@
     }
 
     // ---------- brand art. java bakes these into PixelImages at device size ----------
-    function appIconSvg(px) {
-        return '<svg width="' + (px / dpr) + '" height="' + (px / dpr) + '" viewBox="0 0 64 64">'
-            + '<rect width="64" height="64" rx="14" fill="#0a73e8"/>'
-            + '<path d="M16 44C30 44 26 20 48 20" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>'
-            + '<circle cx="16" cy="44" r="5.5" fill="#34c759"/><circle cx="48" cy="20" r="5.5" fill="#ff453a"/></svg>';
-    }
-    function bootMarkSvg(px) {
-        return '<svg width="' + (px / dpr) + '" height="' + (px / dpr) + '" viewBox="0 0 64 64">'
-            + '<path d="M16 44C30 44 26 20 48 20" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>'
-            + '<circle cx="16" cy="44" r="5.5" fill="#34c759"/><circle cx="48" cy="20" r="5.5" fill="#ff453a"/></svg>';
+    // the same png the java reads (BrandArt.logo), white on nothing. boot and title use one mark
+    var LOGO_SRC = '../../src/main/resources/adris/altoclef/ui/gui/brand/soprano-mark.png';
+    function logoImg(px) {
+        return '<img src="' + LOGO_SRC + '" width="' + (px / dpr) + '" height="' + (px / dpr) + '" style="display:block">';
     }
     // the wordmark, baked like the java will: semibold, tracking -0.04em, cropped to the ink. the crop is what the
     // gaps are measured from, otherwise the 20 px under the icon turns into 57 because soprano has no ascenders
@@ -383,7 +377,7 @@
         var markBox = R(112), cy = Math.round(H / 2 - R(36));
         var m = Math.round(markBox * b.markScale);
         var mark = $('boot-mark');
-        if (mark._px !== m) { mark.innerHTML = bootMarkSvg(m); mark._px = m; }
+        if (mark._px !== m) { mark.innerHTML = logoImg(m); mark._px = m; }
         box(mark, Math.round(W / 2 - m / 2), Math.round(cy - m / 2), m, m);
         // during a reload fade in the mark comes in with the background; during fade out it has its own alpha
         mark.style.opacity = Math.min(b.markA, b.bg);
@@ -512,7 +506,7 @@
         var blockH = iconPx + R(20) + word.height + R(8) + sub.h;
         var top = Math.round(H * 0.38 - blockH / 2) + pby;
         var dyBrand = R(18 * (1 - eBrand)), dySub = R(18 * (1 - eSub));
-        if (el.icon._px !== iconPx) { el.icon.innerHTML = appIconSvg(iconPx); el.icon._px = iconPx; }
+        if (el.icon._px !== iconPx) { el.icon.innerHTML = logoImg(iconPx); el.icon._px = iconPx; }
         box(el.icon, Math.round(W / 2 - iconPx / 2) + pbx, top + dyBrand, iconPx, iconPx);
         el.icon.style.opacity = eBrand;
         var wy = top + iconPx + R(20);

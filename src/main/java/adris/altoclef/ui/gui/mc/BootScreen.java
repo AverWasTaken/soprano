@@ -10,7 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.Util;
 
-// our look for vanilla's loading overlay: black, the curve logo, a thin bar. vanilla keeps the whole lifecycle (the
+// our look for vanilla's loading overlay: black, the soprano logo, a thin bar. vanilla keeps the whole lifecycle (the
 // reload, the progress smoothing, its two second fade out and taking itself off screen), MixinLoadingOverlay only
 // swaps the red for black, drops the mojang logo and the bar, and calls draw() at the end of every frame. images and
 // round rects only: no fonts exist yet on first boot. if anything throws we go vanilla for the rest of the run
@@ -165,8 +165,8 @@ public final class BootScreen {
         }
         McAtlases.release(mark);
         McAtlases.release(markBig);
-        mark = BrandArt.bootMark(box);
-        markBig = BrandArt.bootMark((int) Math.ceil(box * (1f + MARK_GROW)));
+        mark = BrandArt.logo(box);
+        markBig = BrandArt.logo((int) Math.ceil(box * (1f + MARK_GROW)));
         markPx = box;
     }
 
