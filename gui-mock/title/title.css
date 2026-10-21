@@ -36,7 +36,7 @@ html.bare .devbar { display: none; }
 .label { background: rgba(28, 28, 30, 0.86); color: #fff; }
 .label .txt { position: absolute; }
 .under { background: currentColor; }
-.card-ph { background: rgba(44, 44, 46, 0.92); color: rgba(255, 255, 255, 0.55); }
+.card-ph { background: rgba(44, 44, 46, 0.92); color: rgba(255, 255, 255, 0.55); overflow: hidden; }
 .card-ph .txt { position: absolute; }
 .divider { background: rgba(255, 255, 255, 0.22); }
 
