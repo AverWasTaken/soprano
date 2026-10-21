@@ -149,15 +149,30 @@ public class ReleasePickerTest {
         assertEquals("soprano-v1.1.7-nightly.2", tagOf(older.switchTarget()));
     }
 
+    // the fixture a version on: stable 1.1.8, nightlies 1.1.9-nightly.1 and .2, so there is a stable new enough to switch to
+    private static String later() throws IOException {
+        return fixture().replace("1.1.7-nightly", "1.1.9-nightly").replace("1.1.6", "1.1.8");
+    }
+
     @Test
     public void nightlySeesNewerNightlies() throws IOException {
+        ReleasePicker.Result r = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.1"), "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.9-nightly.2", tagOf(r.pick()));
+        // back to stable is allowed to go down a version
+        assertEquals("soprano-v1.1.8", tagOf(r.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.8.jar", r.switchTarget().asset().name());
+        ReleasePicker.Result newest = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.2"), "26.3", API_FABRIC);
+        assertNull(newest.pick());
+        assertEquals("soprano-v1.1.8", tagOf(newest.switchTarget()));
+    }
+
+    @Test
+    public void noSwitchBackToAStableWithoutAnUpdater() throws IOException {
+        // 1.1.6 never wrote its version into the jar, JarCheck would refuse it after the download
         ReleasePicker.Result r = check("1.1.7-nightly.1", "26.3", API_FABRIC);
         assertEquals("soprano-v1.1.7-nightly.2", tagOf(r.pick()));
-        // back to stable is allowed to go down a version
-        assertEquals("soprano-v1.1.6", tagOf(r.switchTarget()));
-        ReleasePicker.Result newest = check("1.1.7-nightly.2", "26.3", API_FABRIC);
-        assertNull(newest.pick());
-        assertEquals("soprano-v1.1.6", tagOf(newest.switchTarget()));
+        assertNull(r.switchTarget());
+        assertNull(check("1.1.7-nightly.2-anyversion", "26.3", API_FABRIC).switchTarget());
     }
 
     @Test
@@ -197,9 +212,10 @@ public class ReleasePickerTest {
         assertNull(stable.pick());
         assertEquals("soprano-v1.1.7-nightly.2-anyversion", tagOf(stable.switchTarget()));
         assertEquals("soprano-api-fabric-1.1.7-nightly.2-anyversion.jar", stable.switchTarget().asset().name());
-        ReleasePicker.Result nightly = check("1.1.7-nightly.1-anyversion", "26.3", API_FABRIC);
-        assertEquals("soprano-v1.1.7-nightly.2-anyversion", tagOf(nightly.pick()));
-        assertEquals("soprano-v1.1.6-anyversion", tagOf(nightly.switchTarget()));
+        ReleasePicker.Result nightly = ReleasePicker.check(later(), ModVersion.parse("1.1.9-nightly.1-anyversion"), "26.3", API_FABRIC);
+        assertEquals("soprano-v1.1.9-nightly.2-anyversion", tagOf(nightly.pick()));
+        assertEquals("soprano-v1.1.8-anyversion", tagOf(nightly.switchTarget()));
+        assertEquals("soprano-api-fabric-1.1.8-anyversion.jar", nightly.switchTarget().asset().name());
         // and the base nightlies never show up for anyversion or the other way round
         assertNull(check("1.1.7-nightly.2-anyversion", "26.3", API_FABRIC).pick());
         assertEquals("soprano-v1.1.7-nightly.2", tagOf(check("1.1.7-nightly.1", "26.3", API_FABRIC).pick()));
