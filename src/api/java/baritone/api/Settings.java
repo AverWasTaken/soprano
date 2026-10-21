@@ -2116,6 +2116,12 @@ public final class Settings {
     public final Setting<Boolean> guiAnimations = new Setting<>(true);
 
     /**
+     * Draw Soprano's own boot screen and title screen instead of the vanilla ones. Turn this off if another mod
+     * restyles those screens, or to get the vanilla look back. The title screen switches the next time it opens.
+     */
+    public final Setting<Boolean> guiMenus = new Setting<>(true);
+
+    /**
      * Ask GitHub once per session, when the title screen first opens, whether a newer Soprano release exists for the
      * Minecraft version and release channel you are on, so the title screen can offer to update. Nothing is
      * downloaded unless you click update.
