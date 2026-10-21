@@ -26,6 +26,7 @@ import baritone.api.utils.RotationUtils;
 import baritone.api.utils.VecUtils;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.HitBlocker;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
@@ -275,18 +276,28 @@ public class MovementPillar extends Movement {
                     state.setInput(Input.JUMP, false); // breaking is like 5x slower when you're jumping
                     state.setInput(Input.CLICK_LEFT, true);
                     blockIsThere = false;
-                } else if (ctx.player().isCrouching() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && ctx.player().position().y > dest.getY() + 0.1) {
-                    // a mob standing in the cell eats the click, so no click until it moves. it gets PlaceWait's patience
-                    // and then the planner gets to find a way around
-                    switch (state.placeBlocked(MovementHelper.entityInTheWay(ctx, src))) {
-                        case CLEAR:
-                            state.setInput(Input.CLICK_RIGHT, true);
-                            break;
-                        case WAIT:
-                            break;
-                        default:
-                            logDebug("something stood in the way of the pillar block at " + src.x + " " + src.y + " " + src.z + ", giving up");
-                            return state.setStatus(MovementStatus.UNREACHABLE);
+                } else {
+                    boolean apex = ctx.player().isCrouching() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && ctx.player().position().y > dest.getY() + 0.1;
+                    // a mob standing in the cell eats the click, so no click until it moves. a bat in a 1x1 shaft never
+                    // moves, so critters get punched, and that is asked every tick: only being allowed to swing at the
+                    // top of each jump would take forever. anything else is still only counted at the top of the jump
+                    // like before, gets PlaceWait's patience, and then the planner gets to find a way around
+                    MovementHelper.Obstruction in = MovementHelper.obstruction(ctx, src, true);
+                    boolean critters = in.cell() == HitBlocker.Cell.HIT || in.cell() == HitBlocker.Cell.CLEARING;
+                    if (apex || critters) {
+                        switch (state.placeInto(in.cell())) {
+                            case PLACE:
+                                state.setInput(Input.CLICK_RIGHT, true);
+                                break;
+                            case HIT:
+                                MovementHelper.swingAtBlocker(state, ctx, in.target());
+                                break;
+                            case WAIT:
+                                break;
+                            default:
+                                logDebug("something stood in the way of the pillar block at " + src.x + " " + src.y + " " + src.z + ", giving up");
+                                return state.setStatus(MovementStatus.UNREACHABLE);
+                        }
                     }
                 }
             }
