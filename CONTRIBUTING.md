@@ -80,6 +80,6 @@ A nightly is a build that's out early and allowed to be buggy. Players on a stab
 - Nightlies come from `26.3` and `version-agnostic` only. The older lines don't get them. Merge `26.3` into `version-agnostic` before tagging an anyversion nightly, a build without the nightly support can't read its own version and its updater turns itself off.
 - No `mod_version` bump needed, the jars get their version from the tag.
 - One nightly release per line on GitHub. When you release nightly N+1, delete nightly N's GitHub release but keep its tag.
-- The workflow makes them pre-releases, never Latest, puts a "Nightly build. Expect bugs." line at the top of the notes and skips the Discord post.
+- The workflow makes them pre-releases, never Latest, puts a "Nightly build. Expect bugs." line at the top of the notes. Discord announcements are posted separately by the Soprano-Helper bot, the workflow doesn't post anything.
 - Players stay on their track until they press the switch button. Once the stable `1.1.7` is out, the `1.1.7` nightlies count as older than it: nightly players see "Switch to stable" (and no newer nightly), and stable players aren't offered a nightly again until `1.1.8-nightly.1`.
 - "Switch to stable" only goes to stables that carry their own version (1.1.7 and up on 26.3, see `OLDEST_SWITCHABLE_STABLE` in `ReleasePicker`). Older ones can't be installed by the updater.
