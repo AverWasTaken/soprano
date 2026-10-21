@@ -160,7 +160,10 @@ public final class CombatCommit {
         // hurt, and a shooter with a line to us hit us lately: near enough to leave, whatever the distance
         SHOT,
         // we stood still and a shooter landed two arrows on us: not a mob to walk past, a fight
-        PINNED
+        PINNED,
+        // a creeper we already stepped from lit up beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
+        // loop, leaving is not
+        REPEAT_CREEPER
     }
 
     public enum Event {
@@ -271,8 +274,14 @@ public final class CombatCommit {
     // so can flip a run into a fight with it
     // anchored: we have not been anywhere else for a while (AnchorWatch). false by default, so the walking premise holds for
     // everything that does not say so
+    // creeperRepeat: CreeperStep just started a step on a creeper that came back (CreeperStep.escalate), idle makes it a run
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored) {
+                       boolean anchored, boolean creeperRepeat) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean anchored) {
+            this(now, health, x, z, foes, target, way, armed, trying, anchored, false);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying) {
             this(now, health, x, z, foes, target, way, armed, trying, false);
         }
@@ -592,7 +601,7 @@ public final class CombatCommit {
     private static Tick afterEnd(Tick t, int oldTarget) {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored());
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat());
     }
 
     // ---- NONE
@@ -604,6 +613,9 @@ public final class CombatCommit {
         // low hp in the cooldown wants it on top of us or a fresh hit, see trigger
         Why run = runReason(t, cooling);
         if (run != Why.NONE) return startRun(t, run, Event.RUN_START);
+        // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. idle only, a
+        // committed fight is till dead and the step just steps again for it
+        if (t.creeperRepeat()) return startRun(t, Why.REPEAT_CREEPER, Event.RUN_START);
         // the fight is only for one we have not given up on, or one that has hit us since. with nothing in hand better than a
         // fist it is a run instead: a punch is not a fight, and the cornered rules still turn us round when a run goes nowhere
         Foe hit = hitInContact(candidates(t), cooling);

@@ -200,8 +200,9 @@ final class CombatBrain {
 
     // one game tick. creeperClose: a lit creeper close enough that we do not sit down to a meal next to it (we do not
     // run from it either, the task walks on). enabled: false is the off switch (altoCommitCombat), the foes are still
-    // worked out for the stance and the crit counts but nothing is ever committed to
-    void tick(AltoClef mod, long now, boolean creeperClose, boolean enabled) {
+    // worked out for the stance and the crit counts but nothing is ever committed to. creeperRepeat: the creeper step just
+    // started on one that came back (CreeperStep.escalate), which idle turns into a run
+    void tick(AltoClef mod, long now, boolean creeperClose, boolean enabled, boolean creeperRepeat) {
         LocalPlayer player = mod.getPlayer();
         Dimension dimension = WorldHelper.getCurrentDimension();
         // a new player is a respawn or a new world, and a new dimension is a new world too: whatever we were committed to
@@ -250,7 +251,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat));
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
