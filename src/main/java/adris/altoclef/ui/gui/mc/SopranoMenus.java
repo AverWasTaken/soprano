@@ -30,6 +30,20 @@ public final class SopranoMenus {
         }
     }
 
+    // the speaker button. the music only starts once the title has shown, long after markReady, so the early yes is
+    // just there to keep the answer the same shape as enabled()
+    static boolean music() {
+        if (!ready) {
+            return true;
+        }
+        try {
+            return Baritone.settings().guiMenuMusic.value;
+        } catch (Throwable t) {
+            Safe.report("menu music setting", t);
+            return true;
+        }
+    }
+
     // reduced motion for the boot screen, which has no KitSurface to sync Anim.enabled for it
     static boolean animations() {
         if (!ready) {

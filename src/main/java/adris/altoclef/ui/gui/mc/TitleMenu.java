@@ -489,6 +489,9 @@ public final class TitleMenu {
 
         // while the boot overlay is up the screen is drawn with a mouse at 0,0, so the dock holds still till it's gone
         present = mc.gui.overlay() == null;
+        if (present) {
+            MenuMusic.markTitleShown();
+        }
         mouseX = present ? KitSurface.pointerX() : w / 2f;
         mouseY = present ? KitSurface.pointerY() : h / 2f;
         followParallax(now, anim);
