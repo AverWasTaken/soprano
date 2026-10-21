@@ -201,9 +201,9 @@ public class ReleasePickerTest {
         ReleasePicker.Result r = check("1.0.3", "1.21.4", API_FABRIC);
         assertNull(r.pick());
         assertNull(r.switchTarget());
-        // and 1.21.11's nightly stays on 1.21.11
+        // and 1.21.11's nightly stays on 1.21.11. 1.2.0 never wrote its version into the jar, so no way back to it
         assertEquals("soprano-v1.2.1-nightly.1", tagOf(check("1.2.0", "1.21.11", API_FABRIC).switchTarget()));
-        assertEquals("soprano-v1.2.0", tagOf(check("1.2.1-nightly.1", "1.21.11", API_FABRIC).switchTarget()));
+        assertNull(check("1.2.1-nightly.1", "1.21.11", API_FABRIC).switchTarget());
     }
 
     @Test
