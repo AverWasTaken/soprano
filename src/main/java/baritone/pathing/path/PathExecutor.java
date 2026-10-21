@@ -33,6 +33,7 @@ import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
+import baritone.pathing.movement.Surfacing;
 import baritone.pathing.movement.movements.*;
 import baritone.pathing.sim.AscendGuard;
 import baritone.pathing.sim.AscendHop;
@@ -1079,6 +1080,10 @@ public class PathExecutor implements IPathExecutor, Helper {
         releasedWhy = why;
         sprintNextTick = false;
         ctx.player().setSprinting(false);
+        // waiting on a chunk is fine, waiting on it at the bottom of a lake is not. same rule as Movement.update's water bit
+        if (Surfacing.wantsAir(ctx.player())) {
+            behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+        }
     }
 
     // a stair we just walk up (MovementAscend doesn't jump for it either) takes no jump to sprint through, so a whole flight
