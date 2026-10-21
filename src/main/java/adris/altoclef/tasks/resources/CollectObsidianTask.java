@@ -77,6 +77,7 @@ public class CollectObsidianTask extends ResourceTask {
         Predicate<BlockPos> goodObsidian = (blockPos ->
                 blockPos.closerToCenterThan(mod.getPlayer().position(), 800)
                         && WorldHelper.canBreak(mod, blockPos)
+                        && !WorldHelper.dropWouldBurn(mod, blockPos)
         );
 
         /*
@@ -110,7 +111,10 @@ public class CollectObsidianTask extends ResourceTask {
 
             setDebugState("Mining/Collecting obsidian");
             _placeObsidianTask = null;
-            return new MineAndCollectTask(new ItemTarget(Items.OBSIDIAN, _count), new Block[]{Blocks.OBSIDIAN}, MiningRequirement.DIAMOND);
+            // lava crust obsidian is 9 seconds of digging to watch the drop burn. leave it be, the bucket cast below scoops that
+            // same lava and makes obsidian that lands on something. obsidian with a floor under it still beats a cast
+            return new MineAndCollectTask(new ItemTarget(Items.OBSIDIAN, _count), new Block[]{Blocks.OBSIDIAN}, MiningRequirement.DIAMOND)
+                    .onlyWhere(p -> !WorldHelper.dropWouldBurn(mod, p));
         }
 
         if (WorldHelper.getCurrentDimension() == Dimension.NETHER) {
