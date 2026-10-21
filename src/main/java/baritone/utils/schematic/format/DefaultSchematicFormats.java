@@ -79,7 +79,7 @@ public enum DefaultSchematicFormats implements ISchematicFormat {
         @Override
         public IStaticSchematic parse(InputStream input) throws IOException {
             CompoundTag nbt = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
-            int version = nbt.getInt("Version").orElse(-1);
+            int version = nbt.getInt("Version");
             // 5 and 6 (1.13 to 1.20) pack the palette and the long array exactly like 7. what moved is the content:
             // block ids that got renamed and property values that changed, both of which get reported instead of
             // failing the load

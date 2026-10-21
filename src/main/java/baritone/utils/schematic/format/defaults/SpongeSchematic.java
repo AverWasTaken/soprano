@@ -24,7 +24,8 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.Identifier;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -40,16 +41,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.Property;
-
 /**
  * @author Brady
  * @since 12/27/2019
@@ -61,27 +52,29 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
 
     // v3 moved everything under a root "Schematic" compound, so that's the tell
     public static int versionOf(CompoundTag root) {
-        CompoundTag inner = root.getCompound("Schematic").orElse(null);
-        return (inner != null ? inner : root).getInt("Version").orElse(inner != null ? 3 : -1);
+        // getCompound and getInt say empty / 0 for a missing key on this version, so ask contains first
+        CompoundTag inner = root.contains("Schematic", Tag.TAG_COMPOUND) ? root.getCompound("Schematic") : null;
+        CompoundTag tag = inner != null ? inner : root;
+        return tag.contains("Version", Tag.TAG_ANY_NUMERIC) ? tag.getInt("Version") : (inner != null ? 3 : -1);
     }
 
     // takes the file's root tag, v1/v2 keep it all at the top and v3 nests it
     public SpongeSchematic(CompoundTag root) {
-        CompoundTag nbt = root.getCompound("Schematic").orElse(root);
+        CompoundTag nbt = root.contains("Schematic", Tag.TAG_COMPOUND) ? root.getCompound("Schematic") : root;
         this.version = versionOf(root);
         // v3 splits blocks off into their own compound with Data instead of BlockData
         boolean v3 = nbt != root;
-        CompoundTag blocks = v3 ? nbt.getCompound("Blocks").orElse(new CompoundTag()) : nbt;
-        this.x = nbt.getInt("Width").orElse(0);
-        this.y = nbt.getInt("Height").orElse(0);
-        this.z = nbt.getInt("Length").orElse(0);
+        CompoundTag blocks = v3 ? nbt.getCompound("Blocks") : nbt;
+        this.x = nbt.getInt("Width");
+        this.y = nbt.getInt("Height");
+        this.z = nbt.getInt("Length");
         this.states = new BlockState[this.x][this.z][this.y];
 
         Int2ObjectArrayMap<BlockState> palette = new Int2ObjectArrayMap<>();
-        CompoundTag paletteTag = blocks.getCompound("Palette").orElse(new CompoundTag());
+        CompoundTag paletteTag = blocks.getCompound("Palette");
         Int2ObjectArrayMap<String> unknownNames = new Int2ObjectArrayMap<>();
-        for (String tag : paletteTag.keySet()) {
-            int index = paletteTag.getInt(tag).orElse(0);
+        for (String tag : paletteTag.getAllKeys()) {
+            int index = paletteTag.getInt(tag);
 
             SerializedBlockState serializedState = SerializedBlockState.getFromString(tag);
             if (serializedState == null) {
@@ -101,7 +94,7 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
         }
 
         // BlockData is stored as an NBT byte[], however, the actual data that is represented is a varint[]
-        byte[] rawBlockData = blocks.getByteArray(v3 ? "Data" : "BlockData").orElse(new byte[0]);
+        byte[] rawBlockData = blocks.getByteArray(v3 ? "Data" : "BlockData");
         int[] blockData = new int[this.x * this.y * this.z];
         int offset = 0;
         for (int i = 0; i < blockData.length; i++) {
@@ -162,7 +155,7 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
 
         private BlockState deserialize() {
             if (this.blockState == null) {
-                Block found = BuiltInRegistries.BLOCK.get(this.identifier)
+                Block found = BuiltInRegistries.BLOCK.get(this.resourceLocation)
                     .map(Holder.Reference::value)
                     .orElse(null);
                 this.unknownBlock = found == null;
@@ -187,9 +180,9 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
         // what to call this palette entry in the unknown list, null when it resolved cleanly
         private String unknownLabel() {
             if (this.unknownBlock) {
-                return this.identifier.toString();
+                return this.resourceLocation.toString();
             }
-            return this.badProperties.isEmpty() ? null : this.identifier + "[" + String.join(",", this.badProperties) + "]";
+            return this.badProperties.isEmpty() ? null : this.resourceLocation + "[" + String.join(",", this.badProperties) + "]";
         }
 
         private static SerializedBlockState getFromString(String s) {

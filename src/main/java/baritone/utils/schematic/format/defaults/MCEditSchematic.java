@@ -73,7 +73,7 @@ public final class MCEditSchematic extends StaticSchematic implements ParseRepor
                         blockID |= additional[blockInd] << 8;
                     }
                     String itemId = ItemIdFix.getItem(blockID);
-                    Identifier blockKey = Identifier.tryParse(itemId);
+                    ResourceLocation blockKey = ResourceLocation.tryParse(itemId);
                     Block block = blockKey == null
                         ? null
                         : BuiltInRegistries.BLOCK.get(blockKey)

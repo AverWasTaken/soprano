@@ -59,7 +59,7 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
      */
     public LitematicaSchematic(CompoundTag nbt) {
         super(0, 0, 0);
-        this.version = nbt.getInt("Version").orElse(-1);
+        this.version = nbt.getInt("Version");
         fillInSchematic(nbt);
     }
 
@@ -94,8 +94,8 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
 
         for (int i = 0; i < blockStatePalette.size(); i++) {
             CompoundTag tag = (CompoundTag) blockStatePalette.get(i);
-            String name = tag.getString("Name").orElse("");
-            Identifier blockKey = Identifier.tryParse(name);
+            String name = tag.getString("Name");
+            ResourceLocation blockKey = ResourceLocation.tryParse(name);
             Block found = blockKey == null
                 ? null
                 : BuiltInRegistries.BLOCK.get(blockKey)
@@ -106,7 +106,7 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
             }
             Block block = found == null ? Blocks.AIR : found;
             List<String> badProperties = new ArrayList<>();
-            CompoundTag properties = tag.getCompound("Properties").orElse(new CompoundTag());
+            CompoundTag properties = tag.getCompound("Properties");
 
             blockList[i] = getBlockState(block, properties, badProperties);
             if (found != null && !badProperties.isEmpty()) {
@@ -170,9 +170,9 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
      * @return the volume of the subregion.
      */
     private static long getVolume(CompoundTag subReg) {
-        CompoundTag size = subReg.getCompound("Size").orElse(new CompoundTag());
+        CompoundTag size = subReg.getCompound("Size");
         // long, a 1500^3 region wraps an int and the bit array comes out the wrong size
-        return Math.abs((long) size.getInt("x").orElse(0) * size.getInt("y").orElse(0) * size.getInt("z").orElse(0));
+        return Math.abs((long) size.getInt("x") * size.getInt("y") * size.getInt("z"));
     }
 
     /**
@@ -193,7 +193,7 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
     private void fillInSchematic(CompoundTag nbt) {
         Vec3i offsetMinCorner = new Vec3i(getMinOfSchematic(nbt, "x"), getMinOfSchematic(nbt, "y"), getMinOfSchematic(nbt, "z"));
         for (CompoundTag subReg : getRegions(nbt)) {
-            ListTag usedBlockTypes = subReg.getListOrEmpty("BlockStatePalette");
+            ListTag usedBlockTypes = subReg.getList("BlockStatePalette", 10);
             String[] unknownNames = new String[usedBlockTypes.size()];
             BlockState[] blockList = getBlockList(usedBlockTypes, unknownNames);
 
