@@ -3,9 +3,9 @@ package adris.altoclef.ui.gui.mc;
 import adris.altoclef.ui.gui.kit.Safe;
 import baritone.Baritone;
 
-// whether our boot screen and title screen are on. the very first frame of the boot overlay is drawn from inside
-// Minecraft's constructor, before baritone (and its settings file) exists, so until the constructor returns the answer
-// is just yes. that also keeps a settings class init failure out of a render call
+// whether our boot screen and title screen are on. baritone (and its settings file) only exists once Minecraft's
+// constructor returns, and nothing should read settings before that, so until then the answer is just yes. 1.21.4
+// draws no frame that early anyway, but it also keeps a settings class init failure out of a render call
 public final class SopranoMenus {
 
     private static volatile boolean ready;

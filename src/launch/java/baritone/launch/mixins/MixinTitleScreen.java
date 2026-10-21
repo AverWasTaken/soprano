@@ -23,7 +23,7 @@ import adris.altoclef.ui.gui.mc.TitleMenu;
 import adris.altoclef.ui.gui.mc.TitleTile;
 import adris.altoclef.ui.gui.mc.UpdateCardWidget;
 import baritone.utils.update.Updater;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
@@ -84,7 +84,7 @@ public abstract class MixinTitleScreen extends Screen {
         boolean dressed = false;
         if (menu != null && !menu.broken()) {
             try {
-                menu.rebuild(children(), getMultiplayerDisabledReason(), minecraft.getWindow().getGuiScale());
+                menu.rebuild(children(), getMultiplayerDisabledReason(), (int) minecraft.getWindow().getGuiScale());
                 addRenderableOnly(menu.chrome());
                 for (TitleTile tile : menu.tilesBeforeCard()) {
                     addRenderableWidget(tile);
@@ -116,8 +116,8 @@ public abstract class MixinTitleScreen extends Screen {
 
     // buttons added after our init tail (fabric's after init event, mod menu) get their tile here, before the widget
     // pass starts walking the list. a menu that broke last frame gets vanilla put back here for the same reason
-    @Inject(method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V", at = @At("HEAD"))
-    private void soprano$head(GuiGraphicsExtractor g, int mouseX, int mouseY, float a, CallbackInfo ci) {
+    @Inject(method = "render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V", at = @At("HEAD"))
+    private void soprano$head(GuiGraphics g, int mouseX, int mouseY, float a, CallbackInfo ci) {
         TitleMenu menu = soprano$menu;
         if (menu == null) {
             return;
@@ -139,22 +139,25 @@ public abstract class MixinTitleScreen extends Screen {
 
     // one full screen blur over the panorama (vanilla's menu blur option, nothing when it's 0), then our backdrop
     @Inject(
-            method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
+            method = "render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/screens/TitleScreen;extractPanorama(Lnet/minecraft/client/gui/GuiGraphicsExtractor;F)V",
+                    target = "Lnet/minecraft/client/gui/screens/TitleScreen;renderPanorama(Lnet/minecraft/client/gui/GuiGraphics;F)V",
                     shift = At.Shift.AFTER
             )
     )
-    private void soprano$backdrop(GuiGraphicsExtractor g, int mouseX, int mouseY, float a, CallbackInfo ci) {
+    private void soprano$backdrop(GuiGraphics g, int mouseX, int mouseY, float a, CallbackInfo ci) {
         TitleMenu menu = soprano$menu;
         if (menu == null || menu.broken()) {
             return;
         }
         try {
-            extractBlurredBackground(g);
-        } catch (IllegalStateException e) {
-            // "can only blur once per frame": some other mod got there first, its blur will do
+            // the blur is real gl on whatever is already drawn, so the panorama's queued vignette goes down first
+            g.flush();
+            renderBlurredBackground();
+        } catch (Throwable t) {
+            // a sharp panorama is still a title screen
+            Safe.report("title blur", t);
         }
         try {
             menu.drawBackdrop(g);
@@ -164,15 +167,15 @@ public abstract class MixinTitleScreen extends Screen {
     }
 
     @Inject(
-            method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
+            method = "render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/screens/Screen;extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
+                    target = "Lnet/minecraft/client/gui/screens/Screen;render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
                     shift = At.Shift.AFTER
             ),
             cancellable = true
     )
-    private void soprano$skipVanillaChrome(GuiGraphicsExtractor g, int mouseX, int mouseY, float a, CallbackInfo ci) {
+    private void soprano$skipVanillaChrome(GuiGraphics g, int mouseX, int mouseY, float a, CallbackInfo ci) {
         TitleMenu menu = soprano$menu;
         if (menu != null && !menu.broken()) {
             ci.cancel();

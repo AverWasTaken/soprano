@@ -6,9 +6,9 @@ import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.Theme;
 import com.mojang.blaze3d.platform.Window;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.util.Util;
+import net.minecraft.client.gui.GuiGraphics;
 
 // our look for vanilla's loading overlay: black, the soprano logo, a thin bar. vanilla keeps the whole lifecycle (the
 // reload, the progress smoothing, its two second fade out and taking itself off screen), MixinLoadingOverlay only
@@ -42,7 +42,7 @@ public final class BootScreen {
     }
 
     // the overlay's tail. the clock numbers are vanilla's own fields, currentProgress already moved this frame
-    public static void draw(GuiGraphicsExtractor g, boolean fadeIn, long fadeInStart, long fadeOutStart, float progress) {
+    public static void draw(GuiGraphics g, boolean fadeIn, long fadeInStart, long fadeOutStart, float progress) {
         if (!drawing()) {
             return;
         }
@@ -79,10 +79,9 @@ public final class BootScreen {
         if (markA <= 0f && barA <= 0f) {
             return;
         }
-        int gs = Math.max(1, win.getGuiScale());
-        float inv = 1f / gs;
-        g.pose().pushMatrix();
-        g.pose().scale(inv, inv);
+        float inv = (float) (1.0 / Math.max(1.0, win.getGuiScale()));
+        g.pose().pushPose();
+        g.pose().scale(inv, inv, 1f);
         boolean began = false;
         try {
             if (!ensureCanvas()) {
@@ -104,7 +103,7 @@ public final class BootScreen {
                 Safe.report("boot screen end", t);
                 broken = true;
             }
-            g.pose().popMatrix();
+            g.pose().popPose();
         }
         if (canvas != null && canvas.broken) {
             broken = true;
@@ -143,8 +142,8 @@ public final class BootScreen {
         }
     }
 
-    // one McCanvas for the whole boot. KitSurface isn't used on purpose: it reads baritone's settings, and the first
-    // frames come before baritone exists. a canvas without atlases would draw the pictures as grey boxes, so no
+    // one McCanvas for the whole boot. KitSurface isn't used on purpose: it reads baritone's settings, and the boot
+    // screen shouldn't care whether baritone came up. a canvas without atlases would draw the pictures as grey boxes, so no
     // atlases means vanilla
     private static boolean ensureCanvas() {
         if (canvas != null) {

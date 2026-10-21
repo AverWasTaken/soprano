@@ -1,11 +1,9 @@
 package adris.altoclef.ui.gui.mc;
 
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.input.InputWithModifiers;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.sounds.SoundManager;
 
 // the clickable stand-in for one hidden vanilla title button (a dock tile, a corner button, the copyright line). it
@@ -53,9 +51,9 @@ public final class TitleTile extends AbstractButton {
     }
 
     @Override
-    public void onPress(InputWithModifiers input) {
+    public void onPress() {
         if (target.active) {
-            target.onPress(input);
+            target.onPress();
         }
     }
 
@@ -71,15 +69,15 @@ public final class TitleTile extends AbstractButton {
     }
 
     @Override
-    public void onClick(MouseButtonEvent event, boolean doubleClick) {
+    public void onClick(double mouseX, double mouseY) {
         held = true;
-        super.onClick(event, doubleClick);
+        super.onClick(mouseX, mouseY);
     }
 
     @Override
-    public void onRelease(MouseButtonEvent event) {
+    public void onRelease(double mouseX, double mouseY) {
         held = false;
-        super.onRelease(event);
+        super.onRelease(mouseX, mouseY);
     }
 
     // vanilla calls this for both a click and enter/space, so one override swaps the whole button sound
@@ -89,7 +87,7 @@ public final class TitleTile extends AbstractButton {
     }
 
     @Override
-    protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partial) {
         // TitleMenu already drew us
     }
 

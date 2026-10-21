@@ -16,7 +16,7 @@ import adris.altoclef.ui.gui.kit.Weight;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -337,9 +337,8 @@ public final class TitleMenu {
         String key = msg != null && msg.getContents() instanceof TranslatableContents tc ? tc.getKey() : null;
         String text = msg == null ? "" : msg.getString();
         hide(b);
-        // the dev only test world button next to singleplayer, and friends: nobody opens it, and its two people
-        // icon is the better picture for multiplayer anyway. both stay hidden with no tile
-        if ((key == null && "TW".equals(text)) || "gui.friends.open".equals(key)) {
+        // the dev only test world button next to singleplayer: nobody opens it, it stays hidden with no tile
+        if (key == null && "Create Test World".equals(text)) {
             return null;
         }
         Role role = roleOf(key);
@@ -437,21 +436,21 @@ public final class TitleMenu {
     // ----- drawing. both passes draw in framebuffer px under a 1/guiScale pose, same as UpdateCardWidget
 
     // right after the panorama (and vanilla's blur): the backdrop and the brand block, under every widget
-    public void drawBackdrop(GuiGraphicsExtractor g) {
+    public void drawBackdrop(GuiGraphics g) {
         if (broken) {
             return;
         }
         pass(g, true);
     }
 
-    private void drawChrome(GuiGraphicsExtractor g) {
+    private void drawChrome(GuiGraphics g) {
         if (broken) {
             return;
         }
         pass(g, false);
     }
 
-    private void pass(GuiGraphicsExtractor g, boolean backdrop) {
+    private void pass(GuiGraphics g, boolean backdrop) {
         Window win = mc.getWindow();
         int w = win.getWidth();
         int h = win.getHeight();
@@ -460,8 +459,8 @@ public final class TitleMenu {
         }
         long now = System.nanoTime();
         float inv = 1f / guiScale;
-        g.pose().pushMatrix();
-        g.pose().scale(inv, inv);
+        g.pose().pushPose();
+        g.pose().scale(inv, inv, 1f);
         boolean began = false;
         try {
             ensureSurface(Theme.scaleFor(h));
@@ -489,7 +488,7 @@ public final class TitleMenu {
             } catch (Throwable t) {
                 fail("title draw end", t);
             }
-            g.pose().popMatrix();
+            g.pose().popPose();
         }
         if (surface != null) {
             surface.afterFrame();
@@ -530,7 +529,7 @@ public final class TitleMenu {
         eCorner = Easing.outCubic((et - 400f) / 600f);
 
         // while the boot overlay is up the screen is drawn with a mouse at 0,0, so the dock holds still till it's gone
-        present = mc.gui.overlay() == null;
+        present = mc.getOverlay() == null;
         if (present) {
             MenuMusic.markTitleShown();
         }
@@ -732,7 +731,7 @@ public final class TitleMenu {
             word = BrandArt.wordmark(McAtlases.get().fonts, wp);
             wordPx = wp;
         }
-        String sub = "for Minecraft " + SharedConstants.getCurrentVersion().name();
+        String sub = "for Minecraft " + SharedConstants.getCurrentVersion().getName();
         int subW = (int) Math.ceil(c.measure(sub, subStyle));
         int subH = Math.round(c.lineHeight(subStyle));
         int blockH = ip + r(20) + word.height() + r(8) + subH;
