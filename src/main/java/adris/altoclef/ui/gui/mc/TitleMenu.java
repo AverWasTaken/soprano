@@ -43,7 +43,7 @@ import java.util.Set;
 // friend request badges and the realms notification icons are dropped for now, they'd need vanilla's sprites
 public final class TitleMenu {
 
-    private enum Role { PLAY, SECOND, FRIENDS, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, MUSIC, COPYRIGHT }
+    private enum Role { PLAY, SECOND, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, MUSIC, COPYRIGHT }
 
     private static final class Piece {
         final TitleTile tile;
@@ -337,8 +337,9 @@ public final class TitleMenu {
         String key = msg != null && msg.getContents() instanceof TranslatableContents tc ? tc.getKey() : null;
         String text = msg == null ? "" : msg.getString();
         hide(b);
-        // the dev only test world button next to singleplayer
-        if (key == null && "TW".equals(text)) {
+        // the dev only test world button next to singleplayer, and friends: nobody opens it, and its two people
+        // icon is the better picture for multiplayer anyway. both stay hidden with no tile
+        if ((key == null && "TW".equals(text)) || "gui.friends.open".equals(key)) {
             return null;
         }
         Role role = roleOf(key);
@@ -352,8 +353,7 @@ public final class TitleMenu {
             case PLAY -> new Piece(tile, role, Icon.PLAYER, TILE_0, TILE_1, "play", label, false);
             case SECOND -> "menu.resetdemo".equals(key)
                     ? new Piece(tile, role, Icon.RESET, TILE_0, TILE_1, "reset", label, false)
-                    : new Piece(tile, role, Icon.GLOBE, TILE_0, TILE_1, "multiplayer", label, true);
-            case FRIENDS -> new Piece(tile, role, Icon.PEOPLE, TILE_0, TILE_1, "friends", label, false);
+                    : new Piece(tile, role, Icon.PEOPLE, TILE_0, TILE_1, "multiplayer", label, true);
             case REALMS -> new Piece(tile, role, Icon.CLOUD, TILE_0, TILE_1, "realms", label, true);
             case OPTIONS -> new Piece(tile, role, Icon.GEAR, TILE_0, TILE_1, "options", label, false);
             case QUIT -> new Piece(tile, role, Icon.POWER, TILE_0, TILE_1, "quit", label, false);
@@ -390,7 +390,6 @@ public final class TitleMenu {
         return switch (key) {
             case "menu.singleplayer", "menu.playdemo" -> Role.PLAY;
             case "menu.multiplayer", "menu.resetdemo" -> Role.SECOND;
-            case "gui.friends.open" -> Role.FRIENDS;
             case "menu.online" -> Role.REALMS;
             case "menu.options" -> Role.OPTIONS;
             case "menu.quit" -> Role.QUIT;
