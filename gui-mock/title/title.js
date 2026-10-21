@@ -36,7 +36,7 @@
         focus: Q.get('focus') || null,
         press: Q.get('press') || null,
         mods: clamp(Math.round(qn('mods', 0)), 0, 3),
-        demo: qb('demo', false), mpoff: qb('mpoff', false), friends: qb('friends', true) /* 0 = offline dev mode, tile inactive */, dw: qb('dw', true),
+        demo: qb('demo', false), mpoff: qb('mpoff', false), dw: qb('dw', true),
         blur: qb('blur', true), rm: qb('rm', false), card: qb('card', true), reload: qb('reload', false),
         spin: qn('spin', SPIN0),
         mx: Q.has('mx') ? qn('mx', 0) : null, my: Q.has('my') ? qn('my', 0) : null
@@ -207,12 +207,9 @@
         if (opt.demo) {
             t.push({ id: 'demo', label: 'Play Demo World', glyph: 'player', c0: TILE_0, c1: TILE_1 });
             t.push({ id: 'reset', label: 'Reset Demo World', glyph: 'reset', c0: TILE_0, c1: TILE_1, off: !opt.dw });
-            // vanilla never hides friends, demo just makes it inactive
-            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: TILE_0, c1: TILE_1, off: true });
         } else {
             t.push({ id: 'sp', label: 'Singleplayer', glyph: 'player', c0: TILE_0, c1: TILE_1 });
-            t.push({ id: 'mp', label: 'Multiplayer', glyph: 'globe', c0: TILE_0, c1: TILE_1, off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
-            t.push({ id: 'friends', label: 'Friends', glyph: 'people', c0: TILE_0, c1: TILE_1, off: !opt.friends });
+            t.push({ id: 'mp', label: 'Multiplayer', glyph: 'people', c0: TILE_0, c1: TILE_1, off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
             t.push({ id: 'realms', label: 'Minecraft Realms', glyph: 'cloud', c0: TILE_0, c1: TILE_1, off: opt.mpoff, tip: opt.mpoff ? MP_TIP : null });
         }
         for (var i = 0; i < opt.mods; i++) t.push({ id: 'mod' + (i + 1), label: EXTRA_MODS[i], glyph: 'puzzle', c0: TILE_0, c1: TILE_1 });
