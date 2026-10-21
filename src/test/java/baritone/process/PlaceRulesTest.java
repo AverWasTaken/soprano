@@ -31,8 +31,18 @@ import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.ComparatorBlock;
+import net.minecraft.world.level.block.NoteBlock;
+import net.minecraft.world.level.block.ObserverBlock;
+import net.minecraft.world.level.block.PressurePlateBlock;
+import net.minecraft.world.level.block.RedStoneOreBlock;
+import net.minecraft.world.level.block.RedstoneLampBlock;
+import net.minecraft.world.level.block.RedstoneWallTorchBlock;
+import net.minecraft.world.level.block.RepeaterBlock;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.ComparatorMode;
 import net.minecraft.world.level.block.state.properties.DoorHingeSide;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.RailShape;
@@ -152,5 +162,53 @@ public class PlaceRulesTest {
         assertTrue(PlaceRules.readsSneak(Blocks.CANDLE));
         assertTrue(PlaceRules.readsSneak(Blocks.SCAFFOLDING));
         assertFalse(PlaceRules.readsSneak(Blocks.OAK_STAIRS));
+    }
+
+    @Test
+    public void pistonExtendedIsTheCircuitsCall() {
+        for (Block block : List.of(Blocks.PISTON, Blocks.STICKY_PISTON)) {
+            BlockState in = block.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.NORTH);
+            assertTrue(same(in.setValue(PistonBaseBlock.EXTENDED, true), in));
+            assertTrue(same(in, in.setValue(PistonBaseBlock.EXTENDED, true)));
+            // which way it pushes is still ours
+            assertFalse(same(in.setValue(PistonBaseBlock.FACING, Direction.SOUTH), in));
+        }
+    }
+
+    @Test
+    public void litAndPoweredAreTheCircuitsCall() {
+        BlockState torch = Blocks.REDSTONE_TORCH.defaultBlockState();
+        assertTrue(same(torch.setValue(BlockStateProperties.LIT, false), torch.setValue(BlockStateProperties.LIT, true)));
+        BlockState wallTorch = Blocks.REDSTONE_WALL_TORCH.defaultBlockState();
+        assertTrue(same(wallTorch.setValue(RedstoneWallTorchBlock.LIT, false), wallTorch.setValue(RedstoneWallTorchBlock.LIT, true)));
+        BlockState ore = Blocks.REDSTONE_ORE.defaultBlockState();
+        assertTrue(same(ore.setValue(RedStoneOreBlock.LIT, true), ore.setValue(RedStoneOreBlock.LIT, false)));
+        BlockState lamp = Blocks.REDSTONE_LAMP.defaultBlockState();
+        assertTrue(same(lamp.setValue(RedstoneLampBlock.LIT, true), lamp.setValue(RedstoneLampBlock.LIT, false)));
+        BlockState observer = Blocks.OBSERVER.defaultBlockState();
+        assertTrue(same(observer.setValue(ObserverBlock.POWERED, true), observer));
+        BlockState plate = Blocks.STONE_PRESSURE_PLATE.defaultBlockState();
+        assertTrue(same(plate.setValue(PressurePlateBlock.POWERED, true), plate));
+        BlockState target = Blocks.TARGET.defaultBlockState();
+        assertTrue(same(target.setValue(BlockStateProperties.POWER, 9), target));
+    }
+
+    @Test
+    public void diodeClicksStillCount() {
+        BlockState repeater = Blocks.REPEATER.defaultBlockState();
+        assertTrue(same(repeater.setValue(RepeaterBlock.POWERED, true), repeater));
+        assertTrue(same(repeater.setValue(RepeaterBlock.LOCKED, true), repeater));
+        // delay is a click somebody chose
+        assertFalse(same(repeater.setValue(RepeaterBlock.DELAY, 3), repeater));
+        BlockState comparator = Blocks.COMPARATOR.defaultBlockState();
+        assertTrue(same(comparator.setValue(ComparatorBlock.POWERED, true), comparator));
+        assertFalse(same(comparator.setValue(ComparatorBlock.MODE, ComparatorMode.SUBTRACT), comparator));
+    }
+
+    @Test
+    public void noteBlockPitchStillCounts() {
+        BlockState note = Blocks.NOTE_BLOCK.defaultBlockState();
+        assertTrue(same(note.setValue(NoteBlock.POWERED, true), note));
+        assertFalse(same(note.setValue(NoteBlock.NOTE, 7), note));
     }
 }

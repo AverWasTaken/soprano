@@ -24,6 +24,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -94,7 +95,8 @@ public final class PlaceRules {
             return prop == LeavesBlock.DISTANCE || prop == LeavesBlock.PERSISTENT;
         }
         if (block instanceof NoteBlock) {
-            return prop == NoteBlock.INSTRUMENT; // whatever's under it
+            // instrument is whatever's under it, powered is the circuit. the pitch is ours (and we don't click it)
+            return prop == NoteBlock.INSTRUMENT || prop == NoteBlock.POWERED;
         }
         if (block instanceof DoorBlock) {
             return prop == DoorBlock.POWERED || prop == DoorBlock.OPEN;
@@ -110,6 +112,88 @@ public final class PlaceRules {
             // has no say, so a curve the file wants was a break and place loop till the neighbours happened to agree.
             // powered is redstone (or a minecart for the detector one), not ours either
             return prop == rail.getShapeProperty() || prop == PoweredRailBlock.POWERED || prop == DetectorRailBlock.POWERED;
+        }
+        return redstone(block, prop);
+    }
+
+    // the redstone half of derived, split off so neither half turns into one giant guard chain. same deal though:
+    // powered, lit, triggered and friends are whatever the circuit (or an entity, or the last few ticks) says right
+    // now. the file saved one moment of a working machine, and asking for that moment back was a break and place loop.
+    // the piston was the famous one: the file's own redstone pushes it out, extended reads wrong, we break it, put it
+    // back retracted, the circuit pushes it out again
+    private static boolean redstone(Block block, Property<?> prop) {
+        if (block instanceof PistonBaseBlock) { // sticky too
+            return prop == PistonBaseBlock.EXTENDED;
+        }
+        if (block instanceof RedstoneTorchBlock || block instanceof RedstoneLampBlock) { // wall torch too
+            return prop == BlockStateProperties.LIT;
+        }
+        if (block instanceof RedStoneOreBlock) {
+            return prop == RedStoneOreBlock.LIT; // we light it up just by walking on it lol
+        }
+        if (block instanceof DiodeBlock) {
+            // locked is the repeater next to it. delay and comparator mode are clicks somebody chose, those still count
+            return prop == DiodeBlock.POWERED || (block instanceof RepeaterBlock && prop == RepeaterBlock.LOCKED);
+        }
+        if (block instanceof ObserverBlock) {
+            return prop == ObserverBlock.POWERED; // two ticks of "something changed", like us placing next to it
+        }
+        if (block instanceof DispenserBlock) { // dropper too
+            return prop == DispenserBlock.TRIGGERED;
+        }
+        if (block instanceof CrafterBlock) {
+            return prop == CrafterBlock.TRIGGERED || prop == CrafterBlock.CRAFTING;
+        }
+        if (block instanceof HopperBlock) {
+            return prop == HopperBlock.ENABLED;
+        }
+        if (block instanceof DaylightDetectorBlock) {
+            // power is the sun. inverted is a click, that one's still on the file
+            return prop == DaylightDetectorBlock.POWER;
+        }
+        if (block instanceof TargetBlock) {
+            return prop == BlockStateProperties.POWER; // whoever shot it last
+        }
+        return redstoneComponent(block, prop);
+    }
+
+    // the stuff that gets pressed, stood on, rung or tripped. no lever: that one's a click, somebody chose it
+    private static boolean redstoneComponent(Block block, Property<?> prop) {
+        if (block instanceof LightningRodBlock) {
+            return prop == LightningRodBlock.POWERED;
+        }
+        if (block instanceof BellBlock) {
+            return prop == BellBlock.POWERED;
+        }
+        if (block instanceof LecternBlock) {
+            return prop == LecternBlock.POWERED;
+        }
+        if (block instanceof ButtonBlock) {
+            return prop == ButtonBlock.POWERED;
+        }
+        if (block instanceof PressurePlateBlock) {
+            return prop == PressurePlateBlock.POWERED; // we stand on it to place the next block, of course it's down
+        }
+        if (block instanceof WeightedPressurePlateBlock) {
+            return prop == WeightedPressurePlateBlock.POWER;
+        }
+        if (block instanceof TripWireHookBlock) {
+            return prop == TripWireHookBlock.POWERED || prop == TripWireHookBlock.ATTACHED;
+        }
+        if (block instanceof TripWireBlock) {
+            // attached and the four sides come from the hooks and the string next to it. disarmed is shears, not
+            // redstone, but we never shear anything, so asking for it is just a stall
+            return prop == TripWireBlock.POWERED || prop == TripWireBlock.ATTACHED || prop == TripWireBlock.DISARMED
+                    || prop == TripWireBlock.NORTH || prop == TripWireBlock.EAST
+                    || prop == TripWireBlock.SOUTH || prop == TripWireBlock.WEST;
+        }
+        if (block instanceof SculkSensorBlock) { // calibrated too
+            return prop == SculkSensorBlock.PHASE || prop == SculkSensorBlock.POWER; // and we're the loudest thing nearby
+        }
+        if (block instanceof CopperBulbBlock) {
+            // lit flips on every rising edge, so it's the pulse history, not even the current power. good luck to the
+            // file on that one
+            return prop == CopperBulbBlock.POWERED || prop == CopperBulbBlock.LIT;
         }
         return false;
     }
