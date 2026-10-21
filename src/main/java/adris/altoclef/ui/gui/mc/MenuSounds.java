@@ -1,6 +1,7 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.Safe;
+import net.minecraft.Util;
 import com.mojang.blaze3d.audio.SoundBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -11,9 +12,8 @@ import net.minecraft.client.sounds.JOrbisAudioStream;
 import net.minecraft.client.sounds.LoopingAudioStream;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.client.sounds.WeighedSoundEvents;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Util;
 import net.minecraft.util.valueproviders.ConstantFloat;
 
 import java.io.FileNotFoundException;
@@ -26,7 +26,7 @@ import java.util.concurrent.CompletionException;
 // assets into a resource pack when fabric api is installed and we don't need fabric api, so there is no sounds.json:
 // each play brings its own Sound (Instance below, the sound registry never gets asked) and MixinSoundBufferLibrary
 // hands the engine our ogg straight off the classpath. same everywhere, fabric with or without api, forge, neoforge.
-// they play on the interface channel, so the "Interface" slider turns them down with vanilla's button click
+// they play on the master channel, same as vanilla's button click (1.21.4 has no interface slider yet)
 public final class MenuSounds {
 
     private static final String NAMESPACE = "soprano";
@@ -68,14 +68,14 @@ public final class MenuSounds {
     }
 
     // MixinSoundBufferLibrary asks this before vanilla goes looking in the resource packs
-    public static boolean owns(Identifier path) {
+    public static boolean owns(ResourceLocation path) {
         return NAMESPACE.equals(path.getNamespace());
     }
 
     // what vanilla's getCompleteBuffer does with a resource pack file, done with the mod jar instead. path is the
     // Sound's file path, soprano:sounds/ui/hover.ogg. it goes in vanilla's own buffer cache, so a sound reload or a
     // device switch frees it with everything else and the next play just decodes it again (5 kb, nothing)
-    public static CompletableFuture<SoundBuffer> load(Identifier path) {
+    public static CompletableFuture<SoundBuffer> load(ResourceLocation path) {
         String res = "/assets/" + path.getNamespace() + "/" + path.getPath();
         try (InputStream in = MenuSounds.class.getResourceAsStream(res)) {
             if (in == null) {
@@ -93,7 +93,7 @@ public final class MenuSounds {
     // getStream's twin of load, for MenuMusic's streamed track: vanilla's own lambda with the jar for a resource
     // pack. looping is the engine's call (looping and no delay), it has to be honoured or the track plays once and
     // stops. opened on the io pool like vanilla, not cached, vanilla doesn't cache streams either
-    public static CompletableFuture<AudioStream> stream(Identifier path, boolean looping) {
+    public static CompletableFuture<AudioStream> stream(ResourceLocation path, boolean looping) {
         String res = "/assets/" + path.getNamespace() + "/" + path.getPath();
         return CompletableFuture.supplyAsync(() -> open(res, looping), Util.nonCriticalIoPool());
     }
@@ -136,9 +136,9 @@ public final class MenuSounds {
 
     // one sound file and the one-entry event around it, built once. Sound's location is soprano:ui/hover, its path
     // (what the buffer library gets asked for) is soprano:sounds/ui/hover.ogg
-    private record Clip(Identifier id, Sound sound, WeighedSoundEvents events) {
+    private record Clip(ResourceLocation id, Sound sound, WeighedSoundEvents events) {
         static Clip of(String name) {
-            Identifier id = Identifier.fromNamespaceAndPath(NAMESPACE, "ui/" + name);
+            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(NAMESPACE, "ui/" + name);
             Sound sound = new Sound(id, ConstantFloat.of(1f), ConstantFloat.of(1f), 1, Sound.Type.FILE, false, false, 16);
             // no subtitle: a menu blip in the subtitles box would be silly
             WeighedSoundEvents events = new WeighedSoundEvents(id, null);
@@ -153,14 +153,13 @@ public final class MenuSounds {
         private final Clip clip;
 
         Instance(Clip clip, float pitch, float volume) {
-            super(clip.id(), SoundSource.UI, volume, pitch, SoundInstance.createUnseededRandom(), false, 0,
+            super(clip.id(), SoundSource.MASTER, volume, pitch, SoundInstance.createUnseededRandom(), false, 0,
                     SoundInstance.Attenuation.NONE, 0.0, 0.0, 0.0, true);
             this.clip = clip;
         }
 
         @Override
-        public WeighedSoundEvents getOrResolve(SoundManager manager) {
-            this.soundEvent = clip.events();
+        public WeighedSoundEvents resolve(SoundManager manager) {
             this.sound = clip.sound();
             return clip.events();
         }

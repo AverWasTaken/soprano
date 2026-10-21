@@ -21,7 +21,7 @@ import adris.altoclef.ui.gui.mc.MenuSounds;
 import com.mojang.blaze3d.audio.SoundBuffer;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.client.sounds.SoundBufferLibrary;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -41,15 +41,15 @@ public abstract class MixinSoundBufferLibrary {
 
     @Shadow
     @Final
-    private Map<Identifier, CompletableFuture<SoundBuffer>> cache;
+    private Map<ResourceLocation, CompletableFuture<SoundBuffer>> cache;
 
     @Inject(
-            method = "getCompleteBuffer(Lnet/minecraft/resources/Identifier;)Ljava/util/concurrent/CompletableFuture;",
+            method = "getCompleteBuffer(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/concurrent/CompletableFuture;",
             at = @At("HEAD"),
             cancellable = true,
             require = 0
     )
-    private void soprano$ourSounds(Identifier path, CallbackInfoReturnable<CompletableFuture<SoundBuffer>> cir) {
+    private void soprano$ourSounds(ResourceLocation path, CallbackInfoReturnable<CompletableFuture<SoundBuffer>> cir) {
         if (MenuSounds.owns(path)) {
             cir.setReturnValue(cache.computeIfAbsent(path, MenuSounds::load));
         }
@@ -57,12 +57,12 @@ public abstract class MixinSoundBufferLibrary {
 
     // looping is what the engine worked out (looping and no delay), MenuSounds.stream passes it on like vanilla does
     @Inject(
-            method = "getStream(Lnet/minecraft/resources/Identifier;Z)Ljava/util/concurrent/CompletableFuture;",
+            method = "getStream(Lnet/minecraft/resources/ResourceLocation;Z)Ljava/util/concurrent/CompletableFuture;",
             at = @At("HEAD"),
             cancellable = true,
             require = 0
     )
-    private void soprano$ourStreams(Identifier path, boolean looping,
+    private void soprano$ourStreams(ResourceLocation path, boolean looping,
                                     CallbackInfoReturnable<CompletableFuture<AudioStream>> cir) {
         if (MenuSounds.owns(path)) {
             cir.setReturnValue(MenuSounds.stream(path, looping));

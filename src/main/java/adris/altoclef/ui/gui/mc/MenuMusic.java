@@ -6,10 +6,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.resources.sounds.SoundInstance;
-import net.minecraft.client.sounds.SoundEngine;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.client.sounds.WeighedSoundEvents;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.valueproviders.ConstantFloat;
@@ -29,7 +28,7 @@ public final class MenuMusic {
     // ran longer than this had a good run, that one doesn't count against it
     private static final int EARLY_DEATH_TICKS = 100;
     private static final int MAX_FAILURES = 3;
-    // play said not started: no sound device yet, or no free channel. a second is plenty between asks
+    // play didn't start it: no sound device yet, or no free channel. a second is plenty between asks
     private static final int RETRY_TICKS = 20;
 
     private static volatile boolean titleShown;
@@ -81,7 +80,7 @@ public final class MenuMusic {
     public static boolean tick(Minecraft mc) {
         ticks++;
         boolean menus = SopranoMenus.enabled() && mc.level == null;
-        boolean owned = menus && (titleShown || mc.gui.overlay() != null);
+        boolean owned = menus && (titleShown || mc.getOverlay() != null);
         SoundManager sounds = mc.getSoundManager();
         if (owned && titleShown) {
             keep(sounds, SopranoMenus.music() ? MUSIC_VOLUME : 0f);
@@ -120,7 +119,9 @@ public final class MenuMusic {
         // a new instance every time, the engine keys its maps on the instance and one can't be played twice
         Track t = new Track(target);
         streamFailed = false;
-        if (sounds.play(t) == SoundEngine.PlayResult.NOT_STARTED) {
+        // play returns nothing on this version, but one that started is in the engine's channel map right away
+        sounds.play(t);
+        if (!sounds.isActive(t)) {
             retryAt = ticks + RETRY_TICKS;
             return;
         }
@@ -143,7 +144,7 @@ public final class MenuMusic {
     // the engine ticks this every client tick and reads the volume back, so the fades live here
     private static final class Track extends AbstractTickableSoundInstance {
         // built with the first Track, not when MenuMusic loads, so TitleMenu's markTitleShown can never trip over them
-        private static final Identifier ID = Identifier.fromNamespaceAndPath("soprano", "music/menu");
+        private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath("soprano", "music/menu");
         private static final SoundEvent EVENT = SoundEvent.createVariableRangeEvent(ID);
         // stream: 85 s of stereo decoded up front would be about 16 MB sitting in the buffer cache. path comes out as
         // soprano:sounds/music/menu.ogg
@@ -185,8 +186,7 @@ public final class MenuMusic {
         // same swap as MenuSounds.Instance: vanilla would ask the sound registry, which has never heard of us. the
         // sound has to be set here too, getVolume reads it
         @Override
-        public WeighedSoundEvents getOrResolve(SoundManager manager) {
-            this.soundEvent = EVENTS;
+        public WeighedSoundEvents resolve(SoundManager manager) {
             this.sound = SOUND;
             return EVENTS;
         }

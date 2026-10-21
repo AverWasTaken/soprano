@@ -21,7 +21,6 @@ import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.mc.MenuMusic;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.sounds.MusicManager;
-import net.minecraft.sounds.SoundSource;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -68,15 +67,15 @@ public abstract class MixinMusicManager {
         ci.cancel();
     }
 
-    // once per takeover: whatever vanilla had going stops, and the music channel's gain goes back to full. a pale
-    // garden fades that gain down to almost nothing and only vanilla's own tick (the one we're cancelling) would ever
-    // bring it back up, so leaving one to the title screen would make ours whisper
+    // once per takeover: whatever vanilla had going stops, and its fade gain goes back to full. a pale garden fades
+    // that gain down and only vanilla's own tick (the one we're cancelling) would bring it back up. here the gain only
+    // ever lands on vanilla's own track, never the channel, so ours can't whisper, this is just a clean slate for
+    // when vanilla gets the music back
     @Unique
     private void soprano$takeOver() {
         try {
             stopPlaying();
             currentGain = 1f;
-            minecraft.getSoundManager().updateCategoryVolume(SoundSource.MUSIC, 1f);
         } catch (Throwable t) {
             Safe.report("menu music takeover", t);
         }
