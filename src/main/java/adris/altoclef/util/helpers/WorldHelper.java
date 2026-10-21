@@ -280,7 +280,7 @@ public interface WorldHelper {
     }
 
     // would the pather be let to dig this cell out to stand in it. only the rules (allowBreak and allowBreakAnyway, the
-    // protected cells altoclef and the cast tasks hand it, unbreakables), not reach or speed: the pather prices those itself.
+    // protected cells altoclef and the cast tasks hand it, unbreakables, avoidBreaking), not reach or speed: the pather prices those itself.
     // nothing to dig counts as yes, a liquid as no, standing in a dug out cell full of lava is not the plan
     static boolean pathMayDig(AltoClef mod, BlockPos pos) {
         net.minecraft.world.level.block.state.BlockState state = mod.getWorld().getBlockState(pos);
@@ -293,7 +293,15 @@ public interface WorldHelper {
         if (state.getDestroySpeed(mod.getWorld(), pos) < 0 || mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)) {
             return false;
         }
-        return BreakContextCache.get(mod).breakCostMultiplierAt(pos.getX(), pos.getY(), pos.getZ(), state) < baritone.api.pathing.movement.ActionCosts.COST_INF;
+        baritone.pathing.movement.CalculationContext ctx = BreakContextCache.get(mod);
+        int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+        if (ctx.breakCostMultiplierAt(x, y, z, state) >= baritone.api.pathing.movement.ActionCosts.COST_INF) {
+            return false;
+        }
+        // the same no the planner gives in getMiningDurationTicks0 (never break list, ice, infested, loose gravel or water
+        // next door). picking a stand cell it won't dig just means walking at it forever. and the context flavour on
+        // purpose: the per cell altoclef rule was asked up there already, and the never break bit is precomputed
+        return MovementHelper.canWalkThrough(ctx, x, y, z, state) || !MovementHelper.avoidBreaking(ctx, x, y, z, state);
     }
 
     static boolean isInNetherPortal(AltoClef mod) {
