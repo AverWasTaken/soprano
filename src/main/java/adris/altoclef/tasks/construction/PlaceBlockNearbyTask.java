@@ -285,12 +285,12 @@ public class PlaceBlockNearbyTask extends Task {
             }
             InteractionHand hand = InteractionHand.MAIN_HAND;
             assert Minecraft.getInstance().gameMode != null;
-            // a place that went in is a fresh Success with the shrunk stack attached, never == SUCCESS. same check as
-            // BlockPlaceHelper
+            // any Success counts, not just == SUCCESS, a click that hands back a changed stack is a fresh one. same check
+            // as BlockPlaceHelper
             if (Minecraft.getInstance().gameMode.useItemOn(mod.getPlayer(), hand, (BlockHitResult) mouseOver) instanceof InteractionResult.Success success &&
                     mod.getPlayer().isShiftKeyDown()) {
-                if (success.swingSource() == InteractionResult.SwingSource.PREDICTED) {
-                    mod.getPlayer().swing(hand, SwingAnimation.DEFAULT, false);
+                if (success.swingSource() == InteractionResult.SwingSource.CLIENT) {
+                    mod.getPlayer().swing(hand);
                 }
                 _justPlaced = targetPlace;
                 return true;

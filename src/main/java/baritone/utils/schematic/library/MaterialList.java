@@ -78,8 +78,7 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
         BlockStateProperties.CANDLES,
         BlockStateProperties.PICKLES,
         BlockStateProperties.EGGS,
-        BlockStateProperties.FLOWER_AMOUNT,
-        BlockStateProperties.SEGMENT_AMOUNT
+        BlockStateProperties.FLOWER_AMOUNT
     );
 
     public static MaterialList of(ISchematic schematic) {

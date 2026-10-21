@@ -31,15 +31,10 @@ import baritone.api.pathing.goals.GoalNear;
 import baritone.api.process.IBuilderProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
-import baritone.api.schematic.FillSchematic;
-import baritone.api.schematic.ISchematic;
-import baritone.api.schematic.IStaticSchematic;
-import baritone.api.schematic.MaskSchematic;
-import baritone.api.schematic.SubstituteSchematic;
-import baritone.api.schematic.RotatedSchematic;
-import baritone.api.schematic.MirroredSchematic;
+import baritone.api.schematic.*;
 import baritone.api.schematic.format.ISchematicFormat;
 import baritone.api.utils.*;
+import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
@@ -50,8 +45,8 @@ import baritone.utils.PathingCommandContext;
 import baritone.utils.accessor.IClientBlockBreak;
 import baritone.utils.accessor.ISignEditScreen;
 import baritone.utils.schematic.MapArtSchematic;
-import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.SchematicSystem;
+import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableSet;
@@ -69,8 +64,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.util.Tuple;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
@@ -324,13 +319,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // scoops the water right back up. BlockPlaceHelper's use fallback stays as it is, MovementFall picks its water up
     // through it
     private void dropEmptyBucket() {
-        if (ctx.player().getInventory().getSelectedSlot() != pouredSlot || !emptyBucket(ctx.player().getMainHandItem())) {
+        if (ctx.player().getInventory().selected != pouredSlot || !emptyBucket(ctx.player().getMainHandItem())) {
             return;
         }
-        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 0; i < 9; i++) {
             if (!(inv.get(i).getItem() instanceof BucketItem)) {
-                ctx.player().getInventory().setSelectedSlot(i);
+                ctx.player().getInventory().selected = i;
                 pouredAt = Long.MIN_VALUE / 2;
                 return;
             }
@@ -338,7 +333,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private static boolean emptyBucket(ItemStack stack) {
-        return stack.getItem() instanceof BucketItem bucket && bucket.getContent() == Fluids.EMPTY;
+        // BucketItem keeps its fluid private on this version, and the empty one is the only vanilla bucket with none
+        return stack.getItem() == Items.BUCKET;
     }
 
     // the editor shows up a round trip after the click, so this keeps looking for a bit. removed() sends the blank text
@@ -346,9 +342,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // editor stays open
     private void closeOurSignEditor() {
         signsPlaced.values().removeIf(at -> clientTicks - at > SIGN_TICKS);
-        if (ctx.minecraft().gui.screen() instanceof AbstractSignEditScreen screen
+        if (ctx.minecraft().screen instanceof AbstractSignEditScreen screen
                 && signsPlaced.remove(((ISignEditScreen) screen).baritone$sign().getBlockPos()) != null) {
-            ctx.minecraft().gui.setScreen(null);
+            ctx.minecraft().setScreen(null);
         }
     }
 
@@ -641,7 +637,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return state;
     }
 
-    private Optional<Tuple<BetterBlockPos, Rotation>> toBreakNearPlayer(BuilderCalculationContext bcc) {
+    private Optional<Pair<BetterBlockPos, Rotation>> toBreakNearPlayer(BuilderCalculationContext bcc) {
         BetterBlockPos center = ctx.playerFeet();
         BetterBlockPos pathStart = baritone.getPathingBehavior().pathStart();
         if (cleanStage == CleanStage.SCAFFOLD) {
@@ -892,7 +888,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!placementPlausible(pos, toPlace)) {
             return Optional.empty();
         }
-        List<ItemStack> hotbar = ctx.player().getInventory().getNonEquipmentItems().subList(0, 9);
+        List<ItemStack> hotbar = ctx.player().getInventory().items.subList(0, 9);
         // creative: the block we'd hand ourselves rides along as a tenth slot, so a cell gets a real click planned before
         // its item is anywhere near the hotbar. the real slots go first, so one that already has it wins
         Item virtual = virtualItem(toPlace);
@@ -974,7 +970,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (desired == null) {
             return false;
         }
-        ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(p.hotbarSelection);
+        ItemStack stack = ctx.player().getInventory().items.get(p.hotbarSelection);
         return planner().placesRight(desired, hit, ctx.playerRotations(), stack, ctx.player().isShiftKeyDown());
     }
 
@@ -1189,7 +1185,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             Rotation rot = place.rot;
             baritone.getLookBehavior().updateTarget(rot, true);
-            ctx.player().getInventory().setSelectedSlot(place.hotbarSelection);
+            ctx.player().getInventory().selected = place.hotbarSelection;
             slotUsed()[place.hotbarSelection] = builderTicks;
             if (place.sneak) {
                 forceSneak();
@@ -2134,7 +2130,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (acceptable.isEmpty()) {
             return;
         }
-        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         if (throwawaySlot >= 0 && acceptable.contains(inv.get(throwawaySlot).getItem())) {
             return;
         }
@@ -2166,13 +2162,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return false;
         }
         Item item = creativeItem(desired);
-        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 0; i < 9; i++) {
             if (inv.get(i).is(item)) {
                 // already here and the movement's own lookup turned it down anyway (altoclef saving it, say). handing
                 // over another one every tick would just eat the hotbar
                 if (select) {
-                    ctx.player().getInventory().setSelectedSlot(i);
+                    ctx.player().getInventory().selected = i;
                     slotUsed()[i] = builderTicks;
                 }
                 return true;
@@ -2184,7 +2180,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         if (select) {
             give(item, slot);
-            ctx.player().getInventory().setSelectedSlot(slot);
+            ctx.player().getInventory().selected = slot;
         }
         return true;
     }
@@ -2226,7 +2222,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private int creativeSlot() {
-        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         boolean[] empty = new boolean[9];
         boolean[] block = new boolean[9];
         for (int i = 0; i < 9; i++) {
@@ -2235,7 +2231,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // gave for pours don't sit on the hotbar for good
             block[i] = inv.get(i).getItem() instanceof BlockItem || pours(inv.get(i)) != null;
         }
-        return creativeSlot(empty, block, slotUsed(), ctx.player().getInventory().getSelectedSlot(), throwawaySlot);
+        return creativeSlot(empty, block, slotUsed(), ctx.player().getInventory().selected, throwawaySlot);
     }
 
     // where a give goes: an empty slot, else the block that's gone longest without a click, never the one in hand or the
@@ -2829,7 +2825,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // why a source stays dry, null if it doesn't. the scan asks too, so the two can't disagree
     private String pourSkip(BuilderCalculationContext bcc, int x, int y, int z, BlockState desired) {
         BlockPos pos = new BlockPos(x, y, z);
-        if (desired.getBlock() == Blocks.WATER && Boolean.TRUE.equals(ctx.world().environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, pos))) {
+        if (desired.getBlock() == Blocks.WATER && ctx.world().dimensionType().ultraWarm()) {
             return "water boils off in this dimension";
         }
         if (desired.getBlock() == Blocks.LAVA && touchesWater(pos, p -> bcc.bsi.get0(p.getX(), p.getY(), p.getZ()),
@@ -3384,7 +3380,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private List<BlockState> approxPlaceable(int size) {
         List<BlockState> result = new ArrayList<>();
         for (int i = 0; i < size; i++) {
-            ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(i);
+            ItemStack stack = ctx.player().getInventory().items.get(i);
             BlockState fluid = pours(stack);
             if (fluid != null) {
                 // a full bucket is a source on legs, so owning one counts and the hotbar swap fetches it
@@ -3562,7 +3558,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!(desired.getBlock() instanceof ChestBlock) || desired.getValue(ChestBlock.TYPE) == ChestType.SINGLE) {
             return null;
         }
-        return ChestBlock.getConnectedBlockPos(pos, desired);
+        return pos.relative(ChestBlock.getConnectedDirection(desired));
     }
 
     // a pair goes in one half at a time and the first half can only ever come out single, there's nothing to join yet.
@@ -3574,7 +3570,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 || desired.getValue(ChestBlock.TYPE) == ChestType.SINGLE || current.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
             return false;
         }
-        return !chest.chestCanConnectTo(partner) && valid(current, desired.setValue(ChestBlock.TYPE, ChestType.SINGLE), itemVerify);
+        return partner.getBlock() != chest && valid(current, desired.setValue(ChestBlock.TYPE, ChestType.SINGLE), itemVerify);
     }
 
     // flowing water where the file wants air, from a file that has water in it: our own pool running round a corner or

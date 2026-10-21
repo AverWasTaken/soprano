@@ -15,7 +15,7 @@ import java.util.function.Predicate;
 import static baritone.api.command.IBaritoneChatControl.FORCE_COMMAND_PREFIX;
 
 // the "may I go to the nether" question a survival build asks. every chat component of it lives here, so a version
-// port only fights one file. same shape as the trip prompt on 26.3
+// port only fights one file. same shape as TripPrompt
 public final class NetherPrompt {
 
     // the command the buttons run, and what the player can type instead. SchemCommand answers it
@@ -54,8 +54,8 @@ public final class NetherPrompt {
         MutableComponent c = Component.literal(text);
         c.setStyle(c.getStyle()
             .withColor(color)
-            .withHoverEvent(new HoverEvent.ShowText(Component.literal(hover)))
-            .withClickEvent(new ClickEvent.RunCommand(FORCE_COMMAND_PREFIX + command)));
+            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hover)))
+            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, FORCE_COMMAND_PREFIX + command)));
         return c;
     }
 }

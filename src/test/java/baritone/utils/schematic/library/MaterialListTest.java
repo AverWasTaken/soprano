@@ -33,7 +33,7 @@ public class MaterialListTest {
 
     // the coloured blocks aren't plain fields on Blocks any more, so look them up by id
     private static Block block(String id) {
-        return BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.parse("minecraft:" + id));
+        return BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.ResourceLocation.parse("minecraft:" + id));
     }
 
     private static MaterialList of(BlockState... states) {
@@ -121,7 +121,7 @@ public class MaterialListTest {
         for (Block block : BuiltInRegistries.BLOCK) {
             MaterialList list = of(block.defaultBlockState());
             for (MaterialLine line : list.items()) {
-                assertTrue(line.item(), BuiltInRegistries.ITEM.containsKey(net.minecraft.resources.Identifier.parse(line.item())));
+                assertTrue(line.item(), BuiltInRegistries.ITEM.containsKey(net.minecraft.resources.ResourceLocation.parse(line.item())));
             }
         }
     }

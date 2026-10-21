@@ -77,18 +77,18 @@ public final class PlaceRules {
                     || prop == CrossCollisionBlock.SOUTH || prop == CrossCollisionBlock.WEST;
         }
         if (block instanceof WallBlock) {
-            return prop == WallBlock.NORTH || prop == WallBlock.EAST || prop == WallBlock.SOUTH
-                    || prop == WallBlock.WEST || prop == WallBlock.UP;
+            return prop == WallBlock.NORTH_WALL || prop == WallBlock.EAST_WALL || prop == WallBlock.SOUTH_WALL
+                    || prop == WallBlock.WEST_WALL || prop == WallBlock.UP;
         }
         if (block instanceof FenceGateBlock) {
             // open is whoever walked through last, us included (traverse opens gates on the way). same for doors and
             // trapdoors below, and vanilla places all three open if there's power, so the file can't win that one anyway
             return prop == FenceGateBlock.IN_WALL || prop == FenceGateBlock.OPEN;
         }
-        if (block instanceof RedstoneWireBlock) {
-            return prop == RedstoneWireBlock.NORTH || prop == RedstoneWireBlock.EAST
-                    || prop == RedstoneWireBlock.SOUTH || prop == RedstoneWireBlock.WEST
-                    || prop == RedstoneWireBlock.POWER;
+        if (block instanceof RedStoneWireBlock) {
+            return prop == RedStoneWireBlock.NORTH || prop == RedStoneWireBlock.EAST
+                    || prop == RedStoneWireBlock.SOUTH || prop == RedStoneWireBlock.WEST
+                    || prop == RedStoneWireBlock.POWER;
         }
         if (block instanceof LeavesBlock) {
             // distance is the log count, persistent is "a player put this here", which we are
@@ -104,8 +104,8 @@ public final class PlaceRules {
         if (block instanceof TrapDoorBlock) {
             return prop == TrapDoorBlock.POWERED || prop == TrapDoorBlock.OPEN;
         }
-        if (block instanceof SnowyBlock) {
-            return prop == SnowyBlock.SNOWY;
+        if (block instanceof SnowyDirtBlock) {
+            return prop == SnowyDirtBlock.SNOWY;
         }
         if (block instanceof BaseRailBlock rail) {
             // a rail bends towards whatever rails are next to it, on placement and on every neighbour update. the click
@@ -231,8 +231,8 @@ public final class PlaceRules {
     // the placement itself asks whether we're sneaking: a chest joins a neighbour or doesn't, a candle goes into the one
     // we clicked or next to it, scaffolding stacks or goes where we aimed. for these the planner tries both
     public static boolean readsSneak(Block block) {
-        return block instanceof ChestBlock || block instanceof CeilingHangingSignBlock || block instanceof SpeleothemBlock
-                || block instanceof CandleBlock || block instanceof SeaPickleBlock || block instanceof SegmentableBlock
+        return block instanceof ChestBlock || block instanceof CeilingHangingSignBlock || block instanceof PointedDripstoneBlock
+                || block instanceof CandleBlock || block instanceof SeaPickleBlock || block instanceof PinkPetalsBlock
                 || block instanceof TurtleEggBlock || block instanceof ScaffoldingBlock;
     }
 

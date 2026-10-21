@@ -158,7 +158,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (creativeBuild()) {
             return false; // no fall damage to clutch against, and the slot it'd take is one of the builder's
         }
-        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
                 OptionalInt slot = getTempHotbarSlot(s -> false);

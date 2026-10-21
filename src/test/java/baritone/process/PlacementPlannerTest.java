@@ -200,7 +200,7 @@ public class PlacementPlannerTest {
         BlockState air = Blocks.AIR.defaultBlockState();
         // vanilla's own idea of where the other half is, and the other half points back
         BlockPos partner = BuilderProcess.chestPartner(pos, left);
-        assertEquals(ChestBlock.getConnectedBlockPos(pos, left), partner);
+        assertEquals(pos.relative(ChestBlock.getConnectedDirection(left)), partner);
         assertEquals(pos, BuilderProcess.chestPartner(partner, chest(Direction.NORTH, ChestType.RIGHT)));
         assertNull(BuilderProcess.chestPartner(pos, single));
         // nothing to join yet, single is as right as it gets

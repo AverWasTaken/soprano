@@ -38,7 +38,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -913,7 +913,7 @@ public class SchematicBuildTask extends Task {
 
     private static List<GatherPlan.Slot> slots(AltoClef mod) {
         List<GatherPlan.Slot> out = new ArrayList<>(36);
-        List<ItemStack> main = mod.getPlayer().getInventory().getNonEquipmentItems();
+        List<ItemStack> main = mod.getPlayer().getInventory().items;
         for (int i = 0; i < Math.min(36, main.size()); i++) {
             ItemStack stack = main.get(i);
             out.add(stack.isEmpty() ? GatherPlan.Slot.empty()
@@ -929,7 +929,7 @@ public class SchematicBuildTask extends Task {
     }
 
     private static Item item(String id) {
-        Identifier key = Identifier.tryParse(id);
+        ResourceLocation key = ResourceLocation.tryParse(id);
         return key == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(key);
     }
 

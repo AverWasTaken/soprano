@@ -161,7 +161,7 @@ public class SchematicDiffTest {
     // ----- the builder's missing map, priced
 
     private static Block block(String id) {
-        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.parse("minecraft:" + id));
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.ResourceLocation.parse("minecraft:" + id));
     }
 
     @Test

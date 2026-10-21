@@ -28,7 +28,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
@@ -148,12 +147,13 @@ public class BlockPlaceHelper {
             Pending scaffold = scaffoldClick(hand, (BlockHitResult) mouseOver);
             Traced trace = traceClick(who, hand, (BlockHitResult) mouseOver);
             InteractionResult result = ctx.playerController().processRightClickBlock(ctx.player(), ctx.world(), hand, (BlockHitResult) mouseOver);
-            // a real place comes back as a fresh Success carrying the shrunk stack (heldItemTransformedTo), so == SUCCESS
-            // never matched one. no swing, no scaffold, no trace, and then the off hand clicked too. same split as
+            // a block item place is plain SUCCESS on this version, but a click on a door, a bucket or anything that hands
+            // back a changed stack is some other Success, and == SUCCESS missed those. no swing, no scaffold, no trace,
+            // and then the off hand clicked too. same split as
             // vanilla startUseItem: success is done, fail is done, only a pass goes on to the item and the other hand
             if (result instanceof InteractionResult.Success success) {
-                if (success.swingSource() == InteractionResult.SwingSource.PREDICTED) {
-                    ctx.player().swing(hand, SwingAnimation.DEFAULT, false);
+                if (success.swingSource() == InteractionResult.SwingSource.CLIENT) {
+                    ctx.player().swing(hand);
                 }
                 if (scaffold != null) {
                     pending.add(scaffold);

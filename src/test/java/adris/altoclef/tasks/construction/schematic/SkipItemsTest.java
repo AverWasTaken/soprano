@@ -42,7 +42,7 @@ public class SkipItemsTest {
     public void cutsTheCellsWhoseItemIsOnTheList() {
         // the coloured blocks aren't plain fields on Blocks any more
         BlockState concrete = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-            .getValue(net.minecraft.resources.Identifier.parse("minecraft:white_concrete")).defaultBlockState();
+            .getValue(net.minecraft.resources.ResourceLocation.parse("minecraft:white_concrete")).defaultBlockState();
         IStaticSchematic s = SkipItems.of(row(Blocks.STONE.defaultBlockState(), concrete, AIR), Set.of("minecraft:white_concrete"));
         assertTrue(s.inSchematic(0, 0, 0, AIR));
         assertFalse(s.inSchematic(1, 0, 0, AIR));
@@ -66,7 +66,7 @@ public class SkipItemsTest {
         assertFalse(new SkipItems(row(upper), Set.of("minecraft:spruce_door")).skipped(upper));
         // same for a bed's foot
         BlockState foot = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-            .getValue(net.minecraft.resources.Identifier.parse("minecraft:red_bed")).defaultBlockState().setValue(net.minecraft.world.level.block.BedBlock.PART,
+            .getValue(net.minecraft.resources.ResourceLocation.parse("minecraft:red_bed")).defaultBlockState().setValue(net.minecraft.world.level.block.BedBlock.PART,
             net.minecraft.world.level.block.state.properties.BedPart.FOOT);
         assertTrue(new SkipItems(row(foot), Set.of("minecraft:red_bed")).skipped(foot));
         assertFalse(new SkipItems(row(foot), Set.of("minecraft:blue_bed")).skipped(foot));

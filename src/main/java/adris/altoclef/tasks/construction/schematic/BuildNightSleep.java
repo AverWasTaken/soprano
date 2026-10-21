@@ -132,7 +132,7 @@ public final class BuildNightSleep {
             player = mod.getPlayer();
             drop();
         }
-        budget.roll(NightSleep.nightOf(mod.getWorld().getOverworldClockTime()));
+        budget.roll(NightSleep.nightOf(mod.getWorld().getDayTime()));
         boolean overworld = WorldHelper.getCurrentDimension() == Dimension.OVERWORLD;
         if (trip != null) {
             if (trip.isFinished(mod) || !overworld) {
@@ -165,7 +165,7 @@ public final class BuildNightSleep {
     private Task decide(AltoClef mod, boolean away) {
         int radius = cfg.nightBedRadius;
         boolean leftover = NightBeds.leftover(mod, beds, radius, () -> { });
-        boolean windowOpen = !mod.getWorld().isBrightOutside();
+        boolean windowOpen = !mod.getWorld().isDay();
         long now = mod.getWorld().getGameTime();
         NightSleep.Busy busy = busy(away, prep.running(), screenSince < 0 ? -1 : now - screenSince);
         boolean fighting = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
@@ -219,7 +219,7 @@ public final class BuildNightSleep {
     // every task tick, not only the ones that ask, or a screen that closed and opened again would look like it had been up
     // the whole time. same as the gamer's trackNightGates
     private void trackScreen(long now) {
-        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>) {
+        if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>) {
             if (screenSince < 0) {
                 screenSince = now;
             }
@@ -316,7 +316,7 @@ public final class BuildNightSleep {
     // what the reserve floor holds back right now
     private static int spareBlocks(AltoClef mod) {
         Map<Item, Integer> held = new HashMap<>();
-        for (ItemStack stack : mod.getPlayer().getInventory().getNonEquipmentItems()) {
+        for (ItemStack stack : mod.getPlayer().getInventory().items) {
             Item item = stack.getItem();
             if (!stack.isEmpty() && item instanceof BlockItem && item != Items.GRAVEL && item != Items.SAND && AltoSettings.isThrowaway(item)) {
                 held.merge(item, stack.getCount(), Integer::sum);

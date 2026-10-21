@@ -85,7 +85,7 @@ public class PlaceRulesTest {
         BlockState pane = Blocks.GLASS_PANE.defaultBlockState();
         assertTrue(same(pane, pane.setValue(CrossCollisionBlock.NORTH, true)));
         BlockState wall = Blocks.COBBLESTONE_WALL.defaultBlockState();
-        assertTrue(same(wall, wall.setValue(WallBlock.NORTH, WallSide.TALL).setValue(WallBlock.UP, false)));
+        assertTrue(same(wall, wall.setValue(WallBlock.NORTH_WALL, WallSide.TALL).setValue(WallBlock.UP, false)));
         BlockState gate = Blocks.OAK_FENCE_GATE.defaultBlockState();
         assertTrue(same(gate, gate.setValue(FenceGateBlock.IN_WALL, true)));
         assertFalse(same(gate, gate.setValue(FenceGateBlock.FACING, Direction.WEST)));

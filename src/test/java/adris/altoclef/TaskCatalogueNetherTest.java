@@ -2,7 +2,7 @@ package adris.altoclef;
 
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -21,7 +21,7 @@ public class TaskCatalogueNetherTest {
     }
 
     private static Item item(String path) {
-        return BuiltInRegistries.ITEM.getValue(Identifier.withDefaultNamespace(path));
+        return BuiltInRegistries.ITEM.getValue(ResourceLocation.withDefaultNamespace(path));
     }
 
     @Test
