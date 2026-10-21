@@ -346,10 +346,14 @@ public final class Settings {
 
     /**
      * Blocks that Baritone is not allowed to break
+     * <p>
+     * Bee nests and beehives are on it by default, because breaking one lets out a swarm of angry bees.
+     * Clear the list to allow breaking them again.
      */
-    public final Setting<List<Block>> blocksToDisallowBreaking = new Setting<>(new ArrayList<>(
-            // Leave Empty by Default
-    ));
+    public final Setting<List<Block>> blocksToDisallowBreaking = new Setting<>(new ArrayList<>(Arrays.asList(
+            Blocks.BEE_NEST,
+            Blocks.BEEHIVE
+    )));
 
     /**
      * blocks that baritone shouldn't break, but can if it needs to.
