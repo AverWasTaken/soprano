@@ -253,9 +253,9 @@
             if (!springs[t.id]) springs[t.id] = new Spring(1);
             return t;
         });
-        el.langSh = mk('shadow'); el.a11ySh = mk('shadow');
-        el.lang = mk('glass'); el.a11y = mk('glass');
-        el.lang.innerHTML = el.a11y.innerHTML = '';
+        el.langSh = mk('shadow'); el.a11ySh = mk('shadow'); el.musicSh = mk('shadow');
+        el.lang = mk('glass'); el.a11y = mk('glass'); el.music = mk('glass');
+        el.lang.innerHTML = el.a11y.innerHTML = el.music.innerHTML = '';
         el.ver = mk('txt');
         el.copy = mk('txt');
         el.under = mk('under');
@@ -472,15 +472,16 @@
         }
 
         // frozen hover: aim the mouse at the thing's resting centre. two rounds because parallax moves the dock
-        // top right, accessibility hugging the corner and language left of it. the update card has the top left
+        // top right, left to right: language, accessibility, music hugging the corner. the update card has the top left
         var cornerB = R(40), inset = R(24), cornerGap = R(10);
-        var a11yX = W - inset - cornerB, langX = a11yX - cornerGap - cornerB;
+        var musicX = W - inset - cornerB, a11yX = musicX - cornerGap - cornerB, langX = a11yX - cornerGap - cornerB;
         function restCentre(id, dx, dy) {
             var rest = dockRow(tiles.map(function () { return tPx; }), Math.round(dx));
             var bottom = H - R(72) + Math.round(dy);
             for (var i = 0; i < n; i++) if (tiles[i].id === id) return { x: rest.xs[i] + tPx / 2, y: bottom - pad - tPx / 2 };
             if (id === 'lang') return { x: langX + cornerB / 2, y: inset + cornerB / 2 };
             if (id === 'a11y') return { x: a11yX + cornerB / 2, y: inset + cornerB / 2 };
+            if (id === 'music') return { x: musicX + cornerB / 2, y: inset + cornerB / 2 };
             if (id === 'copyright') return { x: W - inset - R(100), y: H - inset - R(8) };
             return null;
         }
@@ -568,22 +569,26 @@
         });
 
         // ----- corners -----
-        var aLang = (hoverId === 'lang'), aA11y = (hoverId === 'a11y');
+        var aLang = (hoverId === 'lang'), aA11y = (hoverId === 'a11y'), aMusic = (hoverId === 'music');
         glass(el.lang, el.langSh, langX, inset, cornerB, aLang, eCorner);
         glass(el.a11y, el.a11ySh, a11yX, inset, cornerB, aA11y, eCorner);
+        glass(el.music, el.musicSh, musicX, inset, cornerB, aMusic, eCorner);
         var cg = Math.round(cornerB * 0.5);
         glyph(el.lang, 'c', 'language', cg);
         glyph(el.a11y, 'c', 'accessibility', cg);
-        [el.lang, el.a11y].forEach(function (e) {
+        glyph(el.music, 'c', musicOn ? 'speaker' : 'speaker_off', cg);
+        [el.lang, el.a11y, el.music].forEach(function (e) {
             var s = e.firstChild;
             s.style.left = css(Math.round((cornerB - cg) / 2)); s.style.top = css(Math.round((cornerB - cg) / 2));
         });
         var cornerRects = {
             lang: { x: langX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) },
-            a11y: { x: a11yX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) }
+            a11y: { x: a11yX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) },
+            music: { x: musicX, y: inset, w: cornerB, h: cornerB, r: Math.floor(cornerB / 2) }
         };
         newHits.push({ id: 'lang', x: langX, y: inset, w: cornerB, h: cornerB });
         newHits.push({ id: 'a11y', x: a11yX, y: inset, w: cornerB, h: cornerB });
+        newHits.push({ id: 'music', x: musicX, y: inset, w: cornerB, h: cornerB });
 
         var ver = text(el.ver, 'Soprano ' + MOD_VERSION, 'medium', 14, 'rgba(255,255,255,0.70)');
         box(el.ver, inset, H - inset - ver.h, ver.w + 2, null);
@@ -634,6 +639,8 @@
         if (frozen || !mouse) hoverId = opt.hover;
         else hoverId = v.boot ? null : hitTest(mouse.x, mouse.y, newHits);
         bootUp = !!v.boot;
+        // MenuMusic waits for TitleMenu's first frame without the boot overlay, then the menus are ours for good
+        if (!v.boot) titleShown = true;
         soundHover(!v.boot);
         hits = newHits;
 
@@ -645,7 +652,8 @@
             box(el.ring, fr.x - off - thk, fr.y - off - thk, fr.w + 2 * (off + thk), fr.h + 2 * (off + thk));
             el.ring.style.borderWidth = css(thk);
             el.ring.style.borderRadius = css(fr.r + off + thk);
-            el.ring.style.opacity = focusId === 'lang' || focusId === 'a11y' || focusId === 'card' ? eCorner : eDock;
+            el.ring.style.opacity = focusId === 'lang' || focusId === 'a11y' || focusId === 'music' || focusId === 'card'
+                ? eCorner : eDock;
         }
 
         // ----- label: the hovered thing, else the focused one -----
@@ -657,6 +665,7 @@
             for (var i = 0; i < n; i++) if (tiles[i].id === lid) { lt = tiles[i]; rect = tileRects[lid]; }
             if (lid === 'lang') { lt = { label: 'Language' }; rect = cornerRects.lang; below = true; }
             if (lid === 'a11y') { lt = { label: 'Accessibility Settings' }; rect = cornerRects.a11y; below = true; }
+            if (lid === 'music') { lt = { label: musicLabel() }; rect = cornerRects.music; below = true; }
         }
         if (lid !== label.id) { label.id = lid; label.since = now; }
         show(el.label, !!lt);
@@ -715,6 +724,7 @@
         drawPanorama(now, v.title);
         drawBoot(v.boot);
         drawTitle(v, now);
+        musicTick(now);
         $('dv-size').textContent = W + 'x' + H + '  gui ' + gui + '  title ' + S + 'x  card ' + KS + 'x';
     }
     function loop(now) {
@@ -730,12 +740,90 @@
     function isOff(id) { for (var i = 0; i < tiles.length; i++) if (tiles[i].id === id) return !!tiles[i].off; return false; }
     function nameOf(id) {
         for (var i = 0; i < tiles.length; i++) if (tiles[i].id === id) return tiles[i].label;
+        if (id === 'music') return musicLabel();
         return { lang: 'Language', a11y: 'Accessibility Settings', copyright: 'credits', card: 'update card' }[id] || id;
     }
     function activate(id) {
         if (!id || isOff(id)) return;
         if (id !== 'card') playSnd('click', 1, 0.32);
         $('dv-said').textContent = 'pressed: ' + nameOf(id);
+        if (id === 'music') toggleMusic();
+    }
+
+    // ----- menu music: MenuMusic in the browser. WebAudio with a looping buffer, an <audio loop> leaves a gap at
+    // the seam. same volume, same linear per tick fades at 20 tps, same rules: nothing before the title has shown,
+    // muting is a target of 0 on a track that keeps running, unmuting with nothing playing starts it from the top.
+    // browsers block audio until the first click or key, so that's when it can start. file:// can't fetch, so there
+    // it falls back to an <audio loop> (gap and all), serve the repo over http for the real thing
+    var MUSIC_SRC = '../../src/main/resources/assets/soprano/sounds/music/menu.ogg';
+    var MUSIC_VOLUME = 0.55, FADE_IN = MUSIC_VOLUME / 50, FADE_OUT = MUSIC_VOLUME / 30, TICK_MS = 50;
+    var MUSIC_KEY = 'soprano.mock.menuMusic';
+    // ?music=0|1 pins it for a shot, otherwise the button's last word from localStorage (on by default, like the
+    // setting)
+    var musicOn = Q.has('music') ? qb('music', true) : readMusicPref();
+    var titleShown = false;
+    var mus = { ctx: null, gain: null, el: null, vol: 0, last: 0, failed: false };
+    function readMusicPref() { try { return localStorage.getItem(MUSIC_KEY) !== '0'; } catch (e) { return true; } }
+    function musicLabel() { return musicOn ? 'Mute music' : 'Play music'; }
+    function toggleMusic() {
+        musicOn = !musicOn;
+        try { localStorage.setItem(MUSIC_KEY, musicOn ? '1' : '0'); } catch (e) { /* private window, fine */ }
+        if (musicOn) musicStart();
+    }
+    // the first gesture. a context made before it would just sit there suspended
+    function musicGesture() {
+        if (mus.ctx && mus.ctx.state === 'suspended') mus.ctx.resume();
+        if (musicOn) musicStart();
+    }
+    function musicStart() {
+        if (frozen || mus.failed || mus.ctx || mus.el) return;
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC || location.protocol === 'file:') { musicFallback(); return; }
+        var ctx = new AC();
+        mus.ctx = ctx;
+        mus.gain = ctx.createGain();
+        mus.gain.gain.value = 0;
+        mus.gain.connect(ctx.destination);
+        fetch(MUSIC_SRC).then(function (r) {
+            if (!r.ok) throw new Error('menu.ogg ' + r.status);
+            return r.arrayBuffer();
+        }).then(function (buf) {
+            return ctx.decodeAudioData(buf);
+        }).then(function (audio) {
+            var s = ctx.createBufferSource();
+            s.buffer = audio;
+            s.loop = true;
+            s.connect(mus.gain);
+            s.start();
+        }).catch(function (e) {
+            mus.failed = true;
+            $('dv-said').textContent = 'no music: ' + e.message;
+        });
+    }
+    function musicFallback() {
+        var a = new Audio(MUSIC_SRC);
+        a.loop = true;
+        a.volume = 0;
+        a.addEventListener('error', function () {
+            mus.failed = true;
+            mus.el = null;
+            $('dv-said').textContent = 'no music: menu.ogg missing';
+        });
+        mus.el = a;
+        a.play().catch(function () {});
+    }
+    // whole ticks since the last frame, each one a step of the fade, like MenuMusic.Track.tick
+    function musicTick(now) {
+        if (!mus.ctx && !mus.el) return;
+        if (!mus.last) mus.last = now;
+        var n = Math.floor((now - mus.last) / TICK_MS);
+        if (n <= 0) return;
+        mus.last += n * TICK_MS;
+        var target = titleShown && musicOn ? MUSIC_VOLUME : 0;
+        if (mus.vol < target) mus.vol = Math.min(target, mus.vol + n * FADE_IN);
+        else if (mus.vol > target) mus.vol = Math.max(target, mus.vol - n * FADE_OUT);
+        if (mus.gain) mus.gain.gain.value = mus.vol;
+        if (mus.el) mus.el.volume = mus.vol;
     }
     // ----- sounds: the same oggs the game plays, same rules as MenuSounds + TitleMenu.sound. browsers keep audio
     // muted until the first click or key, so hovering before that is silent
@@ -764,18 +852,19 @@
         lastHoverSnd = now;
         var step = -1;
         for (var i = 0; i < tiles.length; i++) if (tiles[i].id === id) step = i;
-        playSnd('hover', note(step >= 0 ? step : id === 'lang' ? 3 : 4), 0.22);
+        playSnd('hover', note(step >= 0 ? step : id === 'lang' ? 3 : id === 'a11y' ? 4 : 5), 0.22);
     }
     function focusOrder() {
         var o = [];
         tiles.forEach(function (t) { if (!t.off) o.push(t.id); });
         // the update card is a focusable vanilla widget too, it goes after the corner buttons
-        return o.concat(opt.card ? ['lang', 'a11y', 'card', 'copyright'] : ['lang', 'a11y', 'copyright']);
+        return o.concat(opt.card ? ['lang', 'a11y', 'music', 'card', 'copyright'] : ['lang', 'a11y', 'music', 'copyright']);
     }
     function wire() {
         stage.addEventListener('mousemove', function (e) { mouse = devPoint(e); });
         stage.addEventListener('mouseleave', function () { mouse = null; pressId = null; });
         stage.addEventListener('mousedown', function (e) {
+            musicGesture();
             if (e.button !== 0) return;
             mouse = devPoint(e);
             focusId = null;
@@ -790,6 +879,7 @@
             pressId = null;
         });
         window.addEventListener('keydown', function (e) {
+            musicGesture();
             var tag = (e.target && e.target.tagName) || '';
             if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') { if (e.key !== 'Tab') return; }
             if (e.key === 'h' || e.key === 'H') { document.body.classList.toggle('nobar'); document.documentElement.classList.remove('bare'); return; }

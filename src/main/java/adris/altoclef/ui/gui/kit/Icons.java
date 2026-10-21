@@ -428,7 +428,23 @@ public final class Icons {
                 line(g, 12, 10, 12, 14);
                 poly(g, false, 9, 18.5f, 12, 14, 15, 18.5f);
             }
+            case SPEAKER -> {
+                // two rings round one point just right of the cone, so the waves read as coming out of it
+                speaker(g);
+                g.draw(new Arc2D.Float(10, 8.5f, 7, 7, -50, 100, Arc2D.OPEN));
+                g.draw(new Arc2D.Float(6.5f, 5, 14, 14, -50, 100, Arc2D.OPEN));
+            }
+            case SPEAKER_OFF -> {
+                speaker(g);
+                line(g, 15.5f, 9.5f, 20.5f, 14.5f);
+                line(g, 20.5f, 9.5f, 15.5f, 14.5f);
+            }
         }
+    }
+
+    // a box and a cone, flat side left. the art is shifted left of centre so the waves have room on the right
+    private static void speaker(Graphics2D g) {
+        poly(g, true, 3.5f, 9.5f, 7, 9.5f, 12, 5, 12, 19, 7, 14.5f, 3.5f, 14.5f);
     }
 
     // eight teeth off a circle: inner radius 7, outer 9.5, the valleys are arcs so it reads as a gear and not a stop

@@ -81,6 +81,10 @@
             + poly(false, [3.5, 7.5, 12, 12, 20.5, 7.5])
             + line(12, 12, 12, 21);
     }
+    // Icons.speaker: a box and a cone, flat side left, shifted left so the waves have room on the right
+    function speaker() {
+        return poly(true, [3.5, 9.5, 7, 9.5, 12, 5, 12, 19, 7, 14.5, 3.5, 14.5]);
+    }
 
     // ---- the art, case for case from Icons.art. w = stroke in grid units ----
     var ART = {
@@ -325,6 +329,15 @@
         accessibility: function () {
             return ell(3, 3, 18, 18) + fillEll(10.5, 5.6, 3, 3) + line(7.5, 10, 16.5, 10) + line(12, 10, 12, 14)
                 + poly(false, [9, 18.5, 12, 14, 15, 18.5]);
+        },
+        // menu music on. two rings round one point just right of the cone, so the waves read as coming out of it
+        speaker: function () {
+            return speaker() + path(P().arc(10, 8.5, 7, 7, -50, 100, false))
+                + path(P().arc(6.5, 5, 14, 14, -50, 100, false));
+        },
+        // menu music off: the same speaker and an x
+        speaker_off: function () {
+            return speaker() + line(15.5, 9.5, 20.5, 14.5) + line(20.5, 9.5, 15.5, 14.5);
         }
         // ===== end of title screen glyphs =====
     };
@@ -334,7 +347,7 @@
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
         'ladder', 'eye', 'schematics', 'warning', 'chevron_up', 'chevron_left', 'rotate_left', 'rotate_right', 'flip',
         'level_up', 'level_down', 'move', 'gear', 'globe', 'people', 'cloud', 'puzzle', 'power', 'language',
-        'accessibility'];
+        'accessibility', 'speaker', 'speaker_off'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on
