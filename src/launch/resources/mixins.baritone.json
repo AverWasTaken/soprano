@@ -50,6 +50,7 @@
     "MixinRenderPipelines",
     "MixinRenderType",
     "MixinScreen",
+    "MixinTitleScreen",
     "MixinWorldRenderer",
     "MixinVec3i"
   ],

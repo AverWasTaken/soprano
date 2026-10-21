@@ -33,6 +33,15 @@ unimined.minecraft {
     }
 }
 
+// ./gradlew :fabric:runClient -PupdaterPretend=1.1.5 makes the title card think it is that version, so a dev client
+// sees "v<latest> is out" (install stays off, there is no jar to swap). nothing changes without the property. on the
+// task and not in runs { config("client") { jvmArgs } }: unimined hands that block a list you can't add to
+if (project.hasProperty("updaterPretend")) {
+    tasks.matching { it.name == "runClient" }.configureEach { t ->
+        t.jvmArgs("-Dsoprano.update.pretendVersion=" + project.property("updaterPretend"))
+    }
+}
+
 configurations {
     common
     shadowCommon // Don't use shadow from the shadow plugin because we don't want IDEA to index this.

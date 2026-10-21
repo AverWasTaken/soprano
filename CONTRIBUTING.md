@@ -68,4 +68,6 @@ For maintainers.
 
 The [release workflow](.github/workflows/release.yml) builds with the JDK from `java_version` in `gradle.properties`, passes the version from the tag to Gradle and creates a GitHub Release called "Soprano v1.1.0 (26.3)" with the api jar per loader plus the unoptimized Fabric jar, a one line note saying which Minecraft version and loaders it's for, and `release-notes/<version>.md` under it. Only 26.3 releases get marked Latest. A `-anyversion` tag (built from `version-agnostic`) becomes a Fabric only pre-release. The Minecraft version comes from `minecraft_version` in `gradle.properties`.
 
+Don't change the release title format or the jar names. The in-game updater finds a player's release by the `(26.3)` or `(base 26.3)` at the end of the title plus the `-anyversion` tag suffix, and picks the jar by its `soprano-<api|unoptimized>-<loader>-<version>.jar` name. Change either and every installed copy stops seeing updates. A release made by hand needs the same title, and its jars have to come from a build with `-Prelease_version`, because the updater refuses a jar that doesn't carry its own version and Minecraft version.
+
 If a release goes wrong, delete the release and the tag on GitHub, fix it, and push the tag again.
