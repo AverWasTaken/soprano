@@ -9,6 +9,7 @@ public final class PixelImage {
     private final int height;
     private final int[] argb;
     private int version = 1;
+    private boolean smooth;
 
     public PixelImage(int width, int height) {
         if (width <= 0 || height <= 0) {
@@ -39,5 +40,17 @@ public final class PixelImage {
     // say the pixels changed. the next draw uploads them
     public void bump() {
         version++;
+    }
+
+    // sample it linearly instead of nearest when it gets stretched: the baked gradients and the title's brand art,
+    // which get drawn a bit bigger or smaller than they were baked. drawn at its own size it's the same pixels either
+    // way. set it before the first draw, the game picks the sampler when it uploads
+    public PixelImage smooth() {
+        smooth = true;
+        return this;
+    }
+
+    public boolean isSmooth() {
+        return smooth;
     }
 }

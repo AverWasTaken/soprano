@@ -1,0 +1,53 @@
+/* boot + title screen mock. every box is placed by title.js in whole device px, this file is only looks.
+   no transitions or animations in here on purpose: title.js owns the clock, so ?t= and ?fade= shots are exact */
+
+@font-face { font-family: "Inter"; font-weight: 400; src: url("../../src/main/resources/adris/altoclef/ui/gui/font/Inter-Regular.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 500; src: url("../../src/main/resources/adris/altoclef/ui/gui/font/Inter-Medium.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 600; src: url("../../src/main/resources/adris/altoclef/ui/gui/font/Inter-SemiBold.ttf"); }
+
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+* { box-sizing: border-box; }
+
+.stage {
+  position: fixed; left: 0; right: 0; bottom: 0; top: 32px; overflow: hidden; outline: none;
+  background: #000; color: #fff; font-family: "Inter", sans-serif; user-select: none; cursor: default;
+}
+body.nobar .stage, html.bare .stage { top: 0; }
+html.bare .devbar { display: none; }
+.abs { position: absolute; left: 0; top: 0; }
+
+/* the panorama: a cube with the camera in the middle. the wrap hangs past the stage so the blur has real pixels
+   to pull in at the edges instead of transparent black, same as the game clamping its blur samples */
+.pano-wrap { position: absolute; overflow: hidden; }
+.pano-persp { position: absolute; }
+.cube { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
+.face { position: absolute; display: block; backface-visibility: hidden; }
+
+/* the baked overlay. title.js sets the gradients, java bakes the same stops into one image */
+.shade { position: absolute; inset: 0; pointer-events: none; }
+
+.ui { position: absolute; inset: 0; }
+.ui > * { position: absolute; left: 0; top: 0; }
+.txt { white-space: nowrap; font-family: "Inter", sans-serif; }
+.tile, .glass, .label, .ring, .card-ph, .shadow { pointer-events: none; }
+.tile svg, .glass svg { position: absolute; display: block; color: #fff; }
+.tile .press { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.20); border-radius: inherit; }
+.ring { border: solid #0A84FF; }
+.label { background: rgba(28, 28, 30, 0.86); color: #fff; }
+.label .txt { position: absolute; }
+.under { background: currentColor; }
+.card-ph { background: rgba(44, 44, 46, 0.92); color: rgba(255, 255, 255, 0.55); overflow: hidden; }
+.card-ph .txt { position: absolute; }
+.divider { background: rgba(255, 255, 255, 0.22); }
+
+.boot { position: absolute; inset: 0; pointer-events: none; }
+.boot-bg { position: absolute; inset: 0; background: #000; }
+/* no overflow clip on the track: the kit only clips to rects, the fill rounds itself */
+.boot-track { background: rgba(255, 255, 255, 0.18); }
+.boot-fill { background: #fff; }
+.boot svg { display: block; }
+
+/* dev bar extras the shared devbar.css doesn't have */
+.devbar button { font: inherit; background: #26262a; color: #e8e8ec; border: 1px solid #3a3a3e; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.devbar button:hover { background: #303034; }
+.devbar { overflow: hidden; }

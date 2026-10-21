@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>soprano title mock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>/* bare first, so the first paint never has the bar */ (function(){if(new URLSearchParams(location.search).get("bare")==="1")document.documentElement.classList.add("bare");})();</script>
+<link rel="stylesheet" href="../devbar.css">
+<link rel="stylesheet" href="title.css">
+</head>
+<body>
+
+<!-- dev bar: mock-only, press h to hide -->
+<div class="devbar" id="devbar">
+  <label>scene <select id="dv-scene"><option>boot</option><option>title</option></select></label>
+  <label>progress <input type="range" id="dv-progress" min="0" max="1" step="0.01" value="0.35"></label>
+  <button id="dv-play">play boot &rarr; title</button>
+  <label><input type="checkbox" id="dv-reload"> reload</label>
+  <button id="dv-replay">replay entry</button>
+  <span class="sep"></span>
+  <label><input type="checkbox" id="dv-rm"> reduced motion</label>
+  <label><input type="checkbox" id="dv-blur" checked> blur</label>
+  <label>mods <select id="dv-mods"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+  <label><input type="checkbox" id="dv-demo"> demo</label>
+  <label><input type="checkbox" id="dv-mpoff"> mp off</label>
+  <span class="sep"></span>
+  <span class="readout" id="dv-size"></span>
+  <span class="readout" id="dv-said"></span>
+  <span class="hint">h hides this</span>
+</div>
+
+<div class="stage" id="stage" tabindex="-1">
+  <div class="pano-wrap" id="pano">
+    <div class="pano-persp" id="persp">
+      <div class="cube" id="cube">
+        <img class="face" data-face="0" src="../assets/panorama/panorama_0.png" alt="">
+        <img class="face" data-face="1" src="../assets/panorama/panorama_1.png" alt="">
+        <img class="face" data-face="2" src="../assets/panorama/panorama_2.png" alt="">
+        <img class="face" data-face="3" src="../assets/panorama/panorama_3.png" alt="">
+        <img class="face" data-face="4" src="../assets/panorama/panorama_4.png" alt="">
+        <img class="face" data-face="5" src="../assets/panorama/panorama_5.png" alt="">
+      </div>
+    </div>
+  </div>
+  <div class="shade" id="shade"></div>
+  <div class="ui" id="ui"></div>
+  <div class="boot" id="boot">
+    <div class="boot-bg" id="boot-bg"></div>
+    <div class="abs" id="boot-mark"></div>
+    <div class="abs boot-track" id="boot-track"><div class="abs boot-fill" id="boot-fill"></div></div>
+  </div>
+</div>
+
+<script src="../icons.js"></script>
+<script src="title.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@
 
 package baritone.launch.mixins;
 
+import adris.altoclef.ui.gui.mc.SopranoMenus;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.event.events.PlayerUpdateEvent;
@@ -61,6 +62,8 @@ public class MixinMinecraft {
     )
     private void postInit(CallbackInfo ci) {
         BaritoneAPI.getProvider().getPrimaryBaritone();
+        // settings exist from here on, so the boot and title screens may start reading guiMenus
+        SopranoMenus.markReady();
     }
 
     @Inject(
