@@ -91,4 +91,40 @@ public class MLGBucketFallChainTest {
         assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, false, 1));
         assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, true, 1));
     }
+
+    private static MLGBucketFallChain.Surface surface(boolean timedOut, boolean splashing, boolean inWater, boolean under, boolean wentUnder, boolean open) {
+        return MLGBucketFallChain.surfaceStep(timedOut, splashing, inWater, under, wentUnder, open);
+    }
+
+    @Test
+    public void deepUnderWithSkyAboveSwimsUp() {
+        assertEquals(MLGBucketFallChain.Surface.GO, surface(false, true, true, true, true, true));
+        assertEquals(MLGBucketFallChain.Surface.GO, surface(false, false, true, true, true, true));
+    }
+
+    @Test
+    public void aCeilingIsNotWorthHeadbuttingButWeComeBackAfterIt() {
+        // under an overhang mid plunge: hands off, not done
+        assertEquals(MLGBucketFallChain.Surface.WAIT, surface(false, false, true, true, true, false));
+        // drifted out from under it, still under water: up we go again
+        assertEquals(MLGBucketFallChain.Surface.GO, surface(false, false, true, true, true, true));
+    }
+
+    @Test
+    public void theSplashGetsAFewTicksForOurEyesToGoUnder() {
+        assertEquals(MLGBucketFallChain.Surface.WAIT, surface(false, true, true, false, false, false));
+        // and a shallow landing where they never did is done once the splash is
+        assertEquals(MLGBucketFallChain.Surface.DONE, surface(false, false, true, false, false, false));
+    }
+
+    @Test
+    public void headOutAfterBeingUnderIsTheJobDone() {
+        assertEquals(MLGBucketFallChain.Surface.DONE, surface(false, true, true, false, true, false));
+    }
+
+    @Test
+    public void outOfWaterOrOutOfTimeStops() {
+        assertEquals(MLGBucketFallChain.Surface.DONE, surface(false, false, false, false, true, false));
+        assertEquals(MLGBucketFallChain.Surface.DONE, surface(true, false, true, true, true, true));
+    }
 }

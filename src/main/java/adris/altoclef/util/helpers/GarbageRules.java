@@ -259,12 +259,25 @@ public final class GarbageRules {
 
     // the cursor holds something we keep, nothing can be thrown and nowhere takes it. the stack that goes in its place is the
     // lowest one by the usual order, only now the food floor does not get a say (the cands are already free of the important
-    // list and the gamer protect list is not asked). -1 = nothing to swap with, throw the cursor, it is that or click forever
+    // list). this one is the nothing-guarded view, the protect list gets its say in the overload below. -1 = nothing to swap
+    // with, throw the cursor, it is that or click forever
     public static int lastResort(List<Cand> cands) {
+        return lastResort(cands, new boolean[cands.size()]);
+    }
+
+    // guarded[i] = that stack is one the bot is holding on to right now (protect list, enchanted, torches with autoTorch).
+    // a water bucket or a crafting table is one item, so it always won "smallest count" and the one thing we were saving
+    // went over the edge. an unguarded stack goes first, the guarded ones only when the bag is nothing but
+    public static int lastResort(List<Cand> cands, boolean[] guarded) {
+        int best = lastResort(cands, guarded, true);
+        return best >= 0 ? best : lastResort(cands, guarded, false);
+    }
+
+    private static int lastResort(List<Cand> cands, boolean[] guarded, boolean skipGuarded) {
         int best = -1;
         for (int i = 0; i < cands.size(); i++) {
             Cand c = cands.get(i);
-            if (c.reserved()) {
+            if (c.reserved() || (skipGuarded && guarded[i])) {
                 continue;
             }
             if (best < 0 || compare(c, cands.get(best)) < 0) {

@@ -306,8 +306,8 @@ public class KillAura {
                 }
             }
             // only our claims. a key somebody else still holds stays down, the food chain's plain hold for a bite included
+            // jump isn't ours, the shield never holds it. letting it go anyway dropped whoever was swimming up for a tick
             mod.getInputControls().releaseOwnedBy(_owner);
-            mod.getInputControls().release(Input.JUMP);
             mod.getExtraBaritoneSettings().setInteractionPaused(false);
             _shielding = false;
         }

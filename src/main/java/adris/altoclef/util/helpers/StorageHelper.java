@@ -374,14 +374,16 @@ public class StorageHelper {
         Bag bag = bag(mod);
         final List<Slot> slots = new ArrayList<>();
         final List<GarbageRules.Cand> cands = new ArrayList<>();
+        final boolean[] guarded = new boolean[bag.slots.size()];
         for (int i = 0; i < bag.slots.size(); i++) {
             ItemStack stack = bag.stacks.get(i);
             if (stack.isEmpty() || bag.wear[i] || AltoSettings.isImportant(stack.getItem()))
                 continue;
+            guarded[cands.size()] = ItemHelper.isStackProtected(mod, stack);
             slots.add(bag.slots.get(i));
             cands.add(GarbageRules.cand(stack));
         }
-        int pick = GarbageRules.lastResort(cands);
+        int pick = GarbageRules.lastResort(cands, guarded);
         return pick < 0 ? Optional.empty() : Optional.of(slots.get(pick));
     }
 

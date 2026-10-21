@@ -7,6 +7,7 @@ import adris.altoclef.tasks.container.PickupFromContainerTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
+import adris.altoclef.tasks.slot.EnsureFreeCursorSlotTask;
 import adris.altoclef.tasks.slot.EnsureFreePlayerCraftingGridTask;
 import adris.altoclef.tasks.slot.MoveInaccessibleItemToInventoryTask;
 import adris.altoclef.tasksystem.ITaskCanForce;
@@ -17,7 +18,6 @@ import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.DropPatience;
-import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WalkCost;
@@ -52,6 +52,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     private final PickupDroppedItemTask _pickupTask;
     private final EnsureFreePlayerCraftingGridTask _ensureFreeCraftingGridTask = new EnsureFreePlayerCraftingGridTask();
+    // one instance so its throw-next-tick memory lives through the swap
+    private final EnsureFreeCursorSlotTask _cursorTask = new EnsureFreeCursorSlotTask();
     private ContainerCache _currentContainer;
     // Extra resource parameters
     private Block[] _mineIfPresent = null;
@@ -135,6 +137,12 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 }
             }
         }
+        // the garbage swap puts our item in the bag and lifts junk onto the cursor. junk is not a target, so the check below
+        // would let go right there and leave it hanging. stay with the cursor task until it has thrown it
+        if (_cursorTask.isActive() && !_cursorTask.isFinished(mod)) {
+            setDebugState("Moving from cursor");
+            return _cursorTask;
+        }
         // We have enough items COUNTING the cursor slot, we just need to move an item from our cursor.
         if (StorageHelper.itemTargetsMetInventory(mod, _itemTargets) && Arrays.stream(_itemTargets).anyMatch(target -> target.matches(StorageHelper.getItemStackInCursorSlot().getItem()))) {
             setDebugState("Moving from cursor");
@@ -143,18 +151,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                 return null;
             }
-            if (ItemHelper.canDropStack(mod, StorageHelper.getItemStackInCursorSlot())) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-                return null;
-            }
-            Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-            // Try throwing away cursor slot if it's garbage
-            if (garbage.isPresent()) {
-                mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
-                return null;
-            }
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-            return null;
+            // full bag. the old tail ended in "throw the cursor", and the cursor here is the thing we came for (the fresh
+            // diamond pickaxe, say). the cursor task throws junk for room first, and gear or important stuff only goes when the
+            // bag is all keepers
+            return _cursorTask;
         }
 
         if (!shouldAvoidPickingUp(mod)) {

@@ -6,6 +6,7 @@ import baritone.Baritone;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
 import baritone.behavior.InventoryBehavior;
+import baritone.pathing.movement.movements.LandingWater;
 import baritone.pathing.movement.movements.MovementFall;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -49,7 +50,7 @@ public class LadderClutchFallTask extends Task {
             return null;
         }
         BlockPos landing = landingCell(mod, player.position());
-        if (landing == null) {
+        if (landing == null || waterSavesIt(mod)) {
             return null;
         }
         MovementFall fall = MovementFall.unplanned(mod.getClientBaritone(), new BetterBlockPos(landing), (int) (player.getY() - landing.getY()));
@@ -71,6 +72,12 @@ public class LadderClutchFallTask extends Task {
         return hit.getBlockPos().above();
     }
 
+    // the center ray only sees the water right under the middle of us, the hitbox sits in up to four columns
+    private static boolean waterSavesIt(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        return LandingWater.landsInWater(mod.getWorld(), player.getX(), player.getY(), player.getZ(), player.getDeltaMovement().y, (int) LOOK_DOWN);
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         // the executor would run the movement it still thinks is current right over ours
@@ -79,6 +86,15 @@ public class LadderClutchFallTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // the floor we probed is a guess: a hit pushes us over a stream, or water flows in under us. nothing on the wall
+        // yet means nothing to fetch, so just let go. once something's up updateUnplanned sees the water and goes for it
+        LocalPlayer player = mod.getPlayer();
+        boolean airborne = !player.onGround() && !player.isInWater() && player.getDeltaMovement().y < 0;
+        if (airborne && !fall.clutchClicked() && waterSavesIt(mod)) {
+            mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();
+            done = true;
+            return null;
+        }
         MovementStatus status = fall.update();
         if (status.isComplete()) {
             done = true;

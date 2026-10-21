@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.Connection;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PortalProcessor;
@@ -337,6 +338,35 @@ public interface WorldHelper {
         }
         // At this point we probably fall through the void, so not safe.
         return true;
+    }
+
+    // the drop's turn: dangerousToBreakIfRightAbove keeps us out of the lava, this keeps the obsidian out of it. see DropBurnRules
+    static boolean dropWouldBurn(AltoClef mod, BlockPos pos) {
+        // an unloaded chunk reads as plain air, which says "safe" about the very crust we walked away from. the tracker still
+        // remembers that obsidian, so unknown counts as burning until we're close enough to look again
+        if (!mod.getChunkTracker().isChunkLoaded(pos)) {
+            return true;
+        }
+        Level level = mod.getWorld();
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        DropBurnRules.Cells cells = new DropBurnRules.Cells() {
+            @Override
+            public boolean lava(int x, int y, int z) {
+                return level.getFluidState(at.set(x, y, z)).is(FluidTags.LAVA);
+            }
+
+            @Override
+            public boolean water(int x, int y, int z) {
+                return level.getFluidState(at.set(x, y, z)).is(FluidTags.WATER);
+            }
+
+            @Override
+            public boolean fallThrough(int x, int y, int z) {
+                at.set(x, y, z);
+                return level.getBlockState(at).getCollisionShape(level, at).isEmpty();
+            }
+        };
+        return DropBurnRules.dropWouldBurn(cells, pos.getX(), pos.getY(), pos.getZ(), level.getMinY());
     }
 
     static boolean canPlace(AltoClef mod, BlockPos pos) {

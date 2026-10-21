@@ -15,6 +15,7 @@ import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
+import baritone.pathing.movement.Surfacing;
 import baritone.pathing.movement.movements.MovementFall;
 import baritone.pathing.path.PathExecutor;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.effect.MobEffects;
@@ -51,6 +53,19 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     private boolean _cleanupLive = false;
     private int _lastWaterBuckets;
     private boolean _doingChorusFruit = false;
+    // the mlg or the ladder clutch had this fall, and both cancelled the path doing it. sticky until we're down, a ladder
+    // clutch that saw water coming lets go mid air and the splash is a few ticks later
+    private boolean _tookFall = false;
+    // a fall we took just ended in water, see surface()
+    private boolean _surfacing = false;
+    private boolean _wentUnder = false;
+    private int _surfaceFrom;
+    // 20 blocks under at about 0.135 a tick of jump is 150 ticks, with some slack. full air lasts 15 seconds
+    private final TimerGame _surfaceTimer = new TimerGame(10);
+    private final SurfaceTask _surface = new SurfaceTask();
+
+    // a few ticks for our eyes to go under after the splash, the first tick in the water can still have them above it
+    static final int SPLASH_TICKS = 10;
 
     // further than this from a cell and we walked off (or got knocked off), the water's not worth a walk back
     static final double CLEANUP_REACH = 3;
@@ -78,6 +93,9 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             setTask(ladder);
             _lastMLG = null;
             _clutching = false;
+            if (falling) {
+                tookTheFall();
+            }
             return falling ? 100 : 60;
         }
         // no water, hay or vines dropped into a build, and nothing to save in creative. a survival fall that kills us
@@ -90,13 +108,30 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             _clutching = true;
             // a new fall restarts the clock, it only starts once we're down again
             _cleanupLive = false;
+            tookTheFall();
             takePours();
             return 100;
         }
         _clutching = false;
         // the click on the tick we landed shows up here, one tick after the task's last
         takePours();
+        // a vine on the way down is not the bottom yet, and an elytra means whatever fall it was is somebody else's now
+        boolean down = MLGBucketTask.landed(mod) && (!mod.getPlayer().onClimbable() || mod.getPlayer().isInWater());
+        if (_tookFall && (down || mod.getPlayer().isFallFlying())) {
+            _tookFall = false;
+            if (mod.getPlayer().isInWater()) {
+                // poured or a pool, either way we're in water now. only a pool is deep enough to matter, surface() sorts that
+                _surfacing = true;
+                _wentUnder = false;
+                _surfaceTimer.reset();
+                _surfaceFrom = WorldHelper.getTicks();
+            }
+        }
         _lastMLG = null;
+        float surface = surface(mod);
+        if (surface != Float.NEGATIVE_INFINITY) {
+            return surface;
+        }
         float cleanup = cleanUp(mod);
         if (cleanup != Float.NEGATIVE_INFINITY) {
             return cleanup;
@@ -116,6 +151,11 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             mod.getExtraBaritoneSettings().setInteractionPaused(false);
         }
         return Float.NEGATIVE_INFINITY;
+    }
+
+    private void tookTheFall() {
+        _tookFall = true;
+        _surfacing = false; // a new fall, whatever we were swimming up from is over
     }
 
     private void takePours() {
@@ -195,6 +235,57 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         _cleanupLive = false;
         _pickup.target = null;
         if (_mainTask == _pickup) {
+            setTask(null);
+        }
+    }
+
+    // after a fall we took ends in water: a pool hit at full speed goes deep, and we cancelled the path on the way in, so nobody
+    // else is coming to swim us up. altoclef's jump key works here for the same reason, baritone has nothing to drive.
+    // runs ahead of the cleanup, the pickup can wait until we're breathing
+    private float surface(AltoClef mod) {
+        if (!_surfacing) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        LocalPlayer player = mod.getPlayer();
+        boolean under = player.isUnderWater();
+        _wentUnder |= under;
+        boolean open = under && Surfacing.openToAir(mod.getWorld(), BlockPos.containing(player.getEyePosition()));
+        boolean early = WorldHelper.getTicks() - _surfaceFrom < SPLASH_TICKS;
+        Surface step = surfaceStep(_surfaceTimer.elapsed(), early, player.isInWater(), under, _wentUnder, open);
+        if (step == Surface.GO) {
+            setTask(_surface);
+            return 59;
+        }
+        if (step == Surface.DONE) {
+            endSurfacing();
+        } else if (_mainTask == _surface) {
+            setTask(null);
+        }
+        return Float.NEGATIVE_INFINITY;
+    }
+
+    enum Surface {
+        GO, WAIT, DONE
+    }
+
+    // one tick of it. under with a straight shot up: go. under a ceiling: holding jump just pins us there, so hand the
+    // wheel back for now (Movement.update goes up the moment there's a way) and take it again if we drift out from under
+    // it. eyes out after being under is the job done, eyes never under is a shallow landing once the splash is over.
+    // pure for the tests
+    static Surface surfaceStep(boolean timedOut, boolean splashing, boolean inWater, boolean underWater, boolean wentUnder, boolean openAbove) {
+        if (timedOut || !inWater) {
+            return Surface.DONE;
+        }
+        if (underWater) {
+            return openAbove ? Surface.GO : Surface.WAIT;
+        }
+        return splashing && !wentUnder ? Surface.WAIT : Surface.DONE;
+    }
+
+    private void endSurfacing() {
+        _surfacing = false;
+        _wentUnder = false;
+        if (_mainTask == _surface) {
             setTask(null);
         }
     }
@@ -346,6 +437,40 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         @Override
         protected String toDebugString() {
             return "Picking up our water at " + target;
+        }
+    }
+
+    // jump with the camera level. the mlg left us staring straight down, and a swimmer looking down gets pulled down
+    private static final class SurfaceTask extends Task {
+        @Override
+        protected void onStart(AltoClef mod) {
+        }
+
+        @Override
+        protected Task onTick(AltoClef mod) {
+            mod.getInputControls().hold(Input.JUMP);
+            mod.getClientBaritone().getLookBehavior().updateTarget(new Rotation(mod.getPlayer().getYRot(), 0), true);
+            return null;
+        }
+
+        @Override
+        protected void onStop(AltoClef mod, Task interruptTask) {
+            // the jump is ours (held from onTick), letGo lifts it after this
+        }
+
+        @Override
+        public boolean isFinished(AltoClef mod) {
+            return false; // the chain decides, same as the pickup
+        }
+
+        @Override
+        protected boolean isEqual(Task other) {
+            return other instanceof SurfaceTask;
+        }
+
+        @Override
+        protected String toDebugString() {
+            return "Swimming up for air";
         }
     }
 
