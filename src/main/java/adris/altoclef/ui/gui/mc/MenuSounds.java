@@ -105,8 +105,10 @@ public final class MenuSounds {
                 throw new FileNotFoundException(res);
             }
             return looping ? new LoopingAudioStream(JOrbisAudioStream::new, in) : new JOrbisAudioStream(in);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            // jorbis throws whatever it likes at a corrupt file, not just io exceptions
             closeQuietly(in);
+            MenuMusic.markStreamFailed();
             Safe.report("menu music stream", e);
             throw new CompletionException(e);
         }

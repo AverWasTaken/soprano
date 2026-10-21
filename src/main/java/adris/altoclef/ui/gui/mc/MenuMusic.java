@@ -1,5 +1,6 @@
 package adris.altoclef.ui.gui.mc;
 
+import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Safe;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
@@ -24,14 +25,17 @@ public final class MenuMusic {
     // linear, per tick, from silence to full and back: 2.5 s in, 1.5 s out
     private static final float FADE_IN = MUSIC_VOLUME / 50f;
     private static final float FADE_OUT = MUSIC_VOLUME / 30f;
-    // a stream that can't open is gone a second after play (vanilla drops a stopped channel 20 ticks in). one that
-    // ran longer than this and then vanished got eaten by a sound reload, which is not the track's fault
+    // a track that vanished this soon after play got killed by a sound reload or a device switch mid start. one that
+    // ran longer than this had a good run, that one doesn't count against it
     private static final int EARLY_DEATH_TICKS = 100;
     private static final int MAX_FAILURES = 3;
     // play said not started: no sound device yet, or no free channel. a second is plenty between asks
     private static final int RETRY_TICKS = 20;
 
     private static volatile boolean titleShown;
+    // set from the io pool when the ogg wouldn't open. a stream that never attaches leaves its channel sitting there
+    // forever (it never reaches stopped, so vanilla never cleans it up), so this is the only way we'd hear about it
+    private static volatile boolean streamFailed;
     private static Track track;
     private static int ticks;
     private static int startedAt;
@@ -47,10 +51,24 @@ public final class MenuMusic {
         titleShown = true;
     }
 
+    // TitleMenu broke, or a title screen came up vanilla: no speaker button to mute us with, so the music goes back
+    // to vanilla too. the next title screen that comes up as ours takes it again
+    public static void titleGone() {
+        titleShown = false;
+    }
+
+    // MenuSounds.open couldn't make a stream out of the file
+    static void markStreamFailed() {
+        streamFailed = true;
+    }
+
     // the speaker button. the same road a click gui toggle takes, so it lands in settings.txt and #set sees it
     static void toggle() {
         try {
-            new McSettings().set("guiMenuMusic", Boolean.toString(!SopranoMenus.music()));
+            Result r = new McSettings().toggle("guiMenuMusic");
+            if (!r.ok()) {
+                Safe.report("menu music toggle", new IllegalStateException(r.message()));
+            }
         } catch (Throwable t) {
             Safe.report("menu music toggle", t);
         }
@@ -75,13 +93,20 @@ public final class MenuMusic {
 
     // muting is a target of 0, not a stop: the track keeps running silent and unmuting picks it up where it is
     private static void keep(SoundManager sounds, float target) {
+        if (track != null && streamFailed) {
+            // the file is broken or missing. take the dead channel out ourselves, nobody else will
+            streamFailed = false;
+            failures++;
+            sounds.stop(track);
+            track = null;
+        }
         if (track != null) {
             if (!track.isStopped() && sounds.isActive(track)) {
                 track.aim(target);
                 return;
             }
-            // gone without us saying so. a sound reload or a device switch forgets every sound without calling stop,
-            // a stream that never opened goes the same way, just fast. only the fast ones count against the track
+            // gone without us saying so: a sound reload or a device switch forgets every sound without calling stop.
+            // only the quick ones count against the track
             if (!track.isStopped() && ticks - startedAt < EARLY_DEATH_TICKS) {
                 failures++;
             }
@@ -94,6 +119,7 @@ public final class MenuMusic {
         }
         // a new instance every time, the engine keys its maps on the instance and one can't be played twice
         Track t = new Track(target);
+        streamFailed = false;
         if (sounds.play(t) == SoundEngine.PlayResult.NOT_STARTED) {
             retryAt = ticks + RETRY_TICKS;
             return;
