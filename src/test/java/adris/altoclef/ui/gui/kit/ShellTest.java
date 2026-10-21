@@ -505,7 +505,9 @@ public class ShellTest {
     public void drawListsTheChromeText() {
         draw();
         List<String> t = canvas.texts();
-        assertTrue(t.contains("soprano"));
+        // the sidebar header is the logo now, not the word
+        assertFalse(t.contains("soprano"));
+        assertTrue(canvas.calls.stream().anyMatch(c -> c.kind().equals("image") && c.w() > 0 && c.w() == c.h()));
         assertTrue(t.contains("GET"));
         assertTrue(t.contains("HELP"));
         assertTrue(t.contains("Open key"));
