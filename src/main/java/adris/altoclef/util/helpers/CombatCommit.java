@@ -116,6 +116,11 @@ public final class CombatCommit {
     // again for this long: the next qualifying hit in that time is a run out of its range. thirty seconds, then it is a fight again
     public static final long LOBBER_GIVE_UP_TICKS = 600;
 
+    // a lobber counts as landing hits for the next-target pick when its last one is this fresh. the witch throws about every three
+    // seconds (60 tick attack interval) and half the throws miss, so FRESH (5 ticks) would almost never be true at the moment a
+    // target dies
+    public static final long LOBBER_PICK_TICKS = 100;
+
     // the tracker only lists hostiles closer than this, and it is how far a sniper can be and still pin us down
     public static final double FOE_RANGE = 16;
     // standing still while a shooter lands two arrows this close together is "really needed": the aim is never spoiled, so
@@ -580,6 +585,9 @@ public final class CombatCommit {
     // this fight is with a ranged foe we chose to go and get (a lobber, or a pinning sniper): a stall or a lost track means we
     // could not get to it, and that is remembered
     private boolean atRange;
+    // this fight is on a lobber we picked because it was landing hits when the last target died (lobberNext): only the hard floor
+    // and the danger rules leave it, see fight
+    private boolean lobberPick;
     // this fight got into contact with its target at some point (a lobber we never touched was out of reach, whatever ended it)
     private boolean contacted;
 
@@ -891,6 +899,13 @@ public final class CombatCommit {
         return Why.NONE;
     }
 
+    // the same tick with one foe gone from the list and no fight target, for asking what the rest of them would say
+    private static Tick withoutFoe(Tick t, int id) {
+        List<Foe> foes = t.foes().stream().filter(foe -> foe.id() != id).toList();
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
+                t.body(), t.boxed(), t.nextHit());
+    }
+
     private static boolean anyDanger(Tick t) {
         if (t.target() != null && t.target().danger(t.guardHealth())) return true;
         for (Foe foe : t.foes()) {
@@ -933,6 +948,13 @@ public final class CombatCommit {
         // there is nowhere to bail to, so a cornered fight never asks
         // a fight we turned around for is out in the open though: the warden or a heavy walking up is still a run
         Why bail = !cornered ? runReason(t, false) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
+        // the witch we picked over the zombies is not walked away from at 11 hp for being a witch (that is how it lobs for a
+        // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
+        // (only the part the witch itself causes: a skeleton landing arrows on us is still the old rule's to judge)
+        if (lobberPick) {
+            if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false);
+            if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
+        }
         if (bail != Why.NONE) {
             // boxed in, a crowd or low hp is no reason to leave: there is no leaving. this fight is the cornered one from here
             if (!t.boxed() || (bail != Why.CROWD && bail != Why.LOW_HP)) return startRun(t, bail, Event.FIGHT_TO_RUN);
@@ -987,6 +1009,9 @@ public final class CombatCommit {
     // once. a melee target that has been out of reach for TAKEOVER_TICKS with such a foe in reach: that foe. anything else stays,
     // the first kill matters most and two foes taking turns must not make us ping-pong
     private Foe takeover(Tick t, Foe target) {
+        // the witch we picked over the zombies stays picked: swapping straight back to the one biting us is the loop this pick
+        // exists to end. boxed in we cannot walk to it anyway, so the swing at what is on us is the old rule's
+        if (lobberPick && !t.boxed()) return null;
         boolean shooter = target.ranged() && !target.creeper();
         if (!shooter && !target.melee()) {
             outReachSince = -1;
@@ -1012,14 +1037,36 @@ public final class CombatCommit {
     // the target died or left the world. if somebody else is already on us, carry straight on (a gap here is a tick of
     // the user task walking with a zombie in our face), otherwise it is over
     private Event targetGone(Tick t) {
-        Foe next = nextTarget(t);
         // (a chased fight stays CHASED, it is the same reason we turned around)
         Why boxed = why == Why.CHASED ? Why.CHASED : Why.CORNERED;
+        Foe lobber = lobberNext(t);
+        if (lobber != null) {
+            Event event = startFight(t, lobber, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
+            lobberPick = true;
+            return event;
+        }
+        Foe next = nextTarget(t);
         if (next != null) return startFight(t, next, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
         // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
         // leave: a gap and a five second cooldown next to it is not a plan
         if (cornered && anyDanger(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
         return end(t, Event.FIGHT_DEAD);
+    }
+
+    // a lobber that has been landing hits on us just now, from where it can see us, when the last target dies: it is the next one, ahead
+    // of whatever zombie is nearest. the old order (nearest in reach first, a run for anything lobbing at low hp after) left us
+    // trading blows with zombies at 11 hp while it threw from 10 blocks away. only at this moment: a live target is never dropped
+    // for it. at or under the hp line it is not a fight to pick (the low hp run has it), and not bare handed
+    private Foe lobberNext(Tick t) {
+        // (boxed in there is no walking to it, the heavy hitter or the warden is a run and not a pick, see targetGone)
+        if (!t.armed() || t.health() <= FLEE_HP || t.boxed() || anyDanger(t)) return null;
+        Foe best = null;
+        for (Foe foe : t.foes()) {
+            if (foe.id() == targetId || foe.kind() != Kind.LOBBER || foe.sinceHit() > LOBBER_PICK_TICKS || !foe.sight() || foe.distance() > LOBBER_RANGE) continue;
+            if (gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     private Foe nextTarget(Tick t) {
@@ -1051,6 +1098,7 @@ public final class CombatCommit {
             boxCorner = false;
         }
         contacted = false;
+        lobberPick = false;
         atRange = foe.kind() == Kind.LOBBER || reason == Why.PINNED;
         mode = Mode.FIGHT;
         why = reason;
