@@ -127,13 +127,15 @@ public class LavaExitTest {
 
     @Test
     public void aTwoDeepPoolNearTheBottomStillSeesTheBank() {
-        // pool two deep (62, 63) on a floor, a bank at its top level: from the bottom cell the bank is a hop
+        // pool two deep (62, 63) on a floor, a bank at its top level
         LavaWorld w = LavaWorld.flat(61).fill(0, 62, -5, 12, 63, 25, LAVA)
-                .fill(-1, 62, -5, -1, 63, 25, STONE);
+                .fill(-5, 62, -5, -1, 63, 25, STONE);
         LavaExit.Cell exit = nearest(0, 62, 10, w);
         assertNotNull(exit);
         assertEquals(-1, exit.x());
         assertEquals(64, exit.y());
-        assertTrue(LavaExit.withinHop(exit, 0, 62, 10));
+        // two up from the floor cell is not a jump yet, a cell higher in the pool it is
+        assertFalse(LavaExit.withinHop(exit, 0, 62, 10));
+        assertTrue(LavaExit.withinHop(nearest(0, 63, 10, w), 0, 63, 10));
     }
 }
