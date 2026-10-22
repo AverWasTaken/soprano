@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.movement.GetDownColumnTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.NightShelter;
 import adris.altoclef.tasksystem.Task;
@@ -60,6 +61,7 @@ public class ShelterTask extends Task {
     private Stage stage = Stage.WALK;
     private long stageSince = Long.MIN_VALUE;
     private boolean gaveUp;
+    private int bounces;
     private long sealedAt;
     private long waitCap;
     private int confirmed;
@@ -80,6 +82,10 @@ public class ShelterTask extends Task {
         this.night = night;
     }
 
+    public BlockPos top() {
+        return top;
+    }
+
     public boolean gaveUp() {
         return gaveUp;
     }
@@ -93,6 +99,11 @@ public class ShelterTask extends Task {
 
     // the standing cell of the first column near us that makes a good hole, null = nowhere to hide
     public static BlockPos pick(AltoClef mod) {
+        return pick(mod, null);
+    }
+
+    // skip = a spot that already failed tonight, the retry wants a different hole
+    public static BlockPos pick(AltoClef mod, BlockPos skip) {
         LocalPlayer player = mod.getPlayer();
         if (player == null || !player.onGround()) {
             return null;
@@ -111,6 +122,9 @@ public class ShelterTask extends Task {
                         continue;
                     }
                     BlockPos spot = feet.offset(dx, 0, dz);
+                    if (spot.equals(skip)) {
+                        continue;
+                    }
                     spots.add(spot);
                     columns.add(look(level, spot, havePick, bag));
                 }
@@ -326,22 +340,18 @@ public class ShelterTask extends Task {
         }
         // knocked or walked out of the column before the first cell was open: start over from the walk
         if (!inColumn(player) && player.blockPosition().getY() >= top.getY()) {
+            // (the attempt's clock keeps running through these, three trips out and back and it is a lost cause)
+            if (NightShelter.bounceOver(++bounces)) {
+                fail(mod, now);
+                return null;
+            }
             enter(Stage.WALK, now);
             return null;
         }
-        // top to bottom: each one is the block under our feet until we drop into it
-        for (int i = 1; i <= NightShelter.DEPTH; i++) {
-            BlockPos cell = top.below(i);
-            if (!level.getBlockState(cell).canBeReplaced()) {
-                setDebugState("Digging a hole.");
-                return new DestroyBlockTask(cell);
-            }
-        }
-        // all open and we have not landed yet: if the hitbox is still on the edge of the next block, step into the hole
-        if (player.onGround()) {
-            return new GetToBlockTask(top.below(NightShelter.DEPTH));
-        }
-        return null;
+        // straight down the column: baritone mines the block under our feet and we drop, never a side cell to dig from.
+        // no wander, a failed progress check walking us out of the shaft is the bounce we are avoiding
+        setDebugState("Digging a hole.");
+        return new GetDownColumnTask(top.getX(), top.getZ(), top.getY() - NightShelter.DEPTH, false);
     }
 
     private Task cap(AltoClef mod, LocalPlayer player, Level level, long inStage, long now) {

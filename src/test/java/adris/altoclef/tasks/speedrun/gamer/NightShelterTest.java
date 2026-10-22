@@ -140,6 +140,36 @@ public class NightShelterTest {
     }
 
     @Test
+    public void aGivenUpNightGetsOneRetryThenIsSpent() {
+        NightShelter.Once once = new NightShelter.Once();
+        once.mark(3);
+        assertTrue(once.used(3));
+        assertTrue(once.reopen(3));
+        assertFalse(once.used(3));
+        once.mark(3);
+        assertTrue(once.used(3));
+        assertFalse(once.reopen(3));
+        assertTrue(once.used(3));
+        assertFalse(once.used(4));
+    }
+
+    @Test
+    public void aNightThatWasNeverTriedCannotBeReopened() {
+        NightShelter.Once once = new NightShelter.Once();
+        assertFalse(once.reopen(3));
+        once.mark(3);
+        assertFalse(once.reopen(4));
+        assertTrue(once.used(3));
+    }
+
+    @Test
+    public void threeBouncesLoseTheAttempt() {
+        assertFalse(NightShelter.bounceOver(0));
+        assertFalse(NightShelter.bounceOver(NightShelter.MAX_BOUNCES - 1));
+        assertTrue(NightShelter.bounceOver(NightShelter.MAX_BOUNCES));
+    }
+
+    @Test
     public void theBedTripsBudgetIsNotTouched() {
         NightSleep.Budget budget = new NightSleep.Budget();
         budget.roll(5);
