@@ -45,6 +45,8 @@ public class NetherRecoverTask extends Task {
     // how far the portal was when the walk last made real headway, and when. MIN_VALUE = not set for this stage yet
     private double portalMark;
     private long portalMarkTick = Long.MIN_VALUE;
+    // last tick the mark was asked about: a fight or a meal that held the wheel is not time the walk spent not getting closer
+    private long portalSeenTick;
     private Task toPile;
     private RecoverItemsTask pile;
     private Task home;
@@ -147,7 +149,9 @@ public class NetherRecoverTask extends Task {
             return 0;
         }
         double dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(new BlockPos(home.x, home.y, home.z)));
-        if (portalMarkTick == Long.MIN_VALUE || NetherTripRules.closedIn(portalMark, dist)) {
+        boolean away = NetherTripRules.markStale(portalSeenTick, now);
+        portalSeenTick = now;
+        if (portalMarkTick == Long.MIN_VALUE || away || NetherTripRules.closedIn(portalMark, dist)) {
             portalMark = dist;
             portalMarkTick = now;
         }

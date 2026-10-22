@@ -352,6 +352,13 @@ public class NetherTripRulesTest {
     }
 
     @Test
+    public void aFightThatHeldTheWheelRestartsTheNoProgressClock() {
+        assertFalse(NetherTripRules.markStale(1000, 1001));
+        assertFalse(NetherTripRules.markStale(1000, 1040));
+        assertTrue(NetherTripRules.markStale(1000, 1041));
+    }
+
+    @Test
     public void aPortalWalkThatStopsClosingGivesUpAfterAMinute() {
         long minute = NetherTripRules.PORTAL_PROGRESS_SECONDS * 20L;
         assertEquals(Stage.PORTAL, NetherTripRules.next(walking(2000, minute)).stage());

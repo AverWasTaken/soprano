@@ -122,6 +122,11 @@ public final class NetherTripRules {
         return arrivedTick <= 0 ? 0 : now - arrivedTick;
     }
 
+    // the walk was not ticking for a while (combat or food had the wheel): start the no progress clock over
+    public static boolean markStale(long lastSeenTick, long now) {
+        return now - lastSeenTick > 40;
+    }
+
     // the portal walk got far enough in since the mark to count as moving
     public static boolean closedIn(double markDistance, double distance) {
         return markDistance - distance >= PORTAL_PROGRESS_BLOCKS;
