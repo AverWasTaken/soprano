@@ -1253,7 +1253,8 @@ public class GamerTask extends Task {
     }
 
     private boolean nightFighting(AltoClef mod) {
-        return mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
+        // (healing up counts: the trip's low health line is 8, the hold runs up to 14, and the hold outbids the trip's walk anyway)
+        return mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE || mod.getMobDefenseChain().isRecovering();
     }
 
     // (NightBeds has the reasoning, the schematic build asks the same two questions)

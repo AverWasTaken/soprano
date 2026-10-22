@@ -168,7 +168,8 @@ public final class BuildNightSleep {
         boolean windowOpen = !mod.getWorld().isBrightOutside();
         long now = mod.getWorld().getGameTime();
         NightSleep.Busy busy = busy(away, prep.running(), screenSince < 0 ? -1 : now - screenSince);
-        boolean fighting = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
+        // (healing up counts, same as GamerTask.nightFighting)
+        boolean fighting = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE || mod.getMobDefenseChain().isRecovering();
         boolean hurt = NightSleep.shouldAbandon(mod.getPlayer().getHealth());
         boolean spent = budget.spent(cfg.nightAttempts, cfg.nightSeconds);
         NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, windowOpen, busy != NightSleep.Busy.NONE, fighting, hurt, spent,

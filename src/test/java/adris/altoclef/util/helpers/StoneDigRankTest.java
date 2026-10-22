@@ -225,6 +225,28 @@ public class StoneDigRankTest {
     }
 
     @Test
+    public void neighboursUnderUsDoNotTradePlacesAsOurFeetCrossTheLine() {
+        // two buried stones side by side six under us, feet a hair either side of the line between their columns
+        int x = -12, y = 61;
+        double fx = x + 0.5, fy = 67;
+        for (double fz : new double[]{-6.01, -5.99}) {
+            double six = StoneDigRank.score(fx, fy, fz, x, y, -6, false, 0);
+            double seven = StoneDigRank.score(fx, fy, fz, x, y, -7, false, 0);
+            // with the standing-on part in, whichever we are over loses by a mile, so each step was a switch
+            assertTrue(StoneDigRank.switches(Math.max(six, seven), Math.min(six, seven)));
+            // the switch call goes without it, and then neither is worth giving the other up for
+            double sixSwitch = six - StoneDigRank.standingOnPart(fx, fy, fz, x, y, -6);
+            double sevenSwitch = seven - StoneDigRank.standingOnPart(fx, fy, fz, x, y, -7);
+            assertFalse(StoneDigRank.switches(sixSwitch, sevenSwitch));
+            assertFalse(StoneDigRank.switches(sevenSwitch, sixSwitch));
+        }
+        // and it is the same test score uses: nothing off for a stone beside us or above our feet
+        assertEquals(0, StoneDigRank.standingOnPart(fx, fy, -6.01, x + 1, y, -7), 1e-9);
+        assertEquals(0, StoneDigRank.standingOnPart(fx, fy, -6.01, x, 67, -7), 1e-9);
+        assertEquals(StoneDigRank.STANDING_ON, StoneDigRank.standingOnPart(fx, fy, -6.01, x, y, -7), 1e-9);
+    }
+
+    @Test
     public void bandIsTheFloorAndTheCellAboveIt() {
         assertTrue(StoneDigRank.inBand(FLOOR, FLOOR));
         assertTrue(StoneDigRank.inBand(FLOOR + 1, FLOOR));

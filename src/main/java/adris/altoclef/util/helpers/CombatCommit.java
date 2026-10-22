@@ -275,8 +275,14 @@ public final class CombatCommit {
     // anchored: we have not been anywhere else for a while (AnchorWatch). false by default, so the walking premise holds for
     // everything that does not say so
     // creeperRepeat: CreeperStep just started a step on a creeper that came back (CreeperStep.escalate), idle makes it a run
+    // body: hunger, food and whether a heal-up hold is allowed at all (RecoverHold). NONE by default, which never holds
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored, boolean creeperRepeat) {
+                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean anchored, boolean creeperRepeat) {
+            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, RecoverHold.Body.NONE);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
                     boolean anchored) {
             this(now, health, x, z, foes, target, way, armed, trying, anchored, false);
@@ -385,11 +391,18 @@ public final class CombatCommit {
 
     public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
                                             Bite bite) {
-        boolean fighting = fighting(mode, health, nearest, creeperClose, bite);
+        return stance(mode, health, nearest, creeperClose, gapple, bite, false);
+    }
+
+    // recovering: the heal-up hold is on (RecoverHold). with nothing committed it eats by the run's bite lines, not the calm
+    // ones: we are standing about hurt with whatever we ran from somewhere out there
+    public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
+                                            Bite bite, boolean recovering) {
+        boolean fighting = fighting(mode, recovering, health, nearest, creeperClose, bite);
         // chewing a gapple counts as "biting" too, and the abort line is 5: without this the gapple that a hurt run wants at
         // 5 to 10 blocks would be dropped on the next tick and picked up on the one after, forever
         if (!fighting && gapple && mode == Mode.RUN && bite.biting() && health <= FLEE_HP) {
-            fighting = fighting(mode, health, nearest, creeperClose, new Bite(bite.shotAt(), bite.nearestFast(), false));
+            fighting = fighting(mode, recovering, health, nearest, creeperClose, new Bite(bite.shotAt(), bite.nearestFast(), false));
         }
         if (!fighting) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple);
@@ -398,22 +411,34 @@ public final class CombatCommit {
         return stance;
     }
 
-    private static boolean fighting(Mode mode, float health, double nearest, boolean creeperClose, Bite bite) {
+    private static boolean fighting(Mode mode, boolean recovering, float health, double nearest, boolean creeperClose, Bite bite) {
         return switch (mode) {
             case FIGHT -> true;
-            case RUN -> bite.biting() ? nearest < CombatRules.RUN_BITE_ABORT
-                    : bite.shotAt() || nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST;
-            default -> creeperClose || (health <= FLEE_HP && nearest <= LOW_HP_RANGE);
+            case RUN -> runBiteBlocked(nearest, bite);
+            default -> creeperClose || (health <= FLEE_HP && nearest <= LOW_HP_RANGE) || (recovering && runBiteBlocked(nearest, bite));
         };
+    }
+
+    private static boolean runBiteBlocked(double nearest, Bite bite) {
+        return bite.biting() ? nearest < CombatRules.RUN_BITE_ABORT
+                : bite.shotAt() || nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST;
     }
 
     // why the stance is what it is, for the log line that says so when it changes (and so why a hurt bot is not eating).
     // only ever built when a line is going out
     public static String stanceWhy(Mode mode, float health, double nearest, boolean creeperClose, Bite bite) {
+        return stanceWhy(mode, health, nearest, creeperClose, bite, false);
+    }
+
+    public static String stanceWhy(Mode mode, float health, double nearest, boolean creeperClose, Bite bite, boolean recovering) {
         String near = Double.isInfinite(nearest) ? "nothing angry in sight" : "nearest " + Math.round(nearest) + " blocks";
-        if (!fighting(mode, health, nearest, creeperClose, bite)) {
+        boolean holding = recovering && mode == Mode.NONE;
+        if (!fighting(mode, recovering, health, nearest, creeperClose, bite)) {
+            if (holding) return "recovering, " + near + ", free to eat";
             return mode == Mode.RUN ? "running, " + near + ", free to eat" : "calm, " + near;
         }
+        // (the lit creeper and the low hp line say their own thing, the rest is the run's bite lines)
+        if (holding && !creeperClose && !(health <= FLEE_HP && nearest <= LOW_HP_RANGE)) return "recovering, " + near + ", too close to eat";
         return switch (mode) {
             case FIGHT -> "fighting, no meals mid fight";
             case RUN -> bite.biting() ? "running, " + near + ", too close to keep chewing"
@@ -488,6 +513,9 @@ public final class CombatCommit {
     // mobs we gave up on, and when. they get another go when they hit us again
     private final Map<Integer, Long> ignored = new HashMap<>();
 
+    // heal up before going back in: on after a commitment that ended hurt. not a mode, nothing is committed while it holds
+    private final RecoverHold recover = new RecoverHold();
+
     public Mode mode() {
         return mode;
     }
@@ -533,6 +561,15 @@ public final class CombatCommit {
         return ignored.containsKey(id);
     }
 
+    // the heal-up hold is on. it outlives a re-run: a run that started from the hold comes back to it
+    public boolean recovering() {
+        return recover.on();
+    }
+
+    public RecoverHold recoverHold() {
+        return recover;
+    }
+
     public void reset() {
         mode = Mode.NONE;
         why = Why.NONE;
@@ -556,6 +593,7 @@ public final class CombatCommit {
         lobberGaveUpAt = Long.MIN_VALUE / 2;
         sniperGaveUpAt = Long.MIN_VALUE / 2;
         atRange = false;
+        recover.reset();
     }
 
     // a ranged foe that hit us when we already failed to reach one of its kind lately: running is the answer, a second fight
@@ -579,6 +617,7 @@ public final class CombatCommit {
         if (lastTick != Long.MIN_VALUE && t.now() < lastTick) reset();
         lastTick = t.now();
         endedFirst = Event.NONE;
+        recover.update(t.now(), t.health(), mode != Mode.NONE, t.body());
         Mode before = mode;
         int oldTarget = targetId;
         Event event = switch (before) {
@@ -601,7 +640,8 @@ public final class CombatCommit {
     private static Tick afterEnd(Tick t, int oldTarget) {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat());
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
+                t.body());
     }
 
     // ---- NONE
@@ -616,6 +656,12 @@ public final class CombatCommit {
         // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. idle only, a
         // committed fight is till dead and the step just steps again for it
         if (t.creeperRepeat()) return startRun(t, Why.REPEAT_CREEPER, Event.RUN_START);
+        // healing up: whatever comes back near is a run again, before it is a fight and whatever the cooldown says. we are
+        // standing here because we are hurt, and trading blows at 10 hp is how the last run started
+        if (recover.on()) {
+            Why again = rerun(t);
+            if (again != Why.NONE) return startRun(t, again, Event.RUN_START);
+        }
         // the fight is only for one we have not given up on, or one that has hit us since. with nothing in hand better than a
         // fist it is a run instead: a punch is not a fight, and the cornered rules still turn us round when a run goes nowhere
         Foe hit = hitInContact(candidates(t), cooling);
@@ -637,6 +683,19 @@ public final class CombatCommit {
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         if (way == null || !t.armed()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
+    }
+
+    // the low hp rule's foes, minus the ones we gave up on: anything within RERUN_RANGE, or a shooter with a line that just hit us
+    private Why rerun(Tick t) {
+        boolean near = false;
+        boolean shot = false;
+        for (Foe foe : candidates(t)) {
+            if (gaveUpOn(foe, t.now())) continue;
+            if (foe.distance() <= RecoverHold.RERUN_RANGE) near = true;
+            if (foe.shooting() && foe.fresh()) shot = true;
+        }
+        if (near) return Why.LOW_HP;
+        return shot ? Why.SHOT : Why.NONE;
     }
 
     // the walking premise is why a shooter past contact is scenery: a moving target is a bad target and the task is on its way
@@ -1066,6 +1125,8 @@ public final class CombatCommit {
     // ---- the end of anything
 
     private Event end(Tick t, Event event) {
+        // (mode is still the one that is ending)
+        recover.ended(t.now(), mode, t.health(), t.body());
         mode = Mode.NONE;
         why = Why.NONE;
         targetId = -1;

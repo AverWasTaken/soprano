@@ -70,11 +70,14 @@ final class TorchGate {
     // the winning chain has to be the user's, every survival chain (mob defense, mlg, world survival, food) winning means
     // the bot has something better to do. except mob defense at 0 or below: that's its idle offer, and with the runner
     // going and no user task it wins the wheel at 0 since nobody bids higher. it isn't fighting anything, survivalQuiet
-    // already checked that. null is the runner not having picked anything yet
+    // already checked that. null is the runner not having picked anything yet. the heal-up hold is quiet too: it stands still
+    // and waits, usually in the dark cave it ran out of, which is exactly where a torch is worth it (only the stand still
+    // itself: a re-run or a creeper step in the middle of the hold has the wheel for something else)
     private static boolean chainQuiet(AltoClef ac) {
         TaskRunner runner = ac.getTaskRunner();
         TaskChain chain = runner.getCurrentTaskChain();
-        if (chain == null || (chain == ac.getMobDefenseChain() && runner.winnerPriority() <= 0)) {
+        MobDefenseChain defense = ac.getMobDefenseChain();
+        if (chain == null || (chain == defense && (runner.winnerPriority() <= 0 || defense.isHealingUp()))) {
             return true;
         }
         if (chain != ac.getUserTaskChain()) {

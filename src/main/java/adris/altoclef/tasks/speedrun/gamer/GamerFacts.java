@@ -162,12 +162,13 @@ public interface GamerFacts {
         return false;
     }
 
-    // altoEarlyIronPick: make the iron pickaxe from the first three raw iron (EarlyIronPick). a setting, so the real facts read it
+    // altoEarlyIronPick: make the pick, chestplate, shield and shears from the first ore (EarlyIronPick). a setting, so the real
+    // facts read it
     default boolean earlyIronPick() {
         return true;
     }
 
-    // the first three raw iron started into a furnace and the job is not recorded yet (FurnacePlan.earlyLoadInFlight). the bag no
+    // the early batch's raw iron started into a furnace and the job is not recorded yet (FurnacePlan.earlyLoadInFlight). the bag no
     // longer shows the ore by then, this is what keeps the early need alive until it is lit
     default boolean earlyLoadInFlight() {
         return false;

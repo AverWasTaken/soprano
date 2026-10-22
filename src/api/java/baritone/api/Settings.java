@@ -2512,10 +2512,11 @@ public final class Settings {
     public final Setting<Boolean> altoAsyncCooking = new Setting<>(true);
 
     /**
-     * #gamer's iron phase makes its iron pickaxe as soon as it holds three raw iron instead of mining the whole kit's
-     * worth with a stone one: those three are smelted where the bot stands, it keeps mining nearby while they cook, then
-     * comes back and crafts the pickaxe. needs {@link #altoAsyncSmelting} for the "mine while it cooks" part, without it
-     * the three are smelted standing at the furnace and the pickaxe is crafted right after.
+     * #gamer's iron phase makes its iron pickaxe, iron chestplate, shield and shears (whichever the kit still owes, 14 raw
+     * iron for all four) as soon as it holds the ore for them, instead of mining the whole kit's worth first with a stone
+     * pick and no armor: that ore is smelted where the bot stands, it keeps mining nearby while it cooks, then comes back
+     * and crafts them. it fires again if a death loses any of them. needs {@link #altoAsyncSmelting} for the "mine while it
+     * cooks" part, without it the ore is smelted standing at the furnace and the crafts come right after.
      */
     public final Setting<Boolean> altoEarlyIronPick = new Setting<>(true);
 

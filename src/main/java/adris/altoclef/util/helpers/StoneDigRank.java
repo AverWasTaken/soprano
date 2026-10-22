@@ -84,6 +84,13 @@ public final class StoneDigRank {
         return (int) Math.floor(fromX) == bx && (int) Math.floor(fromZ) == bz;
     }
 
+    // the STANDING_ON that score and tunnelScore put on this block from here, same test both use. the switch call takes it
+    // back out: it flips the moment our feet step into the next column, which is exactly what chasing a stone under us does
+    public static double standingOnPart(double fromX, double fromY, double fromZ, int bx, int by, int bz) {
+        int feet = (int) Math.floor(fromY + 0.01);
+        return by < feet && underFeet(fromX, fromZ, bx, bz) ? STANDING_ON : 0;
+    }
+
     // the stone line under the dirt is made of these. no cobble: that one is ours (pillars, scaffolding) or a dungeon
     private static final Set<Block> STONE_LINE = Set.of(Blocks.STONE, Blocks.DEEPSLATE, Blocks.ANDESITE, Blocks.DIORITE,
             Blocks.GRANITE, Blocks.TUFF);

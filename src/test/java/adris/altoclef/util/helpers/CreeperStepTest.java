@@ -168,6 +168,20 @@ public class CreeperStepTest {
         assertFalse(step.escalate());
     }
 
+    // healing up (RecoverHold) is nothing committed, but a hurt bot standing still for a pop is not the plan: the defuse
+    @Test
+    public void noBaitWhileHealingUp() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.START, step.step(0, lit(7, 3), false, CombatCommit.Mode.NONE, true, true));
+        assertFalse(step.baiting());
+        // and one that started baiting drops it once the hold comes on
+        CreeperStep other = new CreeperStep();
+        other.step(0, lit(7, 3), false, CombatCommit.Mode.NONE, true, false);
+        assertTrue(other.baiting());
+        other.step(1, lit(7, 3), false, CombatCommit.Mode.NONE, true, true);
+        assertFalse(other.baiting());
+    }
+
     // standing at 6.5 while it swells, it loses its line for a moment (unlit, still charged), lights again, then pops
     @Test
     public void theBaitHoldsThroughLitUnlitAndLitAgainUntilItPops() {
