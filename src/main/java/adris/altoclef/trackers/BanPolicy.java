@@ -20,6 +20,9 @@ public final class BanPolicy {
     // a tree we stalled on twice (MineAndCollectTask). five minutes like the block strikes, so the canopy is not back before
     // the trees around it are used up
     public static final long TREE_GAVE_UP = 6000;
+    // a liquid pool we missed twice (CollectBucketLiquidTask). five minutes like a tree, so the pool is not back before the
+    // other pools around have had their turn
+    public static final long BUCKET_POOL_GAVE_UP = 6000;
     // a drop we waited on and never got (DropPatience, a death pile, one stuck in water). items despawn at 5 minutes,
     // so this is "for as long as it exists" without keeping dead ids forever
     public static final long DROP_GAVE_UP = 6000;
@@ -121,6 +124,12 @@ public final class BanPolicy {
     // the same canopy came back every minute otherwise. one line for the lot like the outpost does
     public static int treeGaveUp(Bans bans, Iterable<Key> logs, int x, int y, int z) {
         return bans.banAll(logs, "tree stalled twice", TREE_GAVE_UP, "logs of the tree near " + x + " " + y + " " + z);
+    }
+
+    // CollectBucketLiquidTask got nowhere near two sources of one pool: every source of it is out. the per source strike
+    // needs five on one column and the next pick is always the column next door, so it never landed. one line for the lot
+    public static int bucketPoolGaveUp(Bans bans, Iterable<Key> sources, int x, int y, int z) {
+        return bans.banAll(sources, "missed the pool twice", BUCKET_POOL_GAVE_UP, "sources of the pool near " + x + " " + y + " " + z);
     }
 
     // CollectBucketLiquidTask could not break the block over a source

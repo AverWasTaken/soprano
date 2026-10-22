@@ -58,6 +58,20 @@ public class BanPolicyTest {
     }
 
     @Test
+    public void aGivenUpPoolIsOutForFiveMinutesInOneLine() {
+        bans.tick(0);
+        List<Key> sources = List.of(Key.block(Dimension.OVERWORLD, 5, 20, 5), Key.block(Dimension.OVERWORLD, 6, 20, 5));
+        assertEquals(2, BanPolicy.bucketPoolGaveUp(bans, sources, 5, 20, 5));
+        assertEquals("one line for the whole pool", 1, lines.size());
+        bans.tick(BanPolicy.BUCKET_POOL_GAVE_UP - 1);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 5, 20, 5));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 6, 20, 5));
+        bans.tick(BanPolicy.BUCKET_POOL_GAVE_UP);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 5, 20, 5));
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 6, 20, 5));
+    }
+
+    @Test
     public void theEntityRuleTakesFourMissesAndAHitEndsIt() {
         for (int i = 0; i < 3; i++) {
             assertFalse(BanPolicy.entityStrike(bans, 9, 3, 25, "couldn't reach cow"));

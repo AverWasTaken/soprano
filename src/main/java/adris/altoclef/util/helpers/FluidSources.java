@@ -1,9 +1,12 @@
 package adris.altoclef.util.helpers;
 
+import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.material.Fluid;
@@ -56,6 +59,30 @@ public final class FluidSources {
             pos = feeder;
         }
         return Optional.empty();
+    }
+
+    // how much of a pool flood looks at. a lake is a few hundred cells, an ocean is not something to ban one cell at a time
+    public static final int FLOOD_CAP = 1024;
+
+    // every cell 6-way connected to start that inPool says yes to, start included, at most cap of them. same idea as
+    // ConstructNetherPortalBucketTask.lakeSize, except it hands the cells back and the caller says what counts as the pool
+    // (flowing cells between two patches of sources make them one pool, baritone sees it that way too). breadth first so a
+    // capped flood is the part nearest start, not one long tendril
+    public static Set<BlockPos> flood(Predicate<BlockPos> inPool, BlockPos start, int cap) {
+        Set<BlockPos> pool = new LinkedHashSet<>();
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> todo = new ArrayDeque<>();
+        todo.add(start.immutable());
+        while (!todo.isEmpty() && pool.size() < cap) {
+            BlockPos pos = todo.poll();
+            if (!seen.add(pos) || !inPool.test(pos)) continue;
+            pool.add(pos);
+            for (Direction side : Direction.values()) {
+                BlockPos next = pos.relative(side);
+                if (!seen.contains(next)) todo.add(next);
+            }
+        }
+        return pool;
     }
 
     private static boolean sameFluid(FluidState state, Fluid kind) {

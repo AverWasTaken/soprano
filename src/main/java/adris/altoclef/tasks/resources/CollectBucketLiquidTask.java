@@ -14,6 +14,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskClock;
+import adris.altoclef.trackers.Bans;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -22,14 +23,17 @@ import adris.altoclef.util.helpers.BucketFillRules;
 import adris.altoclef.util.helpers.BucketSourceRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.PoolMisses;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -41,6 +45,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 
 public class CollectBucketLiquidTask extends ResourceTask {
 
@@ -87,6 +93,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private boolean _openOutranks;
     private int _openLookAt = Integer.MIN_VALUE / 2;
     private static final int OPEN_LOOK_TICKS = 20;
+    // the "got nowhere near it" misses, per pool (see missedPool). lives as long as this task instance does
+    private final PoolMisses _poolMisses = new PoolMisses();
 
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
         super(filledBucket, targetCount);
@@ -288,6 +296,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                     // up because if we go below we'll try to move next to the liquid (for lava, not a good move)
                     if (this.thisOrChildAreTimedOut() && !wasWandering) {
                         mod.getBlockTracker().requestBlockUnreachable(blockPos.above());
+                        missedPool(mod, blockPos);
                         wasWandering = true;
                     }
                     return new GetCloseToBlockTask(blockPos.above());
@@ -348,6 +357,32 @@ public class CollectBucketLiquidTask extends ResourceTask {
         }
         Debug.logInternal("bucket: " + LID_GIVE_UP_SECONDS + " s on the block over the " + _liquidName + " at " + source.toShortString() + " and it is still there, giving up on it");
         return true;
+    }
+
+    // the strike above wants five on one column and the next pick is the column next door, so a pool we can't path into
+    // was never banned and we bobbed around on top of it for good. counted per pool instead: the second miss anywhere in
+    // one pool and all of its sources are out (PoolMisses)
+    private void missedPool(AltoClef mod, BlockPos source) {
+        Fluid kind = _toCollect == Blocks.LAVA ? Fluids.LAVA : Fluids.WATER;
+        // fluid type, not block, so flowing cells and waterlogged blocks hold the pool together like they do in the world
+        Set<BlockPos> pool = FluidSources.flood(p -> mod.getWorld().getBlockState(p).getFluidState().getType().isSame(kind), source, FluidSources.FLOOD_CAP);
+        Dimension dim = WorldHelper.getCurrentDimension();
+        // our own liquid blocks only: a waterlogged slab or some kelp in the pool is a source too, and the ban book is everybody's
+        List<BlockPos> sources = _poolMisses.miss(dim, source, pool, p -> {
+            var state = mod.getWorld().getBlockState(p);
+            return state.getBlock() == _toCollect && state.getFluidState().isSource();
+        });
+        if (sources.isEmpty()) {
+            return;
+        }
+        // the source cells themselves: isSource asks unreachable(source) first, and the tracker skips banned cells
+        List<Bans.Key> keys = new ArrayList<>(sources.size());
+        for (BlockPos cell : sources) {
+            keys.add(Bans.Key.block(dim, cell.getX(), cell.getY(), cell.getZ()));
+        }
+        BanPolicy.bucketPoolGaveUp(mod.getBans(), keys, source.getX(), source.getY(), source.getZ());
+        // the open-vs-lid answer may have been this pool
+        _openLookAt = Integer.MIN_VALUE / 2;
     }
 
     // straight line from us to a source, NaN when there isn't one
