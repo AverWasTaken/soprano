@@ -9,6 +9,7 @@ import org.junit.Test;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.Assert.*;
 
@@ -131,5 +132,64 @@ public class FluidSourcesTest {
         world.put(new BlockPos(0, 1, 0), Fluids.LAVA.getSource(false));
         // lava above water is not water above water, so we are at the top of the water and it is a dead end
         assertTrue(climb(new BlockPos(0, 0, 0), 16).isEmpty());
+    }
+
+    // the pool is whatever water there is, flowing or not, the same thing the live caller asks
+    private Set<BlockPos> flood(BlockPos start, int cap) {
+        return FluidSources.flood(p -> at(p).getType().isSame(Fluids.WATER), start, cap);
+    }
+
+    @Test
+    public void floodFindsTheWholeConnectedPool() {
+        // a 3x3 slab two deep, plus one dry cell next to it that must stay out
+        for (int x = 0; x < 3; x++) {
+            for (int z = 0; z < 3; z++) {
+                world.put(new BlockPos(x, 10, z), source());
+                world.put(new BlockPos(x, 9, z), source());
+            }
+        }
+        Set<BlockPos> pool = flood(new BlockPos(1, 10, 1), FluidSources.FLOOD_CAP);
+        assertEquals(18, pool.size());
+        assertTrue(pool.contains(new BlockPos(0, 9, 2)));
+        assertFalse(pool.contains(new BlockPos(3, 10, 0)));
+    }
+
+    @Test
+    public void floodStopsAtTheCap() {
+        for (int x = 0; x < 100; x++) {
+            world.put(new BlockPos(x, 0, 0), source());
+        }
+        Set<BlockPos> pool = flood(new BlockPos(0, 0, 0), 10);
+        assertEquals(10, pool.size());
+        // breadth first, so a capped flood is the near end
+        assertTrue(pool.contains(new BlockPos(9, 0, 0)));
+        assertFalse(pool.contains(new BlockPos(10, 0, 0)));
+    }
+
+    @Test
+    public void floodStopsAtAirAndOtherFluids() {
+        world.put(new BlockPos(0, 0, 0), source());
+        world.put(new BlockPos(1, 0, 0), Fluids.LAVA.getSource(false));
+        world.put(new BlockPos(2, 0, 0), source());
+        // (3, 0, 0) is air, (4, 0, 0) is water again
+        world.put(new BlockPos(4, 0, 0), source());
+        assertEquals(Set.of(new BlockPos(0, 0, 0)), flood(new BlockPos(0, 0, 0), FluidSources.FLOOD_CAP));
+        assertEquals(Set.of(new BlockPos(2, 0, 0)), flood(new BlockPos(2, 0, 0), FluidSources.FLOOD_CAP));
+    }
+
+    @Test
+    public void flowingCellsJoinTwoPatchesOfSources() {
+        world.put(new BlockPos(0, 0, 0), source());
+        world.put(new BlockPos(1, 0, 0), flowing(7));
+        world.put(new BlockPos(2, 0, 0), flowing(6));
+        world.put(new BlockPos(3, 0, 0), source());
+        Set<BlockPos> pool = flood(new BlockPos(0, 0, 0), FluidSources.FLOOD_CAP);
+        assertEquals(4, pool.size());
+        assertTrue(pool.contains(new BlockPos(3, 0, 0)));
+    }
+
+    @Test
+    public void floodFromOutsideTheFluidIsEmpty() {
+        assertTrue(flood(new BlockPos(0, 0, 0), FluidSources.FLOOD_CAP).isEmpty());
     }
 }
