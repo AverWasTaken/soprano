@@ -32,10 +32,12 @@ final class LavaKnockGuard {
     private int _armedFor;
 
     // forget everything, the world is gone
-    void reset() {
+    void reset(AltoClef mod) {
+        // (the forced keys outlive the world, they have to come up here)
+        if (mod.getClientBaritone() != null) release(mod);
+        Arrays.fill(_held, false);
         _armed = false;
         _lastHurt = 0;
-        Arrays.fill(_held, false);
     }
 
     void tick(AltoClef mod, CombatBrain brain) {
@@ -98,6 +100,15 @@ final class LavaKnockGuard {
         if (!keys.any()) {
             release(mod);
             return;
+        }
+        // a task that presses its own movement keys (no path, but not idle either) keeps them, we only lean when nobody else is
+        // driving
+        for (int i = 0; i < KEYS.length; i++) {
+            if (!_held[i] && (mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(KEYS[i])
+                    || mod.getInputControls().isHeldDown(KEYS[i]))) {
+                release(mod);
+                return;
+            }
         }
         boolean[] want = {keys.forward(), keys.back(), keys.left(), keys.right()};
         for (int i = 0; i < KEYS.length; i++) {

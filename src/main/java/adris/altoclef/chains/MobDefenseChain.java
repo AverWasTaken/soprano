@@ -235,7 +235,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private float computePriority(AltoClef mod) {
         if (!AltoClef.inGame()) {
-            _lavaGuard.reset();
+            _lavaGuard.reset(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
