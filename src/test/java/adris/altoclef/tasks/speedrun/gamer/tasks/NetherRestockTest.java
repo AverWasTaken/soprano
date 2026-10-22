@@ -75,6 +75,10 @@ public class NetherRestockTest {
         assertFalse(NetherRestock.inRestockBand(o, new BlockPos(133, 70, 100)));
         assertTrue(NetherRestock.inRestockBand(o, new BlockPos(101, 70, 100)));
         assertTrue(NetherRestock.inRestockBand(o, new BlockPos(132, 90, 100)));
+        // the floor layer away from where we stood is a ditch, fine. right next to it, or two down, is how a shaft starts
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(102, 69, 100)));
+        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(101, 69, 100)));
+        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(105, 68, 100)));
     }
 
     @Test
