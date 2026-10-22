@@ -2264,8 +2264,11 @@ public final class Settings {
     public final Setting<Boolean> altoAvoidOceanBlocks = new Setting<>(true);
 
     /**
-     * How close we must be to attack or interact with an entity. 6 works in singleplayer, 4 works better on servers
-     * that are picky about it. See {@link #blockReachDistance} for blocks.
+     * How close we must be to attack or interact with an entity. See {@link #blockReachDistance} for blocks.
+     * <p>
+     * Melee swings are aimed and never reach further than the player's own entity interaction range (3 for a normal
+     * player), so for fighting this can only make the reach shorter. Trading, shearing and other interactions still use
+     * it as is.
      */
     public final Setting<Float> altoEntityReachRange = new Setting<>(4f);
 

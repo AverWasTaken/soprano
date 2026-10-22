@@ -11,6 +11,8 @@ import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
+import baritone.behavior.CombatAim;
+import net.minecraft.world.item.Item;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -82,16 +84,63 @@ public class PlayerExtraController {
         return _swings;
     }
 
+    // the game tick of the last swing that went out. the kill task and the aura both swing in the same tick sometimes, and
+    // two attack packets in one tick is a thing no hand does
+    private long _lastSwingTick = Long.MIN_VALUE;
+
     public boolean attack(Entity entity) {
-        if (inKillReach(entity)) {
-            // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
-            _mod.getEntityTracker().noteProvoked(entity);
-            _mod.getController().attack(_mod.getPlayer(), entity);
-            _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
-            _swings++;
-            return true;
+        long now = gameTime();
+        if (now == _lastSwingTick || !canSwingAt(entity)) {
+            return false;
         }
-        return false;
+        _lastSwingTick = now;
+        // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
+        _mod.getEntityTracker().noteProvoked(entity);
+        _mod.getController().attack(_mod.getPlayer(), entity);
+        _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+        _swings++;
+        return true;
+    }
+
+    // a mob only gets hit when the crosshair the server knows about is on it (CombatAim.onTarget). crystals and ghast balls
+    // keep the old reach-only rule: nobody aims at those, the dragon fight and the fireball swat never did, and the server
+    // doesn't care either way
+    private boolean canSwingAt(Entity entity) {
+        if (!(entity instanceof LivingEntity)) {
+            return inRange(entity) || reachGap(_mod.getPlayer(), entity) <= Baritone.settings().altoEntityReachRange.value;
+        }
+        return onTarget(entity);
+    }
+
+    public boolean onTarget(Entity entity) {
+        return combat().onTarget(entity, swingReach());
+    }
+
+    // ask for the head this tick (see CombatAim). every melee caller does this every tick it is fighting something, not only
+    // on the tick it swings, or the aim only starts turning when the swing is already due
+    public void aimAt(Entity entity, CombatAim.Priority priority) {
+        handSettling(_mod.getPlayer());
+        combat().want(entity, priority);
+    }
+
+    public void aimAt(Entity entity, CombatAim.Priority priority, Vec3 preferred) {
+        handSettling(_mod.getPlayer());
+        combat().want(entity, priority, preferred);
+    }
+
+    // the kill task's stall breaker, see CombatAim.wantOverPath
+    public void aimAtOverPath(Entity entity) {
+        handSettling(_mod.getPlayer());
+        combat().wantOverPath(entity, CombatAim.Priority.KILL_TASK);
+    }
+
+    private CombatAim combat() {
+        return _mod.getClientBaritone().getLookBehavior().combat();
+    }
+
+    // the reach a swing really has, see ReachRules.swingReach
+    public double swingReach() {
+        return ReachRules.swingReach(Baritone.settings().altoEntityReachRange.value, reachOf(_mod.getPlayer()));
     }
 
     // the stall breaker for a kill task that has stood in reach for too long: no hop, no ground check, no look at the keys,
@@ -279,11 +328,11 @@ public class PlayerExtraController {
         return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // the kill tasks' idea of "close enough to hit": the feet line the setting has always meant, or the eye to the nearest point
-    // of its box inside the same number. never less than the feet line, only adds the cells it misjudges (our own cell, straight
-    // above and below, a wide box)
+    // the kill tasks' idea of "close enough to hit": the eye to its box inside the swing's own reach, minus the bit the ray
+    // to the middle of the mob is longer than the shortest gap (ReachRules.killReach)
     public boolean inKillReach(Entity entity) {
-        return ReachRules.killReach(inRange(entity), reachGap(_mod.getPlayer(), entity), Baritone.settings().altoEntityReachRange.value);
+        return ReachRules.killReach(reachGap(_mod.getPlayer(), entity), Baritone.settings().altoEntityReachRange.value,
+                reachOf(_mod.getPlayer()));
     }
 
     // how fast the target is going away from us along the flat line between us, blocks per tick (negative when it is
