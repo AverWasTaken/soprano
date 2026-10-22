@@ -42,7 +42,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.BoatItem;
-import net.minecraft.world.item.component.SwingAnimation;
+import baritone.behavior.LegacyCombat;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -1113,8 +1113,7 @@ public final class BoatTrip implements Helper {
         // punching the boat from inside it: the server adds a flat 10 damage a hit regardless of the swing
         // and breaks it past 40, so five hits. spaced out a bit so it doesn't look like an autoclicker
         if (ticksInPhase % 4 == 1) {
-            ctx.minecraft().gameMode.attack(ctx.player(), vehicle);
-            ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            LegacyCombat.hit(ctx.minecraft().gameMode, ctx.player(), vehicle, InteractionHand.MAIN_HAND);
         }
         return Result.CONTINUE;
     }

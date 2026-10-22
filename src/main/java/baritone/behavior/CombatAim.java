@@ -23,6 +23,7 @@ import baritone.api.utils.Rotation;
 import baritone.behavior.look.AimSmoother;
 import baritone.behavior.look.CombatAimMath;
 import baritone.behavior.look.CombatWants;
+import baritone.behavior.look.LegacyClicker;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
@@ -52,10 +53,17 @@ public final class CombatAim {
     private final LookBehavior look;
     private final CombatWants<Entity, Vec3> wants = new CombatWants<>();
     private final AimSmoother smoother = new AimSmoother(new Random());
+    // one hand, one click rhythm: the alto swings and self defense share it, two clickers would be twice the cps
+    private final LegacyClicker clicker = new LegacyClicker(new Random());
 
     CombatAim(IPlayerContext ctx, LookBehavior look) {
         this.ctx = ctx;
         this.look = look;
+    }
+
+    // the pre 1.9 click pacing, see LegacyCombat. unused on a modern server
+    public LegacyClicker clicker() {
+        return clicker;
     }
 
     // look at this mob this tick, please. call it every tick you want it, an ask is good for one tick
