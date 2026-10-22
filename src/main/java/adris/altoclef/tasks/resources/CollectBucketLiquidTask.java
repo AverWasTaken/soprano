@@ -30,6 +30,7 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +47,7 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 
 public class CollectBucketLiquidTask extends ResourceTask {
@@ -64,6 +66,15 @@ public class CollectBucketLiquidTask extends ResourceTask {
 
     private static final int SCAN_WAIT_TICKS = 60;
     // a stream is followed once in a while, not every tick of a wander. the cube it starts from is 49^3 cells
+    private static final int DIRECT_GAP_TICKS = 50;
+    private static final int DIRECT_RANGE = 24;
+    private static final int DIRECT_RANGE_Y = 12;
+    private static final int DIRECT_MAX_TESTS = 12;
+    private static final int DIRECT_FORGET_TICKS = 1200;
+    private int _lastDirectTick = -1000;
+    private int _directRejectedSince = 0;
+    private BlockPos _directHit = null;
+    private final HashSet<BlockPos> _directRejected = new HashSet<>();
     private static final int CLIMB_GAP_TICKS = 60;
     private static final double CLIMB_SEARCH_RANGE = 24;
     private static final int CLIMB_MAX_MOVES = 16;
@@ -122,6 +133,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
         mod.getBehaviour().avoidBlockPlacing((pos) -> Minecraft.getInstance().level.getBlockState(pos).getBlock() == _toCollect);
 
         _progressChecker.reset();
+        _directRejected.clear();
+        _directHit = null;
         // a restart gets a fresh look at whether anything can be thrown, the bag may have changed while we were away
         _roomTask = null;
         _noRoom = false;
@@ -329,6 +342,12 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return null;
         }
 
+        // the tracker keeps the 25 nearest and a crowd of useless ones can fill that, so look at the world itself
+        if (tryDirectSearch(mod, now, isSourceLiquid)) {
+            setDebugState("Found a source the tracker had crowded out");
+            return null;
+        }
+
         // Oof, no liquid found.
         if (!_loggedWander) {
             _loggedWander = true;
@@ -500,6 +519,49 @@ public class CollectBucketLiquidTask extends ResourceTask {
         // already tried it and the predicate didn't like it, climbing again would just find it again
         if (source.isEmpty() || !_climbed.add(source.get())) return false;
         mod.getBlockTracker().addBlock(_toCollect, source.get());
+        return true;
+    }
+
+    // true if it found a source the full predicate likes and told the tracker. the scan is a cheap fluid-state read per
+    // cell, the predicate (canReach and friends) only runs on the nearest few survivors
+    private boolean tryDirectSearch(AltoClef mod, int now, Predicate<BlockPos> isSourceLiquid) {
+        // the tracker's purge can drop a far cell on its next rescan, so put the last find back while it still holds
+        if (_directHit != null) {
+            if (isSourceLiquid.test(_directHit)) {
+                mod.getBlockTracker().addBlock(_toCollect, _directHit);
+                return true;
+            }
+            _directHit = null;
+        }
+        if (now - _lastDirectTick < DIRECT_GAP_TICKS) return false;
+        _lastDirectTick = now;
+        // what failed stays failed for a bit, but bans and lids change, so not for the whole cast
+        if (now - _directRejectedSince > DIRECT_FORGET_TICKS) {
+            _directRejected.clear();
+            _directRejectedSince = now;
+        }
+        // the tracker's 25 are the nearest exposed ones and they just failed, don't spend the tests on them twice
+        Set<BlockPos> known = new HashSet<>(mod.getBlockTracker().getKnownLocations(_toCollect));
+        Fluid kind = _toCollect == Blocks.LAVA ? Fluids.LAVA : Fluids.WATER;
+        BlockPos me = mod.getPlayer().blockPosition();
+        List<BlockPos> found = new ArrayList<>();
+        for (BlockPos pos : BlockPos.betweenClosed(
+                me.offset(-DIRECT_RANGE, -DIRECT_RANGE_Y, -DIRECT_RANGE), me.offset(DIRECT_RANGE, DIRECT_RANGE_Y, DIRECT_RANGE))) {
+            FluidState self = mod.getWorld().getFluidState(pos);
+            if (self.getType() != kind) continue;
+            if (!FluidSources.exposedSource(self, mod.getWorld().getFluidState(pos.above()))) continue;
+            if (_directRejected.contains(pos) || known.contains(pos)) continue;
+            found.add(pos.immutable());
+        }
+        found.sort(Comparator.comparingDouble(p -> p.distSqr(me)));
+        Optional<BlockPos> hit = FluidSources.firstPassing(found, isSourceLiquid, DIRECT_MAX_TESTS);
+        // the ones that failed stay failed for a while, or the nearest few useless cells eat the test budget every time
+        int tested = hit.isPresent() ? found.indexOf(hit.get()) : Math.min(found.size(), DIRECT_MAX_TESTS);
+        _directRejected.addAll(found.subList(0, tested));
+        if (_directRejected.size() > 400) _directRejected.clear();
+        if (hit.isEmpty()) return false;
+        _directHit = hit.get();
+        mod.getBlockTracker().addBlock(_toCollect, hit.get());
         return true;
     }
 

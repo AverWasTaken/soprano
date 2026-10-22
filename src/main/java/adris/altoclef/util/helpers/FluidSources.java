@@ -3,6 +3,7 @@ package adris.altoclef.util.helpers;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -24,6 +25,16 @@ public final class FluidSources {
     // top anyway (see WorldHelper.isSourceBlock, it throws the same ones out)
     public static boolean exposedSource(FluidState self, FluidState above) {
         return self.isSource() && !above.getType().isSame(self.getType());
+    }
+
+    // the first of a nearest-first list that passes, looking at no more than maxTests of them. the predicate is the
+    // expensive part (reachability), the cap is what keeps a bad lake from eating a tick
+    public static Optional<BlockPos> firstPassing(List<BlockPos> nearestFirst, Predicate<BlockPos> passes, int maxTests) {
+        int n = Math.min(nearestFirst.size(), maxTests);
+        for (int i = 0; i < n; i++) {
+            if (passes.test(nearestFirst.get(i))) return Optional.of(nearestFirst.get(i));
+        }
+        return Optional.empty();
     }
 
     // follows a falling column or a flowing stream back to what feeds it. up while there is fluid on top, and at the
