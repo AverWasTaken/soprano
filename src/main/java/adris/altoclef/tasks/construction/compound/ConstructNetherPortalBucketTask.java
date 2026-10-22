@@ -18,6 +18,7 @@ import adris.altoclef.util.time.TimerGame;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
@@ -94,6 +95,9 @@ public class ConstructNetherPortalBucketTask extends Task {
     private final Task _collectLavaTask = TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
     private final TimerGame _refreshTimer = new TimerGame(11);
     private BlockPos _portalOrigin = null;
+    // the cast for the frame cell we're on, handed back every tick so it's the one that's actually running
+    private PlaceObsidianBucketTask _cast;
+    private BlockPos _castOrigin;
 
     //private BlockPos _currentLavaTarget = null;
     private BlockPos _currentDestroyTarget = null;
@@ -273,21 +277,31 @@ public class ConstructNetherPortalBucketTask extends Task {
                 continue;
             }
 
-            // Get lava early so placing it is faster
-            if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA) {
+            // a banned frame cell (a ruined cast, or our lava loose round it) moves the frame before anything else. going
+            // for lava first would fetch a bucket for a spot we're about to leave
+            if (mod.getBlockTracker().unreachable(framePos)) {
+                _portalOrigin = null;
+                _cast = null;
+                return null;
+            }
+
+            // We need to place obsidian here.
+            // the cells before this one may still have their cast water on top, that is our water bucket. the same task
+            // comes back each tick so we can ask it about its lava, a fresh one each tick never ticks
+            // the origin can move under us in a few places, and a new one can share a frame cell with the old one
+            if (_cast == null || !_cast.getPos().equals(framePos) || !_portalOrigin.equals(_castOrigin)) {
+                _cast = new PlaceObsidianBucketTask(framePos, frameCells(), strayCells(_portalOrigin), aroundCells(_portalOrigin));
+                _castOrigin = _portalOrigin;
+            }
+
+            // Get lava early so placing it is faster. not while the cast has lava of its own out: the pour that just went
+            // has no bucket to show for it yet, and a spill is the cast's to scoop before anyone walks off
+            if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA && !_cast.ownsTheLava(mod)) {
                 setDebugState("Collecting lava");
                 _progressChecker.reset();
                 return _collectLavaTask;
             }
-
-            // We need to place obsidian here.
-            // the cells before this one may still have their cast water on top, that is our water bucket. asked before the
-            // origin can go null just below
-            List<BlockPos> cells = frameCells();
-            if (mod.getBlockTracker().unreachable(framePos)) {
-                _portalOrigin = null;
-            }
-            return new PlaceObsidianBucketTask(framePos, cells);
+            return _cast;
         }
 
         // Now, clear the inside.
@@ -386,6 +400,35 @@ public class ConstructNetherPortalBucketTask extends Task {
         return true;
     }
 
+    // the inside of the box and the buffer the casts stand in: every frame cell's ledge and the head room over it. never
+    // frame cells, those end up obsidian by design. the origin search only picks a spot with no lava anywhere near these,
+    // so lava in one later is ours, and obsidian in one is a cast that went wrong
+    static List<BlockPos> aroundCells(BlockPos origin) {
+        LinkedHashSet<BlockPos> out = new LinkedHashSet<>();
+        for (Vec3i inside : PORTAL_INTERIOR) {
+            out.add(origin.offset(inside));
+        }
+        for (Vec3i frame : PORTAL_FRAME) {
+            BlockPos ledge = origin.offset(frame).offset(-1, 1, 0);
+            out.add(ledge);
+            out.add(ledge.above());
+        }
+        for (Vec3i frame : PORTAL_FRAME) {
+            out.remove(origin.offset(frame));
+        }
+        return new ArrayList<>(out);
+    }
+
+    // where none of our lava belongs: the frame (the cast takes its own cell back out) plus everything round it
+    static List<BlockPos> strayCells(BlockPos origin) {
+        LinkedHashSet<BlockPos> out = new LinkedHashSet<>();
+        for (Vec3i frame : PORTAL_FRAME) {
+            out.add(origin.offset(frame));
+        }
+        out.addAll(aroundCells(origin));
+        return new ArrayList<>(out);
+    }
+
     static boolean anyBanned(BlockPos origin, Predicate<BlockPos> banned) {
         for (Vec3i frame : PORTAL_FRAME) {
             if (banned.test(origin.offset(frame))) {
@@ -480,6 +523,8 @@ public class ConstructNetherPortalBucketTask extends Task {
                 boolean found = true;
                 boolean solidFound = false;
                 BlockPos origin = lava.offset(offset).offset(sizeOffset).offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
+                // the cast gives a spot up on sight for obsidian or a slow block on a ledge it stands on, so don't pick one
+                HashSet<BlockPos> ledges = new HashSet<>(aroundCells(origin));
                 // check for collision with lava in box
                 // We have an extra buffer to make sure we never break a block NEXT to lava.
                 moveAlongLine:
@@ -495,7 +540,9 @@ public class ConstructNetherPortalBucketTask extends Task {
                             }
                             // a block we could never get out of the way in time (obsidian from some old lava and water) ruins
                             // the spot: the cast has to clear it, and the frame would just move again once it found out
-                            if (strayBlock(origin, toCheck, BreakRules.tooSlow(bag, state), state.is(Blocks.OBSIDIAN))) {
+                            boolean tooSlow = BreakRules.tooSlow(bag, state);
+                            if (strayBlock(origin, toCheck, tooSlow, state.is(Blocks.OBSIDIAN))
+                                    || ledges.contains(toCheck) && (tooSlow || state.is(Blocks.OBSIDIAN))) {
                                 found = false;
                                 break moveAlongLine;
                             }
