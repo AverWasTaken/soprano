@@ -628,6 +628,22 @@ public class CookGateTest {
         assertTrue(WorkbenchRules.plannerSmoker(true, true, false));
     }
 
+    // the visit that empties a smoker asks the cook gate "can this smoker take the meat in the bag" (FurnaceWatch.afterVisit). the wood
+    // budget built while the smoker's job was still booked holds back the cook's fuel claim (waiting() wants no pending food), so it
+    // undercounts the fuel: 10 to 17 logs read "no fuel" with the job booked and "fine" once it is gone. afterVisit asks again
+    @Test
+    public void aBookedSmokerJobHidesTheFuelTheEmptiedSmokerCouldBurn() {
+        OverworldConfig full = new OverworldConfig();
+        FakeFacts bag = new FakeFacts().give(Items.PORKCHOP, 8).give(Items.OAK_LOG, 12).give(Items.STONE_PICKAXE, 1)
+                .give(Items.STONE_AXE, 1).give(Items.WOODEN_AXE, 1);
+        bag.smokerPlaced = true;
+        bag.cookingFood("cooked_beef", 9, 8, 0);
+        WoodBudget booked = WoodBudget.of(bag, full, 8, GamerPhase.IRON);
+        bag.jobs.clear();
+        assertFalse(CookGate.reusable(bag, full, 8, true, booked));
+        assertTrue(CookGate.reusable(bag, full, 8, true, WoodBudget.of(bag, full, 8, GamerPhase.IRON)));
+    }
+
     // what MinecraftFacts says for a furnace of ours 60 blocks off (past WALK_BACK, so the cobble decides): held only while the smelt
     // task would walk back to it (DoStuffInContainerTask.bagCanMake: the cobble the stone tools still eat is not furnace material)
     private boolean walkBackFlag(FakeFacts f) {
