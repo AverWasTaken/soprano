@@ -58,6 +58,8 @@ public final class CreeperStep {
     // the hand sprint at the start of a defuse. a standing start covers about 2 blocks in 10 ticks and 7 in 30, and the fuse is 30,
     // so it keeps going straight away until we are at SAFE or the fuse is spent. (waiting on the path for the rest of it is how
     // a creeper lit at 3 still got us from 2 blocks)
+    // a creeper this far or further stops swelling
+    public static final double SWELL_STOP = 7;
     public static final long RAW_MAX_TICKS = 30;
 
     public static boolean rawGoing(long ticks, double distance) {
@@ -237,11 +239,12 @@ public final class CreeperStep {
     //
     // a step inside a run is stricter: the run's path leads back past the creeper, so letting go at "unlit and over 5" had the
     // creeper relight and the step start again about every second, with the arrows landing in between. there it holds until the
-    // swell is fully drained and we are at SAFE
+    // swell is fully drained and we are past 7 (SWELL_STOP). not SAFE: the goal counts a cell by its corner, so walking -x or -z
+    // it is done at 7.5 live, and waiting on 8 would sit there till the cap
     private boolean fuseOut(Seen held, CombatCommit.Mode mode) {
         if (held.lit()) return false;
         if (_bait) return !held.fusing();
-        if (mode == CombatCommit.Mode.RUN) return !held.fusing() && held.distance() >= SAFE;
+        if (mode == CombatCommit.Mode.RUN) return !held.fusing() && held.distance() > SWELL_STOP;
         return !(held.fusing() && held.distance() <= HOLD_RADIUS);
     }
 

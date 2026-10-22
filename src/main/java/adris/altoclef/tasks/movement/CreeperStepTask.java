@@ -39,8 +39,8 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     // the defuse steers itself until the path takes over, see CreeperStep.rawGoing. a path that shows up first ends it, it brings
     // its own inputs
     // the bait steers itself the whole way out unless the ground says no. 3 to 6.2 is a dozen and a bit ticks of sprinting from
-    // a standstill (RAW_TICKS gets about 5.5 with the slide, short of the line), and baritone is only asked once this runs out,
-    // so the orphaned search from RAW_TICKS is not a thing here. still well inside the fuse
+    // a standstill (the defuse's hand sprint gets about 5.5 in 10 ticks with the slide, short of the line), and baritone is only asked once this runs out,
+    // so an orphaned search from a hand sprint is not a thing here. still well inside the fuse
     static final long BAIT_RAW_TICKS = 25;
 
     // blocks that hurt to stand on or in, or hold you there, and that have no collision to tell us so

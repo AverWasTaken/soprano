@@ -316,11 +316,12 @@ public class CreeperStepTest {
         assertEquals(Event.NONE, step.step(11, lit(7, 6.5), false, Mode.RUN, true));
         assertTrue(step.active());
         assertFalse(step.baiting());
-        // and the run's rules from here: a deflating fuse is held through until it is drained and we are at SAFE
+        // and the run's rules from here: a deflating fuse is held through until it is drained and we are past 7
         assertEquals(Event.NONE, step.step(12, List.of(new Seen(7, false, 6.5, false, true)), false, Mode.RUN, true));
         assertEquals(Event.NONE, step.step(13, List.of(new Seen(7, false, CreeperStep.SAFE + 1, false, true)), false, Mode.RUN, true));
-        assertEquals(Event.NONE, step.step(14, List.of(new Seen(7, false, CreeperStep.SAFE - 1, false, false)), false, Mode.RUN, true));
-        assertEquals(Event.END_UNLIT, step.step(15, List.of(new Seen(7, false, CreeperStep.SAFE, false, false)), false, Mode.RUN, true));
+        assertEquals(Event.NONE, step.step(14, List.of(new Seen(7, false, CreeperStep.SWELL_STOP - 0.5, false, false)), false, Mode.RUN, true));
+        // 7.6 is where a -x walk to the corner of an 8 goal ends up
+        assertEquals(Event.END_UNLIT, step.step(15, List.of(new Seen(7, false, 7.6, false, false)), false, Mode.RUN, true));
     }
 
     // the flip: unlit at 6 with the swell still up used to end the step, the run walked back past it and it relit
