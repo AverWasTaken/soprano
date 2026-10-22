@@ -525,6 +525,13 @@ public class MineAndCollectTask extends ResourceTask {
             return stoneScore(mod, me.x, me.y, me.z, at.getX(), at.getY(), at.getZ());
         }
 
+        // stoneScoreFromHere minus STANDING_ON, for switchCall. the pick still pays it, so the first choice keeps off the
+        // column under us
+        private double switchScore(AltoClef mod, BlockPos at) {
+            Vec3 me = mod.getPlayer().position();
+            return stoneScoreFromHere(mod, at) - StoneDigRank.standingOnPart(me.x, me.y, me.z, at.getX(), at.getY(), at.getZ());
+        }
+
         private static boolean hasAirFace(AltoClef mod, int x, int y, int z) {
             BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
             for (Direction d : Direction.values()) {
@@ -1324,7 +1331,9 @@ public class MineAndCollectTask extends ResourceTask {
                 return SwitchCall.SWITCH;
             }
             if (current instanceof BlockPos now && candidate instanceof BlockPos next) {
-                return StoneDigRank.switches(stoneScoreFromHere(mod, now), stoneScoreFromHere(mod, next)) ? SwitchCall.SWITCH : SwitchCall.STAY;
+                // without the standing-on part: two stones side by side under us each pay it from their own column, one
+                // step after either moves our feet over the line, and they took turns every tick while we stood there
+                return StoneDigRank.switches(switchScore(mod, now), switchScore(mod, next)) ? SwitchCall.SWITCH : SwitchCall.STAY;
             }
             Vec3 me = mod.getPlayer().position();
             return MineStick.clearlyCloser(getPos(mod, candidate).distanceToSqr(me), getPos(mod, current).distanceToSqr(me)) ? SwitchCall.SWITCH : SwitchCall.STAY;
