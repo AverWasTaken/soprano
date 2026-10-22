@@ -148,6 +148,14 @@ public final class CreeperStep {
     // recovering: the heal-up hold is on (CombatCommit.recovering). nothing is committed then, but a hurt bot standing still
     // for a pop is a bot eating a creeper at 10 hp, so it gets the defuse like a run or a fight would
     public Event step(long now, List<Seen> creepers, boolean shieldReady, CombatCommit.Mode mode, boolean commitOn, boolean recovering) {
+        return step(now, creepers, shieldReady, mode, commitOn, recovering, false);
+    }
+
+    // noHeading: CreeperEscape has nowhere to sprint (a one wide shaft, a creeper on our head). waiting on a path for a second
+    // to find that out is most of the fuse, so a lit one inside TRIGGER with no way out is cornered the tick it shows up. the
+    // chain asks CreeperEscape, this stays pure
+    public Event step(long now, List<Seen> creepers, boolean shieldReady, CombatCommit.Mode mode, boolean commitOn, boolean recovering,
+                      boolean noHeading) {
         _log = false;
         _escalate = false;
         boolean idle = mode == CombatCommit.Mode.NONE;
@@ -165,6 +173,10 @@ public final class CreeperStep {
             else if (fuseOut(held)) end = Event.END_UNLIT;
             else if (now < _since || now - _since >= cap) end = Event.END_CAP;
             if (end == Event.NONE) {
+                if (!_cornered && shieldReady && noHeading && held.lit() && held.distance() <= TRIGGER) {
+                    _cornered = true;
+                    return Event.CORNERED;
+                }
                 if (!_cornered && shieldReady && now - _since >= CORNER_TICKS && held.distance() <= TRIGGER
                         && held.distance() - _startDistance < CORNER_GAIN) {
                     _cornered = true;
@@ -197,14 +209,16 @@ public final class CreeperStep {
         // (or was never on the table), and the run is about to carry us off anyway, so this is just out of the blast until
         // it does. with nobody to hand it to (the commitment is off) it is the bait again, the defuse is the loop
         _escalate = cameBack(pick.id(), now) && idle && commitOn;
-        _bait = mayBait && !_escalate && pick.baitable();
+        // nowhere to go beats every plan that walks: no bait ring (a path up the shaft at the thing), no defuse
+        boolean boxed = noHeading && shieldReady && pick.lit() && pick.distance() <= TRIGGER;
+        _bait = mayBait && !_escalate && pick.baitable() && !boxed;
         _id = pick.id();
         _since = now;
         _litSince = now;
         _startDistance = pick.distance();
-        _cornered = false;
+        _cornered = boxed;
         _log = remember(_logged, pick.id());
-        return Event.START;
+        return boxed ? Event.CORNERED : Event.START;
     }
 
     // the bait holds through a deflate and a relight at any distance, there is nothing to walk back into: it pops or it drains.

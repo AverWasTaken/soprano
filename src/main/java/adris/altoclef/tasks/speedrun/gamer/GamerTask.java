@@ -29,6 +29,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightBeds;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.ShelterTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
 import adris.altoclef.tasksystem.Task;
@@ -154,6 +155,10 @@ public class GamerTask extends Task {
     private long screenSince = -1;
     private long loadSince = -1;
     private final NightSleep.Said nightSaid = new NightSleep.Said();
+    // the hole for the night after a death with no armor and no bed (NightShelter), its own once per night flag, and the look throttle
+    private ShelterTask shelter;
+    private final NightShelter.Once shelterOnce = new NightShelter.Once();
+    private long shelterLookAt = Long.MIN_VALUE;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
@@ -261,6 +266,7 @@ public class GamerTask extends Task {
             // mob defense must not stay stood down for a trip nobody is running
             nightTrip = null;
             NightSleepHook.clear();
+            dropShelter();
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
             CookTrip.unbind();
@@ -777,8 +783,11 @@ public class GamerTask extends Task {
             // a new player is a death: whatever the evening's prep was doing went with the old one
             nightPrepPlayer = mod.getPlayer();
             nightPrep.drop();
+            // (and so did the hole: a death in it is a respawn up top, the new body starts from the recovery)
+            dropShelter();
         }
         if (state.netherTrip != null) {
+            dropShelter();
             dropNightTrip();
             // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
             // state when it is over, and the machine has the next tick
@@ -795,6 +804,7 @@ public class GamerTask extends Task {
         netherTrip = null;
         if (recoverStillWanted(now)) {
             dropNightTrip();
+            dropShelter();
             // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
             machine.observe();
             machine.holdClocks();
@@ -808,7 +818,7 @@ public class GamerTask extends Task {
             // same deal again: a night in bed is not the phase's time and not its fault
             machine.observe();
             machine.holdClocks();
-            String words = nightPrepHolding ? "Getting a bed ready for the night" : "Sleeping through the night";
+            String words = night == shelter ? "Hiding from the night" : nightPrepHolding ? "Getting a bed ready for the night" : "Sleeping through the night";
             setDebugState(words + ".", words);
             updateRecoveryHud(words);
             autosave(now);
@@ -1136,6 +1146,7 @@ public class GamerTask extends Task {
         NightSleepHook.clear();
         if (!Baritone.settings().altoSleepAtNight.value || facts.dimension() != Dimension.OVERWORLD) {
             nightPrep.drop();
+            dropShelter();
             return null;
         }
         boolean leftover = leftoverNightBed(mod);
@@ -1143,6 +1154,12 @@ public class GamerTask extends Task {
         // the evening's own tasks open screens (a table, the inventory), which are not a reason to stop them halfway
         NightSleep.Busy busy = nightBusy(nightPrep.running());
         boolean fighting = nightFighting(mod);
+        // before decide on purpose: low health and a spent bed trip answer QUIET/LOW_HEALTH there, and neither is a reason to
+        // stay out on the surface with no armor
+        Task hole = shelterTick(mod, leftover, windowOpen, busy);
+        if (hole != null) {
+            return hole;
+        }
         boolean hurt = NightSleep.shouldAbandon(mod.getPlayer().getHealth());
         boolean spent = nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds);
         boolean inPortal = WorldHelper.isStandingInPortal(mod);
@@ -1179,6 +1196,55 @@ public class GamerTask extends Task {
         }
         nightPrepHolding = prep != null;
         return prep;
+    }
+
+    // the hole for a night with no armor and no bed after a death (NightShelter). a running one keeps the wheel until it is over,
+    // a new one starts when the trigger says so. the bed trip's budget is not touched either way
+    private Task shelterTick(AltoClef mod, boolean leftover, boolean windowOpen, NightSleep.Busy busy) {
+        long gameTime = mod.getWorld().getGameTime();
+        long night = NightSleep.nightOf(mod.getWorld().getOverworldClockTime());
+        if (shelter != null) {
+            if (shelter.isFinished(mod)) {
+                dropShelter();
+                machine.releaseHold();
+                return null;
+            }
+            if (shelter.sealed()) {
+                NightSleepHook.setSheltered(gameTime);
+            } else {
+                NightSleepHook.clearSheltered();
+            }
+            return shelter;
+        }
+        long sinceDeath = deathGameTime > 0 ? gameTime - deathGameTime : -1;
+        // the cheap questions first, the bed hunt and the column scan only when everything else says yes
+        // (a daytime thunderstorm opens the window too, it is dark enough to sleep but not to hide from: time of day says dusk)
+        boolean dusk = windowOpen && Math.floorMod(mod.getWorld().getOverworldClockTime(), NightSleep.DAY_LENGTH) >= NightSleep.EARLIEST_WINDOW;
+        // only a fight that is really on counts, the heal-up hold after one is the very case for a hole
+        boolean inFight = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
+        NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && facts.count(ItemHelper.BED) == 0,
+                SmeltSurface.depthBelowSky(mod), recover != null, inFight, busy != NightSleep.Busy.NONE || WorldHelper.isStandingInPortal(mod),
+                shelterOnce.used(night), sinceDeath);
+        if (!NightShelter.wanted(t) || gameTime - shelterLookAt < 20) {
+            return null;
+        }
+        shelterLookAt = gameTime;
+        boolean noBed = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
+                BedCraft.usableWood(mod)) == NightSleep.BedSource.NONE;
+        BlockPos spot = noBed ? ShelterTask.pick(mod) : null;
+        if (spot == null) {
+            return null;
+        }
+        shelterOnce.mark(night);
+        nightPrep.drop();
+        nightPrepDone(mod);
+        shelter = new ShelterTask(spot, night);
+        return shelter;
+    }
+
+    private void dropShelter() {
+        shelter = null;
+        NightSleepHook.clearSheltered();
     }
 
     // the prep had the wheel and does not any more: the phase gets its clocks back, same as when a trip ends

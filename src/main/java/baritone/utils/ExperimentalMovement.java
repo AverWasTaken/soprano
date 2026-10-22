@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.Baritone;
+import net.minecraft.world.level.Level;
 
 // fastMode is a preset, not a setting rewrite: the real settings never change, so switching it off hands the
 // user their own choices back. everything that has an opinion about one of these reads it through here and nowhere else
@@ -37,10 +38,22 @@ public final class ExperimentalMovement {
     private ExperimentalMovement() {}
 
     // the jump family (parkour, neos, climbs, momentum) gate: fastMode or the setting turns it on, and combat's stamp turns it
-    // off again while it is still ahead of the clock. pure so the expiry can be tested without a world
-    public static boolean jumpMoveAllowed(boolean fastMode, boolean setting, long jumpsOffUntil, long now) {
+    // off again while it is still ahead of the clock. the nether turns it off for good, whatever anybody set: a jump that
+    // comes up short there is the lava sea, and fastMode was handing out jumps the settings said no to. pure so the expiry can be tested without a world
+    public static boolean jumpMoveAllowed(boolean nether, boolean fastMode, boolean setting, long jumpsOffUntil, long now) {
         boolean off = jumpsOffUntil >= now && jumpsOffUntil - now <= JUMPS_OFF_TICKS;
-        return !off && (fastMode || setting);
+        return !nether && !off && (fastMode || setting);
+    }
+
+    // fastMode's falls that hurt (the ones past maxFallHeightNoWater). the nether has no water to bail out with and the floor
+    // down there is lava, so only the falls the user raised the limit for are left. pure for the same reason as above
+    public static boolean hurtingFallsOk(boolean nether, boolean fastMode) {
+        return fastMode && !nether;
+    }
+
+    // null world is a test with no game running, which is not the nether
+    public static boolean inNether(Level world) {
+        return world != null && world.dimension() == Level.NETHER;
     }
 
     public static boolean on() {
@@ -89,6 +102,11 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().sprintJumping.value;
     }
 
+    // the executor's version: it reads the preset live, so it has to say no to the nether live too (the planner already did)
+    public static boolean sprintJumping(Level world) {
+        return !inNether(world) && sprintJumping();
+    }
+
     // a log, not a movement: the fast preset is for moving like a speedrunner, it should not also spam the console
     public static boolean sprintTelemetry() {
         return Baritone.settings().sprintTelemetry.value;
@@ -96,6 +114,10 @@ public final class ExperimentalMovement {
 
     public static boolean headHitters() {
         return on() || Baritone.settings().headHitters.value;
+    }
+
+    public static boolean headHitters(Level world) {
+        return !inNether(world) && headHitters();
     }
 
     public static boolean allowGroundShortcuts() {

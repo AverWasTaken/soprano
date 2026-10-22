@@ -38,7 +38,27 @@ public final class NightSleepHook {
     }
 
     public static boolean standsDown(float health, long gameTime) {
+        // (sealed in a hole: no health line, the hole is where low health wants to be. the shelter lifts it itself when hit)
+        if (sheltered(gameTime)) {
+            return true;
+        }
         NightSleep.Stage now = stage(gameTime);
         return now != null && NightSleep.standsDown(now, health);
+    }
+
+    // the night shelter's own stamp, separate from the bed trip's stage so clear() on a tick with no trip does not eat it
+    private static volatile long shelterAt = Long.MIN_VALUE;
+
+    public static void setSheltered(long gameTime) {
+        shelterAt = gameTime;
+    }
+
+    public static void clearSheltered() {
+        shelterAt = Long.MIN_VALUE;
+    }
+
+    public static boolean sheltered(long gameTime) {
+        long at = shelterAt;
+        return at != Long.MIN_VALUE && gameTime >= at && gameTime - at <= STALE_TICKS;
     }
 }

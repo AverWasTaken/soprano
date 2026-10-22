@@ -22,6 +22,7 @@ import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.pathing.movement.CalculationContext;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.ItemTags;
@@ -87,7 +88,7 @@ public final class WhatIfContext extends CalculationContext {
     }
 
     public static boolean inNether(Level world) {
-        return world != null && world.dimension() == Level.NETHER;
+        return ExperimentalMovement.inNether(world);
     }
 
     // the hotbar, plus a stone pickaxe that isn't there. whichever is faster wins, so an iron one we really hold still counts

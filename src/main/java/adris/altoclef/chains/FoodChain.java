@@ -436,6 +436,8 @@ public class FoodChain extends SingleTaskChain {
             if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) return true;
         }
         if (!Baritone.settings().altoAutoEat.value) return true;
+        // a lit creeper with nowhere to run: the shield or the cap has the hands
+        if (mod.getMobDefenseChain().creeperBoxedIn()) return true;
         // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
         if (mod.getPlayer().isInLava()) return true;
         // We're in danger, don't eat now!!

@@ -76,6 +76,9 @@ public class CalculationContext {
     // hp plus absorption right now, for falls that hurt. same snapshot rule as hasWaterBucket
     public final double health;
     public final boolean fastMode;
+    // fastMode's falls that hurt, minus the nether where the landing is lava and there is no water to catch us
+    // (not final so a test can put a context in the nether without a world to ask)
+    public boolean hurtingFallsOk;
     public final double fastModeMinHealth;
     public final double fallDamageCost;
     // 1 unless fastMode wants the jumpy movements to look a bit cheaper, see biasJump
@@ -256,6 +259,9 @@ public class CalculationContext {
         this.fallDamageRoundsUp = baritone != null && Portal.roundsFallDamageUp();
         this.health = health;
         this.fastMode = ExperimentalMovement.on();
+        // one read of the dimension, off the world we were handed and not the player's, so a hand built context agrees with itself
+        boolean nether = ExperimentalMovement.inNether(world);
+        this.hurtingFallsOk = ExperimentalMovement.hurtingFallsOk(nether, fastMode);
         this.fastModeMinHealth = Baritone.settings().fastModeMinHealth.value;
         this.fallDamageCost = Baritone.settings().fallDamageCost.value;
         this.jumpBias = ExperimentalMovement.jumpBias();
@@ -272,14 +278,14 @@ public class CalculationContext {
         // read once here on the tick thread, never live from the cost code on the search thread
         long jumpsOffUntil = alto.jumpsOffUntilTick();
         long now = world == null ? 0 : world.getGameTime();
-        this.allowParkour = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkour.value, jumpsOffUntil, now);
-        this.allowParkourPlace = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkourPlace.value, jumpsOffUntil, now);
+        this.allowParkour = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowParkour.value, jumpsOffUntil, now);
+        this.allowParkourPlace = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowParkourPlace.value, jumpsOffUntil, now);
         this.allowGodBridge = ExperimentalMovement.allowGodBridge();
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
-        this.allowParkourAscend = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkourAscend.value, jumpsOffUntil, now);
-        this.allowNeos = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowNeos.value, jumpsOffUntil, now);
-        this.allowClimbJumps = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowClimbJumps.value, jumpsOffUntil, now);
-        this.allowMomentumJumps = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowMomentumJumps.value, jumpsOffUntil, now);
+        this.allowParkourAscend = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowParkourAscend.value, jumpsOffUntil, now);
+        this.allowNeos = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowNeos.value, jumpsOffUntil, now);
+        this.allowClimbJumps = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowClimbJumps.value, jumpsOffUntil, now);
+        this.allowMomentumJumps = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowMomentumJumps.value, jumpsOffUntil, now);
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
@@ -340,7 +346,7 @@ public class CalculationContext {
         // plainFallsAreFree contexts (the elytra walk off) skip the damage for everything inside the limit, and they are
         // the only ones that plan a plain fall past MAX_HURT_FALL. fastMode takes hurting falls on top of the limit
         int plainTop = plainFallsAreFree ? maxFallHeightNoWater : Math.min(maxFallHeightNoWater, ExperimentalMovement.MAX_HURT_FALL);
-        int top = Math.min(cap, Math.max(plainTop, fastMode ? ExperimentalMovement.MAX_HURT_FALL : 0));
+        int top = Math.min(cap, Math.max(plainTop, hurtingFallsOk ? ExperimentalMovement.MAX_HURT_FALL : 0));
         for (int n = 2; n <= top; n++) {
             boolean free = plainFallsAreFree && n <= maxFallHeightNoWater;
             double damage = free ? 0 : ExperimentalMovement.fallDamage(n) * fallDamageCost;

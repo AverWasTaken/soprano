@@ -1,16 +1,20 @@
 package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
 import adris.altoclef.tasks.movement.CreeperStepTask;
 import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.CreeperCap;
+import adris.altoclef.util.helpers.CreeperEscape;
 import adris.altoclef.util.helpers.CreeperStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
@@ -26,11 +30,14 @@ import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Dimension;
+import baritone.api.utils.RayTraceUtils;
 import baritone.api.utils.Rotation;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.utils.input.Input;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
@@ -45,18 +52,25 @@ import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
 import net.minecraft.world.entity.projectile.arrow.SpectralArrow;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownLingeringPotion;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownSplashPotion;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AbstractFurnaceBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -82,6 +96,21 @@ public class MobDefenseChain extends SingleTaskChain {
     // a new player or dimension is a new world, creeper ids from the old one mean nothing (same reset as CombatBrain's)
     private LocalPlayer _creeperPlayer;
     private Dimension _creeperDimension;
+    // the block over our head (CreeperCap). when the step started, whether it is done with, and the creeper above us in a shaft
+    private long _capSince = Long.MIN_VALUE;
+    private boolean _capDone;
+    // the cell over our head is solid (we put it there, or it always was)
+    private boolean _capPlaced;
+    private boolean _capAbove;
+    // sneak while clicking, same reason as PlaceStationTask: a chest or a table in the wall opens instead of taking the block
+    private boolean _capSneak;
+    private final Object _capOwner = new Object();
+    // anything that is not a block, for the main hand while the shield is up
+    private static final Item[] SHIELD_HAND = {Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE,
+            Items.WOODEN_PICKAXE, Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.STONE_SWORD, Items.WOODEN_SWORD,
+            Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE, Items.STONE_AXE, Items.WOODEN_AXE,
+            Items.NETHERITE_SHOVEL, Items.DIAMOND_SHOVEL, Items.IRON_SHOVEL, Items.STONE_SHOVEL, Items.WOODEN_SHOVEL};
+    private int _capCreeper = -1;
 
     // everything below is worked out once per game tick by snapshot(), no matter how many things ask
     private long _snapshotTick = Long.MIN_VALUE;
@@ -206,6 +235,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // (nothing moves the machine while we are off, so a hold would read as on until the next respawn, and the night
             // trip asks it)
             _brain.dropHold();
+            dropCapSneak(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -235,6 +265,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
+            dropCapSneak(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -270,14 +301,40 @@ public class MobDefenseChain extends SingleTaskChain {
         float stepPriority = Float.NaN;
         if (_creeperStep.active()) {
             Entity creeper = mod.getWorld().getEntity(_creeperStep.creeperId());
+            // a block over our head first, when the creeper is up the shaft with us. it takes the wheel (nothing else may swap
+            // the pickaxe back in under the click), and gives up to the shield once its share of the fuse is gone or a click
+            // is refused
+            if (_capAbove && !_capDone && CreeperCap.inWindow(mod.getWorld().getGameTime() - _capSince) && capCell(mod)) {
+                setTask(new IdleTask());
+                _killAura.stopShielding(mod);
+                stopShielding(mod);
+                return Math.max(CREEPER_STEP_PRIORITY, hold);
+            }
+            dropCapSneak(mod);
+            // capped: the wheel stays ours and goes nowhere. the step's own task would walk the bait ring or the defuse
+            // straight through the block we just put up
+            boolean capped = _capPlaced;
             if (_creeperStep.cornered()) {
                 if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
                 } else {
+                    // a block in the main hand eats the right click: the placement fails on our own body and vanilla never
+                    // tries the off hand after that
+                    if (StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem() instanceof BlockItem) {
+                        mod.getSlotHandler().forceEquipItem(SHIELD_HAND, true);
+                    }
                     startShielding(mod, true);
                 }
                 creeperShield = true;
+                if (capped) {
+                    setTask(new IdleTask());
+                    stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
+                }
+            } else if (capped) {
+                setTask(new IdleTask());
+                mod.getClientBaritone().getPathingBehavior().requestPause();
+                stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
             } else {
                 setTask(new CreeperStepTask(_creeperStep.creeperId(), _creeperStep.baiting()));
                 stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
@@ -541,6 +598,92 @@ public class MobDefenseChain extends SingleTaskChain {
         _meleeAround = _brain.meleeAround();
     }
 
+    // the sneak the cap click holds. every way out of the step (and every stand down) has to let go of it
+    private void dropCapSneak(AltoClef mod) {
+        if (_capSneak) {
+            _capSneak = false;
+            mod.getInputControls().releaseOwnedBy(_capOwner);
+        }
+    }
+
+    // boxed in by a lit creeper: the shield is up or going up, or a block is going over our head. the food chain keeps its hands
+    // off the use key for this (its release on the way out drops a raised shield, and a bite is no answer to a blast)
+    public boolean creeperBoxedIn() {
+        // (the snapshot does not run with mob defense off, so a step frozen mid way must not hold the food chain hostage)
+        return Baritone.settings().altoMobDefense.value && _creeperStep.active()
+                && (_creeperStep.cornered() || (_capAbove && !_capDone));
+    }
+
+    // one tick of putting a block in the cell over our head, clicked against the shaft wall beside it (or the roof). true =
+    // still at it (equipping, aiming, or just clicked and waiting to see it land), false = nothing more to do here: it is there,
+    // there is nothing to place or nothing to click, or the click was refused. same click as PlaceStationTask.aim
+    private boolean capCell(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        Level level = mod.getWorld();
+        // the cell over the top of the head, not feet + 2: standing on a slab the body reaches into that one
+        BlockPos cell = BlockPos.containing(player.getX(), player.getBoundingBox().maxY, player.getZ()).above();
+        if (!level.getBlockState(cell).canBeReplaced()) {
+            _capDone = true;
+            _capPlaced = true;
+            return false;
+        }
+        Item[] blocks = capBlocks(mod);
+        if (blocks.length == 0) {
+            _capDone = true;
+            return false;
+        }
+        // which neighbour of the cell has a sturdy, dry face to click: the four shaft walls, then the roof
+        Direction clickFace = null;
+        BlockPos support = null;
+        for (Direction d : new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP}) {
+            BlockPos n = cell.relative(d);
+            Direction face = d.getOpposite();
+            if (level.getFluidState(n).isEmpty() && level.getBlockState(n).isFaceSturdy(level, n, face)) {
+                support = n;
+                clickFace = face;
+                break;
+            }
+        }
+        if (support == null) {
+            _capDone = true;
+            return false;
+        }
+        // sneak goes down a tick before the click, the equip tick is that tick
+        _capSneak = true;
+        mod.getInputControls().hold(Input.SNEAK, _capOwner);
+        if (!StorageHelper.isEquipped(mod, blocks)) {
+            mod.getSlotHandler().forceEquipItem(blocks, true);
+            return true;
+        }
+        Vec3 face = Vec3.atCenterOf(support).add(clickFace.getStepX() * 0.5, clickFace.getStepY() * 0.5, clickFace.getStepZ() * 0.5);
+        mod.getClientBaritone().getPathingBehavior().requestPause();
+        LookHelper.lookAt(mod, face);
+        // our own ray along the look we just set, the crosshair is a frame behind it
+        HitResult hit = RayTraceUtils.rayTraceTowards(player, LookHelper.getLookRotation(player), 4.5);
+        if (!(hit instanceof BlockHitResult bhit) || !bhit.getBlockPos().equals(support) || bhit.getDirection() != clickFace) {
+            return true;
+        }
+        InteractionResult result = Minecraft.getInstance().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, bhit);
+        if (result.consumesAction()) {
+            player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            // the block shows up next tick, and then the cell is not replaceable and we are done
+            return true;
+        }
+        _capDone = true;
+        return false;
+    }
+
+    // the first block in the bag that is ours to throw away and stays where it is put. sand and gravel are on the throwaway
+    // list and would land on our head
+    private static Item[] capBlocks(AltoClef mod) {
+        for (Item item : AltoSettings.getThrowawayItems(mod, true)) {
+            if (item instanceof BlockItem block && !(block.getBlock() instanceof FallingBlock) && mod.getItemStorage().hasItem(item)) {
+                return new Item[]{item};
+            }
+        }
+        return new Item[0];
+    }
+
     // the creeper preempt moves once per tick too, wheel or not, so its 2.5 s clock is a real 2.5 s
     private void stepCreepers(AltoClef mod, long now, boolean enabled) {
         LocalPlayer player = mod.getPlayer();
@@ -581,10 +724,54 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
-        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, _brain.recovering());
-        if (event == CreeperStep.Event.START && _creeperStep.shouldLog()) {
+        boolean noHeading = noWayOut(mod, seen);
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, _brain.recovering(), noHeading);
+        // (a step that starts boxed in comes back as CORNERED, it is still the start of the step)
+        if ((event == CreeperStep.Event.START || event == CreeperStep.Event.CORNERED) && _creeperStep.shouldLog()) {
             Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
         }
+        // the cap's clock runs from the step's first tick, and a creeper that is gone resets it
+        if (!_creeperStep.active() || _capCreeper != _creeperStep.creeperId()) {
+            _capSince = Long.MIN_VALUE;
+            _capDone = false;
+            _capPlaced = false;
+            _capCreeper = _creeperStep.active() ? _creeperStep.creeperId() : -1;
+            dropCapSneak(mod);
+        }
+        _capAbove = false;
+        if (_creeperStep.active() && noHeading) {
+            Entity held = mod.getWorld().getEntity(_creeperStep.creeperId());
+            _capAbove = held != null && CreeperCap.creeperAbove(true, held.getY() - player.getY(),
+                    Math.hypot(held.getX() - player.getX(), held.getZ() - player.getZ()));
+        }
+        // the cap's share of the fuse counts from the first tick there is something to cap (we may have been in the air
+        // for the start of the step, and then there was no answer to give)
+        if (_capAbove && _capSince == Long.MIN_VALUE) _capSince = now;
+        // out of time: the shield has it, and the food chain gets its hands back if there is no shield
+        if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(now - _capSince)) _capDone = true;
+    }
+
+    // the same question CreeperStepTask asks before it sprints: is there anywhere to run. asked about the creeper the step
+    // holds, or the nearest lit one in TRIGGER when there is no step yet. airborne is nobody's answer (the task keeps what it
+    // was doing there too)
+    private boolean noWayOut(AltoClef mod, List<CreeperStep.Seen> seen) {
+        LocalPlayer player = mod.getPlayer();
+        if (!player.onGround() && !player.isInWater()) return false;
+        int id = -1;
+        double best = Double.POSITIVE_INFINITY;
+        for (CreeperStep.Seen s : seen) {
+            boolean ask = _creeperStep.active() ? s.id() == _creeperStep.creeperId()
+                    : s.lit() && s.distance() <= CreeperStep.TRIGGER && s.distance() < best;
+            if (ask) {
+                id = s.id();
+                best = s.distance();
+            }
+        }
+        if (id < 0) return false;
+        Entity creeper = mod.getWorld().getEntity(id);
+        if (creeper == null) return false;
+        return CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), creeper.getX(), creeper.getZ(),
+                CreeperStepTask.cells(mod.getWorld())) == null;
     }
 
     // stuff a creeper popping beside would cost us: a portal frame on its way (obsidian, or the portal itself), a bed, storage,
