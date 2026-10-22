@@ -135,4 +135,17 @@ public class NetherGoldTest {
         assertEquals("boots", PiglinGold.netherSlot(held, plan));
         assertNull(PiglinGold.piece("nope"));
     }
+
+    @Test
+    public void oreHasToBeAboutOurHeight() {
+        // beside us at our level, and the edges of the reach
+        assertTrue(NetherGold.oreInReach(10, 70, 10, 0, 70, 0));
+        assertTrue(NetherGold.oreInReach(0, 70 + NetherGold.ORE_DY, 0, 0, 70, 0));
+        assertTrue(NetherGold.oreInReach(0, 70 - NetherGold.ORE_DY, 0, 0, 70, 0));
+        // up by the roof or down by the lava sea is not a dig, however close sideways
+        assertFalse(NetherGold.oreInReach(0, 113, 0, 0, 70, 0));
+        assertFalse(NetherGold.oreInReach(0, 70 - NetherGold.ORE_DY - 1, 0, 0, 70, 0));
+        // and the old radius still holds sideways
+        assertFalse(NetherGold.oreInReach(49, 70, 0, 0, 70, 0));
+    }
 }
