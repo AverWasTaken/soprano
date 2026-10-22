@@ -108,8 +108,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean closeIn;
     // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
     private final Set<BlockPos> _triedFeet = new HashSet<>();
-    // ticks we've been soaked with the block in reach. see WaterBreakGuard
-    private int _wetTicks;
+    // how long we've been soaked with the block in reach, and the couple seconds a bob gets out of reach. see WaterBreakGuard
+    private final WaterBreakGuard.Clock _wet = new WaterBreakGuard.Clock();
+    private final WaterBreakGuard.ReachGrace _wetReach = new WaterBreakGuard.ReachGrace();
     // the dry spots to get to first, looked up every so often instead of every tick. null = none (or not looked yet)
     private Goal _landGoal;
     private int _landLookAge;
@@ -593,6 +594,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         _lastReach = null;
         _lastSwingAt = null;
         _triedFeet.clear();
+        _wet.reset();
+        _wetReach.reset();
+        // the land wait is keyed off ticksWet, so it starts over with the clock or it would sit out a stale retry gap
+        _landGoalSet = false;
+        _landPathAt = 0;
+        _landGoal = null;
+        _landLookAge = 0;
 
         // never scaffold onto the square above the block we're here to break. only bites once
         // _fromSide is set, so ordinary blocks path exactly like before
@@ -890,20 +898,20 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         inRange = inRange && (reach.isPresent() || holding);
         // breaking while soaked is up to 25x slower, so we get somewhere dry first unless that's the worse deal
-        boolean slowed = slowedByWater(mod);
-        if (!slowed) {
-            // out of the water, or only wading in it. the clock starts over and the spots get looked up fresh next time
-            _wetTicks = 0;
+        // the top of a bob still counts as wet (see WaterBreakGuard.Clock), so a hop out of the water doesn't restart
+        // the wait, and once we gave up waiting the dry tick at the top keeps swinging instead of going off to path
+        boolean soaked = _wet.step(slowedByWater(mod), mod.getPlayer().onGround(), inRange);
+        if (!soaked) {
+            // out of the water, or only wading in it. the spots get looked up fresh next time
             _landLookAge = 0;
             _landGoal = null;
         }
         boolean waitForLand = false;
         boolean mayBreak = false;
         if (inRange) {
-            if (slowed) {
-                _wetTicks++;
+            if (soaked) {
                 double air = mod.getPlayer().getAirSupply() / (double) Math.max(1, mod.getPlayer().getMaxAirSupply());
-                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), true, breaksInstantly(mod, swingAt), _wetTicks, air, landGoalNow(mod) != null);
+                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), true, breaksInstantly(mod, swingAt), _wet.ticksWet(), air, landGoalNow(mod) != null);
                 waitForLand = !mayBreak;
             } else {
                 mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), false, false, 0, 1, false);
@@ -932,6 +940,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 _backedUp = 0;
             }
             isMining = true;
+            _wetReach.reset();
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
             mod.getInputControls().release(Input.MOVE_FORWARD);
@@ -1015,14 +1024,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
             }
             // we were swinging in the water (that only happens when WaterBreakGuard ran out of patience) and the current
-            // took the block out of reach: it isn't worth chasing across a lake, let someone pick another. when it's
-            // still in reach and we just stopped for dry land that's not a reason to give up on it
-            if (isMining && !inRange && mod.getPlayer().isInWater()) {
-                isMining = false;
+            // took the block out of reach: it isn't worth chasing across a lake, let someone pick another. a bob that
+            // dips out of reach for a moment isn't that, so it gets a couple seconds first (WaterBreakGuard.ReachGrace).
+            // when it's still in reach and we just stopped for dry land that's not a reason to give up on it
+            // soaked too: the dry top of a bob is out of the water but not out of the episode, it shouldn't wipe the count
+            if (_wetReach.step(isMining, !inRange && (soaked || mod.getPlayer().isInWater()))) {
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
-            } else {
-                isMining = false;
             }
+            isMining = false;
             if (waitForLand) {
                 // we're doing what we meant to, the progress checkers don't get a say. the clock in WaterBreakGuard is the way out
                 _moveChecker.reset();
@@ -1033,13 +1042,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // the block is in reach, so whatever goal we had is probably satisfied right where we float and wouldn't budge
                 if (!_landGoalSet) {
                     _landGoalSet = true;
-                    _landPathAt = _wetTicks;
+                    _landPathAt = _wet.ticksWet();
                     mod.getClientBaritone().getBuilderProcess().onLostControl();
                     mod.getClientBaritone().getCustomGoalProcess().onLostControl();
                     mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
-                } else if (!mod.getClientBaritone().getCustomGoalProcess().isActive() && _wetTicks - _landPathAt >= LAND_LOOK_TICKS) {
+                } else if (!mod.getClientBaritone().getCustomGoalProcess().isActive() && _wet.ticksWet() - _landPathAt >= LAND_LOOK_TICKS) {
                     // that path ended and we're still wet (no route, or the current won). try again, but not every tick
-                    _landPathAt = _wetTicks;
+                    _landPathAt = _wet.ticksWet();
                     mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
                 }
                 return null;
