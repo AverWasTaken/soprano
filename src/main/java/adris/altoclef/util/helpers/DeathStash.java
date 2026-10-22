@@ -23,7 +23,13 @@ public final class DeathStash {
         }
     }
 
+    // lava damage that landed this recently still makes it a lava death: the killing blow is often the fire after the bath
+    public static final long LAVA_WINDOW_TICKS = 60;
+
     private static Death pending;
+    // game time of the last lava hit, and the damage source it came on (the client makes a fresh one per hit)
+    private static long lastLavaHit = Long.MIN_VALUE;
+    private static DamageSource lastSeen;
 
     private DeathStash() {
     }
@@ -44,6 +50,21 @@ public final class DeathStash {
         pending = null;
     }
 
+    // every tick: remember when lava last hurt us. the snapshot only sees the death tick, and a burn death after a lava bath
+    // reads as plain fire there
+    public static synchronized void watch(LocalPlayer player) {
+        DamageSource source = player.getLastDamageSource();
+        if (source != null && source != lastSeen && source.is(DamageTypes.LAVA)) {
+            lastLavaHit = player.level().getGameTime();
+        }
+        lastSeen = source;
+    }
+
+    // a hit inside the window, and not from the future (another world has its own clock). fire alone is not lava
+    public static boolean lavaRecent(long lastHit, long now) {
+        return lastHit != Long.MIN_VALUE && now >= lastHit && now - lastHit <= LAVA_WINDOW_TICKS;
+    }
+
     // everything about a player that is dead or dying, read off the player itself. it keeps its level and its health after the
     // respawn swapped ours (the respawn only reads the old one), so this works on the old instance too. the damage source is
     // only good for 40 ticks (getLastDamageSource forgets it), which is why the packet hook reads it right away
@@ -53,7 +74,7 @@ public final class DeathStash {
         DamageSource source = player.getLastDamageSource();
         // the fluid at our feet and the damage source both count: the killing blow can be fire from a lava bath we already
         // climbed out of
-        boolean lava = player.isInLava() || (source != null && source.is(DamageTypes.LAVA))
+        boolean lava = player.isInLava() || lavaRecent(lastLavaHit, level.getGameTime()) || (source != null && source.is(DamageTypes.LAVA))
                 || (level.isLoaded(at) && level.getFluidState(at).is(FluidTags.LAVA));
         boolean out = at.getY() < level.getMinY() || (source != null && source.is(DamageTypes.FELL_OUT_OF_WORLD));
         return new Death(WorldHelper.dimensionOf(level), at.getX(), at.getY(), at.getZ(), level.getGameTime(), lava, out,

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
+import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -12,6 +13,8 @@ import adris.altoclef.tasks.speedrun.gamer.phases.NetherRegress;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Stage;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
+import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.StorageHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Inventory;
@@ -38,6 +41,10 @@ public class NetherRecoverTask extends Task {
     private final Runnable save;
     private final HomePortalWalk walk = new HomePortalWalk();
     private Task blocks;
+    private Task pick;
+    // how far the portal was when the walk last made real headway, and when. MIN_VALUE = not set for this stage yet
+    private double portalMark;
+    private long portalMarkTick = Long.MIN_VALUE;
     private Task toPile;
     private RecoverItemsTask pile;
     private Task home;
@@ -82,9 +89,14 @@ public class NetherRecoverTask extends Task {
             end(mod, "the saved trip made no sense");
             return null;
         }
+        long now = facts.gameTime();
+        // the budget starts here, the pile does not age while the nether is unloaded
+        if (trip.netherTick <= 0 && facts.dimension() == Dimension.NETHER) {
+            trip.netherTick = now;
+            save.run();
+        }
         // PORTAL asks the walk first: whether the portal is gone is only known once it has had a look this tick
         Task child = childFor(mod, stage);
-        long now = facts.gameTime();
         NetherTripRules.Step step = NetherTripRules.next(inputs(mod, trip, stage, now));
         if (step.giveUp() == null && !step.recovered() && step.stage() == stage) {
             return child;
@@ -105,6 +117,7 @@ public class NetherRecoverTask extends Task {
         }
         trip.stage = step.stage().name();
         trip.stageTick = now;
+        portalMarkTick = Long.MIN_VALUE;
         save.run();
         return childFor(mod, step.stage());
     }
@@ -119,8 +132,26 @@ public class NetherRecoverTask extends Task {
         NetherTripRules.Limits limits = NetherTripRules.Limits.of(d.netherTripSeconds, d.netherBlocks, d.netherBlocksSeconds);
         // what WearFromBag would put on right now, so WEAR never waits on a piece it would not try for
         int toWear = stage == Stage.RECOVER || stage == Stage.WEAR ? WearFromBag.held(mod, toEquip()).size() : 0;
-        return new NetherTripRules.Inputs(stage, facts.dimension(), now - trip.startTick, now - trip.stageTick,
-                facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg.get()), toWear, limits);
+        boolean hasPick = StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE);
+        return new NetherTripRules.Inputs(stage, facts.dimension(), NetherTripRules.netherTicks(trip.netherTick, now),
+                now - trip.stageTick, facts.buildBlocks(), homeGone, dist, finished, gained,
+                NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now));
+    }
+
+    // ticks since the walk to the portal last got 8 blocks closer, straight line. the horizontal number closes fast and then
+    // sits there when the portal is a shaft under our feet
+    private long stuckTicks(AltoClef mod, Stage stage, long now) {
+        RunState.Pos home = state.overworldPortal;
+        if (stage != Stage.PORTAL || home == null || facts.dimension() != Dimension.OVERWORLD) {
+            portalMarkTick = Long.MIN_VALUE;
+            return 0;
+        }
+        double dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(new BlockPos(home.x, home.y, home.z)));
+        if (portalMarkTick == Long.MIN_VALUE || NetherTripRules.closedIn(portalMark, dist)) {
+            portalMark = dist;
+            portalMarkTick = now;
+        }
+        return now - portalMarkTick;
     }
 
     private Task childFor(AltoClef mod, Stage stage) {
@@ -136,6 +167,14 @@ public class NetherRecoverTask extends Task {
                 }
                 setDebugState("Getting blocks for the walk.", "Getting building blocks");
                 return blocks;
+            }
+            case PICK -> {
+                if (pick == null) {
+                    // the wooden one on the way comes with it, and stone is what the shaft and the netherrack both want
+                    pick = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
+                }
+                setDebugState("Getting a pickaxe for the way down.", "Making a pickaxe");
+                return pick;
             }
             case PORTAL -> {
                 setDebugState("Back to the portal.", "Going back for our stuff");
@@ -182,6 +221,7 @@ public class NetherRecoverTask extends Task {
 
     private String entered(Stage next) {
         return switch (next) {
+            case PICK -> "no pickaxe, getting one first";
             case PORTAL -> facts.buildBlocks() >= cfg.get().death.netherBlocks ? "got " + facts.buildBlocks() + " blocks"
                     : "going with " + facts.buildBlocks() + " blocks";
             case WALK -> "through the portal";

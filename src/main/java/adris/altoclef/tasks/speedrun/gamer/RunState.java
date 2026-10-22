@@ -171,6 +171,8 @@ public class RunState {
         public String stage = "BLOCKS";
         public long startTick;
         public long stageTick;
+        // first tick we stood in the nether, 0 until then. the budget counts from here (an old save reads 0 and starts fresh)
+        public long netherTick;
 
         public NetherTrip() {
         }

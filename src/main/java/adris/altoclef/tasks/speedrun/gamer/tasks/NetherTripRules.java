@@ -17,6 +17,15 @@ public final class NetherTripRules {
     public static final int HOME_SECONDS = 120;
     // a second death this close to the last pile is the same hazard, not a new pile
     public static final int SAME_SPOT_BLOCKS = 8;
+    // the overworld stages run on their own clocks, the trip budget only starts at the nether (the pile does not age before that).
+    // the pick gets the same cap the pile task gives itself
+    public static final int PICK_SECONDS = (int) RecoverRules.PICK_SECONDS;
+    public static final int PORTAL_SECONDS = 300;
+    // the portal walk has to close this many blocks (3d, a horizontal number lies when the portal is under a mountain) in this
+    // long or it is not getting there
+    public static final int PORTAL_PROGRESS_BLOCKS = 8;
+    public static final int PORTAL_PROGRESS_SECONDS = 60;
+
     private NetherTripRules() {
     }
 
@@ -37,6 +46,8 @@ public final class NetherTripRules {
     public enum Stage {
         // by hand, in the overworld
         BLOCKS,
+        // no stone pick on us: get one, the way down to the portal and the netherrack on the far side both want it
+        PICK,
         // to the home portal and through it
         PORTAL,
         // across the nether to the pile
@@ -106,18 +117,38 @@ public final class NetherTripRules {
         return dx * dx + dz * dz <= (long) SAME_SPOT_BLOCKS * SAME_SPOT_BLOCKS;
     }
 
+    // game time since we first stood in the nether, 0 until then. what the trip budget counts
+    public static long netherTicks(long arrivedTick, long now) {
+        return arrivedTick <= 0 ? 0 : now - arrivedTick;
+    }
+
+    // the portal walk got far enough in since the mark to count as moving
+    public static boolean closedIn(double markDistance, double distance) {
+        return markDistance - distance >= PORTAL_PROGRESS_BLOCKS;
+    }
+
     // ---- the stages
 
     // the numbers from the config, in ticks. homeTicks is fixed
-    public record Limits(long tripTicks, int blocksWanted, long blocksTicks, long homeTicks) {
+    public record Limits(long tripTicks, int blocksWanted, long blocksTicks, long homeTicks, long pickTicks, long portalTicks,
+                         long progressTicks) {
         public static Limits of(int tripSeconds, int blocksWanted, int blocksSeconds) {
-            return new Limits(tripSeconds * 20L, blocksWanted, blocksSeconds * 20L, HOME_SECONDS * 20L);
+            return new Limits(tripSeconds * 20L, blocksWanted, blocksSeconds * 20L, HOME_SECONDS * 20L, PICK_SECONDS * 20L,
+                    PORTAL_SECONDS * 20L, PORTAL_PROGRESS_SECONDS * 20L);
         }
     }
 
-    // everything one decision looks at. tripTicks / stageTicks are game time since the trip / this stage began
+    // everything one decision looks at. tripTicks is game time since we reached the nether (netherTicks, 0 before that),
+    // stageTicks since this stage began, stuckTicks since the portal walk last closed PORTAL_PROGRESS_BLOCKS
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
-                         double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits) {
+                         double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
+                         boolean hasPick, long stuckTicks) {
+        // the common shape: a pick in the bag and a walk that is going fine
+        public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
+                      double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits) {
+            this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
+                    toWear, limits, true, 0);
+        }
     }
 
     // stage = where the trip goes from here, null when it is over. giveUp = why, set exactly when this step is a give up
@@ -132,11 +163,12 @@ public final class NetherTripRules {
             return back ? over() : stay(st);
         }
         // the clock going backwards is another world, not a trip with all its time left
-        if (in.tripTicks() < 0 || in.tripTicks() > in.limits().tripTicks()) {
+        if (in.tripTicks() < 0 || in.stageTicks() < 0 || in.tripTicks() > in.limits().tripTicks()) {
             return giveUp(in, "out of time");
         }
         return switch (st) {
             case BLOCKS -> blocks(in);
+            case PICK -> pick(in);
             case PORTAL -> portal(in);
             case WALK -> walk(in);
             case RECOVER -> recover(in);
@@ -151,9 +183,24 @@ public final class NetherTripRules {
         }
         // short of the count after a minute is still worth going with: the blocks only make the walk safer
         if (in.buildBlocks() >= in.limits().blocksWanted() || in.stageTicks() > in.limits().blocksTicks()) {
-            return new Step(Stage.PORTAL, null, false);
+            return new Step(in.hasPick() ? Stage.PORTAL : Stage.PICK, null, false);
         }
         return stay(Stage.BLOCKS);
+    }
+
+    // no height gate: an 88 block shaft through deepslate does not go with bare hands or wood, and the portal chunk may not
+    // even be loaded from here to look at
+    private static Step pick(Inputs in) {
+        if (in.dim() != Dimension.OVERWORLD) {
+            return giveUp(in, "not in the overworld to get a pickaxe");
+        }
+        if (in.hasPick()) {
+            return new Step(Stage.PORTAL, null, false);
+        }
+        if (in.stageTicks() > in.limits().pickTicks()) {
+            return giveUp(in, "no pickaxe in time");
+        }
+        return stay(Stage.PICK);
     }
 
     private static Step portal(Inputs in) {
@@ -165,6 +212,12 @@ public final class NetherTripRules {
         }
         if (in.homeGone()) {
             return giveUp(in, "the portal is gone");
+        }
+        if (in.stageTicks() > in.limits().portalTicks()) {
+            return giveUp(in, "the portal took too long");
+        }
+        if (in.stuckTicks() > in.limits().progressTicks()) {
+            return giveUp(in, "no closer to the portal");
         }
         return stay(Stage.PORTAL);
     }
