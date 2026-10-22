@@ -112,9 +112,11 @@ public final class FoeRules {
 
     // what the dragon tasks (the sword and the beds) fight, or stand among, on their own terms while they are live: the
     // dragon, and the endermen around the crystals. they add this to the behaviour stack so the chain neither fights nor runs
-    // from them mid-fight. the type is the registry path
-    public static boolean dragonFightOwns(String type) {
-        return type.equals("ender_dragon") || type.equals("enderman");
+    // from them mid-fight. the type is the registry path. an enderman is only theirs while it is calm: one that is angry has
+    // a target and it is us, and a mob defense that ignores it just stands there being hit. the calm ones stay out of it
+    // because swinging at a calm enderman is what makes it angry in the first place
+    public static boolean dragonFightOwns(String type, boolean calm) {
+        return type.equals("ender_dragon") || (type.equals("enderman") && calm);
     }
 
     public static Kind kindOf(Dimension dimension, String type) {

@@ -2,13 +2,13 @@ package adris.altoclef.tasks.speedrun;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.entity.DoToClosestEntityTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.GetToYTask;
 import adris.altoclef.tasks.movement.ThrowEnderPearlSimpleProjectileTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.speedrun.gamer.end.DragonWaitRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -21,6 +21,7 @@ import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
 
 // TODO:
 // The 10 Portal pillars form a 43 block radius, but the angle offset/cycle is random.
@@ -47,10 +48,12 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
     private static final double DRAGON_FIREBALL_TOO_CLOSE_RANGE = 40;
     private final Task _buildingMaterialsTask = new GetBuildingMaterialsTask(HEIGHT + 10);
-    boolean inCenter;
     private Task _heightPillarTask;
     private Task _throwPearlTask;
     private BlockPos _targetToPearl;
+    // the way out of the breath we are walking, kept until we get there
+    private DragonWaitRules.Spot _dodgeSpot;
+    private Task _dodgeTask;
     private boolean _dragonIsPerching;
     // To avoid dragons breath
     private Task _pillarUpFurther;
@@ -73,6 +76,15 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
     @Override
     protected void onStart(AltoClef mod) {
+        // a death sends us back through here with the same task object, nothing from the last attempt carries over
+        _hasPillar = false;
+        _pillarSpot = null;
+        _pillarGoal = null;
+        _heightPillarTask = null;
+        _pillarUpFurther = null;
+        _dodgeSpot = null;
+        _dodgeTask = null;
+        _throwPearlTask = _targetToPearl == null ? null : new ThrowEnderPearlSimpleProjectileTask(_targetToPearl);
     }
 
     @Override
@@ -85,6 +97,12 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
         if (_throwPearlTask != null && _throwPearlTask.isActive() && !_throwPearlTask.isFinished(mod)) {
             setDebugState("Throwing pearl!");
             return _throwPearlTask;
+        }
+
+        // pearls decide it every tick: a pearl in the bag is the pillar and the throw, none is the ground. nothing is
+        // remembered, so a pearl thrown (or never crafted) does not leave us climbing or hunting for another
+        if (DragonWaitRules.mode(mod.getItemStorage().hasItem(Items.ENDER_PEARL) ? 1 : 0) == DragonWaitRules.Mode.GROUND) {
+            return groundTick(mod);
         }
 
         if (_pillarUpFurther != null && _pillarUpFurther.isActive() && !_pillarUpFurther.isFinished(mod) && (mod.getEntityTracker().getClosestEntity(AreaEffectCloud.class).isPresent())) {
@@ -102,11 +120,6 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
                 setDebugState("PILLAR UP FURTHER to avoid dragon's breath");
                 return _pillarUpFurther;
             }
-        }
-
-        if (!mod.getItemStorage().hasItem(Items.ENDER_PEARL) && inCenter) {
-            setDebugState("First get ender pearls.");
-            return TaskCatalogue.getItemTask(Items.ENDER_PEARL, 1);
         }
 
         int minHeight = _targetToPearl.getY() + HEIGHT - 3;
@@ -133,7 +146,6 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             }
             if (_heightPillarTask != null && _heightPillarTask.isActive() && !_heightPillarTask.isFinished(mod)) {
                 setDebugState("Pillaring up!");
-                inCenter = true;
                 if (mod.getEntityTracker().entityFound(EndCrystal.class)) {
                     return new DoToClosestEntityTask(
                             (toDestroy) -> {
@@ -214,6 +226,57 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             _heightPillarTask = new GetToBlockTask(pillarGoal);
         }
         return _heightPillarTask;
+    }
+
+    // no pearl to get down with: stand 8 to 12 out from the fountain on the ground and let the bed task walk up to its spot
+    // when the dragon perches. no pillar, no hunting, an enderman is not worth leaving the fight for
+    private Task groundTick(AltoClef mod) {
+        double px = mod.getPlayer().getX();
+        double pz = mod.getPlayer().getZ();
+        double fx = _targetToPearl.getX() + 0.5;
+        double fz = _targetToPearl.getZ() + 0.5;
+
+        // out of the breath first: the cloud under us or a fireball coming at us. the way out is kept until we are there, the
+        // spot is worked out from where we stood when it started, not again every block of the walk
+        Optional<Entity> cloud = mod.getEntityTracker().getClosestEntity(AreaEffectCloud.class);
+        Optional<Entity> fireball = mod.getEntityTracker().getClosestEntity(DragonFireball.class);
+        if (_dodgeSpot != null && ((cloud.isEmpty() && fireball.isEmpty())
+                || WorldHelper.inRangeXZ(mod.getPlayer(), new BlockPos((int) Math.round(_dodgeSpot.x()), 0, (int) Math.round(_dodgeSpot.z())), 2))) {
+            _dodgeSpot = null;
+            _dodgeTask = null;
+        }
+        if (_dodgeSpot == null) {
+            if (cloud.isPresent() && cloud.get() instanceof AreaEffectCloud c) {
+                _dodgeSpot = DragonWaitRules.clearOfCloud(px, pz, c.getX(), c.getZ(), c.getRadius());
+            }
+            if (_dodgeSpot == null && fireball.isPresent()) {
+                Vec3 v = fireball.get().getDeltaMovement();
+                _dodgeSpot = DragonWaitRules.dodgeFireball(px, pz, fireball.get().getX(), fireball.get().getZ(), v.x, v.z);
+            }
+            if (_dodgeSpot != null) {
+                _dodgeTask = new GetToXZTask((int) Math.round(_dodgeSpot.x()), (int) Math.round(_dodgeSpot.z()));
+            }
+        }
+        if (_dodgeTask != null) {
+            setDebugState("Stepping out of the dragon's breath", "Dodging the breath");
+            return _dodgeTask;
+        }
+
+        DragonWaitRules.Spot spot = DragonWaitRules.groundSpot(px, pz, fx, fz);
+        boolean settled = DragonWaitRules.inGroundRing(px, pz, fx, fz);
+        // walking back to the ring through a cloud that is still there is how we would stand in it again
+        boolean cloudAtSpot = cloud.isPresent() && cloud.get() instanceof AreaEffectCloud c
+                && DragonWaitRules.clearOfCloud(spot.x(), spot.z(), c.getX(), c.getZ(), c.getRadius()) != null;
+        if (!settled && !cloudAtSpot) {
+            setDebugState("Going to the ground wait spot", "Waiting for the dragon");
+            return new GetToXZTask((int) Math.round(spot.x()), (int) Math.round(spot.z()));
+        }
+        setDebugState("No pearl, waiting for the dragon on the ground", "Waiting for the dragon");
+        Optional<Entity> dragon = mod.getEntityTracker().getClosestEntity(EnderDragon.class);
+        if (dragon.isPresent() && !mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            LookHelper.lookAt(mod, dragon.get().getEyePosition());
+        }
+        return null;
     }
 
     // XZ_RADIUS out from the fountain on the side we are already on (east, where the arrival platform is, when we are in the middle)

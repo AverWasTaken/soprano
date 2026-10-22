@@ -91,8 +91,8 @@ public class KillEnderDragonTask extends Task {
         mod.getBehaviour().releasePaused(this);
         _level = mod.getBehaviour().push();
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
-        // Don't forcefield endermen.
-        mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Enderman || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
+        // don't forcefield calm endermen (an angry one is the aura's again).
+        mod.getBehaviour().addForceFieldExclusion(KillEnderDragonTask::calmDragonFightEntity);
         // and mob defense keeps out too: an enderman mid-crystal is not worth a fight or a run
         mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
         mod.getBehaviour().setPreferredStairs(true);
@@ -100,7 +100,17 @@ public class KillEnderDragonTask extends Task {
 
     // the mobs the dragon tasks deal with on their own terms while they are live (shared by the sword and the bed task)
     public static boolean ownedByTheDragonFight(Entity entity) {
-        return FoeRules.dragonFightOwns(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath());
+        return FoeRules.dragonFightOwns(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath(), !angryEnderman(entity));
+    }
+
+    // an enderman that has made us its target (creepy is the synced flag, aggressive the melee goal's)
+    public static boolean angryEnderman(Entity entity) {
+        return entity instanceof Enderman man && (man.isCreepy() || man.isAggressive());
+    }
+
+    // the aura's list: the dragon, its parts and calm endermen. an angry one is fair game for the aura too
+    public static boolean calmDragonFightEntity(Entity entity) {
+        return (entity instanceof Enderman && !angryEnderman(entity)) || entity instanceof EnderDragon || entity instanceof EnderDragonPart;
     }
 
     @Override
