@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 
 public class BlockPlaceHelper {
     // base ticks between places caused by tick logic
@@ -57,6 +58,8 @@ public class BlockPlaceHelper {
     private final List<Traced> traced = new ArrayList<>(2);
     // what the build wants at a cell, for the same trace. null answers are air or outside the file
     private Function<BlockPos, BlockState> want = pos -> null;
+    // which build's ledger the click went out under, handed back with the confirm. see ScaffoldLedger.current
+    private IntSupplier generation = () -> 0;
 
     BlockPlaceHelper(IPlayerContext playerContext) {
         this.ctx = playerContext;
@@ -67,9 +70,10 @@ public class BlockPlaceHelper {
         void placed(BlockPos pos, BlockState state);
     }
 
-    // any traced click (so only while building) that landed, and whose it was. game thread
+    // any traced click (so only while building) that landed, whose it was, and the ledger generation it went out under.
+    // game thread
     public interface TracedPlaceListener {
-        void placed(BlockPos pos, BlockState state, String who);
+        void placed(BlockPos pos, BlockState state, String who, int generation);
     }
 
     private TracedPlaceListener tracedListener;
@@ -93,17 +97,23 @@ public class BlockPlaceHelper {
         final BlockPos pos;
         final BlockState before;
         final String who;
+        final int generation;
         int age;
 
-        Traced(BlockPos pos, BlockState before, String who) {
+        Traced(BlockPos pos, BlockState before, String who, int generation) {
             this.pos = pos;
             this.before = before;
             this.who = who;
+            this.generation = generation;
         }
     }
 
     void setWant(Function<BlockPos, BlockState> want) {
         this.want = want;
+    }
+
+    void setGeneration(IntSupplier generation) {
+        this.generation = generation;
     }
 
     public void setPlaceListener(PlaceListener listener) {
@@ -208,7 +218,7 @@ public class BlockPlaceHelper {
         BlockState before = ctx.world().getBlockState(at);
         // every click, ring only. a stuck place clicks five times a second, the log file gets the ones that landed
         Trace.record("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
-        return new Traced(at, before, who);
+        return new Traced(at, before, who, generation.getAsInt());
     }
 
     // same patience as confirm, a click that never shows is worth a line too
@@ -230,7 +240,7 @@ public class BlockPlaceHelper {
                 // only while building (who is null otherwise), the same rule that keeps these out of everything else
                 Debug.logInternal("placed " + now + " at " + t.pos.toShortString() + " by " + t.who + " want " + want.apply(t.pos));
                 if (tracedListener != null) {
-                    tracedListener.placed(t.pos, now, t.who);
+                    tracedListener.placed(t.pos, now, t.who, t.generation);
                 }
             } else if (++t.age > CONFIRM_TICKS) {
                 it.remove();

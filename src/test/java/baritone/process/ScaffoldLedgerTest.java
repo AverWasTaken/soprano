@@ -221,4 +221,36 @@ public class ScaffoldLedgerTest {
         assertEquals(List.of(new BetterBlockPos(-1, 2, 0), new BetterBlockPos(-1, 1, 0), new BetterBlockPos(-1, 0, 0),
                 new BetterBlockPos(1, 0, 1), new BetterBlockPos(2, 2, 2)), order);
     }
+
+    @Test
+    public void theSameBuildKeepsItsGenerationAndADifferentOneDoesnt() {
+        ScaffoldLedger l = owned();
+        int stamp = l.generation();
+        // a resume or a repeat: confirms from before it still count
+        assertTrue(l.own("house", ORIGIN));
+        assertTrue(l.current(stamp));
+        // the next portal cell, one block over: whatever the last cell clicked is history
+        assertFalse(l.own("house", new Vec3i(101, 64, 100)));
+        assertFalse(l.current(stamp));
+        assertTrue(l.current(l.generation()));
+    }
+
+    @Test
+    public void aNewDimensionIsANewGenerationButAReconnectIsnt() {
+        ScaffoldLedger l = owned();
+        l.world("overworld");
+        int stamp = l.generation();
+        l.world("overworld");
+        assertTrue(l.current(stamp));
+        l.world("nether");
+        assertFalse(l.current(stamp));
+    }
+
+    @Test
+    public void aFreshLedgerNeverReusesAnOldStamp() {
+        ScaffoldLedger a = owned();
+        ScaffoldLedger b = new ScaffoldLedger();
+        assertFalse(b.current(a.generation()));
+        assertFalse(b.current(0));
+    }
 }

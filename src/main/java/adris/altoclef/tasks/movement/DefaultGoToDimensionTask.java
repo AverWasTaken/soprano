@@ -22,10 +22,15 @@ public class DefaultGoToDimensionTask extends Task {
 
     private final Dimension _target;
     // Cached to keep build properties alive if this task pauses/resumes.
-    private final Task _cachedNetherBucketConstructionTask = new ConstructNetherPortalBucketTask();
+    private final ConstructNetherPortalBucketTask _cachedNetherBucketConstructionTask = new ConstructNetherPortalBucketTask();
 
     public DefaultGoToDimensionTask(Dimension target) {
         _target = target;
+    }
+
+    // the cast we hand out, so a caller can see how far its frame got
+    public ConstructNetherPortalBucketTask bucketPortalTask() {
+        return _cachedNetherBucketConstructionTask;
     }
 
     @Override
@@ -137,10 +142,9 @@ public class DefaultGoToDimensionTask extends Task {
     }
 
     private boolean netherPortalIsClose(AltoClef mod) {
-        if (mod.getBlockTracker().anyFound(Blocks.NETHER_PORTAL)) {
-            Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(), Blocks.NETHER_PORTAL);
-            return closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), 2000);
-        }
-        return false;
+        // the same pick the EnterNetherPortalTask we hand out makes, or a portal it can't get into keeps handing it out
+        // when the build below is what would help
+        Optional<BlockPos> closest = EnterNetherPortalTask.usablePortal(mod, EnterNetherPortalTask.ANY_PORTAL, mod.getPlayer().position());
+        return closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), 2000);
     }
 }

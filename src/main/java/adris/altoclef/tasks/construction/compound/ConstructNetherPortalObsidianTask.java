@@ -142,7 +142,14 @@ public class ConstructNetherPortalObsidianTask extends Task {
         if (_origin != null) {
             if (mod.getWorld().getBlockState(_origin.above()).getBlock() == Blocks.NETHER_PORTAL) {
                 setDebugState("Done constructing nether portal.");
-                mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, _origin.above());
+                // every lit cell, the bottom two most of all: the enter task only walks to a cell feet fit in, and the
+                // tracker's own scan won't hear about this portal for a while
+                for (Vec3i inside : PORTAL_INTERIOR) {
+                    BlockPos cell = _origin.offset(inside);
+                    if (mod.getWorld().getBlockState(cell).getBlock() == Blocks.NETHER_PORTAL) {
+                        mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, cell);
+                    }
+                }
                 return null;
             }
         }

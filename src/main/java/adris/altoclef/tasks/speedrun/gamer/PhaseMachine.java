@@ -434,18 +434,21 @@ public final class PhaseMachine implements GamerContext {
 
     // a handler that throws is a failed attempt like any other: the same retry / skip / stuck decision, never a rethrow
     // into the bridge (five of those in a minute and altoclef gives up for the session)
-    private void handlerThrew(PhaseHandler h, RuntimeException e) {
+    private void handlerThrew(PhaseHandler h, Throwable e) {
         Debug.logWarning(h.phase() + " phase hit an error: " + e);
         e.printStackTrace();
         pendingFail = "error in the " + h.phase().name().toLowerCase() + " phase (" + e.getClass().getSimpleName() + ")";
     }
 
     // an exception that came out of the child task the handler handed back, which Task.tick runs after our onTick returned.
-    // same road as a handler that throws: a failed attempt, retried or stuck
-    public void failFromChild(RuntimeException e) {
+    // same road as a handler that throws: a failed attempt, retried or stuck. a StackOverflowError lands here too (see
+    // GamerTask.tick), hence Throwable and the unpacking on the rethrow
+    public void failFromChild(Throwable e) {
         PhaseHandler h = current();
         if (h == null) {
-            throw e;
+            if (e instanceof Error err) throw err;
+            if (e instanceof RuntimeException re) throw re;
+            throw new IllegalStateException(e);
         }
         handlerThrew(h, e);
     }

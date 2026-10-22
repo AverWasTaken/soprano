@@ -15,11 +15,13 @@ import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -106,6 +108,30 @@ public class ConstructNetherPortalBucketTask extends Task {
     private int _reachSwitches;
     private boolean _firstSearch = false;
 
+    // where the frame is going, null while we're still looking for a spot. PortalPhase reads this with castCellsDone to
+    // tell a slow cast from a stuck one
+    public BlockPos portalOrigin() {
+        return _portalOrigin;
+    }
+
+    public int castCellsDone(AltoClef mod) {
+        return castCellsDone(_portalOrigin, cell -> mod.getWorld().getBlockState(cell).getBlock() == Blocks.OBSIDIAN);
+    }
+
+    // how many of the ten frame cells are obsidian already
+    static int castCellsDone(BlockPos origin, Predicate<BlockPos> isObsidian) {
+        if (origin == null) {
+            return 0;
+        }
+        int done = 0;
+        for (Vec3i frame : PORTAL_FRAME) {
+            if (isObsidian.test(origin.offset(frame))) {
+                done++;
+            }
+        }
+        return done;
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.LAVA);
@@ -143,7 +169,14 @@ public class ConstructNetherPortalBucketTask extends Task {
         if (_portalOrigin != null) {
             if (mod.getWorld().getBlockState(_portalOrigin.above()).getBlock() == Blocks.NETHER_PORTAL) {
                 setDebugState("Done constructing nether portal.");
-                mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, _portalOrigin.above());
+                // every lit cell, same as the obsidian variant: the enter task wants a bottom cell and the tracker's own
+                // scan won't hear about this portal for a while
+                for (Vec3i inside : PORTAL_INTERIOR) {
+                    BlockPos cell = _portalOrigin.offset(inside);
+                    if (mod.getWorld().getBlockState(cell).getBlock() == Blocks.NETHER_PORTAL) {
+                        mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, cell);
+                    }
+                }
                 return null;
             }
         }
@@ -476,33 +509,33 @@ public class ConstructNetherPortalBucketTask extends Task {
 
     // Used to flood-scan for blocks of lava.
     private int getNumberOfBlocksAdjacent(HashSet<BlockPos> alreadyExplored, BlockPos origin) {
-        // Base case: We already explored this one
-        if (alreadyExplored.contains(origin)) return 0;
-        alreadyExplored.add(origin);
-
-        // Base case: We hit a non-full lava block.
         assert Minecraft.getInstance().level != null;
-        BlockState s = Minecraft.getInstance().level.getBlockState(origin);
-        if (s.getBlock() != Blocks.LAVA) {
-            return 0;
-        } else {
-            // We may not be a full lava block
-            if (!s.getFluidState().isSource()) return 0;
-            int level = s.getFluidState().getAmount();
-            //Debug.logMessage("TEST LEVEL: " + level + ", " + height);
-            // Only accept FULL SOURCE BLOCKS
-            if (level != 8) return 0;
+        return lakeSize(origin, ConstructNetherPortalBucketTask::isFullLavaSource, alreadyExplored);
+    }
+
+    static boolean isFullLavaSource(BlockPos pos) {
+        BlockState s = Minecraft.getInstance().level.getBlockState(pos);
+        return s.getBlock() == Blocks.LAVA && s.getFluidState().isSource() && s.getFluidState().getAmount() == 8;
+    }
+
+    // full sources touching start, 6 ways. every cell looked at goes in explored, source or not, so findLavaLakes skips
+    // the rest of a lake it already counted. this used to recurse one frame per source and a deep lava lake is a lot of
+    // sources, so now it's a stack we own instead of the jvm's
+    static int lakeSize(BlockPos start, Predicate<BlockPos> isFullSource, Set<BlockPos> explored) {
+        ArrayDeque<BlockPos> todo = new ArrayDeque<>();
+        todo.push(start);
+        int count = 0;
+        while (!todo.isEmpty()) {
+            BlockPos pos = todo.pop();
+            // add() says no when it was already there, same as the old "explored? return 0"
+            if (!explored.add(pos) || !isFullSource.test(pos)) continue;
+            count++;
+            for (BlockPos n : new BlockPos[]{pos.north(), pos.south(), pos.east(), pos.west(), pos.above(), pos.below()}) {
+                // seen ones would just pop and die, don't let them pile up
+                if (!explored.contains(n)) todo.push(n);
+            }
         }
-
-        BlockPos[] toCheck = new BlockPos[]{origin.north(), origin.south(), origin.east(), origin.west(), origin.above(), origin.below()};
-
-        int bonus = 0;
-        for (BlockPos check : toCheck) {
-            // This block is new! Explore out from it.
-            bonus += getNumberOfBlocksAdjacent(alreadyExplored, check);
-        }
-
-        return bonus + 1;
+        return count;
     }
 
     // Get a region that a portal can fit into
