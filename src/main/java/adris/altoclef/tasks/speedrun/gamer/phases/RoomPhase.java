@@ -31,6 +31,9 @@ public class RoomPhase implements PhaseHandler {
     private double roomBedSince;
     // a bed that will not go down (no spot, mobs on it) does not get to hold up the search
     private static final double ROOM_BED_SECONDS = 60;
+    // the bed goes down at the top of the dig. the stronghold's top is never above sea level - 10, so under this we're
+    // already in the shaft and a bed down there is a bed in a hole
+    private static final double ROOM_BED_BELOW_Y = 50;
 
     @Override
     public GamerPhase phase() {
@@ -120,7 +123,7 @@ public class RoomPhase implements PhaseHandler {
         RunState.Pos start = state.strongholdStart;
         var player = mod.getPlayer();
         if (start == null || player == null || ctx.facts().dimension() != Dimension.OVERWORLD
-                || player.getY() <= ctx.cfg().stronghold.roomMinY) {
+                || player.getY() < ROOM_BED_BELOW_Y) {
             return null;
         }
         boolean atStart = Math.hypot(start.x - player.getX(), start.z - player.getZ()) <= ctx.cfg().stronghold.startReachBlocks;
