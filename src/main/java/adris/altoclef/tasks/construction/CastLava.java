@@ -25,6 +25,12 @@ public final class CastLava {
     public static final double STILL_SPEED_SQ = 1e-4;
     // how long the lava we just poured gets to show up before we believe it went nowhere. a round trip and change
     public static final int IN_FLIGHT_TICKS = 30;
+    // pours that spent a bucket and left the cell dry before the cast gives the spot up
+    public static final int MAX_FAILED_POURS = 3;
+    // clicks that spent nothing (wrong thing in hand, bucket never left the bag), a looser cap since they cost no lava
+    public static final int MAX_DUD_CLICKS = 6;
+    // how long a click gets to show the bucket leaving the bag before it counts as a dud
+    public static final int PENDING_TICKS = 10;
     // scooping our own mess or waiting for a flow to drain, same clock as the lava mold's cleanup
     public static final int CLEAN_TICKS = 20 * 8;
     // eye to the middle of the lava, under the 4.5 reach so the ray still has room to land on the source's top
@@ -92,6 +98,20 @@ public final class CastLava {
 
     public static boolean inFlight(int clickedAt, int now) {
         return clickedAt != Integer.MIN_VALUE && now - clickedAt <= IN_FLIGHT_TICKS;
+    }
+
+    // a pour is a lava bucket that left the bag. a click that kept all of them was a pickaxe to the face of a block
+    public static boolean spent(int lavaBucketsBefore, int lavaBucketsNow) {
+        return lavaBucketsBefore > 0 && lavaBucketsNow < lavaBucketsBefore;
+    }
+
+    // a real pour whose window ran out with the cell neither lava nor obsidian: the lava went somewhere else
+    public static boolean pourFailed(Mat cell, boolean obsidian) {
+        return cell != Mat.LAVA && !obsidian;
+    }
+
+    public static boolean spoiled(int failedPours, int dudClicks) {
+        return failedPours >= MAX_FAILED_POURS || dudClicks >= MAX_DUD_CLICKS;
     }
 
     // ---- where our lava can be

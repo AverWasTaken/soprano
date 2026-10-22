@@ -7,7 +7,6 @@ import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
@@ -88,6 +87,13 @@ public class PlaceObsidianBucketTask extends Task {
     // cleaning up our loose lava: since when, and how many sources were left the last time it got better
     private int _cleanSince = Integer.MIN_VALUE;
     private int _cleanSources = Integer.MAX_VALUE;
+    // lava buckets in the bag the last tick we handed out the click, and the tick the click went out while we wait to
+    // see one leave (MIN_VALUE when none is pending)
+    private int _lavaBefore;
+    private int _pendingAt = Integer.MIN_VALUE;
+    // pours that really spent a bucket and left the cell dry, and clicks that spent nothing. a lava cell wipes both
+    private int _failedPours;
+    private int _dudClicks;
     // the ban on this cell is out, the parent moves the frame
     private boolean _dropped;
 
@@ -171,8 +177,8 @@ public class PlaceObsidianBucketTask extends Task {
     // that goes off for a fresh bucket now walks away from it
     public boolean ownsTheLava(AltoClef mod) {
         // the parent asks before we tick, so last tick's click hasn't been read yet
-        watchLavaClick();
-        if (CastLava.inFlight(_lavaClickAt, WorldHelper.getTicks())) {
+        watchLavaClick(mod);
+        if (_pendingAt != Integer.MIN_VALUE || CastLava.inFlight(_lavaClickAt, WorldHelper.getTicks())) {
             return true;
         }
         if (!castFrameBuilt(mod)) {
@@ -190,14 +196,14 @@ public class PlaceObsidianBucketTask extends Task {
 
     private Task castTick(AltoClef mod) {
         watchLavaCell(mod);
-        watchLavaClick();
+        watchLavaClick(mod);
         // Reset progress if pathing
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progressChecker.reset();
         }
 
         // Clear leftover water
-        if (mod.getBlockTracker().blockIsValid(_pos, Blocks.OBSIDIAN) && mod.getBlockTracker().blockIsValid(_pos.above(), Blocks.WATER)) {
+        if (isObsidian(mod) && isWater(mod, _pos.above())) {
             return new ClearLiquidTask(_pos.above());
         }
 
@@ -225,6 +231,12 @@ public class PlaceObsidianBucketTask extends Task {
                 return clean;
             }
         }
+        // a click went out and the bag hasn't said whether the bucket left it. a pour we can't confirm isn't one
+        if (_pendingAt != Integer.MIN_VALUE) {
+            setDebugState("Waiting to see the lava bucket leave");
+            _progressChecker.reset();
+            return null;
+        }
         // the lava click just went out and nothing shows yet. the bag says no lava bucket, which is the pour working, not
         // a reason to go to the lake for another
         if (CastLava.inFlight(_lavaClickAt, WorldHelper.getTicks())) {
@@ -234,6 +246,20 @@ public class PlaceObsidianBucketTask extends Task {
                 return null;
             }
             _lavaClickAt = Integer.MIN_VALUE;
+            _failedPours = 0;
+            _dudClicks = 0;
+        } else if (_lavaClickAt != Integer.MIN_VALUE) {
+            // the window is over. a bucket went and the cell is dry: the lava landed somewhere that isn't ours to know
+            _lavaClickAt = Integer.MIN_VALUE;
+            if (CastLava.pourFailed(lavaCell(mod), isObsidian(mod))) {
+                _failedPours++;
+            } else {
+                _failedPours = 0;
+                _dudClicks = 0;
+            }
+        }
+        if (CastLava.spoiled(_failedPours, _dudClicks)) {
+            return dropOrigin(mod, "the lava never lands in the cell");
         }
 
         // Make sure we have a water bucket
@@ -253,8 +279,8 @@ public class PlaceObsidianBucketTask extends Task {
 
         // Make sure we have a lava bucket
         if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
-            // The only excuse is that we have lava at our position.
-            if (!mod.getBlockTracker().blockIsValid(_pos, Blocks.LAVA)) {
+            // The only excuse is that we have lava at our position. the world, the tracker's cache can be stale
+            if (mod.getWorld().getBlockState(_pos).getBlock() != Blocks.LAVA) {
                 _progressChecker.reset();
                 return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
             }
@@ -339,6 +365,13 @@ public class PlaceObsidianBucketTask extends Task {
                 setDebugState("Holding the lava pour: settling down");
                 return null;
             }
+            // never click empty handed, the parent fetches the bucket first
+            if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
+                letGoOfTheClick(mod);
+                _progressChecker.reset();
+                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+            }
+            _lavaBefore = mod.getItemStorage().getItemCount(Items.LAVA_BUCKET);
             _heldFor = null;
             _pouring = true;
             if (_lavaClick == null) {
@@ -470,11 +503,22 @@ public class PlaceObsidianBucketTask extends Task {
     }
 
     // the child ticked after us last tick, so what it says now is what it did then
-    private void watchLavaClick() {
+    private void watchLavaClick(AltoClef mod) {
         if (_lavaClick != null && _lavaClick.getClickStatus() == InteractWithBlockTask.ClickResponse.CLICK_ATTEMPTED) {
-            _lavaClickAt = WorldHelper.getTicks();
+            _pendingAt = WorldHelper.getTicks();
             _lavaClick = null;
             _pouring = false;
+        }
+        if (_pendingAt == Integer.MIN_VALUE) {
+            return;
+        }
+        // only a bucket that left the bag starts the in flight clock, a click with a pickaxe in hand is not a pour
+        if (CastLava.spent(_lavaBefore, mod.getItemStorage().getItemCount(Items.LAVA_BUCKET))) {
+            _lavaClickAt = _pendingAt;
+            _pendingAt = Integer.MIN_VALUE;
+        } else if (WorldHelper.getTicks() - _pendingAt > CastLava.PENDING_TICKS) {
+            _pendingAt = Integer.MIN_VALUE;
+            _dudClicks++;
         }
     }
 
@@ -641,6 +685,10 @@ public class PlaceObsidianBucketTask extends Task {
         return null;
     }
 
+    private boolean isObsidian(AltoClef mod) {
+        return mod.getWorld().getBlockState(_pos).getBlock() == Blocks.OBSIDIAN;
+    }
+
     private static boolean isWater(AltoClef mod, BlockPos pos) {
         return mod.getWorld().getBlockState(pos).getBlock() == Blocks.WATER;
     }
@@ -693,22 +741,8 @@ public class PlaceObsidianBucketTask extends Task {
      */
     @Override
     public boolean isFinished(AltoClef mod) {
-        // Get the BlockTracker instance from the mod
-        BlockTracker blockTracker = mod.getBlockTracker();
-
-        // Get the position of the block to check
-        BlockPos pos = _pos;
-
-        // Check if the block at the specified position is obsidian
-        boolean isObsidian = blockTracker.blockIsValid(pos, Blocks.OBSIDIAN);
-
-        // Check if there is no water block above the specified position
-        boolean isNotWaterAbove = !blockTracker.blockIsValid(pos.above(), Blocks.WATER);
-
-        // The task is considered finished if the block is obsidian and there is no water above
-        boolean isFinished = isObsidian && isNotWaterAbove;
-
-        return isFinished;
+        // the world, not the tracker: its cache lags a cast
+        return isObsidian(mod) && !isWater(mod, _pos.above());
     }
 
     /**
