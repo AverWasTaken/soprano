@@ -609,4 +609,29 @@ public class NightSleepTest {
             assertEquals("tick " + t, Prep.BED_READY, prep(ready ? withBed(base) : base));
         }
     }
+
+    // in bed before the trip got to SLEEP: the trip catches up instead of building around a sleeping player
+    @Test
+    public void inBedMidBuildIsSleeping() {
+        for (Stage s : new Stage[]{Stage.CRAFT, Stage.WALK, Stage.LIFT, Stage.BUILD}) {
+            assertEquals(s.name(), Stage.SLEEP, NightSleep.stageWhenAsleep(true, s));
+            assertEquals(s.name(), s, NightSleep.stageWhenAsleep(false, s));
+        }
+        // the stages from SLEEP on already know what being in bed means
+        for (Stage s : new Stage[]{Stage.SLEEP, Stage.PICKUP, Stage.RETURN, Stage.DESCEND}) {
+            assertEquals(s.name(), s, NightSleep.stageWhenAsleep(true, s));
+        }
+    }
+
+    @Test
+    public void notAtNightInTheMorningIsTheNightBeingOver() {
+        assertTrue(NightSleep.nightIsOver(Refusal.NOT_NOW, true, 7, 7));
+        // the sky still reads dark but the day count has moved on
+        assertTrue(NightSleep.nightIsOver(Refusal.NOT_NOW, false, 7, 8));
+        // at real night it is still a refusal
+        assertFalse(NightSleep.nightIsOver(Refusal.NOT_NOW, false, 7, 7));
+        assertFalse(NightSleep.nightIsOver(Refusal.MONSTERS, true, 7, 8));
+        assertFalse(NightSleep.nightIsOver(Refusal.OTHER, true, 7, 8));
+        assertEquals(Next.GIVE_UP, NightSleep.afterRefusal(Refusal.NOT_NOW, 0, 0));
+    }
 }

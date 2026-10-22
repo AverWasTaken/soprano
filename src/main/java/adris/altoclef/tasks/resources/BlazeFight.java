@@ -46,6 +46,8 @@ final class BlazeFight {
     private static final double STAY_BONUS = 30;
     private static final long BAD_SPOT_TICKS = 600;
     private static final double RUN_DISTANCE = 30;
+    // well inside SPOT_NEAR_SPAWNER_SQ, so once we get here the cover search has spots to look at
+    private static final int BACK_TO_SPAWNER_RANGE = 6;
 
     // a raycast per blaze per tick is silly, a blaze moves maybe half a block in this long
     private static final int LINE_EVERY = 5;
@@ -308,9 +310,25 @@ final class BlazeFight {
 
     private Task cover(AltoClef mod, long now, BlockPos spawner) {
         BlockPos pick = chooseSpot(mod, now, spawner, false);
-        if (pick == null) pick = mod.getPlayer().blockPosition();
+        // no spot at all is mostly us being out past the spawner (a run, a chase), and the candidates are only ever by it
+        if (pick == null) return noCover(mod, now, spawner);
         campSpot = pick;
         return new BlazeCoverTask(pick, true, this::shieldTarget, this::markBad);
+    }
+
+    // campSpot is only written for the shield in place, our own block out past the spawner is not somewhere to come back to
+    private Task noCover(AltoClef mod, long now, BlockPos spawner) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        // the same measure GoalNear finishes on, so "near" here and "arrived" there agree
+        boolean near = spawner != null && feet.distSqr(spawner) <= BACK_TO_SPAWNER_RANGE * BACK_TO_SPAWNER_RANGE;
+        return switch (BlazeFightRules.noCoverSpot(spawner != null, near, mod.getPlayer().getHealth())) {
+            case BACK_TO_SPAWNER -> new GetWithinRangeOfBlockTask(spawner, BACK_TO_SPAWNER_RANGE);
+            case SHIELD_HERE -> {
+                campSpot = feet;
+                yield new BlazeCoverTask(feet, true, this::shieldTarget, this::markBad);
+            }
+            case RETREAT -> retreat(mod, now, spawner);
+        };
     }
 
     private Task retreat(AltoClef mod, long now, BlockPos spawner) {

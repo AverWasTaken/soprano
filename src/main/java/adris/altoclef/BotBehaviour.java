@@ -30,6 +30,8 @@ public class BotBehaviour {
 
     private final AltoClef _mod;
     Deque<State> _states = new ArrayDeque<>();
+    // mob defense exclusions of tasks a chain has paused, see holdWhilePaused
+    private final PausedHolds<Predicate<Entity>> _pausedExclusions = new PausedHolds<>();
 
     public BotBehaviour(AltoClef mod) {
         _mod = mod;
@@ -102,11 +104,38 @@ public class BotBehaviour {
         for (Predicate<Entity> pred : current().excludeFromMobDefense) {
             if (pred.test(entity)) return true;
         }
-        return false;
+        return _pausedExclusions.any(pred -> pred.test(entity));
     }
 
     public void addMobDefenseExclusion(Predicate<Entity> pred) {
         current().excludeFromMobDefense.add(pred);
+    }
+
+    // a chain cutting in pops the task's level, and with it the "these blazes are mine" line. mob defense then counted the
+    // blazes it had been told to ignore, and three of them is a crowd, which is a run. so a task that is only paused hands its
+    // level's mob defense exclusions over here until it comes back (or stops for real). only those: the rest of the
+    // level is popped like it always was. level is the one the task pushed, not current(): the interrupt stops the
+    // parent before the child, so by the time we get here the top can be anybody's
+    public void holdWhilePaused(Object owner, Object chain, State level) {
+        if (level == null) {
+            _pausedExclusions.release(owner);
+            return;
+        }
+        _pausedExclusions.hold(owner, chain, level.excludeFromMobDefense);
+    }
+
+    public void releasePaused(Object owner) {
+        _pausedExclusions.release(owner);
+    }
+
+    // the chain got the wheel back. its tasks hold again on the next cut, and a root that finished while it was out
+    // gets dropped without a stop or a start, so nobody else would ever let go of its blazes
+    public void releasePausedFor(Object chain) {
+        _pausedExclusions.releaseFor(chain);
+    }
+
+    public void clearPaused() {
+        _pausedExclusions.clear();
     }
 
     public List<Pair<Slot, Predicate<ItemStack>>> getConversionSlots() {
@@ -393,6 +422,8 @@ public class BotBehaviour {
      */
     public void resetStack() {
         _states.clear();
+        // nobody is paused when nobody is running
+        _pausedExclusions.clear();
         push();
     }
 

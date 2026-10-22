@@ -309,6 +309,10 @@ public class AltoClef {
             }
             // what the gamer has seen belongs to a world that is gone too
             SeenFilter.reset();
+            // the disable above already did this when we were running, this is for when we were not
+            if (_botBehaviour != null) {
+                _botBehaviour.clearPaused();
+            }
             // and so does what the placer told plain alto's station book
             adris.altoclef.util.helpers.StationHook.clearPlain();
         }

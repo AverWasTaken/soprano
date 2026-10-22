@@ -49,6 +49,15 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         return false;
     }
 
+    // what a subclass says about trading the current pursuit for a new pick
+    protected enum SwitchCall { SWITCH, STAY, NO_OPINION }
+
+    // virtual. a subclass with its own idea of "better" answers here, ahead of the remembered heuristic retry and the
+    // twice-as-close rule. NO_OPINION leaves it to those. the mid-break guard and the stall repick still come first
+    protected SwitchCall switchCall(AltoClef mod, T current, T candidate) {
+        return SwitchCall.NO_OPINION;
+    }
+
     // virtual. false keeps a pursuit that got nowhere for 7 s anyway (see PursuitProgress)
     protected boolean repicksWhenStalled() {
         return true;
@@ -193,28 +202,8 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                         // says is nearest now gets a go instead
                         setDebugState("Current pursuit got nowhere, trying the nearest");
                         _currentlyPursuing = newClosest;
-                    } else if (_heuristicMap.containsKey(newClosest)) {
-                        // Our new object has a past potential heuristic calculated, if it's better try it out.
-                        CachedHeuristic maybeReAttempt = _heuristicMap.get(newClosest);
-                        double maybeClosestDistance = getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position());
-                        // Get considerably closer (divide distance by 2)
-                        if (maybeReAttempt.getHeuristicValue() < h.getHeuristicValue() || maybeClosestDistance < maybeReAttempt.getClosestDistanceSqr() / 4) {
-                            setDebugState("Retrying old heuristic!");
-                            // The currently closest previously calculated heuristic is better, move towards it!
-                            _currentlyPursuing = newClosest;
-                            // In theory, this next line shouldn't need to be run,
-                            // but it's CRITICAL to making this work for some reason
-                            maybeReAttempt.updateDistance(maybeClosestDistance);
-                        }
-                    } else if (mustSwitchTo(mod, _currentlyPursuing, newClosest)
-                            || MineStick.clearlyCloser(getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position()), closestDistanceSqr)) {
-                        setDebugState("Trying out NEW pursuit");
-                        // Our new object does not have a heuristic, TRY IT OUT! but only when it is clearly better: the
-                        // two nearest things trading places as we step (a block and the drop next to it) switched the
-                        // task every few ticks, and every switch lets go of the mouse button and resets the crack
-                        _currentlyPursuing = newClosest;
-                    } else {
-                        setDebugState("Staying with the current pursuit");
+                    } else if (!subclassDecided(mod, newClosest)) {
+                        oldRules(mod, newClosest, h, closestDistanceSqr);
                     }
                 } else {
                     setDebugState("Waiting for move task to kick in...");
@@ -244,6 +233,48 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
         setDebugState("Waiting for calculations I think (NOT wandering)");
         return null;
+    }
+
+    // the remembered heuristic retry, then the twice-as-close rule. what everybody gets unless switchCall says otherwise
+    private void oldRules(AltoClef mod, T newClosest, CachedHeuristic h, double closestDistanceSqr) {
+        if (_heuristicMap.containsKey(newClosest)) {
+            // Our new object has a past potential heuristic calculated, if it's better try it out.
+            CachedHeuristic maybeReAttempt = _heuristicMap.get(newClosest);
+            double maybeClosestDistance = getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position());
+            // Get considerably closer (divide distance by 2)
+            if (maybeReAttempt.getHeuristicValue() < h.getHeuristicValue() || maybeClosestDistance < maybeReAttempt.getClosestDistanceSqr() / 4) {
+                setDebugState("Retrying old heuristic!");
+                // The currently closest previously calculated heuristic is better, move towards it!
+                _currentlyPursuing = newClosest;
+                // In theory, this next line shouldn't need to be run,
+                // but it's CRITICAL to making this work for some reason
+                maybeReAttempt.updateDistance(maybeClosestDistance);
+            }
+        } else if (mustSwitchTo(mod, _currentlyPursuing, newClosest)
+                || MineStick.clearlyCloser(getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position()), closestDistanceSqr)) {
+            setDebugState("Trying out NEW pursuit");
+            // Our new object does not have a heuristic, TRY IT OUT! but only when it is clearly better: the
+            // two nearest things trading places as we step (a block and the drop next to it) switched the
+            // task every few ticks, and every switch lets go of the mouse button and resets the crack
+            _currentlyPursuing = newClosest;
+        } else {
+            setDebugState("Staying with the current pursuit");
+        }
+    }
+
+    // true when switchCall had an opinion, which is then what happens
+    private boolean subclassDecided(AltoClef mod, T newClosest) {
+        SwitchCall call = switchCall(mod, _currentlyPursuing, newClosest);
+        if (call == SwitchCall.NO_OPINION) {
+            return false;
+        }
+        if (call == SwitchCall.SWITCH) {
+            setDebugState("Trying out NEW pursuit");
+            _currentlyPursuing = newClosest;
+        } else {
+            setDebugState("Staying with the current pursuit");
+        }
+        return true;
     }
 
     // a scan is well under a second. the cap (ScanWait) is for the day one gets stuck behind a slow one

@@ -219,19 +219,7 @@ final class CombatBrain {
         boolean anchored = _anchor.update(now, player.getX(), player.getY(), player.getZ());
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
-        try {
-            for (Entity entity : tracker.getHostiles()) {
-                if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
-                double distance = mob.distanceTo(player);
-                if (distance > FOE_RANGE) continue;
-                Foe foe = FoeRules.accept(dimension, candidate(mod, dimension, mob, distance, book, now, player));
-                if (foe == null) continue;
-                mobs.add(mob);
-                foes.add(foe);
-            }
-        } catch (ConcurrentModificationException ignored) {
-            // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
-        }
+        boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
 
@@ -279,7 +267,7 @@ final class CombatBrain {
         int meleeNear = 0;
         int meleeAround = 0;
         double nearest = Double.POSITIVE_INFINITY;
-        boolean shotAt = false;
+        boolean shotAt = shotByExcluded;
         double nearestFast = Double.POSITIVE_INFINITY;
         for (int i = 0; i < foes.size(); i++) {
             Foe foe = foes.get(i);
@@ -310,6 +298,31 @@ final class CombatBrain {
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
+    }
+
+    // fills mobs and foes (in step) from the tracker's hostiles. hands back whether a mob some task kept for itself is
+    // shooting at us: a task's own blaze is not ours to fight, but it still counts for "do not eat right now"
+    private static boolean gatherFoes(AltoClef mod, Dimension dimension, Provocations book, long now, LocalPlayer player,
+                                      List<Mob> mobs, List<Foe> foes) {
+        boolean shotByExcluded = false;
+        try {
+            for (Entity entity : mod.getEntityTracker().getHostiles()) {
+                if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
+                double distance = mob.distanceTo(player);
+                if (distance > FOE_RANGE) continue;
+                FoeRules.Candidate candidate = candidate(mod, dimension, mob, distance, book, now, player);
+                Foe foe = FoeRules.accept(dimension, candidate);
+                if (foe != null) {
+                    mobs.add(mob);
+                    foes.add(foe);
+                } else if (!shotByExcluded) {
+                    shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
+                }
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
+        }
+        return shotByExcluded;
     }
 
     // a stance change is a line, but a follower hovering right on the bite line would flip it every tick, so a line is at most

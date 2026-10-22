@@ -251,4 +251,35 @@ public class BlazeFightRulesTest {
         assertFalse(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS - 1));
         assertTrue(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS));
     }
+
+    @Test
+    public void coverWithNoSpotOutHereWalksBackToTheSpawner() {
+        // the spots are all by the spawner, so a healthy bot out past it goes back there instead of shielding in place
+        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, 20));
+        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER,
+                BlazeFightRules.noCoverSpot(true, false, BlazeFightRules.RETREAT_HEALTH + 0.5f));
+    }
+
+    @Test
+    public void coverWithNoSpotOutHereAndLowHpRetreats() {
+        assertEquals(BlazeFightRules.NoCover.RETREAT, BlazeFightRules.noCoverSpot(true, false, BlazeFightRules.RETREAT_HEALTH));
+    }
+
+    @Test
+    public void coverWithNoSpotByTheSpawnerOrNoSpawnerShieldsInPlace() {
+        // by the spawner the walk is already done, standing there with no shield is worse. no spawner is nowhere to walk to,
+        // and running off at full hp is not what the rods want
+        assertEquals(BlazeFightRules.NoCover.SHIELD_HERE, BlazeFightRules.noCoverSpot(true, true, 20));
+        assertEquals(BlazeFightRules.NoCover.SHIELD_HERE, BlazeFightRules.noCoverSpot(false, false, 20));
+    }
+
+    @Test
+    public void coverOnlyHappensAboveTheNoCoverRetreatLine() {
+        // decide never says COVER at a health noCoverSpot would retreat at, so out past the spawner the fallback is the walk
+        for (float hp = 1; hp <= 20; hp += 0.5f) {
+            if (BlazeFightRules.decide(hp, false, 2, 0) == COVER) {
+                assertEquals("hp " + hp, BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, hp));
+            }
+        }
+    }
 }

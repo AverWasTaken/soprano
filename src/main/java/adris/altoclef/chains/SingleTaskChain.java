@@ -26,6 +26,11 @@ public abstract class SingleTaskChain extends TaskChain {
 
         if (_interrupted) {
             _interrupted = false;
+            // what our paused tasks handed over goes back: they start again below and hold again on the next cut. a root
+            // that finished while we were out is dropped below with no start or stop, and its blazes would be ignored forever
+            if (mod != null && mod.getBehaviour() != null) {
+                mod.getBehaviour().releasePausedFor(this);
+            }
             if (_mainTask != null) {
                 _mainTask.reset();
             }

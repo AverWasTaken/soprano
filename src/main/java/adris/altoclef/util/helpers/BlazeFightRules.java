@@ -136,6 +136,24 @@ public final class BlazeFightRules {
         return gaveUp || stalled;
     }
 
+    // what COVER does when no spot within reach is near the spawner (cover spots have to be both). standing on our own
+    // block is not cover, it is a corridor with the shield up, and whatever walks down it gets free hits
+    public enum NoCover {
+        // the spots are by the spawner, so go there and the next pick finds one
+        BACK_TO_SPAWNER,
+        // already by the spawner (every spot there marked bad for a bit) or no spawner known: the old shield where we
+        // stand. a walk that is already done would stand here with no shield at all, and a run is not what the rods want
+        SHIELD_HERE,
+        // out past the spawner and too hurt for a walk under fire: the retreat's run from the shooters
+        RETREAT
+    }
+
+    // same hp line decide leaves on, so this only says RETREAT at a health decide would not have covered at anyway
+    public static NoCover noCoverSpot(boolean spawnerKnown, boolean nearSpawner, float health) {
+        if (!spawnerKnown || nearSpawner) return NoCover.SHIELD_HERE;
+        return health > RETREAT_HEALTH ? NoCover.BACK_TO_SPAWNER : NoCover.RETREAT;
+    }
+
     // threats is blazes with a line of sight to us inside SIGHT_RANGE, reachable is blazes we could hit right now
     // (threatening or not, a quiet reachable blaze is still a rod)
     public static Mode decide(float health, boolean retreating, int threats, int reachable) {

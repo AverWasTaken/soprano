@@ -111,6 +111,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected void onStart(AltoClef mod) {
+        // back from a pause: our own level has the exclusions again
+        mod.getBehaviour().releasePaused(this);
         _level = mod.getBehaviour().push();
         _containerLookupCooldown = 0;
         //removeThrowawayItems(_itemTargets);
@@ -269,12 +271,24 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // a pause keeps the blazes (or whatever a subclass excluded) ours until we are back, a real stop lets go
+        if (isInterrupting()) {
+            mod.getBehaviour().holdWhilePaused(this, chain(), _level);
+        } else {
+            mod.getBehaviour().releasePaused(this);
+        }
         mod.getBehaviour().pop();
         _level = null;
         if (_mineIfPresent != null) {
             mod.getBlockTracker().stopTracking(_mineIfPresent);
         }
         onResourceStop(mod, interruptTask);
+    }
+
+    // stopped while a chain had us paused, so onStop already ran and handed the exclusions over. nobody else takes them back
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        mod.getBehaviour().releasePaused(this);
     }
 
     @Override

@@ -3,14 +3,24 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 // the bits of the bed placement that do not need a world: what has to be cleared, where we have to stand, what chat says
@@ -113,5 +123,46 @@ public class NightSleepTaskTest {
         assertEquals("Not sleeping tonight: " + NightSleepTask.BED_WOULD_NOT_GO_DOWN, NightSleepTask.failLine(NightSleepTask.BED_WOULD_NOT_GO_DOWN, false));
         assertEquals("Couldn't sleep yet (monsters by the bed), trying again in a bit", NightSleepTask.failLine("monsters by the bed", true));
         assertEquals("Not sleeping tonight: out of time for tonight", NightSleepTask.failLine("out of time for tonight", false));
+    }
+
+    private static BlockState bed(BedPart part, Direction facing) {
+        return BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:red_bed")).defaultBlockState().setValue(BedBlock.PART, part).setValue(BedBlock.FACING, facing);
+    }
+
+    private static List<BlockPos> cellsAround(BlockPos footCell) {
+        return List.of(footCell, footCell.north(), footCell.south(), footCell.east(), footCell.west());
+    }
+
+    @Test
+    public void eitherHalfWalksBackToTheFoot() {
+        BlockPos at = new BlockPos(5, 64, 5);
+        assertEquals(at, NightSleepTask.footOf(at, bed(BedPart.FOOT, Direction.WEST)));
+        assertEquals(at.east(), NightSleepTask.footOf(at, bed(BedPart.HEAD, Direction.WEST)));
+        assertNull(NightSleepTask.footOf(at, Blocks.STONE.defaultBlockState()));
+    }
+
+    // the bed landed one cell off the aimed foot cell, head pointing west: still found, still walked back to its foot
+    @Test
+    public void aBedOneCellOffIsStillOurs() {
+        BlockPos aimed = new BlockPos(10, 66, 8);
+        BlockPos landedFoot = aimed.south();
+        Map<BlockPos, BlockState> world = new HashMap<>();
+        world.put(landedFoot, bed(BedPart.FOOT, Direction.WEST));
+        world.put(landedFoot.west(), bed(BedPart.HEAD, Direction.WEST));
+        assertEquals(landedFoot, NightSleepTask.appearedFoot(cellsAround(aimed), Set.of(), p -> world.getOrDefault(p, Blocks.AIR.defaultBlockState())));
+    }
+
+    // a bed that stood there before the click is somebody's, a new one beside it is ours
+    @Test
+    public void aBedThatWasAlreadyThereIsNeverOurs() {
+        BlockPos aimed = new BlockPos(10, 66, 8);
+        Map<BlockPos, BlockState> world = new HashMap<>();
+        world.put(aimed.north(), bed(BedPart.FOOT, Direction.NORTH));
+        world.put(aimed.north().north(), bed(BedPart.HEAD, Direction.NORTH));
+        Set<BlockPos> before = Set.of(aimed.north());
+        assertNull(NightSleepTask.appearedFoot(cellsAround(aimed), before, p -> world.getOrDefault(p, Blocks.AIR.defaultBlockState())));
+        world.put(aimed.east(), bed(BedPart.HEAD, Direction.EAST));
+        world.put(aimed, bed(BedPart.FOOT, Direction.EAST));
+        assertEquals(aimed, NightSleepTask.appearedFoot(cellsAround(aimed), before, p -> world.getOrDefault(p, Blocks.AIR.defaultBlockState())));
     }
 }

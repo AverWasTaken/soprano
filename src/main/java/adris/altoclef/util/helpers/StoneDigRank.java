@@ -6,7 +6,9 @@ import net.minecraft.world.level.block.Blocks;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
 // which stone to chew on next. plain distance is wrong for this and baritone's heuristic is worse (it thinks down is
@@ -64,17 +66,108 @@ public final class StoneDigRank {
         double cost = Math.sqrt(dx * dx + dz * dz);
         if (dy < 0) {
             cost += (WalkCost.VERTICAL_WEIGHT + BELOW_EXTRA) * -dy;
-            if ((int) Math.floor(fromX) == bx && (int) Math.floor(fromZ) == bz) {
+            if (underFeet(fromX, fromZ, bx, bz)) {
                 cost += STANDING_ON;
             }
         } else if (dy > 1) {
             cost += WalkCost.VERTICAL_WEIGHT * (dy - 1);
         }
-        if (!exposed) {
-            cost += BURIED;
+        return cost + extras(exposed, fallingAbove);
+    }
+
+    private static double extras(boolean exposed, int fallingAbove) {
+        double cost = exposed ? 0 : BURIED;
+        return cost + FALLING_EXTRA * Math.min(Math.max(fallingAbove, 0), FALLING_CAP);
+    }
+
+    private static boolean underFeet(double fromX, double fromZ, int bx, int bz) {
+        return (int) Math.floor(fromX) == bx && (int) Math.floor(fromZ) == bz;
+    }
+
+    // the stone line under the dirt is made of these. no cobble: that one is ours (pillars, scaffolding) or a dungeon
+    private static final Set<Block> STONE_LINE = Set.of(Blocks.STONE, Blocks.DEEPSLATE, Blocks.ANDESITE, Blocks.DIORITE,
+            Blocks.GRANITE, Blocks.TUFF);
+
+    public static boolean stoneLine(Block block) {
+        return STONE_LINE.contains(block);
+    }
+
+    // nothing scores under this: no wall, no cheap floor block one over. that is when a column straight down started
+    public static final double LATCH_SCORE = 12.0;
+    // how far down we look for the stone line before calling it a cave, a ravine or the ocean
+    public static final int FLOOR_SCAN = 24;
+    // per block under the tunnel floor. way past BELOW_EXTRA, the whole point of the tunnel is not going under it
+    public static final double BELOW_FLOOR = 30.0;
+    // a new pick has to be this much cheaper than the one we are on to take over. about a BURIED's half, so a stone that
+    // just got an air face is worth turning around for and two near ties trading places as we step are not
+    public static final double SWITCH_MARGIN = 4.0;
+
+    // the best stone is under our feet and nothing near is cheap: dig to the stone line and go sideways instead
+    public static boolean shouldTunnel(int feetY, int bestY, double bestScore) {
+        return bestY < feetY && bestScore > LATCH_SCORE;
+    }
+
+    // the y our feet walk the tunnel at. underLine is "the block under us is stone and so is one beside our feet", which
+    // means we are in it already and stay at this level. otherwise two blocks into the first stone down the column, so the
+    // head is in the top layer. idempotent on purpose: asked again from inside the tunnel it gives the same floor, a
+    // rebuilt task must not end up two deeper every time it starts (a dug out room has no stone beside the feet, that one
+    // is StoneTunnel.reuse's job). empty when there is no stone in reach of the scan, or there is a hole on the way down:
+    // stone under a cave, a pond or our own old shaft is that thing's floor, not a stone line to walk
+    public static OptionalInt tunnelFloor(int feetY, boolean underLine, IntPredicate stoneAt, IntPredicate openAt) {
+        if (underLine) {
+            return OptionalInt.of(feetY);
         }
-        cost += FALLING_EXTRA * Math.min(Math.max(fallingAbove, 0), FALLING_CAP);
-        return cost;
+        for (int y = feetY - 1; y >= feetY - FLOOR_SCAN; y--) {
+            if (stoneAt.test(y)) {
+                return OptionalInt.of(y - 1);
+            }
+            if (openAt.test(y)) {
+                return OptionalInt.empty();
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    // the world's answer (tunnelFloor) against the floor we remembered around here (StoneTunnel.reuse). in a room we dug
+    // out the world reads two deeper, so a memory one or two over it is that room and wins. anything else the world knows
+    // better: a remembered floor from down in a dip is way under a hill's stone line, and one from over a cave is not
+    // what is under us now. no stone line in the world's answer is no tunnel, whatever we remember
+    public static OptionalInt pickFloor(OptionalInt world, OptionalInt remembered) {
+        if (world.isEmpty() || remembered.isEmpty()) {
+            return world;
+        }
+        int up = remembered.getAsInt() - world.getAsInt();
+        return up > 0 && up <= 2 ? remembered : world;
+    }
+
+    // score() for when we committed to a tunnel at floorY. the band (floor and the cell above it) is free whatever our
+    // feet say, so the way down goes to the band and the band goes sideways. above it is a climb, under it is BELOW_FLOOR
+    // a block. the column under our feet stays STANDING_ON: the way down is one column over, not the floor we stand on
+    public static double tunnelScore(double fromX, double fromY, double fromZ, int bx, int by, int bz, boolean exposed,
+                                     int fallingAbove, int floorY) {
+        double dx = bx + 0.5 - fromX;
+        double dz = bz + 0.5 - fromZ;
+        int feet = (int) Math.floor(fromY + 0.01);
+        double cost = Math.sqrt(dx * dx + dz * dz);
+        if (by > floorY + 1) {
+            cost += WalkCost.VERTICAL_WEIGHT * (by - floorY - 1);
+        } else if (by < floorY) {
+            cost += BELOW_FLOOR * (floorY - by);
+        }
+        if (by < feet && underFeet(fromX, fromZ, bx, bz)) {
+            cost += STANDING_ON;
+        }
+        return cost + extras(exposed, fallingAbove);
+    }
+
+    // in the band of the tunnel at floorY
+    public static boolean inBand(int y, int floorY) {
+        return y >= floorY && y <= floorY + 1;
+    }
+
+    // take the new pick over the one we are on. lower is better, see score
+    public static boolean switches(double currentScore, double candidateScore) {
+        return candidateScore + SWITCH_MARGIN <= currentScore;
     }
 
     // a stone and what score() gave it

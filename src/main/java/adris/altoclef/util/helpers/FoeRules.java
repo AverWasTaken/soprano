@@ -77,6 +77,14 @@ public final class FoeRules {
         return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap(), c.sight(), c.sinceHitBefore());
     }
 
+    // a shooter a task kept for itself (the rods task's blazes) that hit us lately and has a line on us. never a foe, so it
+    // never makes a crowd, a hit or a run, but it is still shooting at us: the heal meal and the run bite must not sit down
+    // in front of it. sight is only ever true for a shooter that hit us within HIT_MEMORY (CombatBrain.sees)
+    public static boolean excludedShooterOnUs(Dimension dimension, Candidate c) {
+        if (!c.sight() || c.distance() > CombatRules.SHOOTER_RANGE || neverAFoe(dimension, c.type())) return false;
+        return c.excluded().getAsBoolean();
+    }
+
     // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither
     // skeleton is a skeleton by class and a swordsman by trade: it only ever hits from where it stands next to us, and as a
     // "shooter" its first swing would never count as contact. classRanged is what the class says (MobReachability.isRanged)

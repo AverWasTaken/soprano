@@ -28,6 +28,8 @@ public abstract class Task {
 
     // whoever ticked this task last, only read when a storm is flagged
     private Task _parent;
+    // the chain that ticked us last. a paused task's hand over is filed under it (BotBehaviour.holdWhilePaused)
+    private TaskChain _chain;
 
     private String _oldDebugState = "";
     private String _debugState = "";
@@ -52,6 +54,7 @@ public abstract class Task {
 
     public void tick(AltoClef mod, TaskChain parentChain) {
         parentChain.addTaskToChain(this);
+        _chain = parentChain;
         if (_first) {
             Debug.logInternal("Task START: " + this);
             watchStart();
@@ -343,6 +346,10 @@ public abstract class Task {
     // for onStop: a pause, not an end. both pass a null interruptTask, so this is the only way to tell
     protected final boolean isInterrupting() {
         return _interrupting;
+    }
+
+    protected final TaskChain chain() {
+        return _chain;
     }
 
     protected void setDebugState(String state) {

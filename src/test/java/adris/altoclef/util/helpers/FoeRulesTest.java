@@ -178,6 +178,40 @@ public class FoeRulesTest {
     }
 
     @Test
+    public void theRodTasksBlazesStillCountAsShootingAtUsButNeverAsACrowd() {
+        // three of the rod task's blazes that hit us and can see us: no meal in front of them, and still nothing to run from
+        CombatCommit c = new CombatCommit();
+        List<Foe> foes = new ArrayList<>();
+        boolean shotAt = false;
+        for (int i = 0; i < 3; i++) {
+            Candidate blaze = new Candidate("blaze", 10 + i, 4 + i, () -> true, () -> true, () -> true, 3, 0, false, false,
+                    Double.POSITIVE_INFINITY, true, NEVER);
+            Foe foe = accept(Dimension.NETHER, blaze);
+            if (foe != null) foes.add(foe);
+            shotAt |= FoeRules.excludedShooterOnUs(Dimension.NETHER, blaze);
+        }
+        assertTrue(shotAt);
+        assertTrue(foes.isEmpty());
+        assertEquals(Event.NONE, c.step(tick(100, 20, null, foes.toArray(new Foe[0]))));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void anExcludedShooterOnlyCountsWithALineOnUsAndInRange() {
+        // no sight (it has not hit us lately, or a wall) is not shooting at us
+        assertFalse(FoeRules.excludedShooterOnUs(Dimension.NETHER, new Candidate("blaze", 1, 6, () -> true, () -> true, () -> true,
+                3, 0, false, false, Double.POSITIVE_INFINITY, false, NEVER)));
+        assertFalse(FoeRules.excludedShooterOnUs(Dimension.NETHER, new Candidate("blaze", 1, CombatRules.SHOOTER_RANGE + 1,
+                () -> true, () -> true, () -> true, 3, 0, false, false, Double.POSITIVE_INFINITY, true, NEVER)));
+        // a ghast is never anything to the chain, excluded or not
+        assertFalse(FoeRules.excludedShooterOnUs(Dimension.NETHER, new Candidate("ghast", 1, 6, () -> true, () -> true, () -> true,
+                3, 0, false, false, Double.POSITIVE_INFINITY, true, NEVER)));
+        // and one nobody excluded is a foe, the normal shot at check has it
+        assertFalse(FoeRules.excludedShooterOnUs(Dimension.NETHER, new Candidate("blaze", 1, 6, () -> false, () -> true, () -> true,
+                3, 0, false, false, Double.POSITIVE_INFINITY, true, NEVER)));
+    }
+
+    @Test
     public void aBlazeIsLeftToTheRodTaskWhileItRuns() {
         // CollectBlazeRodsTask adds a mob defense exclusion for blazes, the foe filter honours it: nothing to fight or run from
         assertNull(accept(Dimension.NETHER, excluded("blaze", 9)));

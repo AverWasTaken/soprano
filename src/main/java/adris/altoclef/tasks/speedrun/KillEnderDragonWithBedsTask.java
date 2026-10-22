@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
@@ -39,6 +40,8 @@ public class KillEnderDragonWithBedsTask extends Task {
 
     // 20 s of no healing between "too hurt to click" and "critical" is a bed fight that is going nowhere
     private final HealStall _healStall = new HealStall(HEAL_STALL_SECONDS);
+    // the level we pushed, for the hand over on a pause
+    private BotBehaviour.State _level;
 
     private BlockPos _endPortalTop;
     private Task _positionTask;
@@ -74,7 +77,8 @@ public class KillEnderDragonWithBedsTask extends Task {
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
         // the sword task keeps mob defense out of the dragon fight and so does this one: endermen and the dragon are not a
         // fight or a run while the beds go off
-        mod.getBehaviour().push();
+        mod.getBehaviour().releasePaused(this);
+        _level = mod.getBehaviour().push();
         mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
         // and off the aura too, like the sword task: an excluded mob is the aura's otherwise, and a swing turns the head in the
         // middle of aiming a bed
@@ -249,7 +253,19 @@ public class KillEnderDragonWithBedsTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getFoodChain().shouldStop(false);
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
+        // same hand over as the sword task
+        if (isInterrupting()) {
+            mod.getBehaviour().holdWhilePaused(this, chain(), _level);
+        } else {
+            mod.getBehaviour().releasePaused(this);
+        }
+        _level = null;
         mod.getBehaviour().pop();
+    }
+
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        mod.getBehaviour().releasePaused(this);
     }
 
     // finished = out of beds and the dragon is not perched, the phase swaps to KillEnderDragonTask then. while perched we
