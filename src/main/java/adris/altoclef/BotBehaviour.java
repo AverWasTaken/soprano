@@ -107,6 +107,13 @@ public class BotBehaviour {
         return _pausedExclusions.any(pred -> pred.test(entity));
     }
 
+    // something has mob defense excluded right now (the child levels copy their parent's, so the top one says it all).
+    // a paused task's lines count too: the blaze task is paused exactly when mob defense has the wheel, which is exactly
+    // when the heal-up hold asks
+    public boolean hasMobDefenseExclusion() {
+        return !current().excludeFromMobDefense.isEmpty() || _pausedExclusions.size() > 0;
+    }
+
     public void addMobDefenseExclusion(Predicate<Entity> pred) {
         current().excludeFromMobDefense.add(pred);
     }

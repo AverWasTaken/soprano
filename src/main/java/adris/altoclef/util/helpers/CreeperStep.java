@@ -142,13 +142,20 @@ public final class CreeperStep {
     // once per game tick. creepers is every creeper close enough to matter, shieldReady = a shield we could put up now.
     // mode = what the commitment held last tick, commitOn = it is switched on (so a run handed to it really starts)
     public Event step(long now, List<Seen> creepers, boolean shieldReady, CombatCommit.Mode mode, boolean commitOn) {
+        return step(now, creepers, shieldReady, mode, commitOn, false);
+    }
+
+    // recovering: the heal-up hold is on (CombatCommit.recovering). nothing is committed then, but a hurt bot standing still
+    // for a pop is a bot eating a creeper at 10 hp, so it gets the defuse like a run or a fight would
+    public Event step(long now, List<Seen> creepers, boolean shieldReady, CombatCommit.Mode mode, boolean commitOn, boolean recovering) {
         _log = false;
         _escalate = false;
         boolean idle = mode == CombatCommit.Mode.NONE;
+        boolean mayBait = idle && !recovering;
         if (_id >= 0) {
             // standing still for a pop is for a bot with nothing better to do. a run or a fight that showed up mid bait (a
             // crowd, low hp, something chewing on us) gets the defuse instead, which at least keeps moving
-            if (_bait && !idle) _bait = false;
+            if (_bait && !mayBait) _bait = false;
             Seen held = find(creepers, _id);
             if (held != null && !held.lit()) _litSince = -1;
             else if (held != null && _litSince < 0) _litSince = now;
@@ -190,7 +197,7 @@ public final class CreeperStep {
         // (or was never on the table), and the run is about to carry us off anyway, so this is just out of the blast until
         // it does. with nobody to hand it to (the commitment is off) it is the bait again, the defuse is the loop
         _escalate = cameBack(pick.id(), now) && idle && commitOn;
-        _bait = idle && !_escalate && pick.baitable();
+        _bait = mayBait && !_escalate && pick.baitable();
         _id = pick.id();
         _since = now;
         _litSince = now;

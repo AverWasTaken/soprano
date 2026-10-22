@@ -377,7 +377,8 @@ public class FoodChain extends SingleTaskChain {
         } else if (stance.mayEat() && _hasFood && (wantsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
             Item toUse = _cachedPerfectFood.get();
-            if (!_requestFillup) _fillTo = rawNeedsToEat(false) ? 20 : CombatRules.REGEN_HUNGER;
+            // (healing up fills the bar: saturation regen only runs at 20, and that is the fast one)
+            if (!_requestFillup) _fillTo = rawNeedsToEat(false) || recoverMeal() ? RecoverHold.FILL_TO : CombatRules.REGEN_HUNGER;
             // (tryEat makes sure we're not facing a container, once it is actually time to chew: looking around while a
             // path is still walking is not ours to do)
             tryEat(mod, toUse, true);
@@ -460,7 +461,27 @@ public class FoodChain extends SingleTaskChain {
         CombatRules.Stance stance = stance(_mod);
         if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
         if (!stance.mayEat()) return false;
-        return rawNeedsToEat(true);
+        return rawNeedsToEat(true) || recoverMeal();
+    }
+
+    // the heal-up hold is on and the bar is not full: eat, the bar being full is what makes the hold short. the stance has
+    // already said whether anything is close enough to stop us (the hold eats by the run's bite lines)
+    private boolean recoverMeal() {
+        if (_mod == null || _mod.getMobDefenseChain() == null || !_mod.getMobDefenseChain().isRecovering()) return false;
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && player.getFoodData().getFoodLevel() < RecoverHold.FILL_TO && hasHealFood();
+    }
+
+    // the food we would pick heals without hurting us. the heal-up hold only starts on this (or a bar already at the regen
+    // line), same filter the heal meal uses
+    public boolean hasHealFood() {
+        return _hasFood && _cachedPerfectFood.isPresent() && healFood(_cachedPerfectFood.get());
+    }
+
+    // (raw chicken is the same kind of bad idea as chorus fruit, the hunger effect eats the bar we are trying to fill. rotten
+    // flesh too, it is only ever the pick when starving, and the older rules eat it there anyway)
+    static boolean healFood(Item item) {
+        return item != Items.CHORUS_FRUIT && item != Items.CHICKEN && item != Items.ROTTEN_FLESH;
     }
 
     // the chains are built one after another, so early on there may be no mob defense to ask yet
@@ -471,9 +492,7 @@ public class FoodChain extends SingleTaskChain {
 
     // the heal rule fires a lot more often than the old ones (any hp under 18), so it is the careful one
     private boolean healsWithoutHarm() {
-        // (raw chicken is the same kind of bad idea, the hunger effect eats the bar we are trying to fill)
-        if (_cachedPerfectFood.isPresent() && (_cachedPerfectFood.get() == Items.CHORUS_FRUIT
-                || _cachedPerfectFood.get() == Items.CHICKEN)) return false;
+        if (_cachedPerfectFood.isPresent() && !healFood(_cachedPerfectFood.get())) return false;
         return _mod == null || _mod.getMobDefenseChain() == null || !_mod.getMobDefenseChain().isShotAt(_mod);
     }
 

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
 import adris.altoclef.tasks.movement.CreeperStepTask;
+import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
@@ -94,6 +95,16 @@ public class MobDefenseChain extends SingleTaskChain {
 
     public CombatCommit.Mode combatMode() {
         return _brain.mode();
+    }
+
+    // the heal-up hold is on (CombatCommit.recovering), a re-run from it included
+    public boolean isRecovering() {
+        return _brain.recovering();
+    }
+
+    // the wheel is the hold's stand still right now, not a re-run or a creeper step that came up in the middle of it
+    public boolean isHealingUp() {
+        return _brain.recovering() && _mainTask instanceof HealUpTask;
     }
 
     public String combatFightName() {
@@ -191,6 +202,9 @@ public class MobDefenseChain extends SingleTaskChain {
         }
 
         if (!Baritone.settings().altoMobDefense.value) {
+            // (nothing moves the machine while we are off, so a hold would read as on until the next respawn, and the night
+            // trip asks it)
+            _brain.dropHold();
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -213,8 +227,9 @@ public class MobDefenseChain extends SingleTaskChain {
         // it never needed the wheel), so the run walks on at chewing speed and the fight just stops swinging while it
         // chews. handing the wheel to the user task for the bite is a cycle at every crossing of the 8 block line, and the
         // user task walks its own route, often straight back at what we ran from
-        // (a creeper step does not stand down for a meal either: the line says we stepped, so we step)
-        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active();
+        // (a creeper step does not stand down for a meal either: the line says we stepped, so we step. nor does the heal-up
+        // hold: the meal is half of what it is holding for)
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active() || _brain.recovering();
         if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
@@ -287,7 +302,8 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         if (!Float.isNaN(stepPriority)) return stepPriority;
 
-        Task wheel = mode == CombatCommit.Mode.NONE ? null : _brain.wheelTask(mod);
+        // (with nothing committed this is the heal-up hold's stand still, or nothing)
+        Task wheel = _brain.wheelTask(mod);
         if (wheel == null) {
             // nothing committed: whatever we were holding belonged to the commitment that just ended
             if (_mainTask != null) onTaskFinish(mod);
@@ -546,8 +562,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
                 }
                 // the block scan is only for one that is about to get the bait, not every creeper every tick (the bait is for an
-                // idle commitment only, see CreeperStep.step)
-                boolean nearStuff = lit && mode == CombatCommit.Mode.NONE && !_creeperStep.active()
+                // idle commitment only, see CreeperStep.step, and never while healing up)
+                boolean nearStuff = lit && mode == CombatCommit.Mode.NONE && !_brain.recovering() && !_creeperStep.active()
                         && (distance <= CreeperStep.TRIGGER || pathNear) && nearStuff(mod.getWorld(), creeper.blockPosition());
                 // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
                 seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f,
@@ -559,7 +575,7 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
-        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled);
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, _brain.recovering());
         if (event == CreeperStep.Event.START && _creeperStep.shouldLog()) {
             Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
         }

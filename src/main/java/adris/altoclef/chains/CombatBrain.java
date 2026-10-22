@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
+import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.AnchorWatch;
@@ -20,6 +21,7 @@ import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ReachRules;
+import adris.altoclef.util.helpers.RecoverHold;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -59,6 +61,9 @@ final class CombatBrain {
     // kill (65) and flee (80) branches used, so nothing that was ordered against them moved
     static final float FIGHT_PRIORITY = 65;
     static final float RUN_PRIORITY = 80;
+    // the heal-up hold: over the user task (50) so it cannot walk us back in, under food collect (55) so a bot with no food
+    // can still go and get some
+    static final float RECOVER_PRIORITY = 53;
     // the tracker's hostile list does not reach past 16 anyway (it keeps mobs closer than 16), and the warden's boom
     // counts out to 15 (CombatCommit.BOOM_RANGE), so this stays 16 even though a run now calls 12 clear
     private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
@@ -83,6 +88,7 @@ final class CombatBrain {
     private DamageSource _lastSource;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
+    private final HealUpTask _healUp = new HealUpTask();
     private int _fightId = -1;
     private String _fightName = FightNames.UNKNOWN;
     private final FightNames _names = new FightNames();
@@ -142,8 +148,17 @@ final class CombatBrain {
         return switch (_commit.mode()) {
             case FIGHT -> FIGHT_PRIORITY;
             case RUN -> RUN_PRIORITY;
-            default -> 0;
+            default -> _commit.recovering() ? RECOVER_PRIORITY : 0;
         };
+    }
+
+    // the heal-up hold is on (a re-run from it counts too, it comes back to the hold)
+    boolean recovering() {
+        return _commit.recovering();
+    }
+
+    void dropHold() {
+        _commit.recoverHold().reset();
     }
 
     void reset() {
@@ -189,7 +204,8 @@ final class CombatBrain {
                 return _run;
             }
             default:
-                return null;
+                // nothing committed, but hurt from the last one: stand here and heal instead of walking back in
+                return _commit.recovering() ? _healUp : null;
         }
     }
 
@@ -239,7 +255,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension)));
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
@@ -256,6 +272,10 @@ final class CombatBrain {
         } else if (_commit.mode() != Mode.NONE) {
             // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)
             _commit.reset();
+        } else {
+            // only the heal-up hold: the grudges and the cooldown of an idle machine stay where they were (the night pillar
+            // switches us off every tick it stands down)
+            dropHold();
         }
         if (_commit.mode() != Mode.RUN) _run = null;
         if (_commit.mode() != Mode.FIGHT) _fight = null;
@@ -331,7 +351,7 @@ final class CombatBrain {
     private void logStance(AltoClef mod, Dimension dimension, long now, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         if (_stance == _loggedStance || (now >= _stanceLogAt && now - _stanceLogAt < STANCE_LOG_GAP)) return;
         LocalPlayer player = mod.getPlayer();
-        String why = CombatCommit.stanceWhy(_commit.mode(), player.getHealth(), nearest, creeperClose, bite);
+        String why = CombatCommit.stanceWhy(_commit.mode(), player.getHealth(), nearest, creeperClose, bite, _commit.recovering());
         Debug.logInternal(CombatLog.stance(dimension, _loggedStance, _stance, why, Math.round(player.getHealth())));
         _loggedStance = _stance;
         _stanceLogAt = now;
@@ -435,7 +455,17 @@ final class CombatBrain {
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
-        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite);
+        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering());
+    }
+
+    // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
+    // defense excluded, or this is the end, where standing still next to the dragon is not healing
+    private static RecoverHold.Body body(AltoClef mod, Dimension dimension) {
+        LocalPlayer player = mod.getPlayer();
+        boolean barred = dimension == Dimension.END || mod.getBehaviour().hasMobDefenseExclusion();
+        FoodChain food = mod.getFoodChain();
+        return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
+                food != null && food.isTryingToEat());
     }
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the
