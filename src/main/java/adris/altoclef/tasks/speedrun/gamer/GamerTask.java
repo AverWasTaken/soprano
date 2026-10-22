@@ -1243,12 +1243,10 @@ public class GamerTask extends Task {
         long night = NightSleep.nightOf(mod.getWorld().getOverworldClockTime());
         if (shelter != null) {
             if (shelter.isFinished(mod)) {
-                // a try that gave up leaves the night open for one more at another spot, anything else spends it
-                if (shelter.gaveUp()) {
+                // a try that gave up gets one more at another spot, anything else (and every other way out) leaves the night spent
+                if (shelter.gaveUp() && shelterOnce.reopen(night)) {
                     shelterFailedSpot = shelter.top();
                     shelterFailedNight = night;
-                } else {
-                    shelterOnce.spend(night);
                 }
                 dropShelter();
                 machine.releaseHold();
