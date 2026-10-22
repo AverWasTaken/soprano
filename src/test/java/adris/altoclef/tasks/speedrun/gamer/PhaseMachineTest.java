@@ -654,6 +654,33 @@ public class PhaseMachineTest {
         assertTrue(host.state.stuckReason, host.state.stuckReason.contains("error in the gather phase"));
     }
 
+    // a child that recursed itself to death takes the same road as one that threw
+    @Test
+    public void aStackOverflowFromTheChildTaskIsAFailedAttemptToo() {
+        start();
+        machine.failFromChild(new StackOverflowError());
+        machine.tick(null);
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2"), h(GamerPhase.GATHER).events);
+        machine.failFromChild(new StackOverflowError());
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertTrue(host.state.stuckReason, host.state.stuckReason.contains("(StackOverflowError)"));
+    }
+
+    // nobody to blame it on: the very same error goes back up, not wrapped in something else
+    @Test
+    public void anErrorWithNoPhaseGoesBackUpAsIs() {
+        machine = new PhaseMachine(new ArrayList<PhaseHandler>(), host);
+        StackOverflowError boom = new StackOverflowError();
+        try {
+            machine.failFromChild(boom);
+        } catch (StackOverflowError e) {
+            assertSame(boom, e);
+            return;
+        }
+        throw new AssertionError("should have rethrown");
+    }
+
     @Test
     public void theClockNeverGoesBackwards() {
         start();

@@ -41,23 +41,23 @@ public class PortalPlannerTest {
 
     @Test
     public void castsFirst() {
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, false, false));
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 300, cfg, true, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, 0, cfg, false, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 300, 300, cfg, true, true));
         assertEquals("the cast keeps most of the 14 minute portal budget", 7.0, cfg.castGiveUpMinutes, 0);
     }
 
     @Test
     public void givesUpTheCastOnTheClock() {
         double limit = cfg.castGiveUpMinutes * 60;
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, cfg, true, false));
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, limit - 1, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, limit, cfg, true, true));
     }
 
     @Test
     public void theClockAloneNeverPicksObsidianWithoutADiamondPickaxe() {
         double limit = cfg.castGiveUpMinutes * 60;
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit, cfg, true, false));
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit * 10, cfg, false, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit, limit, cfg, true, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit * 10, limit * 10, cfg, false, false));
     }
 
     @Test
@@ -98,17 +98,59 @@ public class PortalPlannerTest {
 
     @Test
     public void noLavaFlipsEarlyOnlyWithThePickaxe() {
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 149, cfg, false, true));
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 150, cfg, false, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 149, 149, cfg, false, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 150, 150, cfg, false, true));
         // no pickaxe: keep wandering for a lake until the clock says stop
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, cfg, false, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, 400, cfg, false, false));
         // lava seen: the cast has a chance
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, cfg, true, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, 400, cfg, true, true));
+    }
+
+    @Test
+    public void aCastStillLandingCellsOutlivesTheClock() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(180.0, cfg.castStallSeconds, 0);
+        // a cell every 20 s, well past 7 minutes: keep casting
+        for (double t = limit; t < limit + 300; t += 20) {
+            assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, t, 20, cfg, true, true));
+        }
+        // then it stalls: just under the stall window stays, the window itself gives up
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit + 400, cfg.castStallSeconds - 1, cfg, true, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit + 400, cfg.castStallSeconds, cfg, true, true));
+    }
+
+    @Test
+    public void aStallBeforeTheClockIsNotEnoughOnItsOwn() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, cfg.castStallSeconds * 2, cfg, true, true));
+    }
+
+    @Test
+    public void noProgressEverIsTheOldClock() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        // sinceProgress == castSeconds when nothing landed, and the clock is way past the stall window by then
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, limit - 1, cfg, true, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, limit, cfg, true, true));
+    }
+
+    @Test
+    public void noLavaWaitsForTheLastCellNotTheStart() {
+        // a cell landed 10 s ago: lava not in sight right now is no reason to drop the frame
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, 10, cfg, false, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, cfg.noLavaSeconds - 1, cfg, false, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 400, cfg.noLavaSeconds, cfg, false, true));
+    }
+
+    @Test
+    public void aStalledCastWithoutADiamondPickaxeKeepsCasting() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit * 2, limit * 2, cfg, false, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit * 2, cfg.castStallSeconds, cfg, true, false));
     }
 
     @Test
     public void obsidianIsSticky() {
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.OBSIDIAN, 0, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.OBSIDIAN, 0, 0, cfg, true, false));
     }
 
     @Test
@@ -256,8 +298,8 @@ public class PortalPlannerTest {
         // the dig before the portal means most runs hold one now. the first answer is still the pool, then the cast
         assertTrue(PortalPlanner.usePool(true, false, Method.CAST));
         for (boolean lava : new boolean[]{true, false}) {
-            assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, lava, true));
-            assertEquals(PortalPlanner.decide(Method.CAST, 0, cfg, lava, false), PortalPlanner.decide(Method.CAST, 0, cfg, lava, true));
+            assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, 0, cfg, lava, true));
+            assertEquals(PortalPlanner.decide(Method.CAST, 0, 0, cfg, lava, false), PortalPlanner.decide(Method.CAST, 0, 0, cfg, lava, true));
         }
         assertEquals("a timeout while the pool ran still casts next", Method.CAST, PortalPlanner.afterTimeout(Method.CAST, true, true));
     }

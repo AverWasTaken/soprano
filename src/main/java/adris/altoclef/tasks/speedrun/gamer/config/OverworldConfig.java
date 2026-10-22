@@ -78,6 +78,9 @@ public class OverworldConfig {
     // obsidian way. the whole portal phase has 14 minutes and the prep before the cast eats some of them, 7 leaves the
     // obsidian way a real chunk of the budget (it may need a diamond pickaxe first, that is slow)
     public double castGiveUpMinutes = 7;
+    // ...but only once no frame cell has turned obsidian for this long either. a cell takes ~20 s when it works, so 3 minutes
+    // with none is a stuck cast, not a slow one. the phase budget still ends it either way
+    public double castStallSeconds = 180;
     // ruined portal chests are only looted when we have already seen one this close, never searched for
     public int ruinedPortalLootRadius = 60;
     // a chest that is not emptied after this long gets written off (blocked, buried, whatever)
@@ -146,8 +149,9 @@ public class OverworldConfig {
     public int diamondSideCap = 24;
     public double diamondSideSeconds = 30;
 
-    // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
-    // without the pickaxe we keep wandering for a lake until castGiveUpMinutes
+    // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early. counted
+    // from the last frame cell that turned obsidian, or from the cast start when none has. without the pickaxe we keep
+    // wandering for a lake until castGiveUpMinutes
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;

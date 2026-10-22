@@ -38,8 +38,11 @@ public final class PortalPlanner {
 
     // castSeconds = how long the cast has been running (not the prep before it). OBSIDIAN is sticky, going back and
     // forth would just burn the budget twice. DefaultGoToDimensionTask never finishes when there is no lava lake, it
-    // wanders, so the clock is the only thing that ends a cast
-    public static Method decide(Method current, double castSeconds, OverworldConfig cfg, boolean sawLava, boolean hasDiamondPickaxe) {
+    // wanders, so the clock is the only thing that ends a cast. sinceProgressSeconds = how long since a frame cell last
+    // turned obsidian, castSeconds when none has: a cast still landing cells is not walked away from on the clock alone
+    // (that mined a half done frame to build a new one), only once it has stalled too
+    public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
+                                boolean sawLava, boolean hasDiamondPickaxe) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
@@ -48,11 +51,11 @@ public final class PortalPlanner {
         if (!hasDiamondPickaxe) {
             return Method.CAST;
         }
-        if (castSeconds >= cfg.castGiveUpMinutes * 60) {
+        if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {
             return Method.OBSIDIAN;
         }
         // no lava anywhere and the pickaxe is already in hand: obsidian is the cheap way now
-        if (!sawLava && castSeconds >= cfg.noLavaSeconds) {
+        if (!sawLava && sinceProgressSeconds >= cfg.noLavaSeconds) {
             return Method.OBSIDIAN;
         }
         return Method.CAST;

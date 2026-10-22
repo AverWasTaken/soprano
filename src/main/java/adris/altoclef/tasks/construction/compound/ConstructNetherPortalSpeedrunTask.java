@@ -11,6 +11,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.time.TimerGame;
+import java.util.HashSet;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -357,30 +358,11 @@ public class ConstructNetherPortalSpeedrunTask extends adris.altoclef.tasksystem
     }
 
     // Used to flood-scan for blocks of lava.
+    // this one never kept a visited set, so two sources next to each other bounced off each other until the stack gave
+    // out. the bucket task's flood fill with a fresh set counts the lake once instead
     private int getNumberOfBlocksAdjacent(BlockPos origin) {
-        // Base case: We hit a non-full lava block.
         assert Minecraft.getInstance().level != null;
-        BlockState s = Minecraft.getInstance().level.getBlockState(origin);
-        if (s.getBlock() != Blocks.LAVA) {
-            return 0;
-        } else {
-            // We may not be a full lava block
-            if (!s.getFluidState().isSource()) return 0;
-            int level = s.getFluidState().getAmount();
-            //Debug.logMessage("TEST LEVEL: " + level + ", " + height);
-            // Only accept FULL SOURCE BLOCKS
-            if (level != 8) return 0;
-        }
-
-        BlockPos[] toCheck = new BlockPos[]{origin.north(), origin.south(), origin.east(), origin.west(), origin.above(), origin.below()};
-
-        int bonus = 0;
-        for (BlockPos check : toCheck) {
-            // This block is new! Explore out from it.
-            bonus += getNumberOfBlocksAdjacent(check);
-        }
-
-        return bonus + 1;
+        return ConstructNetherPortalBucketTask.lakeSize(origin, ConstructNetherPortalBucketTask::isFullLavaSource, new HashSet<>());
     }
 
     // Get a region that a portal can fit into

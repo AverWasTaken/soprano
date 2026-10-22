@@ -52,6 +52,11 @@ public class PortalPhase implements PhaseHandler {
     private boolean noGoldSaid;
     private boolean tracking;
     private long castStartTick = -1;
+    // the cast's frame progress: the frame we're watching, the most obsidian it has had, and when that last went up
+    // (-1 = never while we watched). see trackCastProgress
+    private BlockPos progressOrigin;
+    private int bestCount;
+    private long lastProgressTick = -1;
     private DefaultGoToDimensionTask cast;
     private LavaPoolPortalTask pool;
     private boolean poolFailed;
@@ -106,7 +111,7 @@ public class PortalPhase implements PhaseHandler {
         // the furnace we empty on the way out comes down with us, but never gets a batch of meat on the way
         furnaces.newExitPhase();
         gateDone = false;
-        castStartTick = -1;
+        resetCastClock();
         // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
         // leaving-the-dimension rule below takes the ore straight back out, forever. so it's off for this phase
         var async = Baritone.settings().altoAsyncSmelting;
@@ -155,7 +160,10 @@ public class PortalPhase implements PhaseHandler {
 
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
-        noteOverworldPortal(mod, ctx);
+        // asked once a tick, it walks the tracked portal cells and reads the world for each
+        Optional<BlockPos> portal = usablePortal(mod);
+        boolean portalExists = portal.isPresent();
+        noteOverworldPortal(mod, ctx, portal);
         GamerFacts f = ctx.facts();
         // iron still cooking in the overworld is iron we are about to leave behind (an IRON phase that skipped itself on a
         // timeout can get us here). one last visit: take what is done, wait if it is nearly, pull the rest back out
@@ -214,7 +222,7 @@ public class PortalPhase implements PhaseHandler {
         // the mold goes first. when it gives up the cast clock starts from now, not from when the phase did
         if (f.dimension() == Dimension.OVERWORLD
                 && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
-            if (portalExists(mod)) {
+            if (portalExists) {
                 hudState = "Going through the portal";
                 return enter;
             }
@@ -224,7 +232,7 @@ public class PortalPhase implements PhaseHandler {
                 return pool;
             }
             poolFailed = true;
-            castStartTick = -1;
+            resetCastClock();
             ctx.progress("lava pool gave up: " + pool.failReason());
         }
         if (castStartTick < 0) {
@@ -232,10 +240,10 @@ public class PortalPhase implements PhaseHandler {
         }
         Method method = chooseMethod(mod, ctx);
         if (method == Method.CAST) {
-            hudState = portalExists(mod) ? "Going through the portal" : "Casting obsidian with lava";
+            hudState = portalExists ? "Going through the portal" : "Casting obsidian with lava";
             return cast;
         }
-        if (portalExists(mod)) {
+        if (portalExists) {
             hudState = "Going through the portal";
             return enter;
         }
@@ -262,9 +270,13 @@ public class PortalPhase implements PhaseHandler {
         GamerFacts f = ctx.facts();
         Method before = PortalPlanner.parse(ctx.state().portalMethod);
         double castSeconds = (f.gameTime() - castStartTick) / 20.0;
+        if (before == Method.CAST) {
+            trackCastProgress(mod, f.gameTime());
+        }
+        double sinceProgressSeconds = lastProgressTick < 0 ? castSeconds : (f.gameTime() - lastProgressTick) / 20.0;
         boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA);
         boolean diamondPick = f.count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
-        Method now = PortalPlanner.decide(before, castSeconds, ctx.cfg().overworld, sawLava, diamondPick);
+        Method now = PortalPlanner.decide(before, castSeconds, sinceProgressSeconds, ctx.cfg().overworld, sawLava, diamondPick);
         if (now != before) {
             ctx.state().portalMethod = now.name();
             ctx.log("giving up on casting, going the obsidian way");
@@ -273,17 +285,45 @@ public class PortalPhase implements PhaseHandler {
         return now;
     }
 
-    private boolean portalExists(AltoClef mod) {
-        return mod.getBlockTracker().isTracking(Blocks.NETHER_PORTAL) && mod.getBlockTracker().anyFound(Blocks.NETHER_PORTAL);
+    // a frame cell turning obsidian is the only proof the cast is getting somewhere. a new frame spot starts from what is
+    // already there (obsidian we happened to build next to, or a frame the cast moved) and earns nothing for it
+    private void trackCastProgress(AltoClef mod, long now) {
+        BlockPos origin = cast.bucketPortalTask().portalOrigin();
+        if (origin == null) {
+            return;
+        }
+        int count = cast.bucketPortalTask().castCellsDone(mod);
+        if (!origin.equals(progressOrigin)) {
+            progressOrigin = origin;
+            bestCount = count;
+        } else if (count > bestCount) {
+            bestCount = count;
+            lastProgressTick = now;
+        }
+    }
+
+    private void resetCastClock() {
+        castStartTick = -1;
+        progressOrigin = null;
+        bestCount = 0;
+        lastProgressTick = -1;
+    }
+
+    // the same pick the enter task makes (its default goodPortal is ANY_PORTAL too), so "a portal exists" here is never a
+    // cell it can't get its feet into, and it hands back the bottom cell even when the tracker only knows a higher one
+    private Optional<BlockPos> usablePortal(AltoClef mod) {
+        return EnterNetherPortalTask.usablePortal(mod, EnterNetherPortalTask.ANY_PORTAL, mod.getPlayer().position());
     }
 
     // remember the overworld end once we are standing next to it, the return trip walks back to this one
-    private void noteOverworldPortal(AltoClef mod, GamerContext ctx) {
-        if (ctx.state().overworldPortal != null || ctx.facts().dimension() != Dimension.OVERWORLD || !portalExists(mod)) {
+    private void noteOverworldPortal(AltoClef mod, GamerContext ctx, Optional<BlockPos> portal) {
+        if (ctx.state().overworldPortal != null || ctx.facts().dimension() != Dimension.OVERWORLD) {
             return;
         }
-        Optional<BlockPos> portal = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(), Blocks.NETHER_PORTAL);
-        if (portal.isPresent() && portal.get().closerToCenterThan(mod.getPlayer().position(), 6)) {
+        // a stale tracker cell on solid ground passes the enter task's rules, but this one goes in the run state for the
+        // trip back, so it has to really be portal. this close the chunk is loaded and the read means something
+        if (portal.isPresent() && portal.get().closerToCenterThan(mod.getPlayer().position(), 6)
+                && EnterNetherPortalTask.portalAt(mod).test(portal.get())) {
             ctx.state().overworldPortal = new RunState.Pos(portal.get().getX(), portal.get().getY(), portal.get().getZ());
             ctx.save();
         }

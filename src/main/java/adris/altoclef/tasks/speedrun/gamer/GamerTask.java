@@ -275,7 +275,9 @@ public class GamerTask extends Task {
     public void tick(AltoClef mod, TaskChain parentChain) {
         try {
             super.tick(mod, parentChain);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | StackOverflowError e) {
+            // a child that recursed itself to death is still just a failed attempt, not a reason to end the whole run.
+            // only that Error though, an OutOfMemoryError means something way worse is going on
             if (!begun || machine.current() == null) {
                 throw e;
             }
