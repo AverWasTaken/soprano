@@ -34,12 +34,7 @@
 | 1.21.4 (2b2t) | 1.0.3 | Fabric, Forge, NeoForge | [Soprano v1.0.3](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.0.3) |
 | Any Version (beta, 26.3 client joins any server) | 1.1.6 | Fabric | [Soprano v1.1.6 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.6-anyversion) |
 
-**Nightly builds** get new features and fixes first. They can be buggy and aren't confirmed stable releases.
-
-| Minecraft | Latest nightly | Loaders | Download |
-|:--|:--|:--|:--|
-| 26.3 | 1.1.7-nightly.1 | Fabric, Forge, NeoForge | [Soprano v1.1.7-nightly.1](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1) |
-| Any Version | 1.1.7-nightly.1 | Fabric | [Soprano v1.1.7-nightly.1 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1-anyversion) |
+**Nightly builds** get new features and fixes first, but they can be buggy. They only come out for 26.3 and Any Version, see the [26.3 readme](https://github.com/AverWasTaken/soprano/tree/26.3#install). 1.21.4 only gets stable releases.
 
 <details>
 <summary><b>The version I want isn't here</b></summary>
@@ -70,9 +65,7 @@ Most people want the `api` jar.
 <summary><b>Updating</b></summary>
 <br>
 
-From 1.1.7-nightly.1 on, Soprano updates itself. A card in the top left of the title screen tells you when a new version is out. Press Update and it swaps in when you close the game. 1.1.6 and older don't have this, so the first one goes in by hand.
-
-On a stable build you only get stable updates, on a nightly you only get newer nightlies. When you're up to date, a small button on the card switches you between nightly and stable (switching to stable needs 1.1.7 or newer to be out).
+From the next 1.21.4 release after 1.0.3 on, Soprano updates itself. A card in the top left of the title screen tells you when a new version is out. Press Update and it swaps in when you close the game. 1.0.3 and older don't have this, so the first one goes in by hand.
 
 Don't want it? `#set checkForUpdates false`.
 
