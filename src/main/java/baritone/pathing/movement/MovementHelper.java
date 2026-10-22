@@ -40,12 +40,11 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ambient.Bat;
-import net.minecraft.world.entity.animal.chicken.Chicken;
-import net.minecraft.world.entity.animal.rabbit.Rabbit;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Rabbit;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -1177,7 +1176,7 @@ public interface MovementHelper extends ActionCosts, Helper {
         }
         if (state.swingDue(player.getAttackStrengthScale(0.5f), player.tickCount)) {
             ctx.minecraft().gameMode.attack(player, target);
-            player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            player.swing(InteractionHand.MAIN_HAND);
         }
     }
 
