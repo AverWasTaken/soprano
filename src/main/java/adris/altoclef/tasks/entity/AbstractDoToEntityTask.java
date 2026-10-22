@@ -21,6 +21,7 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.helpers.LavaShore;
+import adris.altoclef.util.helpers.MobReachability;
 import baritone.api.pathing.goals.GoalRunAway;
 import baritone.api.utils.Dimension;
 import baritone.pathing.movement.CliffAvoidance;
@@ -32,6 +33,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.Blaze;
+import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
@@ -269,6 +273,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // nether only: the approach walk near lava, see LavaShore
     private static boolean lavaInTheWay(AltoClef mod, Entity entity) {
         if (WorldHelper.getCurrentDimension() != Dimension.NETHER) return false;
+        // only the ones that walk up and hit. a blaze hovers over the lava on purpose, and waiting for it to come is no rods
+        if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         var us = mod.getPlayer();
         return LavaShore.approachBlocked(cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
