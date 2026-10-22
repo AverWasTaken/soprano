@@ -115,6 +115,8 @@ public class GamerTask extends Task {
     private BotBehaviour.State level;
     // watches for crafting tables, furnaces and smokers we place, so the registry (Workbenches) only ever takes back its own
     private Subscription<BlockPlaceEvent> placeWatch;
+    // the server's word on where we respawn (Respawn), written into the state as it comes
+    private RespawnWatch respawnWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
 
@@ -272,6 +274,10 @@ public class GamerTask extends Task {
             CookTrip.unbind();
             StationHook.clear();
             stopWatchingPlacements();
+            if (respawnWatch != null) {
+                respawnWatch.stop();
+                respawnWatch = null;
+            }
             releaseBehaviour(mod);
         }
     }
@@ -538,6 +544,11 @@ public class GamerTask extends Task {
         // so a log of a run says which jar played it
         Debug.logInternal(BuildInfo.line());
         watchPlacements();
+        if (respawnWatch != null) {
+            respawnWatch.stop();
+        }
+        respawnWatch = new RespawnWatch(state, () -> facts.dimension().name(), host::save);
+        respawnWatch.start();
         machine.begin(mod, resumedAsIs);
     }
 
@@ -575,6 +586,17 @@ public class GamerTask extends Task {
 
     private static boolean isJobBlock(BlockState block) {
         return block.is(Blocks.BLAST_FURNACE) || block.is(Blocks.GRINDSTONE) || block.is(Blocks.SMITHING_TABLE);
+    }
+
+    // a bed gone from where we respawn is forgotten, and a night bed that holds the respawn on the stronghold leg stays (a trip that
+    // is still running adopts it itself when it wraps up, taking its bed from under it mid-sleep would break the lift)
+    private void trackRespawn(AltoClef mod) {
+        if (respawnWatch != null) {
+            respawnWatch.tick(mod.getWorld());
+        }
+        if (nightTrip == null && Respawn.adoptNightBed(state)) {
+            host.save();
+        }
     }
 
     private void stopWatchingPlacements() {
@@ -766,6 +788,7 @@ public class GamerTask extends Task {
             return null;
         }
         trackDeaths(mod);
+        trackRespawn(mod);
         trackNightGates();
         if (machine.ended()) {
             return null;

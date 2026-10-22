@@ -287,9 +287,9 @@ public class EndGearTest {
         assertTrue(EndGear.wantSpawnBed(s, cfg));
         assertEquals(9, EndGear.bedTarget(cfg, true));
         assertEquals(8, EndGear.bedTarget(cfg, false));
-        s.spawnBedSet = true;
+        s.respawnPos = new RunState.Pos(1, 1, 1);
         assertFalse(EndGear.wantSpawnBed(s, cfg));
-        s.spawnBedSet = false;
+        s.respawnPos = null;
         s.spawnBedGaveUp = true;
         assertFalse(EndGear.wantSpawnBed(s, cfg));
         cfg.placeSpawnNearPortal = false;

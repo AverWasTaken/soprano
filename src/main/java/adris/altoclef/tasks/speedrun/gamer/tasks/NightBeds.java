@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.resources.CollectBedTask;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -41,7 +42,14 @@ public final class NightBeds {
         double bestDist = Double.POSITIVE_INFINITY;
         for (BlockPos pos : tracker.getKnownLocations(CollectBedTask.BEDS)) {
             double dist = pos.distToCenterSqr(mod.getPlayer().position());
-            if (dist >= bestDist || dist > (double) bedRadius * bedRadius) {
+            if (dist > (double) bedRadius * bedRadius) {
+                continue;
+            }
+            // sleeping anywhere else moves our respawn off the bed we already have, so the spawn bed beats a nearer one
+            if (Respawn.isSpawnBed(pos.getX(), pos.getY(), pos.getZ())) {
+                dist = -1;
+            }
+            if (dist >= bestDist) {
                 continue;
             }
             if (!(mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock) || tracker.unreachable(pos)) {

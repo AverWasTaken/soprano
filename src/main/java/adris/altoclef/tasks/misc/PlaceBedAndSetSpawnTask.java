@@ -5,7 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
-import adris.altoclef.eventbus.events.ChatMessageEvent;
+import adris.altoclef.eventbus.events.SystemChatEvent;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
@@ -99,7 +99,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private final java.util.Set<BlockPos> _slowRegions = new java.util.HashSet<>();
     private BlockPos _currentStructure, _currentBreak;
     private boolean _spawnSet;
-    private Subscription<ChatMessageEvent> _respawnPointSetMessageCheck;
+    private Subscription<SystemChatEvent> _respawnPointSetMessageCheck;
     private Subscription<GameOverlayEvent> _respawnFailureMessageCheck;
     private boolean _sleepAttemptMade;
     private boolean _wasSleeping;
@@ -178,9 +178,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
             _wasSleeping = false;
 
             // Subscribe to respawn point set message event
-            _respawnPointSetMessageCheck = EventBus.subscribe(ChatMessageEvent.class, evt -> {
-                String msg = evt.toString();
-                if (msg.contains("Respawn point set")) {
+            // (a system line, ChatMessageEvent only carries players' chat and this used to wait for a line that never came)
+            _respawnPointSetMessageCheck = EventBus.subscribe(SystemChatEvent.class, evt -> {
+                if (evt.message.contains("Respawn point set")) {
                     _spawnSet = true;
                     _inBedTimer.reset();
                 }

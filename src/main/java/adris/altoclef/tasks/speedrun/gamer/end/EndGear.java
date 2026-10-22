@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -152,6 +153,7 @@ public final class EndGear {
     }
 
     public static boolean wantSpawnBed(RunState state, EndConfig cfg) {
-        return cfg.placeSpawnNearPortal && !state.spawnBedSet && !state.spawnBedGaveUp;
+        // (a respawn bed the game confirmed near the portal, or one at the stronghold we just walked through, is spawn enough)
+        return cfg.placeSpawnNearPortal && !Respawn.coversPortal(state) && !state.spawnBedGaveUp;
     }
 }

@@ -84,7 +84,8 @@ public class RunStateStoreTest {
         s.framesFilled = 11;
         s.endPortalOpened = true;
         s.spawnBed = new RunState.Pos(1, 1, 1);
-        s.spawnBedSet = true;
+        s.respawnPos = new RunState.Pos(2, 3, 4);
+        s.respawnDim = "OVERWORLD";
         s.endDrops.put("minecraft:diamond_sword", 1);
         s.endDrops.put("minecraft:white_bed", 7);
         s.placedTables.add(new RunState.Pos(245, 63, 40));
