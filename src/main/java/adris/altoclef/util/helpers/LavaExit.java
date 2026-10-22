@@ -19,6 +19,17 @@ public final class LavaExit {
     private LavaExit() {
     }
 
+    // an exit this close is a hop, not a path: one or two cells over and at most one up from the lava cell we float in.
+    // anything farther is baritone's, it can plan around walls and bridge a gap where a blind hop would just bonk
+    static final int HOP_REACH = 2;
+
+    public static boolean withinHop(Cell exit, int px, int py, int pz) {
+        return exit != null
+                && Math.abs(exit.x() - px) <= HOP_REACH
+                && Math.abs(exit.z() - pz) <= HOP_REACH
+                && exit.y() - py <= ABOVE_SURFACE;
+    }
+
     // null when nothing is standable in range. feet position, so for a player in lava that is the lava cell itself
     public static Cell nearest(int px, int py, int pz, ItemPickupRules.Terrain t, ItemPickupRules.Lava lava) {
         int surface = py;

@@ -112,6 +112,14 @@ public class CalculationContext {
     public boolean plainFallsAreFree;
     public final int maxFallHeightBucket;
     public final double waterWalkSpeed;
+    // lava is not water. 0.02 accel * 0.98 input, then the 0.5 drag: 2 * 0.0196 = 0.0392 blocks a tick, so 25.5 ticks a block.
+    // sprint does nothing in lava, so there is no faster gear to assume either
+    public static final double LAVA_SWIM_ONE_BLOCK_COST = 1 / (2 * 0.02 * 0.98);
+    // armor 16 drains about 3.4 hp a second, bare is more like 8. in between, and priced at fallDamageCost like fall hp is
+    public static final double LAVA_HP_PER_TICK = 0.2;
+    // a block of lava swimming, ticks plus the hearts it burns. what makes the escape take the shortest dip and not
+    // the cheapest looking lake crossing
+    public final double lavaSwimCost;
     // the executor will sprint swim through water, same conditions as Movement.shouldSwim minus the live ones
     public final boolean allowSwimming;
     // moves a swimmer just got pinned on, they cost extra for a bit. see SwimStalls
@@ -291,6 +299,7 @@ public class CalculationContext {
             waterSpeed = Math.min(waterSpeed, ActionCosts.SWIM_ONE_BLOCK_COST);
         }
         this.waterWalkSpeed = waterSpeed;
+        this.lavaSwimCost = LAVA_SWIM_ONE_BLOCK_COST * (1 + LAVA_HP_PER_TICK * Baritone.settings().fallDamageCost.value);
         // a boat really is faster than sprinting, but the heuristic assumes nothing is. price it under
         // costHeuristic and A* stops being A* and wanders off on scenic detours across the lake. so rowing
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
@@ -339,6 +348,13 @@ public class CalculationContext {
         // falls into deep water or a lava splash have no cap at all, and so does a fall that an existing ladder or vine
         // catches (Descend resets the speed on the cell), so those undercut too. nothing to do about them without the terrain
         return best;
+    }
+
+    // whether a move through these two cells (feet, head) is a swim in lava. no toggle check on purpose: lava only gets
+    // past canWalkThrough when the toggle is on, and reading the live flag here too is how a search flipped halfway
+    // through priced the same lake as water again
+    public boolean swimsLava(BlockState feet, BlockState head) {
+        return MovementHelper.isLava(feet) || MovementHelper.isLava(head);
     }
 
     // the cost of one block of water at this node: rowing if a boat could float here and the water is big enough, otherwise

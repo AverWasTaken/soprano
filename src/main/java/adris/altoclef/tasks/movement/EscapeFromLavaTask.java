@@ -44,7 +44,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     }
 
     // swimming through lava is how you get out of a lake you're in. this task also runs when we're only on fire, and then a
-    // path through the lava is a path back into it: with this on the planner reads lava as water. so it's only on while
+    // path through the lava is a path back into it: with this on the planner lets lava be walked through. so it's only on while
     // we're really in lava, plus a few ticks for the surface flicker at the shore. a flip rebuilds PrecomputedData, which
     // is fine at a couple of flips per escape
     private static final int LAVA_GRACE_TICKS = 10;
@@ -79,8 +79,36 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             faceTheShore(mod);
             mod.getInputControls().hold(Input.SPRINT);
             mod.getInputControls().hold(Input.MOVE_FORWARD);
+            if (hopToNearExit(mod)) {
+                setDebugState("Hopping out of the lava.");
+                return null;
+            }
+        } else {
+            _hopTicks = 0;
         }
         return super.onTick(mod);
+    }
+
+    // a shore one or two cells away is faster jumped at than planned: a path through lava is a crawl however short, and
+    // the hop is the same crawl with no turns in it. baritone owns the inputs while it has a path (PlayerMovementInput
+    // reads its forced state and drops ours), so it has to let go first. lava is ~25 ticks a block, so the far end of a two
+    // cell reach needs about 30 ticks to touch the wall, and a hop that still hasn't got us out by 50 hands back to baritone
+    private static final int HOP_GIVE_UP_TICKS = 50;
+    private int _hopTicks;
+
+    private boolean hopToNearExit(AltoClef mod) {
+        if (_hopTicks >= HOP_GIVE_UP_TICKS || !mod.getPlayer().isInLava()) return false;
+        BlockPos at = mod.getPlayer().blockPosition();
+        LavaExit.Cell exit = LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld()));
+        if (!LavaExit.withinHop(exit, at.getX(), at.getY(), at.getZ())) return false;
+        _hopTicks++;
+        if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        }
+        mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        float yaw = LookHelper.getLookRotation(mod, new Vec3(exit.x() + 0.5, exit.y() + 0.5, exit.z() + 0.5)).getYaw();
+        mod.getInputControls().forceLook(yaw, mod.getPlayer().getXRot());
+        return true;
     }
 
     // baritone steers while it has a path. with none (the first ticks, or a search that failed) holding forward swims

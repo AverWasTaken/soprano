@@ -3,6 +3,8 @@ package adris.altoclef.util.helpers;
 import static adris.altoclef.util.helpers.LavaWorld.Cell.LAVA;
 import static adris.altoclef.util.helpers.LavaWorld.Cell.STONE;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
@@ -85,6 +87,34 @@ public class LavaExitTest {
         assertEquals(64, exit.y());
         assertEquals(1, Math.abs(exit.x() - 5));
         assertEquals(1, Math.abs(exit.z() - 5));
+    }
+
+    @Test
+    public void aBankOneCellAwayIsAHop() {
+        LavaExit.Cell exit = nearest(0, 63, 10, lake());
+        assertEquals(-1, exit.x());
+        assertTrue(LavaExit.withinHop(exit, 0, 63, 10));
+    }
+
+    @Test
+    public void aBankTwoCellsAwayIsStillAHop() {
+        assertTrue(LavaExit.withinHop(nearest(1, 63, 10, lake()), 1, 63, 10));
+    }
+
+    @Test
+    public void aBankThreeCellsAwayIsBaritonesProblem() {
+        assertFalse(LavaExit.withinHop(nearest(2, 63, 10, lake()), 2, 63, 10));
+    }
+
+    @Test
+    public void noExitIsNoHop() {
+        assertFalse(LavaExit.withinHop(null, 0, 63, 0));
+    }
+
+    @Test
+    public void aLedgeTwoAboveUsIsNotAHop() {
+        // swimming a block under the surface: the bank is two above our feet, jump alone won't clear that
+        assertFalse(LavaExit.withinHop(new LavaExit.Cell(-1, 65, 10), 0, 63, 10));
     }
 
     @Test
