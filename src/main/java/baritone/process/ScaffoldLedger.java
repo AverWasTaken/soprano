@@ -31,6 +31,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // every block that went down during a build where the file wants nothing (air, or outside the box), and every right
 // block something other than the builder dug out to get through. the scaffold stays put till the whole build is done
@@ -75,6 +76,11 @@ final class ScaffoldLedger {
     private long cleared;
     // bumped on every change, the bcc copies only when it moved
     private int version;
+    // which wipe of which ledger this is. a click is confirmed a tick or more after it went out, and by then a one block
+    // build (altoclef's portal frame, a cell at a time) can be the next cell's build already. from one counter for all
+    // of them, so a fresh ledger never hands out a number an old one had
+    private static final AtomicInteger GENERATIONS = new AtomicInteger();
+    private int generation = GENERATIONS.incrementAndGet();
 
     // true when it's the same build and the ledger carries on, false when it just got wiped for a new one
     boolean own(String name, Vec3i origin) {
@@ -97,6 +103,7 @@ final class ScaffoldLedger {
         near.clear();
         late.clear();
         version++;
+        generation = GENERATIONS.incrementAndGet();
     }
 
     // a block went in where the file wants nothing. who put it there doesn't matter, it comes down at the end either way
@@ -283,6 +290,15 @@ final class ScaffoldLedger {
 
     int version() {
         return version;
+    }
+
+    int generation() {
+        return generation;
+    }
+
+    // a stamp from before the last wipe is about blocks of a build that's not this one any more
+    boolean current(int stamp) {
+        return stamp == generation;
     }
 
     // what a bcc gets, copied once per change and not per tick

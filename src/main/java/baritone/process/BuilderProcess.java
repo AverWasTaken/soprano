@@ -736,6 +736,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 continue; // already down
             }
             BetterBlockPos pos = BetterBlockPos.deserializeFromLong(cell);
+            if (AltoClefSettings.getInstance().shouldAvoidBreaking(pos.x, pos.y, pos.z)) {
+                // altoclef says hands off (a portal frame), so whoever booked it, it's not ours to take down. one
+                // volatile read and out when altoclef isn't around
+                ledger.gone(cell, false);
+                it.remove();
+                cleanVersion++;
+                continue;
+            }
             if (givenUp(pos.x, pos.y, pos.z)) {
                 continue;
             }
@@ -1724,14 +1732,25 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return givenUp != null && givenUp.retryNow(builderTicks);
     }
 
-    // InputOverrideHandler hands over every traced place that landed (only while we're building), whoever clicked
-    public void placed(BlockPos pos, BlockState now, String who) {
+    // which wipe of the ledger a click goes out under, BlockPlaceHelper stamps every traced click with it
+    public int ledgerGeneration() {
+        return ledger == null ? 0 : ledger.generation();
+    }
+
+    // InputOverrideHandler hands over every traced place that landed (only while we're building), whoever clicked, and
+    // the ledger generation the click went out under
+    public void placed(BlockPos pos, BlockState now, String who, int generation) {
         if ("builder".equals(who) && landedRight(pos, now)) {
             // the only place that counts as getting somewhere for the stall count. confirmTraced calls anything that
             // changed a landing, a log on the wrong axis included, and that one just gets mined again
             stallTicks = 0;
         }
-        ledgerPlaced(pos, now);
+        // the confirm comes a tick or more after the click. a one block build (altoclef's portal frame, a cell at a
+        // time) is the next cell's build by then, and this one landed just outside the new box: scaffold, says the
+        // ledger, and the cleanup broke the frame it had just put in. a click from a wiped ledger isn't this build's
+        if (ledger != null && ledger.current(generation)) {
+            ledgerPlaced(pos, now);
+        }
     }
 
     // what the file wants there, or the lone first half of a chest pair. same answer the bcc's fine gives
@@ -1802,6 +1821,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (want == null && !ScaffoldLedger.nearBox(pos.getX(), pos.getY(), pos.getZ(), origin.getX(), origin.getY(), origin.getZ(),
                 origin.getX() + full.widthX() - 1, origin.getY() + full.heightY() - 1, origin.getZ() + full.lengthZ() - 1)) {
             return; // the walk over, not ours
+        }
+        if (AltoClefSettings.getInstance().shouldAvoidBreaking(pos.getX(), pos.getY(), pos.getZ())) {
+            return; // altoclef wants it kept (a portal frame), so it's never cleanup work
         }
         ledger.scaffold(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()), now.getBlock());
     }
