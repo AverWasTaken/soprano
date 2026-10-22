@@ -644,6 +644,18 @@ public final class Settings {
     public final Setting<Double> randomLooking = new Setting<>(0.01d);
 
     /**
+     * Turn onto mobs in melee a few degrees per tick, the way a hand on a mouse does, instead of snapping the camera
+     * onto them.
+     * <p>
+     * The turn starts slow, speeds up and settles on a point inside the middle of the mob, then tracks it as it moves.
+     * Swings only go out once the crosshair is really on the mob. {@link #randomLooking113} and {@link #randomLooking}
+     * still bound how far the aim wanders while it holds on a target, as a slow drift instead of a per tick shake.
+     * <p>
+     * Off snaps onto the same point in one tick, with the same rules about when a swing may go out.
+     */
+    public final Setting<Boolean> smoothCombatAim = new Setting<>(true);
+
+    /**
      * This is the big A* setting.
      * As long as your cost heuristic is an *underestimate*, it's guaranteed to find you the best path.
      * 3.5 is always an underestimate, even if you are sprinting.

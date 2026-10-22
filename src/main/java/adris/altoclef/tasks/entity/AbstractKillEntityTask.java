@@ -4,10 +4,10 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.CombatRules;
-import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
+import baritone.behavior.CombatAim;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -133,8 +133,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return true;
     }
 
-    // the feet line or the eye to box gap inside the reach setting (ReachRules.killReach), so the cells the feet line misjudges
-    // count too and nothing that was in reach before stops being
+    // the eye to box gap inside the swing's own reach (ReachRules.killReach), the same number the swing is gated on
     @Override
     protected boolean inReach(AltoClef mod, Entity entity) {
         return mod.getControllerExtras().inKillReach(entity);
@@ -148,8 +147,9 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     // the plan gave up waiting for a swing that the gates never let out: weapon in hand, face it, hit it on a full cooldown
     @Override
     protected Task onStalledSwing(AltoClef mod, Entity entity) {
+        // the path was told to go but may be mid step, the head is ours anyway (see CombatAim.wantOverPath)
+        mod.getControllerExtras().aimAtOverPath(entity);
         if (!equipWeapon(mod, _toolFallback)) {
-            LookHelper.lookAt(mod, entity.getEyePosition());
             mod.getControllerExtras().swingNow(entity);
         }
         return null;
@@ -157,11 +157,13 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
+        // every tick, swap ticks and charging ticks too: the turn takes a few ticks and should be done by the time the
+        // swing is due, not start then
+        mod.getControllerExtras().aimAt(entity, CombatAim.Priority.KILL_TASK);
         // Equip weapon
         if (!equipWeapon(mod, _toolFallback)) {
             // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
             if (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick()) {
-                LookHelper.lookAt(mod, entity.getEyePosition());
                 mod.getControllerExtras().melee(entity);
             }
         }
