@@ -116,6 +116,9 @@ public final class PortalPlanner {
         }
         // piglins hate us unless one thing on us is gold. last chance to make the helmet before the nether, from gold we hold
         out.addAll(PiglinGold.gate(f));
+        // and no gold to make it from: the nether is the last place to dig some (NetherGoldTask) and its crafts need a table, which
+        // is not something it goes and fetches there
+        out.addAll(PiglinGold.tableForNether(f));
         int unworn = KitPlanner.toEquip(f, cfg).size();
         if (unworn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, unworn));

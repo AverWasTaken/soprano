@@ -48,6 +48,10 @@ public final class BanPolicy {
     public static final long DIAMOND = 6000;
     public static final String DIAMOND_REASON = "diamond detour gave up on it";
     public static final String DIAMOND_SCOPE = "the diamond detour";
+    // and the gold detour, same five minutes, its own scope
+    public static final long GOLD = 6000;
+    public static final String GOLD_REASON = "gold detour gave up on it";
+    public static final String GOLD_SCOPE = "the gold detour";
     public static final String OUTPOST_REASON = "near a pillager outpost";
     public static final String DEEP_DARK_REASON = "in the deep dark (ancient city / warden)";
 
@@ -153,6 +157,14 @@ public final class BanPolicy {
 
     public static boolean diamondBanned(Bans bans, int x, int y, int z) {
         return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), DIAMOND_SCOPE);
+    }
+
+    public static boolean gold(Bans bans, int x, int y, int z) {
+        return bans.banFor(GOLD_SCOPE, Key.block(Dimension.OVERWORLD, x, y, z), GOLD_REASON, GOLD);
+    }
+
+    public static boolean goldBanned(Bans bans, int x, int y, int z) {
+        return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), GOLD_SCOPE);
     }
 
     // gravel comes in the nether too (soul sand valleys), so this one takes the dimension

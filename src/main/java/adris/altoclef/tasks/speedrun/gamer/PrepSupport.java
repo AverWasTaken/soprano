@@ -18,8 +18,10 @@ public final class PrepSupport {
     // our crafting table, furnace and smoker: kept, taken back or forgotten by the rules in WorkbenchRules (phases share one, see FurnaceWatch)
     private final Workbenches benches;
     private final GolemHunt golem;
-    // the three side jobs that mine, last in line, see tick. diamonds first: they are the rarest and nothing else asks for them
+    // the four side jobs that mine, last in line, see tick. diamonds first: they are the rarest and nothing else asks for them
     private final ResourceDetour diamond = ResourceDetour.diamond();
+    // gold for the piglin piece rides right behind: rare, only while the piece is short, and the nether needs it
+    private final ResourceDetour gold = ResourceDetour.gold();
     private final ResourceDetour coal = ResourceDetour.coal();
     // and after the coal: the plan burns coal now, flint is for the portal later
     private final ResourceDetour gravel = ResourceDetour.gravel();
@@ -51,6 +53,9 @@ public final class PrepSupport {
         if (diamond.active()) {
             return diamond;
         }
+        if (gold.active()) {
+            return gold;
+        }
         return coal.active() ? coal : null;
     }
 
@@ -65,6 +70,7 @@ public final class PrepSupport {
         }
         benches.reset();
         diamond.reset();
+        gold.reset();
         coal.reset();
         gravel.reset();
         hud = null;
@@ -83,6 +89,7 @@ public final class PrepSupport {
         villageBeds.onExit(mod);
         benches.reset();
         diamond.reset();
+        gold.reset();
         coal.reset();
         gravel.reset();
     }
@@ -96,6 +103,7 @@ public final class PrepSupport {
         hud = null;
         // standing by the smoker is the plan, a mining detour that was going is over
         diamond.preempted(ctx.facts().gameTime());
+        gold.preempted(ctx.facts().gameTime());
         coal.preempted(ctx.facts().gameTime());
         gravel.preempted(ctx.facts().gameTime());
         if (golem != null && golem.active()) {
@@ -121,6 +129,7 @@ public final class PrepSupport {
             // anything above the coal wins the tick, and a detour that was going is over (not paused): when the job is done
             // and the ore is still there it is a fresh detour, after its cooldown
             diamond.preempted(ctx.facts().gameTime());
+            gold.preempted(ctx.facts().gameTime());
             coal.preempted(ctx.facts().gameTime());
             gravel.preempted(ctx.facts().gameTime());
             return ranked;
@@ -137,7 +146,7 @@ public final class PrepSupport {
                 return kept;
             }
         }
-        for (ResourceDetour next : List.of(diamond, coal, gravel)) {
+        for (ResourceDetour next : List.of(diamond, gold, coal, gravel)) {
             // a detour that just ended above is done for this tick, asking it twice would only count its look twice
             if (next == going) {
                 continue;
@@ -153,7 +162,7 @@ public final class PrepSupport {
 
     // everything but `keep` is over, one of them has the wheel
     private void preemptedBut(ResourceDetour keep, long now) {
-        for (ResourceDetour d : List.of(diamond, coal, gravel)) {
+        for (ResourceDetour d : List.of(diamond, gold, coal, gravel)) {
             if (d != keep) {
                 d.preempted(now);
             }
@@ -277,6 +286,18 @@ public final class PrepSupport {
 
     public String diamondEnded() {
         return diamond.ended();
+    }
+
+    public Task goldDetour(AltoClef mod, GamerContext ctx, KitNeed current) {
+        return detour(gold, mod, ctx, current);
+    }
+
+    public void endGold(long now) {
+        gold.preempted(now);
+    }
+
+    public String goldEnded() {
+        return gold.ended();
     }
 
     public Task coalDetour(AltoClef mod, GamerContext ctx, KitNeed current) {

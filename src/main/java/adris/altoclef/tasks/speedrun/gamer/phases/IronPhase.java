@@ -337,6 +337,9 @@ public class IronPhase implements PhaseHandler {
             if (before == Kind.DIAMOND && got != Kind.DIAMOND) {
                 support.endDiamond(now);
             }
+            if (before == Kind.GOLD && got != Kind.GOLD) {
+                support.endGold(now);
+            }
             if (before == Kind.COAL && got != Kind.COAL) {
                 support.endCoal(now);
             }
@@ -354,6 +357,9 @@ public class IronPhase implements PhaseHandler {
         }
         if (before == Kind.DIAMOND) {
             support.endDiamond(now);
+        }
+        if (before == Kind.GOLD) {
+            support.endGold(now);
         }
         if (before == Kind.COAL) {
             support.endCoal(now);
@@ -394,6 +400,7 @@ public class IronPhase implements PhaseHandler {
             case BED -> support.bed(mod, ctx);
             case GOLEM_START -> support.golemStart(mod, ctx, head);
             case DIAMOND -> support.diamondDetour(mod, ctx, head);
+            case GOLD -> support.goldDetour(mod, ctx, head);
             case COAL -> support.coalDetour(mod, ctx, head);
             case GRAVEL -> support.gravelDetour(mod, ctx, head);
             case PACK_UP -> packUpTrip(mod, ctx, head, second(needs), jobs);
@@ -468,6 +475,7 @@ public class IronPhase implements PhaseHandler {
     private String endWords(Kind k) {
         return switch (k) {
             case DIAMOND -> support.diamondEnded();
+            case GOLD -> support.goldEnded();
             case COAL -> support.coalEnded();
             case GRAVEL -> support.gravelEnded();
             case STAND_BY, FURNACE, PACK_UP -> "visit over";

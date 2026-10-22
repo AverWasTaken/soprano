@@ -73,13 +73,14 @@ public class IronActivityTest {
     @Test
     public void theOrderIsTheDocumentedOne() {
         assertEquals(List.of(Kind.FINISHING, Kind.GOLEM_FIGHT, Kind.STAND_BY, Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST,
-                Kind.BED, Kind.GOLEM_START, Kind.DIAMOND, Kind.COAL, Kind.GRAVEL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT),
+                Kind.BED, Kind.GOLEM_START, Kind.DIAMOND, Kind.GOLD, Kind.COAL, Kind.GRAVEL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT),
                 List.of(Kind.values()));
     }
 
     @Test
     public void diamondsAreAskedBeforeCoalAndGravelAndInsideTheSideJobRanges() {
-        assertEquals(Kind.COAL.ordinal(), Kind.DIAMOND.ordinal() + 1);
+        assertEquals(Kind.GOLD.ordinal(), Kind.DIAMOND.ordinal() + 1);
+        assertEquals(Kind.COAL.ordinal(), Kind.GOLD.ordinal() + 1);
         assertTrue(Kind.DIAMOND.ordinal() > Kind.GOLEM_START.ordinal());
         // the quick smoker's cut-in range runs STATION..GRAVEL, and IronPhase.sideJob GOLEM_FIGHT..GRAVEL: both hold it
         assertTrue(Kind.DIAMOND.ordinal() > Kind.STATION.ordinal() && Kind.DIAMOND.ordinal() < Kind.GRAVEL.ordinal());

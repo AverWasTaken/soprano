@@ -208,6 +208,7 @@ final class GamerHud {
             case GRAVEL -> Items.GRAVEL;
             case COAL -> Items.COAL_ORE;
             case DIAMOND -> Items.DIAMOND;
+            case GOLD -> Items.RAW_GOLD;
         };
         return new DetourRow(icon, spec.name, blocks, detour.startTick(), spec.seconds(cfg.overworld), detour.dug(),
                 spec.limits(cfg.overworld).mineCap());
