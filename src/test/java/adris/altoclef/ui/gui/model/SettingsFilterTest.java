@@ -53,7 +53,8 @@ public class SettingsFilterTest {
 
     @Test
     public void categoryNarrows() {
-        assertEquals(List.of("allowParkour", "allowParkourPlace", "sprintAscends"), run(SettingCategories.MOVEMENT, false, ""));
+        assertEquals(List.of("allowParkour", "allowParkourPlace"), run(SettingCategories.PARKOUR, false, ""));
+        assertEquals(List.of("sprintAscends"), run(SettingCategories.MOVEMENT, false, ""));
         assertEquals(List.of("altoMobDefense"), run(SettingCategories.ALTO, false, ""));
         assertEquals(List.of(), run(SettingCategories.ELYTRA, false, ""));
     }
@@ -65,8 +66,8 @@ public class SettingsFilterTest {
 
     @Test
     public void filtersCompose() {
-        assertEquals(List.of("allowParkourPlace"), run(SettingCategories.MOVEMENT, true, ""));
-        assertEquals(List.of("allowParkourPlace"), run(SettingCategories.MOVEMENT, true, "parkour"));
+        assertEquals(List.of("allowParkourPlace"), run(SettingCategories.PARKOUR, true, ""));
+        assertEquals(List.of("allowParkourPlace"), run(SettingCategories.PARKOUR, true, "parkour"));
         assertEquals(List.of(), run(SettingCategories.MINING, true, "parkour"));
     }
 
@@ -84,7 +85,8 @@ public class SettingsFilterTest {
         assertEquals(List.of("legitMine"), run("All", false, "ore you"));
         // only the category name says "tasks"
         assertEquals(List.of("altoMobDefense"), run("All", false, "tasks"));
-        assertTrue(run("All", false, "movement").containsAll(List.of("allowParkour", "sprintAscends")));
+        assertTrue(run("All", false, "movement").contains("sprintAscends"));
+        assertTrue(run("All", false, "parkour").contains("allowParkour"));
     }
 
     @Test
@@ -101,10 +103,11 @@ public class SettingsFilterTest {
     @Test
     public void countsFollowTheColumnOrderAndSkipEmpty() {
         Map<String, Integer> c = SettingsFilter.counts(all());
-        assertEquals(List.of(SettingCategories.ALTO, SettingCategories.MOVEMENT, SettingCategories.MINING, SettingCategories.RENDERING),
-                new ArrayList<>(c.keySet()));
+        assertEquals(List.of(SettingCategories.ALTO, SettingCategories.PARKOUR, SettingCategories.MOVEMENT, SettingCategories.MINING,
+                SettingCategories.RENDERING), new ArrayList<>(c.keySet()));
         assertEquals(1, (int) c.get(SettingCategories.ALTO));
-        assertEquals(3, (int) c.get(SettingCategories.MOVEMENT));
+        assertEquals(2, (int) c.get(SettingCategories.PARKOUR));
+        assertEquals(1, (int) c.get(SettingCategories.MOVEMENT));
         assertEquals(2, (int) c.get(SettingCategories.MINING));
         assertEquals(3, SettingsFilter.modifiedCount(all()));
     }

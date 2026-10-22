@@ -825,6 +825,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             if (path.movements().get(pathPosition) instanceof MovementFall) {
                 BlockPos fallDest = path.positions().get(pathPosition + 1); // .get(pathPosition) is the block we fell off of
                 return VecUtils.entityFlatDistanceToCenter(ctx.player(), fallDest) >= leniency; // ignore Y by using flat distance
+            } else if (path.movements().get(pathPosition) instanceof baritone.pathing.movement.movements.MovementTungsten tungsten) {
+                // a Tungsten jump can be a long way from both its ends in the middle of it: the run up backs off the far side of
+                // src, a bounce goes down into the slime pit. its own corridor (the planner's rollout and the box round it) is
+                // the path there
+                return !tungsten.getValidPositions().contains(ctx.playerFeet());
             } else {
                 return true;
             }

@@ -100,6 +100,7 @@ public class Baritone implements IBaritone {
     private final FarmProcess farmProcess;
     private final InventoryPauserProcess inventoryPauserProcess;
     private final IElytraProcess elytraProcess;
+    private final TungstenProcess tungstenProcess;
 
     private final PathingControlManager pathingControlManager;
     private final SelectionManager selectionManager;
@@ -151,6 +152,7 @@ public class Baritone implements IBaritone {
             this.registerProcess(BackfillProcess::new);
             this.registerProcess(SelfDefenseProcess::new);
             this.registerProcess(TorchProcess::new);
+            this.tungstenProcess         = this.registerProcess(TungstenProcess::new);
         }
 
         this.worldProvider = new WorldProvider(this);
@@ -182,6 +184,10 @@ public class Baritone implements IBaritone {
     @Override
     public InputOverrideHandler getInputOverrideHandler() {
         return this.inputOverrideHandler;
+    }
+
+    public TungstenProcess getTungstenProcess() {
+        return this.tungstenProcess;
     }
 
     @Override

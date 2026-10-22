@@ -322,9 +322,10 @@ public class VineLogPathTest {
             assertTrue("the climb sim fills never finished", ForkJoinPool.commonPool().awaitQuiescence(120, TimeUnit.SECONDS));
         }
         assertTrue(r.found && r.inGoal);
+        // fastMode has Tungsten jumps on too, and those catch vines now (Landing.grab): either kind of grab is the one
         boolean grabbed = false;
         for (String m : r.moves) {
-            grabbed |= m.startsWith("CLIMB_GRAB");
+            grabbed |= m.startsWith("CLIMB_GRAB") || m.startsWith("TUNGSTEN_");
         }
         assertTrue("expected a climb grab, got " + r.moves, grabbed);
     }

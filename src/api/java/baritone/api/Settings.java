@@ -305,6 +305,33 @@ public final class Settings {
     public final Setting<Boolean> allowMomentumJumps = new Setting<>(false);
 
     /**
+     * Tungsten jumps: jumps at any angle, not just the four straight lines the other parkour moves know. Diagonal gaps, jumps
+     * to a block off to the side, drops across a gap, from any block with a drop next to it to a block up to about six away,
+     * one up to three down. Each one is checked by playing it out in the player physics simulation (run at it, jump at the
+     * edge or a bit before, steer in the air, brake on the landing) and only planned if that lands and stops on the block.
+     * <p>
+     * The jump is flown by the same rule, re-planned from where the player really is every tick, and if that ever finds
+     * nothing it falls back on a full Tungsten search over the keys themselves. Credit to Tungsten
+     * (github.com/Hackerokuz/Tungsten) for the idea.
+     * <p>
+     * Planning these costs a lot more than a normal move, see {@link #tungstenPlannerBudget}. Falls that hurt are never
+     * planned. Part of {@link #fastMode}.
+     */
+    public final Setting<Boolean> allowTungstenJumps = new Setting<>(false);
+
+    /**
+     * How much simulation one path search may spend on {@link #allowTungstenJumps}, in simulated player ticks (each is a few
+     * microseconds). Once it's spent the search carries on without offering any more of them.
+     */
+    public final Setting<Integer> tungstenPlannerBudget = new Setting<>(1_000_000);
+
+    /**
+     * How much simulation a full Tungsten search may spend, in simulated player ticks: the {@code #tungsten} command, and a
+     * Tungsten jump whose rule found nothing from where the player was. Runs off the game thread.
+     */
+    public final Setting<Integer> tungstenSearchBudget = new Setting<>(3_000_000);
+
+    /**
      * Allow descending diagonally
      * <p>
      * Safer than allowParkour yet still slightly unsafe, can make contact with unchecked adjacent blocks, so it's unsafe in the nether.
@@ -574,7 +601,7 @@ public final class Settings {
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
      * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowLadderClutch}, {@link #allowNeos}, {@link #allowClimbJumps},
-     * {@link #allowMomentumJumps},
+     * {@link #allowMomentumJumps}, {@link #allowTungstenJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
      * {@link #allowGroundShortcuts}, {@link #allowGodBridge}, {@link #allowSwimming}, {@link #allowBoats},
      * {@link #elytraAutoJump} and {@link #preferFasterPathing}.

@@ -97,6 +97,12 @@ public class MovementParkour extends Movement {
         if (MovementHelper.isClimbable(standingOn.getBlock()) || standingOn.getBlock() instanceof StairBlock || MovementHelper.isBottomSlab(standingOn)) {
             return;
         }
+        // a node on a fence, pane, wall, end rod... (only Tungsten jumps get there): the edge this executor jumps at is the
+        // edge of a full block, so on a pane it walks straight off the side before it ever gets to it. Tungsten's
+        // jumps take off from those
+        if (!MovementHelper.canWalkOn(context, x, y - 1, z, standingOn)) {
+            return;
+        }
         // we can't jump from (frozen) water with assumeWalkOnWater because we can't be sure it will be frozen
         if (context.assumeWalkOnWater && !standingOn.getFluidState().isEmpty()) {
             return;

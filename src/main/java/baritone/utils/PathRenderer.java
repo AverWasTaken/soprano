@@ -126,6 +126,8 @@ public final class PathRenderer implements IRenderer {
             return;
         }
 
+        drawTungsten(event.getModelViewStack(), behavior.baritone.getTungstenProcess().plannedStates());
+
         PathExecutor current = behavior.getCurrent(); // this should prevent most race conditions?
         PathExecutor next = behavior.getNext(); // like, now it's not possible for current!=null to be true, then suddenly false because of another thread
         if (current != null && settings.renderSelectionBoxes.value) {
@@ -158,6 +160,24 @@ public final class PathRenderer implements IRenderer {
         } else {
             behavior.getInProgress().ifPresent(currentlyRunning -> drawSearchClassic(event.getModelViewStack(), ctx, currentlyRunning));
         }
+    }
+
+    // what #tungsten is playing: where the feet go, tick by tick
+    private static void drawTungsten(PoseStack stack, List<baritone.pathing.tungsten.SimState> states) {
+        if (states.size() < 2) {
+            return;
+        }
+        BufferBuilder bufferBuilder = IRenderer.startLines(settings.colorCurrentPath.value);
+        double vpX = posX(), vpY = posY(), vpZ = posZ();
+        for (int i = 1; i < states.size(); i++) {
+            baritone.pathing.tungsten.SimState a = states.get(i - 1), b = states.get(i);
+            if (a.x == b.x && a.y == b.y && a.z == b.z) {
+                continue;
+            }
+            IRenderer.emitLine(bufferBuilder, stack, a.x - vpX, a.y + 0.05 - vpY, a.z - vpZ, b.x - vpX, b.y + 0.05 - vpY, b.z - vpZ,
+                    settings.pathRenderLineWidthPixels.value);
+        }
+        IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
     }
 
     private static void drawSearchClassic(PoseStack stack, IPlayerContext ctx, IPathFinder currentlyRunning) {
