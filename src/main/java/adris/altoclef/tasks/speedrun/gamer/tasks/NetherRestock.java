@@ -30,15 +30,14 @@ public final class NetherRestock {
     static final int BAND_RADIUS = 32;
 
     public static boolean inRestockBand(BlockPos origin, BlockPos pos) {
-        int dx = pos.getX() - origin.getX();
-        int dz = pos.getZ() - origin.getZ();
-        int flat = dx * dx + dz * dz;
-        if (flat > BAND_RADIUS * BAND_RADIUS || pos.getY() < origin.getY() - 1) {
+        // feet level and up only. the floor layer looked like a harmless ditch until it turned out to be the 1 wide bridge over
+        // a lava lake we were standing on, dug out on both sides of us
+        if (pos.getY() < origin.getY()) {
             return false;
         }
-        // the floor layer counts too, just not where we stood: on a flat netherrack plain the tracker's nearest 25 are all
-        // floor, and one layer down is a ditch, not a shaft. never the one under the start, that's how the pit began
-        return pos.getY() >= origin.getY() || flat >= 4;
+        int dx = pos.getX() - origin.getX();
+        int dz = pos.getZ() - origin.getZ();
+        return dx * dx + dz * dz <= BAND_RADIUS * BAND_RADIUS;
     }
 
     // held = every placeable throwaway in the bag. exhausted = the dig has nothing left to go to. true = dig (until the

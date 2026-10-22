@@ -10,6 +10,8 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.StorageHelper;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.LeavesBlock;
@@ -93,6 +95,17 @@ public class FindNetherStructureTask extends Task {
     // list also has soul sand and magma in it, which baritone never places, so a bag of those would end the dig and stay
     // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
     // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack
+    // a block with lava on any side is either holding the lava back or holding us up over it (a bridge is all lava
+    // underneath). neither is ours to mine for a few spare blocks
+    private static boolean touchesLava(AltoClef mod, BlockPos p) {
+        for (Direction d : Direction.values()) {
+            if (mod.getWorld().getFluidState(p.relative(d)).is(FluidTags.LAVA)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean restocking(AltoClef mod) {
         Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);
@@ -105,7 +118,7 @@ public class FindNetherStructureTask extends Task {
             BlockPos origin = mod.getPlayer().blockPosition();
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             restockTask = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, NetherRestock.TARGET)},
-                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p));
+                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p));
         } else if (!on) {
             restockTask = null;
         }
