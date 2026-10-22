@@ -415,4 +415,87 @@ public class NetherSweepPlannerTest {
         assertEquals(Kind.GOTO, a.kind());
         assertFalse(NetherComplexGrid.cellOf(a.x(), a.z()).equals(home));
     }
+
+    // ---- stuck give-ups: one retry, then the pocket rule
+
+    @Test
+    public void firstStuckGiveUpRetriesTheSameWaypointAndFlagsIt() {
+        // standing still: the 20 s rule fires at t=20
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 0, 19).x());
+        assertFalse(planner.takeGiveUp());
+        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 20).x());
+        assertTrue(planner.takeGiveUp());
+        // taken once
+        assertFalse(planner.takeGiveUp());
+        assertEquals("0,0", planner.currentCellKey());
+    }
+
+    @Test
+    public void secondStuckGiveUpInTheSamePocketDropsTheCell() {
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 20);
+        // the retry is just as stuck, from the same spot: the other waypoints are behind the same wall
+        Action a = stepAt(planner, Goal.FORTRESS, 510, 505, 21, 41);
+        assertEquals(Kind.GOTO, a.kind());
+        assertEquals(1000, a.x());
+        assertTrue(state.visitedCells.contains("0,0"));
+        assertEquals("1,0", planner.currentCellKey());
+    }
+
+    @Test
+    public void farSecondStuckGiveUpOnlyKillsThatWaypoint() {
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 20);
+        // the retry got us somewhere else entirely (more than 24 blocks away) before it stalled again
+        Action a = stepAt(planner, Goal.FORTRESS, 900, 900, 21, 41);
+        assertEquals(100, a.x());
+        assertFalse(state.visitedCells.contains("0,0"));
+        assertEquals("0,0", planner.currentCellKey());
+    }
+
+    @Test
+    public void pocketMemoryIsPerCell() {
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 20);
+        // a drop picks cell 1; a stuck give-up there at the same spot is its first, not a second one
+        stepAt(planner, Goal.FORTRESS, 500, 500, 21, 41);
+        assertEquals("1,0", planner.currentCellKey());
+        Action a = stepAt(planner, Goal.FORTRESS, 500, 500, 42, 62);
+        assertEquals(1000, a.x());
+        assertEquals("1,0", planner.currentCellKey());
+    }
+
+    @Test
+    public void aWalkStillClosingPastNinetySecondsKeepsGoing() {
+        // 2 blocks a second towards the waypoint: 8 blocks better than the best every few seconds
+        int t = 0;
+        Action a = null;
+        for (; t < 240; t++) {
+            a = planner.step(Goal.FORTRESS, 5000 - 2 * t, 0, t);
+            assertEquals("t=" + t, 0, a.x());
+        }
+        // the hard cap: even a crawl that never stalls is over at 240 s
+        assertEquals(100, planner.step(Goal.FORTRESS, 5000 - 2 * t, 0, t).x());
+    }
+
+    @Test
+    public void softTimeoutNeedsStalledProgressHardOneDoesNot() {
+        assertFalse(NetherSweepPlanner.softTimedOut(89, 50, cfg));
+        // past 90 s, but walking fine
+        assertFalse(NetherSweepPlanner.softTimedOut(100, 2, cfg));
+        assertFalse(NetherSweepPlanner.softTimedOut(200, 9.9, cfg));
+        // past 90 s and half the stuck seconds already behind it
+        assertTrue(NetherSweepPlanner.softTimedOut(100, 10, cfg));
+        assertTrue(NetherSweepPlanner.softTimedOut(240, 0, cfg));
+        cfg.waypointNoProgressSeconds = 0;
+        assertTrue(NetherSweepPlanner.softTimedOut(90, 0, cfg));
+        assertFalse(NetherSweepPlanner.softTimedOut(89, 0, cfg));
+    }
+
+    @Test
+    public void idleGapRestartsBothTheWaypointClockAndTheStuckSeconds() {
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 15);
+        // a long fight, then back: neither clock carries the gap, so no give-up on the first step back
+        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 1000).x());
+        assertFalse(planner.takeGiveUp());
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 1001, 1018).x());
+        assertFalse(planner.takeGiveUp());
+    }
 }

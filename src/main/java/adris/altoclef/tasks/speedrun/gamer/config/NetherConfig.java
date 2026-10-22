@@ -25,7 +25,10 @@ public class NetherConfig {
     // never sweep more than this many structure cells in one attempt (about 2.5 cells per fortress, so 12 is generous)
     public int maxCells = 12;
     // a waypoint that is not reached in this long is skipped (lava lake in the way, bad terrain, whatever)
+    // (only if it also stopped getting closer, see waypointHardSeconds for the one that always fires)
     public double waypointSeconds = 90;
+    // no waypoint gets longer than this, however slowly it creeps closer
+    public double waypointHardSeconds = 240;
     // close enough to a waypoint (blocks): the view distance does the rest
     public int waypointArriveBlocks = 24;
     // a waypoint we have not got waypointNoProgressBlocks closer to in this long (walking time, not the clock on the wall)
