@@ -2,9 +2,14 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Action;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.StorageHelper;
+import net.minecraft.world.item.Item;
 
 import java.util.function.DoubleSupplier;
 
@@ -16,6 +21,8 @@ public class FindNetherStructureTask extends Task {
     private final Goal goal;
     private final DoubleSupplier clock;
 
+    private final NetherRestock restock = new NetherRestock();
+    private Task restockTask;
     private GetToXZTask walk;
     private int walkX;
     private int walkZ;
@@ -51,9 +58,18 @@ public class FindNetherStructureTask extends Task {
     protected Task onTick(AltoClef mod) {
         int px = mod.getPlayer().blockPosition().getX();
         int pz = mod.getPlayer().blockPosition().getZ();
+        // mid restock the planner is not asked: the idle gap is handled there like any other fight or meal
+        if (restock.isActive() && restocking(mod)) {
+            setDebugState("Restocking building blocks", step);
+            return restockTask;
+        }
         Action action = planner.step(goal, px, pz, clock.getAsDouble());
         switch (action.kind()) {
             case GOTO -> {
+                if (restocking(mod)) {
+                    setDebugState("Restocking building blocks", step);
+                    return restockTask;
+                }
                 setDebugState("Sweeping " + action.why() + " towards " + action.x() + "," + action.z(), step);
                 return walkTo(action.x(), action.z());
             }
@@ -67,6 +83,25 @@ public class FindNetherStructureTask extends Task {
                 return null;
             }
         }
+    }
+
+    // the whole bag, counted with the list baritone places from, and the dig goes for exactly that list too (the alto build
+    // list also has soul sand and magma in it, which baritone never places, so a bag of those would end the dig and stay
+    // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
+    // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack
+    private boolean restocking(AltoClef mod) {
+        Item[] placeable = mod.getClientBaritoneSettings().acceptableThrowawayItems.value.toArray(Item[]::new);
+        int held = mod.getItemStorage().getItemCount(placeable);
+        boolean gaveUp = planner.takeGiveUp();
+        boolean on = restock.update(held, gaveUp, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
+                clock.getAsDouble());
+        if (on && restockTask == null) {
+            restockTask = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, NetherRestock.TARGET)},
+                    MiningRequirement.WOOD);
+        } else if (!on) {
+            restockTask = null;
+        }
+        return on;
     }
 
     // a new GetToXZTask object only when the waypoint changes, a new one per tick would restart its pathing every tick

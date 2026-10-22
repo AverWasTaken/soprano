@@ -117,4 +117,46 @@ public final class CliffAvoidance {
         }
         return true;
     }
+
+    // what a cell is, for the callers that want scanColumn's answer without a world (the lava knock guard and its tests)
+    public enum Cell { LAVA, WATER, OPEN, SOLID }
+
+    public interface Cells {
+        Cell at(int x, int y, int z);
+    }
+
+    // the bsi as Cells. an unloaded chunk is solid, same as scanColumn: air there would read as the biggest cliff ever
+    public static Cells of(BlockStateInterface bsi) {
+        return (x, y, z) -> {
+            if (!bsi.isLoaded(x, z)) {
+                return Cell.SOLID;
+            }
+            BlockState state = bsi.get0(x, y, z);
+            if (MovementHelper.isLava(state)) {
+                return Cell.LAVA;
+            }
+            if (MovementHelper.isWater(state)) {
+                return Cell.WATER;
+            }
+            return MovementHelper.canWalkThrough(bsi, x, y, z, state) ? Cell.OPEN : Cell.SOLID;
+        };
+    }
+
+    // scanColumn's meaning over Cells: something we could stand in at y with lava below, or nothing to land on within DEPTH
+    public static boolean columnUnsafe(Cells cells, int x, int y, int z) {
+        Cell here = cells.at(x, y, z);
+        if (here != Cell.OPEN && here != Cell.WATER) {
+            return false;
+        }
+        for (int d = 1; d <= DEPTH; d++) {
+            Cell below = cells.at(x, y - d, z);
+            if (below == Cell.LAVA) {
+                return true;
+            }
+            if (below != Cell.OPEN) {
+                return false;
+            }
+        }
+        return true;
+    }
 }

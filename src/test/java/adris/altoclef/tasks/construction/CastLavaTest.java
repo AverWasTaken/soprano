@@ -228,4 +228,31 @@ public class CastLavaTest {
         Grid beside = new Grid().set(lava, Mat.LAVA).room(lava.south());
         assertTrue(CastLava.safeStands(beside, lava, 3, 1, 1, lava, List.of()).isEmpty());
     }
+
+    @Test
+    public void emptyHandedClickIsNotAPour() {
+        assertFalse(CastLava.spent(1, 1));
+        assertFalse(CastLava.spent(0, 0));
+        assertTrue(CastLava.spent(1, 0));
+        assertTrue(CastLava.spent(2, 1));
+    }
+
+    @Test
+    public void dryCellAfterARealPourIsAStrike() {
+        assertTrue(CastLava.pourFailed(Mat.OPEN, false));
+        assertTrue(CastLava.pourFailed(Mat.LAVA_FLOW, false));
+        assertFalse(CastLava.pourFailed(Mat.LAVA, false));
+        assertFalse(CastLava.pourFailed(Mat.SOLID, true));
+    }
+
+    @Test
+    public void thirdFailedPourGivesTheSpotUp() {
+        assertFalse(CastLava.spoiled(2, 0));
+        assertTrue(CastLava.spoiled(3, 0));
+        // clicks that spent nothing don't count toward the pours, they have a looser cap of their own
+        assertFalse(CastLava.spoiled(0, 5));
+        assertTrue(CastLava.spoiled(0, 6));
+        // a cell that worked wipes the count, the task resets both to 0
+        assertFalse(CastLava.spoiled(0, 0));
+    }
 }

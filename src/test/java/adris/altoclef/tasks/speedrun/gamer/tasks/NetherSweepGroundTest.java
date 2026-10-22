@@ -137,8 +137,12 @@ public class NetherSweepGroundTest {
     public void noCloserInTwentySecondsGivesTheWaypointUp() {
         // t 0 is the first look, 20 more walking seconds without getting closer
         assertEquals(0, walk(-300, 0, 0, 19).x());
-        Action a = walk(-300, 0, 20, 20);
-        assertEquals(100, a.x());
+        // the first time is a retry of the same waypoint, nothing logged
+        assertEquals(0, walk(-300, 0, 20, 20).x());
+        assertTrue(lines.isEmpty());
+        // stuck again from the same spot: same pocket, the cell is dropped
+        Action a = walk(-300, 0, 21, 41);
+        assertEquals(1000, a.x());
         assertEquals(List.of("sweep: gave up on 0 0, no closer in 20 s (300 away)"), lines);
     }
 
@@ -170,8 +174,10 @@ public class NetherSweepGroundTest {
     @Test
     public void aWaypointGivenUpOnIsNeverHandedBack() {
         walk(-300, 0, 0, 20);
+        walk(-300, 0, 21, 41);
+        state.visitedCells.remove("0,0");
         planner.giveUpFortress();
-        assertEquals(100, walk(-300, 0, 21, 21).x());
+        assertEquals(100, walk(-300, 0, 42, 42).x());
     }
 
     @Test
@@ -181,7 +187,8 @@ public class NetherSweepGroundTest {
         assertEquals(0, walk(-300, 0, 70, 70).x());
         // the clock starts over after a gap, 19 walking seconds later it is still alive and the twentieth drops it
         assertEquals(0, walk(-300, 0, 71, 89).x());
-        assertEquals(100, walk(-300, 0, 90, 90).x());
+        assertEquals(0, walk(-300, 0, 90, 90).x());
+        assertEquals(1000, walk(-300, 0, 91, 111).x());
     }
 
     @Test
@@ -190,7 +197,8 @@ public class NetherSweepGroundTest {
         // the fight ended 40 blocks further out than the best we had
         assertEquals(0, walk(-340, 0, 60, 60).x());
         assertEquals(0, walk(-340, 0, 61, 78).x());
-        assertEquals(100, walk(-340, 0, 79, 80).x());
+        assertEquals(0, walk(-340, 0, 79, 80).x());
+        assertEquals(1000, walk(-340, 0, 81, 101).x());
     }
 
     @Test
@@ -200,7 +208,8 @@ public class NetherSweepGroundTest {
         walk(-300, 0, 120, 135);
         // the third gap no longer wipes the 15 stuck seconds, so five more walking seconds are enough
         assertEquals(0, walk(-300, 0, 200, 204).x());
-        assertEquals(100, walk(-300, 0, 205, 205).x());
+        assertEquals(0, walk(-300, 0, 205, 205).x());
+        assertEquals(1000, walk(-300, 0, 206, 226).x());
     }
 
     @Test

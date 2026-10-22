@@ -148,4 +148,27 @@ public class NetherGoldTest {
         // and the old radius still holds sideways
         assertFalse(NetherGold.oreInReach(49, 70, 0, 0, 70, 0));
     }
+
+    @Test
+    public void retriesAfterTheWaitWithOreKnown() {
+        assertTrue(NetherGold.mayRetry(NetherGold.RETRY_SECONDS, 1, true));
+        assertFalse(NetherGold.mayRetry(NetherGold.RETRY_SECONDS, 1, false));
+    }
+
+    @Test
+    public void noRetryBeforeTheWait() {
+        assertFalse(NetherGold.mayRetry(NetherGold.RETRY_SECONDS - 1, 1, true));
+    }
+
+    @Test
+    public void noRetryAfterThreeTries() {
+        assertTrue(NetherGold.mayRetry(100, NetherGold.MAX_TRIES - 1, true));
+        assertFalse(NetherGold.mayRetry(100, NetherGold.MAX_TRIES, true));
+    }
+
+    @Test
+    public void aDeathResetsTheTries() {
+        assertTrue(NetherGold.resetOnDeath(2, 3));
+        assertFalse(NetherGold.resetOnDeath(3, 3));
+    }
 }

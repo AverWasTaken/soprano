@@ -20,7 +20,12 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.util.helpers.LavaShore;
+import adris.altoclef.util.helpers.MobReachability;
 import baritone.api.pathing.goals.GoalRunAway;
+import baritone.api.utils.Dimension;
+import baritone.pathing.movement.CliffAvoidance;
+import baritone.pathing.movement.CliffAvoidance.Cells;
 import baritone.behavior.CombatAim;
 import java.util.Optional;
 import net.minecraft.client.player.LocalPlayer;
@@ -28,6 +33,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.Blaze;
+import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
@@ -204,6 +212,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     _blocker = null;
                     return onEntityInteract(mod, entity);
                 case APPROACH:
+                    // lava on the foe, under us or between us: it comes to us. the walk in is what put us in the lava, and a
+                    // foe that never comes just stalls out. returning null also lets go of an approach already walking
+                    if (isKillTask() && lavaInTheWay(mod, entity)) {
+                        _progress.reset();
+                        _blocker = null;
+                        setDebugState("Lava by the foe, letting it come");
+                        return null;
+                    }
                     // a kill task walks in to hop range, not to the edge of reach: the swing plan kicks in at the kill
                     // reach anyway and the crit walk-up closes the rest, this is for when it doesn't (no clear shot yet)
                     return approach(mod, entity, isKillTask() ? ReachRules.KILL_APPROACH : maintainDistance);
@@ -237,6 +253,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     setDebugState("In reach, waiting for the swing");
                     return null;
                 default:
+                    // the shuffle is a walk too
+                    if (plan == ApproachRules.Plan.WANDER && isKillTask() && lavaInTheWay(mod, entity)) {
+                        setDebugState("Lava by the foe, not shuffling");
+                        return null;
+                    }
                     break;
             }
         }
@@ -247,6 +268,16 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         // a fresh one is isEqual to the running one, so the running one stays
         _wanderLive = true;
         return new TimeoutWanderTask();
+    }
+
+    // nether only: the approach walk near lava, see LavaShore
+    private static boolean lavaInTheWay(AltoClef mod, Entity entity) {
+        if (WorldHelper.getCurrentDimension() != Dimension.NETHER) return false;
+        // only the ones that walk up and hit. a blaze hovers over the lava on purpose, and waiting for it to come is no rods
+        if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
+        Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        var us = mod.getPlayer();
+        return LavaShore.approachBlocked(cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
     }
 
     // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks go by the eye to box

@@ -92,4 +92,19 @@ public final class NetherGold {
     public static boolean overTime(double secondsSinceStart) {
         return secondsSinceStart >= CAP_SECONDS;
     }
+
+    // a latched off visit gets another go this long after it latched, so a wander or a dry anchor is not the end of it
+    public static final double RETRY_SECONDS = 60;
+    // tries a visit, the first one included
+    public static final int MAX_TRIES = 3;
+
+    // whether a latched off try may be re-armed: long enough ago, tries left, and ore the tracker knows about from here
+    public static boolean mayRetry(double secondsSinceOver, int triesUsed, boolean oreKnownHere) {
+        return secondsSinceOver >= RETRY_SECONDS && triesUsed < MAX_TRIES && oreKnownHere;
+    }
+
+    // a new player instance after a death: the visit's tries start over
+    public static boolean resetOnDeath(int deathsSeen, int deathsNow) {
+        return deathsNow != deathsSeen;
+    }
 }

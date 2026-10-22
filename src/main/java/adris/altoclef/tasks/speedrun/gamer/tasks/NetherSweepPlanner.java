@@ -88,6 +88,8 @@ public final class NetherSweepPlanner {
     // not asked for this long = something else had the wheel
     private static final double IDLE_SECONDS = 5;
     private static final int MAX_GAP_RESETS = 2;
+    // two stuck give-ups this close together are the same dead end pocket
+    static final int POCKET_BLOCKS = 24;
 
     private final RunState state;
     private final NetherConfig cfg;
@@ -115,6 +117,16 @@ public final class NetherSweepPlanner {
     // cells started per goal: a fortress that took four cells must not eat the warped forest search's share
     private final int[] cellsStarted = new int[Goal.values().length];
     private double lastStepAt = Double.NaN;
+    // where the last stuck give-up happened and in which cell. planner local on purpose, same as 'dead': a rebuilt planner
+    // (phase entry after a retry, a death or a regress) starts over, the worst case is one more try at a pocket. a dropped
+    // cell is in visitedCells, that part does survive
+    private int pocketX;
+    private int pocketZ;
+    private String pocketCell;
+    // waypoints that already had their one retry after a stuck give-up
+    private final Set<Long> retried = new HashSet<>();
+    // a waypoint was given up on since the task last asked (the bag may be what ran dry, see FindNetherStructureTask)
+    private boolean gaveUp;
 
     // read by the path predicate on the pathing threads, so snapshots and volatiles only
     private volatile int[] avoidXZ = new int[0];
@@ -147,6 +159,13 @@ public final class NetherSweepPlanner {
 
     public String currentCellKey() {
         return cell == null ? null : cell.key();
+    }
+
+    // true once per give-up, so whoever walks can look at the bag before the next try
+    public boolean takeGiveUp() {
+        boolean was = gaveUp;
+        gaveUp = false;
+        return was;
     }
 
     public boolean goalMet(Goal goal) {
@@ -340,17 +359,38 @@ public final class NetherSweepPlanner {
             Point to = aimAt(w);
             if (to != null) {
                 boolean arrived = dist2(px, pz, to.x(), to.z()) <= arrive * arrive;
-                boolean timedOut = now - waypointSince >= cfg.waypointSeconds;
-                boolean stuck = !arrived && !timedOut && noProgress(px, pz, to);
+                // noProgress first, it is the one that keeps the stuck seconds up to date
+                boolean stuck = !arrived && noProgress(px, pz, to);
+                boolean timedOut = !arrived && timedOut(now);
                 if (!arrived && !timedOut && !stuck && !nearBastion(to.x(), to.z())) {
                     return to;
                 }
-                if (timedOut && !arrived) {
+                if (timedOut) {
                     dead.add(key(w));
+                    gaveUp = true;
+                    // wedged and out of time at once still counts as a pocket for the next give-up
+                    if (stuck) {
+                        pocketX = px;
+                        pocketZ = pz;
+                        pocketCell = cell.key();
+                    }
                     log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", not there after "
-                            + (int) cfg.waypointSeconds + " s (" + away(px, pz, to) + " away)");
+                            + (int) (now - waypointSince) + " s (" + away(px, pz, to) + " away)");
                 } else if (stuck) {
-                    dead.add(key(w));
+                    gaveUp = true;
+                    if (stuckGiveUp(w, px, pz)) {
+                        log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", no closer in "
+                                + (int) cfg.waypointNoProgressSeconds + " s (" + away(px, pz, to) + " away)");
+                        // the rest of the cell is behind the same wall, step() marks it visited and picks another
+                        index = waypoints.size();
+                        return null;
+                    }
+                    if (!dead.contains(key(w))) {
+                        // first time stuck here: same waypoint again, the bag gets looked at in between
+                        waypointSince = now;
+                        freshWaypoint();
+                        return to;
+                    }
                     log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", no closer in "
                             + (int) cfg.waypointNoProgressSeconds + " s (" + away(px, pz, to) + " away)");
                 }
@@ -360,6 +400,42 @@ public final class NetherSweepPlanner {
             freshWaypoint();
         }
         return null;
+    }
+
+    // the 90 s is only a verdict on a walk that has also stopped getting closer (half the stuck seconds is enough, a walk that
+    // is still closing at 1.5 blocks/s resets them every few seconds). the hard cap catches the crawl that never trips either.
+    // waypointSince and the stuck seconds are on the same clock: both restart on an idle gap and only stepped time adds up
+    private boolean timedOut(double now) {
+        return softTimedOut(now - waypointSince, stuckFor, cfg);
+    }
+
+    static boolean softTimedOut(double elapsed, double stuckFor, NetherConfig cfg) {
+        if (elapsed >= cfg.waypointHardSeconds) {
+            return true;
+        }
+        if (elapsed < cfg.waypointSeconds) {
+            return false;
+        }
+        // no progress rule off = the old flat backstop
+        return cfg.waypointNoProgressSeconds <= 0 || stuckFor >= cfg.waypointNoProgressSeconds / 2;
+    }
+
+    // a stuck give-up at (px, pz). true = the second one in the same pocket, drop the cell. otherwise the waypoint is
+    // either marked dead (it already had its retry) or left alive for exactly one more go
+    private boolean stuckGiveUp(Point w, int px, int pz) {
+        boolean same = pocketCell != null && pocketCell.equals(cell.key())
+                && dist2(px, pz, pocketX, pocketZ) <= (long) POCKET_BLOCKS * POCKET_BLOCKS;
+        pocketX = px;
+        pocketZ = pz;
+        pocketCell = cell.key();
+        if (same) {
+            dead.add(key(w));
+            return true;
+        }
+        if (!retried.add(key(w))) {
+            dead.add(key(w));
+        }
+        return false;
     }
 
     // where to walk for this waypoint. the column under it is looked at once, as soon as its chunks are in: until then the

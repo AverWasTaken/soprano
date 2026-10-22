@@ -316,8 +316,45 @@ public class CreeperStepTest {
         assertEquals(Event.NONE, step.step(11, lit(7, 6.5), false, Mode.RUN, true));
         assertTrue(step.active());
         assertFalse(step.baiting());
-        // and the defuse's rules from here: a far deflating fuse is let go of
-        assertEquals(Event.END_UNLIT, step.step(12, List.of(new Seen(7, false, 6.5, false, true)), false, Mode.RUN, true));
+        // and the run's rules from here: a deflating fuse is held through until it is drained and we are past 7
+        assertEquals(Event.NONE, step.step(12, List.of(new Seen(7, false, 6.5, false, true)), false, Mode.RUN, true));
+        assertEquals(Event.NONE, step.step(13, List.of(new Seen(7, false, CreeperStep.SAFE + 1, false, true)), false, Mode.RUN, true));
+        assertEquals(Event.NONE, step.step(14, List.of(new Seen(7, false, CreeperStep.SWELL_STOP - 0.5, false, false)), false, Mode.RUN, true));
+        // 7.6 is where a -x walk to the corner of an 8 goal ends up
+        assertEquals(Event.END_UNLIT, step.step(15, List.of(new Seen(7, false, 7.6, false, false)), false, Mode.RUN, true));
+    }
+
+    // the flip: unlit at 6 with the swell still up used to end the step, the run walked back past it and it relit
+    @Test
+    public void aStepInsideARunDoesNotLetGoOfADeflatingFuse() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, true, 2.5, true)), false, Mode.RUN, true);
+        assertEquals(Event.NONE, step.step(5, List.of(new Seen(7, false, 6, false, true)), false, Mode.RUN, true));
+        assertTrue(step.active());
+    }
+
+    // lit at 3 from a standstill. the creeper stands still while it swells (its goals stop), we sprint straight away with
+    // a standing start's speed, and the 30 tick fuse has to find us past 5
+    @Test
+    public void theHandSprintIsPastTheBlastBeforeTheFuseIsOut() {
+        double dist = 3;
+        double v = 0;
+        long t = 0;
+        while (CreeperStep.rawGoing(t, dist)) {
+            // ground sprint: 0.28 a tick at the top, friction 0.546
+            v = v * 0.546 + 0.28 * (1 - 0.546);
+            dist += v;
+            t++;
+        }
+        assertTrue("past 5 within the fuse, was " + dist + " after " + t, dist > 5 && t <= 30);
+        // the old 10 ticks left us in the blast
+        double ten = 3;
+        double vv = 0;
+        for (int i = 0; i < 10; i++) {
+            vv = vv * 0.546 + 0.28 * (1 - 0.546);
+            ten += vv;
+        }
+        assertTrue(ten < 5.5);
     }
 
     @Test

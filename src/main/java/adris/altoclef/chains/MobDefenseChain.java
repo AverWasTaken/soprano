@@ -120,6 +120,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private int _meleeAround;
 
     private final CombatBrain _brain = new CombatBrain();
+    private final LavaKnockGuard _lavaGuard = new LavaKnockGuard();
 
     // ---- for the gamer card: the commitment as it stands, plain field reads, nothing here moves the machine
 
@@ -197,6 +198,12 @@ public class MobDefenseChain extends SingleTaskChain {
         return getPriorityInner(mod);
     }
 
+    @Override
+    protected void onStop(AltoClef mod) {
+        _lavaGuard.release(mod);
+        super.onStop(mod);
+    }
+
     private void stopShielding(AltoClef mod) {
         if (_shielding) {
             ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
@@ -228,6 +235,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private float computePriority(AltoClef mod) {
         if (!AltoClef.inGame()) {
+            _lavaGuard.reset(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -236,6 +244,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // trip asks it)
             _brain.dropHold();
             dropCapSneak(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -266,6 +275,7 @@ public class MobDefenseChain extends SingleTaskChain {
             _killAura.stopShielding(mod);
             stopShielding(mod);
             dropCapSneak(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -275,11 +285,13 @@ public class MobDefenseChain extends SingleTaskChain {
         if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth(), mod.getWorld().getGameTime())) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
         // Force field
         doForceField(mod);
+        _lavaGuard.tick(mod, _brain);
 
         return commitPriority(mod);
     }
@@ -701,7 +713,9 @@ public class MobDefenseChain extends SingleTaskChain {
             for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
                 if (!creeper.isAlive()) continue;
                 double distance = creeper.distanceTo(player);
-                if (distance > CreeperStep.PATH_RANGE) continue;
+                // the one we hold stays in the list further out, or it reads as gone the moment the step gets us to 8
+                if (distance > CreeperStep.PATH_RANGE && !(_creeperStep.active() && creeper.getId() == _creeperStep.creeperId()
+                        && distance <= CreeperStep.PATH_RANGE + 4)) continue;
                 // swell dir and ignited are both synced to the client, so the fuse counts from its very first tick
                 boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
                 boolean pathNear = false;
