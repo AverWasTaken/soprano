@@ -17,6 +17,7 @@
 
 package baritone.altoclef;
 
+import baritone.utils.ExperimentalMovement;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
@@ -66,6 +67,9 @@ public class AltoClefSettings {
     private volatile boolean pauseInteractions;
     private volatile boolean dontPlaceBucketButStillFall;
     private volatile boolean allowSwimThroughLava;
+    // combat keeps this ahead of the clock every tick it wants no jump moves planned. it runs out by itself on purpose, so a
+    // clear that never comes (mob defense off, a disconnect) can't leave the bot walking without jumps forever
+    private volatile long jumpsOffUntilTick = Long.MIN_VALUE;
     private volatile boolean canWalkOnEndPortal;
     // the end portal frame rules (walkable, never broken, never walked into, nothing mined out from under) are altoclef's,
     // stock soprano treats a frame like any other odd block. only on while altoclef has the bot, see BaritoneSettingsScope
@@ -465,6 +469,14 @@ public class AltoClefSettings {
         allowSwimThroughLava = allow;
     }
 
+    public void noJumpsFor(long now) {
+        jumpsOffUntilTick = now + ExperimentalMovement.JUMPS_OFF_TICKS;
+    }
+
+    public long jumpsOffUntilTick() {
+        return jumpsOffUntilTick;
+    }
+
     public boolean isFlowingWaterPassAllowed() {
         return allowFlowingWaterPass;
     }
@@ -541,6 +553,7 @@ public class AltoClefSettings {
         pauseInteractions = false;
         dontPlaceBucketButStillFall = false;
         allowSwimThroughLava = false;
+        jumpsOffUntilTick = Long.MIN_VALUE;
         canWalkOnEndPortal = false;
         endPortalFrameRules = false;
     }

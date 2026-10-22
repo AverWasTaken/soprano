@@ -255,14 +255,18 @@ public class CalculationContext {
         this.allowBreak = !paused && Baritone.settings().allowBreak.value;
         // allowBreakAnyway would sneak past a pause otherwise
         this.allowBreakAnyway = paused ? new ArrayList<>() : new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
-        this.allowParkour = ExperimentalMovement.allowParkour();
-        this.allowParkourPlace = ExperimentalMovement.allowParkourPlace();
+        // combat stamps the jumps off while it has the wheel (a jump that misses next to a piglin is lava, fastMode or not).
+        // read once here on the tick thread, never live from the cost code on the search thread
+        long jumpsOffUntil = alto.jumpsOffUntilTick();
+        long now = world == null ? 0 : world.getGameTime();
+        this.allowParkour = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkour.value, jumpsOffUntil, now);
+        this.allowParkourPlace = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkourPlace.value, jumpsOffUntil, now);
         this.allowGodBridge = ExperimentalMovement.allowGodBridge();
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
-        this.allowParkourAscend = ExperimentalMovement.allowParkourAscend();
-        this.allowNeos = ExperimentalMovement.allowNeos();
-        this.allowClimbJumps = ExperimentalMovement.allowClimbJumps();
-        this.allowMomentumJumps = ExperimentalMovement.allowMomentumJumps();
+        this.allowParkourAscend = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowParkourAscend.value, jumpsOffUntil, now);
+        this.allowNeos = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowNeos.value, jumpsOffUntil, now);
+        this.allowClimbJumps = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowClimbJumps.value, jumpsOffUntil, now);
+        this.allowMomentumJumps = ExperimentalMovement.jumpMoveAllowed(fastMode, Baritone.settings().allowMomentumJumps.value, jumpsOffUntil, now);
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;

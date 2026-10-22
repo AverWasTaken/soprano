@@ -27,6 +27,7 @@ import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -530,6 +531,11 @@ public class MobDefenseChain extends SingleTaskChain {
         // (it reads the mode the machine left last tick, which is the one that had the wheel anyway)
         stepCreepers(mod, now, enabled);
         _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled, _creeperStep.escalate());
+        // a jump that lands short next to a mob has nobody to catch it, so while we're committed or sidestepping a creeper the
+        // planner gets no jumps. a two tick stamp and not a flag, so it lapses on its own if this stops running
+        if (_brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active()) {
+            AltoClefSettings.getInstance().noJumpsFor(now);
+        }
         _stance = _brain.stance();
         _meleeNear = _brain.meleeNear();
         _meleeAround = _brain.meleeAround();
