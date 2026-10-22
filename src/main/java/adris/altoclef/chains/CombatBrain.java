@@ -223,6 +223,22 @@ final class CombatBrain {
         }
     }
 
+    // in contact: a bit past arm's reach, a cube's middle is further off than its edge
+    private static final double LAVA_FOE_RANGE = 3.5;
+
+    // the mob the lava guard leans toward: the fight's own target, else whatever hostile is in contact
+    Entity lavaFoe(AltoClef mod) {
+        if (_commit.mode() == Mode.FIGHT) {
+            Entity target = mod.getWorld().getEntity(_commit.targetId());
+            if (target instanceof Mob mob && mob.isAlive() && mob.distanceTo(mod.getPlayer()) <= LAVA_FOE_RANGE) return mob;
+        }
+        LocalPlayer player = mod.getPlayer();
+        for (Mob mob : _foeMobs) {
+            if (mob.isAlive() && mob.distanceTo(player) <= LAVA_FOE_RANGE) return mob;
+        }
+        return null;
+    }
+
     // the goal asks this from the main thread once a tick
     private List<Entity> crowd() {
         return new ArrayList<>(_foeMobs);

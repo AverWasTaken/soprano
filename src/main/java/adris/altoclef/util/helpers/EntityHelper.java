@@ -15,7 +15,7 @@ import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
-import net.minecraft.world.entity.monster.cubemob.Slime;
+import net.minecraft.world.entity.monster.cubemob.AbstractCubeMob;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.piglin.PiglinAi;
@@ -48,13 +48,19 @@ public class EntityHelper {
     public static boolean isGenerallyHostileToPlayer(AltoClef mod, Entity entity) {
         if (entity instanceof OwnableEntity tameable && tameable.getOwnerReference() != null
                 && tameable.getOwnerReference().getUUID().equals(mod.getPlayer().getUUID())) return false;
-        if (entity instanceof Slime slime && mod.getPlayer().closerThan(slime, 3)) return true;
+        // magma cubes are not slimes, and neither kind ever raises the aggressive flag (nothing in the cube goals does), so
+        // the "close enough to bite" rule has to cover the whole family or the aura never swings at a magma cube on us
+        if (entity instanceof AbstractCubeMob cube) {
+            if (mod.getPlayer().closerThan(cube, 3)) return true;
+            // a bite throws us past 3 blocks, it is still the one that bit us
+            return NeutralMobs.hitRecently(mod.getEntityTracker().getProvocations().sinceHit(cube.getId(), mod.getWorld().getGameTime()));
+        }
         if (entity instanceof Raider raider && mod.getPlayer().closerThan(raider, 16)) return true;
         if (entity instanceof Warden warden && mod.getPlayer().closerThan(warden, 16)) return true;
         if (entity instanceof Enderman enderman && enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
             return true;
         if (entity instanceof Blaze blaze && isBlazeThreat(mod, blaze)) return true;
-        if (entity instanceof Slime || entity instanceof Raider || entity instanceof Warden
+        if (entity instanceof Raider || entity instanceof Warden
                 || entity instanceof Enderman || entity instanceof Blaze) return false;
         if (entity instanceof Mob mob && !isAfterUs(mod, mob)) return false;
         return !isTradingPiglin(entity);
