@@ -192,7 +192,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
         @Override
         public boolean isInGoal(int x, int y, int z) {
-            return isSafeCell(isLava(x, y, z), isLavaAdjacent(x, y, z), hasFloor(x, y, z));
+            return isSafeCell(isLava(x, y, z), isLavaAdjacent(x, y, z), hasFloor(x, y, z) || isWater(x, y, z));
         }
 
         @Override
@@ -204,6 +204,10 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             }
             if (isWater(x, y, z)) {
                 return -100;
+            }
+            if (!hasFloor(x, y, z)) {
+                // air over the lake is not a goal, so it should not score like one or the search wanders out over the lava
+                return _strength * 0.25f;
             }
             return 0;
         }

@@ -309,7 +309,7 @@ public class MovementTraverse extends Movement {
                 }
                 return state.setInput(Input.JUMP, true);
             }
-            if (pushesForwardWhileAbove(ctx.player().isInLava(), feet.getY(), dest.getY())) {
+            if (!ctx.player().onGround() && pushesForwardWhileAbove(ctx.player().isInLava(), feet.getY(), dest.getY())) {
                 MovementHelper.moveTowards(ctx, state, dest);
                 return state;
             }
