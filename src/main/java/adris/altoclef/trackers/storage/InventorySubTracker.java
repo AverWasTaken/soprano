@@ -65,9 +65,8 @@ public class InventorySubTracker extends Tracker {
         ensureUpdated();
         int result = 0;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
-        // a duplicated item in the list must not count twice
-        // a duplicated item in the list must not count twice
-        for (Item item : distinct(items)) {
+        // a duplicated item in the list must not count twice (one item is the hot case, nothing to dedupe)
+        for (Item item : items.length > 1 ? distinct(items) : Arrays.asList(items)) {
             if (playerInventory && cursorStack.getItem().equals(item))
                 result += cursorStack.getCount();
             if (playerInventory)

@@ -13,9 +13,12 @@ public final class NetherRestock {
     // netherrack is everywhere but the digging can still go nowhere (lava all around): stop trying after this
     static final double MAX_SECONDS = 75;
     static final double COOLDOWN_SECONDS = 120;
+    // one empty tracker snapshot is not the end of the blocks, same grace as the gold dig
+    static final double EXHAUSTED_SECONDS = 4;
 
     private boolean active;
     private double startedAt;
+    private double exhaustedSince = Double.NaN;
     private double coolUntil = Double.NEGATIVE_INFINITY;
 
     public boolean isActive() {
@@ -44,8 +47,15 @@ public final class NetherRestock {
         }
         if (active) {
             // every way out cools down, a finished restock re-triggering a few blocks later is how it ran 8 times a visit
-            if (held >= TARGET || exhausted || now - startedAt >= MAX_SECONDS) {
+            if (!exhausted) {
+                exhaustedSince = Double.NaN;
+            } else if (Double.isNaN(exhaustedSince)) {
+                exhaustedSince = now;
+            }
+            boolean dry = !Double.isNaN(exhaustedSince) && now - exhaustedSince >= EXHAUSTED_SECONDS;
+            if (held >= TARGET || dry || now - startedAt >= MAX_SECONDS) {
                 active = false;
+                exhaustedSince = Double.NaN;
                 coolUntil = now + COOLDOWN_SECONDS;
             }
             return active;
@@ -56,6 +66,7 @@ public final class NetherRestock {
         if (held < LOW || (gaveUp && held < GIVE_UP_LOW)) {
             active = true;
             startedAt = now;
+            exhaustedSince = Double.NaN;
         }
         return active;
     }

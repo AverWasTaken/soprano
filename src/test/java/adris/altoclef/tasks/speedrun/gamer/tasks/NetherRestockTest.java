@@ -59,9 +59,13 @@ public class NetherRestockTest {
     public void exhaustedEndsItWithACooldown() {
         NetherRestock r = new NetherRestock();
         assertTrue(r.update(2, false, true, false, 0));
-        assertFalse(r.update(2, false, true, true, 5));
-        assertFalse(r.update(2, false, true, false, 6));
-        assertTrue(r.update(2, false, true, false, 5 + NetherRestock.COOLDOWN_SECONDS));
+        assertTrue(r.update(2, false, true, true, 5));
+        // a blip that clears is forgiven
+        assertTrue(r.update(2, false, true, false, 6));
+        assertTrue(r.update(2, false, true, true, 7));
+        assertFalse(r.update(2, false, true, true, 7 + NetherRestock.EXHAUSTED_SECONDS));
+        assertFalse(r.update(2, false, true, false, 8 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(r.update(2, false, true, false, 7 + NetherRestock.EXHAUSTED_SECONDS + NetherRestock.COOLDOWN_SECONDS));
     }
 
     @Test
