@@ -91,7 +91,7 @@ public class PlaceObsidianBucketTask extends Task {
     // see one leave (MIN_VALUE when none is pending)
     private int _lavaBefore;
     private int _pendingAt = Integer.MIN_VALUE;
-    // pours that really spent a bucket and left the cell dry, and clicks that spent nothing. a lava cell wipes both
+    // pours that really spent a bucket and left the cell dry, and clicks that spent nothing. a lava cell wipes the duds, the failed pours are a cap per cell
     private int _failedPours;
     private int _dudClicks;
     // the ban on this cell is out, the parent moves the frame
@@ -246,7 +246,6 @@ public class PlaceObsidianBucketTask extends Task {
                 return null;
             }
             _lavaClickAt = Integer.MIN_VALUE;
-            _failedPours = 0;
             _dudClicks = 0;
         } else if (_lavaClickAt != Integer.MIN_VALUE) {
             // the window is over. a bucket went and the cell is dry: the lava landed somewhere that isn't ours to know
@@ -254,7 +253,6 @@ public class PlaceObsidianBucketTask extends Task {
             if (CastLava.pourFailed(lavaCell(mod), isObsidian(mod))) {
                 _failedPours++;
             } else {
-                _failedPours = 0;
                 _dudClicks = 0;
             }
         }
@@ -600,7 +598,11 @@ public class PlaceObsidianBucketTask extends Task {
             return null;
         }
         _strayHolds = true;
-        // whatever landed, it's the cleanup's now, not the in flight wait's
+        // whatever landed, it's the cleanup's now, not the in flight wait's. a pour that spilled and got scooped back is still
+        // a pour that missed, or click, spill, scoop would go round forever
+        if (_lavaClickAt != Integer.MIN_VALUE && CastLava.pourFailed(lavaCell(mod), isObsidian(mod))) {
+            _failedPours++;
+        }
         _lavaClickAt = Integer.MIN_VALUE;
         letGoOfTheClick(mod);
         if (act == CastLava.Action.DROP) {
