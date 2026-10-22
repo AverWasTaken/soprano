@@ -132,6 +132,10 @@ public class NetherPhase implements PhaseHandler {
     private BlockPos goldAnchor;
     private boolean oreLeft;
     private int lastNuggets;
+    // when goldOver latched (-1 = not yet noted), tries begun this visit, and the death count the tries were counted under
+    private double goldOverAt = -1;
+    private int goldTries;
+    private int goldDeathsSeen;
 
     private boolean tracking;
     private boolean failedAlready;
@@ -230,6 +234,9 @@ public class NetherPhase implements PhaseHandler {
         goldWearing = null;
         goldStartedAt = -1;
         goldOver = false;
+        goldOverAt = -1;
+        goldTries = 0;
+        goldDeathsSeen = ctx.state().deaths.size();
         goldAnchor = null;
         oreLeft = false;
         lastNuggets = 0;
@@ -346,6 +353,18 @@ public class NetherPhase implements PhaseHandler {
         if (!ctx.cfg().overworld.goldSide) {
             return null;
         }
+        int deaths = ctx.state().deaths.size();
+        if (NetherGold.resetOnDeath(goldDeathsSeen, deaths)) {
+            // a respawn is a new body with an empty bag, the visit's tries start over
+            goldDeathsSeen = deaths;
+            goldOver = false;
+            goldOverAt = -1;
+            goldStartedAt = -1;
+            goldTask = null;
+            goldWear = null;
+            goldAnchor = null;
+            goldTries = 0;
+        }
         if (PiglinGold.worn(f)) {
             goldOver = true;
             goldTask = null;
@@ -366,7 +385,19 @@ public class NetherPhase implements PhaseHandler {
             return goldWear;
         }
         if (goldOver) {
-            return null;
+            if (goldOverAt < 0) {
+                goldOverAt = now;
+            }
+            // the latch is not for the whole visit: a wander, a dry anchor or the clock gets another go from where we stand now
+            BlockPos here = mod.getPlayer().blockPosition();
+            if (tickCounter % ORE_LOOK_TICKS != 0
+                    || !NetherGold.mayRetry(now - goldOverAt, goldTries, NetherPick.hasUsablePick(f) && oreKnown(mod, here))) {
+                return null;
+            }
+            goldOver = false;
+            goldOverAt = -1;
+            goldStartedAt = -1;
+            goldTask = null;
         }
         if (goldStartedAt >= 0 && NetherGold.overTime(now - goldStartedAt)) {
             goldOver = true;
@@ -401,6 +432,7 @@ public class NetherPhase implements PhaseHandler {
             goldTask = new NetherGoldTask("golden_" + slot, PiglinGold.piece(slot), need, () -> goldBag(ctx.facts()), me);
             goldNeed = need;
             goldAnchor = me;
+            goldTries++;
             goldStartedAt = now;
             oreLeft = true;
             lastNuggets = bag.nuggets();
