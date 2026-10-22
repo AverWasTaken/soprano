@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.AnchorWatch;
+import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatCommit.Event;
 import adris.altoclef.util.helpers.CombatCommit.Foe;
@@ -32,6 +33,9 @@ import baritone.api.pathing.movement.IMovement;
 import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Dimension;
+import baritone.pathing.movement.MovementHelper;
+import baritone.utils.BlockStateInterface;
+import net.minecraft.core.BlockPos;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
@@ -140,6 +144,11 @@ final class CombatBrain {
         return _commit.mode() == Mode.FIGHT;
     }
 
+    // the id the aura should swing at while it is in reach, -1 when nothing is committed
+    int fightTarget() {
+        return _commit.mode() == Mode.FIGHT ? _commit.targetId() : -1;
+    }
+
     boolean auraShield() {
         return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile);
     }
@@ -228,6 +237,15 @@ final class CombatBrain {
             _player = player;
             _dimension = dimension;
         }
+        // dead is not a fight or a run or a hold: the entities go away around a corpse and that is not a "fight over"
+        if (player.isDeadOrDying() || player.getHealth() <= 0) {
+            _commit.reset();
+            _swingAt.clear();
+            _run = null;
+            _fight = null;
+            _stance = CombatRules.Stance.CALM;
+            return;
+        }
         EntityTracker tracker = mod.getEntityTracker();
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
@@ -255,7 +273,8 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension)));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension),
+                    boxedIn(mod, player, mobs, foes)));
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
@@ -268,6 +287,10 @@ final class CombatBrain {
                 // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
                 // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
                 if (event != Event.RUN_EXTENDED) _run = null;
+                // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
+                if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
+                    mod.getClientBaritone().getPathingBehavior().cancelEverything();
+                }
             }
         } else if (_commit.mode() != Mode.NONE) {
             // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)
@@ -388,6 +411,38 @@ final class CombatBrain {
         var pathing = mod.getClientBaritone().getPathingBehavior();
         return _drive.trying(_commit.mode() == Mode.RUN, pathing.isPathing(), pathing.getInProgress().isPresent(), pathing.calcFailures(),
                 player.isUsingItem(), player.onGround(), player.isInWater());
+    }
+
+    private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    // every side of us is a wall (feet or head cell baritone would not walk through) or has a mob standing in it: a run has
+    // nowhere to go. only asked while something is close enough for a run to be on the table
+    private static boolean boxedIn(AltoClef mod, LocalPlayer player, List<Mob> mobs, List<Foe> foes) {
+        if (foes.isEmpty() || foes.get(0).distance() > CombatCommit.LOW_HP_RANGE) return false;
+        BlockStateInterface bsi = mod.getClientBaritone().bsi;
+        if (bsi == null) return false;
+        BlockPos pos = player.blockPosition();
+        // a jump out of a one deep pit needs the cell over our head clear
+        boolean headroom = walkable(bsi, pos.getX(), pos.getY() + 2, pos.getZ());
+        boolean[] open = new boolean[SIDES.length];
+        boolean[] filled = new boolean[SIDES.length];
+        for (int i = 0; i < SIDES.length; i++) {
+            int x = pos.getX() + SIDES[i][0];
+            int z = pos.getZ() + SIDES[i][1];
+            // (a side we could step up onto is a way out too, a one deep pit is not a box)
+            open[i] = walkable(bsi, x, pos.getY(), z) && walkable(bsi, x, pos.getY() + 1, z)
+                    || headroom && walkable(bsi, x, pos.getY() + 1, z) && walkable(bsi, x, pos.getY() + 2, z);
+            if (!open[i]) continue;
+            AABB cell = new AABB(x, pos.getY(), z, x + 1, pos.getY() + 2, z + 1);
+            for (int m = 0; m < mobs.size() && !filled[i]; m++) {
+                if (foes.get(m).distance() <= CombatCommit.CONTACT + 1) filled[i] = cell.intersects(mobs.get(m).getBoundingBox());
+            }
+        }
+        return BoxRules.boxedIn(open, filled);
+    }
+
+    private static boolean walkable(BlockStateInterface bsi, int x, int y, int z) {
+        return MovementHelper.canWalkThrough(bsi, x, y, z) && !MovementHelper.avoidWalkingInto(bsi.get0(x, y, z));
     }
 
     // a sword, an axe, or a tool that hits harder than a fist (the fight task swings those, see useToolsWhenUnarmed). only the

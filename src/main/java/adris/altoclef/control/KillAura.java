@@ -3,7 +3,11 @@ package adris.altoclef.control;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
+import adris.altoclef.util.helpers.AuraPick;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.ReachRules;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import adris.altoclef.util.helpers.EntityHelper;
 import baritone.behavior.CombatAim;
 import baritone.behavior.LegacyCombat;
@@ -52,6 +56,7 @@ public class KillAura {
     private boolean _kiting = false;
     private boolean _shieldAllowed = true;
     private boolean _fighting = false;
+    private int _committedId = -1;
     // whose name the shield keys go under. a task that brings its own aura passes itself, so the task's own key cleanup (a
     // finished root task is let go of without onStop) still lifts them
     private final Object _owner;
@@ -88,9 +93,24 @@ public class KillAura {
     // for standing our ground, which is the only time it earns its sneak speed and its paused pathing.
     // fighting: a committed fight. the flee line and "is the path safe to cancel" were the machine's to ask, not ours
     public void setPolicy(boolean kiting, boolean shieldAllowed, boolean fighting) {
+        setPolicy(kiting, shieldAllowed, fighting, -1);
+    }
+
+    // committedId: the fight's target, -1 for none. every pick below prefers it while it is within arm's reach
+    public void setPolicy(boolean kiting, boolean shieldAllowed, boolean fighting, int committedId) {
         _kiting = kiting;
         _shieldAllowed = shieldAllowed;
         _fighting = fighting;
+        _committedId = committedId;
+    }
+
+    // the fight's own target when it is in reach, else the nearest, see AuraPick
+    private Entity pick(AltoClef mod) {
+        Vec3 eye = mod.getPlayer().getEyePosition();
+        return AuraPick.pick(_targets, Entity::getId, _fighting ? _committedId : -1, entity -> {
+            AABB box = entity.getBoundingBox();
+            return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ) <= ReachRules.MELEE_REACH;
+        }, entity -> entity.distanceToSqr(mod.getPlayer()));
     }
 
     public void tickEnd(AltoClef mod) {
@@ -125,7 +145,8 @@ public class KillAura {
                     // mid movement or knocked back mid movement the path is never safe to cancel, and a fight waiting for it
                     // took its hits with the shield down. same deal as the arrow shield in MobDefenseChain
                     && (_fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
-                mod.getControllerExtras().aimAt(entities.get(), CombatAim.Priority.AURA);
+                // (the creeper and hoglin check above stays on the nearest one, the aim is the fight's own target)
+                mod.getControllerExtras().aimAt(pick(mod), CombatAim.Priority.AURA);
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
@@ -143,7 +164,8 @@ public class KillAura {
                 performFastestAttack(mod);
                 break;
             case SMART:
-                if (_targets.size() <= 2 || _targets.stream().allMatch(entity -> entity instanceof Skeleton) ||
+                // a committed fight is paced swings at one mob. the crowd branch below is 0.2 s uncharged pokes at the nearest
+                if (_fighting || _targets.size() <= 2 || _targets.stream().allMatch(entity -> entity instanceof Skeleton) ||
                         _targets.stream().allMatch(entity -> entity instanceof Witch) ||
                         _targets.stream().allMatch(entity -> entity instanceof Pillager) ||
                         _targets.stream().allMatch(entity -> entity instanceof Piglin) ||
@@ -161,7 +183,7 @@ public class KillAura {
                         if (LegacyCombat.active() || _hitDelay.elapsed()) {
                             _hitDelay.reset();
 
-                            Optional<Entity> toHit = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
+                            Optional<Entity> toHit = Optional.ofNullable(pick(mod));
 
                             toHit.ifPresent(entity -> attack(mod, entity, true));
                         }
@@ -187,11 +209,10 @@ public class KillAura {
                 return;
             }
 
-            Optional<Entity> toHit = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
-
             if (mod.getPlayer() == null) {
                 return;
             }
+            Optional<Entity> toHit = Optional.ofNullable(pick(mod));
             // the weapon goes in hand before the gate asks about the cooldown. a swap resets it, so judging the gate on one item
             // and swinging another was how a charge that was nearly full turned back into a fresh one
             toHit.ifPresent(entity -> readyTheWeapon(mod, entity));
@@ -224,7 +245,12 @@ public class KillAura {
     private void performFastestAttack(AltoClef mod) {
         if (!mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod) &&
                 mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting()) {
-            // Just attack whenever you can
+            // Just attack whenever you can. in a committed fight that is the one mob we picked, not the whole pile
+            Entity picked = _fighting && !_targets.isEmpty() ? pick(mod) : null;
+            if (picked != null) {
+                attack(mod, picked);
+                return;
+            }
             for (Entity entity : _targets) {
                 attack(mod, entity);
             }

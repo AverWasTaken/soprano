@@ -1,7 +1,9 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 // the pure half of "is it a good idea to walk back to the pile". the last two deaths were plain zombies, and the bot walked
 // straight back into the same zombies to get its stuff and died again. no world in here, RecoverItemsTask feeds it numbers
@@ -84,13 +86,88 @@ public final class RecoverRules {
         LOOK
     }
 
+    // how far above or below the pile we may be and still chase its drops. past that the route is mostly rock, and a drop
+    // 28 floors down looks "near" in 3D from the surface (the walk back already digs down to it, GoalNear on the pile)
+    public static final double PICKUP_HEIGHT = 8;
+
     // what this tick is for. a drop near the pile always beats the walk back: the walk used to fire the moment a drop
-    // 6+ blocks out pulled us past ARRIVE_RANGE, finish instantly, hand back to the pickup, and around it went
-    public static Step step(double fromPile, boolean dropNearPile) {
-        if (dropNearPile && fromPile <= DROP_RADIUS + LEASH_MARGIN) {
+    // 6+ blocks out pulled us past ARRIVE_RANGE, finish instantly, hand back to the pickup, and around it went. dy is us
+    // minus the pile, dropDy is us minus the drop: a drop that fell down a shaft is fine from the pile, it is the surface far
+    // above both that has to walk down first (and the walk would drag us back up if only the pile counted)
+    public static Step step(double fromPile, double dy, double dropDy, boolean dropNearPile) {
+        if (dropNearPile && fromPile <= DROP_RADIUS + LEASH_MARGIN
+                && (Math.abs(dy) <= PICKUP_HEIGHT || Math.abs(dropDy) <= PICKUP_HEIGHT)) {
             return Step.PICKUP;
         }
         return fromPile > ARRIVE_RANGE ? Step.WALK : Step.LOOK;
+    }
+
+    // a pile this far under the open sky is somewhere we have to dig to
+    public static final int DEEP_PILE = 6;
+    // the most a pickaxe trip stretches the task budget by. it is not a promise past the pile allowance, GamerTask ends the
+    // recovery on that clock whatever this says
+    public static final double PICK_SECONDS = 150;
+
+    // get a pick before going down for a pile. bare hands break stone at seven and a half seconds a block, so the route
+    // baritone plans is enormous and its search times out (that is how a whole pile got written off with zero pickups).
+    // only once the pile's chunk is loaded, from far away the surface height is a guess. the wooden one is enough, the stone
+    // one is a cobble trip. and not when we are already down there (dy)
+    public static boolean pickFirst(boolean chunkLoaded, int pileDepth, double dy, boolean holdsPick) {
+        return chunkLoaded && !holdsPick && pileDepth >= DEEP_PILE && Math.abs(dy) > PICKUP_HEIGHT;
+    }
+
+    // the task budget with the pick trip taken off the clock, bounded
+    public static double stretched(double budgetSeconds, double pickSeconds) {
+        return budgetSeconds + Math.min(Math.max(0, pickSeconds), PICK_SECONDS);
+    }
+
+    // the pick trip has had all it gets
+    public static boolean pickTimedOut(double pickSeconds) {
+        return pickSeconds >= PICK_SECONDS;
+    }
+
+    // pile drops no search could reach, by entity id. recovery keeps these itself instead of the global no path ban, which
+    // hid every drop of the pile from everybody for two minutes after two empty searches
+    public static final int NO_PATH_STREAK = 3;
+
+    public static final class NoPaths {
+        private final Set<Integer> skipped = new HashSet<>();
+        private final Set<Integer> streak = new HashSet<>();
+
+        public void record(int dropId) {
+            skipped.add(dropId);
+            streak.add(dropId);
+        }
+
+        // closestDrop leaves these alone
+        public boolean skips(int dropId) {
+            return skipped.contains(dropId);
+        }
+
+        // three different drops in a row and nothing picked up between: there is no way to our stuff
+        public boolean noWay() {
+            return streak.size() >= NO_PATH_STREAK;
+        }
+
+        // something came into the bag, the way in exists
+        public void pickedUp() {
+            streak.clear();
+        }
+
+        // a pick changes what a search can do, every old verdict was for bare hands
+        public void clear() {
+            skipped.clear();
+            streak.clear();
+        }
+    }
+
+    // pile drop ordering. with no pick in the bag the pile's pickaxe goes first (it makes the rest of the dig cheap), then
+    // whatever is nearest
+    public static boolean better(boolean wantsPick, boolean isPick, double dist, boolean bestIsPick, double bestDist) {
+        if (wantsPick && isPick != bestIsPick) {
+            return isPick;
+        }
+        return dist < bestDist;
     }
 
     // which drop the pickup task is pinned to. keyed by entity, not item kind: the old item-kind key kept a pickup that

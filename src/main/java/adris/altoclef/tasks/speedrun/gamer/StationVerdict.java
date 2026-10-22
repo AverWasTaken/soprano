@@ -44,10 +44,19 @@ public final class StationVerdict {
     private final Station furnace;
     private final Station smoker;
 
-    private StationVerdict(Station table, Station furnace, Station smoker) {
+    // a smoker of ours stands within the band, no walk back counted. what the visit that just emptied a furnace asks: the flag above
+    // is built at the start of the tick, with that furnace's job still booked
+    private final boolean smokerNear;
+
+    private StationVerdict(Station table, Station furnace, Station smoker, boolean smokerNear) {
         this.table = table;
         this.furnace = furnace;
         this.smoker = smoker;
+        this.smokerNear = smokerNear;
+    }
+
+    public boolean smokerStandingNear() {
+        return smokerNear;
     }
 
     public Station table() {
@@ -64,7 +73,7 @@ public final class StationVerdict {
 
     // only the planner's flags known (a test's facts, a state that is not loaded yet)
     public static StationVerdict fromFlags(boolean table, boolean furnace, boolean smoker) {
-        return new StationVerdict(new Station(table), new Station(furnace), new Station(smoker));
+        return new StationVerdict(new Station(table), new Station(furnace), new Station(smoker), smoker);
     }
 
     // the verdict for one look from (px, py, pz). moves `latches`: this is the only place they are written
@@ -91,10 +100,25 @@ public final class StationVerdict {
         boolean furnaceBack = !furnaceNear && walksBack(state, Kind.FURNACE, dimension, px, py, pz, world);
         boolean smokerNear = heldNear(state, Kind.SMOKER, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.smokerHeld), world);
         latches.smokerHeld = Workbenches.any(state, Kind.SMOKER, dimension) ? Boolean.valueOf(smokerNear) : null;
-        boolean furnaceAtHand = furnaceNear || world.inBag(Kind.FURNACE);
+        // a furnace with iron in it takes no meat (CookGate.furnaceHasIron), so it is not "at hand" for the smoker rule. counting it
+        // made the far smoker blink on and off as we bobbed over the furnace's line, and the food count blinked with it. ironOwed is
+        // not asked here on purpose, it reads the facts and the facts read this
+        boolean furnaceAtHand = furnaceNear && !ironInFurnace(state, dimension) || world.inBag(Kind.FURNACE);
         boolean smokerBack = !smokerNear && !furnaceAtHand && walksBack(state, Kind.SMOKER, dimension, px, py, pz, world);
         boolean smokerHeld = WorkbenchRules.plannerSmoker(smokerNear, furnaceAtHand, smokerBack);
-        return new StationVerdict(new Station(tableNear || tableBack), new Station(furnaceNear || furnaceBack), new Station(smokerHeld));
+        return new StationVerdict(new Station(tableNear || tableBack), new Station(furnaceNear || furnaceBack), new Station(smokerHeld), smokerNear);
+    }
+
+    // ore on a plain furnace in this dimension. CookGate.furnaceHasIron calls every job on one ore because the cook waits for food
+    // jobs, but a furnace that is cooking meat for us is a booked job too (unitsEach > 0) and it is where the next batch goes once
+    // it is out, so it is not iron
+    private static boolean ironInFurnace(RunState state, String dimension) {
+        for (RunState.FurnaceJob job : state.furnaceJobs) {
+            if ("furnace".equals(job.kind) && dimension.equals(job.dimension) && job.unitsEach == 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // one of the stations this run placed (or is taking back) that is still there and within `radius` of us. the planner counts it

@@ -31,10 +31,19 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     private final double _closeEnoughDistance;
     private Task _unstuckTask = null;
     private int _misses = 0;
+    // who hears about a dead search instead of the global ban. null = the stock ban
+    private final Runnable _onNoPath;
 
     public GetToEntityTask(Entity entity, double closeEnoughDistance) {
+        this(entity, closeEnoughDistance, null);
+    }
+
+    // for a caller that has its own idea of what "no way to it" means (the death recovery keeps its own book, a global ban hides
+    // the pile's drops from everything else for two minutes)
+    public GetToEntityTask(Entity entity, double closeEnoughDistance, Runnable onNoPath) {
         _entity = entity;
         _closeEnoughDistance = closeEnoughDistance;
+        _onNoPath = onNoPath;
     }
 
     public GetToEntityTask(Entity entity) {
@@ -145,7 +154,14 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures()) && !(_entity instanceof Player)) {
             if (++_misses >= 2) {
                 Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
-                BanPolicy.noPath(mod.getBans(), _entity.getId(), EntityTracker.describe(_entity));
+                if (_onNoPath != null) {
+                    _onNoPath.run();
+                    // the ban would have stopped us at the reachable check below, a callback has to do it itself
+                    setDebugState("No way to get to the target");
+                    return null;
+                } else {
+                    BanPolicy.noPath(mod.getBans(), _entity.getId(), EntityTracker.describe(_entity));
+                }
             }
         }
         if (!mod.getEntityTracker().isEntityReachable(_entity)) {

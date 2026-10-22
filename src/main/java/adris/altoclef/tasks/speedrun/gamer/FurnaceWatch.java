@@ -224,11 +224,17 @@ public final class FurnaceWatch {
         String dimension = f.dimension().name();
         boolean ours = ours(ctx.state(), visited.kind, spot, dimension);
         // (CookGate.reusable already wants MIN_RAW meat, so a bagged smoker only ever vetoes a cook that was going to happen)
-        boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, ctx.stations().smoker().heldForPlanner(), f.has(Items.SMOKER))
-                && CookGate.reusable(f, ctx.cfg().overworld, ctx.cfg().end.beds, smoker, ctx.wood());
+        // the tick's wood budget was built with this job still booked, and a booked cook holds back the cook's fuel claim (CookGate.waiting),
+        // so it read "not enough fuel" for logs the cook gate says yes to one tick later, and the smoker came down with the meat in the bag.
+        // the job is gone now, ask the budget again
+        WoodBudget wood = WoodBudget.of(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.state().phase);
+        boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, ctx.stations().smokerStandingNear(), f.has(Items.SMOKER))
+                && CookGate.reusable(f, ctx.cfg().overworld, ctx.cfg().end.beds, smoker, wood);
         switch (WorkbenchRules.afterVisit(left, ours, FurnaceJobs.isBusy(ctx.state(), spot, dimension), mayCook)) {
             case COOK_THEN_PICK_UP -> {
-                // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
+                // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it. the fuel reserve of
+                // this tick was set from the old budget too, so the cook gets the fresh one before its first look at the logs
+                WoodReserve.apply(wood);
                 cook = new CookRawFoodTask(smoker);
                 cookStart = f.gameTime();
                 cookAt = spot;

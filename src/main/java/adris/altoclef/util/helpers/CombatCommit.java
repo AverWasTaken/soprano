@@ -87,6 +87,11 @@ public final class CombatCommit {
     // wanting to move", so the boxed clock only starts over after this long without a path
     public static final long WAY_GAP_TICKS = 10;
 
+    // the target is a zombie we cannot reach and another melee mob that hit us stands in reach: after this long of that we
+    // swing at the one that is actually there. two zombies taking turns through each other's i-frames are not this, the
+    // target stays in reach for those
+    public static final long TAKEOVER_TICKS = 20;
+
     // a crowd is this many foes actually on us (see engaged): a run whatever the hp. while hurt two are enough
     public static final int CROWD_SIZE = 3;
     public static final int HURT_CROWD_SIZE = 2;
@@ -276,8 +281,14 @@ public final class CombatCommit {
     // everything that does not say so
     // creeperRepeat: CreeperStep just started a step on a creeper that came back (CreeperStep.escalate), idle makes it a run
     // body: hunger, food and whether a heal-up hold is allowed at all (RecoverHold). NONE by default, which never holds
+    // boxed: every side of us is a wall or a mob (BoxRules), so a run has nowhere to go. false by default
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body) {
+                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body) {
+            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, false);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
                     boolean anchored, boolean creeperRepeat) {
             this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, RecoverHold.Body.NONE);
@@ -491,6 +502,13 @@ public final class CombatCommit {
     private double noRoomZ;
     // the fight we are in came from the no room rule (the log says so)
     private boolean noRoom;
+    // this fight stands in for a run (it came from one, or a run was skipped because we are boxed in): when it ends hurt the
+    // hold uses the run's hp line, not the fight's
+    private boolean runLine;
+    // cornered only because we are boxed in right now: when the box opens the normal bail rules are back
+    private boolean boxCorner;
+    // since when the melee target has been out of reach (takeover)
+    private long outReachSince = -1;
 
     // the idle boxed-in window (inTheWay)
     private long wayBoxSince = -1;
@@ -587,6 +605,9 @@ public final class CombatCommit {
         stuckSince = -1;
         noRoomSince = -1;
         noRoom = false;
+        runLine = false;
+        boxCorner = false;
+        outReachSince = -1;
         wayBoxSince = -1;
         wayGapSince = -1;
         ignored.clear();
@@ -641,7 +662,7 @@ public final class CombatCommit {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
-                t.body());
+                t.body(), t.boxed());
     }
 
     // ---- NONE
@@ -652,7 +673,7 @@ public final class CombatCommit {
         // danger is "anything that bad within 8", ignored or not, cooldown or not: leaving is not a fight with that one mob.
         // low hp in the cooldown wants it on top of us or a fresh hit, see trigger
         Why run = runReason(t, cooling);
-        if (run != Why.NONE) return startRun(t, run, Event.RUN_START);
+        if (run != Why.NONE) return runOrBox(t, run);
         // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. idle only, a
         // committed fight is till dead and the step just steps again for it
         if (t.creeperRepeat()) return startRun(t, Why.REPEAT_CREEPER, Event.RUN_START);
@@ -660,7 +681,7 @@ public final class CombatCommit {
         // standing here because we are hurt, and trading blows at 10 hp is how the last run started
         if (recover.on()) {
             Why again = rerun(t);
-            if (again != Why.NONE) return startRun(t, again, Event.RUN_START);
+            if (again != Why.NONE) return runOrBox(t, again);
         }
         // the fight is only for one we have not given up on, or one that has hit us since. with nothing in hand better than a
         // fist it is a run instead: a punch is not a fight, and the cornered rules still turn us round when a run goes nowhere
@@ -683,6 +704,34 @@ public final class CombatCommit {
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         if (way == null || !t.armed()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
+    }
+
+    // a run for a crowd or low hp, unless every side of us is a wall or a mob: a run from there is a few seconds of digging
+    // with the thing still hitting us, so it is the cornered fight straight away. the rest (heavy hitters, the warden, a creeper
+    // that keeps coming back, a lobber) keep their run, the fight would only bail again
+    private Event runOrBox(Tick t, Why reason) {
+        if (t.boxed() && (reason == Why.CROWD || reason == Why.LOW_HP)) {
+            Foe on = boxedTarget(t);
+            if (on != null) {
+                Event event = startFight(t, on, Why.CORNERED, Event.RUN_TO_FIGHT, true);
+                runLine = true;
+                boxCorner = true;
+                return event;
+            }
+        }
+        return startRun(t, reason, Event.RUN_START);
+    }
+
+    // who we swing at when there is nowhere to go: whatever is in contact, a melee foe first. never the warden, never one we only
+    // run from, never a creeper (that is the creeper step's)
+    private Foe boxedTarget(Tick t) {
+        Foe best = null;
+        for (Foe foe : t.foes()) {
+            if (foe.distance() > CONTACT || foe.creeper() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.health())) continue;
+            if (gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (best == null || (foe.melee() && !best.melee()) || (foe.melee() == best.melee() && foe.distance() < best.distance())) best = foe;
+        }
+        return best;
     }
 
     // the low hp rule's foes, minus the ones we gave up on: anything within RERUN_RANGE, or a shooter with a line that just hit us
@@ -800,13 +849,29 @@ public final class CombatCommit {
 
     private Event fight(Tick t) {
         Foe target = t.target();
+        // the box opened (the zombie in the only gap died, we got knocked out): no longer the cornered fight, so the bail rules
+        // below are asked again
+        if (boxCorner && !t.boxed()) {
+            boxCorner = false;
+            cornered = false;
+            if (why == Why.CORNERED) why = Why.HIT;
+        }
         // the bail-outs, and the only ones: the danger rules. a wobble above 8 is a fight, and so is hp 8 with nothing
         // within 8 (the last thing we were hitting died, that is a won fight, not a reason to run 24 blocks). boxed in
         // there is nowhere to bail to, so a cornered fight never asks
         // a fight we turned around for is out in the open though: the warden or a heavy walking up is still a run
         Why bail = !cornered ? runReason(t, false) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
-        if (bail != Why.NONE) return startRun(t, bail, Event.FIGHT_TO_RUN);
+        if (bail != Why.NONE) {
+            // boxed in, a crowd or low hp is no reason to leave: there is no leaving. this fight is the cornered one from here
+            if (!t.boxed() || (bail != Why.CROWD && bail != Why.LOW_HP)) return startRun(t, bail, Event.FIGHT_TO_RUN);
+            cornered = true;
+            runLine = true;
+            boxCorner = true;
+            if (why != Why.CHASED) why = Why.CORNERED;
+        }
         if (target == null) return targetGone(t);
+        Foe swap = takeover(t, target);
+        if (swap != null) return startFight(t, swap, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
         if (why == Why.IN_WAY && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
@@ -846,6 +911,32 @@ public final class CombatCommit {
         return Event.NONE;
     }
 
+    // the one we are swinging at is not the one hitting us. a shooter target with a melee foe that hit us in reach: that foe,
+    // once. a melee target that has been out of reach for TAKEOVER_TICKS with such a foe in reach: that foe. anything else stays,
+    // the first kill matters most and two foes taking turns must not make us ping-pong
+    private Foe takeover(Tick t, Foe target) {
+        boolean shooter = target.ranged() && !target.creeper();
+        if (!shooter && !target.melee()) {
+            outReachSince = -1;
+            return null;
+        }
+        if (!shooter) {
+            if (target.inReach()) {
+                outReachSince = -1;
+                return null;
+            }
+            if (outReachSince < 0) outReachSince = t.now();
+            if (t.now() - outReachSince < TAKEOVER_TICKS) return null;
+        }
+        Foe best = null;
+        for (Foe foe : t.foes()) {
+            if (foe.id() == target.id() || !foe.melee() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.health())) continue;
+            if (!foe.hitUs() || !foe.inReach() || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (best == null || foe.reachGap() < best.reachGap()) best = foe;
+        }
+        return best;
+    }
+
     // the target died or left the world. if somebody else is already on us, carry straight on (a gap here is a tick of
     // the user task walking with a zombie in our face), otherwise it is over
     private Event targetGone(Tick t) {
@@ -881,6 +972,12 @@ public final class CombatCommit {
         // a new fight with a mob we once gave up on is a clean slate with it (it hit us since, or we are boxed in with it)
         ignored.remove(foe.id());
         noRoom = false;
+        outReachSince = -1;
+        // (a chain on a fight keeps where it came from)
+        if (event != Event.FIGHT_NEXT) {
+            runLine = event == Event.RUN_TO_FIGHT;
+            boxCorner = false;
+        }
         contacted = false;
         atRange = foe.kind() == Kind.LOBBER || reason == Why.PINNED;
         mode = Mode.FIGHT;
@@ -1126,7 +1223,9 @@ public final class CombatCommit {
 
     private Event end(Tick t, Event event) {
         // (mode is still the one that is ending)
-        recover.ended(t.now(), mode, t.health(), t.body());
+        recover.ended(t.now(), mode == Mode.FIGHT && runLine ? Mode.RUN : mode, t.health(), t.body());
+        runLine = false;
+        boxCorner = false;
         mode = Mode.NONE;
         why = Why.NONE;
         targetId = -1;
