@@ -536,7 +536,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     // if a sprint jump would take off from right here, it is the faster way along this run and it gets the tick. same
     // rule the 1.19.4 version had, it just asks SprintJump now
     private boolean yieldsToSprintJump() {
-        return ExperimentalMovement.sprintJumping()
+        return ExperimentalMovement.sprintJumping(ctx.world())
                 && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
                 && SprintJump.plan(ctx, path, pathPosition) != null;
     }
@@ -873,7 +873,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         IMovement current = path.movements().get(pathPosition);
 
-        if (ExperimentalMovement.sprintJumping() && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
+        if (ExperimentalMovement.sprintJumping(ctx.world()) && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
                 && (flight = SprintJump.plan(ctx, path, pathPosition)) != null) {
             steerMask |= STEER_JUMP;
             steer(true);
@@ -927,7 +927,7 @@ public class PathExecutor implements IPathExecutor, Helper {
 
         // if the movement requested sprinting, then we're done
         if (requested) {
-            if (ExperimentalMovement.headHitters()) {
+            if (ExperimentalMovement.headHitters(ctx.world())) {
                 headHitJump(current);
             }
             return true;
@@ -1335,7 +1335,7 @@ public class PathExecutor implements IPathExecutor, Helper {
      */
     private boolean fly() {
         if (!ctx.player().onGround() && !ctx.player().isInWater() && !ctx.player().isInLava() && !ctx.player().onClimbable()
-                && flight.ticks < SprintJump.MAX_TICKS && ExperimentalMovement.sprintJumping()) {
+                && flight.ticks < SprintJump.MAX_TICKS && ExperimentalMovement.sprintJumping(ctx.world())) {
             steer(false);
             // vanilla drops sprint on its own the tick W goes up, but sprint held with S down is exactly what a sprint check
             // looks for, so let go of it too. the next push presses it again before aiStep and sprint comes straight back

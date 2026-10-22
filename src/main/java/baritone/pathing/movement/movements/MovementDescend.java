@@ -277,7 +277,7 @@ public class MovementDescend extends Movement {
     // MAX_HURT_FALL, otherwise it's only the ones inside maxFallHeightNoWater (the user said they were fine with those).
     // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
     private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res, boolean inPlainLimit) {
-        if (!(context.fastMode || inPlainLimit) || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+        if (!(context.hurtingFallsOk || inPlainLimit) || blocks > ExperimentalMovement.MAX_HURT_FALL) {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);

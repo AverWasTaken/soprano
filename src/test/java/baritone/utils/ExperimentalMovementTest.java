@@ -20,6 +20,7 @@ package baritone.utils;
 import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
+import org.junit.After;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -41,30 +42,57 @@ public class ExperimentalMovementTest {
         assertEquals(20, ExperimentalMovement.fallDamage(23)); // the sanity cap is exactly a full health bar
     }
 
+    @After
+    public void clearStamp() {
+        // the stamp lives in a singleton, a failed assertion must not leave it up for the next test
+        baritone.altoclef.AltoClefSettings.getInstance().resetAll();
+    }
+
     @Test
     public void jumpsStayOffOnlyWhileTheStampIsAhead() {
         long until = 102;
         // fastMode on and the setting off is the nether bug: the stamp has to beat fastMode
-        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, false, until, 100));
-        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, true, until, 102)); // the last tick still counts
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, true, false, until, 100));
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, true, true, until, 102)); // the last tick still counts
         // nobody refreshed it, so it lapses and fastMode gets its jumps back
-        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, until, 103));
-        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, until, 500));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, false, until, 103));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, false, true, until, 500));
         // never stamped
-        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, Long.MIN_VALUE, 0));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, false, Long.MIN_VALUE, 0));
         // a stamp from a world with a longer clock is junk, not a lifetime ban
-        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, 9_000_000L, 10));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, false, 9_000_000L, 10));
         // and with neither fastMode nor the setting there were never any jumps to take away
-        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, false, Long.MIN_VALUE, 0));
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, false, false, Long.MIN_VALUE, 0));
+    }
+
+    @Test
+    public void netherTurnsEveryJumpOffWhateverElseSaysYes() {
+        for (boolean fast : new boolean[]{false, true}) {
+            for (boolean setting : new boolean[]{false, true}) {
+                assertFalse(ExperimentalMovement.jumpMoveAllowed(true, fast, setting, Long.MIN_VALUE, 0));
+                // and the overworld still follows fastMode || setting
+                assertEquals(fast || setting, ExperimentalMovement.jumpMoveAllowed(false, fast, setting, Long.MIN_VALUE, 0));
+            }
+        }
+    }
+
+    @Test
+    public void hurtingFallsNeedFastModeAndNoNether() {
+        assertTrue(ExperimentalMovement.hurtingFallsOk(false, true));
+        assertFalse(ExperimentalMovement.hurtingFallsOk(true, true));
+        assertFalse(ExperimentalMovement.hurtingFallsOk(false, false));
+        assertFalse(ExperimentalMovement.hurtingFallsOk(true, false));
+        // no world is a test, not the nether
+        assertFalse(ExperimentalMovement.inNether(null));
     }
 
     @Test
     public void stampFromTheSettingsHoldsJumpsOffUntilReset() {
         baritone.altoclef.AltoClefSettings s = baritone.altoclef.AltoClefSettings.getInstance();
         s.noJumpsFor(100);
-        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, false, s.jumpsOffUntilTick(), 102));
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, true, false, s.jumpsOffUntilTick(), 102));
         s.resetAll();
-        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, s.jumpsOffUntilTick(), 102));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, false, s.jumpsOffUntilTick(), 102));
     }
 
     @Test

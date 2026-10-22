@@ -290,4 +290,44 @@ public class BucketHealthCostTest {
         assertEquals(0, res.damage, 0);
         assertEquals(64, res.y);
     }
+
+    @Test
+    public void netherRefusesFastModesHurtingDropsButNotTheOverworld() {
+        settings.fastMode.value = true;
+        // 6 blocks is past the default limit of 3, so only fastMode's extra falls could take it
+        Ctx nether = new Ctx(cliff(6), false, 20);
+        nether.hurtingFallsOk = false;
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDescend.cost(nether, 0, 70, 0, 1, 0, res);
+        assertEquals(ActionCosts.COST_INF, res.cost, 0);
+        Ctx overworld = new Ctx(cliff(6), false, 20);
+        assertTrue(overworld.hurtingFallsOk);
+        res = new MutableMoveResult();
+        MovementDescend.cost(overworld, 0, 70, 0, 1, 0, res);
+        assertEquals(3, res.damage, 0);
+    }
+
+    @Test
+    public void netherKeepsTheFallsTheUserRaisedTheLimitFor() {
+        settings.fastMode.value = true;
+        // EnterNetherPortalTask raises the limit to 5 to hop off a portal frame, that has to survive
+        Ctx nether = new Ctx(cliff(5), false, 20);
+        nether.hurtingFallsOk = false;
+        nether.maxFallHeightNoWater = 5;
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDescend.cost(nether, 0, 69, 0, 1, 0, res);
+        assertEquals(64, res.y);
+        assertTrue(res.cost < ActionCosts.COST_INF);
+    }
+
+    @Test
+    public void netherDescentFloorIgnoresFastModesHurtingFalls() {
+        settings.fastMode.value = true;
+        settings.fallDamageCost.value = 0D;
+        // hearts for free, or the hurting falls cost more per block than the free ones and the gate changes nothing
+        Ctx overworld = new Ctx(cliff(1), false, 20);
+        Ctx nether = new Ctx(cliff(1), false, 20);
+        nether.hurtingFallsOk = false;
+        assertTrue(nether.descentTicksPerBlock() > overworld.descentTicksPerBlock());
+    }
 }
