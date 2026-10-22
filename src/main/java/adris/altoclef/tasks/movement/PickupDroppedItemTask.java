@@ -124,6 +124,11 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         BanPolicy.pickupStalled(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
     }
 
+    // virtual. the search to the drop came back empty twice. the stock answer is the global no path ban
+    protected void noPathToDrop(AltoClef mod, ItemEntity drop) {
+        BanPolicy.noPath(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
+    }
+
     // virtual. false for a pickup on a clock that can't afford a stone pickaxe detour. bailing out of one halfway leaves
     // the static flag up until we own a stone pick, and every ResourceTask ignores far drops until then
     protected boolean mayGetPickaxeFirst() {
@@ -317,7 +322,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 }
             }
         }
-        return new GetToEntityTask(itemEntity);
+        return new GetToEntityTask(itemEntity, 1, () -> noPathToDrop(_mod, itemEntity));
     }
 
     // public for RecoverItemsTask, which skips a drop that would only be thrown again

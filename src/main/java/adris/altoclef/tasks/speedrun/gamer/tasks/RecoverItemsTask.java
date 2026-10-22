@@ -6,17 +6,20 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
+import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.time.TimerGame;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -24,6 +27,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -53,6 +57,14 @@ public class RecoverItemsTask extends Task {
     private boolean _started;
     // at least one drop of ours was the target, so an empty pile at the end means we got it
     private boolean _wentForADrop;
+    // a deep pile and bare hands: a wooden pick first (see RecoverRules.pickFirst). latched so a flicker of the chunk does not
+    // drop us out of it halfway
+    private final Task _getPick = new SatisfyMiningRequirementTask(MiningRequirement.WOOD);
+    private boolean _gettingPick;
+    private double _pickSeconds;
+    private double _lastPickNow = Double.NaN;
+    private boolean _hadPick;
+    private final RecoverRules.NoPaths _noPaths = new RecoverRules.NoPaths();
 
     public RecoverItemsTask(BlockPos deathPos, double budgetSeconds) {
         this(deathPos, budgetSeconds, List::of);
@@ -81,7 +93,7 @@ public class RecoverItemsTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (overTimeOnTask(_budgetSeconds)) {
+        if (overTimeOnTask(RecoverRules.stretched(_budgetSeconds, _pickSeconds))) {
             setDebugState("Out of time.", "Giving up on our stuff");
             Debug.logMessage("death: out of time on our stuff, leaving it.");
             _finished = true;
@@ -109,9 +121,35 @@ public class RecoverItemsTask extends Task {
                 _standOff = null;
             }
         }
-        ItemEntity drop = closestDrop(mod);
         double fromPile = Math.sqrt(mod.getPlayer().blockPosition().distSqr(_deathPos));
-        RecoverRules.Step step = RecoverRules.step(fromPile, drop != null);
+        double dy = mod.getPlayer().getY() - _deathPos.getY();
+        boolean holdsPick = StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD);
+        if (holdsPick && !_hadPick) {
+            // every no path so far was for bare hands
+            _hadPick = true;
+            _noPaths.clear();
+        }
+        Task pick = getPickFirst(mod, dy, holdsPick);
+        if (pick != null) {
+            _empty.reset();
+            _chase.idle();
+            return pick;
+        }
+        if (_finished) {
+            return null;
+        }
+        ItemEntity pinned = _pin.drop();
+        if (pinned != null && !pinned.isAlive()) {
+            // it went into the bag (or burned, either way the way in exists)
+            _noPaths.pickedUp();
+        }
+        if (_noPaths.noWay()) {
+            setDebugState("No way to our stuff.", "Giving up on our stuff");
+            _finished = true;
+            return null;
+        }
+        ItemEntity drop = closestDrop(mod, holdsPick);
+        RecoverRules.Step step = RecoverRules.step(fromPile, dy, drop == null ? 0 : mod.getPlayer().getY() - drop.getY(), drop != null);
         if (step == RecoverRules.Step.WALK) {
             _empty.reset();
             _chase.idle();
@@ -164,7 +202,7 @@ public class RecoverItemsTask extends Task {
         if (_pickup == null || moved || _pickup.stalled(mod)) {
             // a stall only flags this pickup (see gaveUpOnDrop below), it bans nothing. a fresh one gets another go and the chase
             // clock above is the only judge (the tracker's strikes, the fourth bans, usually land around the same time)
-            _pickup = new PickupThisDrop(drop);
+            _pickup = new PickupThisDrop(drop, _noPaths);
         }
         return _pickup;
     }
@@ -173,11 +211,13 @@ public class RecoverItemsTask extends Task {
     // this one only ever sees our drop and keeps the rest (full bag, water watchdog, stuck shimmy) as is
     private static final class PickupThisDrop extends PickupDroppedItemTask {
         private final ItemEntity _drop;
+        private final RecoverRules.NoPaths _noPaths;
 
-        PickupThisDrop(ItemEntity drop) {
+        PickupThisDrop(ItemEntity drop, RecoverRules.NoPaths noPaths) {
             // "any amount" is only for the debug string, getClosestTo below never looks at it
             super(new ItemTarget(drop.getItem().getItem(), Integer.MAX_VALUE), true);
             _drop = drop;
+            _noPaths = noPaths;
         }
 
         // the parent's isValid rules that no retry fixes, same checks in the same order. if isValid grows a new one and
@@ -199,6 +239,13 @@ public class RecoverItemsTask extends Task {
         @Override
         protected void gaveUpOnDrop(AltoClef mod, ItemEntity drop) {
             _stalled = true;
+        }
+
+        // the stock ban hides the drop from everybody for two minutes after two empty searches. recovery keeps its own book
+        // (RecoverRules.NoPaths) and moves on to the next drop
+        @Override
+        protected void noPathToDrop(AltoClef mod, ItemEntity drop) {
+            _noPaths.record(drop.getId());
         }
 
         // the budget is short and the bag is empty, a stone pickaxe trip is the whole pile allowance and then some
@@ -263,15 +310,55 @@ public class RecoverItemsTask extends Task {
         return RecoverRules.hopeless(lava, _deathPos.getY(), level.getMinY());
     }
 
-    private ItemEntity closestDrop(AltoClef mod) {
+    // a wooden pick before going down for a deep pile, null when it is not the time. finishes the task when the trip ran out
+    private Task getPickFirst(AltoClef mod, double dy, boolean holdsPick) {
+        if (holdsPick) {
+            _gettingPick = false;
+        } else if (!_gettingPick) {
+            int depth = pileDepth(mod);
+            _gettingPick = RecoverRules.pickFirst(depth != Integer.MIN_VALUE, depth, dy, false);
+        }
+        if (!_gettingPick) {
+            _lastPickNow = Double.NaN;
+            return null;
+        }
+        double now = mod.getWorld().getGameTime() / 20.0;
+        // a gap is not pick time, same idea as Chase
+        _pickSeconds += Double.isNaN(_lastPickNow) ? 0 : Math.min(Math.max(0, now - _lastPickNow), 1.0);
+        _lastPickNow = now;
+        if (RecoverRules.pickTimedOut(_pickSeconds)) {
+            setDebugState("No pickaxe.", "Giving up on our stuff");
+            _finished = true;
+            return null;
+        }
+        setDebugState("Getting a pickaxe to dig down to our stuff.", "Making a pickaxe for our stuff");
+        return _getPick;
+    }
+
+    // blocks between the pile and the open sky, MIN_VALUE while its chunk is not loaded (from far away the heightmap is a guess)
+    // and in the nether, where the roof is not the sky
+    private int pileDepth(AltoClef mod) {
+        Level level = mod.getWorld();
+        if (!level.isLoaded(_deathPos) || level.dimensionType().hasCeiling()) {
+            return Integer.MIN_VALUE;
+        }
+        return level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, _deathPos.getX(), _deathPos.getZ()) - _deathPos.getY();
+    }
+
+    private ItemEntity closestDrop(AltoClef mod, boolean holdsPick) {
         List<ItemEntity> drops = mod.getEntityTracker().getDroppedItems();
         Level level = mod.getWorld();
         ItemEntity best = null;
         double bestDist = Double.MAX_VALUE;
+        boolean bestIsPick = false;
         FullBag full = new FullBag(mod);
         for (ItemEntity e : drops) {
             double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
-            if (d > RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS || d >= bestDist) {
+            if (d > RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS || _noPaths.skips(e.getId())) {
+                continue;
+            }
+            boolean isPick = e.getItem().is(ItemTags.PICKAXES);
+            if (best != null && !RecoverRules.better(!holdsPick, isPick, d, bestIsPick, bestDist)) {
                 continue;
             }
             // a drop that slid into lava is a drop we are not going swimming for
@@ -279,6 +366,7 @@ public class RecoverItemsTask extends Task {
             // the bag question last, every drop in the world goes through this loop and most are not ours
             if (!lost && mod.getEntityTracker().isEntityReachable(e) && !full.skips(e.getItem())) {
                 bestDist = d;
+                bestIsPick = isPick;
                 best = e;
             }
         }

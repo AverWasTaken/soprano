@@ -121,23 +121,23 @@ public class RecoverRulesTest {
     @Test
     public void aDropTenBlocksOutIsChasedNotWalkedBackFrom() {
         // the loop: chasing it took us past ARRIVE_RANGE and the walk back fired. it can't anymore
-        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, true));
-        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN, true));
-        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(0, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, 0, 0, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN, 0, 0, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(0, 0, 0, true));
     }
 
     @Test
     public void farOrEmptyMeansWalkBack() {
-        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + 1, false));
-        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(10, false));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + 1, 0, 0, false));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(10, 0, 0, false));
         // dragged way off by a chase, the pile wins again
-        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN + 0.5, true));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN + 0.5, 0, 0, true));
     }
 
     @Test
     public void onThePileWithNothingAroundJustLooks() {
-        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(RecoverRules.ARRIVE_RANGE, false));
-        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(2, false));
+        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(RecoverRules.ARRIVE_RANGE, 0, 0, false));
+        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(2, 0, 0, false));
     }
 
     @Test
@@ -253,5 +253,106 @@ public class RecoverRulesTest {
     @Test
     public void aDropThatFitsIsAlwaysTaken() {
         assertFalse(RecoverRules.skipWhenFull(true, true, true));
+    }
+
+    // ---- the deep pile
+
+    @Test
+    public void aDropTwentyEightFloorsDownIsNotPickedUpFromTheSurface() {
+        // 3D close enough to look near, but it is all rock in between: stay on the walk (which digs down to the pile)
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(28, 28, 28, true));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(10, -9, -9, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, 8, 8, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, -8, -8, true));
+    }
+
+    @Test
+    public void aDropThatFellDownAShaftIsStillPickedUpFromThePile() {
+        // the drop slid 12 under the pile and we climbed down to it: only the pile's height counting would walk us back up
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, -12, 0, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, -9, 2, true));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(10, 28, 28, true));
+    }
+
+    @Test
+    public void aDeepPileAndBareHandsGetsAPickFirst() {
+        assertTrue(RecoverRules.pickFirst(true, 28, 28, false));
+        assertTrue(RecoverRules.pickFirst(true, RecoverRules.DEEP_PILE, 20, false));
+    }
+
+    @Test
+    public void noPickTripForAShallowPileAHeldPickOrAnUnloadedChunk() {
+        assertFalse(RecoverRules.pickFirst(true, RecoverRules.DEEP_PILE - 1, 20, false));
+        assertFalse(RecoverRules.pickFirst(true, 28, 28, true));
+        assertFalse(RecoverRules.pickFirst(false, 28, 28, false));
+        // already down in the shaft with it
+        assertFalse(RecoverRules.pickFirst(true, 28, 3, false));
+    }
+
+    @Test
+    public void thePickTripStretchesTheBudgetButNotForever() {
+        assertEquals(90, RecoverRules.stretched(90, 0), 0);
+        assertEquals(90 + 40, RecoverRules.stretched(90, 40), 0);
+        assertEquals(90 + RecoverRules.PICK_SECONDS, RecoverRules.stretched(90, 5000), 0);
+        assertFalse(RecoverRules.pickTimedOut(RecoverRules.PICK_SECONDS - 1));
+        assertTrue(RecoverRules.pickTimedOut(RecoverRules.PICK_SECONDS));
+    }
+
+    @Test
+    public void theAllowanceStillEndsItWhateverTheStretchSays() {
+        // stretched budget at the pile, 240 s allowance from the death: GamerTask stops the recovery on the allowance
+        RecoverRules.Allowance a = new RecoverRules.Allowance(1000, 240);
+        assertFalse(a.expired(1100, 30));
+        assertTrue(a.expired(1241, 30));
+    }
+
+    @Test
+    public void threeDifferentDropsWithNoWayInARowIsNoWay() {
+        RecoverRules.NoPaths np = new RecoverRules.NoPaths();
+        np.record(1);
+        np.record(2);
+        assertFalse(np.noWay());
+        // the same drop again is still two
+        np.record(2);
+        assertFalse(np.noWay());
+        np.record(3);
+        assertTrue(np.noWay());
+    }
+
+    @Test
+    public void aPickupBreaksTheStreakButNotTheSkips() {
+        RecoverRules.NoPaths np = new RecoverRules.NoPaths();
+        np.record(1);
+        np.record(2);
+        np.pickedUp();
+        np.record(3);
+        np.record(4);
+        assertFalse(np.noWay());
+        // the ones with no way stay out of closestDrop
+        assertTrue(np.skips(1));
+        assertFalse(np.skips(9));
+    }
+
+    @Test
+    public void aPickForgetsEveryBareHandedVerdict() {
+        RecoverRules.NoPaths np = new RecoverRules.NoPaths();
+        np.record(1);
+        np.record(2);
+        np.record(3);
+        np.clear();
+        assertFalse(np.noWay());
+        assertFalse(np.skips(1));
+    }
+
+    @Test
+    public void theNearestDropWinsUnlessWeNeedAPick() {
+        // holding a pick: plain nearest
+        assertTrue(RecoverRules.better(false, false, 2, true, 5));
+        assertFalse(RecoverRules.better(false, true, 9, false, 5));
+        // bare hands: the pile's pickaxe goes first however far, then the nearest
+        assertTrue(RecoverRules.better(true, true, 20, false, 3));
+        assertFalse(RecoverRules.better(true, false, 1, true, 20));
+        assertTrue(RecoverRules.better(true, false, 1, false, 3));
+        assertTrue(RecoverRules.better(true, true, 1, true, 3));
     }
 }

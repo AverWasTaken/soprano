@@ -1089,7 +1089,7 @@ public class GamerTask extends Task {
         if (recover == null) {
             return false;
         }
-        // every way out says so once. a task that finished itself already said why (all four of its ways out log), so that one
+        // every way out says so once. a task that finished itself already said why (most of its ways out log, the no way and no pickaxe ones just say so on the hud), so that one
         // is quiet here. recoverPos and not deathPos: a death on the way has already written the next pile over deathPos
         String over = null;
         if (recover.isFinished(mod)) {
