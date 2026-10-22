@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.CombatRules;
+import baritone.behavior.LegacyCombat;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -80,7 +81,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         // swords and axes by damage per swing, worn ones last (see WeaponPick). equipping goes by item, so a fresh and a
         // worn copy of the same axe are the slot handler's coin flip. the mining tool picker never sees any of this, it
         // only runs while we mine and an axe in hand is the right tool for a log anyway
-        return WeaponPick.best(candidates, crowd, shieldedTarget);
+        return WeaponPick.best(candidates, crowd, shieldedTarget, LegacyCombat.active());
     }
 
     public static boolean equipWeapon(AltoClef mod) {

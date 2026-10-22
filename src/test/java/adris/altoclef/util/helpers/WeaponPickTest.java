@@ -141,6 +141,37 @@ public class WeaponPickTest {
         assertSame(Items.IRON_SWORD, WeaponPick.best(List.of(fresh(Items.IRON_SWORD)), false, true));
     }
 
+    // ---- pre 1.9 servers
+
+    private static Item legacyPick(boolean crowd, boolean shielded, Candidate... candidates) {
+        return WeaponPick.best(List.of(candidates), crowd, shielded, true);
+    }
+
+    @Test
+    public void preNineASwordBeatsAHarderHittingAxe() {
+        assertSame(Items.STONE_SWORD, legacyPick(false, false, fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)));
+        assertSame(Items.STONE_SWORD, legacyPick(false, false, fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)));
+        assertSame(Items.WOODEN_SWORD, legacyPick(false, false, fresh(Items.NETHERITE_AXE), fresh(Items.WOODEN_SWORD)));
+        // the crowd and shield rules don't exist there, the sword still wins
+        assertSame(Items.IRON_SWORD, legacyPick(false, true, fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE)));
+        assertSame(Items.IRON_SWORD, legacyPick(true, true, fresh(Items.IRON_AXE), fresh(Items.IRON_SWORD)));
+    }
+
+    @Test
+    public void preNineDamageStillRanksWithinAKind() {
+        assertSame(Items.DIAMOND_SWORD, legacyPick(false, false, fresh(Items.STONE_SWORD), fresh(Items.DIAMOND_SWORD)));
+        assertSame(Items.DIAMOND_AXE, legacyPick(false, false, fresh(Items.STONE_AXE), fresh(Items.DIAMOND_AXE)));
+        // worn still loses to healthy, same as everywhere else
+        assertSame(Items.WOODEN_AXE, legacyPick(false, false, worn(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)));
+    }
+
+    @Test
+    public void legacyOffIsTheModernRanking() {
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)), false, false, false));
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)), true, false, false));
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)), false, true, false));
+    }
+
     @Test
     public void swingSpeedComesFromTheAttributeComponent() {
         // 4 base, a sword takes 2.4 off and an axe takes 3.2 (wooden) off
