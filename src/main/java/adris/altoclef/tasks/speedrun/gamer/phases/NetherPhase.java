@@ -119,7 +119,8 @@ public class NetherPhase implements PhaseHandler {
     private boolean noPickSaid;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
-    // the gold piece fallback (goldSide): one try a visit. goldOver = it is done or gave up, goldStartedAt is the try's clock (-1 =
+    // the gold piece fallback (goldSide): up to NetherGold.MAX_TRIES tries a visit, a latched one re-arms NetherGold.RETRY_SECONDS later and a death resets
+    // them. goldOver = this try is done or gave up, goldStartedAt is the try's clock (-1 =
     // not begun), guarding = gold ore is on baritone's don't-break list because a piglin is close enough to be angered by it
     private NetherGoldTask goldTask;
     private int goldNeed;
@@ -344,8 +345,8 @@ public class NetherPhase implements PhaseHandler {
         }
     }
 
-    // no gold piece on, and nothing to wear: piglins will jump us on sight, so make one out of nether gold ore. one try a visit,
-    // under the stall timer (NetherGold.CAP_SECONDS), and only from what the bag holds and ore the tracker already knows about.
+    // no gold piece on, and nothing to wear: piglins will jump us on sight, so make one out of nether gold ore. a try a visit (a few, see
+    // NetherGold.mayRetry), each under the stall timer (NetherGold.CAP_SECONDS), and only from what the bag holds and ore the tracker already knows about.
     // a piglin in the box a block break would anger pauses the mining (guardGold keeps baritone off the ore meanwhile), the
     // crafts and the wearing go on. below the ghast cover and the other side jobs, it never walks into a fight
     private Task goldSide(AltoClef mod, GamerContext ctx, double now, boolean piglins) {
@@ -366,7 +367,8 @@ public class NetherPhase implements PhaseHandler {
             goldTries = 0;
         }
         if (PiglinGold.worn(f)) {
-            goldOver = true;
+            // not a latch: if the piece breaks or comes off there is a try waiting right away, not one 60 s out
+            goldOver = false;
             goldTask = null;
             goldWear = null;
             return null;
