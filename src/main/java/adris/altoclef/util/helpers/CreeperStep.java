@@ -55,6 +55,15 @@ public final class CreeperStep {
     // we had to defuse. that is the run's job now (CombatCommit, REPEAT_CREEPER), not another lap of the step
     public static final long REPEAT_WINDOW = 600;
 
+    // the hand sprint at the start of a defuse. a standing start covers about 2 blocks in 10 ticks and 7 in 30, and the fuse is 30,
+    // so it keeps going straight away until we are at SAFE or the fuse is spent. (waiting on the path for the rest of it is how
+    // a creeper lit at 3 still got us from 2 blocks)
+    public static final long RAW_MAX_TICKS = 30;
+
+    public static boolean rawGoing(long ticks, double distance) {
+        return ticks < RAW_MAX_TICKS && distance < SAFE;
+    }
+
     public enum Event { NONE, START, CORNERED, END_GONE, END_UNLIT, END_CAP }
 
     // one creeper as the world sees it this tick. lit = swelling up or flint-and-steeled, pathNear = the path walks into it
@@ -170,7 +179,7 @@ public final class CreeperStep {
             long cap = _bait ? BAIT_CAP : HOLD_CAP;
             Event end = Event.NONE;
             if (held == null) end = Event.END_GONE;
-            else if (fuseOut(held)) end = Event.END_UNLIT;
+            else if (fuseOut(held, mode)) end = Event.END_UNLIT;
             else if (now < _since || now - _since >= cap) end = Event.END_CAP;
             if (end == Event.NONE) {
                 if (!_cornered && shieldReady && noHeading && held.lit() && held.distance() <= TRIGGER) {
@@ -225,9 +234,14 @@ public final class CreeperStep {
     // the defuse is over when it is unlit AND drained, or we are well away from it. unlit with charge left and still close is a
     // deflating fuse, and the user task walking back in relights it: that was the wheel flipping back and forth. the cap is
     // the backstop for one that never drains
-    private boolean fuseOut(Seen held) {
+    //
+    // a step inside a run is stricter: the run's path leads back past the creeper, so letting go at "unlit and over 5" had the
+    // creeper relight and the step start again about every second, with the arrows landing in between. there it holds until the
+    // swell is fully drained and we are at SAFE
+    private boolean fuseOut(Seen held, CombatCommit.Mode mode) {
         if (held.lit()) return false;
         if (_bait) return !held.fusing();
+        if (mode == CombatCommit.Mode.RUN) return !held.fusing() && held.distance() >= SAFE;
         return !(held.fusing() && held.distance() <= HOLD_RADIUS);
     }
 

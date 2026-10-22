@@ -36,11 +36,8 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     // for nothing. same idea as CommittedRunTask.REISSUE_GAP_TICKS, just shorter, the whole step is 2.5 s
     static final long REISSUE_GAP_TICKS = 10;
 
-    // how long we steer ourselves before giving up on the path showing up. 10 ticks of sprinting from a standstill is two
-    // and a bit blocks. baritone searches from the block we were in, and walking out of that block can cancel the search
-    // or orphan its result (PathingBehavior), so every extra tick of sprint is a tick the path may have to restart. it
-    // restarts from the new block and short searches finish in a tick or two, but it is why this is not 50
-    static final long RAW_TICKS = 10;
+    // the defuse steers itself until the path takes over, see CreeperStep.rawGoing. a path that shows up first ends it, it brings
+    // its own inputs
     // the bait steers itself the whole way out unless the ground says no. 3 to 6.2 is a dozen and a bit ticks of sprinting from
     // a standstill (RAW_TICKS gets about 5.5 with the slide, short of the line), and baritone is only asked once this runs out,
     // so the orphaned search from RAW_TICKS is not a thing here. still well inside the fuse
@@ -163,13 +160,12 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     private void sprintAway(AltoClef mod) {
         if (!_raw) return;
         // a path running before the goal went out is the user's old one that was not safe to cancel, not ours to wait for
-        if ((_issued && mod.getClientBaritone().getPathingBehavior().isPathing())
-                || mod.getWorld().getGameTime() - _startTick >= RAW_TICKS) {
+        if (_issued && mod.getClientBaritone().getPathingBehavior().isPathing()) {
             endRaw(mod);
             return;
         }
         Entity creeper = mod.getWorld().getEntity(_creeperId);
-        if (creeper == null) {
+        if (creeper == null || !CreeperStep.rawGoing(mod.getWorld().getGameTime() - _startTick, mod.getPlayer().distanceTo(creeper))) {
             endRaw(mod);
             return;
         }

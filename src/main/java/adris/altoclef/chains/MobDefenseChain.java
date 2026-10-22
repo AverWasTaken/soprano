@@ -701,7 +701,9 @@ public class MobDefenseChain extends SingleTaskChain {
             for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
                 if (!creeper.isAlive()) continue;
                 double distance = creeper.distanceTo(player);
-                if (distance > CreeperStep.PATH_RANGE) continue;
+                // the one we hold stays in the list further out, or it reads as gone the moment the step gets us to 8
+                if (distance > CreeperStep.PATH_RANGE && !(_creeperStep.active() && creeper.getId() == _creeperStep.creeperId()
+                        && distance <= CreeperStep.PATH_RANGE + 4)) continue;
                 // swell dir and ignited are both synced to the client, so the fuse counts from its very first tick
                 boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
                 boolean pathNear = false;

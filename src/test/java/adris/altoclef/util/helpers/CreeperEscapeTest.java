@@ -252,4 +252,34 @@ public class CreeperEscapeTest {
         assertNotNull(h);
         assertEquals(-45, h.degrees());
     }
+
+    // the hand sprint, ticked the way CreeperStepTask does it: lit one at 3 behind us, a standing start, a fresh heading every tick.
+    // open ground and a 1x2 tunnel both have to get us past 5 inside the 30 tick fuse
+    private static double sprintAwayFrom3(FakeWorld world) {
+        double px = 0.5;
+        double cx = -2.5;
+        double v = 0;
+        for (long t = 0; CreeperStep.rawGoing(t, Math.abs(px - cx)); t++) {
+            Heading h = CreeperEscape.choose(px, 64, 0.5, cx, 0.5, world);
+            if (h == null) break;
+            v = v * 0.546 + 0.28 * (1 - 0.546);
+            px += h.dx() * v;
+        }
+        return Math.abs(px - cx);
+    }
+
+    @Test
+    public void sprintOutOfALitOneOnOpenGroundClearsTheBlast() {
+        assertTrue(sprintAwayFrom3(new FakeWorld()) > 5);
+    }
+
+    @Test
+    public void sprintOutOfALitOneDownATunnelClearsTheBlast() {
+        FakeWorld tunnel = new FakeWorld();
+        for (int x = -4; x <= 14; x++) {
+            for (int z : new int[]{-1, 1}) tunnel.column(x, z, 64, 66, Kind.WALL);
+            tunnel.column(x, 0, 66, 66, Kind.SOLID);
+        }
+        assertTrue(sprintAwayFrom3(tunnel) > 5);
+    }
 }
