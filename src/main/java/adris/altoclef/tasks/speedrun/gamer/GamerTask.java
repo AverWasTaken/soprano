@@ -160,7 +160,8 @@ public class GamerTask extends Task {
     // the hole for the night after a death with no armor and no bed (NightShelter), its own once per night flag, and the look throttle
     private ShelterTask shelter;
     private final NightShelter.Once shelterOnce = new NightShelter.Once();
-    private long shelterLookAt = Long.MIN_VALUE;
+    // halved so the subtraction in shelterTick can't wrap around into the negatives and look like "just looked" forever
+    private long shelterLookAt = Long.MIN_VALUE / 2;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
