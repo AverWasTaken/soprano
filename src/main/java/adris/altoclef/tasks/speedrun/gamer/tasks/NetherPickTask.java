@@ -102,7 +102,11 @@ public class NetherPickTask extends Task {
     // logs of the first kind we hold, cut into only the planks the rest of the craft still wants. the no-collect craft, because
     // the catalogue's planks task goes and chops a tree when it runs out of logs and a stem is a tree here too
     private Task cutLogs(AltoClef mod, Bag b) {
-        int missing = Math.max(0, NetherPick.woodNeeded(b, tier) - b.planks());
+        return cutLogs(mod, Math.max(0, NetherPick.woodNeeded(b, tier) - b.planks()));
+    }
+
+    // (NetherGoldTask cuts its table's planks the same way)
+    static Task cutLogs(AltoClef mod, int missing) {
         for (Item log : ItemHelper.LOG) {
             int held = mod.getItemStorage().getItemCount(log);
             Item plank = held > 0 ? ItemHelper.logToPlanks(log) : null;

@@ -12,6 +12,8 @@ import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
+import adris.altoclef.tasks.speedrun.gamer.NetherGold;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
@@ -26,6 +28,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherGround;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherGoldTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherPickTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
@@ -33,6 +36,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
@@ -45,11 +49,13 @@ import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,7 +69,11 @@ public class NetherPhase implements PhaseHandler {
     private static final Block[] BASTION = {Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE};
     private static final Block[] WARPED = {Blocks.WARPED_NYLIUM};
     private static final Block[] TRACKED = {Blocks.NETHER_BRICKS, Blocks.NETHER_BRICK_FENCE, Blocks.NETHER_BRICK_STAIRS,
-            Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE, Blocks.WARPED_NYLIUM};
+            Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE, Blocks.WARPED_NYLIUM, Blocks.NETHER_GOLD_ORE};
+    // blocks in #guarded_by_piglins that sit around the nether (the tag also has chests and gold blocks, nobody breaks those by accident)
+    private static final Block[] GUARDED = {Blocks.NETHER_GOLD_ORE, Blocks.GILDED_BLACKSTONE};
+    // the known-ore look is a walk over every tracked gold ore, twice a second is plenty
+    private static final int ORE_LOOK_TICKS = 10;
 
     private static final int SCAN_EVERY_TICKS = 6;
     // the nearest this many tracked blocks of a kind get asked about, the tracker can hold thousands of bricks
@@ -108,6 +118,18 @@ public class NetherPhase implements PhaseHandler {
     private boolean noPickSaid;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
+    // the gold piece fallback (goldSide): one try a visit. goldOver = it is done or gave up, goldStartedAt is the try's clock (-1 =
+    // not begun), guarding = gold ore is on baritone's don't-break list because a piglin is close enough to be angered by it
+    private NetherGoldTask goldTask;
+    private int goldNeed;
+    private Task goldWear;
+    private Item goldWearing;
+    private double goldStartedAt;
+    private boolean goldOver;
+    private boolean guarding;
+    private BlockPos goldAnchor;
+    private boolean oreLeft;
+    private int lastNuggets;
 
     private boolean tracking;
     private boolean failedAlready;
@@ -201,6 +223,15 @@ public class NetherPhase implements PhaseHandler {
         pickRetryAt = 0;
         pickFails = 0;
         noPickSaid = false;
+        goldTask = null;
+        goldWear = null;
+        goldWearing = null;
+        goldStartedAt = -1;
+        goldOver = false;
+        goldAnchor = null;
+        oreLeft = false;
+        lastNuggets = 0;
+        unguard(mod);
         flee = null;
         fleeUntil = 0;
         lastHurt = 0;
@@ -220,6 +251,7 @@ public class NetherPhase implements PhaseHandler {
 
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
+        unguard(mod);
         homeWalk.stopTracking(mod);
         gravel.reset();
         if (tracking) {
@@ -234,6 +266,8 @@ public class NetherPhase implements PhaseHandler {
             onEnter(mod, ctx);
         }
         if (ctx.facts().dimension() != Dimension.NETHER) {
+            // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
+            unguard(mod);
             return toTheNether(mod, ctx);
         }
         homeWalk.stopTracking(mod);
@@ -249,6 +283,7 @@ public class NetherPhase implements PhaseHandler {
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
         }
+        boolean piglins = guardGold(mod);
         Task flint = gravelSide(mod, ctx, now);
         if (flint != null) {
             return flint;
@@ -257,7 +292,154 @@ public class NetherPhase implements PhaseHandler {
         if (pick != null) {
             return pick;
         }
+        Task gold = goldSide(mod, ctx, now, piglins);
+        if (gold != null) {
+            return gold;
+        }
         return nextStep(mod, ctx, now);
+    }
+
+    // a piglin close enough to be angered by a gold block breaking (NetherGold.angerBox): the whole box around the player, no sight
+    // check, so one behind a wall counts. checked on the client's entity list, which is what we can see of it
+    private static boolean piglinInBox(AltoClef mod) {
+        Player p = mod.getPlayer();
+        return !mod.getWorld().getEntitiesOfClass(Piglin.class, NetherGold.angerBox(p.getBoundingBox()), Entity::isAlive).isEmpty();
+    }
+
+    // while a piglin is that close, nothing may break gold ore as a side block of some other dig (the gravel, the way through a wall):
+    // the hit angers all of them. blocksToDisallowBreaking and not the avoid list, which only makes a break ten times dearer and
+    // lets it through when the way round is dearer still. back off the list the moment they are gone. returns the same piglin answer
+    private boolean guardGold(AltoClef mod) {
+        boolean piglins = piglinInBox(mod);
+        if (piglins && !guarding) {
+            for (Block b : GUARDED) {
+                baritone.api.BaritoneAPI.getSettings().blocksToDisallowBreaking.value.add(b);
+            }
+            guarding = true;
+        } else if (!piglins) {
+            unguard(mod);
+        }
+        return piglins;
+    }
+
+    private void unguard(AltoClef mod) {
+        if (guarding) {
+            for (Block b : GUARDED) {
+                baritone.api.BaritoneAPI.getSettings().blocksToDisallowBreaking.value.remove(b);
+            }
+            guarding = false;
+        }
+    }
+
+    // no gold piece on, and nothing to wear: piglins will jump us on sight, so make one out of nether gold ore. one try a visit,
+    // under the stall timer (NetherGold.CAP_SECONDS), and only from what the bag holds and ore the tracker already knows about.
+    // a piglin in the box a block break would anger pauses the mining (guardGold keeps baritone off the ore meanwhile), the
+    // crafts and the wearing go on. below the ghast cover and the other side jobs, it never walks into a fight
+    private Task goldSide(AltoClef mod, GamerContext ctx, double now, boolean piglins) {
+        GamerFacts f = ctx.facts();
+        if (!ctx.cfg().overworld.goldSide) {
+            return null;
+        }
+        if (PiglinGold.worn(f)) {
+            goldOver = true;
+            goldTask = null;
+            goldWear = null;
+            return null;
+        }
+        if (PiglinGold.holdsPiece(f)) {
+            List<Item> equip = new ArrayList<>();
+            PiglinGold.addToEquip(f, equip);
+            if (equip.isEmpty() || WearFromBag.held(mod, equip).isEmpty()) {
+                return null;
+            }
+            if (goldWear == null || !equip.get(0).equals(goldWearing)) {
+                goldWearing = equip.get(0);
+                goldWear = WearFromBag.task(mod, equip);
+            }
+            hudState = "Putting on gold for piglins";
+            return goldWear;
+        }
+        if (goldOver) {
+            return null;
+        }
+        if (goldStartedAt >= 0 && NetherGold.overTime(now - goldStartedAt)) {
+            goldOver = true;
+            goldTask = null;
+            return null;
+        }
+        if (goldTask != null && goldTask.failed()) {
+            goldOver = true;
+            goldTask = null;
+            return null;
+        }
+        // blazes and ghasts, a spawner, a barter and a pearl hunt come first, the same list the pick craft waits for
+        if (pickBusy(mod, ctx, now)) {
+            return null;
+        }
+        NetherGold.Bag bag = goldBag(f);
+        if (goldTask == null) {
+            if (piglins) {
+                return null;
+            }
+            String slot = PiglinGold.netherSlot(f, KitPlanner.armorNames(ctx.cfg().overworld));
+            int need = PiglinGold.ingotsFor(slot);
+            BlockPos me = mod.getPlayer().blockPosition();
+            // the cheap answers first, the walk over the tracker's gold ore is twice a second at most. digging takes a pick the bag
+            // already has (pickSide makes one from the bag, the mining task would go and fetch one, and there is nothing to fetch)
+            if (NetherGold.stage(bag, need) == NetherGold.Stage.ABORT || tickCounter % ORE_LOOK_TICKS != 0
+                    || !NetherGold.mayStart(bag, need, NetherPick.hasUsablePick(f) && oreKnown(mod, me))) {
+                return null;
+            }
+            goldTask = new NetherGoldTask("golden_" + slot, PiglinGold.piece(slot), need, () -> goldBag(ctx.facts()), me);
+            goldNeed = need;
+            goldAnchor = me;
+            goldStartedAt = now;
+            oreLeft = true;
+            lastNuggets = bag.nuggets();
+        }
+        if (NetherGold.stage(bag, goldNeed) == NetherGold.Stage.MINE) {
+            if (!NetherPick.hasUsablePick(f)) {
+                goldOver = true;
+                goldTask = null;
+                return null;
+            }
+            if (piglins) {
+                // wait it out: the clock keeps running, the cap ends it
+                return null;
+            }
+            if (tickCounter % ORE_LOOK_TICKS == 0) {
+                oreLeft = oreKnown(mod, goldAnchor);
+            }
+            if (!oreLeft) {
+                goldOver = true;
+                goldTask = null;
+                return null;
+            }
+        }
+        if (bag.nuggets() > lastNuggets) {
+            ctx.progress("nether gold nuggets");
+        }
+        lastNuggets = bag.nuggets();
+        hudState = "Mining gold for piglins";
+        return goldTask;
+    }
+
+    // a table in the bag or standing next to us. not the planner's memory of one back in the overworld
+    private static NetherGold.Bag goldBag(GamerFacts f) {
+        NetherPick.Bag nb = NetherPick.bagOf(f);
+        boolean table = f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby();
+        return new NetherGold.Bag(f.count(Items.GOLD_NUGGET), f.count(Items.GOLD_INGOT), nb.planks(), nb.logs(), table);
+    }
+
+    // nether gold ore the tracker already holds, still standing, within the try's radius of `from`
+    private static boolean oreKnown(AltoClef mod, BlockPos from) {
+        double max = NetherGold.ORE_BLOCKS * NetherGold.ORE_BLOCKS;
+        for (BlockPos p : mod.getBlockTracker().getKnownLocations(Blocks.NETHER_GOLD_ORE)) {
+            if (p.distSqr(from) <= max && mod.getWorld().getBlockState(p).is(Blocks.NETHER_GOLD_ORE)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // no pick that works and the bag can make one right now: make it, here, before the next netherrack is dug by hand. only from
