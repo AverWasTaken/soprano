@@ -24,6 +24,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -237,6 +238,11 @@ public class PlayerExtraController {
         CritTiming.Sample sample = sample(player, target, gap);
         CritTiming.Step step = _crit.step(gameTime(), sample);
         logStep(step, sample);
+        if (step == CritTiming.Step.JUMP || step == CritTiming.Step.APPROACH || critInFlight()) {
+            // from the walk up to the swing nothing gets to turn sprint back on (toggle sprint, a held key). refreshed
+            // every tick it's wanted, so it ends by itself the tick the hop does
+            _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
+        }
         switch (step) {
             case JUMP:
                 // vanilla throws the crit away for a sprinting hit, and the jump itself would boost us forward. the stop
@@ -258,8 +264,9 @@ public class PlayerExtraController {
                 return true;
             case WAIT:
                 // a held opener while the approach path is still alive: baritone has the keys and is about to be told
-                // to stop, nothing of ours to press. (mid hop a path is a give up, so this is the only WAIT on the ground
-                // with one. in the air it is a free crit waiting on sprint, and that one needs the lines below)
+                // to stop, nothing of ours to press. (mid hop a path is a give up, so this and a settling weapon swap are
+                // the only WAITs on the ground with one. in the air it is a crit waiting on sprint or the aim, and that
+                // needs the lines below)
                 if (heldOpener(sample)) {
                     return false;
                 }
@@ -278,7 +285,8 @@ public class PlayerExtraController {
     // ground, which is worth a line
     private String _lastCritLog = "";
 
-    // a WAIT on the ground with a path alive. the machine only says that for a harmless opener
+    // a WAIT on the ground with a path alive. the machine says that for a held opener (and a settling swap, which is a
+    // tick or two of the same thing)
     private static boolean heldOpener(CritTiming.Sample s) {
         return s.onGround && s.pathing;
     }
@@ -304,15 +312,16 @@ public class PlayerExtraController {
             // resets it) or a mob that is not in the three block reach, and those two look the same without them
             LocalPlayer player = _mod.getPlayer();
             Debug.logInternal("crit: " + line + ", to full " + String.format("%.1f", s.ticksToFull) + ", near " + s.meleeNear
-                    + ", hp " + s.health + (s.pathing ? ", pathing" : "")
+                    + ", hp " + s.health + (s.pathing ? ", pathing" : "") + (s.aimed ? ", aimed" : "") + (s.settling ? ", settling" : "")
                     + ", hand " + BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath()
                     + ", scale " + String.format("%.2f", player.getAttackStrengthScale(SERVER_PARTIAL))
                     + ", gap " + String.format("%.2f", s.reachGap));
         }
     }
 
-    // tapping forward is enough, the kill task already turned us to face the mob this tick. tryPress lets go by itself, so
-    // nothing is left held down if the task changes its mind. no point shoving into a mob we are already touching
+    // tapping forward is enough: no path is walking (the machine never walks up with one), so CombatAim has the head and
+    // the movement yaw is the aim yaw, which is the mob or a few degrees from it while the turn finishes. tryPress lets go
+    // by itself, so nothing is left held down if the task changes its mind. no point shoving into a mob we are touching
     private void walkUp(double gap) {
         if (gap > WALK_UP_GAP) {
             _mod.getInputControls().tryPress(Input.MOVE_FORWARD);
@@ -382,9 +391,15 @@ public class PlayerExtraController {
 
     private CritTiming.Sample sample(LocalPlayer player, LivingEntity target, double gap) {
         CritTiming.Sample s = new CritTiming.Sample();
-        s.inReach = inRange(target);
+        // the same reach the swing is gated on, or the machine plans hops at mobs the swing then refuses
+        s.inReach = inKillReach(target);
         s.reachGap = gap;
-        s.reach = reachOf(player);
+        s.reach = swingReach();
+        s.aimed = onTarget(target);
+        s.settling = handSettling(player);
+        // hurtTime starts at 10 on a hit and counts down, which is about the "lately" we want. a creeper never hits us before
+        // it goes off, so it counts as hitting us from the start: no opener hold on a lit fuse
+        s.recentlyHurt = player.hurtTime > 0 || target instanceof Creeper;
         s.retreatSpeed = retreatSpeed(player, target);
         s.onGround = player.onGround();
         s.falling = player.getDeltaMovement().y() < 0 && player.fallDistance > 0;
@@ -411,6 +426,27 @@ public class PlayerExtraController {
         s.lowHeadroom = !passable(level, feet.above(2));
         s.unsafeFloor = !floorAround(level, feet);
         return s;
+    }
+
+    // the item in hand the last time we looked, and the game time it last changed
+    private Item _handItem;
+    private long _handChangedAt = Long.MIN_VALUE;
+
+    // the hand changed this tick or the last one. by item, not slot and not stack: forceEquipItem moves the slot before it
+    // knows the swap worked, and the server swaps stack objects for equal copies all the time. a different item is also
+    // exactly what vanilla resets the cooldown and the attack speed for, and it only does that in the player tick, after
+    // we read them
+    private boolean handSettling(LocalPlayer player) {
+        Item now = player.getMainHandItem().getItem();
+        long t = gameTime();
+        if (_handItem == null) {
+            _handItem = now;
+        } else if (now != _handItem) {
+            _handItem = now;
+            _handChangedAt = t;
+        }
+        // (a clock that went backwards is a new world, nothing is settling there)
+        return _handChangedAt != Long.MIN_VALUE && t >= _handChangedAt && t - _handChangedAt <= 1;
     }
 
     // food on legs: pig, cow, sheep, chicken, rabbit. a wolf, a bee or a polar bear bites back once poked (NeutralMob), a

@@ -43,8 +43,8 @@ public class CritTiming {
     public static final float LOW_HEALTH_NO_CRIT = 6;
     // however it goes, the swing is never held more than this many ticks past a full cooldown. the fall is not a promise
     public static final int MAX_READY_WAIT = 4;
-    // the one swing that may wait longer: the opener on something harmless, held on the ground while a path lets go or
-    // we close the last bit of the gap. half a second, then it is a plain hit so a pig behind a fence still gets one
+    // the one swing that may wait longer: the opener (full cooldown, nobody hitting us), held on the ground while a path
+    // lets go or we close the last bit of the gap. half a second, then it is a plain hit so a pig behind a fence still gets one
     public static final int MAX_OPENER_HOLD = 10;
 
     // the hop is 7+ ticks of nothing and the swing happens at the end of it, so the mob has to be well inside reach when we
@@ -111,6 +111,15 @@ public class CritTiming {
         public float health = 20;
         // the target can't hit back, so nobody is owed the swing right now and a full cooldown can wait for the fall
         public boolean harmless = false;
+        // we took a hit in the last half second or so. a hostile that is hitting us is owed the swing now, one that
+        // hasn't yet gets the same opener hop a harmless one does
+        public boolean recentlyHurt = false;
+        // the ray the server last heard about is on the mob, in the arm's reach, nothing in the way. a swing that isn't is
+        // refused anyway, so a crit waits for the aim instead of being thrown away on a whiff
+        public boolean aimed = true;
+        // the hand changed this tick or last. the cooldown and the attack speed only catch up in the player tick, so the
+        // reading in this sample may still describe the item we just put away
+        public boolean settling = false;
 
         boolean pressured() {
             return underPressure(meleeNear, health);
@@ -124,12 +133,14 @@ public class CritTiming {
     private enum Phase {IDLE, AIRBORNE}
 
     private Phase phase = Phase.IDLE;
+    // this hop started on a full cooldown (an opener), so the ready-wait cap stays out of it unless we get hit mid air
+    private boolean openerHop = false;
     private int airTicks = 0;
     // airborne ticks the cooldown has been full for, the MAX_READY_WAIT cap counts these
     private int readyTicks = 0;
     // we jumped and came down without a swing. the next hit is a normal one instead of another try
     private boolean plainNext = false;
-    // grounded ticks a harmless opener has been held for, the MAX_OPENER_HOLD cap counts these. not in reset() on purpose:
+    // grounded ticks an opener has been held for, the MAX_OPENER_HOLD cap counts these. not in reset() on purpose:
     // a give up must not buy the next try a fresh half second
     private int openerTicks = 0;
     private long lastNow = Long.MIN_VALUE;
@@ -164,6 +175,11 @@ public class CritTiming {
         if (phase == Phase.AIRBORNE) {
             return airborne(s);
         }
+        // a swing now could be the old item's cooldown talking, and a hop now would be timed off a number that is about to
+        // jump. a tick or two of standing still is cheaper than either
+        if (s.settling) {
+            return Step.WAIT;
+        }
         // (a harmless target has no full cooldown veto to force the hit on landing, so a mid rise call can't spend the
         // promise: it can't swing anyway, and the hop would just start over)
         boolean couldSwing = s.onGround || s.falling || !s.harmless;
@@ -172,32 +188,40 @@ public class CritTiming {
             return Step.PLAIN;
         }
         // already coming down (a knockback, a ledge) with everything lined up: that is a free crit, take it. still sprinting
-        // means the server would call it a sprint hit, so drop it this tick and swing on the next one (still falling)
+        // means the server would call it a sprint hit, so drop it this tick and swing on the next one (still falling). the
+        // crosshair not on it yet is the same deal, the swing would only be refused
         if (!s.onGround) {
-            if (!(s.falling && s.inReach && vanillaAllows(s) && s.ticksToFull <= 0)) {
+            if (!(s.falling && (s.inReach || s.aimed) && vanillaAllows(s) && s.ticksToFull <= 0)) {
                 return Step.PLAIN;
             }
-            return s.sprinting ? Step.WAIT : Step.SWING;
+            return s.sprinting || !s.aimed ? Step.WAIT : Step.SWING;
         }
         if (canJump(s)) {
             phase = Phase.AIRBORNE;
             airTicks = 0;
             readyTicks = 0;
+            openerHop = s.ticksToFull <= 0;
             return Step.JUMP;
         }
-        if (s.harmless && s.ticksToFull <= 0) {
+        if (s.ticksToFull <= 0 && opens(s)) {
             return opener(s);
         }
         // hop is due but the mob is a bit far. close the gap now instead of jumping at nothing. in a fight this only ever
-        // runs while the cooldown is charging, so the plain swing still fires the tick it fills. a harmless opener is the
-        // one case with a full cooldown, and opener() has the cap that keeps that from holding a swing for ever
+        // runs while the cooldown is charging, so the plain swing still fires the tick it fills. an opener is the one case
+        // with a full cooldown, and opener() has the cap that keeps that from holding a swing for ever
         return wantsHop(s) && !s.retreating() ? Step.APPROACH : Step.PLAIN;
     }
 
-    // full cooldown, on the ground, target harmless, and no jump this tick. a hunt is all openers (we walk up to every
-    // animal, so the cooldown is always full on arrival) and the approach path is usually still alive on the tick we get
-    // into reach, so without a short hold the hop never gets its turn. only a path or a bit of gap is worth holding for:
-    // any other veto, a mob walking off, or the cap running out is a plain hit right now
+    // a full cooldown that nobody is owed yet: something harmless, or a hostile that hasn't landed a hit on us lately
+    private static boolean opens(Sample s) {
+        return s.harmless || !s.recentlyHurt;
+    }
+
+    // full cooldown, on the ground, nobody owed the swing, and no jump this tick. a hunt is all openers (we walk up to every
+    // animal, so the cooldown is always full on arrival), and so is a zombie walking into reach while our cooldown has long
+    // been full. the approach path is usually still alive on the tick we get into reach, so without a short hold the hop
+    // never gets its turn. only a path or a bit of gap is worth holding for: any other veto, a mob walking off, a hit
+    // landing on us or the cap running out is a plain hit right now
     private Step opener(Sample s) {
         if (hopVeto(s, false) != null || s.retreating() || ++openerTicks > MAX_OPENER_HOLD) {
             return Step.PLAIN;
@@ -208,8 +232,9 @@ public class CritTiming {
 
     private Step airborne(Sample s) {
         airTicks++;
-        // (a crowd or a bad health number showing up while we are up is in here too. come down swinging, not waiting)
-        if (!s.inReach || !vanillaAllows(s) || s.shielding || s.usingItem || s.pathing || s.pressured()) {
+        // (a crowd or a bad health number showing up while we are up is in here too. come down swinging, not waiting. and
+        // a weapon swap mid hop: the cooldown we jumped on is not the one we have now)
+        if (!vanillaAllows(s) || s.shielding || s.usingItem || s.pathing || s.pressured() || s.settling) {
             return giveUp();
         }
         if (s.onGround) {
@@ -224,12 +249,20 @@ public class CritTiming {
             return giveUp();
         }
         readyTicks = s.ticksToFull <= 0 ? readyTicks + 1 : 0;
+        // out of reach mid air: a knockback, or the mob took a step. it can step back in before we come down, and giving up
+        // up here buys nothing because nothing can swing anyway. the landing is where that hop gives up. (inReach is the
+        // planning reach, a bit short of the arm. a crosshair that is on it is in the arm's reach, and that's a swing)
+        if (!s.inReach && !s.aimed) {
+            return Step.WAIT;
+        }
         // falling with a full cooldown is the crit. still going up with one past the cap is a plain hit from here, but it
-        // is a hit. not for a harmless target: its hop starts with the cooldown already full, so the cap would swing on
-        // the way up every time and throw away the crit the hop was for
-        if ((s.falling && s.ticksToFull <= 0) || (readyTicks > MAX_READY_WAIT && !s.harmless)) {
-            if (s.sprinting) {
-                // the stop packet has not made it yet. the WAIT clears sprint and the swing is a tick late, the fall can afford it
+        // is a hit. not for an opener: its hop starts with the cooldown already full, so the cap would swing on the way up
+        // every time and throw away the crit the hop was for. unless something hits us mid air, then it is owed after all
+        boolean capped = readyTicks > MAX_READY_WAIT && !s.harmless && (!openerHop || s.recentlyHurt);
+        if ((s.falling && s.ticksToFull <= 0) || capped) {
+            // still sprinting: the stop packet has not made it yet, the WAIT clears it and the swing is a tick late. not
+            // aimed: the swing would be refused, so wait for the crosshair. still falling is still a crit
+            if (s.sprinting || !s.aimed) {
                 return Step.WAIT;
             }
             reset();
@@ -248,6 +281,7 @@ public class CritTiming {
 
     public void reset() {
         phase = Phase.IDLE;
+        openerHop = false;
         airTicks = 0;
         readyTicks = 0;
     }
@@ -273,11 +307,23 @@ public class CritTiming {
     // the first thing standing between us and a hop, null when there is none. same list wantsHop always had, as words so
     // the play log can say which one fired
     public static String hopVeto(Sample s) {
-        return hopVeto(s, s.pathing);
+        return hopVeto(s, s.pathing, false);
+    }
+
+    // is a hop on the cards for this cooldown at all, even if it is not time yet. the kill task's back-off asks this: it has
+    // to stay off for the whole charge and not just the lead, or it is still walking when the lead comes and the path vetoes
+    // the hop it was meant to make room for. so every veto except the path (usually that is the back-off itself), the lead
+    // window and a settling swap (those two are just "not yet")
+    public static boolean hopPlanned(Sample s) {
+        return hopVeto(s, false, true) == null;
     }
 
     // pathing as its own argument so opener() can ask "would it hop if the path were gone" without touching the sample
     private static String hopVeto(Sample s, boolean pathing) {
+        return hopVeto(s, pathing, false);
+    }
+
+    private static String hopVeto(Sample s, boolean pathing, boolean planning) {
         if (!s.inReach) {
             return "out of reach";
         }
@@ -299,6 +345,9 @@ public class CritTiming {
         if (pathing) {
             return "pathing";
         }
+        if (s.settling && !planning) {
+            return "weapon swap settling";
+        }
         // a plain hit kills it, a jump would only make the kill later
         if (s.normalHitKills) {
             return "plain hit kills";
@@ -310,14 +359,14 @@ public class CritTiming {
         if (s.health <= LOW_HEALTH_NO_CRIT) {
             return "low health";
         }
-        // a full cooldown means the swing is owed right now. a hop is 7 ticks up before the first falling one, past the cap
-        // on how long a crit may hold a swing, so the "free" hop at a full cooldown was just a delay with extra steps.
-        // owed to whoever is hitting us, that is. something harmless is owed nothing, and walking up to it always ends
-        // with a full cooldown, so for those this veto was "never crit an animal"
-        if (s.ticksToFull <= 0 && !s.harmless) {
+        // a full cooldown while something is hitting us means the swing is owed right now. a hop is 7 ticks up before the
+        // first falling one, past the cap on how long a crit may hold a swing, so a hop then is a delay with extra steps.
+        // nobody hitting us (an animal, or a hostile walking into reach while our cooldown has been full for ages) is owed
+        // nothing, and without the opener the first hit of every fight was a plain one
+        if (s.ticksToFull <= 0 && !opens(s)) {
             return "cooldown full, swing now";
         }
-        if (s.ticksToFull > LEAD_TICKS) {
+        if (s.ticksToFull > LEAD_TICKS && !planning) {
             return "cooldown not in the lead yet";
         }
         return null;
