@@ -124,9 +124,14 @@ public class CollectObsidianTask extends ResourceTask {
             return new TradeWithPiglinsTask(gold_buffer, Items.OBSIDIAN, _count);
         }
 
+        // the cast bans its own cell when it's ruined or its lava got loose, and then sits there waiting for someone to
+        // move it. that someone is us
+        if (_placeObsidianTask != null && mod.getBlockTracker().unreachable(_placeObsidianTask.getPos())) {
+            _placeObsidianTask = null;
+        }
         if (_placeObsidianTask == null) {
             BlockPos goodPos = getGoodObsidianPosition(mod);
-            if (goodPos != null) {
+            if (goodPos != null && !mod.getBlockTracker().unreachable(goodPos)) {
                 _placeObsidianTask = new PlaceObsidianBucketTask(goodPos);
             } else {
                 setDebugState("Walking until we find a spot to place obsidian");
@@ -135,12 +140,14 @@ public class CollectObsidianTask extends ResourceTask {
         }
         // Try to see if we can nudge the obsidian placer closer to lava.
         //noinspection ConstantConditions
-        if (_placeObsidianTask != null && !mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
+        // not while the cast has lava out: the bucket that just went is "no lava bucket" too, and a cast scooping its spill
+        // walks off its post on purpose
+        if (_placeObsidianTask != null && !mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && !_placeObsidianTask.ownsTheLava(mod)) {
             // We've moved sort of far away from our post, and this will STOP running when we grab our lava
             // (which is exactly when we want it to run and no more!
             if (!_placeObsidianTask.getPos().closerToCenterThan(mod.getPlayer().position(), 4)) {
                 BlockPos goodPos = getGoodObsidianPosition(mod);
-                if (goodPos != null) {
+                if (goodPos != null && !mod.getBlockTracker().unreachable(goodPos)) {
                     Debug.logMessage("(nudged obsidian target closer)");
                     _placeObsidianTask = new PlaceObsidianBucketTask(goodPos);
                 }
