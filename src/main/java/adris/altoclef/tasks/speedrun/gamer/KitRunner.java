@@ -53,6 +53,11 @@ public final class KitRunner {
     // need but it is also the task cache's key, keep the two jobs apart
     private List<KitNeed> needs = List.of();
     private KitNeed current;
+    // see watchArmor
+    private List<Item> armorList;
+    private long armorTicks;
+    private long armorLastTick = HeadLatch.NEVER;
+    private List<Item> armorGaveUp;
 
     public KitRunner() {
         this(KitRunner::build);
@@ -62,7 +67,28 @@ public final class KitRunner {
         this.builder = builder;
     }
 
+    // the armor on clock: the pieces we are putting on and how many ticks we really ran it for them. only back to back ticks count:
+    // the runner is not ticked while a fight or a side job has the wheel, and a 20 s skeleton fight is not the equip being stuck.
+    // the same pieces for ARMOR_STUCK_TICKS is a piece the task can't reach, then armorGaveUp holds them and armor on goes to the
+    // back of the runner's list until toEquip changes (worn, lost, a new one)
+    private void watchArmor(KitNeed need, List<Item> wantOn, long now) {
+        if (!KitNeed.EQUIP_ARMOR.equals(need.catalogueName())) {
+            return;
+        }
+        if (!wantOn.equals(armorList)) {
+            armorList = wantOn;
+            armorTicks = 0;
+        } else if (now == armorLastTick + 1 && ++armorTicks >= HeadLatch.ARMOR_STUCK_TICKS) {
+            armorGaveUp = wantOn;
+        }
+        armorLastTick = now;
+    }
+
     public void reset() {
+        armorList = null;
+        armorTicks = 0;
+        armorLastTick = HeadLatch.NEVER;
+        armorGaveUp = null;
         key = null;
         keySince = 0;
         missingSince = HeadLatch.NEVER;
@@ -130,8 +156,16 @@ public final class KitRunner {
         }
         GamerFacts f = ctx.facts();
         watchGone(f, needs);
+        // armor on first (HeadLatch.armorFirst), last once we gave up on exactly these pieces. the give up goes by the bag, not by
+        // the plan, so a plan that drops armor on for a tick does not buy a stuck piece another 20 s
+        List<Item> wantOn = KitPlanner.toEquip(f, ctx.cfg().overworld);
+        if (!wantOn.equals(armorGaveUp)) {
+            armorGaveUp = null;
+        }
+        List<KitNeed> picks = armorGaveUp == null ? HeadLatch.armorFirst(needs) : HeadLatch.armorLast(needs);
         // the need we are running keeps the head for a few seconds, see HeadLatch
-        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), needs, f);
+        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), picks, f);
+        watchArmor(need, wantOn, f.gameTime());
         if (missingSince != HeadLatch.NEVER && !need.equals(key)) {
             Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " handed over to " + need.catalogueName() + " x" + need.count()
                     + (HeadLatch.satisfied(key, f) ? ", we hold it" : " after " + (f.gameTime() - missingSince) + " ticks out of the plan"));

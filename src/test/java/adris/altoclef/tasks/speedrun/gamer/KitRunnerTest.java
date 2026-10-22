@@ -309,6 +309,65 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void armorOnGoesFirstAndGivesUpOnAPieceItCannotReach() {
+        ctx.facts.give(Items.IRON_HELMET, 1);
+        KitNeed iron = new KitNeed("iron_ingot", 39);
+        KitNeed pick = new KitNeed("iron_pickaxe", 1);
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        List<KitNeed> plan = List.of(iron, pick, armor);
+        runner.run(ctx, plan);
+        assertEquals(armor, runner.current());
+        // the hud's list is still the plan as handed in
+        assertEquals(plan, runner.needs());
+        // the helmet never goes on (a cursed piece over the slot, say): the runner lets go and the iron carries on
+        for (int t = 1; t <= HeadLatch.ARMOR_STUCK_TICKS; t++) {
+            ctx.facts.gameTime = t;
+            runner.run(ctx, plan);
+        }
+        ctx.facts.gameTime++;
+        runner.run(ctx, plan);
+        assertEquals(iron, runner.current());
+        ctx.facts.gameTime += 2000;
+        runner.run(ctx, plan);
+        assertEquals(iron, runner.current());
+        // a new piece in the bag is a new list: armor on first again
+        ctx.facts.give(Items.IRON_BOOTS, 1);
+        KitNeed two = new KitNeed(KitNeed.EQUIP_ARMOR, 2);
+        runner.run(ctx, List.of(iron, pick, two));
+        assertEquals(two, runner.current());
+    }
+
+    @Test
+    public void ticksTheRunnerWasNotRunDoNotCountAsStuckArmor() {
+        ctx.facts.give(Items.IRON_HELMET, 1);
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        List<KitNeed> plan = List.of(new KitNeed("iron_ingot", 39), armor);
+        runner.run(ctx, plan);
+        // a fight had the wheel for a long while: the first tick back is the equip's second tick, not its 1000th
+        ctx.facts.gameTime = 1000;
+        runner.run(ctx, plan);
+        ctx.facts.gameTime = 1001;
+        runner.run(ctx, plan);
+        assertEquals(armor, runner.current());
+    }
+
+    @Test
+    public void givenUpArmorAtThePlanHeadLetsTheRestGoFirst() {
+        ctx.facts.give(Items.IRON_HELMET, 1);
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        KitNeed flint = new KitNeed("flint_and_steel", 1);
+        // the portal gate's order once the food and buckets are done
+        List<KitNeed> plan = List.of(armor, flint);
+        for (int t = 0; t <= HeadLatch.ARMOR_STUCK_TICKS + 1; t++) {
+            ctx.facts.gameTime = t;
+            runner.run(ctx, plan);
+        }
+        assertEquals(flint, runner.current());
+        // nothing else left: it is all there is to try
+        assertEquals(List.of(armor), HeadLatch.armorLast(List.of(armor)));
+    }
+
+    @Test
     public void theHeadLineNamesOldNewAndTheFirstFourNeeds() {
         List<KitNeed> plan = List.of(new KitNeed("iron_ingot", 4), new KitNeed("food", 12), new KitNeed("log", 3),
                 new KitNeed("coal", 2), new KitNeed("flint", 1));

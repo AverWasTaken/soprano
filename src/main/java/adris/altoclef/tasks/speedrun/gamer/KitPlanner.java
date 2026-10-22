@@ -13,6 +13,7 @@ import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,7 +63,8 @@ public final class KitPlanner {
     }
 
     // everything the overworld still owes us before the portal, in order: starter tools, food, ONE combined iron ingot
-    // need (so the bot mines and smelts once instead of once per item), the crafts, armor on, wool, food top up.
+    // need (so the bot mines and smelts once instead of once per item, bar the early batch), the crafts, armor on, wool,
+    // food top up.
     // food can show up twice (min early, target at the end), the first unsatisfied one is the one that matters.
     // the engine passes the tick's FoodPlan, the short form (package only) builds its own
     static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds) {
@@ -343,17 +345,15 @@ public final class KitPlanner {
             KitNeed need = new KitNeed(name, held(f, name) + 1);
             (isTool(name) && !sticks ? stickless : out).add(need);
         }
-        // the ingots for the pick (and the shears) are in the bag: make them before mining a single ore more (EarlyIronPick)
-        if (EarlyIronPick.craftFirst(f, cfg)) {
-            moveToFront(crafts, out, "iron_pickaxe");
-            if (EarlyIronPick.shearsWithThePick(f, cfg)) {
-                moveToFront(crafts, out, "shears");
+        // the ingots for the early items are in the bag: make them before mining a single ore more (EarlyIronPick)
+        List<String> early = EarlyIronPick.front(f, cfg);
+        if (!early.isEmpty()) {
+            for (String name : early) {
+                moveToFront(crafts, out, name);
             }
-        } else if (EarlyIronPick.shearsFirst(f, cfg)) {
-            moveToFront(crafts, out, "shears");
         } else if (EarlyIronPick.due(f, cfg, ingots)) {
-            // three raw iron (five with shears owed) and no pick: smelt just those, the big batch is what comes after (and is in
-            // the list as well)
+            // enough raw iron for the pick, the chestplate, the shield and the shears (whichever are owed): smelt just those, the
+            // big batch is what comes after (and is in the list as well)
             out.add(EarlyIronPick.need(f, cfg));
         }
         // ingots cooking in a furnace we loaded count as held, or the bot would go mining a second batch while the first one cooks
@@ -362,6 +362,8 @@ public final class KitPlanner {
         }
         out.addAll(crafts);
         out.addAll(stickless);
+        // the plan keeps armor on back here so the plan head stays the real work for everyone reading it (the climb, the benches,
+        // the furnace rules). the runner is what puts it on first (HeadLatch.armorFirst)
         int worn = toEquip(f, cfg).size();
         if (worn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, worn));
@@ -554,6 +556,18 @@ public final class KitPlanner {
     // ingots one of this item costs, 0 for everything that is not made of iron
     public static int ingotCost(String name) {
         return INGOTS.getOrDefault(name, 0);
+    }
+
+    // the iron kit items (armor included) still missing, the ones a DiamondSpend pick stands in for left out. the same list
+    // ingotsNeeded sums, so the early batch never smelts for something the big need does not count
+    static Set<String> ironItemsOwed(GamerFacts f, OverworldConfig cfg) {
+        Set<String> out = new HashSet<>();
+        for (KitItem k : ironItems(f, cfg)) {
+            if (missing(f, k.item, k.count) > 0) {
+                out.add(k.item);
+            }
+        }
+        return out;
     }
 
     // ingots the missing iron items still need in total (what the combined iron need is sized by)

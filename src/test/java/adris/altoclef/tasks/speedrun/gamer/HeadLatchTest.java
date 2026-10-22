@@ -206,8 +206,8 @@ public class HeadLatchTest {
     // mid move and the latch let go of it (it is not owed any more), so the head was the 39 need
     @Test
     public void theEarlyBatchStaysTheHeadWhileItsOreIsMidMove() {
-        // the default kit still owes shears, so the early batch is the pick's 3 plus the shears' 2
-        KitNeed early = new KitNeed("iron_ingot", EarlyIronPick.INGOTS + EarlyIronPick.SHEARS_INGOTS);
+        // the default kit owes all four early items: pick 3, chestplate 8, shield 1, shears 2
+        KitNeed early = new KitNeed("iron_ingot", 14);
         FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         moving.foodUnits = 70;
@@ -221,6 +221,43 @@ public class HeadLatchTest {
         plain.foodUnits = 70;
         List<KitNeed> old = KitPlanner.plan(plain, cfg, 8);
         assertEquals(new KitNeed("iron_ingot", 40), pick(early, 0, 20, old, plain));
+    }
+
+    @Test
+    public void armorFirstOnlyMovesArmorOn() {
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        KitNeed shield = new KitNeed("shield", 1);
+        assertEquals(List.of(armor, IRON, shield), HeadLatch.armorFirst(List.of(IRON, shield, armor)));
+        assertEquals(List.of(armor, IRON), HeadLatch.armorFirst(List.of(armor, IRON)));
+        assertEquals(List.of(IRON, shield), HeadLatch.armorFirst(List.of(IRON, shield)));
+    }
+
+    @Test
+    public void armorInTheBagWaitsForARunningCraftThenGoesOn() {
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        KitNeed shield = new KitNeed("shield", 1);
+        List<KitNeed> plan = List.of(armor, shield, IRON);
+        // past the plain dwell the craft is still ours, it is half way through its grid
+        assertEquals(shield, pick(shield, 0, HeadLatch.DWELL_TICKS + 50, plan, f));
+        // a craft that has taken this long is stuck: armor on
+        assertEquals(armor, pick(shield, 0, HeadLatch.ARMOR_WAIT_TICKS, plan, f));
+        // the craft done (out of the plan) is armor on the same tick
+        assertEquals(armor, pick(shield, 0, 20, List.of(armor, IRON), f));
+        // anything but armor at the head is the plain dwell for a craft
+        assertEquals(IRON, pick(shield, 0, HeadLatch.DWELL_TICKS, List.of(IRON, shield), f));
+    }
+
+    @Test
+    public void theMiningNeedOnlyGetsThePlainDwellAgainstArmor() {
+        KitNeed armor = new KitNeed(KitNeed.EQUIP_ARMOR, 1);
+        List<KitNeed> plan = List.of(armor, IRON);
+        assertEquals(IRON, pick(IRON, 0, 20, plan, f));
+        assertEquals(armor, pick(IRON, 0, HeadLatch.DWELL_TICKS, plan, f));
+        // the early load in flight finishes first, same as a craft
+        KitNeed early = new KitNeed("iron_ingot", 14);
+        FakeFacts loading = new FakeFacts().give(Items.STONE_PICKAXE, 1);
+        loading.earlyLoad = true;
+        assertEquals(early, pick(early, 0, HeadLatch.DWELL_TICKS + 50, List.of(armor, early, IRON), loading));
     }
 
     // 13:11:01 and 13:11:14: the cook started, the meat went into the smoker, and five seconds after the start the dwell ran out

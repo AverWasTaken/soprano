@@ -215,6 +215,8 @@ public class KitPlannerTest {
         assertEquals(new KitNeed(KitNeed.EQUIP_ARMOR, 1), find(plan, KitNeed.EQUIP_ARMOR));
         assertTrue(names(plan).indexOf(KitNeed.EQUIP_ARMOR) > names(plan).indexOf("iron_boots"));
         assertTrue(names(plan).indexOf(KitNeed.EQUIP_ARMOR) < names(plan).indexOf("wool"));
+        // in the plan, that is. the runner puts it on first (HeadLatch.armorFirst)
+        assertEquals(new KitNeed(KitNeed.EQUIP_ARMOR, 1), HeadLatch.armorFirst(plan).get(0));
         assertEquals(List.of(Items.IRON_HELMET), KitPlanner.toEquip(f, cfg));
     }
 
@@ -1087,11 +1089,13 @@ public class KitPlannerTest {
 
     @Test
     public void rawIronForAnEarlyPickIsNotSmeltedForAPickWeAreAboutToOutclass() {
+        // the pick drops out of the early batch, the chestplate, shield and shears are still worth smelting early (11)
         FakeFacts raw = new FakeFacts().give(Items.RAW_IRON, 5).give(Items.DIAMOND, 3);
-        assertFalse(EarlyIronPick.wanted(raw, cfg));
+        assertFalse(EarlyIronPick.owed(raw, cfg).contains("iron_pickaxe"));
+        assertEquals(11, EarlyIronPick.batch(raw, cfg));
         assertFalse(EarlyIronPick.due(raw, cfg, KitPlanner.ingotsNeeded(raw, cfg)));
-        // and without the diamonds it is the early batch it always was
-        assertTrue(EarlyIronPick.due(new FakeFacts().give(Items.RAW_IRON, 5), cfg, 40));
+        // and without the diamonds it is the whole early batch, the pick's three included
+        assertTrue(EarlyIronPick.due(new FakeFacts().give(Items.RAW_IRON, 14), cfg, 40));
     }
 
     @Test

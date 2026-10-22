@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -18,13 +19,22 @@ public final class HeadLatch {
     private HeadLatch() {
     }
 
+    // how long armor in the bag lets a craft finish before it cuts in. a craft is a few seconds at the table,
+    // this is for one that has to turn logs into planks first. one that takes longer than this is stuck and the armor goes on
+    public static final long ARMOR_WAIT_TICKS = 600;
+    // putting armor on is a second. this long on it with the same pieces still to go on is a piece it cannot reach (a cursed one
+    // worn over the slot, one stuck in the offhand or the 2x2 grid) and EquipArmorTask never gives up, so the runner does
+    // (KitRunner.watchArmor): armor on goes to the back of its list until the pieces change
+    public static final long ARMOR_STUCK_TICKS = 400;
+
     // the need to run this tick. `running` started at `since` (game ticks), needs.get(0) is what the planner wants now.
     // `missingSince` is the tick the running need dropped out of the plan (NEVER while it is in). the running one is kept only
     // while all of these hold, any one of them failing hands over to the planner:
     //   - it is still owed, exactly as it was asked (resized means a different job). a log, planks or cobble need gone from the
     //     list is only believed once we hold its count, or it has stayed gone for a whole dwell: one planner input wobbling (a table that counts at 15
     //     blocks and not at 22) dropped the log need for a moment, and that moment used to hand the head straight over
-    //   - the dwell is not up (a cook with its station has no dwell, see below)
+    //   - the dwell is not up (a cook with its station has no dwell, a craft ahead of armor on gets
+    //     ARMOR_WAIT_TICKS and the early load its own latch, see below)
     //   - the planner's head is not a pickaxe while we hold none at all: nothing to mine with is not something to wait out
     // side jobs and chains (golem, mob defense, food chain) sit above the runner and never come through here
     public static KitNeed pick(KitNeed running, long since, long missingSince, long now, List<KitNeed> needs, GamerFacts f) {
@@ -46,10 +56,55 @@ public final class HeadLatch {
         if (KitNeed.isCookName(running.catalogueName()) && f.cookStation() != null) {
             return running;
         }
+        if (waitsForArmor(running, since, now, head, f)) {
+            return running;
+        }
         if (now < since || now - since >= DWELL_TICKS) {
             return head;
         }
         return running;
+    }
+
+    // the list the runner picks from: armor on moved to the front. the plan keeps it behind the crafts so everyone reading the plan
+    // head (the climb, the benches, the furnace rules) still sees the real work, the runner is the only one that puts it on first.
+    // it used to wait behind every craft of the kit while the chestplate sat in the bag at armor 0
+    public static List<KitNeed> armorFirst(List<KitNeed> needs) {
+        for (int i = 1; i < needs.size(); i++) {
+            if (KitNeed.EQUIP_ARMOR.equals(needs.get(i).catalogueName())) {
+                List<KitNeed> out = new ArrayList<>(needs);
+                out.add(0, out.remove(i));
+                return out;
+            }
+        }
+        return needs;
+    }
+
+    // armor on given up on (KitRunner.watchArmor): everything else goes first. a plan with nothing else in it still gets it, it
+    // is the only thing left to try
+    public static List<KitNeed> armorLast(List<KitNeed> needs) {
+        for (int i = 0; i < needs.size() - 1; i++) {
+            if (KitNeed.EQUIP_ARMOR.equals(needs.get(i).catalogueName())) {
+                List<KitNeed> out = new ArrayList<>(needs);
+                out.add(out.remove(i));
+                return out;
+            }
+        }
+        return needs;
+    }
+
+    // armor on leads the runner's list the moment there is some in the bag (armorFirst), but a craft half way through its grid or ore
+    // half way into the early furnace is not something to walk off from for a second of clicking: it finishes, then the armor.
+    // the mining need and the rest get the plain dwell, digging on at armor 0 is the thing this is all about
+    // (the load is timed by its own latch, FurnacePlan.earlyLoadInFlight: keySince is when the early need became the head, which
+    // is all the mining for its ore too, and that would be past any wait the moment the ore went in)
+    static boolean waitsForArmor(KitNeed running, long since, long now, KitNeed head, GamerFacts f) {
+        if (!KitNeed.EQUIP_ARMOR.equals(head.catalogueName())) {
+            return false;
+        }
+        if ("iron_ingot".equals(running.catalogueName())) {
+            return f.earlyLoadInFlight();
+        }
+        return running.isCraft() && now >= since && now - since < ARMOR_WAIT_TICKS;
     }
 
     // the plan's entry for the same thing as `running` (same name, any count), null when the plan has none
