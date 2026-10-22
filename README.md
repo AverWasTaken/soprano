@@ -38,8 +38,8 @@
 
 | Minecraft | Latest nightly | Loaders | Download |
 |:--|:--|:--|:--|
-| 26.3 | 1.1.7-nightly.1 | Fabric, Forge, NeoForge | [Soprano v1.1.7-nightly.1](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1) |
-| Any Version | 1.1.7-nightly.1 | Fabric | [Soprano v1.1.7-nightly.1 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1-anyversion) |
+| 26.3 | 1.1.7-nightly.2 | Fabric, Forge, NeoForge | [Soprano v1.1.7-nightly.2](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.2) |
+| Any Version | 1.1.7-nightly.2 | Fabric | [Soprano v1.1.7-nightly.2 Any Version](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.2-anyversion) |
 
 <details>
 <summary><b>The version I want isn't here</b></summary>
