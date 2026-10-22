@@ -5,19 +5,24 @@ import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
+import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.PearlHuntHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
+import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -28,8 +33,9 @@ import java.util.function.Supplier;
 public class PearlHuntTask extends Task {
     // close enough to the forest that the endermen are in view distance
     private static final double AT_HOTSPOT_BLOCKS = 40;
-    // do not stand around in the dark for an angry enderman forever
-    private static final double ANGRY_RANGE = 256;
+    // a nook that came up empty is not tried again for this long (the loot walk below moves us somewhere else meanwhile)
+    private static final long NOOK_RETRY_TICKS = 400;
+    private static final int NOOK_TRIES = 4;
     // the walk to the forest is not allowed to take longer than this, after that we hunt wherever we are
     private static final double HOTSPOT_WALK_SECONDS = 150;
     // an angry one across a lava lake never arrives: after this long on one target it is somebody else's problem
@@ -52,6 +58,9 @@ public class PearlHuntTask extends Task {
     private KillEntityTask angryTask;
     private final TaskClock angrySpent = new TaskClock();
     private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
+    private NookHuntTask nook;
+    private int nookFails;
+    private long nookRetryAt = Long.MIN_VALUE;
     private String step = "Looking for endermen";
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
@@ -81,6 +90,17 @@ public class PearlHuntTask extends Task {
         if (WorldHelper.getCurrentDimension() != dimension) {
             return say("Heading to " + HudText.dimension(dimension), goToDimension);
         }
+        long gameTime = mod.getWorld().getGameTime();
+        if (dimension == Dimension.NETHER) {
+            Task hole = nookStep(mod, gameTime);
+            if (hole != null) {
+                // the combat brain keeps its hands off endermen while this is stamped (only with the nook up, the plain hunt
+                // in the open still runs by the usual rules), see EndermanNook.brainStandsDown
+                PearlHuntHook.mark(gameTime);
+                return say("Hunting endermen from a nook", hole);
+            }
+            PearlHuntHook.clear();
+        }
         Task angry = fightAngry(mod);
         if (angry != null) {
             return say("Fighting an angry enderman", angry);
@@ -88,6 +108,10 @@ public class PearlHuntTask extends Task {
         Task walk = walkToHotspot(mod);
         if (walk != null) {
             return say("Heading for the warped forest", walk);
+        }
+        if (dimension == Dimension.NETHER && !mayStartOne(mod)) {
+            // no nook to do it from and not in shape to start one in the open: stand and let it pass
+            return say("Recovering before the next enderman", null);
         }
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
     }
@@ -98,33 +122,87 @@ public class PearlHuntTask extends Task {
         return child;
     }
 
-    // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored.
+    // the nook when there is an enderman near enough to use it with, null when the plain hunt below should run. a nook that
+    // failed is not tried again for a bit, and after a few the plain hunt is all there is
+    private Task nookStep(AltoClef mod, long gameTime) {
+        if (nook != null && nook.isFinished(mod)) {
+            if (nook.failed()) {
+                nookFails++;
+            }
+            nook = null;
+            nookRetryAt = gameTime + NOOK_RETRY_TICKS;
+        }
+        if (nook == null) {
+            if (!EndermanNook.latchSees(nearestEnderman(mod)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
+                return null;
+            }
+            nook = new NookHuntTask();
+        }
+        return nook;
+    }
+
+    // out in the open with no nook: nothing is started on purpose while burning, hurt or next to lava
+    private boolean mayStartOne(AltoClef mod) {
+        if (!mod.getEntityTracker().entityFound(Enderman.class)) {
+            return true;
+        }
+        BlockPos at = mod.getPlayer().blockPosition();
+        int r = EndermanNook.AGGRO_LAVA_GAP;
+        boolean lava = false;
+        for (int x = -r; x <= r && !lava; x++) {
+            for (int y = -r; y <= r && !lava; y++) {
+                for (int z = -r; z <= r && !lava; z++) {
+                    lava = mod.getWorld().getFluidState(at.offset(x, y, z)).is(FluidTags.LAVA);
+                }
+            }
+        }
+        // (the "no second angry one" gate is the nook's: counting the ones we gave up on here would park us in the open for good)
+        return EndermanNook.mayAggro(mod.getPlayer().isOnFire(), mod.getPlayer().getHealth(), lava ? 1 : 99, 0, Double.MAX_VALUE);
+    }
+
+    // distance to the nearest tracked enderman of any mood, infinity for none
+    private static double nearestEnderman(AltoClef mod) {
+        double best = Double.POSITIVE_INFINITY;
+        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (man.isAlive()) {
+                best = Math.min(best, man.distanceTo(mod.getPlayer()));
+            }
+        }
+        return best;
+    }
+
+    // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored. the
+    // nearest one first, and only inside the range where it walks to us (past it, it teleports to us by itself).
     // but only for a while per target, one we cannot reach (lava, a ledge) does not get to stall the whole hunt
     private Task fightAngry(AltoClef mod) {
-        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (!man.isAlive() || !man.isCreepy() || angryGivenUp.contains(man)
-                    || !man.position().closerThan(mod.getPlayer().position(), ANGRY_RANGE)) {
-                continue;
-            }
-            if (angryTarget != man) {
-                angryTarget = man;
-                angryTask = new KillEntityTask(man);
-                angrySpent.reset();
-            }
-            angrySpent.tick();
-            if (angrySpent.over(ANGRY_SECONDS)) {
-                angryGivenUp.add(man);
-                continue;
-            }
-            return angryTask;
+        List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
+        double[] dist = new double[men.size()];
+        for (int i = 0; i < dist.length; i++) {
+            Enderman man = men.get(i);
+            dist[i] = man.isAlive() && man.isCreepy() && !angryGivenUp.contains(man) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
-        return null;
+        int at = EndermanNook.nearestAngry(dist);
+        if (at < 0) {
+            return null;
+        }
+        Enderman man = men.get(at);
+        if (angryTarget != man) {
+            angryTarget = man;
+            angryTask = new KillEntityTask(man);
+            angrySpent.reset();
+        }
+        angrySpent.tick();
+        if (angrySpent.over(ANGRY_SECONDS)) {
+            angryGivenUp.add(man);
+            return null;
+        }
+        return angryTask;
     }
 
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
     private Task walkToHotspot(AltoClef mod) {
         RunState.Pos spot = hotspot.get();
-        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(Enderman.class), System.currentTimeMillis() / 1000.0);
+        boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod)), System.currentTimeMillis() / 1000.0);
         if (spot == null) {
             return null;
         }
@@ -154,6 +232,10 @@ public class PearlHuntTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // (an interrupt is a meal, not the end of the hunt: the stamp goes stale by itself soon enough)
+        if (interruptTask == null) {
+            PearlHuntHook.clear();
+        }
     }
 
     @Override

@@ -195,6 +195,61 @@ public class CombatAimMathTest {
         assertTrue(t > 3);
     }
 
+    // an enderman: 0.6 wide, 2.9 tall, its eye 2.55 up
+    private static double[] enderman(double x, double z) {
+        return new double[]{x - 0.3, 0, z - 0.3, x + 0.3, 2.9, z + 0.3};
+    }
+
+    @Test
+    public void endermanInnerBoxStaysLowOnTheBody() {
+        double[] inner = CombatAimMath.innerBox(enderman(0, 2), CombatAimMath.ENDERMAN_LOW, CombatAimMath.ENDERMAN_HIGH);
+        assertEquals(0.29, inner[1], 1e-9);
+        assertEquals(1.16, inner[4], 1e-9);
+        // the default box is untouched
+        assertEquals(2.9 * CombatAimMath.HIGH, CombatAimMath.innerBox(enderman(0, 2))[4], 1e-9);
+    }
+
+    @Test
+    public void capHeightPullsAHighPointDownAndLeavesALowOne() {
+        double[] box = enderman(0, 2);
+        assertEquals(1.16, CombatAimMath.capHeight(new double[]{0, 2.5, 2}, box, CombatAimMath.ENDERMAN_HIGH)[1], 1e-9);
+        assertEquals(0.5, CombatAimMath.capHeight(new double[]{0, 0.5, 2}, box, CombatAimMath.ENDERMAN_HIGH)[1], 1e-9);
+    }
+
+    @Test
+    public void endermanAimNeverLandsInTheEyeCone() {
+        double[] box = enderman(0, 2);
+        double[] eye = {0, 2.55, 2};
+        double[] inner = CombatAimMath.innerBox(box, CombatAimMath.ENDERMAN_LOW, CombatAimMath.ENDERMAN_HIGH);
+        // the worst asks: the head, the eye, the preferred chest point, all capped, from standing and from a pit
+        double[][] asks = {{0, 2.55, 2}, {0, 2.0, 2}, CombatAimMath.preferredPoint(box, 1.62)};
+        for (double eyeY : new double[]{1.62, 0.9}) {
+            double[] mine = {0, eyeY, 0};
+            for (double[] ask : asks) {
+                double[] pref = CombatAimMath.capHeight(ask, box, CombatAimMath.ENDERMAN_HIGH);
+                double[] point = CombatAimMath.aimPoint(mine, dirTo(mine, pref), inner, pref);
+                assertFalse(CombatAimMath.inEyeCone(mine, dirTo(mine, point), eye));
+            }
+        }
+    }
+
+    @Test
+    public void eyeConeIsTightAtRangeAndWideUpClose() {
+        double[] mine = {0, 1.62, 0};
+        double[] eye = {0, 2.55, 2};
+        // dead on is a stare
+        assertTrue(CombatAimMath.inEyeCone(mine, dirTo(mine, eye), eye));
+        // a look at its belt from two blocks is not
+        assertFalse(CombatAimMath.inEyeCone(mine, dirTo(mine, new double[]{0, 1.2, 2}), eye));
+        // five degrees off is inside the cone at one block and outside it at thirty
+        double[] near = {0, 1.62, 1};
+        double[] far = {0, 1.62, 30};
+        float[] toNear = CombatAimMath.rotationTo(mine, new double[]{0, 1.62, 1});
+        double[] nearDir = CombatAimMath.direction(toNear[0], toNear[1] - 5);
+        assertTrue(CombatAimMath.inEyeCone(mine, nearDir, near));
+        assertFalse(CombatAimMath.inEyeCone(mine, nearDir, far));
+    }
+
     @Test
     public void lookingAtTheInnerBoxIsAlwaysAHitOnTheWholeBox() {
         // the point of the inner box: anywhere the aim settles is a hit, with margin for the mob to shuffle

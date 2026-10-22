@@ -37,14 +37,43 @@ public final class CombatAimMath {
     private CombatAimMath() {
     }
 
+    // an enderman takes a stare as a dare: its eye sits at 88% of its height, inside a cone of 1 - 0.025/dist around the
+    // line to it, so everything we aim at stays well under that. the legs are fine, it has a lot of them
+    public static final double ENDERMAN_LOW = 0.1;
+    public static final double ENDERMAN_HIGH = 0.4;
+
     public static double[] innerBox(double[] box) {
+        return innerBox(box, LOW, HIGH);
+    }
+
+    public static double[] innerBox(double[] box, double low, double high) {
         double w = box[3] - box[0];
         double d = box[5] - box[2];
         double h = box[4] - box[1];
         return new double[]{
-                box[0] + w * SIDE_INSET, box[1] + h * LOW, box[2] + d * SIDE_INSET,
-                box[3] - w * SIDE_INSET, box[1] + h * HIGH, box[5] - d * SIDE_INSET
+                box[0] + w * SIDE_INSET, box[1] + h * low, box[2] + d * SIDE_INSET,
+                box[3] - w * SIDE_INSET, box[1] + h * high, box[5] - d * SIDE_INSET
         };
+    }
+
+    // the same point with its height pulled down to at most this fraction of the box
+    public static double[] capHeight(double[] point, double[] box, double fraction) {
+        double top = box[1] + (box[4] - box[1]) * fraction;
+        return new double[]{point[0], Math.min(point[1], top), point[2]};
+    }
+
+    // would a stare along dir from eye land on a target eye (vanilla's isLookingAtMe: the dot product of the look and the
+    // line to its eye has to beat 1 - 0.025/distance). on top of each other is a yes, we are in its face
+    public static boolean inEyeCone(double[] eye, double[] dir, double[] targetEye) {
+        double dx = targetEye[0] - eye[0];
+        double dy = targetEye[1] - eye[1];
+        double dz = targetEye[2] - eye[2];
+        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < 1e-6) {
+            return true;
+        }
+        double dot = (dx * dir[0] + dy * dir[1] + dz * dir[2]) / dist;
+        return dot > 1 - 0.025 / dist;
     }
 
     // the middle, 70% up. or lower, down to the bottom of the inner box, when our eye is lower than that: a mob up a slope
