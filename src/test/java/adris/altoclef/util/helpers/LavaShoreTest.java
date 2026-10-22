@@ -167,10 +167,11 @@ public class LavaShoreTest {
         assertFalse(LavaShore.hold(false, true, false, false, true, false));
         // a live path on the ground is the path's business
         assertFalse(LavaShore.hold(true, true, false, true, true, false));
-        // airborne after a hit: back unsafe or a path that was going somewhere
+        // airborne after a hit with the back bad
         assertTrue(LavaShore.hold(true, false, true, false, true, false));
-        assertTrue(LavaShore.hold(true, false, true, true, false, false));
         assertFalse(LavaShore.hold(true, false, true, false, false, false));
+        // a path wipes the keys each tick, no hold
+        assertFalse(LavaShore.hold(true, false, true, true, true, false));
         // airborne with no fresh hit (a jump)
         assertFalse(LavaShore.hold(true, false, false, true, true, false));
     }

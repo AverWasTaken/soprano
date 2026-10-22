@@ -6,10 +6,9 @@ import baritone.pathing.movement.CliffAvoidance.Cells;
 
 // fighting next to lava, no world: cells come in through a lookup so the whole thing can be tested without minecraft.
 //
-// the nether deaths were never the mob. a magma cube bites for two hearts, the lava finishes the rest. a hit throws us about
-// two blocks when we stand still and next to nothing when we lean into it, and walking up to a foe on a shore either puts us
-// in the lava ourselves or leaves us on the rim for the next hit. so: no approach walks near lava, and when the way behind us
-// is a drop we press toward the foe instead of standing there to be thrown
+// a hit throws us about two blocks when we stand still and next to nothing when we lean into it, and walking up to a foe
+// on a shore puts us in the lava or leaves us on the rim for the next hit. so no approach walks near lava, and when the way
+// behind us is a drop we press toward the foe instead of standing there to be thrown
 public final class LavaShore {
     // how close lava has to be (horizontally) for a spot to count as a shore
     static final int NEAR = 2;
@@ -122,16 +121,14 @@ public final class LavaShore {
         return new Keys(fwd > edge, fwd < -edge, rgt < -edge, rgt > edge);
     }
 
-    // the whole hold call. nether only. on the ground that is standing (no path) with an unsafe back, in the air it is a fresh
-    // hit (hurtTime) with an unsafe back or a path that was going somewhere. never when the cell ahead is itself bad
+    // the whole hold call. nether only, and only with no path: a running movement wipes the keys every tick, so a knock that
+    // comes mid-path is the landing cancel's job. on the ground it is standing with an unsafe back, in the air a fresh mob hit
+    // with an unsafe back. never when the cell ahead is itself bad
     public static boolean hold(boolean nether, boolean onGround, boolean freshHit, boolean pathLive, boolean backUnsafe, boolean aheadUnsafe) {
-        if (!nether || aheadUnsafe) {
+        if (!nether || aheadUnsafe || pathLive || !backUnsafe) {
             return false;
         }
-        if (onGround) {
-            return backUnsafe && !pathLive;
-        }
-        return freshHit && (backUnsafe || pathLive);
+        return onGround || freshHit;
     }
 
     // landed after a hit that came with a path: the executor would walk the old dest across whatever lava the knock put

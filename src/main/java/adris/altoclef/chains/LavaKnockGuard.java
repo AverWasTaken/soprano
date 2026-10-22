@@ -12,36 +12,53 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.path.PathExecutor;
 import baritone.api.utils.BetterBlockPos;
 import net.minecraft.client.player.LocalPlayer;
+import java.util.Arrays;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 
-// the world half of LavaShore. a hit next to lava throws us about two blocks, which is the whole fight lost. standing still
-// with a drop behind us we lean toward the foe (a knock into held keys goes a third as far), and a knock that came while we
-// were walking a path throws the path away on landing if it left us off it near lava, so the executor does not walk the old
-// dest across a cell that is now lava
+// the world half of LavaShore. standing still with a drop behind us we lean toward the foe (a knock into held keys goes a
+// third as far). a knock that came while we were walking a path throws the path away on landing if it left us off it near
+// lava, so the executor does not walk the old dest across a cell that is now lava. (no leaning while a path runs: the
+// movement clears the forced keys every tick)
 final class LavaKnockGuard {
     private static final Input[] KEYS = {Input.MOVE_FORWARD, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT};
     // a hit that never got us off the ground is not coming back down
     private static final int ARM_TICKS = 30;
 
     private final boolean[] _held = new boolean[4];
+    private int _lastHurt;
     private boolean _armed;
     private boolean _wasAirborne;
     private int _armedFor;
 
+    // forget everything, the world is gone
+    void reset() {
+        _armed = false;
+        _lastHurt = 0;
+        Arrays.fill(_held, false);
+    }
+
     void tick(AltoClef mod, CombatBrain brain) {
         LocalPlayer player = mod.getPlayer();
-        if (player == null || WorldHelper.getCurrentDimension() != Dimension.NETHER) {
+        // burning or swimming in lava is the escape task's, its keys and ours would fight over the wheel
+        if (player == null || WorldHelper.getCurrentDimension() != Dimension.NETHER || player.isInLava() || player.isOnFire()) {
             release(mod);
             _armed = false;
+            _lastHurt = player == null ? 0 : player.hurtTime;
             return;
         }
         PathingBehavior pathing = mod.getClientBaritone().getPathingBehavior();
         boolean pathLive = pathing.isPathing();
         boolean onGround = player.onGround();
-        boolean freshHit = player.hurtTime > 0;
+        // a mob did it: fire, lava and falls also tick hurtTime
+        boolean mobHit = player.getLastDamageSource() != null && player.getLastDamageSource().getEntity() instanceof Mob;
+        boolean freshHit = player.hurtTime > 0 && mobHit;
+        // only the tick it starts, hurtTime stays up for ten
+        boolean risingHit = freshHit && player.hurtTime > _lastHurt;
+        _lastHurt = player.hurtTime;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
 
-        if (freshHit && pathLive && !_armed) {
+        if (risingHit && pathLive && !_armed) {
             _armed = true;
             _wasAirborne = false;
             _armedFor = 0;
@@ -108,9 +125,13 @@ final class LavaKnockGuard {
         }
         int at = current.getPosition();
         var movements = current.getPath().movements();
-        if (at < 0 || at >= movements.size() || !(movements.get(at) instanceof Movement m)) {
-            return false;
+        BetterBlockPos feet = new BetterBlockPos(player.blockPosition());
+        // the one it was on and the next, a knock can carry us a step along as easily as off to the side
+        for (int i = at; i <= at + 1 && i < movements.size(); i++) {
+            if (i >= 0 && movements.get(i) instanceof Movement m && m.getValidPositions().contains(feet)) {
+                return true;
+            }
         }
-        return m.getValidPositions().contains(new BetterBlockPos(player.blockPosition()));
+        return false;
     }
 }

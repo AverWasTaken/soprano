@@ -198,6 +198,12 @@ public class MobDefenseChain extends SingleTaskChain {
         return getPriorityInner(mod);
     }
 
+    @Override
+    protected void onStop(AltoClef mod) {
+        _lavaGuard.release(mod);
+        super.onStop(mod);
+    }
+
     private void stopShielding(AltoClef mod) {
         if (_shielding) {
             ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
@@ -229,6 +235,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private float computePriority(AltoClef mod) {
         if (!AltoClef.inGame()) {
+            _lavaGuard.reset();
             return Float.NEGATIVE_INFINITY;
         }
 
