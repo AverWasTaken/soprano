@@ -5,7 +5,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
-import adris.altoclef.util.helpers.LookHelper;
+import baritone.behavior.CombatAim;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -124,7 +124,7 @@ public class KillAura {
                     // mid movement or knocked back mid movement the path is never safe to cancel, and a fight waiting for it
                     // took its hits with the shield down. same deal as the arrow shield in MobDefenseChain
                     && (_fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
-                LookHelper.lookAt(mod, entities.get().getEyePosition());
+                mod.getControllerExtras().aimAt(entities.get(), CombatAim.Priority.AURA);
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
@@ -203,11 +203,13 @@ public class KillAura {
         }
     }
 
-    // the same guards attack() has before it equips, so a mob we would not swing at does not get a weapon swap either
+    // the same guards attack() has before it equips, so a mob we would not swing at does not get a weapon swap (or our head)
+    // either. the aim is asked for every tick here and not just on the swing tick, the turn takes a few ticks
     private void readyTheWeapon(AltoClef mod, Entity entity) {
         if (entity == null || entity instanceof LargeFireball) return;
         if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
         if (inFieldRange(mod, entity)) {
+            mod.getControllerExtras().aimAt(entity, CombatAim.Priority.AURA);
             equipWeapon(mod);
         }
     }
@@ -242,7 +244,7 @@ public class KillAura {
         // second guard: a wolf nobody poked is not our enemy, whatever put it in the target list
         if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
         if (!(entity instanceof LargeFireball)) {
-            LookHelper.lookAt(mod, entity.getEyePosition());
+            mod.getControllerExtras().aimAt(entity, CombatAim.Priority.AURA);
         }
         if (inFieldRange(mod, entity)) {
             if (entity instanceof LargeFireball) {

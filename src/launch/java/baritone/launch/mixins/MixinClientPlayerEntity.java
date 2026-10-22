@@ -23,6 +23,7 @@ import baritone.api.event.events.PlayerUpdateEvent;
 import baritone.api.event.events.SprintStateEvent;
 import baritone.api.event.events.type.EventState;
 import baritone.behavior.LookBehavior;
+import baritone.utils.InputOverrideHandler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Input;
@@ -119,6 +120,11 @@ public class MixinClientPlayerEntity {
         if (baritone == null) {
             return instance.sprint();
         }
+        // a crit hop in the air. checked before the event so nobody's opinion (a path, the toggle) can outvote it, the lock
+        // only lives while the hop keeps asking for it
+        if (((InputOverrideHandler) baritone.getInputOverrideHandler()).sprintLocked()) {
+            return false;
+        }
         SprintStateEvent event = new SprintStateEvent();
         baritone.getGameEventHandler().onPlayerSprintState(event);
         if (event.getState() != null) {
@@ -153,7 +159,7 @@ public class MixinClientPlayerEntity {
     private void startBaritoneSprint(CallbackInfo ci) {
         LocalPlayer self = (LocalPlayer) (Object) this;
         IBaritone baritone = BaritoneAPI.getProvider().getBaritoneForPlayer(self);
-        if (baritone == null) {
+        if (baritone == null || ((InputOverrideHandler) baritone.getInputOverrideHandler()).sprintLocked()) {
             return;
         }
         SprintStateEvent event = new SprintStateEvent();

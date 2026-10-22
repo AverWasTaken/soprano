@@ -11,6 +11,8 @@ import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
+import baritone.behavior.CombatAim;
+import net.minecraft.world.item.Item;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -22,6 +24,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -82,16 +85,63 @@ public class PlayerExtraController {
         return _swings;
     }
 
+    // the game tick of the last swing that went out. the kill task and the aura both swing in the same tick sometimes, and
+    // two attack packets in one tick is a thing no hand does
+    private long _lastSwingTick = Long.MIN_VALUE;
+
     public boolean attack(Entity entity) {
-        if (inKillReach(entity)) {
-            // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
-            _mod.getEntityTracker().noteProvoked(entity);
-            _mod.getController().attack(_mod.getPlayer(), entity);
-            _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
-            _swings++;
-            return true;
+        long now = gameTime();
+        if (now == _lastSwingTick || !canSwingAt(entity)) {
+            return false;
         }
-        return false;
+        _lastSwingTick = now;
+        // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
+        _mod.getEntityTracker().noteProvoked(entity);
+        _mod.getController().attack(_mod.getPlayer(), entity);
+        _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+        _swings++;
+        return true;
+    }
+
+    // a mob only gets hit when the crosshair the server knows about is on it (CombatAim.onTarget). crystals and ghast balls
+    // keep the old reach-only rule: nobody aims at those, the dragon fight and the fireball swat never did, and the server
+    // doesn't care either way
+    private boolean canSwingAt(Entity entity) {
+        if (!(entity instanceof LivingEntity)) {
+            return inRange(entity) || reachGap(_mod.getPlayer(), entity) <= Baritone.settings().altoEntityReachRange.value;
+        }
+        return onTarget(entity);
+    }
+
+    public boolean onTarget(Entity entity) {
+        return combat().onTarget(entity, swingReach());
+    }
+
+    // ask for the head this tick (see CombatAim). every melee caller does this every tick it is fighting something, not only
+    // on the tick it swings, or the aim only starts turning when the swing is already due
+    public void aimAt(Entity entity, CombatAim.Priority priority) {
+        handSettling(_mod.getPlayer());
+        combat().want(entity, priority);
+    }
+
+    public void aimAt(Entity entity, CombatAim.Priority priority, Vec3 preferred) {
+        handSettling(_mod.getPlayer());
+        combat().want(entity, priority, preferred);
+    }
+
+    // the kill task's stall breaker, see CombatAim.wantOverPath
+    public void aimAtOverPath(Entity entity) {
+        handSettling(_mod.getPlayer());
+        combat().wantOverPath(entity, CombatAim.Priority.KILL_TASK);
+    }
+
+    private CombatAim combat() {
+        return _mod.getClientBaritone().getLookBehavior().combat();
+    }
+
+    // the reach a swing really has, see ReachRules.swingReach
+    public double swingReach() {
+        return ReachRules.swingReach(Baritone.settings().altoEntityReachRange.value, reachOf(_mod.getPlayer()));
     }
 
     // the stall breaker for a kill task that has stood in reach for too long: no hop, no ground check, no look at the keys,
@@ -188,6 +238,11 @@ public class PlayerExtraController {
         CritTiming.Sample sample = sample(player, target, gap);
         CritTiming.Step step = _crit.step(gameTime(), sample);
         logStep(step, sample);
+        if (step == CritTiming.Step.JUMP || step == CritTiming.Step.APPROACH || critInFlight()) {
+            // from the walk up to the swing nothing gets to turn sprint back on (toggle sprint, a held key). refreshed
+            // every tick it's wanted, so it ends by itself the tick the hop does
+            _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
+        }
         switch (step) {
             case JUMP:
                 // vanilla throws the crit away for a sprinting hit, and the jump itself would boost us forward. the stop
@@ -209,8 +264,9 @@ public class PlayerExtraController {
                 return true;
             case WAIT:
                 // a held opener while the approach path is still alive: baritone has the keys and is about to be told
-                // to stop, nothing of ours to press. (mid hop a path is a give up, so this is the only WAIT on the ground
-                // with one. in the air it is a free crit waiting on sprint, and that one needs the lines below)
+                // to stop, nothing of ours to press. (mid hop a path is a give up, so this and a settling weapon swap are
+                // the only WAITs on the ground with one. in the air it is a crit waiting on sprint or the aim, and that
+                // needs the lines below)
                 if (heldOpener(sample)) {
                     return false;
                 }
@@ -229,7 +285,8 @@ public class PlayerExtraController {
     // ground, which is worth a line
     private String _lastCritLog = "";
 
-    // a WAIT on the ground with a path alive. the machine only says that for a harmless opener
+    // a WAIT on the ground with a path alive. the machine says that for a held opener (and a settling swap, which is a
+    // tick or two of the same thing)
     private static boolean heldOpener(CritTiming.Sample s) {
         return s.onGround && s.pathing;
     }
@@ -255,15 +312,16 @@ public class PlayerExtraController {
             // resets it) or a mob that is not in the three block reach, and those two look the same without them
             LocalPlayer player = _mod.getPlayer();
             Debug.logInternal("crit: " + line + ", to full " + String.format("%.1f", s.ticksToFull) + ", near " + s.meleeNear
-                    + ", hp " + s.health + (s.pathing ? ", pathing" : "")
+                    + ", hp " + s.health + (s.pathing ? ", pathing" : "") + (s.aimed ? ", aimed" : "") + (s.settling ? ", settling" : "")
                     + ", hand " + BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath()
                     + ", scale " + String.format("%.2f", player.getAttackStrengthScale(SERVER_PARTIAL))
                     + ", gap " + String.format("%.2f", s.reachGap));
         }
     }
 
-    // tapping forward is enough, the kill task already turned us to face the mob this tick. tryPress lets go by itself, so
-    // nothing is left held down if the task changes its mind. no point shoving into a mob we are already touching
+    // tapping forward is enough: no path is walking (the machine never walks up with one), so CombatAim has the head and
+    // the movement yaw is the aim yaw, which is the mob or a few degrees from it while the turn finishes. tryPress lets go
+    // by itself, so nothing is left held down if the task changes its mind. no point shoving into a mob we are touching
     private void walkUp(double gap) {
         if (gap > WALK_UP_GAP) {
             _mod.getInputControls().tryPress(Input.MOVE_FORWARD);
@@ -279,11 +337,11 @@ public class PlayerExtraController {
         return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // the kill tasks' idea of "close enough to hit": the feet line the setting has always meant, or the eye to the nearest point
-    // of its box inside the same number. never less than the feet line, only adds the cells it misjudges (our own cell, straight
-    // above and below, a wide box)
+    // the kill tasks' idea of "close enough to hit": the eye to its box inside the swing's own reach, minus the bit the ray
+    // to the middle of the mob is longer than the shortest gap (ReachRules.killReach)
     public boolean inKillReach(Entity entity) {
-        return ReachRules.killReach(inRange(entity), reachGap(_mod.getPlayer(), entity), Baritone.settings().altoEntityReachRange.value);
+        return ReachRules.killReach(reachGap(_mod.getPlayer(), entity), Baritone.settings().altoEntityReachRange.value,
+                reachOf(_mod.getPlayer()));
     }
 
     // how fast the target is going away from us along the flat line between us, blocks per tick (negative when it is
@@ -304,9 +362,9 @@ public class PlayerExtraController {
         return reach > 0 ? reach : ReachRules.MELEE_REACH;
     }
 
-    // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself. this asks the real
-    // hop question for this mob with the pathing veto left out: the path in the way is usually the back-off itself, and
-    // asking wantsCritTick (which says no to any path) is how the back-off used to veto the hop that would have cancelled it
+    // a hop is on, or planned for this cooldown, and the back-off in the kill tasks should keep its hands to itself. this
+    // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
+    // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
         if (!Baritone.settings().altoJumpCrits.value) {
             return false;
@@ -318,9 +376,7 @@ public class PlayerExtraController {
             return false;
         }
         LocalPlayer player = _mod.getPlayer();
-        CritTiming.Sample s = sample(player, target, reachGap(player, target));
-        s.pathing = false;
-        return CritTiming.wantsHop(s);
+        return CritTiming.hopPlanned(sample(player, target, reachGap(player, target)));
     }
 
     // on the ground, coming down or swimming is the old rule, and it is what keeps a swing from spending the rise of a crit hop.
@@ -335,9 +391,15 @@ public class PlayerExtraController {
 
     private CritTiming.Sample sample(LocalPlayer player, LivingEntity target, double gap) {
         CritTiming.Sample s = new CritTiming.Sample();
-        s.inReach = inRange(target);
+        // the same reach the swing is gated on, or the machine plans hops at mobs the swing then refuses
+        s.inReach = inKillReach(target);
         s.reachGap = gap;
-        s.reach = reachOf(player);
+        s.reach = swingReach();
+        s.aimed = onTarget(target);
+        s.settling = handSettling(player);
+        // hurtTime starts at 10 on a hit and counts down, which is about the "lately" we want. a creeper never hits us before
+        // it goes off, so it counts as hitting us from the start: no opener hold on a lit fuse
+        s.recentlyHurt = player.hurtTime > 0 || target instanceof Creeper;
         s.retreatSpeed = retreatSpeed(player, target);
         s.onGround = player.onGround();
         s.falling = player.getDeltaMovement().y() < 0 && player.fallDistance > 0;
@@ -364,6 +426,27 @@ public class PlayerExtraController {
         s.lowHeadroom = !passable(level, feet.above(2));
         s.unsafeFloor = !floorAround(level, feet);
         return s;
+    }
+
+    // the item in hand the last time we looked, and the game time it last changed
+    private Item _handItem;
+    private long _handChangedAt = Long.MIN_VALUE;
+
+    // the hand changed this tick or the last one. by item, not slot and not stack: forceEquipItem moves the slot before it
+    // knows the swap worked, and the server swaps stack objects for equal copies all the time. a different item is also
+    // exactly what vanilla resets the cooldown and the attack speed for, and it only does that in the player tick, after
+    // we read them
+    private boolean handSettling(LocalPlayer player) {
+        Item now = player.getMainHandItem().getItem();
+        long t = gameTime();
+        if (_handItem == null) {
+            _handItem = now;
+        } else if (now != _handItem) {
+            _handItem = now;
+            _handChangedAt = t;
+        }
+        // (a clock that went backwards is a new world, nothing is settling there)
+        return _handChangedAt != Long.MIN_VALUE && t >= _handChangedAt && t - _handChangedAt <= 1;
     }
 
     // food on legs: pig, cow, sheep, chicken, rabbit. a wolf, a bee or a polar bear bites back once poked (NeutralMob), a

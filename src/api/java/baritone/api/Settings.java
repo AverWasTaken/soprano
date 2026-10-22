@@ -644,6 +644,18 @@ public final class Settings {
     public final Setting<Double> randomLooking = new Setting<>(0.01d);
 
     /**
+     * Turn onto mobs in melee a few degrees per tick, the way a hand on a mouse does, instead of snapping the camera
+     * onto them.
+     * <p>
+     * The turn starts slow, speeds up and settles on a point inside the middle of the mob, then tracks it as it moves.
+     * Swings only go out once the crosshair is really on the mob. {@link #randomLooking113} and {@link #randomLooking}
+     * still bound how far the aim wanders while it holds on a target, as a slow drift instead of a per tick shake.
+     * <p>
+     * Off snaps onto the same point in one tick, with the same rules about when a swing may go out.
+     */
+    public final Setting<Boolean> smoothCombatAim = new Setting<>(true);
+
+    /**
      * This is the big A* setting.
      * As long as your cost heuristic is an *underestimate*, it's guaranteed to find you the best path.
      * 3.5 is always an underestimate, even if you are sprinting.
@@ -2252,8 +2264,11 @@ public final class Settings {
     public final Setting<Boolean> altoAvoidOceanBlocks = new Setting<>(true);
 
     /**
-     * How close we must be to attack or interact with an entity. 6 works in singleplayer, 4 works better on servers
-     * that are picky about it. See {@link #blockReachDistance} for blocks.
+     * How close we must be to attack or interact with an entity. See {@link #blockReachDistance} for blocks.
+     * <p>
+     * Melee swings are aimed and never reach further than the player's own entity interaction range (3 for a normal
+     * player), so for fighting this can only make the reach shorter. Trading, shearing and other interactions still use
+     * it as is.
      */
     public final Setting<Float> altoEntityReachRange = new Setting<>(4f);
 

@@ -42,8 +42,6 @@ public final class SelfDefenseRules {
     public static final long HOPELESS_TICKS = 600;
     // near a full charge, a 0.5 swing does a quarter of the damage and still resets the cooldown
     public static final float SWING_CHARGE = 0.9f;
-    // how far off the rotation the server has can be from where we want to hit and still count as looking at it
-    public static final float AIM_TOLERANCE = 15;
 
     // creepers want us to come closer, wardens and withers and the dragon are not a melee job, and the flyers swoop in and
     // out so holding for them freezes the job over and over
@@ -99,23 +97,10 @@ public final class SelfDefenseRules {
         return ticksSinceHurt >= NO_PROGRESS_TICKS;
     }
 
-    // aimError is NaN when we don't know what the server thinks we're looking at, which is a no
-    public static boolean swing(float charge, boolean lineClear, boolean inReach, double aimError) {
-        return charge >= SWING_CHARGE && lineClear && inReach && aimError <= AIM_TOLERANCE;
-    }
-
-    // worst of the two axes, yaw wrapped so 179 and -179 are 2 apart and not 358
-    public static double aimError(float yawA, float pitchA, float yawB, float pitchB) {
-        double yaw = Math.abs(wrap(yawA - yawB));
-        double pitch = Math.abs(pitchA - pitchB);
-        return Math.max(yaw, pitch);
-    }
-
-    private static double wrap(double degrees) {
-        double d = degrees % 360;
-        if (d >= 180) d -= 360;
-        if (d < -180) d += 360;
-        return d;
+    // onTarget: the ray from our last look packet hits it in reach with nothing in the way (CombatAim.onTarget). it used to
+    // be "within 15 degrees of where we want to hit", which at three blocks is a swing at the air next to a zombie
+    public static boolean swing(float charge, boolean onTarget) {
+        return charge >= SWING_CHARGE && onTarget;
     }
 
     // the hotbar slot to fight with: a sword, then an axe, then whatever hits harder than a fist, best damage first in

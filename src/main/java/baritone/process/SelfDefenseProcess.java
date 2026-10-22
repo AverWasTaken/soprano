@@ -26,13 +26,11 @@ import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
-import baritone.api.utils.Rotation;
-import baritone.api.utils.RotationUtils;
+import baritone.behavior.CombatAim;
 import baritone.utils.BaritoneProcessHelper;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -227,9 +225,10 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
             return new PathingCommand(null, PathingCommandType.DEFER);
         }
         if (aim != null) {
-            Rotation want = RotationUtils.calcRotationFromVec3d(ctx.player().getEyePosition(), aim, ctx.playerRotations());
-            baritone.getLookBehavior().updateTarget(want, true);
-            maybeSwing(want);
+            // the visible point aimPoint found is where we'd like to end up, CombatAim does the turning (we pause the
+            // job's path below, so nothing walks while it does)
+            baritone.getLookBehavior().combat().want(target, CombatAim.Priority.SELF_DEFENSE, aim);
+            maybeSwing();
         }
         return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
     }
@@ -292,15 +291,12 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         return SelfDefenseRules.weaponSlot(kind, damage, held, FIST);
     }
 
-    private void maybeSwing(Rotation want) {
+    private void maybeSwing() {
         LocalPlayer p = ctx.player();
-        // not player yaw: our onTick runs before this tick's look gets applied, and freeLook / smoothLook rewrite the
-        // client yaw anyway. the server only knows what was in the last look packet
-        Optional<Rotation> server = baritone.getLookBehavior().serverRotation();
-        double aimError = server.map(r -> SelfDefenseRules.aimError(want.getYaw(), want.getPitch(), r.getYaw(), r.getPitch()))
-                .orElse(Double.NaN);
-        // aimPoint already said the line is clear and in reach, that's why we're here
-        if (SelfDefenseRules.swing(p.getAttackStrengthScale(0.5f), true, true, aimError)) {
+        // the ray from the last look packet has to hit it, not just point roughly its way: our onTick runs before this
+        // tick's look gets applied, the server only knows what was in the last packet
+        boolean onTarget = baritone.getLookBehavior().combat().onTarget(target, reach());
+        if (SelfDefenseRules.swing(p.getAttackStrengthScale(0.5f), onTarget)) {
             ctx.minecraft().gameMode.attack(p, target);
             p.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
         }

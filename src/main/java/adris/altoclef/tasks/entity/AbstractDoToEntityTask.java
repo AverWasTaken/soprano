@@ -15,11 +15,13 @@ import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StandCap;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import baritone.api.pathing.goals.GoalRunAway;
+import baritone.behavior.CombatAim;
 import java.util.Optional;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -105,6 +107,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _blockerTarget = null;
         _blockerDigs = 0;
         _backOffGoal = null;
+        _unaimedTicks = 0;
+        _unaimedEntity = null;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
@@ -161,23 +165,16 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // a kill task with nowhere to step back to (a shaft, a low tunnel), or whose last step back went nowhere, stands
             // and hits: the run-away would only own the keys, and "too close" is not a problem we can fix there
             boolean backOffOk = !isKillTask() || (now >= _backOffMutedUntil && mod.getControllerExtras().roomToBackOff());
-            boolean tooClose = backOffOk && sqDist < maintainDistance * maintainDistance;
+            // a kill task only minds being right on top of the mob, see ReachRules for how its distances nest
+            double backOffLine = isKillTask() ? ReachRules.BACK_OFF_START : maintainDistance;
+            boolean tooClose = backOffOk && sqDist < backOffLine * backOffLine;
             if (isKillTask()) {
                 watchBackOff(mod, now);
-            }
-
-            // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
-            // leaves the mob out of reach when we come down
-            // (the run-away keeps walking a bit past the line too, and that stretch would veto the hop just the same)
-            boolean hopOn = wantsCritHops() && (tooClose || _backOffGoal != null) && mod.getControllerExtras().hopWantsToStayClose(entity);
-            if (hopOn) {
-                dropBackOff(mod);
-            } else if (CritTiming.shouldBackOff(tooClose, false)) {
+                killBackOff(mod, entity, tooClose);
+            } else if (tooClose && !mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 //setDebugState("Maintaining distance");
-                if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
-                    _backOffGoal = new GoalRunAway(maintainDistance, entity.blockPosition());
-                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
-                }
+                _backOffGoal = new GoalRunAway(maintainDistance, entity.blockPosition());
+                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
             }
 
             boolean ready = !mod.getFoodChain().needsToEat() &&
@@ -188,6 +185,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
             if (isKillTask()) {
+                shot = shot && !aimStalled(mod, entity, inReach && shot);
                 countStandingTicks(mod, entity, inReach && shot);
             }
             boolean gatesOpen = !mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod)
@@ -206,7 +204,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     _blocker = null;
                     return onEntityInteract(mod, entity);
                 case APPROACH:
-                    return approach(mod, entity, maintainDistance);
+                    // a kill task walks in to hop range, not to the edge of reach: the swing plan kicks in at the kill
+                    // reach anyway and the crit walk-up closes the rest, this is for when it doesn't (no clear shot yet)
+                    return approach(mod, entity, isKillTask() ? ReachRules.KILL_APPROACH : maintainDistance);
                 case KEEP_CHILD:
                     // halfway through a step: let it land, the swing goes next tick that is safe. stopping the child here
                     // cut the path mid stride and the next tick started it again
@@ -249,8 +249,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return new TimeoutWanderTask();
     }
 
-    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks also count the eye to box
-    // gap (ReachRules.killReach)
+    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks go by the eye to box
+    // gap inside the swing's reach instead (ReachRules.killReach)
     protected boolean inReach(AltoClef mod, Entity entity) {
         return mod.getControllerExtras().inRange(entity);
     }
@@ -263,6 +263,42 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // the swing for a stall the plan gave up waiting out (kill tasks only)
     protected Task onStalledSwing(AltoClef mod, Entity entity) {
         return null;
+    }
+
+    // the raycast in onTick goes through blocks and the swing gate doesn't, and the gap is shorter than the aimed ray. so
+    // "in reach with a clear shot" can be true for good while the swing never is (a wall, a slab lip, a mob at an awkward
+    // angle), and the stall breaker can't help, it swings through the same gate. after this many ticks where the aim had
+    // the head and still isn't on the mob, the shot counts as not clear: the plan walks closer, and the approach's own
+    // stuck check digs or blacklists if walking can't fix it
+    private static final int AIM_STALL_TICKS = 30;
+    private int _unaimedTicks;
+    private Entity _unaimedEntity;
+
+    private boolean aimStalled(AltoClef mod, Entity entity, boolean shotInReach) {
+        if (_unaimedEntity != entity) {
+            _unaimedEntity = entity;
+            _unaimedTicks = 0;
+        }
+        if (!inReach(mod, entity)) {
+            _unaimedTicks = 0;
+            return false;
+        }
+        // in reach we want the head on it whatever the plan says: waiting out a gate (eating, a ladder, the water) with the
+        // head turned away is a stall of its own, and the stall breaker should start with the head already there. a
+        // walking path keeps the head anyway, so asking during a step costs nothing
+        mod.getControllerExtras().aimAt(entity, CombatAim.Priority.KILL_TASK);
+        if (mod.getControllerExtras().onTarget(entity)) {
+            _unaimedTicks = 0;
+            return false;
+        }
+        if (_unaimedTicks >= AIM_STALL_TICKS) {
+            return true;
+        }
+        // only ticks the aim could have used count: a walking path has the head
+        if (shotInReach && !mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            _unaimedTicks++;
+        }
+        return false;
     }
 
     // feeds the stand cap: a swing, a new target or the mob leaving reach starts it over
@@ -294,6 +330,27 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // after equipping shears also has a recharging cooldown, and that is no reason to skip its back-off
     protected boolean wantsCritHops() {
         return false;
+    }
+
+    // the kill tasks' back-off: a step out from a mob that is right on top of us, only while there is nothing better to do
+    // with the time. a swing due or a hop planned for this cooldown wants us close, and a path alive then is what vetoes
+    // the hop and takes the head off the mob, so the back-off is dropped the moment either shows up. a hop being planned
+    // is asked for the whole charge, not just the lead: a back-off that starts mid charge is still walking when the lead
+    // comes. (cancelSegmentIfSafe can take a few ticks mid step, that is fine, a ledge is worse)
+    private void killBackOff(AltoClef mod, Entity entity, boolean tooClose) {
+        if (!tooClose && _backOffGoal == null) {
+            return;
+        }
+        boolean stayClose = mod.getControllerExtras().attackReady()
+                || (wantsCritHops() && mod.getControllerExtras().hopWantsToStayClose(entity));
+        if (CritTiming.shouldBackOff(tooClose, stayClose)) {
+            if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
+                _backOffGoal = new GoalRunAway(ReachRules.BACK_OFF_TO, entity.blockPosition());
+                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
+            }
+        } else if (stayClose) {
+            dropBackOff(mod);
+        }
     }
 
     // the run-away we started, so the hop can stop exactly that and nobody else's path. a hop only works while baritone is
@@ -424,6 +481,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getMobDefenseChain().resetForceField();
+        // a back-off we started is ours to stop, or the bot keeps running from a mob nobody is fighting any more
+        dropBackOff(mod);
     }
 
     protected abstract Optional<Entity> getEntityTarget(AltoClef mod);

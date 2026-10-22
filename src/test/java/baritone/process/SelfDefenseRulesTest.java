@@ -127,20 +127,12 @@ public class SelfDefenseRulesTest {
     }
 
     @Test
-    public void swingsOnlyWhenChargedClearInReachAndAimed() {
-        assertTrue(SelfDefenseRules.swing(1f, true, true, 3));
-        assertFalse(SelfDefenseRules.swing(0.5f, true, true, 3));
-        assertFalse(SelfDefenseRules.swing(1f, false, true, 3));
-        assertFalse(SelfDefenseRules.swing(1f, true, false, 3));
-        assertFalse(SelfDefenseRules.swing(1f, true, true, 20));
-        // no look packet yet this world, we don't know where the server thinks we look
-        assertFalse(SelfDefenseRules.swing(1f, true, true, Double.NaN));
-    }
-
-    @Test
-    public void aimErrorWrapsAroundTheBackOfTheCircle() {
-        assertEquals(2, SelfDefenseRules.aimError(179, 0, -179, 0), 1e-6);
-        assertEquals(10, SelfDefenseRules.aimError(0, 10, 5, 0), 1e-6);
+    public void swingsOnlyWhenChargedAndOnTarget() {
+        // on target is reach, a clear line and the ray actually hitting it, all in one (see CombatAimMathTest for the ray)
+        assertTrue(SelfDefenseRules.swing(1f, true));
+        assertTrue(SelfDefenseRules.swing(SelfDefenseRules.SWING_CHARGE, true));
+        assertFalse(SelfDefenseRules.swing(0.5f, true));
+        assertFalse(SelfDefenseRules.swing(1f, false));
     }
 
     @Test

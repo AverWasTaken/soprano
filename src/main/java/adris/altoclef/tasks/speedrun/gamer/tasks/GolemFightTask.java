@@ -12,10 +12,9 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
+import baritone.behavior.CombatAim;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.Monster;
@@ -360,10 +359,11 @@ public final class GolemFightTask extends Task {
         long sinceStart = now - fightSince;
         double fightSeconds = sinceStart / 20.0;
         boolean wantFight = fightSeconds <= cfg.golemFightSeconds && player.getHealth() >= cfg.golemAbortHealth && !hostilesNear;
-        boolean reachable = reachable(mod, player, g);
+        Vec3 hitPoint = reachablePoint(player, g);
+        boolean reachable = hitPoint != null;
         if (wantFight && reachable) {
             outOfReachTicks = 0;
-            if (hit(mod, player, g, now)) {
+            if (hit(mod, g, hitPoint, now)) {
                 return null;
             }
         } else {
@@ -404,33 +404,37 @@ public final class GolemFightTask extends Task {
 
     // vanilla melee wants the hitbox inside the interaction range and nothing solid between the eye and the bit we hit.
     // a ray to the middle of its head used to fail on a pillar corner with the golem standing right there, so any point
-    // of the box in range with a clear ray counts
-    private boolean reachable(AltoClef mod, LocalPlayer player, IronGolem g) {
+    // of the box in range with a clear ray counts. that point, or null when there is none
+    private Vec3 reachablePoint(LocalPlayer player, IronGolem g) {
         AABB box = g.getBoundingBox();
         var eye = player.getEyePosition();
         for (double[] pt : GolemRules.aimPoints(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
                 GolemRules.INTERACT_RANGE)) {
-            if (LookHelper.cleanLineOfSight(player, eye, new Vec3(pt[0], pt[1], pt[2]), 8)) {
-                return true;
+            Vec3 point = new Vec3(pt[0], pt[1], pt[2]);
+            if (LookHelper.cleanLineOfSight(player, eye, point, 8)) {
+                return point;
             }
         }
-        return false;
+        return null;
     }
 
-    // true when this tick was spent on the weapon swap or the swing
-    private boolean hit(AltoClef mod, LocalPlayer player, IronGolem g, long now) {
+    // true when this tick was spent on the weapon swap or the swing. the fight state never has a path of ours alive (it
+    // returns no child and the approach and pillar children are stopped on the way in), so CombatAim gets the head here
+    // and the swing goes through the controller's aim gate like every other melee swing
+    private boolean hit(AltoClef mod, IronGolem g, Vec3 point, long now) {
+        // the point we found a clear line to, so a pillar corner doesn't leave the aim staring at stone
+        mod.getControllerExtras().aimAt(g, CombatAim.Priority.GOLEM, point);
         if (equipWeapon(mod)) {
             return true;
         }
-        LookHelper.lookAt(mod, g.getEyePosition());
         // full cooldown only, a half charged swing is half the damage for the same 0.5 s of waiting
         if (!mod.getControllerExtras().attackReady()) {
             return false;
         }
-        // not through PlayerExtraController, so the grudge book hears about it here
-        mod.getEntityTracker().noteProvoked(g);
-        mod.getController().attack(player, g);
-        player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+        // false while the crosshair is still on its way over, the next tick asks again
+        if (!mod.getControllerExtras().attack(g)) {
+            return false;
+        }
         lastHitTick = now;
         hits++;
         progress(now, "hit an iron golem (" + hits + ")");

@@ -52,10 +52,11 @@ public class CritTimingTest {
     }
 
     @Test
-    public void aFullCooldownOnTheGroundSwingsNowInsteadOfHopping() {
+    public void aFullCooldownWhileGettingHitSwingsNowInsteadOfHopping() {
         // a hop is 7 ticks up before anything falls, which is past the 4 tick cap on holding a swing. the next one is timed
         Sample s = ready();
         s.ticksToFull = 0;
+        s.recentlyHurt = true;
         assertEquals(Step.PLAIN, new CritTiming().step(0, s));
         s.ticksToFull = 0.5;
         assertEquals(Step.JUMP, new CritTiming().step(0, s));
@@ -119,12 +120,13 @@ public class CritTimingTest {
 
     @Test
     public void approachNeverAppearsWithoutAHopBeingDue() {
-        // cooldown still far off: nothing to time yet. cooldown full: the plain swing owns the tick
+        // cooldown still far off: nothing to time yet. cooldown full while it hits us: the plain swing owns the tick
         Sample early = at(3.2);
         early.ticksToFull = CritTiming.LEAD_TICKS + 1;
         assertEquals(Step.PLAIN, new CritTiming().step(0, early));
         Sample full = at(3.2);
         full.ticksToFull = 0;
+        full.recentlyHurt = true;
         assertEquals(Step.PLAIN, new CritTiming().step(0, full));
         // and every guard that cancels a hop cancels walking up for one too
         Sample pressured = at(3.2);
@@ -157,19 +159,36 @@ public class CritTimingTest {
     }
 
     @Test
-    public void mobLeavingReachMidHopStillGetsAPlainHitOnLanding() {
+    public void mobLeavingReachMidHopIsWaitedOutAndGivenUpOnLanding() {
         CritTiming t = new CritTiming();
         assertEquals(Step.JUMP, t.step(0, at(2.2)));
         assertEquals(Step.WAIT, t.step(1, rising(3)));
-        // gone while we were up: the hop is dropped right here
+        // gone while we were up: nothing can swing up here anyway, so keep the hop in case it steps back in
         Sample gone = falling(0);
         gone.inReach = false;
-        assertEquals(Step.PLAIN, t.step(2, gone));
-        assertFalse(t.inFlight(2));
-        // back in reach on the tick we touch down: a plain swing, not a wait for another hop
-        assertEquals(Step.PLAIN, t.step(3, landed()));
-        // and then it is back to hopping
-        assertEquals(Step.JUMP, t.step(4, ready()));
+        gone.aimed = false;
+        assertEquals(Step.WAIT, t.step(2, gone));
+        assertTrue(t.inFlight(2));
+        assertEquals(Step.WAIT, t.step(3, gone));
+        // touched down: that is the give up, a plain swing right there
+        assertEquals(Step.PLAIN, t.step(4, landed()));
+        assertFalse(t.inFlight(4));
+        // the next hit is plain too (same as any give up), then it is back to hopping
+        assertEquals(Step.PLAIN, t.step(5, landed()));
+        assertEquals(Step.JUMP, t.step(6, ready()));
+    }
+
+    @Test
+    public void aMobSteppingBackIntoReachMidHopStillGetsTheCrit() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, at(2.2)));
+        Sample gone = rising(3);
+        gone.inReach = false;
+        gone.aimed = false;
+        for (int tick = 1; tick <= 6; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, gone));
+        }
+        assertEquals(Step.SWING, t.step(7, falling(0)));
     }
 
     // ---- not under fire
@@ -234,6 +253,7 @@ public class CritTimingTest {
         assertEquals("low health", CritTiming.hopVeto(low));
         Sample full = ready();
         full.ticksToFull = 0;
+        full.recentlyHurt = true;
         assertNotNull(CritTiming.hopVeto(full));
     }
 
@@ -390,12 +410,12 @@ public class CritTimingTest {
     }
 
     @Test
-    public void mobLeavingReachMidJumpFallsBackToANormalHitNextTime() {
+    public void aGiveUpMidJumpFallsBackToANormalHitNextTime() {
         CritTiming t = new CritTiming();
         t.step(0, ready());
-        Sample gone = rising(2);
-        gone.inReach = false;
-        assertEquals(Step.PLAIN, t.step(1, gone));
+        Sample shield = rising(2);
+        shield.shielding = true;
+        assertEquals(Step.PLAIN, t.step(1, shield));
         assertFalse(t.inFlight(1));
         // the next hit is a plain one, not another hop
         assertEquals(Step.PLAIN, t.step(2, landed()));
@@ -479,6 +499,7 @@ public class CritTimingTest {
         assertEquals(Step.PLAIN, new CritTiming().step(0, wet));
         Sample far = falling(0);
         far.inReach = false;
+        far.aimed = false;
         assertEquals(Step.PLAIN, new CritTiming().step(0, far));
         // rising from a knockback is nothing to swing at
         assertEquals(Step.PLAIN, new CritTiming().step(0, rising(0)));
@@ -516,8 +537,8 @@ public class CritTimingTest {
         CritTiming t = new CritTiming();
         t.step(0, ready());
         Sample gone = rising(2);
-        gone.inReach = false;
-        t.step(1, gone);
+        gone.usingItem = true;
+        assertEquals(Step.PLAIN, t.step(1, gone));
         // nobody asked for a while, the "next one is plain" promise was about that fight, not this one
         assertEquals(Step.JUMP, t.step(20, ready()));
     }
@@ -556,9 +577,10 @@ public class CritTimingTest {
     }
 
     @Test
-    public void theSameFullCooldownOnSomethingThatFightsBackIsStillAPlainHit() {
+    public void theSameFullCooldownOnSomethingHittingUsIsStillAPlainHit() {
         Sample s = opener();
         s.harmless = false;
+        s.recentlyHurt = true;
         assertEquals("cooldown full, swing now", CritTiming.hopVeto(s));
         assertEquals(Step.PLAIN, new CritTiming().step(0, s));
         // and its hop still has the cap
@@ -710,7 +732,7 @@ public class CritTimingTest {
         CritTiming t = new CritTiming();
         assertEquals(Step.JUMP, t.step(0, opener()));
         Sample gone = harmless(rising(0));
-        gone.inReach = false;
+        gone.shielding = true;
         assertEquals(Step.PLAIN, t.step(1, gone));
         // still on the way up: a plain call here can't swing, so it must not spend the promise
         assertEquals(Step.PLAIN, t.step(2, harmless(rising(0))));
@@ -754,5 +776,192 @@ public class CritTimingTest {
         }
         // 24.5 down to 0 or less is 25 steps, the swing is on tick 25 and not a tick later
         assertEquals(25, swungAt);
+    }
+
+    // ---- a weapon swap settling
+
+    @Test
+    public void aFreshSwapHoldsEverythingForATick() {
+        // the reading says nearly full, but it may still be the old item's (a fist is ready after 5 ticks, an axe after 20)
+        Sample s = ready();
+        s.settling = true;
+        CritTiming t = new CritTiming();
+        assertEquals(Step.WAIT, t.step(0, s));
+        assertFalse(t.inFlight(0));
+        assertEquals("weapon swap settling", CritTiming.hopVeto(s));
+        // a full cooldown reading on the swap tick isn't trusted either, no plain swing on it
+        Sample full = landed();
+        full.settling = true;
+        full.recentlyHurt = true;
+        assertEquals(Step.WAIT, new CritTiming().step(0, full));
+        // settled: business as usual
+        assertEquals(Step.JUMP, t.step(1, ready()));
+    }
+
+    @Test
+    public void aSwapMidHopGivesUp() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, ready()));
+        Sample swapped = rising(2);
+        swapped.settling = true;
+        assertEquals(Step.PLAIN, t.step(1, swapped));
+        assertFalse(t.inFlight(1));
+    }
+
+    // ---- the opener on a hostile
+
+    @Test
+    public void aHostileThatHasNotHitUsGetsTheOpenerHop() {
+        Sample s = landed();
+        assertNull(CritTiming.hopVeto(s));
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, s));
+        // six ticks up with the cooldown full: no cap swing on the way up, the crit is the point
+        for (int tick = 1; tick <= 6; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(tick, rising(0)));
+        }
+        assertEquals(Step.SWING, t.step(7, falling(0)));
+    }
+
+    @Test
+    public void aHostileThatJustHitUsIsSwungAtNow() {
+        Sample s = landed();
+        s.recentlyHurt = true;
+        assertEquals("cooldown full, swing now", CritTiming.hopVeto(s));
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void gettingHitMidOpenerHopBringsTheCapBack() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, landed()));
+        Sample hit = rising(0);
+        hit.recentlyHurt = true;
+        for (int tick = 1; tick <= CritTiming.MAX_READY_WAIT; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, hit));
+        }
+        assertEquals(Step.SWING, t.step(CritTiming.MAX_READY_WAIT + 1, hit));
+    }
+
+    @Test
+    public void aHostileOpenerABitFarIsWalkedUpToThenHit() {
+        CritTiming t = new CritTiming();
+        Sample far = landed();
+        far.reachGap = 2.8;
+        for (int tick = 0; tick < CritTiming.MAX_OPENER_HOLD; tick++) {
+            assertEquals("tick " + tick, Step.APPROACH, t.step(tick, far));
+        }
+        assertEquals(Step.PLAIN, t.step(CritTiming.MAX_OPENER_HOLD, far));
+    }
+
+    @Test
+    public void theCrowdAndLowHealthStillVetoAHostileOpener() {
+        Sample crowd = landed();
+        crowd.meleeNear = CritTiming.CROWD_NO_CRIT;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, crowd));
+        Sample low = landed();
+        low.health = CritTiming.LOW_HEALTH_NO_CRIT;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, low));
+    }
+
+    // ---- the aim
+
+    @Test
+    public void fallingWithAFullCooldownWaitsForTheCrosshair() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, ready()));
+        for (int tick = 1; tick <= 6; tick++) {
+            t.step(tick, rising(Math.max(0, 4 - tick)));
+        }
+        Sample off = falling(0);
+        off.aimed = false;
+        assertEquals(Step.WAIT, t.step(7, off));
+        assertEquals(Step.WAIT, t.step(8, off));
+        assertTrue(t.inFlight(8));
+        // first falling tick that is on it
+        assertEquals(Step.SWING, t.step(9, falling(0)));
+    }
+
+    @Test
+    public void theCappedSwingWaitsForTheCrosshairToo() {
+        CritTiming t = new CritTiming();
+        t.step(0, ready());
+        Sample off = rising(0);
+        off.aimed = false;
+        for (int tick = 1; tick <= CritTiming.MAX_READY_WAIT + 2; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, off));
+        }
+        assertEquals(Step.SWING, t.step(CritTiming.MAX_READY_WAIT + 3, rising(0)));
+    }
+
+    @Test
+    public void aFreeCritNotAimedYetWaits() {
+        Sample s = falling(0);
+        s.aimed = false;
+        CritTiming t = new CritTiming();
+        assertEquals(Step.WAIT, t.step(0, s));
+        assertEquals(Step.SWING, t.step(1, falling(0)));
+    }
+
+    @Test
+    public void pastThePlanningReachButAimedIsStillTheCrit() {
+        // the plan's reach stops a bit short of the arm. a crosshair that is on the mob is the arm's say, and it wins
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, ready()));
+        for (int tick = 1; tick <= 6; tick++) {
+            t.step(tick, rising(Math.max(0, 4 - tick)));
+        }
+        Sample edge = falling(0);
+        edge.inReach = false;
+        assertEquals(Step.SWING, t.step(7, edge));
+        // and the free kind too
+        Sample free = falling(0);
+        free.inReach = false;
+        assertEquals(Step.SWING, new CritTiming().step(0, free));
+    }
+
+    @Test
+    public void aCrosshairThatNeverArrivesGivesUpOnLanding() {
+        CritTiming t = new CritTiming();
+        t.step(0, ready());
+        Sample off = falling(0);
+        off.aimed = false;
+        for (int tick = 1; tick <= 8; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, off));
+        }
+        assertEquals(Step.PLAIN, t.step(9, landed()));
+        assertFalse(t.inFlight(9));
+    }
+
+    // ---- the back-off and the plan
+
+    @Test
+    public void theBackOffStaysOffForTheWholeChargeWhenAHopIsPlanned() {
+        // an axe, fresh off a swing: 25 ticks to full. the back-off asks every tick, and every tick the answer is stay
+        for (double ticksToFull = 25; ticksToFull > 0; ticksToFull -= 1) {
+            Sample s = ready();
+            s.ticksToFull = ticksToFull;
+            assertTrue("to full " + ticksToFull, CritTiming.hopPlanned(s));
+            assertFalse(CritTiming.shouldBackOff(true, CritTiming.hopPlanned(s)));
+            // the back-off's own path doesn't count against it
+            s.pathing = true;
+            assertTrue(CritTiming.hopPlanned(s));
+            // nor does a swap settling, that's a tick or two
+            s.settling = true;
+            assertTrue(CritTiming.hopPlanned(s));
+        }
+    }
+
+    @Test
+    public void noHopPlannedMeansTheBackOffMayGo() {
+        Sample roof = ready();
+        roof.ticksToFull = 20;
+        roof.lowHeadroom = true;
+        assertFalse(CritTiming.hopPlanned(roof));
+        assertTrue(CritTiming.shouldBackOff(true, CritTiming.hopPlanned(roof)));
+        Sample crowd = ready();
+        crowd.ticksToFull = 20;
+        crowd.meleeNear = CritTiming.CROWD_NO_CRIT;
+        assertFalse(CritTiming.hopPlanned(crowd));
     }
 }

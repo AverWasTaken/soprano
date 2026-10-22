@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.event.events.TickEvent;
+import baritone.api.event.events.WorldEvent;
 import baritone.api.utils.IInputOverrideHandler;
 import baritone.api.utils.input.Input;
 import baritone.behavior.Behavior;
@@ -151,6 +152,34 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         }
         // if we are not primary (a bot) we should set the movementinput even when idle (not pathing)
         return baritone.getPathingBehavior().isPathing() || baritone != BaritoneAPI.getProvider().getPrimaryBaritone();
+    }
+
+    // game time of the last ask to keep sprint off, see lockSprintOff
+    private long sprintLockedAt = Long.MIN_VALUE;
+
+    // keep sprint off for this tick, whoever wants it on: the toggle, a held ctrl, us. the crit hop asks every tick from the
+    // jump to the swing, a sprinting hit is no crit. nobody has to remember to let go, a lock nobody refreshed is gone a tick
+    // later (a swing, a give up, a landing, the task stopping, a new world). vanilla's double tap W sprint doesn't go
+    // through the sprint input and isn't covered, the bot never double taps so that one only matters if you do it yourself
+    public void lockSprintOff() {
+        if (ctx.world() != null) {
+            sprintLockedAt = ctx.world().getGameTime();
+        }
+    }
+
+    // read in aiStep. the ask comes from the alto tick, which is the same game tick or (if the level clock moved in
+    // between) the one before
+    public boolean sprintLocked() {
+        if (ctx.world() == null) {
+            return false;
+        }
+        long since = ctx.world().getGameTime() - sprintLockedAt;
+        return since >= 0 && since <= 1;
+    }
+
+    @Override
+    public void onWorldEvent(WorldEvent event) {
+        sprintLockedAt = Long.MIN_VALUE;
     }
 
     public BlockBreakHelper getBlockBreakHelper() {

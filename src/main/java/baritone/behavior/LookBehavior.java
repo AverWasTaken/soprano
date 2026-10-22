@@ -23,6 +23,7 @@ import baritone.api.behavior.ILookBehavior;
 import baritone.api.behavior.look.IAimProcessor;
 import baritone.api.behavior.look.ITickableAimProcessor;
 import baritone.api.event.events.*;
+import baritone.api.event.events.type.EventState;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
 import baritone.behavior.look.ForkableRandom;
@@ -54,6 +55,8 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
 
     private final AimProcessor processor;
 
+    private final CombatAim combatAim;
+
     private float moveYaw;
     private int moveCount;
 
@@ -63,13 +66,19 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     public LookBehavior(Baritone baritone) {
         super(baritone);
         this.processor = new AimProcessor(baritone.getPlayerContext());
+        this.combatAim = new CombatAim(baritone.getPlayerContext(), this);
         this.smoothYawBuffer = new ArrayDeque<>();
         this.smoothPitchBuffer = new ArrayDeque<>();
     }
 
     @Override
     public void updateTarget(Rotation rotation, boolean blockInteract) {
-        this.target = new Target(rotation, Target.Mode.resolve(ctx, blockInteract));
+        this.target = new Target(rotation, Target.Mode.resolve(ctx, blockInteract), false);
+    }
+
+    // melee aim asks go through here, see CombatAim
+    public CombatAim combat() {
+        return this.combatAim;
     }
 
     @Override
@@ -86,6 +95,9 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
 
     @Override
     public void onPlayerUpdate(PlayerUpdateEvent event) {
+        if (event.getState() == EventState.PRE) {
+            resolveCombat();
+        }
 
         if (this.target == null) {
             return;
@@ -99,7 +111,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 }
 
                 this.prevRotation = new Rotation(ctx.player().getYRot(), ctx.player().getXRot());
-                final Rotation actual = this.processor.peekRotation(this.target.rotation);
+                final Rotation actual = peek(this.target);
                 ctx.player().setYRot(actual.getYaw());
                 ctx.player().setXRot(actual.getPitch());
                 break;
@@ -153,11 +165,34 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     public void onWorldEvent(WorldEvent event) {
         this.serverRotation = null;
         this.target = null;
+        this.combatAim.reset();
+    }
+
+    // the fighters' asks for this tick, turned into the one look. last in line on purpose: a block look or a movement that
+    // already set a target this tick keeps it, and a walking path keeps the head (movement goes where the yaw points)
+    // unless it's the stall breaker asking (CombatAim.wantOverPath)
+    private void resolveCombat() {
+        if (this.target != null || (baritone.getPathingBehavior().isPathing() && !this.combatAim.overPath())) {
+            this.combatAim.yieldTick();
+            return;
+        }
+        Rotation rotation = this.combatAim.resolve();
+        if (rotation != null) {
+            // always the visible camera, like a block interact. the smoothing steps from the camera's rotation every tick,
+            // a SERVER target would put the camera back at POST and the next step would start from the wrong place
+            this.target = new Target(rotation, Target.Mode.CLIENT, true);
+        }
+    }
+
+    // combat targets already carry their own wobble, so they skip the per tick reroll (and the pitch nudge, a mob's pitch
+    // matching ours exactly is not "I don't care about pitch"). mouse pixels and the clamp still apply
+    private Rotation peek(Target target) {
+        return target.combat ? this.processor.peekPlain(target.rotation) : this.processor.peekRotation(target.rotation);
     }
 
     public void pig() {
         if (this.target != null) {
-            final Rotation actual = this.processor.peekRotation(this.target.rotation);
+            final Rotation actual = peek(this.target);
             ctx.player().setYRot(actual.getYaw());
         }
     }
@@ -178,7 +213,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     @Override
     public void onPlayerRotationMove(RotationMoveEvent event) {
         if (this.target != null) {
-            final Rotation actual = this.processor.peekRotation(this.target.rotation);
+            final Rotation actual = peek(this.target);
             event.setYaw(actual.getYaw());
             event.setPitch(actual.getPitch());
         }
@@ -248,6 +283,15 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
             return new Rotation(
                     this.calculateMouseMove(prev.getYaw(), desiredYaw),
                     this.calculateMouseMove(prev.getPitch(), desiredPitch)
+            ).clamp();
+        }
+
+        // peekRotation without the random offsets and the pitch nudge, for targets that bring their own (CombatAim)
+        final Rotation peekPlain(final Rotation rotation) {
+            final Rotation prev = this.getPrevRotation();
+            return new Rotation(
+                    this.calculateMouseMove(prev.getYaw(), rotation.getYaw()),
+                    this.calculateMouseMove(prev.getPitch(), rotation.getPitch())
             ).clamp();
         }
 
@@ -333,10 +377,13 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
 
         public final Rotation rotation;
         public final Mode mode;
+        // came from CombatAim, see peek()
+        public final boolean combat;
 
-        public Target(Rotation rotation, Mode mode) {
+        public Target(Rotation rotation, Mode mode, boolean combat) {
             this.rotation = rotation;
             this.mode = mode;
+            this.combat = combat;
         }
 
         enum Mode {

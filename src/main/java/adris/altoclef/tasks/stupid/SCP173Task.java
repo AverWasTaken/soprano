@@ -6,6 +6,7 @@ import adris.altoclef.tasks.entity.DoToClosestEntityTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
+import baritone.behavior.CombatAim;
 import java.util.HashMap;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
@@ -63,6 +64,8 @@ public class SCP173Task extends Task {
         // Manually attack, since we ONLY attack when we can SEE the player.
         if (_lastTarget != null && mod.getPlayer().closerThan(_lastTarget, HIT_RANGE)) {
             if (LookHelper.seesPlayer(mod.getPlayer(), _lastTarget, HIT_RANGE)) {
+                // the swing only goes out once we're looking at them, so look at them
+                mod.getControllerExtras().aimAt(_lastTarget, CombatAim.Priority.KILL_TASK);
                 // Equip weapon
                 AbstractKillEntityTask.equipWeapon(mod);
                 if (mod.getPlayer().getAttackStrengthScale(0) >= 0.99) {
