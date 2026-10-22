@@ -83,6 +83,7 @@ final class CombatBrain {
     private int _meleeNear;
     private int _meleeAround;
     private boolean _shotAt;
+    private long _shotUntil = Long.MIN_VALUE / 2;
     // a normal fight with a second mob hitting us, the shield is up for it (CombatRules.pileShield)
     private boolean _pile;
     private static final long STANCE_LOG_GAP = 20;
@@ -179,6 +180,7 @@ final class CombatBrain {
         _meleeNear = 0;
         _meleeAround = 0;
         _shotAt = false;
+        _shotUntil = Long.MIN_VALUE / 2;
         _pile = false;
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
@@ -322,8 +324,9 @@ final class CombatBrain {
                 nearestFast = foe.distance();
             }
             // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
-            if (!shotAt && foe.ranged() && !foe.creeper() && foe.distance() <= CombatRules.SHOOTER_RANGE
-                    && (foe.sight() || mobs.get(i).hasLineOfSight(player))) {
+            // (the ray is only cast when the cheap answers did not already say yes)
+            if (!shotAt && foe.ranged() && !foe.creeper()
+                    && CombatCommit.shotAt(foe, foe.distance() <= CombatRules.SHOOTER_RANGE && !foe.sight() && mobs.get(i).hasLineOfSight(player))) {
                 shotAt = true;
             }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
@@ -336,8 +339,17 @@ final class CombatBrain {
         _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
+        // a shooter that was on us a moment ago still is: the ray flickers behind a tree and the skeleton steps in and out of the
+        // range line, and a bite started in that blink was an arrow in the face
+        // (only the bite hears it, shotAt() stays the raw answer for the meals that ask the chain)
+        boolean biteShot = shotAt;
+        if (shotAt) {
+            _shotUntil = now + CombatCommit.SHOT_LATCH;
+        } else if (now <= _shotUntil) {
+            biteShot = true;
+        }
         _shotAt = shotAt;
-        CombatCommit.Bite bite = new CombatCommit.Bite(shotAt, nearestFast, mod.getFoodChain().isTryingToEat());
+        CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat());
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);

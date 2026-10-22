@@ -389,7 +389,8 @@ public class CombatCommitTest {
     @Test
     public void aFightHoldsThroughAnHpWobbleAboveTheLine() {
         CombatCommit c = fightOn(zombie(7, 2, 0));
-        float[] wobble = {20, 9, 12, 9};
+        // (hits of 5 and 2: the bail line rides on the biggest lately, 8 + 5 is 13 and the lowest hp here is 14)
+        float[] wobble = {20, 15, 16, 14};
         // the target is in contact the whole time, so it is not a stall either
         holds(c, NOW + 1, NOW + 400, now -> {
             Foe z = zombie(7, 2, now - NOW);
@@ -401,7 +402,9 @@ public class CombatCommitTest {
 
     @Test
     public void aFightBailsToARunAtExactlyTheFleeLine() {
-        CombatCommit c = fightOn(zombie(7, 2, 0));
+        // (the fight starts at 8.5 so the drop to 8 is a half heart: a jump down from 20 would be a big hit and bail early)
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 8.5f, zombie(7, 2, 0), zombie(7, 2, 0))));
         Foe z = zombie(7, 2, 5);
         assertEquals(Event.NONE, c.step(at(tick(NOW + 5, 8.5f, z, z), 15, -20)));
         assertEquals(Event.FIGHT_TO_RUN, c.step(at(tick(NOW + 6, 8f, z, z), 15, -20)));
@@ -427,7 +430,9 @@ public class CombatCommitTest {
 
     @Test
     public void aHeavyHitterOnTopOfUsBailsAFightAtTenHp() {
-        CombatCommit c = fightOn(zombie(7, 2, 0));
+        // (starts at 11 so the walk down to 10 is a one point hit, not a drop from 20 that moves the heavy line too)
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 11, zombie(7, 2, 0), zombie(7, 2, 0))));
         Foe z = zombie(7, 2, 5);
         // a hoglin hanging about at five blocks that has not touched us is scenery, even at 10
         assertEquals(Event.NONE, c.step(tick(NOW + 3, 10, z, z, heavy(8, 5))));
