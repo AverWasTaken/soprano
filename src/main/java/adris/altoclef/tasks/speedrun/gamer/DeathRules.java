@@ -147,7 +147,7 @@ public final class DeathRules {
             return Math.round(blocks) + " blocks is further than the " + reach + " we walk";
         }
         // a pick is not worth a night on the surface with no armor, a rich pile still is
-        if (darkAndBare && worth != null && !worth.rich(foodLine)) {
+        if (darkAndBare && worth != null && worth.pick() && !worth.rich(foodLine)) {
             return "it is night and we have no armor for a pick";
         }
         if (worth != null && !worth.worthIt(blocks, foodLine)) {

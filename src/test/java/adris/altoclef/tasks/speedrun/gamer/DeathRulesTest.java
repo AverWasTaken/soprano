@@ -210,6 +210,11 @@ public class DeathRulesTest {
     }
 
     @Test
+    public void aBagWithNoPickStillSaysNearlyEmptyAtNight() {
+        assertTrue(night(40, bag(0, 0, false, 10, false), true).startsWith("the bag was nearly empty"));
+    }
+
+    @Test
     public void aRichPileStillGoesAtNight() {
         assertNull(night(40, rich(), true));
     }
