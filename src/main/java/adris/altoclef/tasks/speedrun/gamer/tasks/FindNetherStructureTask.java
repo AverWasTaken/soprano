@@ -2,12 +2,14 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.GetToXZTask;
-import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Action;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.StorageHelper;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Items;
 
 import java.util.function.DoubleSupplier;
 
@@ -18,9 +20,6 @@ public class FindNetherStructureTask extends Task {
     private final NetherSweepPlanner planner;
     private final Goal goal;
     private final DoubleSupplier clock;
-
-    private static final Item[] PICKS = {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE,
-            Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE};
 
     private final NetherRestock restock = new NetherRestock();
     private Task restockTask;
@@ -86,16 +85,19 @@ public class FindNetherStructureTask extends Task {
         }
     }
 
-    // the whole bag, counted with the list baritone places from (the alto build block list is a different, shorter list).
-    // mining goes through MineAndCollectTask, so baritone's own lava checks apply to every block it breaks. no pick = no
-    // restock, a hand cannot dig netherrack
+    // the whole bag, counted with the list baritone places from, and the dig goes for exactly that list too (the alto build
+    // list also has soul sand and magma in it, which baritone never places, so a bag of those would end the dig and stay
+    // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
+    // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack
     private boolean restocking(AltoClef mod) {
         Item[] placeable = mod.getClientBaritoneSettings().acceptableThrowawayItems.value.toArray(Item[]::new);
         int held = mod.getItemStorage().getItemCount(placeable);
         boolean gaveUp = planner.takeGiveUp();
-        boolean on = restock.update(held, gaveUp, mod.getItemStorage().hasItem(PICKS), clock.getAsDouble());
+        boolean on = restock.update(held, gaveUp, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
+                clock.getAsDouble());
         if (on && restockTask == null) {
-            restockTask = new GetBuildingMaterialsTask(NetherRestock.TARGET);
+            restockTask = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, NetherRestock.TARGET)},
+                    MiningRequirement.WOOD);
         } else if (!on) {
             restockTask = null;
         }

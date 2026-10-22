@@ -117,9 +117,9 @@ public final class NetherSweepPlanner {
     // cells started per goal: a fortress that took four cells must not eat the warped forest search's share
     private final int[] cellsStarted = new int[Goal.values().length];
     private double lastStepAt = Double.NaN;
-    // where the last stuck give-up happened and in which cell. planner local on purpose: the planner is rebuilt on phase
-    // entry (after a death or a regress) and then we are nowhere near the old pocket anyway. a dropped cell is in
-    // visitedCells, that part does survive
+    // where the last stuck give-up happened and in which cell. planner local on purpose, same as 'dead': a rebuilt planner
+    // (phase entry after a retry, a death or a regress) starts over, the worst case is one more try at a pocket. a dropped
+    // cell is in visitedCells, that part does survive
     private int pocketX;
     private int pocketZ;
     private String pocketCell;
@@ -368,6 +368,12 @@ public final class NetherSweepPlanner {
                 if (timedOut) {
                     dead.add(key(w));
                     gaveUp = true;
+                    // wedged and out of time at once still counts as a pocket for the next give-up
+                    if (stuck) {
+                        pocketX = px;
+                        pocketZ = pz;
+                        pocketCell = cell.key();
+                    }
                     log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", not there after "
                             + (int) (now - waypointSince) + " s (" + away(px, pz, to) + " away)");
                 } else if (stuck) {
