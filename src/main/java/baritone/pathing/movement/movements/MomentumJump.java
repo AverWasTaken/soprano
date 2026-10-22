@@ -157,15 +157,25 @@ final class MomentumJump {
             warm();
         }
         double[] spot = TABLE.get(key);
-        if (spot == null) {
-            // the warmup gets to everything eventually, this one gets to cut the line
-            if (TABLE.compareAndSet(key, null, PENDING)) {
+        if (spot == null || spot == PENDING) {
+            // the warmup gets to everything eventually, this one gets to cut the line (out of the warmup's queue too)
+            if (spot == PENDING) {
+                QUEUE.removeIf(j -> j.key() == key);
+            }
+            if (TABLE.compareAndSet(key, spot, PENDING)) {
                 QUEUE.addFirst(new Job(key, runway, dist, pad, dy, after));
                 ensureWorkers();
             }
+        }
+        spot = TABLE.get(key);
+        if (spot == null || spot == PENDING || spot == RUNNING) {
+            PendingTables.missed("MomentumJump" + key, () -> {
+                double[] s = TABLE.get(key);
+                return s != PENDING && s != RUNNING; // null is a job that threw: asking again will retry it
+            });
             return null;
         }
-        return spot == PENDING || spot == RUNNING ? null : unpack(spot);
+        return unpack(spot);
     }
 
     // same dance as NeoJump.resolve

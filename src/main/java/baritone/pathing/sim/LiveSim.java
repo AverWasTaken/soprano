@@ -28,13 +28,19 @@ public final class LiveSim {
 
     private LiveSim() {}
 
+    // why the last of() came back null, for the debug line
+    public static volatile String lastRefusal = "";
+
     // null when the player is in some state the sim does not model (a boat, water, a potion that touches jumping)
     public static PlayerSim of(LocalPlayer player, CollisionProvider world) {
-        if (player.isPassenger() || player.isInWater() || player.isInLava() || player.onClimbable() || player.isFallFlying()
-                || player.isSwimming() || player.getAbilities().flying || player.isCrouching() || player.isUsingItem() || player.noPhysics
-                || player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
-                || player.getAttributeValue(Attributes.FRICTION_MODIFIER) != 1.0 || player.getAttributeValue(Attributes.AIR_DRAG_MODIFIER) != 1.0
-                || player.getAttributeValue(Attributes.MOVEMENT_EFFICIENCY) != 0.0) {
+        String why = player.isPassenger() ? "riding something" : player.isInWater() ? "in water" : player.isInLava() ? "in lava"
+                : player.isFallFlying() ? "gliding" : player.isSwimming() ? "swimming" : player.getAbilities().flying ? "flying"
+                : player.isCrouching() ? "crouching" : player.isUsingItem() ? "using an item" : player.noPhysics ? "no physics"
+                : player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION) ? "a potion effect"
+                : player.getAttributeValue(Attributes.FRICTION_MODIFIER) != 1.0 || player.getAttributeValue(Attributes.AIR_DRAG_MODIFIER) != 1.0
+                || player.getAttributeValue(Attributes.MOVEMENT_EFFICIENCY) != 0.0 ? "a movement attribute" : null;
+        if (why != null) {
+            lastRefusal = why;
             return null;
         }
         // the attribute carries the sprint modifier while the flag is up, and the sim puts it back on itself
@@ -57,6 +63,13 @@ public final class LiveSim {
         sim.horizontalCollision = player.horizontalCollision;
         sim.minorHorizontalCollision = player.minorHorizontalCollision;
         sim.verticalCollision = player.verticalCollision;
+        sim.climbing = player.onClimbable(); // ladders and vines are the sim's now (scaffolding isn't, SafeCollision says so)
+        player.mainSupportingBlockPos.ifPresent(sp -> {
+            sim.hasSupport = true;
+            sim.supportX = sp.getX();
+            sim.supportY = sp.getY();
+            sim.supportZ = sp.getZ();
+        });
         if (player instanceof ILivingEntity living) {
             sim.noJumpDelay = living.getNoJumpDelay();
         }

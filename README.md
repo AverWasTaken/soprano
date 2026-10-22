@@ -117,6 +117,8 @@ To change code, read [CONTRIBUTING.md](CONTRIBUTING.md). Some of the work done h
 
 Soprano is Baritone, made by [cabaletta](https://github.com/cabaletta), [leijurv](https://github.com/leijurv), Brady and all of [Baritone's contributors](https://github.com/cabaletta/baritone/graphs/contributors). Without their years of work there's nothing to fork. The pathfinder, the API, the commands and most of the movement code are theirs.
 
+The any-angle jumps and `#tungsten` take their idea from [Tungsten](https://github.com/Hackerokuz/Tungsten) by Hackerokuz (after KaptainWutax): pathfinding over the keys themselves through a player physics simulation. No Tungsten code is in here, the search is written fresh on top of Soprano's own 26.3 player sim.
+
 The built-in AltoClef is [AltoClef](https://github.com/gaucho-matrero/altoclef) by gaucho-matrero and Adris Jautakas, using MarvionKirito's 1.21 fork. It's MIT licensed, see [LICENSE-AltoClef](LICENSE-AltoClef).
 
 ## License

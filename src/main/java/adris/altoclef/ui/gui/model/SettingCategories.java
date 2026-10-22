@@ -12,6 +12,7 @@ import java.util.Set;
 public final class SettingCategories {
 
     public static final String ALTO = "Tasks";
+    public static final String PARKOUR = "Parkour";
     public static final String MOVEMENT = "Movement and safety";
     public static final String MINING = "Mining";
     public static final String BUILDING = "Building";
@@ -22,6 +23,14 @@ public final class SettingCategories {
     public static final String PATHING = "Pathing and processes";
     public static final String INTERFACE = "Interface";
     public static final String GENERAL = "General";
+
+    // every jump there is in one place, picked by name: they all start "allow" like the rest of Movement, so the word rules
+    // can't tell them apart. the Tungsten ones go by prefix too
+    private static final Set<String> PARKOUR_NAMES = Set.of(
+            "allowParkour", "allowParkourPlace", "allowParkourAscend", "allowNeos", "allowMomentumJumps", "allowClimbJumps",
+            "allowTungstenJumps", "allowVines", "allowJumpAtBuildLimit", "sprintJumping", "sprintJumpingDiagonals",
+            "headHitters", "headHittersDiagonal", "jumpPenalty", "experimentalJumpBias"
+    );
 
     // the order here is the order of the category column and the order the rules are tried in. first hit wins
     private static final Map<String, String[]> RULES = new LinkedHashMap<>();
@@ -46,7 +55,7 @@ public final class SettingCategories {
             "allowInventory", "ticksBetweenInventoryMoves", "inventoryMoveOnlyIfStationary", "autoTool",
             "assumeExternalAutoTool", "allowWaterBucketFall", "allowLadderClutch", "pickupLadders", "selfDefense", "assumeWalkOnWater",
             "assumeStep", "assumeSafeWalk", "allowParkour", "allowParkourPlace", "allowParkourAscend", "allowNeos",
-            "allowClimbJumps", "allowVines", "allowWalkOnBottomSlab", "allowWalkOnMagmaBlocks", "allowDiagonalAscend",
+            "allowClimbJumps", "allowTungstenJumps", "allowVines", "allowWalkOnBottomSlab", "allowWalkOnMagmaBlocks", "allowDiagonalAscend",
             "allowDiagonalDescend", "allowDownward", "allowSwimming", "allowBoats", "boatPickup", "sprintAscends",
             "sprintThroughDescends", "sprintThroughCorners", "sprintJumping", "preferFasterPathing", "allowGroundShortcuts",
             "fastMode", "walkWhileBreaking", "useSwordToMine", "freeLook", "blockFreeLook", "elytraFreeLook", "smoothLook",
@@ -84,6 +93,7 @@ public final class SettingCategories {
     public static List<String> names() {
         List<String> out = new ArrayList<>();
         out.add(ALTO);
+        out.add(PARKOUR);
         out.addAll(RULES.keySet());
         out.add(GENERAL);
         return out;
@@ -95,6 +105,9 @@ public final class SettingCategories {
         }
         if (name.regionMatches(true, 0, "alto", 0, 4)) {
             return ALTO;
+        }
+        if (PARKOUR_NAMES.contains(name) || name.regionMatches(true, 0, "tungsten", 0, 8)) {
+            return PARKOUR;
         }
         List<String> words = words(name);
         // the first word is the subject (elytraRenderSimulation is an elytra thing that happens to render), so a

@@ -157,9 +157,14 @@ final class ClimbJump {
                     }
                 });
             }
+            PendingTables.missed(shape, () -> TABLE.get(shape) != PENDING);
             return null;
         }
-        return result == PENDING ? null : result;
+        if (result == PENDING) {
+            PendingTables.missed(shape, () -> TABLE.get(shape) != PENDING);
+            return null;
+        }
+        return result;
     }
 
     private static Result solve(Shape shape) {

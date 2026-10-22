@@ -23,7 +23,43 @@ public interface CollisionProvider {
     // appends the collision boxes of one block cell, in world coordinates
     void boxes(int x, int y, int z, BoxList out);
 
-    // false for anything the sim does not do the maths for: friction other than 0.6, speed or jump factors, fluids,
-    // climbables, cobwebs, powder snow and so on. standing in or on one of these makes the sim give up instead of lying
+    // false for anything the sim does not do the maths for. standing in or on one of these makes the sim give up instead of
+    // lying. fluids, climbables, cobwebs, powder snow and so on never are. a provider that also answers the questions below
+    // (friction, speed and jump factors, bounce) can call ice, slime and soul sand plain, one that doesn't must not
     boolean plain(int x, int y, int z);
+
+    // Block.getFriction, 0.6 for nearly everything, 0.98 for ice, 0.989 blue ice, 0.8 slime
+    default float friction(int x, int y, int z) {
+        return 0.6F;
+    }
+
+    // Block.getSpeedFactor (0.4 soul sand and honey) and getJumpFactor (0.5 honey)
+    default float speedFactor(int x, int y, int z) {
+        return 1.0F;
+    }
+
+    default float jumpFactor(int x, int y, int z) {
+        return 1.0F;
+    }
+
+    // Block.getBounceRestitution (1 for slime), 0 where the block is in BlockTags.SUPPRESSES_BOUNCE
+    default float bounce(int x, int y, int z) {
+        return 0.0F;
+    }
+
+    // SlimeBlock.stepOn: walking on it takes most of the sideways speed away every tick
+    default boolean slimeStep(int x, int y, int z) {
+        return false;
+    }
+
+    // in BlockTags.CLIMBABLE (ladders, vines, scaffolding...): standing in one of these, LivingEntity.onClimbable
+    default boolean climbable(int x, int y, int z) {
+        return false;
+    }
+
+    // Entity.getOnPos counts the supporting block itself (not the cell under the feet) for walls and fence gates, and for
+    // fences too when the offset is half a block or less: 0 for a plain block, 1 fence, 2 wall or fence gate
+    default int supportKind(int x, int y, int z) {
+        return 0;
+    }
 }

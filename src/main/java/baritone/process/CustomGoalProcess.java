@@ -17,6 +17,7 @@
 
 package baritone.process;
 
+import baritone.pathing.movement.movements.PendingTables;
 import baritone.Baritone;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.process.ICustomGoalProcess;
@@ -96,7 +97,7 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
 
     // actually going somewhere. a bare #goal stays GOAL_SET forever while the player walks around by hand
     public boolean isPathingToGoal() {
-        return this.state == State.PATH_REQUESTED || this.state == State.EXECUTING;
+        return this.state == State.PATH_REQUESTED || this.state == State.EXECUTING || this.state == State.WAITING_FOR_TABLES;
     }
 
     @Override
@@ -104,13 +105,30 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         switch (this.state) {
             case GOAL_SET:
                 return new PathingCommand(this.goal, PathingCommandType.CANCEL_AND_SET_GOAL);
+            case WAITING_FOR_TABLES:
+                if (!PendingTables.waiting() || ++tableWaitTicks > TABLE_WAIT_TICKS) {
+                    this.state = State.PATH_REQUESTED;
+                }
+                return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
             case PATH_REQUESTED:
                 // return FORCE_REVALIDATE_GOAL_AND_PATH just once
+                tableMisses = PendingTables.misses();
                 PathingCommand ret = new PathingCommand(this.goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
                 this.state = State.EXECUTING;
                 return ret;
             case EXECUTING:
+                if (calcFailed && tableRetries < TABLE_RETRIES && PendingTables.misses() != tableMisses) {
+                    // the first path of a session runs into shapes nobody has worked out yet (a neo, a ladder grab, a
+                    // momentum jump): "don't know" for now, worked out in a second in the background. give it that second
+                    // and ask again, instead of telling the user there's no path the first time and finding one the second
+                    tableRetries++;
+                    tableWaitTicks = 0;
+                    logDebug("Some of the jumps here are still being worked out, trying again in a moment");
+                    this.state = State.WAITING_FOR_TABLES;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
                 if (calcFailed) {
+                    tableRetries = 0;
                     // a user trip keeps its own copy of the goal, so dropping it here is fine. see TripBehavior
                     baritone.getTripBehavior().onCalcFailed(this.goal);
                     onLostControl();
@@ -135,8 +153,13 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         }
     }
 
+    private static final int TABLE_RETRIES = 3, TABLE_WAIT_TICKS = 300;
+    private int tableRetries, tableWaitTicks;
+    private long tableMisses;
+
     @Override
     public void onLostControl() {
+        this.tableRetries = 0;
         this.state = State.NONE;
         this.goal = null;
     }
@@ -150,6 +173,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         NONE,
         GOAL_SET,
         PATH_REQUESTED,
-        EXECUTING
+        EXECUTING,
+        // a search came back empty after the neo / momentum / climb tables told it "don't know yet": waiting for them
+        WAITING_FOR_TABLES
     }
 }

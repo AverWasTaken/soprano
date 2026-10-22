@@ -66,6 +66,14 @@ public final class PlayerSim {
     public boolean onGround, sprinting, horizontalCollision, minorHorizontalCollision, verticalCollision;
     // LivingEntity.noJumpDelay, the ticks left before holding space jumps again
     public int noJumpDelay;
+    // Entity.mainSupportingBlockPos: the block we're standing on (the nearest one under the box), which is where friction,
+    // bounce and the rest are looked up rather than straight under the middle of the box. only while hasSupport
+    public boolean hasSupport;
+    public int supportX, supportY, supportZ;
+    // set by the last tick(): we came down on something bouncy and went back up
+    public boolean bounced;
+    // standing in a ladder or vine at the end of the last tick
+    public boolean climbing;
     // set by the last tick(): did it leave the ground, and why it gave up if it did
     public boolean jumped;
     private String failure;
@@ -76,6 +84,10 @@ public final class PlayerSim {
     private final double[] step = new double[3], stepped = new double[3], want = new double[3], out = new double[3];
     private float[] candidates = new float[8];
     private float xxa, zza;
+
+    public CollisionProvider world() {
+        return world;
+    }
 
     public PlayerSim(Params params, CollisionProvider world) {
         this.params = params;
@@ -97,6 +109,11 @@ public final class PlayerSim {
         c.minorHorizontalCollision = minorHorizontalCollision;
         c.verticalCollision = verticalCollision;
         c.noJumpDelay = noJumpDelay;
+        c.hasSupport = hasSupport;
+        c.climbing = climbing;
+        c.supportX = supportX;
+        c.supportY = supportY;
+        c.supportZ = supportZ;
         return c;
     }
 
@@ -179,7 +196,7 @@ public final class PlayerSim {
         // the jump block: onGround and no delay, or the delay resets the moment the key is up
         if (c.jump()) {
             if (onGround && noJumpDelay == 0) {
-                float power = (float) params.jumpStrength() * 1.0F * 1.0F + 0.0F; // LivingEntity.getJumpPower, plain block and no potion
+                float power = (float) params.jumpStrength() * 1.0F * jumpFactor() + 0.0F; // LivingEntity.getJumpPower, no potion
                 if (!(power <= 1.0E-5F)) {
                     dy = Math.max((double) power, dy);
                     if (sprinting) { // jumpFromGround, and MixinLivingEntity hands it the same yaw moveRelative gets
@@ -196,7 +213,7 @@ public final class PlayerSim {
         }
 
         // LivingEntity.travelInAir
-        float blockFriction = onGround ? modifiedFriction(0.6F) : 1.0F;
+        float blockFriction = onGround ? modifiedFriction(frictionBelow()) : 1.0F;
         float accel;
         if (onGround) { // getFrictionInfluencedSpeed. Player.getSpeed() is the attribute, so the sprint flag counts the tick it flips
             float speed = (float) walkSpeedAttribute(sprinting);
@@ -220,11 +237,23 @@ public final class PlayerSim {
             dx += ix * cos - iz * sin;
             dz += iz * cos + ix * sin;
         }
+        // LivingEntity.handleOnClimbable: on a ladder or vine sideways speed is capped and the fall is held to 0.15 a tick
+        // (sneaking would hold it at 0, the sim never sneaks)
+        if (onClimbable()) {
+            dx = Mth.clamp(dx, -0.15F, 0.15F);
+            dz = Mth.clamp(dz, -0.15F, 0.15F);
+            dy = Math.max(dy, -0.15F);
+        }
 
         vx = dx;
         vy = dy;
         vz = dz;
         move(c.viewYaw());
+        // handleRelativeFrictionAndCalculateMovement: pushing into something, or holding jump, on a climbable climbs
+        climbing = onClimbable();
+        if (climbing && (horizontalCollision || c.jump())) {
+            vy = 0.2;
+        }
         // what is left of the velocity after move (collisions zero the axis they hit) is what travelInAir reads back
         double movementY = vy - params.gravity();
         float airDrag = modifiedFriction(0.91F);
@@ -233,15 +262,136 @@ public final class PlayerSim {
         vx = vx * friction;
         vy = movementY * verticalFriction;
         vz = vz * friction;
+        // LivingEntity.aiStep's applyEffectsFromBlocks after travel: Block.stepOn of what we're standing on. slime's is the one
+        // that moves us, it soaks up sideways speed unless we're bouncing
+        if (onGround) {
+            onPos(0.2F, cellA);
+            if (world.slimeStep(cellA[0], cellA[1], cellA[2])) {
+                double absVy = Math.abs(vy);
+                if (absVy < 0.1) {
+                    double scale = 0.4 + absVy * 0.2;
+                    vx *= scale;
+                    vz *= scale;
+                }
+            }
+        }
 
-        // Entity.move multiplies x and z by the speed factor of the block we ended in or on. we only know the start, so
-        // a tick that ends on soul sand or honey is not ours to answer for
+        // a tick that ends in or on something the provider doesn't do the maths for (see CollisionProvider.plain) is not ours
+        // to answer for
         String ended = endedSomewhereOdd();
         if (ended != null) {
             failure = ended;
             return false;
         }
         return true;
+    }
+
+    // LivingEntity.onClimbable: the block the feet are in (blockPosition, the cell of the box's bottom middle)
+    private boolean onClimbable() {
+        return world.climbable(Mth.floor(x), Mth.floor(y), Mth.floor(z));
+    }
+
+    // Entity.getOnPos(offset): the supporting block's column at feet minus offset, or the supporting block itself for walls and
+    // gates (and fences, at offsets of half a block or less). no support (in the air) is straight under the middle of the box
+    private void onPos(float offset, int[] out) {
+        if (hasSupport) {
+            int kind = offset > 1.0E-5F ? world.supportKind(supportX, supportY, supportZ) : 3;
+            if (kind == 3 || kind == 2 || kind == 1 && offset <= 0.5F) {
+                out[0] = supportX;
+                out[1] = supportY;
+                out[2] = supportZ;
+            } else {
+                out[0] = supportX;
+                out[1] = Mth.floor(y - offset);
+                out[2] = supportZ;
+            }
+            return;
+        }
+        out[0] = Mth.floor(x);
+        out[1] = Mth.floor(y - offset);
+        out[2] = Mth.floor(z);
+    }
+
+    private final int[] cellA = new int[3], cellB = new int[3];
+
+    // getBlockPosBelowThatAffectsMyMovement is getOnPos(0.500001F)
+    private float frictionBelow() {
+        onPos(0.500001F, cellA);
+        return world.friction(cellA[0], cellA[1], cellA[2]);
+    }
+
+    // Entity.getBlockJumpFactor / getBlockSpeedFactor: the cell we're in, unless that's 1, then the one under us
+    private float jumpFactor() {
+        float here = world.jumpFactor(Mth.floor(x), Mth.floor(y), Mth.floor(z));
+        if (here != 1.0F) {
+            return here;
+        }
+        onPos(0.500001F, cellA);
+        return world.jumpFactor(cellA[0], cellA[1], cellA[2]);
+    }
+
+    private float speedFactor() {
+        float here = world.speedFactor(Mth.floor(x), Mth.floor(y), Mth.floor(z));
+        if (here != 1.0F) {
+            return here;
+        }
+        onPos(0.500001F, cellA);
+        return world.speedFactor(cellA[0], cellA[1], cellA[2]);
+    }
+
+    // Entity.checkSupportingBlock / CollisionGetter.findSupportingBlock: of the blocks that collide with a sliver under the
+    // feet, the one whose middle is nearest ours (ties to the larger BlockPos). nothing there, try again where we came from
+    private void updateSupport(double mx, double mz) {
+        if (!onGround) {
+            hasSupport = false;
+            return;
+        }
+        if (findSupport(0.0, 0.0) || findSupport(-mx, -mz)) {
+            return;
+        }
+        hasSupport = false;
+    }
+
+    private boolean findSupport(double ox, double oz) {
+        double minX = x - halfWidth + ox, maxX = x + halfWidth + ox, minZ = z - halfWidth + oz, maxZ = z + halfWidth + oz;
+        double minY = y - 1.0E-6, maxY = y;
+        boolean found = false;
+        double best = Double.MAX_VALUE;
+        int bx0 = 0, by0 = 0, bz0 = 0;
+        for (int bx = Mth.floor(minX - 1.0E-7) - 1; bx <= Mth.floor(maxX + 1.0E-7) + 1; bx++) {
+            for (int by = Mth.floor(minY - 1.0E-7) - 1; by <= Mth.floor(maxY + 1.0E-7); by++) {
+                for (int bz = Mth.floor(minZ - 1.0E-7) - 1; bz <= Mth.floor(maxZ + 1.0E-7) + 1; bz++) {
+                    cell.clear();
+                    world.boxes(bx, by, bz, cell);
+                    boolean hits = false;
+                    for (int i = 0; i < cell.size() && !hits; i++) {
+                        hits = cell.get(i, 0) < maxX && cell.get(i, 3) > minX && cell.get(i, 1) < maxY && cell.get(i, 4) > minY
+                                && cell.get(i, 2) < maxZ && cell.get(i, 5) > minZ;
+                    }
+                    if (!hits) {
+                        continue;
+                    }
+                    double ddx = bx + 0.5 - x, ddy = by + 0.5 - y, ddz = bz + 0.5 - z;
+                    double dist = ddx * ddx + ddy * ddy + ddz * ddz;
+                    // Vec3i.compareTo: y, then z, then x
+                    boolean larger = by != by0 ? by > by0 : bz != bz0 ? bz > bz0 : bx > bx0;
+                    if (!found || dist < best || dist == best && larger) {
+                        found = true;
+                        best = dist;
+                        bx0 = bx;
+                        by0 = by;
+                        bz0 = bz;
+                    }
+                }
+            }
+        }
+        if (found) {
+            hasSupport = true;
+            supportX = bx0;
+            supportY = by0;
+            supportZ = bz0;
+        }
+        return found;
     }
 
     // LivingEntity.computeModifiedFriction with the default modifier of 1
@@ -298,8 +448,12 @@ public final class PlayerSim {
         verticalCollision = dy != cy;
         // setOnGroundWithMovement(verticalCollisionBelow, ...). the local player always takes this branch
         onGround = verticalCollision && dy < 0.0;
+        updateSupport(cx, cz);
         minorHorizontalCollision = horizontalCollision && horizontalCollisionMinor(cx, cz, viewYaw);
-        // restituteMovementAfterCollisions with a bounciness of 0: whatever was hit stops dead
+        // restituteMovementAfterCollisions. a player's own bounciness is 0, so whatever was hit sideways stops dead. coming
+        // down onto something with a bounce (slime) faster than gravity turns the fall round: what's left of the tick's
+        // movement after the hit, with the gravity and drag for that part of the tick taken back out
+        bounced = false;
         if (xCollision) {
             vx = 0.0;
         }
@@ -307,8 +461,26 @@ public final class PlayerSim {
             vz = 0.0;
         }
         if (verticalCollision) {
-            vy = 0.0;
+            double restitution = 0.0;
+            double gravity = params.gravity();
+            if (dy < 0.0 && !(-dy <= gravity)) {
+                onPos(0.2F, cellB);
+                restitution = Math.max(0.0, world.bounce(cellB[0], cellB[1], cellB[2]));
+            }
+            if (restitution > 0.0) {
+                double portion = cy / dy;
+                double gravityCompensation = portion * gravity;
+                double drag = Mth.lerp(portion, 1.0, (double) 0.98F);
+                vy = (gravityCompensation - dy) * drag * restitution;
+                bounced = true;
+            } else {
+                vy = 0.0;
+            }
         }
+        // and the speed factor of what we're in or on (soul sand, honey)
+        float speedFactor = speedFactor();
+        vx *= speedFactor;
+        vz *= speedFactor;
     }
 
     // LocalPlayer.isHorizontalCollisionMinor: close to where the keys wanted to go (under 8 degrees) is a graze, not a wall

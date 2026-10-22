@@ -57,6 +57,8 @@ final class NeoJump {
     private static final int HOLD_POLICY = 0, CURVE_POLICY = 1;
     // how good a standing start has to look before A* is allowed to plan one, and before we commit to the jump
     static final double PLAN_MARGIN = 0.03, JUMP_MARGIN = 0.02;
+    // the least a jump-this-tick plan needs when the alternative is no jump at all (see MovementNeo)
+    static final double NOW_MARGIN = 0.008;
     // where we stand before the run up, relative to the back of the runway
     // 0.76 is right on the edge of the bridge (0.04 of floor left under us), which is where the good runs start. every
     // bit further out we start is that much more room past the wall, a 2 thick wall goes 0.025 -> 0.04 between 0.74 and 0.76
@@ -138,15 +140,25 @@ final class NeoJump {
             warm();
         }
         double[] spot = TABLE.get(key);
-        if (spot == null) {
-            // the warmup gets to everything eventually, this one gets to cut the line
-            if (TABLE.compareAndSet(key, null, PENDING)) {
+        if (spot == null || spot == PENDING) {
+            // the warmup gets to everything eventually, this one gets to cut the line (out of the warmup's queue too)
+            if (spot == PENDING) {
+                QUEUE.removeIf(j -> j.key() == key);
+            }
+            if (TABLE.compareAndSet(key, spot, PENDING)) {
                 QUEUE.addFirst(new Job(key, dist, walls, runway, openBeyond));
                 ensureWorkers();
             }
+        }
+        spot = TABLE.get(key);
+        if (spot == null || spot == PENDING || spot == RUNNING) {
+            PendingTables.missed("NeoJump" + key, () -> {
+                double[] s = TABLE.get(key);
+                return s != PENDING && s != RUNNING; // null is a job that threw: asking again will retry it
+            });
             return null;
         }
-        return spot == PENDING || spot == RUNNING ? null : unpack(spot);
+        return unpack(spot);
     }
 
     // the answer for a key, working it out here if nobody is. not under any lock: a runway of 6 asks for six of these at
@@ -969,6 +981,20 @@ final class NeoJump {
     /**
      * One tick on the ground holding W toward (c, s). false if we hit something or ran off the edge
      */
+    /**
+     * Whether one more tick of running toward (c, s) from here hits the wall or walks off the side. When it does, this
+     * tick is the last one there is to jump on
+     */
+    boolean lastRunTick(double u, double v, double vu, double vv, double c, double s) {
+        pu = u;
+        pv = v;
+        pvu = vu;
+        pvv = vv;
+        py = pvy = 0;
+        margin = CAP;
+        return !run(c, s);
+    }
+
     private boolean run(double c, double s) {
         double du = pvu + groundAccel * c;
         double dv = pvv + groundAccel * s;

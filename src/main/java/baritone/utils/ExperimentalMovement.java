@@ -90,6 +90,10 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().allowMomentumJumps.value;
     }
 
+    public static boolean allowTungstenJumps() {
+        return on() || Baritone.settings().allowTungstenJumps.value;
+    }
+
     public static boolean allowDiagonalAscend() {
         return on() || Baritone.settings().allowDiagonalAscend.value;
     }
