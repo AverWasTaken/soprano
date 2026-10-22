@@ -248,13 +248,13 @@ public class MineAndCollectTask extends ResourceTask {
         this(new ItemTarget(item, count), blocksToMine, requirement);
     }
 
-    // only ever pick blocks that pass this as the next one to break (the coal detour: only coal we can see). a block already
-    // being broken is not asked again, the swing that is halfway through finishes
     // the subtask found nothing to go to this tick and is wandering for a block (NetherGoldTask treats that as the end of the dig)
     public boolean wandering() {
         return _subtask.wasWandering();
     }
 
+    // only ever pick blocks that pass this as the next one to break (the coal detour: only coal we can see). a block already
+    // being broken is not asked again, the swing that is halfway through finishes
     public MineAndCollectTask onlyWhere(Predicate<BlockPos> only) {
         // on top of the together filter, not instead of it
         _subtask._only = _subtask._only.and(only);

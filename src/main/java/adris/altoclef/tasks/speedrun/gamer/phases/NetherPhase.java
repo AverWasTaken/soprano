@@ -74,6 +74,7 @@ public class NetherPhase implements PhaseHandler {
     private static final Block[] GUARDED = {Blocks.NETHER_GOLD_ORE, Blocks.GILDED_BLACKSTONE};
     // the known-ore look is a walk over every tracked gold ore, twice a second is plenty
     private static final int ORE_LOOK_TICKS = 10;
+    private static final int GUARD_HOLD_TICKS = 20;
 
     private static final int SCAN_EVERY_TICKS = 6;
     // the nearest this many tracked blocks of a kind get asked about, the tracker can hold thousands of bricks
@@ -127,6 +128,7 @@ public class NetherPhase implements PhaseHandler {
     private double goldStartedAt;
     private boolean goldOver;
     private boolean guarding;
+    private int guardHold;
     private BlockPos goldAnchor;
     private boolean oreLeft;
     private int lastNuggets;
@@ -275,6 +277,8 @@ public class NetherPhase implements PhaseHandler {
         ReturnPhase.recordPortal(mod, ctx.state());
         rememberOverworldPortal(mod, ctx);
         double now = ctx.secondsInPhase();
+        // before the cover, whatever path that one walks must not break gold either
+        boolean piglins = guardGold(mod);
         Task cover = ghastCover(mod, now);
         if (cover != null) {
             gravel.preempted(ctx.facts().gameTime());
@@ -283,7 +287,6 @@ public class NetherPhase implements PhaseHandler {
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
         }
-        boolean piglins = guardGold(mod);
         Task flint = gravelSide(mod, ctx, now);
         if (flint != null) {
             return flint;
@@ -308,18 +311,21 @@ public class NetherPhase implements PhaseHandler {
 
     // while a piglin is that close, nothing may break gold ore as a side block of some other dig (the gravel, the way through a wall):
     // the hit angers all of them. blocksToDisallowBreaking and not the avoid list, which only makes a break ten times dearer and
-    // lets it through when the way round is dearer still. back off the list the moment they are gone. returns the same piglin answer
+    // lets it through when the way round is dearer still. a piglin on the edge of the box would flip the list (and the path tables
+    // that copy it) every few ticks, so it stays on for a second after the last one. returns whether it is on
     private boolean guardGold(AltoClef mod) {
-        boolean piglins = piglinInBox(mod);
-        if (piglins && !guarding) {
-            for (Block b : GUARDED) {
-                baritone.api.BaritoneAPI.getSettings().blocksToDisallowBreaking.value.add(b);
+        if (piglinInBox(mod)) {
+            guardHold = GUARD_HOLD_TICKS;
+            if (!guarding) {
+                for (Block b : GUARDED) {
+                    baritone.api.BaritoneAPI.getSettings().blocksToDisallowBreaking.value.add(b);
+                }
+                guarding = true;
             }
-            guarding = true;
-        } else if (!piglins) {
+        } else if (guarding && --guardHold <= 0) {
             unguard(mod);
         }
-        return piglins;
+        return guarding;
     }
 
     private void unguard(AltoClef mod) {

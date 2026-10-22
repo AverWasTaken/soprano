@@ -30,9 +30,10 @@ public final class PiglinGold {
     }
 
     // nothing gold on or in the bag and not the gold for a piece either: the nether fallback will dig nuggets, and turning them into
-    // a piece takes a crafting table, so one rides along from the overworld (four planks here, nothing but luck there)
+    // a piece takes a crafting table, so one rides along from the overworld (four planks here, nothing but luck there). a table the planner only
+    // remembers at a far station does not count, the portal stops waiting for it past 48 blocks
     public static List<KitNeed> tableForNether(GamerFacts f) {
-        if (worn(f) || holdsPiece(f) || available(f) >= BOOTS_INGOTS || NetherPick.bagOf(f).table()) {
+        if (worn(f) || holdsPiece(f) || available(f) >= BOOTS_INGOTS || f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby()) {
             return List.of();
         }
         return List.of(new KitNeed("crafting_table", 1));
