@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.CraftingRecipe;
@@ -12,6 +13,7 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -63,7 +65,9 @@ public class CollectBedTask extends CraftWithMatchingWoolTask {
     protected Task onResourceTick(AltoClef mod) {
         // Break beds from the world if possible, that would be pretty fast.
         Block[] copperBlocks = ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS);
-        Optional<BlockPos> nearestBed = mod.getBlockTracker().getNearestTracking(BEDS);
+        // the bed we respawn at is not for the taking, however close it is
+        Predicate<BlockPos> notSpawn = pos -> !Respawn.isSpawnBed(pos.getX(), pos.getY(), pos.getZ());
+        Optional<BlockPos> nearestBed = mod.getBlockTracker().getNearestTracking(notSpawn, BEDS);
         if (nearestBed.isPresent() && WorldHelper.canBreak(mod, nearestBed.get())) {
             for (Block CopperBlock : copperBlocks) {
                 Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().below()).getBlock();
@@ -73,7 +77,7 @@ public class CollectBedTask extends CraftWithMatchingWoolTask {
                 }
             }
             // Failure + blacklisting is encapsulated within THIS task)
-            return new MineAndCollectTask(new ItemTarget(ItemHelper.BED), BEDS, MiningRequirement.HAND);
+            return new MineAndCollectTask(new ItemTarget(ItemHelper.BED), BEDS, MiningRequirement.HAND).onlyWhere(notSpawn);
         }
         return super.onResourceTick(mod);
     }

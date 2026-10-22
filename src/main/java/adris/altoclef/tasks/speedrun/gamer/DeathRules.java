@@ -133,7 +133,7 @@ public final class DeathRules {
     // dying again at the pile we were going back for is the loop to stop, however rich the new one is, and so is a spot that
     // already killed us KILLS_AT_A_SPOT times. one old death there is fine: a pile recovered in between is not a loop
     public static String refuse(boolean sameDimension, double blocks, int reach, Worth worth, int foodLine, int killedBefore,
-                                boolean diedAtThePile) {
+                                boolean diedAtThePile, boolean darkAndBare) {
         if (!sameDimension) {
             return "it is in another dimension";
         }
@@ -145,6 +145,10 @@ public final class DeathRules {
         }
         if (blocks > reach) {
             return Math.round(blocks) + " blocks is further than the " + reach + " we walk";
+        }
+        // a pick is not worth a night on the surface with no armor, a rich pile still is
+        if (darkAndBare && worth != null && worth.pick() && !worth.rich(foodLine)) {
+            return "it is night and we have no armor for a pick";
         }
         if (worth != null && !worth.worthIt(blocks, foodLine)) {
             return "the bag was nearly empty (" + worth.words() + ")";

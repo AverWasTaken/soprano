@@ -27,4 +27,20 @@ public class TraverseLavaInputTest {
     public void aboveTheDestIsNotRising() {
         assertFalse(MovementTraverse.pushesForwardWhileRising(true, 33, 32));
     }
+
+    @Test
+    public void inLavaAboveTheDestLeansForward() {
+        assertTrue(MovementTraverse.pushesForwardWhileAbove(true, 33, 32));
+    }
+
+    @Test
+    public void outOfLavaAboveTheDestIdles() {
+        assertFalse(MovementTraverse.pushesForwardWhileAbove(false, 33, 32));
+    }
+
+    @Test
+    public void levelOrBelowIsNotAbove() {
+        assertFalse(MovementTraverse.pushesForwardWhileAbove(true, 32, 32));
+        assertFalse(MovementTraverse.pushesForwardWhileAbove(true, 31, 32));
+    }
 }

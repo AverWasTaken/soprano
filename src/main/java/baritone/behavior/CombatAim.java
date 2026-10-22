@@ -26,6 +26,7 @@ import baritone.behavior.look.CombatWants;
 import baritone.behavior.look.LegacyClicker;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -124,15 +125,32 @@ public final class CombatAim {
         Vec3 eyeVec = player.getEyePosition();
         double[] pref = preferred == null ? CombatAimMath.preferredPoint(b, eyeVec.y)
                 : new double[]{preferred.x + lx, preferred.y + ly, preferred.z + lz};
+        // an enderman reads a look at its head as a challenge and teleports away, so every ask for one, even a caller who
+        // knows better, gets its legs
+        boolean ender = entity instanceof Enderman;
+        double[] inner = ender ? CombatAimMath.innerBox(b, CombatAimMath.ENDERMAN_LOW, CombatAimMath.ENDERMAN_HIGH) : CombatAimMath.innerBox(b);
+        if (ender) {
+            pref = CombatAimMath.capHeight(pref, b, CombatAimMath.ENDERMAN_HIGH);
+        }
         double[] eye = {eyeVec.x, eyeVec.y, eyeVec.z};
         Rotation now = ctx.playerRotations();
         double[] dir = CombatAimMath.direction(now.getYaw(), now.getPitch());
-        double[] point = CombatAimMath.aimPoint(eye, dir, CombatAimMath.innerBox(b), pref);
+        double[] point = CombatAimMath.aimPoint(eye, dir, inner, pref);
         float[] to = CombatAimMath.rotationTo(eye, point);
         float[] stepped = smoother.step(now.getYaw(), now.getPitch(), to[0], to[1], Baritone.settings().smoothCombatAim.value);
         // same limits the per tick reroll has always had, just as a slow wander instead of a shake
         float[] wobble = smoother.wobble(Baritone.settings().randomLooking113.value / 2, Baritone.settings().randomLooking.value);
-        return new Rotation(stepped[0] + wobble[0], stepped[1] + wobble[1]);
+        float yaw = stepped[0] + wobble[0];
+        float pitch = stepped[1] + wobble[1];
+        if (ender) {
+            // the smoothing walks the head there over a few ticks and the wobble sits on top, so the point being low does not
+            // promise the look is: if the head is passing through its eye cone this tick, it goes down instead
+            Vec3 ee = entity.getEyePosition();
+            if (CombatAimMath.inEyeCone(eye, CombatAimMath.direction(yaw, pitch), new double[]{ee.x, ee.y, ee.z})) {
+                pitch = Math.min(90, pitch + 15);
+            }
+        }
+        return new Rotation(yaw, pitch);
     }
 
     void reset() {

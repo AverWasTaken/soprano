@@ -439,11 +439,11 @@ public class NetherPhase implements PhaseHandler {
         return new NetherGold.Bag(f.count(Items.GOLD_NUGGET), f.count(Items.GOLD_INGOT), nb.planks(), nb.logs(), table);
     }
 
-    // nether gold ore the tracker already holds, still standing, within the try's radius of `from`
+    // nether gold ore the tracker already holds, still standing, within the try's reach of `from` (NetherGold.oreInReach)
     private static boolean oreKnown(AltoClef mod, BlockPos from) {
-        double max = NetherGold.ORE_BLOCKS * NetherGold.ORE_BLOCKS;
         for (BlockPos p : mod.getBlockTracker().getKnownLocations(Blocks.NETHER_GOLD_ORE)) {
-            if (p.distSqr(from) <= max && mod.getWorld().getBlockState(p).is(Blocks.NETHER_GOLD_ORE)) {
+            if (NetherGold.oreInReach(p.getX(), p.getY(), p.getZ(), from.getX(), from.getY(), from.getZ())
+                    && mod.getWorld().getBlockState(p).is(Blocks.NETHER_GOLD_ORE)) {
                 return true;
             }
         }

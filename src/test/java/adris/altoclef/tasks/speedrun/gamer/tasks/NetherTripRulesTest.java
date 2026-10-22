@@ -6,6 +6,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Inputs;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Limits;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Stage;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Step;
+import adris.altoclef.util.helpers.DeathStash;
 import baritone.api.utils.Dimension;
 import org.junit.Test;
 
@@ -286,5 +287,111 @@ public class NetherTripRulesTest {
         stage = NetherTripRules.next(pile(stage, Dimension.NETHER, 12, false, 0, true)).stage();
         assertEquals(Stage.RECOVER, stage);
         assertTrue(NetherTripRules.next(pile(stage, Dimension.NETHER, 2, true, 9, false)).recovered());
+    }
+
+    // ---- lava cause
+
+    @Test
+    public void lavaDamageInTheLastThreeSecondsIsALavaDeath() {
+        assertTrue(DeathStash.lavaRecent(1000, 1000));
+        assertTrue(DeathStash.lavaRecent(1000, 1060));
+        assertEquals(Cause.LAVA, NetherTripRules.cause(DeathStash.lavaRecent(1000, 1040), false));
+    }
+
+    @Test
+    public void oldLavaDamageOrFireAloneIsNotLava() {
+        assertFalse(DeathStash.lavaRecent(1000, 1061));
+        // never hit by lava at all (fire only)
+        assertFalse(DeathStash.lavaRecent(Long.MIN_VALUE, 1000));
+        // a clock from another world
+        assertFalse(DeathStash.lavaRecent(5000, 1000));
+        assertEquals(Cause.OTHER, NetherTripRules.cause(DeathStash.lavaRecent(Long.MIN_VALUE, 1000), false));
+    }
+
+    // ---- the pick stage
+
+    private static Inputs bare(Stage stage, long stageTicks, boolean hasPick) {
+        return new Inputs(stage, Dimension.OVERWORLD, 0, stageTicks, 24, false, 500, false, 0, true, 0, LIMITS, hasPick, 0);
+    }
+
+    @Test
+    public void noPickSendsTheBlocksStageToThePickStage() {
+        assertEquals(Stage.PICK, NetherTripRules.next(bare(Stage.BLOCKS, 100, false)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(bare(Stage.BLOCKS, 100, true)).stage());
+    }
+
+    @Test
+    public void thePickStageWaitsForAPickAndThenGoes() {
+        assertEquals(Stage.PICK, NetherTripRules.next(bare(Stage.PICK, 100, false)).stage());
+        Step got = NetherTripRules.next(bare(Stage.PICK, 100, true));
+        assertEquals(Stage.PORTAL, got.stage());
+        assertNull(got.giveUp());
+    }
+
+    @Test
+    public void thePickStageGivesUpAfterItsCap() {
+        long cap = NetherTripRules.PICK_SECONDS * 20L;
+        assertEquals(Stage.PICK, NetherTripRules.next(bare(Stage.PICK, cap, false)).stage());
+        Step out = NetherTripRules.next(bare(Stage.PICK, cap + 1, false));
+        assertNotNull(out.giveUp());
+        assertNull(out.stage());
+    }
+
+    // ---- portal progress and the clocks
+
+    private static Inputs walking(long stageTicks, long stuckTicks) {
+        return new Inputs(Stage.PORTAL, Dimension.OVERWORLD, 0, stageTicks, 24, false, 500, false, 0, true, 0, LIMITS, true, stuckTicks);
+    }
+
+    @Test
+    public void eightBlocksInAMinuteCountsAsProgress() {
+        assertTrue(NetherTripRules.closedIn(100, 92));
+        assertFalse(NetherTripRules.closedIn(100, 92.5));
+        // the horizontal part closed and the shaft did not: 3d distance moved 5, so no
+        assertFalse(NetherTripRules.closedIn(Math.sqrt(30 * 30 + 88 * 88), Math.sqrt(3 * 3 + 88 * 88)));
+    }
+
+    @Test
+    public void aFightThatHeldTheWheelRestartsTheNoProgressClock() {
+        assertFalse(NetherTripRules.markStale(1000, 1001));
+        assertFalse(NetherTripRules.markStale(1000, 1040));
+        assertTrue(NetherTripRules.markStale(1000, 1041));
+    }
+
+    @Test
+    public void aPortalWalkThatStopsClosingGivesUpAfterAMinute() {
+        long minute = NetherTripRules.PORTAL_PROGRESS_SECONDS * 20L;
+        assertEquals(Stage.PORTAL, NetherTripRules.next(walking(2000, minute)).stage());
+        Step stuck = NetherTripRules.next(walking(2000, minute + 1));
+        assertNotNull(stuck.giveUp());
+        assertNull(stuck.stage());
+    }
+
+    @Test
+    public void thePortalHasACeilingToo() {
+        long cap = NetherTripRules.PORTAL_SECONDS * 20L;
+        assertEquals(Stage.PORTAL, NetherTripRules.next(walking(cap, 0)).stage());
+        assertNotNull(NetherTripRules.next(walking(cap + 1, 0)).giveUp());
+    }
+
+    @Test
+    public void theBudgetOnlyCountsNetherTime() {
+        // never been in the nether: nothing spent, however long the overworld took
+        assertEquals(0, NetherTripRules.netherTicks(0, 999999));
+        assertEquals(300, NetherTripRules.netherTicks(5000, 5300));
+        // a long overworld stretch does not eat the budget
+        Step still = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, NetherTripRules.netherTicks(100000, 100100), 100,
+                24, false, 300, false, 0, true, 0, LIMITS));
+        assertEquals(Stage.WALK, still.stage());
+        // and the nether part still runs out
+        Step late = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, NetherTripRules.netherTicks(100000, 100000 + 7201),
+                100, 24, false, 300, false, 0, true, 0, LIMITS));
+        assertEquals("out of time", late.giveUp());
+    }
+
+    @Test
+    public void overworldCapsDoNotTouchHome() {
+        Step home = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 0, 100, 0, false, 300, false, 0, true, 0, LIMITS, false, 99999));
+        assertEquals(Stage.HOME, home.stage());
     }
 }

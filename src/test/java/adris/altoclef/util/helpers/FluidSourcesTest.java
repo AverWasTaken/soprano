@@ -192,4 +192,18 @@ public class FluidSourcesTest {
     public void floodFromOutsideTheFluidIsEmpty() {
         assertTrue(flood(new BlockPos(0, 0, 0), FluidSources.FLOOD_CAP).isEmpty());
     }
+
+    @Test
+    public void firstPassingSkipsFailuresInOrder() {
+        java.util.List<BlockPos> list = java.util.List.of(new BlockPos(0, 0, 0), new BlockPos(1, 0, 0), new BlockPos(2, 0, 0));
+        assertEquals(Optional.of(new BlockPos(1, 0, 0)), FluidSources.firstPassing(list, p -> p.getX() >= 1, 10));
+    }
+
+    @Test
+    public void firstPassingStopsAtTheCap() {
+        java.util.List<BlockPos> list = java.util.List.of(new BlockPos(0, 0, 0), new BlockPos(1, 0, 0), new BlockPos(2, 0, 0));
+        int[] calls = {0};
+        assertTrue(FluidSources.firstPassing(list, p -> { calls[0]++; return p.getX() == 2; }, 2).isEmpty());
+        assertEquals(2, calls[0]);
+    }
 }

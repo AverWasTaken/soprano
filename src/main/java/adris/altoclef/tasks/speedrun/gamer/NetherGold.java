@@ -11,6 +11,9 @@ public final class NetherGold {
     public static final double CAP_SECONDS = 90;
     // only ore the tracker already knows about, and only this far from where the try began
     public static final double ORE_BLOCKS = 48;
+    // and about our own height. nether gold sits in the walls and up by the roof too, and a dig to ore 40 up the cliff is a
+    // pillar and a path along a ledge over the lava sea: one of those walked us off the edge. there is always more ore at our level
+    public static final int ORE_DY = 6;
     // PiglinAi.angerNearbyPiglins: breaking a block in #guarded_by_piglins angers every piglin in the player's box inflated by
     // this, no line of sight asked
     public static final double ANGER_BLOCKS = 16;
@@ -39,6 +42,12 @@ public final class NetherGold {
     }
 
     // the box vanilla angers piglins in, around the player's own box
+    // an ore this try may go for: inside the radius sideways and within ORE_DY up or down of where it began
+    public static boolean oreInReach(int ox, int oy, int oz, int fx, int fy, int fz) {
+        double dx = ox - fx, dz = oz - fz;
+        return dx * dx + dz * dz <= ORE_BLOCKS * ORE_BLOCKS && Math.abs(oy - fy) <= ORE_DY;
+    }
+
     public static AABB angerBox(AABB player) {
         return player.inflate(ANGER_BLOCKS);
     }

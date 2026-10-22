@@ -115,6 +115,8 @@ public class GamerTask extends Task {
     private BotBehaviour.State level;
     // watches for crafting tables, furnaces and smokers we place, so the registry (Workbenches) only ever takes back its own
     private Subscription<BlockPlaceEvent> placeWatch;
+    // the server's word on where we respawn (Respawn), written into the state as it comes
+    private RespawnWatch respawnWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
 
@@ -158,7 +160,8 @@ public class GamerTask extends Task {
     // the hole for the night after a death with no armor and no bed (NightShelter), its own once per night flag, and the look throttle
     private ShelterTask shelter;
     private final NightShelter.Once shelterOnce = new NightShelter.Once();
-    private long shelterLookAt = Long.MIN_VALUE;
+    // halved so the subtraction in shelterTick can't wrap around into the negatives and look like "just looked" forever
+    private long shelterLookAt = Long.MIN_VALUE / 2;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
@@ -272,6 +275,10 @@ public class GamerTask extends Task {
             CookTrip.unbind();
             StationHook.clear();
             stopWatchingPlacements();
+            if (respawnWatch != null) {
+                respawnWatch.stop();
+                respawnWatch = null;
+            }
             releaseBehaviour(mod);
         }
     }
@@ -538,6 +545,11 @@ public class GamerTask extends Task {
         // so a log of a run says which jar played it
         Debug.logInternal(BuildInfo.line());
         watchPlacements();
+        if (respawnWatch != null) {
+            respawnWatch.stop();
+        }
+        respawnWatch = new RespawnWatch(state, () -> facts.dimension().name(), host::save);
+        respawnWatch.start();
         machine.begin(mod, resumedAsIs);
     }
 
@@ -575,6 +587,17 @@ public class GamerTask extends Task {
 
     private static boolean isJobBlock(BlockState block) {
         return block.is(Blocks.BLAST_FURNACE) || block.is(Blocks.GRINDSTONE) || block.is(Blocks.SMITHING_TABLE);
+    }
+
+    // a bed gone from where we respawn is forgotten, and a night bed that holds the respawn on the stronghold leg stays (a trip that
+    // is still running adopts it itself when it wraps up, taking its bed from under it mid-sleep would break the lift)
+    private void trackRespawn(AltoClef mod) {
+        if (respawnWatch != null) {
+            respawnWatch.tick(mod.getWorld());
+        }
+        if (nightTrip == null && Respawn.adoptNightBed(state)) {
+            host.save();
+        }
     }
 
     private void stopWatchingPlacements() {
@@ -766,8 +789,16 @@ public class GamerTask extends Task {
             return null;
         }
         trackDeaths(mod);
+        trackRespawn(mod);
         trackNightGates();
         if (machine.ended()) {
+            return null;
+        }
+        // dead and not respawned yet: the bag reads empty, and a regress decided off it sent the run back to gather before the
+        // respawn got to start the walk back for our things. nothing to decide until the new body shows up
+        if (deadSeen) {
+            machine.observe();
+            machine.holdClocks();
             return null;
         }
         // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
@@ -1052,8 +1083,12 @@ public class GamerTask extends Task {
             // the older pile is not worth another life either, and the new one is judged below on its own
             host.say("death: died on the way to the last pile, giving that one up");
         }
+        // same night the shelter uses, with a minute of walking ahead of it counted (the shelter is blocked while we recover)
+        boolean darkAndBare = facts.dimension() == Dimension.OVERWORLD
+                && NightShelter.dark(!mod.getWorld().isBrightOutside(), mod.getWorld().getOverworldClockTime(), NightShelter.PILE_LEAD_TICKS)
+                && facts.armorPoints() < NightShelter.ARMOR_LINE;
         String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
-                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile);
+                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));
             recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
@@ -1219,7 +1254,7 @@ public class GamerTask extends Task {
         long sinceDeath = deathGameTime > 0 ? gameTime - deathGameTime : -1;
         // the cheap questions first, the bed hunt and the column scan only when everything else says yes
         // (a daytime thunderstorm opens the window too, it is dark enough to sleep but not to hide from: time of day says dusk)
-        boolean dusk = windowOpen && Math.floorMod(mod.getWorld().getOverworldClockTime(), NightSleep.DAY_LENGTH) >= NightSleep.EARLIEST_WINDOW;
+        boolean dusk = NightShelter.dark(windowOpen, mod.getWorld().getOverworldClockTime(), 0);
         // only a fight that is really on counts, the heal-up hold after one is the very case for a hole
         boolean inFight = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
         NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && facts.count(ItemHelper.BED) == 0,

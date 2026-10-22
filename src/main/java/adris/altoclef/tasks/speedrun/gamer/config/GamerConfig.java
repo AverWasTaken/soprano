@@ -44,7 +44,7 @@ public class GamerConfig {
         public int maxTotal = 12;
         // a death in the nether leaves a pile that does not age while we are away: go back through the portal for it
         public boolean netherRecover = true;
-        // the whole trip (blocks, portal, walk, pile), game seconds. over it we rebuild the kit like before
+        // the nether part of the trip (walk, pile), game seconds, counted from the moment we arrive. the overworld stages have caps of their own. over it we rebuild the kit like before
         public int netherTripSeconds = 360;
         // throwaway blocks to get by hand before the portal, and how long we spend on them before going with what we have
         public int netherBlocks = 24;

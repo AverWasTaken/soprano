@@ -17,12 +17,20 @@ public final class BedRules {
 
     // the beds that are ours and not the world's: the spawn bed and the one put down for the night, whichever exist
     public static List<RunState.Pos> ownBeds(RunState.Pos spawn, RunState.Pos night) {
+        return ownBeds(spawn, night, null);
+    }
+
+    // and the one the game says we respawn at, which is ours whoever put it down
+    public static List<RunState.Pos> ownBeds(RunState.Pos spawn, RunState.Pos night, RunState.Pos respawn) {
         List<RunState.Pos> out = new ArrayList<>();
         if (spawn != null) {
             out.add(spawn);
         }
         if (night != null) {
             out.add(night);
+        }
+        if (respawn != null) {
+            out.add(respawn);
         }
         return out;
     }
@@ -82,7 +90,7 @@ public final class BedRules {
     }
 
     // the two halves of a bed lie side by side at the same height, so one entry stands for both
-    static boolean touches(RunState.Pos a, RunState.Pos b) {
+    public static boolean touches(RunState.Pos a, RunState.Pos b) {
         return a.y == b.y && Math.abs(a.x - b.x) + Math.abs(a.z - b.z) <= 1;
     }
 

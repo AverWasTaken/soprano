@@ -172,6 +172,7 @@ public final class HudRules {
         }
         return switch (stage) {
             case BLOCKS -> "Getting blocks for the walk";
+            case PICK -> "Getting a pickaxe";
             case PORTAL -> "Heading back to the nether";
             case WALK -> "Walking to our stuff" + away(blocks);
             case RECOVER -> recoveryWords(blocks);

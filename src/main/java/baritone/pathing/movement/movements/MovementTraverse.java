@@ -217,6 +217,12 @@ public class MovementTraverse extends Movement {
         return inLava && feetY < destY;
     }
 
+    // the other way round: bobbing on top of the lava a cell over the dest. idling there is a plan to burn, nothing else
+    // moves a body floating in lava, so keep leaning at the dest and let the lava carry us down onto it
+    static boolean pushesForwardWhileAbove(boolean inLava, int feetY, int destY) {
+        return inLava && feetY > destY;
+    }
+
     @Override
     public MovementState updateState(MovementState state) {
         super.updateState(state);
@@ -302,6 +308,10 @@ public class MovementTraverse extends Movement {
                     MovementHelper.moveTowards(ctx, state, dest);
                 }
                 return state.setInput(Input.JUMP, true);
+            }
+            if (!ctx.player().onGround() && pushesForwardWhileAbove(ctx.player().isInLava(), feet.getY(), dest.getY())) {
+                MovementHelper.moveTowards(ctx, state, dest);
+                return state;
             }
             if (ctx.player().onGround()) {
                 // standing a block above the whole move, usually a path that started from the block under a lip we were

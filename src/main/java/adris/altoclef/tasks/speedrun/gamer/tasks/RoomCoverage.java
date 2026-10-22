@@ -1,7 +1,11 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import net.minecraft.core.BlockPos;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 
 // when a chunk of the stronghold counts as searched, and which chunk to look at next when we have already seen bricks.
@@ -18,6 +22,53 @@ public final class RoomCoverage {
         double cx = chunkX * 16 + 8;
         double cz = chunkZ * 16 + 8;
         return Math.hypot(px - cx, pz - cz) <= HORIZONTAL_BLOCKS && Math.abs(py - workY) <= VERTICAL_BLOCKS;
+    }
+
+    public enum DigVerdict {KEEP_DIGGING, BRICKS, FLOOR}
+
+    // the dig down the start column ends on bricks (we are in the stronghold) or on the floor with none (the estimate is
+    // wrong). never on a fixed depth: the stronghold sits anywhere from the floor up to y 53
+    public static DigVerdict digVerdict(boolean bricksSeen, double y, int floorY) {
+        if (bricksSeen) {
+            return DigVerdict.BRICKS;
+        }
+        return y <= floorY + 2 ? DigVerdict.FLOOR : DigVerdict.KEEP_DIGGING;
+    }
+
+    // a target chunk we are done with (arrived at the wrong level, or the timer ran out): if nothing saw it, it goes in
+    // the skipped set and never in visited. returns true when it was skipped rather than covered
+    public static boolean giveUp(Set<String> visited, Set<String> skipped, String key) {
+        if (visited.contains(key)) {
+            return false;
+        }
+        skipped.add(key);
+        return true;
+    }
+
+    // the level to search on is where the bricks are, not where the dig happened to end
+    public static double workY(OptionalInt brickY, double playerY) {
+        return brickY.isPresent() ? brickY.getAsInt() : playerY;
+    }
+
+    // tracked bricks that can be the stronghold's, before any cap. the cap has to come after this: a village or a ruin
+    // next to us is nearer than the real thing and would eat every slot
+    public static List<BlockPos> brickCandidates(List<BlockPos> tracked, int maxY, boolean hasStart, double startX,
+                                                 double startZ, double maxDist, double nearY) {
+        List<BlockPos> out = new ArrayList<>();
+        for (BlockPos pos : tracked) {
+            if (pos.getY() > maxY) {
+                continue;
+            }
+            // a level of the stronghold, not a ruin at the surface or a corridor seen way down a cave
+            if (!Double.isNaN(nearY) && Math.abs(pos.getY() - nearY) > VERTICAL_BLOCKS) {
+                continue;
+            }
+            if (hasStart && Math.hypot(pos.getX() - startX, pos.getZ() - startZ) > maxDist) {
+                continue;
+            }
+            out.add(pos);
+        }
+        return out;
     }
 
     // seen bricks mark where corridors are. of the chunks they sit in, the nearest one inside the search square that

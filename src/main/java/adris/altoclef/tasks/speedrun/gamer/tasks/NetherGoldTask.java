@@ -112,7 +112,7 @@ public class NetherGoldTask extends Task {
             case PIECE -> new CraftInTableTask(TaskCatalogue.recipeOf(pieceName), false, true);
             case MINE -> new MineAndCollectTask(new ItemTarget(Items.GOLD_NUGGET, b.nuggets() + NetherGold.nuggetsToMine(b, need)),
                     new Block[]{Blocks.NETHER_GOLD_ORE}, MiningRequirement.WOOD)
-                    .onlyWhere(pos -> pos.distSqr(anchor) <= NetherGold.ORE_BLOCKS * NetherGold.ORE_BLOCKS);
+                    .onlyWhere(pos -> NetherGold.oreInReach(pos.getX(), pos.getY(), pos.getZ(), anchor.getX(), anchor.getY(), anchor.getZ()));
             default -> null;
         };
     }

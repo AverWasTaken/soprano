@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import adris.altoclef.util.baritone.GoalColumnDown;
 import net.minecraft.core.BlockPos;
 import org.junit.Test;
 
@@ -7,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -50,6 +52,74 @@ public class RoomCoverageTest {
         List<int[]> bricks = List.of(new int[]{16 * 20, 0});
         assertTrue(RoomCoverage.nearestUnvisitedBrickChunk(bricks, Set.of(), 0, 0, 0, 0, 7).isEmpty());
         assertTrue(RoomCoverage.nearestUnvisitedBrickChunk(List.of(), Set.of(), 0, 0, 0, 0, 7).isEmpty());
+    }
+
+    @Test
+    public void digEndsOnBricksNotOnDepth() {
+        // surface, mid, and one block above the floor: still digging until bricks show
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 70, -54));
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 9, -54));
+        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, 40, -54));
+        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, -54, -54));
+    }
+
+    @Test
+    public void reachingTheFloorWithoutBricksFallsBack() {
+        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -52, -54));
+        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -60, -54));
+    }
+
+    @Test
+    public void workYIsTheBrickLevelNotTheDigEnd() {
+        assertEquals(31, RoomCoverage.workY(OptionalInt.of(31), -54), 0);
+        assertEquals(-54, RoomCoverage.workY(OptionalInt.empty(), -54), 0);
+    }
+
+    @Test
+    public void aTimedOutChunkIsSkippedNotCovered() {
+        Set<String> visited = new HashSet<>();
+        Set<String> skipped = new HashSet<>();
+        assertTrue(RoomCoverage.giveUp(visited, skipped, "3,4"));
+        assertTrue(skipped.contains("3,4"));
+        assertFalse(visited.contains("3,4"));
+        // one markCovered did get is not skipped
+        visited.add("5,5");
+        assertFalse(RoomCoverage.giveUp(visited, skipped, "5,5"));
+        assertFalse(skipped.contains("5,5"));
+    }
+
+    @Test
+    public void brickFilterRunsBeforeTheCap() {
+        BlockPos origin = new BlockPos(0, 60, 0);
+        List<BlockPos> tracked = new ArrayList<>();
+        // a village on the surface right next to us, more than the cap of it
+        for (int i = 1; i <= 300; i++) {
+            tracked.add(new BlockPos(i % 10, 70, i / 10));
+        }
+        // and the real stronghold bricks, further away and lower
+        tracked.add(new BlockPos(60, 20, 0));
+        tracked.add(new BlockPos(1000, 20, 0));
+        List<BlockPos> kept = RoomCoverage.brickCandidates(tracked, 56, true, 0, 0, 140, Double.NaN);
+        assertEquals(1, kept.size());
+        assertEquals(60, kept.get(0).getX());
+        assertEquals(60, StrongholdScan.nearest(kept, origin, StrongholdScan.MAX_SCAN).get(0).getX());
+        // without a start nothing is cut by distance
+        assertEquals(2, RoomCoverage.brickCandidates(tracked, 56, false, 0, 0, 140, Double.NaN).size());
+        // bricks a level away from us are not "we are inside"
+        assertEquals(1, RoomCoverage.brickCandidates(tracked, 56, true, 0, 0, 140, 30).size());
+        assertEquals(0, RoomCoverage.brickCandidates(tracked, 56, false, 0, 0, 140, 60).size());
+    }
+
+    @Test
+    public void digGoalIsPinnedToTheStartColumn() {
+        GoalColumnDown goal = new GoalColumnDown(996, 1684, -54);
+        assertTrue(goal.isInGoal(996, -54, 1684));
+        assertTrue(goal.isInGoal(996, -60, 1684));
+        assertFalse(goal.isInGoal(996, -53, 1684));
+        // the same depth in another column is not it
+        assertFalse(goal.isInGoal(1040, -54, 1684));
+        assertTrue(goal.heuristic(1040, 9, 1684) > goal.heuristic(996, 9, 1684));
+        assertEquals(0, goal.heuristic(996, -54, 1684), 0);
     }
 
     @Test

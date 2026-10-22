@@ -13,6 +13,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -39,6 +40,8 @@ public class EndPrepPhase implements PhaseHandler {
     private final Map<Item, Task> _equip = new HashMap<>();
     // built on first use, not here: the pure parts (isDone) get tested with no game and no task machinery
     private PlaceBedAndSetSpawnTask _setSpawn;
+    // the spawn bed task finished and noteSpawnSet has read it, once per visit (the task stays finished)
+    private boolean _spawnNoted;
     private Task _enterPortal;
     private Task _buildBlocks;
     private Task _food;
@@ -73,6 +76,7 @@ public class EndPrepPhase implements PhaseHandler {
         ensureTasks();
         // the task keeps its "spawn is set" flag from the last visit, a death in the End means it may be gone
         _setSpawn.resetSleep();
+        _spawnNoted = false;
         _hudState = null;
     }
 
@@ -131,7 +135,11 @@ public class EndPrepPhase implements PhaseHandler {
             _hudState = "Crafting beds";
             return catalogue("bed", want, () -> TaskCatalogue.getItemTask("bed", want));
         }
-        return wantSpawn ? spawnStep(mod, ctx, cfg) : null;
+        // the click already moved our respawn, which is what wantSpawn reads: the task is still lying in the bed though, and it is
+        // done when it says so
+        boolean finishing = !wantSpawn && !_spawnNoted && !relaxed(ctx) && !state.spawnBedGaveUp && cfg.placeSpawnNearPortal
+                && _setSpawn.isActive() && !_setSpawn.isFinished(mod);
+        return wantSpawn || finishing ? spawnStep(mod, ctx, cfg) : null;
     }
 
     private Task spawnStep(AltoClef mod, GamerContext ctx, EndConfig cfg) {
@@ -159,7 +167,8 @@ public class EndPrepPhase implements PhaseHandler {
     // the place task finished = the bed took our spawn. getBedSleptPos throws when it never saw a bed, so ask nicely
     private void noteSpawnSet(AltoClef mod, GamerContext ctx) {
         RunState state = ctx.state();
-        if (state.spawnBedSet || !_setSpawn.isFinished(mod)) {
+        // (the chat line lands on the click, long before the task is done, so the tracker is no sign that the task is finished)
+        if (_spawnNoted || !_setSpawn.isFinished(mod)) {
             return;
         }
         // finished because the bed task found nowhere to put a bed, which is not a spawn. the spawn is optional, so skip it
@@ -176,7 +185,12 @@ public class EndPrepPhase implements PhaseHandler {
         } catch (IllegalStateException e) {
             // spawn set by a bed we never walked to, there is no position to remember
         }
-        state.spawnBedSet = true;
+        // the chat line did not put our respawn by the portal (it never came, or the game kept another bed): this is as good as
+        // it gets, and not a reason to place beds forever
+        _spawnNoted = true;
+        if (!Respawn.coversPortal(state)) {
+            state.spawnBedGaveUp = true;
+        }
         ctx.progress("spawn bed set");
         ctx.save();
     }

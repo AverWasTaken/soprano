@@ -5,12 +5,16 @@ import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdRoomSearchTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.world.FrameGeometry;
+import baritone.api.utils.Dimension;
 
 import java.util.ArrayList;
 import java.util.Optional;
@@ -21,6 +25,15 @@ public class RoomPhase implements PhaseHandler {
     private StrongholdRoomSearchTask task;
     private boolean keepTask;
     private int movingRetries;
+    // the bed by the stronghold start (Respawn.wantRoomBed): decided once on arrival, never again mid dig
+    private PlaceBedAndSetSpawnTask roomBed;
+    private boolean roomBedDecided;
+    private double roomBedSince;
+    // a bed that will not go down (no spot, mobs on it) does not get to hold up the search
+    private static final double ROOM_BED_SECONDS = 60;
+    // the bed goes down at the top of the dig. the stronghold's top is never above sea level - 10, so under this we're
+    // already in the shaft and a bed down there is a bed in a hole
+    private static final double ROOM_BED_BELOW_Y = 50;
 
     @Override
     public GamerPhase phase() {
@@ -61,6 +74,8 @@ public class RoomPhase implements PhaseHandler {
             movingRetries = 0;
         }
         keepTask = false;
+        roomBed = null;
+        roomBedDecided = false;
     }
 
     // the budget is one window: a spiral that reached new chunks in it is a long legit search, not a stuck one
@@ -76,6 +91,10 @@ public class RoomPhase implements PhaseHandler {
     }
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        Task bed = roomBedStep(mod, ctx);
+        if (bed != null) {
+            return bed;
+        }
         if (task == null) {
             task = new StrongholdRoomSearchTask(ctx);
         }
@@ -83,6 +102,41 @@ public class RoomPhase implements PhaseHandler {
             return handleExhausted(ctx);
         }
         return task;
+    }
+
+    // the dig is where the kit gets lost, so a respawn bed goes down on the surface right before it when nothing holds our
+    // respawn near here. the search task itself is not touched, this runs ahead of it while we stand at the start
+    private Task roomBedStep(AltoClef mod, GamerContext ctx) {
+        if (roomBedDecided && roomBed == null) {
+            return null;
+        }
+        if (roomBed != null) {
+            if (roomBed.isFinished(mod) || ctx.secondsInPhase() - roomBedSince > ROOM_BED_SECONDS) {
+                // (done or out of time, either way the stall clock should not blame the dig for the minute the bed took)
+                ctx.progress("respawn bed");
+                roomBed = null;
+                return null;
+            }
+            return roomBed;
+        }
+        RunState state = ctx.state();
+        RunState.Pos start = state.strongholdStart;
+        var player = mod.getPlayer();
+        if (start == null || player == null || ctx.facts().dimension() != Dimension.OVERWORLD
+                || player.getY() < ROOM_BED_BELOW_Y) {
+            return null;
+        }
+        boolean atStart = Math.hypot(start.x - player.getX(), start.z - player.getZ()) <= ctx.cfg().stronghold.startReachBlocks;
+        if (!atStart) {
+            return null;
+        }
+        roomBedDecided = true;
+        if (!Respawn.wantRoomBed(state, true, ctx.facts().count(ItemHelper.BED))) {
+            return null;
+        }
+        roomBed = new PlaceBedAndSetSpawnTask();
+        roomBedSince = ctx.secondsInPhase();
+        return roomBed;
     }
 
     @Override

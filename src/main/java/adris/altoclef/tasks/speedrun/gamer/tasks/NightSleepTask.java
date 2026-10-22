@@ -14,6 +14,7 @@ import adris.altoclef.tasks.speedrun.gamer.NightSleep;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.BedSource;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Refusal;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Stage;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
@@ -321,6 +322,12 @@ public class NightSleepTask extends Task {
         // goes nowhere)
         StorageHelper.closeScreen();
         if (cleanup) {
+            if (Respawn.adoptNightBed(state)) {
+                // the old bed is where we respawn and the stronghold is next: nothing to take back
+                save.run();
+                finish(now);
+                return;
+            }
             enter(Stage.PICKUP, now, "an old bed of ours is still standing");
             return;
         }
@@ -1052,6 +1059,11 @@ public class NightSleepTask extends Task {
 
     // the sleep is over or the try is: the bed comes back first, then the way down
     private void wrapUp(AltoClef mod, long now) {
+        // the bed that holds our respawn on the way to the stronghold stays up: a death down there respawns at it and not at the
+        // world spawn a thousand blocks away. it is the spawn bed from here on, so there is no pickup (Respawn has the rule)
+        if (Respawn.adoptNightBed(state)) {
+            save.run();
+        }
         if (state.nightBed != null && stage != Stage.PICKUP) {
             enter(Stage.PICKUP, now, "taking the bed back");
             return;

@@ -66,7 +66,10 @@ public class RunState {
     public int framesFilled;
     public boolean endPortalOpened;
     public Pos spawnBed;
-    public boolean spawnBedSet;
+    // where the game says we respawn (a bed's foot), from the "Respawn point set" line and not from what we think we did.
+    // null = the world spawn. an old save has no key and reads null, which just means we place one again (see Respawn)
+    public Pos respawnPos;
+    public String respawnDim = "OVERWORLD";
     // the bed we put down for the night (NightSleep) and have not picked up yet. not the spawn bed, and never a village's
     public Pos nightBed;
 
@@ -168,6 +171,8 @@ public class RunState {
         public String stage = "BLOCKS";
         public long startTick;
         public long stageTick;
+        // first tick we stood in the nether, 0 until then. the budget counts from here (an old save reads 0 and starts fresh)
+        public long netherTick;
 
         public NetherTrip() {
         }

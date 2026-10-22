@@ -133,6 +133,9 @@ public class CalculationContext {
     // moves the executor just gave up on, see FailedMoves. only A* adds it, never calculateCost, or the executor's per tick
     // cost recheck would cancel a perfectly good path for walking near an old failure
     public final FailedMoves.Snapshot failedMoves;
+    // nether only: price the nodes next to a drop, see CliffAvoidance. like failedMoves it is A* only, never calculateCost
+    // (not final so a test can put a context in the nether without a world to ask)
+    public boolean cliffEdges;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
     // BoatTrip won't get the boat out for a shorter row of water than this, so the planner doesn't price one either
@@ -262,6 +265,7 @@ public class CalculationContext {
         // one read of the dimension, off the world we were handed and not the player's, so a hand built context agrees with itself
         boolean nether = ExperimentalMovement.inNether(world);
         this.hurtingFallsOk = ExperimentalMovement.hurtingFallsOk(nether, fastMode);
+        this.cliffEdges = nether;
         this.fastModeMinHealth = Baritone.settings().fastModeMinHealth.value;
         this.fallDamageCost = Baritone.settings().fallDamageCost.value;
         this.jumpBias = ExperimentalMovement.jumpBias();

@@ -26,6 +26,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.SettingsUtil;
 import baritone.pathing.calc.openset.BinaryHeapOpenSet;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.CliffAvoidance;
 import baritone.pathing.movement.Moves;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.Favoring;
@@ -92,6 +93,8 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         int numMovementsConsidered = 0;
         int numEmptyChunk = 0;
         boolean isFavoring = !favoring.isEmpty();
+        // a fresh one every search, see CliffAvoidance.Memo
+        CliffAvoidance.Memo cliffs = new CliffAvoidance.Memo();
         int timeCheckInterval = 1 << 6;
         int pathingMaxChunkBorderFetch = Baritone.settings().pathingMaxChunkBorderFetch.value; // grab all settings beforehand so that changing settings during pathing doesn't cause a crash or unpredictable behavior
         double minimumImprovement = Baritone.settings().minimumImprovementRepropagation.value ? MIN_IMPROVEMENT : 0;
@@ -199,6 +202,8 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                 // and don't plan to stand in a nether portal unless that's the goal, see PortalAvoidance. after the favoring so
                 // a backtracking discount doesn't shrink it, it's a flat 80 ticks of standing there
                 actionCost += PortalAvoidance.penalty(goal, calcContext, res.x, res.y, res.z);
+                // and in the nether, don't hug a drop that a knockback could walk us off. flat too, so it's after the favoring
+                actionCost += CliffAvoidance.penalty(calcContext, cliffs, res.x, res.y, res.z);
                 double tentativeCost = currentNode.cost + actionCost;
                 if (neighbor.cost - tentativeCost > minimumImprovement) {
                     neighbor.previous = currentNode;

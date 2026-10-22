@@ -5,6 +5,9 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
+import adris.altoclef.util.helpers.PearlHuntHook;
+import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.AnchorWatch;
@@ -258,6 +261,12 @@ final class CombatBrain {
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
+        // the pearl hunt owns the feet while endermen are the only thing around: a run from a teleporter goes nowhere and a
+        // heal hold would sit in the open. the nook it is in (or digging) is the whole answer, so nothing is committed to.
+        // the foes stay, the stance (the gapple at 8 hp) and the aura's contact swings still hear about them
+        boolean standDown = EndermanNook.brainStandsDown(PearlHuntHook.running(now), mobs.size(),
+                (int) mobs.stream().filter(m -> m instanceof Enderman).count());
+        enabled &= !standDown;
 
         Foe target = null;
         if (_commit.mode() == Mode.FIGHT) {

@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.GetToChunkTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
-import adris.altoclef.tasks.movement.GetToYTask;
+import adris.altoclef.tasks.movement.GetDownColumnTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -22,8 +22,11 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.Set;
 
 // dig down at the start chunk until stone bricks show, then walk the chunk spiral looking for end portal frames.
 // only frames we SEE count. once three of them agree on a ring the other nine are given (the ring is rigid)
@@ -31,7 +34,7 @@ public class StrongholdRoomSearchTask extends Task {
     private enum Stage {TO_START, DIG, SPIRAL, HINT, APPROACH}
 
     private static final Block[] BRICKS = {Blocks.STONE_BRICKS, Blocks.MOSSY_STONE_BRICKS, Blocks.CRACKED_STONE_BRICKS};
-    // the whole stronghold sits under this (top of the start staircase is around 50) and village bricks do not
+    // the whole stronghold sits under this (the top is at most sea level - 10) and surface ruins do not
     private static final int BRICK_MAX_Y = 56;
     private static final int BRICK_MAX_DIST = 140;
     private static final int SCAN_EVERY_TICKS = 5;
@@ -50,9 +53,11 @@ public class StrongholdRoomSearchTask extends Task {
     private boolean bricksSeen;
     private boolean pushedBehaviour;
     private boolean started;
-    // the y the stronghold is on as far as we can tell: where we were when the spiral began. chunks only count as
-    // searched when we were near this level
+    // the y the stronghold is on as far as we can tell: the bricks we hit digging down, else where the dig ended. chunks
+    // only count as searched when we were near this level
     private double workY = Double.NaN;
+    private boolean workFromBricks;
+    private boolean retriedSkipped;
     private boolean hintGivenUp;
     private int chunksReached;
     private boolean rearmChunkTimer;
@@ -63,6 +68,8 @@ public class StrongholdRoomSearchTask extends Task {
     private LocateLegPlanner.Leg startLeg;
     private Task digTask;
     private Task chunkTask;
+    // chunks we gave up on (timer, or stood in at the wrong level) without ever seeing them. not covered, not saved
+    private final Set<String> skippedChunks = new HashSet<>();
     private StrongholdRoomPlan.Chunk chunkTarget;
     private double chunkSince;
     private Task hintTask;
@@ -198,7 +205,11 @@ public class StrongholdRoomSearchTask extends Task {
 
     private void enterSpiral(AltoClef mod) {
         if (Double.isNaN(workY)) {
-            workY = mod.getPlayer().getY();
+            // the level of the bricks we hit, not wherever the dig stopped. no bricks = the floor, the estimate was off
+            List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
+            workFromBricks = !hit.isEmpty();
+            workY = RoomCoverage.workY(hit.isEmpty() ? OptionalInt.empty() : OptionalInt.of(hit.get(0).getY()),
+                    mod.getPlayer().getY());
         }
         enter(mod, Stage.SPIRAL);
     }
@@ -226,8 +237,17 @@ public class StrongholdRoomSearchTask extends Task {
         if (state.endPortalCenter != null) {
             countSeen(mod, frames);
         }
-        if (!bricksSeen) {
-            bricksSeen = anyBrickSeen(mod);
+        // bricks at our own level mean we are in the stronghold. ones seen far above or below (a ruin, a corridor through
+        // a cave) are no reason to skip the dig
+        bricksSeen = !seenBricks(mod, 1, mod.getPlayer().getY()).isEmpty();
+        if (stage == Stage.SPIRAL && !workFromBricks) {
+            // we searched a level that was only a guess (the floor, a timed out dig): the first bricks we see correct it.
+            // only ones near where we are, chunk walks never change y so a level far from us would just never count
+            List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
+            if (!hit.isEmpty()) {
+                workY = hit.get(0).getY();
+                workFromBricks = true;
+            }
         }
     }
 
@@ -286,23 +306,16 @@ public class StrongholdRoomSearchTask extends Task {
         done = true;
     }
 
-    private boolean anyBrickSeen(AltoClef mod) {
-        return !seenBricks(mod, 1).isEmpty();
-    }
-
-    // seen stone bricks of the stronghold family, nearest first, at most limit of them. tracker order is scan order,
-    // so sort before asking the seen filter or the same few hidden ones eat its budget forever
-    private List<BlockPos> seenBricks(AltoClef mod, int limit) {
+    // seen stone bricks of the stronghold family, nearest first, at most limit of them, within a stronghold level of nearY
+    // (NaN = any level). tracker order is scan order, so sort before asking the seen filter or the same few hidden ones
+    // eat its budget forever
+    private List<BlockPos> seenBricks(AltoClef mod, int limit, double nearY) {
         RunState.Pos start = ctx.state().strongholdStart;
         List<BlockPos> out = new ArrayList<>();
-        for (BlockPos pos : StrongholdScan.nearest(mod.getBlockTracker().getKnownLocations(BRICKS),
-                mod.getPlayer().blockPosition(), StrongholdScan.MAX_SCAN)) {
-            if (pos.getY() > BRICK_MAX_Y) {
-                continue;
-            }
-            if (start != null && Math.hypot(pos.getX() - start.x, pos.getZ() - start.z) > BRICK_MAX_DIST) {
-                continue;
-            }
+        // filter first, then take the nearest 200: a village next to us would fill all of them with the wrong bricks
+        List<BlockPos> candidates = RoomCoverage.brickCandidates(mod.getBlockTracker().getKnownLocations(BRICKS), BRICK_MAX_Y,
+                start != null, start == null ? 0 : start.x, start == null ? 0 : start.z, BRICK_MAX_DIST, nearY);
+        for (BlockPos pos : StrongholdScan.nearest(candidates, mod.getPlayer().blockPosition(), StrongholdScan.MAX_SCAN)) {
             if (SeenFilter.isSeen(mod, pos)) {
                 out.add(pos);
                 if (out.size() >= limit) {
@@ -327,7 +340,7 @@ public class StrongholdRoomSearchTask extends Task {
         startLeg.update(seconds(mod), dist);
         if (dist <= cfg.startReachBlocks || startLeg.expired(seconds(mod))) {
             // frames seen on the way in are handled by scan(), so heading down is the only thing left to decide
-            if (mod.getPlayer().getY() > cfg.roomMinY && !bricksSeen) {
+            if (RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY) == RoomCoverage.DigVerdict.KEEP_DIGGING) {
                 enter(mod, Stage.DIG);
             } else {
                 enterSpiral(mod);
@@ -347,14 +360,16 @@ public class StrongholdRoomSearchTask extends Task {
             lastDigY = y;
             ctx.progress("dug down");
         }
-        boolean deepEnough = mod.getPlayer().getY() <= cfg.roomMinY + 2;
-        if (bricksSeen || deepEnough || seconds(mod) - stageSince > cfg.digDownSeconds) {
+        RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY);
+        if (verdict != RoomCoverage.DigVerdict.KEEP_DIGGING || seconds(mod) - stageSince > cfg.digDownSeconds) {
             Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
             enterSpiral(mod);
             return null;
         }
         if (digTask == null) {
-            digTask = new GetToYTask(cfg.roomMinY);
+            // the column the eye dived into: the start piece is the top of the stronghold, it can only be under this
+            RunState.Pos start = ctx.state().strongholdStart;
+            digTask = new GetDownColumnTask(start.x, start.z, cfg.digFloorY);
         }
         return digTask;
     }
@@ -369,12 +384,13 @@ public class StrongholdRoomSearchTask extends Task {
             chunkSince = seconds(mod);
         }
         boolean arrived = chunkTarget != null && here.x() == chunkTarget.cx() && here.z() == chunkTarget.cz();
-        if (chunkTarget != null && (arrived || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
-            // giving up on a chunk after the timer is not reaching it: only arrivals count as the spiral moving
-            if (state.roomChunksVisited.add(chunkTarget.key()) && arrived) {
-                chunksReached++;
+        boolean covered = chunkTarget != null && state.roomChunksVisited.contains(chunkTarget.key());
+        if (chunkTarget != null && (covered || arrived || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
+            // only markCovered says a chunk is searched. standing in it at the wrong level, or the timer running out,
+            // just means we will not pick it again, the room was never seen from there
+            if (!RoomCoverage.giveUp(state.roomChunksVisited, skippedChunks, chunkTarget.key())) {
+                ctx.progress("chunk searched");
             }
-            ctx.progress("chunk searched");
             chunkTarget = null;
             chunkTask = null;
         }
@@ -411,8 +427,15 @@ public class StrongholdRoomSearchTask extends Task {
         if (next.isPresent()) {
             step = "Following the stronghold corridors";
         } else {
-            next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks,
-                    ctx.state().roomChunksVisited, new StrongholdRoomPlan.Chunk(here.x(), here.z()));
+            next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks, doneOrSkipped(),
+                    new StrongholdRoomPlan.Chunk(here.x(), here.z()));
+        }
+        if (next.isEmpty() && !skippedChunks.isEmpty() && !retriedSkipped) {
+            // skipped is not searched: every chunk we gave up on gets one more go before the spiral calls itself empty
+            retriedSkipped = true;
+            skippedChunks.clear();
+            next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks, doneOrSkipped(),
+                    new StrongholdRoomPlan.Chunk(here.x(), here.z()));
         }
         if (next.isEmpty()) {
             Debug.logMessage("stronghold spiral exhausted after " + ctx.state().roomChunksVisited.size() + " chunks");
@@ -428,12 +451,19 @@ public class StrongholdRoomSearchTask extends Task {
 
     private Optional<StrongholdRoomPlan.Chunk> guidedChunk(AltoClef mod, StrongholdRoomPlan.Chunk startChunk) {
         List<int[]> xz = new ArrayList<>();
-        for (BlockPos p : seenBricks(mod, StrongholdScan.MAX_SCAN)) {
+        for (BlockPos p : seenBricks(mod, StrongholdScan.MAX_SCAN, Double.NaN)) {
             xz.add(new int[]{p.getX(), p.getZ()});
         }
-        return RoomCoverage.nearestUnvisitedBrickChunk(xz, ctx.state().roomChunksVisited, mod.getPlayer().getX(),
+        return RoomCoverage.nearestUnvisitedBrickChunk(xz, doneOrSkipped(), mod.getPlayer().getX(),
                 mod.getPlayer().getZ(), startChunk.cx(), startChunk.cz(), cfg.spiralRadiusChunks)
                 .map(c -> new StrongholdRoomPlan.Chunk(c[0], c[1]));
+    }
+
+    // chunks we are done with, one way or the other. only the first set is saved and counted
+    private Set<String> doneOrSkipped() {
+        Set<String> all = new HashSet<>(ctx.state().roomChunksVisited);
+        all.addAll(skippedChunks);
+        return all;
     }
 
     private void maybeSave(AltoClef mod) {

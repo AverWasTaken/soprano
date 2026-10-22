@@ -19,6 +19,8 @@ package baritone.launch.mixins;
 
 import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.ChatMessageEvent;
+import adris.altoclef.eventbus.events.SystemChatEvent;
+import net.minecraft.network.chat.Component;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.multiplayer.chat.ChatListener;
 import net.minecraft.network.chat.ChatType;
@@ -39,6 +41,20 @@ public class MixinAltoClefChatListener {
         // the butler listens while altoclef is idle, so no running check here. a throw would end up in the chat handler
         try {
             AltoClefBridge.publish(new ChatMessageEvent(message, sender, bound));
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
+        }
+    }
+
+    // the server's own lines ("Respawn point set") never go through handlePlayerChatMessage. the "no home bed" line comes in
+    // here too, the client turns that game event into a system message itself
+    @Inject(
+            method = "handleSystemMessage",
+            at = @At("HEAD")
+    )
+    private void altoclef$onSystemMessage(final Component message, final boolean flag, final CallbackInfo ci) {
+        try {
+            AltoClefBridge.publish(new SystemChatEvent(message.getString()));
         } catch (Throwable t) {
             AltoClefBridge.onHookError(t);
         }
