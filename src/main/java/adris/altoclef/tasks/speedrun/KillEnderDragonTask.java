@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
@@ -58,6 +59,8 @@ public class KillEnderDragonTask extends Task {
     private final PunkEnderDragonTask _punkTask = new PunkEnderDragonTask();
     // false for the outer islands trip: the gateways only show up once the dragon is dead, but we are not done after that
     private final boolean _enterExitPortal;
+    // the level we pushed, for the hand over on a pause
+    private BotBehaviour.State _level;
     private Task _pumpkinTask;
     private BlockPos _exitPortalTop;
 
@@ -85,7 +88,8 @@ public class KillEnderDragonTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getBehaviour().push();
+        mod.getBehaviour().releasePaused(this);
+        _level = mod.getBehaviour().push();
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
         // Don't forcefield endermen.
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Enderman || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
@@ -212,8 +216,20 @@ public class KillEnderDragonTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // a chain cutting in mid fight must not turn the endermen and the dragon back into foes (same as ResourceTask)
+        if (isInterrupting()) {
+            mod.getBehaviour().holdWhilePaused(this, chain(), _level);
+        } else {
+            mod.getBehaviour().releasePaused(this);
+        }
+        _level = null;
         mod.getBehaviour().pop();
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
+    }
+
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        mod.getBehaviour().releasePaused(this);
     }
 
     @Override

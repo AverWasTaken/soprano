@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
@@ -86,6 +87,8 @@ public final class GolemFightTask extends Task {
     private boolean killed;
     private boolean hostilesNear;
     private boolean ownsBehaviour;
+    // the level we pushed, for the hand over on a pause
+    private BotBehaviour.State level;
     private AltoClef mod;
     private Task subtask;
     private String hud = "Walking up to an iron golem";
@@ -127,7 +130,8 @@ public final class GolemFightTask extends Task {
         this.mod = mod;
         // live predicate: the golem is only ours to fight while we are actually above its head. fall off or get
         // squashed down and mob defense gets its say again
-        mod.getBehaviour().push();
+        mod.getBehaviour().releasePaused(this);
+        level = mod.getBehaviour().push();
         mod.getBehaviour().addForceFieldExclusion(this::golemWeFightFromAbove);
         mod.getBehaviour().addMobDefenseExclusion(this::golemWeFightFromAbove);
         ownsBehaviour = true;
@@ -140,11 +144,23 @@ public final class GolemFightTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // same hand over as ResourceTask: a chain cutting in must not make the golem fair game for mob defense
+        if (isInterrupting()) {
+            mod.getBehaviour().holdWhilePaused(this, chain(), level);
+        } else {
+            mod.getBehaviour().releasePaused(this);
+        }
         if (ownsBehaviour) {
             mod.getBehaviour().pop();
             ownsBehaviour = false;
         }
+        level = null;
         subtask = null;
+    }
+
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        mod.getBehaviour().releasePaused(this);
     }
 
     private boolean golemWeFightFromAbove(Entity entity) {
