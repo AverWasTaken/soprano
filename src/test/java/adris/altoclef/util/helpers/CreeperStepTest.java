@@ -411,6 +411,63 @@ public class CreeperStepTest {
         assertTrue(step.active());
     }
 
+    private static Event stepNoHeading(CreeperStep step, long now, List<Seen> seen, boolean shield, boolean noHeading) {
+        return step.step(now, seen, shield, Mode.NONE, false, false, noHeading);
+    }
+
+    @Test
+    public void noWayOutIsCorneredOnTheFirstTick() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.CORNERED, stepNoHeading(step, 0, lit(7, 3.5), true, true));
+        assertTrue(step.cornered());
+        assertTrue(step.active());
+        assertTrue(step.shouldLog());
+    }
+
+    @Test
+    public void noWayOutBeatsTheBaitRing() {
+        // a plain creeper with nothing near it is bait material: a heading means the bait, no heading means the shield
+        CreeperStep bait = new CreeperStep();
+        assertEquals(Event.START, stepNoHeading(bait, 0, lit(7, 3.5), true, false));
+        assertTrue(bait.baiting());
+        assertFalse(bait.cornered());
+        CreeperStep boxed = new CreeperStep();
+        assertEquals(Event.CORNERED, stepNoHeading(boxed, 0, lit(7, 3.5), true, true));
+        assertFalse(boxed.baiting());
+    }
+
+    @Test
+    public void noWayOutWithoutAShieldIsTheOrdinaryStep() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.START, stepNoHeading(step, 0, lit(7, 3.5), false, true));
+        assertFalse(step.cornered());
+    }
+
+    @Test
+    public void noWayOutPastTheTriggerWaits() {
+        // lit but only the path is walking into it: nothing is blowing up on us yet
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.START, stepNoHeading(step, 0, List.of(new Seen(7, true, 5, true)), true, true));
+        assertFalse(step.cornered());
+    }
+
+    @Test
+    public void noWayOutFoundMidStepCornersAtOnce() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), true);
+        assertEquals(Event.CORNERED, stepNoHeading(step, 1, lit(7, 3), true, true));
+        assertTrue(step.cornered());
+    }
+
+    @Test
+    public void anUnlitOneInAShaftIsNotCornered() {
+        // it un-swelled, nothing to put a shield up for. the held step goes on being held, not cornered
+        CreeperStep step = new CreeperStep();
+        stepNoHeading(step, 0, lit(7, 3), false, false);
+        assertEquals(Event.NONE, stepNoHeading(step, 1, List.of(new Seen(7, false, 3, false, true)), true, true));
+        assertFalse(step.cornered());
+    }
+
     @Test
     public void noShieldMeansKeepTrying() {
         CreeperStep step = new CreeperStep();

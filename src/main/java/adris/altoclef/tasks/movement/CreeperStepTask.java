@@ -227,7 +227,7 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     }
 
     // what a cell is for the heading chooser. hazards go by block, they mostly have no collision to go by
-    private static CreeperEscape.Cells cells(Level level) {
+    public static CreeperEscape.Cells cells(Level level) {
         return (x, y, z) -> {
             BlockPos pos = new BlockPos(x, y, z);
             BlockState state = level.getBlockState(pos);
