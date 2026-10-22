@@ -16,7 +16,7 @@ public class EndConfig {
     public int endMinBlocks = 20;
     // cooked steak is 8, the fight is minutes long so this is only here so we do not walk in starving
     public int minFoodUnits = 24;
-    // armor points below this and the bed strat is not used (bed self damage), sword and pearl instead
+    // armor points below this and the bed strat is not used (bed self damage), the sword instead
     public int bedMinArmor = 10;
     // every dragon death asks for this many more armor points before beds are tried again
     public int bedArmorPerAttempt = 4;

@@ -356,18 +356,30 @@ public class FoeRulesTest {
 
     @Test
     public void theDragonTasksOwnTheDragonAndTheEndermenAroundTheCrystals() {
-        assertTrue(FoeRules.dragonFightOwns("ender_dragon"));
-        assertTrue(FoeRules.dragonFightOwns("enderman"));
+        assertTrue(FoeRules.dragonFightOwns("ender_dragon", true));
+        assertTrue(FoeRules.dragonFightOwns("enderman", true));
         // endermites and shulkers are not theirs, they are a generic fight
-        assertFalse(FoeRules.dragonFightOwns("endermite"));
-        assertFalse(FoeRules.dragonFightOwns("shulker"));
-        assertFalse(FoeRules.dragonFightOwns("zombie"));
+        assertFalse(FoeRules.dragonFightOwns("endermite", true));
+        assertFalse(FoeRules.dragonFightOwns("shulker", true));
+        assertFalse(FoeRules.dragonFightOwns("zombie", true));
+    }
+
+    @Test
+    public void anAngryEndermanIsNotTheDragonFightsAnymore() {
+        // the dragon is theirs angry or not, a calm enderman is theirs, one that has us as its target is a foe again
+        assertTrue(FoeRules.dragonFightOwns("ender_dragon", false));
+        assertFalse(FoeRules.dragonFightOwns("enderman", false));
+        Candidate angry = new Candidate("enderman", 5, 2, () -> FoeRules.dragonFightOwns("enderman", false), () -> true, () -> true, 3, 0, false, false);
+        assertNotNull(accept(Dimension.END, angry));
+        // calm ones are still left alone (the angry supplier is also false for them, but the exclusion is what we pin here)
+        Candidate calm = new Candidate("enderman", 5, 2, () -> FoeRules.dragonFightOwns("enderman", true), () -> true, () -> true, 3, 0, false, false);
+        assertNull(accept(Dimension.END, calm));
     }
 
     @Test
     public void anEndermanAroundTheCrystalsIsNotAFoeWhileTheDragonTaskIsLive() {
         // the task's behaviour exclusion is what the foe filter is handed as `excluded`
-        Candidate man = new Candidate("enderman", 5, 2, () -> FoeRules.dragonFightOwns("enderman"), () -> true, () -> true, 3, 0, false, false);
+        Candidate man = new Candidate("enderman", 5, 2, () -> FoeRules.dragonFightOwns("enderman", true), () -> true, () -> true, 3, 0, false, false);
         assertNull(accept(Dimension.END, man));
         // the same enderman with the task not running (the exclusion is popped with it) is a generic foe
         Candidate loose = new Candidate("enderman", 5, 2, () -> false, () -> true, () -> true, 3, 0, false, false);
@@ -378,10 +390,10 @@ public class FoeRulesTest {
 
     @Test
     public void midCrystalNothingIsEverCommittedToAtLowHp() {
-        // dragon, three endermen on us and hp 5: everything is owned by the task, the machine sees an empty list and stays out
+        // dragon, three calm endermen and hp 5: everything is owned by the task, the machine sees an empty list and stays out
         List<Foe> foes = new ArrayList<>();
         for (String type : new String[]{"ender_dragon", "enderman", "enderman", "enderman"}) {
-            Candidate c = new Candidate(type, foes.size() + 1, 2, () -> FoeRules.dragonFightOwns(type), () -> true, () -> true, 0, 0, false, false);
+            Candidate c = new Candidate(type, foes.size() + 1, 2, () -> FoeRules.dragonFightOwns(type, true), () -> true, () -> true, 0, 0, false, false);
             Foe foe = accept(Dimension.END, c);
             if (foe != null) foes.add(foe);
         }
