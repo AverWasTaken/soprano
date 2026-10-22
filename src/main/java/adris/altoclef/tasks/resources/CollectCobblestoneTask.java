@@ -10,7 +10,11 @@ import net.minecraft.world.level.block.Blocks;
 
 public class CollectCobblestoneTask extends ResourceTask {
 
-    private static final Block[] STONES = {Blocks.STONE, Blocks.COBBLESTONE};
+    // stone only. cobble in the world is almost always our own pillar or scaffolding, and mining the block we stand on
+    // for cobble to pillar with again is a loop, not a harvest. the drops are cobble either way
+    private static final Block[] STONES = {Blocks.STONE};
+    // what minesOnItsOwn claims, see there
+    private static final Block[] CLAIMED = {Blocks.STONE, Blocks.COBBLESTONE};
 
     private final int _count;
 
@@ -34,11 +38,11 @@ public class CollectCobblestoneTask extends ResourceTask {
         return new MineAndCollectTask(Items.COBBLESTONE, 1, STONES, MiningRequirement.WOOD);
     }
 
-    // the catalogue's mineIfPresent is placed cobble, and our miner breaks that too. without this every cobble we
-    // pillared with flipped the child between two miners, and each flip was a fresh search
+    // the catalogue's mineIfPresent would be placed cobble, which is our pillars. we claim it (and don't mine it) so no
+    // second miner ever gets started on them. dormant while the catalogue says dontMineIfPresent
     @Override
     protected boolean minesOnItsOwn(Block[] blocks) {
-        return coversAll(blocks, STONES);
+        return coversAll(blocks, CLAIMED);
     }
 
     @Override

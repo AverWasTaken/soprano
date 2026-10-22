@@ -27,6 +27,7 @@ import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.NoPathScope;
 import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
+import adris.altoclef.util.helpers.StoneTunnel;
 import adris.altoclef.util.helpers.TreeChop;
 import adris.altoclef.util.helpers.TreeReach;
 import adris.altoclef.util.helpers.TreeReachScan;
@@ -512,7 +513,16 @@ public class MineAndCollectTask extends ResourceTask {
                 // gravel on top of the stone doesn't show up in hasAirFace, it's a block. it comes down on whoever digs it
                 falling = WorldHelper.fallingAbove(mod.getWorld(), new BlockPos(bx, by, bz));
             }
+            if (_tunnel.latched()) {
+                return StoneDigRank.tunnelScore(fx, fy, fz, bx, by, bz, exposed, falling, _tunnel.floor());
+            }
             return StoneDigRank.score(fx, fy, fz, bx, by, bz, exposed, falling);
+        }
+
+        // stoneScore from where we stand
+        private double stoneScoreFromHere(AltoClef mod, BlockPos at) {
+            Vec3 me = mod.getPlayer().position();
+            return stoneScore(mod, me.x, me.y, me.z, at.getX(), at.getY(), at.getZ());
         }
 
         private static boolean hasAirFace(AltoClef mod, int x, int y, int z) {
@@ -727,17 +737,252 @@ public class MineAndCollectTask extends ResourceTask {
                 _anchorAnnounced = false;
             }
 
-            Optional<BlockPos> closestBlock = nearestBlock(mod, pos, notOurs);
+            if (_stoneOnly) {
+                return pickStone(mod, pos, usable, notOurs);
+            }
+            return orOwnBlock(mod, pos, usable, nearestBlock(mod, pos, notOurs));
+        }
+
+        // nothing of the real stuff within 16: a block we placed ourselves is a fair meal after all
+        private Optional<BlockPos> orOwnBlock(AltoClef mod, Vec3 pos, Predicate<BlockPos> usable, Optional<BlockPos> closestBlock) {
             if (closestBlock.isEmpty() || closestBlock.get().distToCenterSqr(pos) > OWN_BLOCK_RANGE_SQ) {
                 Optional<BlockPos> anything = nearestBlock(mod, pos, usable);
                 if (anything.isPresent() && (closestBlock.isEmpty() || anything.get().distToCenterSqr(pos) < closestBlock.get().distToCenterSqr(pos))) {
-                    closestBlock = anything;
+                    return anything;
                 }
             }
-            if (_stoneOnly && closestBlock.isPresent()) {
-                closestBlock = Optional.of(reachableStone(mod, pos, closestBlock.get(), check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check)));
-            }
             return closestBlock;
+        }
+
+        // the tunnel we dig along once the only stone worth having is under our feet (see StoneTunnel)
+        private final StoneTunnel _tunnel = new StoneTunnel();
+        // the live look around our feet (see localStones) and what it was taken for
+        private List<StoneDigRank.Scored> _local = List.of();
+        private BlockPos _localFeet;
+        private int _localFloor;
+        private int _localTick;
+        private boolean _localStale = true;
+        // where latchTunnel last came up empty, see there
+        private BlockPos _noTunnelAt;
+        // how far around the feet the live look goes, and how long it is good for when nothing else changed. the walls of
+        // the hole we just dug are the cheapest stone there is, and the tracker's snapshot (every 7 s, 25 a type, nearest
+        // in plain 3d) is the last to hear about them
+        private static final int LOCAL_RADIUS = 4;
+        private static final int LOCAL_TICKS = 20;
+        private static final int NO_FLOOR = Integer.MIN_VALUE;
+
+        private Optional<BlockPos> pickStone(AltoClef mod, Vec3 pos, Predicate<BlockPos> usable, Predicate<BlockPos> notOurs) {
+            Predicate<BlockPos> ok = check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check);
+            if (tunnelOver(mod, pos, ok)) {
+                _tunnel.unlatch();
+            }
+            Optional<BlockPos> best = bestStone(mod, pos, usable, notOurs, ok);
+            if (best.isPresent() && latchTunnel(mod, pos, best.get(), ok)) {
+                // the pick above was priced for the surface, the band prices things differently
+                best = bestStone(mod, pos, usable, notOurs, ok);
+            }
+            return best.map(b -> reachableStone(mod, pos, b, ok));
+        }
+
+        // the tracker's best and the live look's best, whichever scores lower, then the own block fallback like everybody
+        private Optional<BlockPos> bestStone(AltoClef mod, Vec3 pos, Predicate<BlockPos> usable, Predicate<BlockPos> notOurs, Predicate<BlockPos> ok) {
+            Optional<BlockPos> cached = nearestBlock(mod, pos, notOurs);
+            StoneDigRank.Scored local = firstOk(localStones(mod, pos), ok);
+            Optional<BlockPos> best = cached;
+            if (local != null && (cached.isEmpty() || local.score() < stoneScore(mod, pos.x, pos.y, pos.z, cached.get().getX(), cached.get().getY(), cached.get().getZ()))) {
+                best = Optional.of(local.pos());
+            }
+            return orOwnBlock(mod, pos, usable, best);
+        }
+
+        // the cheapest one that passes, the list is sorted
+        private static StoneDigRank.Scored firstOk(List<StoneDigRank.Scored> stones, Predicate<BlockPos> ok) {
+            for (StoneDigRank.Scored s : stones) {
+                if (ok.test(s.pos())) {
+                    return s;
+                }
+            }
+            return null;
+        }
+
+        // the stone we were asked for around the feet, read straight off the world, scored and sorted (see scanAround).
+        // kept while we stand in the same block, the tunnel is the same and nothing broke, the walk in between does not
+        // need 300 reads a tick
+        private List<StoneDigRank.Scored> localStones(AltoClef mod, Vec3 pos) {
+            BlockPos feet = mod.getPlayer().blockPosition();
+            int floor = _tunnel.latched() ? _tunnel.floor() : NO_FLOOR;
+            int now = WorldHelper.getTicks();
+            boolean fresh = !_localStale && feet.equals(_localFeet) && floor == _localFloor && now >= _localTick && now - _localTick < LOCAL_TICKS;
+            if (fresh) {
+                return _local;
+            }
+            _localStale = false;
+            _localFeet = feet;
+            _localFloor = floor;
+            _localTick = now;
+            _local = scanAround(mod, pos, feet, floor);
+            return _local;
+        }
+
+        // the rows around our feet, and the band when there is one. the rows in between are a climb from the band and the
+        // band is free, so they never win while it has stone, and from up top reading them all was ten thousand reads a scan
+        private List<StoneDigRank.Scored> scanAround(AltoClef mod, Vec3 pos, BlockPos feet, int floor) {
+            List<StoneDigRank.Scored> out = new ArrayList<>();
+            int low = feet.getY() - 1;
+            int high = feet.getY() + 2;
+            for (int y = low; y <= high; y++) {
+                scanRow(mod, pos, feet, y, out);
+            }
+            if (floor != NO_FLOOR) {
+                for (int y = floor; y <= floor + 1; y++) {
+                    if (y < low || y > high) {
+                        scanRow(mod, pos, feet, y, out);
+                    }
+                }
+            }
+            out.sort(Comparator.comparingDouble(StoneDigRank.Scored::score));
+            return out;
+        }
+
+        private void scanRow(AltoClef mod, Vec3 pos, BlockPos feet, int y, List<StoneDigRank.Scored> out) {
+            BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+            for (int x = feet.getX() - LOCAL_RADIUS; x <= feet.getX() + LOCAL_RADIUS; x++) {
+                for (int z = feet.getZ() - LOCAL_RADIUS; z <= feet.getZ() + LOCAL_RADIUS; z++) {
+                    if (isOneOfOurs(mod.getWorld().getBlockState(at.set(x, y, z)).getBlock())) {
+                        out.add(new StoneDigRank.Scored(new BlockPos(x, y, z), stoneScore(mod, pos.x, pos.y, pos.z, x, y, z)));
+                    }
+                }
+            }
+        }
+
+        private boolean isOneOfOurs(Block block) {
+            for (Block b : _blocks) {
+                if (b == block) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // the tunnel stops being a tunnel: we walked off, changed dimension, or the band ran out around us (a cave, water,
+        // lava, a ravine took it). the next pick is a surface pick again and may latch a new one
+        private boolean tunnelOver(AltoClef mod, Vec3 pos, Predicate<BlockPos> ok) {
+            if (!_tunnel.latched()) {
+                return false;
+            }
+            BlockPos feet = mod.getPlayer().blockPosition();
+            if (_tunnel.left(feet.getX(), feet.getZ(), WorldHelper.getCurrentDimension())) {
+                return true;
+            }
+            return !bandLeft(mod, pos, _tunnel.floor(), ok);
+        }
+
+        // some stone left in the band near us. the live look first, then what the tracker knows: a room we cleared out past
+        // the live look still has walls, and walking to one beats calling the tunnel done and going down
+        private boolean bandLeft(AltoClef mod, Vec3 pos, int floor, Predicate<BlockPos> ok) {
+            Predicate<BlockPos> inBand = check -> StoneDigRank.inBand(check.getY(), floor) && ok.test(check);
+            for (StoneDigRank.Scored s : localStones(mod, pos)) {
+                if (inBand.test(s.pos())) {
+                    return true;
+                }
+            }
+            for (BlockPos known : mod.getBlockTracker().getKnownLocations(_blocks)) {
+                if (known.distToCenterSqr(pos) <= BAND_KNOWN_SQ && inBand.test(known)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 16 blocks, squared. a band wall further than this is a walk, not the tunnel we are in
+        private static final double BAND_KNOWN_SQ = 256;
+
+        // the floor we last walked, kept past the task (the parent rebuilds it after every craft) so coming back to the same
+        // room gets the same band. see StoneTunnel.reuse and StoneDigRank.pickFloor. and which world it is from: a new
+        // world's spawn can sit right where the old one's tunnel was
+        private static final StoneTunnel BAND_MEMORY = new StoneTunnel();
+        private static int bandWorld;
+
+        private static StoneTunnel bandMemory(AltoClef mod) {
+            int world = System.identityHashCode(mod.getWorld());
+            if (world != bandWorld) {
+                BAND_MEMORY.clear();
+                bandWorld = world;
+            }
+            return BAND_MEMORY;
+        }
+
+        // the best stone is under our feet and nothing near is cheap, which is how a column straight down started. find the
+        // stone line under us and commit to walking it instead. true when we latched
+        private boolean latchTunnel(AltoClef mod, Vec3 pos, BlockPos best, Predicate<BlockPos> ok) {
+            BlockPos feet = mod.getPlayer().blockPosition();
+            // a spot that already said no (no stone line, or a cave where the band would be) says no until we step off it,
+            // the deep look is not something to redo every tick
+            if (_tunnel.latched() || feet.equals(_noTunnelAt)) {
+                return false;
+            }
+            if (!StoneDigRank.shouldTunnel(feet.getY(), best.getY(), stoneScore(mod, pos.x, pos.y, pos.z, best.getX(), best.getY(), best.getZ()))) {
+                return false;
+            }
+            var dim = WorldHelper.getCurrentDimension();
+            OptionalInt world = floorUnder(mod, feet);
+            OptionalInt floor = StoneDigRank.pickFloor(world, bandMemory(mod).reuse(feet.getX(), feet.getZ(), feet.getY(), dim));
+            // the remembered one can be empty where the world's one isn't, so that gets its own go
+            if (tryBand(mod, pos, feet, floor, ok) || (!floor.equals(world) && tryBand(mod, pos, feet, world, ok))) {
+                return true;
+            }
+            _noTunnelAt = feet;
+            return false;
+        }
+
+        // latch on floor if its band has stone near us. a band with nothing in it is a cave floor, not a tunnel
+        private boolean tryBand(AltoClef mod, Vec3 pos, BlockPos feet, OptionalInt floor, Predicate<BlockPos> ok) {
+            if (floor.isEmpty()) {
+                return false;
+            }
+            var dim = WorldHelper.getCurrentDimension();
+            // latched first so the live look reaches the band (and its scores are band scores, it keys on the floor)
+            _tunnel.latch(floor.getAsInt(), feet.getX(), feet.getZ(), dim);
+            if (!bandLeft(mod, pos, floor.getAsInt(), ok)) {
+                _tunnel.clear();
+                return false;
+            }
+            bandMemory(mod).latch(floor.getAsInt(), feet.getX(), feet.getZ(), dim);
+            return true;
+        }
+
+        // StoneDigRank.tunnelFloor, asked about the world under our feet
+        private static OptionalInt floorUnder(AltoClef mod, BlockPos feet) {
+            long gameTime = mod.getWorld().getGameTime();
+            BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+            return StoneDigRank.tunnelFloor(feet.getY(), underStoneLine(mod, feet, gameTime),
+                    y -> naturalStone(mod, at.set(feet.getX(), y, feet.getZ()), gameTime),
+                    y -> openCell(mod, at.set(feet.getX(), y, feet.getZ())));
+        }
+
+        // air or fluid: a hole in the column, see tunnelFloor
+        private static boolean openCell(AltoClef mod, BlockPos at) {
+            var state = mod.getWorld().getBlockState(at);
+            return state.isAir() || !state.getFluidState().isEmpty();
+        }
+
+        // already in the stone: stone under us and beside our feet. that is the level we keep
+        private static boolean underStoneLine(AltoClef mod, BlockPos feet, long gameTime) {
+            if (!naturalStone(mod, feet.below(), gameTime)) {
+                return false;
+            }
+            for (Direction d : Direction.Plane.HORIZONTAL) {
+                if (naturalStone(mod, feet.relative(d), gameTime)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // stone the world made, not a block we put there
+        private static boolean naturalStone(AltoClef mod, BlockPos at, long gameTime) {
+            return StoneDigRank.stoneLine(mod.getWorld().getBlockState(at).getBlock())
+                    && !PlacedByUs.GLOBAL.recent(at.getX(), at.getY(), at.getZ(), gameTime);
         }
 
         // up on a tower next to the trunk, the highest log in reach first (TreeChop.topDown)
@@ -783,8 +1028,19 @@ public class MineAndCollectTask extends ResourceTask {
             Vec3 eye = mod.getPlayer().getEyePosition();
             double bestScore = stoneScore(mod, pos.x, pos.y, pos.z, best.getX(), best.getY(), best.getZ());
             List<StoneDigRank.Scored> near = new ArrayList<>();
+            Set<BlockPos> seen = new HashSet<>();
+            seen.add(best);
+            for (StoneDigRank.Scored local : localStones(mod, pos)) {
+                // sorted, so past the margin there is nothing preferReachable would take anyway
+                if (local.score() > bestScore + StoneDigRank.REACH_MARGIN) {
+                    break;
+                }
+                if (seen.add(local.pos()) && eye.distanceToSqr(Vec3.atCenterOf(local.pos())) <= REACH_LOOK_SQ && ok.test(local.pos())) {
+                    near.add(local);
+                }
+            }
             for (BlockPos check : mod.getBlockTracker().getKnownLocations(_blocks)) {
-                if (check.equals(best) || eye.distanceToSqr(Vec3.atCenterOf(check)) > REACH_LOOK_SQ || !ok.test(check)) {
+                if (!seen.add(check) || eye.distanceToSqr(Vec3.atCenterOf(check)) > REACH_LOOK_SQ || !ok.test(check)) {
                     continue;
                 }
                 near.add(new StoneDigRank.Scored(check, stoneScore(mod, pos.x, pos.y, pos.z, check.getX(), check.getY(), check.getZ())));
@@ -805,8 +1061,10 @@ public class MineAndCollectTask extends ResourceTask {
             if (!(gone instanceof BlockPos pos) || !pos.equals(_miningPos)) {
                 return;
             }
-            // a tunnel's cobble lands in vacuum range on its own while the next block cracks, stopping for it is pure cost
+            // a tunnel's cobble lands in vacuum range on its own while the next block cracks, stopping for it is pure cost.
+            // the hole it left gave its neighbours an air face though, so the live look goes again
             if (_stoneOnly) {
+                _localStale = true;
                 return;
             }
             if (mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
@@ -1032,6 +1290,9 @@ public class MineAndCollectTask extends ResourceTask {
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
             if (mod.getBlockTracker().unreachable(pos)) return false;
             if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
+            // a block we placed is scaffolding, holding on to it skipped the notOurs filter in pickBlock. stone only: everyone
+            // else has the "nothing else within 16, take our own" fallback, and dropping that pick every tick would just repick it
+            if (_stoneOnly && PlacedByUs.GLOBAL.recent(pos.getX(), pos.getY(), pos.getZ(), mod.getWorld().getGameTime())) return false;
             return mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) <= HOLD_REACH_SQ;
         }
 
@@ -1051,6 +1312,24 @@ public class MineAndCollectTask extends ResourceTask {
             return candidate instanceof BlockPos b && _stick.isHolding(b);
         }
 
+        // stone goes by its own score, not distance. the remembered heuristic retry is out: it compares path costs baritone
+        // worked out from wherever we stood back then, and a deep stone that once looked cheap keeps winning on that. a new
+        // stone takes over when it is SWITCH_MARGIN cheaper from where we stand, a drop the way it always did minus the retry
+        @Override
+        protected SwitchCall switchCall(AltoClef mod, Object current, Object candidate) {
+            if (!_stoneOnly) {
+                return SwitchCall.NO_OPINION;
+            }
+            if (mustSwitchTo(mod, current, candidate)) {
+                return SwitchCall.SWITCH;
+            }
+            if (current instanceof BlockPos now && candidate instanceof BlockPos next) {
+                return StoneDigRank.switches(stoneScoreFromHere(mod, now), stoneScoreFromHere(mod, next)) ? SwitchCall.SWITCH : SwitchCall.STAY;
+            }
+            Vec3 me = mod.getPlayer().position();
+            return MineStick.clearlyCloser(getPos(mod, candidate).distanceToSqr(me), getPos(mod, current).distanceToSqr(me)) ? SwitchCall.SWITCH : SwitchCall.STAY;
+        }
+
         @Override
         public void resetSearch() {
             super.resetSearch();
@@ -1065,6 +1344,9 @@ public class MineAndCollectTask extends ResourceTask {
             _patience.clear();
             _dirtAsk = null;
             _sweepTree = null;
+            _tunnel.clear();
+            _localStale = true;
+            _noTunnelAt = null;
         }
 
         @Override
