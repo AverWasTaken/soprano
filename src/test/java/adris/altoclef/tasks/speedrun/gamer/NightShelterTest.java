@@ -243,4 +243,37 @@ public class NightShelterTest {
         NightSleepHook.clearSheltered();
         assertFalse(NightSleepHook.standsDown(2, 100));
     }
+
+    // ---- dark: the shared night rule
+
+    @Test
+    public void darkNeedsTheWindowAndTheClock() {
+        long w = NightSleep.EARLIEST_WINDOW;
+        assertTrue(NightShelter.dark(true, w, 0));
+        assertFalse(NightShelter.dark(false, w, 0));
+        assertFalse(NightShelter.dark(true, w - 1, 0));
+        // a daytime storm opens the sky window but the clock says day
+        assertFalse(NightShelter.dark(true, 6000, 0));
+        // days wrap
+        assertTrue(NightShelter.dark(true, NightSleep.DAY_LENGTH * 3 + w + 5, 0));
+    }
+
+    @Test
+    public void theLeadCountsTheTicksBeforeTheWindowOnlyByTheClock() {
+        long w = NightSleep.EARLIEST_WINDOW;
+        long lead = NightShelter.PILE_LEAD_TICKS;
+        assertTrue(NightShelter.dark(false, w - lead, lead));
+        assertTrue(NightShelter.dark(false, w - 1, lead));
+        assertFalse(NightShelter.dark(false, w - lead - 1, lead));
+        assertFalse(NightShelter.dark(false, w - 1, 0));
+    }
+
+    @Test
+    public void theLeadDoesNotReachIntoTheMorning() {
+        long lead = NightShelter.PILE_LEAD_TICKS;
+        assertFalse(NightShelter.dark(false, 0, lead));
+        assertFalse(NightShelter.dark(false, 100, lead));
+        // night past the window with a bright sky is the morning
+        assertFalse(NightShelter.dark(false, NightSleep.DAY_LENGTH - 10, lead));
+    }
 }

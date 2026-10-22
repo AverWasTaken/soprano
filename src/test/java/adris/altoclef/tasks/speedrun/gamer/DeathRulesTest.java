@@ -82,7 +82,7 @@ public class DeathRulesTest {
     }
 
     private static String why(double blocks, DeathRules.Worth worth, int killedBefore) {
-        return DeathRules.refuse(true, blocks, 1000, worth, FOOD_LINE, killedBefore, false);
+        return DeathRules.refuse(true, blocks, 1000, worth, FOOD_LINE, killedBefore, false, false);
     }
 
     @Test
@@ -136,7 +136,7 @@ public class DeathRulesTest {
     @Test
     public void dyingAtThePileWeWereGoingBackForEndsItWhateverIsInTheBag() {
         assertEquals("it killed us on the way back for the last pile",
-                DeathRules.refuse(true, 80, 1000, rich(), FOOD_LINE, 0, true));
+                DeathRules.refuse(true, 80, 1000, rich(), FOOD_LINE, 0, true, false));
     }
 
     @Test
@@ -146,7 +146,7 @@ public class DeathRulesTest {
 
     @Test
     public void aPileInAnotherDimensionIsNotThisRulesBusiness() {
-        assertEquals("it is in another dimension", DeathRules.refuse(false, 10, 1000, rich(), FOOD_LINE, 0, false));
+        assertEquals("it is in another dimension", DeathRules.refuse(false, 10, 1000, rich(), FOOD_LINE, 0, false, false));
     }
 
     private static RunState.Death death(Dimension dimension, int x, int z) {
@@ -196,5 +196,36 @@ public class DeathRulesTest {
         assertEquals("death: going back for the pile, 450 blocks, run items", DeathRules.going(450, bag(0, 0, false, 0, true)));
         assertEquals("death: going back for the pile, 12 blocks", DeathRules.going(12, null));
         assertEquals("death: leaving the pile, it is a long way", DeathRules.leaving("it is a long way"));
+    }
+
+    // ---- night, no armor, a pick
+
+    private static String night(double blocks, DeathRules.Worth worth, boolean darkAndBare) {
+        return DeathRules.refuse(true, blocks, 1000, worth, FOOD_LINE, 0, false, darkAndBare);
+    }
+
+    @Test
+    public void aPickAloneIsNotWorthANightBare() {
+        assertEquals("it is night and we have no armor for a pick", night(40, bag(0, 0, true, 10, false), true));
+    }
+
+    @Test
+    public void aRichPileStillGoesAtNight() {
+        assertNull(night(40, rich(), true));
+    }
+
+    @Test
+    public void aPickByDayOrArmoredStillGoes() {
+        assertNull(night(40, bag(0, 0, true, 10, false), false));
+    }
+
+    @Test
+    public void aBagWeNeverSawStillGoesAtNight() {
+        assertNull(night(40, null, true));
+    }
+
+    @Test
+    public void tooFarSaysFurtherEvenAtNight() {
+        assertTrue(night(1001, bag(0, 0, true, 10, false), true).contains("further than"));
     }
 }

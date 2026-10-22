@@ -1083,8 +1083,12 @@ public class GamerTask extends Task {
             // the older pile is not worth another life either, and the new one is judged below on its own
             host.say("death: died on the way to the last pile, giving that one up");
         }
+        // same night the shelter uses, with a minute of walking ahead of it counted (the shelter is blocked while we recover)
+        boolean darkAndBare = facts.dimension() == Dimension.OVERWORLD
+                && NightShelter.dark(!mod.getWorld().isBrightOutside(), mod.getWorld().getOverworldClockTime(), NightShelter.PILE_LEAD_TICKS)
+                && facts.armorPoints() < NightShelter.ARMOR_LINE;
         String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
-                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile);
+                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));
             recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
@@ -1250,7 +1254,7 @@ public class GamerTask extends Task {
         long sinceDeath = deathGameTime > 0 ? gameTime - deathGameTime : -1;
         // the cheap questions first, the bed hunt and the column scan only when everything else says yes
         // (a daytime thunderstorm opens the window too, it is dark enough to sleep but not to hide from: time of day says dusk)
-        boolean dusk = windowOpen && Math.floorMod(mod.getWorld().getOverworldClockTime(), NightSleep.DAY_LENGTH) >= NightSleep.EARLIEST_WINDOW;
+        boolean dusk = NightShelter.dark(windowOpen, mod.getWorld().getOverworldClockTime(), 0);
         // only a fight that is really on counts, the heal-up hold after one is the very case for a hole
         boolean inFight = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
         NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && facts.count(ItemHelper.BED) == 0,

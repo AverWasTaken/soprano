@@ -17,7 +17,21 @@ public final class NightShelter {
     // the cap plus the pillar out of a 3 deep hole (breaking the cap hands its block back, so this is the cap and two more)
     public static final int BLOCKS_NEEDED = 3;
 
+    // a pick walk is up to 300 blocks, about a minute: night falling mid walk with the shelter blocked is the case this covers
+    public static final long PILE_LEAD_TICKS = 1200;
+
     private NightShelter() {
+    }
+
+    // is it night as far as the hole is concerned. windowOpen is !isBrightOutside. past the earliest window that wins (a daytime
+    // thunderstorm opens it too, time of day says no). the lead counts the last `lead` ticks before the window as night, and
+    // that part is clock only because before the window the sky is still bright
+    public static boolean dark(boolean windowOpen, long clockTime, long lead) {
+        long tod = Math.floorMod(clockTime, NightSleep.DAY_LENGTH);
+        if (tod >= NightSleep.EARLIEST_WINDOW) {
+            return windowOpen;
+        }
+        return lead > 0 && tod >= NightSleep.EARLIEST_WINDOW - lead;
     }
 
     // everything the branch can see. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
