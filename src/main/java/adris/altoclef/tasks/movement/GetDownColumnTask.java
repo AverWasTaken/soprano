@@ -11,10 +11,23 @@ public class GetDownColumnTask extends CustomBaritoneGoalTask {
     private final int z;
     private final int floorY;
 
+    private final boolean wander;
+
+    // what makes two of these the same task, split out so the test does not need a running game to build one
+    record Shaft(int x, int z, int floorY, boolean wander) {
+    }
+
     public GetDownColumnTask(int x, int z, int floorY) {
+        this(x, z, floorY, true);
+    }
+
+    // wander = false for a shaft we must not leave: a failed progress check walks off into the open and the column is gone
+    public GetDownColumnTask(int x, int z, int floorY, boolean wander) {
+        super(wander);
         this.x = x;
         this.z = z;
         this.floorY = floorY;
+        this.wander = wander;
     }
 
     @Override
@@ -22,9 +35,13 @@ public class GetDownColumnTask extends CustomBaritoneGoalTask {
         return new GoalColumnDown(x, z, floorY);
     }
 
+    Shaft shaft() {
+        return new Shaft(x, z, floorY, wander);
+    }
+
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof GetDownColumnTask t && t.x == x && t.z == z && t.floorY == floorY;
+        return other instanceof GetDownColumnTask t && t.shaft().equals(shaft());
     }
 
     @Override

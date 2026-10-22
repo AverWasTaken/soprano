@@ -50,17 +50,38 @@ public final class NightShelter {
         return ticksSinceDeath >= 0 && ticksSinceDeath <= RECENT_DEATH_TICKS;
     }
 
+    // a try that gave up gets one more at a fresh spot, then the night is spent
+    public static final int MAX_TRIES = 2;
+    // dig to walk bounces one attempt may take before it counts as lost (each one is a trip out of the column and back)
+    public static final int MAX_BOUNCES = 3;
+
+    public static boolean bounceOver(int bounces) {
+        return bounces >= MAX_BOUNCES;
+    }
+
     // ---- the once per night flag, keyed on the day count (NightSleep.nightOf). the bed trip's budget is not touched
 
     public static final class Once {
         private long night = Long.MIN_VALUE;
+        private int tries;
 
         public boolean used(long nightOf) {
-            return night == nightOf;
+            return night == nightOf && tries >= MAX_TRIES;
         }
 
+        // a try started. a night that gave up gets one more, so used() only says yes on the second
         public void mark(long nightOf) {
+            if (night != nightOf) {
+                night = nightOf;
+                tries = 0;
+            }
+            tries++;
+        }
+
+        // the night is over for the hole, whatever the count says (it worked, or there is no point in trying again)
+        public void spend(long nightOf) {
             night = nightOf;
+            tries = MAX_TRIES;
         }
     }
 

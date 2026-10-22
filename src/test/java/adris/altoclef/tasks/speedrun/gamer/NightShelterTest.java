@@ -130,13 +130,41 @@ public class NightShelterTest {
     public void onceAPerNightAndTheNextNightIsFresh() {
         NightShelter.Once once = new NightShelter.Once();
         assertFalse(once.used(3));
-        once.mark(3);
+        once.spend(3);
         assertTrue(once.used(3));
         assertFalse(once.used(4));
         assertFalse(NightShelter.wanted(with(base(), b -> {
             b.used = true;
             return b;
         })));
+    }
+
+    @Test
+    public void aGivenUpNightGetsOneRetryThenIsSpent() {
+        NightShelter.Once once = new NightShelter.Once();
+        once.mark(3);
+        assertFalse(once.used(3));
+        once.mark(3);
+        assertTrue(once.used(3));
+        assertFalse(once.used(4));
+        once.mark(4);
+        assertFalse(once.used(4));
+    }
+
+    @Test
+    public void aTryThatWorkedSpendsTheNightAtOnce() {
+        NightShelter.Once once = new NightShelter.Once();
+        once.mark(3);
+        once.spend(3);
+        assertTrue(once.used(3));
+        assertFalse(once.used(4));
+    }
+
+    @Test
+    public void threeBouncesLoseTheAttempt() {
+        assertFalse(NightShelter.bounceOver(0));
+        assertFalse(NightShelter.bounceOver(NightShelter.MAX_BOUNCES - 1));
+        assertTrue(NightShelter.bounceOver(NightShelter.MAX_BOUNCES));
     }
 
     @Test

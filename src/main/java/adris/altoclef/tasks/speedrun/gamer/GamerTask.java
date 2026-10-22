@@ -160,6 +160,9 @@ public class GamerTask extends Task {
     // the hole for the night after a death with no armor and no bed (NightShelter), its own once per night flag, and the look throttle
     private ShelterTask shelter;
     private final NightShelter.Once shelterOnce = new NightShelter.Once();
+    // where the last try tonight gave up, so the retry digs somewhere else
+    private BlockPos shelterFailedSpot;
+    private long shelterFailedNight = Long.MIN_VALUE;
     // halved so the subtraction in shelterTick can't wrap around into the negatives and look like "just looked" forever
     private long shelterLookAt = Long.MIN_VALUE / 2;
 
@@ -1240,6 +1243,13 @@ public class GamerTask extends Task {
         long night = NightSleep.nightOf(mod.getWorld().getOverworldClockTime());
         if (shelter != null) {
             if (shelter.isFinished(mod)) {
+                // a try that gave up leaves the night open for one more at another spot, anything else spends it
+                if (shelter.gaveUp()) {
+                    shelterFailedSpot = shelter.top();
+                    shelterFailedNight = night;
+                } else {
+                    shelterOnce.spend(night);
+                }
                 dropShelter();
                 machine.releaseHold();
                 return null;
@@ -1266,7 +1276,7 @@ public class GamerTask extends Task {
         shelterLookAt = gameTime;
         boolean noBed = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
                 BedCraft.usableWood(mod)) == NightSleep.BedSource.NONE;
-        BlockPos spot = noBed ? ShelterTask.pick(mod) : null;
+        BlockPos spot = noBed ? ShelterTask.pick(mod, shelterFailedNight == night ? shelterFailedSpot : null) : null;
         if (spot == null) {
             return null;
         }
