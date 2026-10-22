@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import net.minecraft.core.BlockPos;
+
 // pure: when does the sweep stop walking to dig itself some blocks? the bridges over lava eat throwaways and nothing in the
 // nether hands them back, so a bag that ran dry mid-walk turns every path after it into "0 blocks closer"
 public final class NetherRestock {
@@ -20,16 +22,29 @@ public final class NetherRestock {
         return active;
     }
 
-    // held = every throwaway in the whole bag. true = dig (until the target) instead of walking
-    public boolean update(int held, boolean gaveUp, boolean hasPick, double now) {
+    // the dig stays in a box around where it started: nothing under the starting feet (that is how it ended up in a pit),
+    // nothing far off (it once went for basalt 600 blocks away). the wall at feet level is fair game
+    static final int BAND_RADIUS = 32;
+
+    public static boolean inRestockBand(BlockPos origin, BlockPos pos) {
+        if (pos.getY() < origin.getY()) {
+            return false;
+        }
+        int dx = pos.getX() - origin.getX();
+        int dz = pos.getZ() - origin.getZ();
+        return dx * dx + dz * dz <= BAND_RADIUS * BAND_RADIUS;
+    }
+
+    // held = every placeable throwaway in the bag. exhausted = the dig has nothing left to go to. true = dig (until the
+    // target) instead of walking
+    public boolean update(int held, boolean gaveUp, boolean hasPick, boolean exhausted, double now) {
         if (!hasPick) {
             active = false;
             return false;
         }
         if (active) {
-            if (held >= TARGET) {
-                active = false;
-            } else if (now - startedAt >= MAX_SECONDS) {
+            // every way out cools down, a finished restock re-triggering a few blocks later is how it ran 8 times a visit
+            if (held >= TARGET || exhausted || now - startedAt >= MAX_SECONDS) {
                 active = false;
                 coolUntil = now + COOLDOWN_SECONDS;
             }

@@ -9,8 +9,12 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.StorageHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.LeavesBlock;
 
+import java.util.List;
 import java.util.function.DoubleSupplier;
 
 // walks the sweep the planner lays out: one structure cell after another, waypoint by waypoint. it does not look at
@@ -22,7 +26,7 @@ public class FindNetherStructureTask extends Task {
     private final DoubleSupplier clock;
 
     private final NetherRestock restock = new NetherRestock();
-    private Task restockTask;
+    private MineAndCollectTask restockTask;
     private GetToXZTask walk;
     private int walkX;
     private int walkZ;
@@ -90,18 +94,30 @@ public class FindNetherStructureTask extends Task {
     // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
     // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack
     private boolean restocking(AltoClef mod) {
-        Item[] placeable = mod.getClientBaritoneSettings().acceptableThrowawayItems.value.toArray(Item[]::new);
+        Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);
         boolean gaveUp = planner.takeGiveUp();
+        boolean exhausted = restockTask != null && restockTask.wandering();
         boolean on = restock.update(held, gaveUp, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
-                clock.getAsDouble());
+                exhausted, clock.getAsDouble());
         if (on && restockTask == null) {
+            // the band is frozen where the dig starts, following live feet would walk it down its own shaft
+            BlockPos origin = mod.getPlayer().blockPosition();
+            // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             restockTask = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, NetherRestock.TARGET)},
-                    MiningRequirement.WOOD);
+                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p));
         } else if (!on) {
             restockTask = null;
         }
         return on;
+    }
+
+    // baritone's list has items it counts but can never place (nether brick the item, leaves), and the merge can list an
+    // item twice. distinct and block items only
+    static Item[] placeableOnly(List<Item> items) {
+        return items.stream().distinct()
+                .filter(i -> i instanceof BlockItem b && !(b.getBlock() instanceof LeavesBlock))
+                .toArray(Item[]::new);
     }
 
     // a new GetToXZTask object only when the waypoint changes, a new one per tick would restart its pathing every tick

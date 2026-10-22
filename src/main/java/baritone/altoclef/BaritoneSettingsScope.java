@@ -117,11 +117,17 @@ public final class BaritoneSettingsScope {
         List<Item> baritoneCanPlace = Arrays.stream(AltoSettings.getThrowawayItems(mod, true))
                 .filter(item -> item != Items.SOUL_SAND && item != Items.MAGMA_BLOCK && item != Items.SAND && item
                         != Items.GRAVEL).toList();
-        List<Item> merged = new ArrayList<>(savedThrowaway);
-        merged.addAll(baritoneCanPlace);
+        // the user's list first, then ours, each item once (a doubled entry doubles every count made from the list)
+        List<Item> merged = mergeUnique(savedThrowaway, baritoneCanPlace);
         // the registry keeps the user's list from the first put, so a second apply only swaps what we hand baritone
         set(s.acceptableThrowawayItems, merged);
         lastMerged = merged;
+    }
+
+    static <T> List<T> mergeUnique(List<T> first, List<T> second) {
+        java.util.Set<T> unique = new java.util.LinkedHashSet<>(first);
+        unique.addAll(second);
+        return new ArrayList<>(unique);
     }
 
     // a #set of altoThrowawayItems while a task runs has to reach baritone's list as well, one reference compare a tick
