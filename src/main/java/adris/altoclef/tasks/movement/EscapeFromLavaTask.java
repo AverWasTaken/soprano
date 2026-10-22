@@ -11,6 +11,7 @@ import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -157,6 +158,12 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         return "Escaping lava";
     }
 
+    // the air right over a lake is dry and has no lava beside it, and it is no place to be: the path to it is a one cell pillar
+    // we can never finish, the lava just bobs us under the block we want to place. only a cell with something to stand on counts
+    static boolean isSafeCell(boolean lava, boolean lavaAdjacent, boolean hasFloor) {
+        return !lava && !lavaAdjacent && hasFloor;
+    }
+
     private class EscapeFromLavaGoal implements Goal {
 
         private static boolean isLava(int x, int y, int z) {
@@ -175,9 +182,17 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             return MovementHelper.isWater(Minecraft.getInstance().level.getBlockState(new BlockPos(x, y, z)));
         }
 
+        private static boolean hasFloor(int x, int y, int z) {
+            var level = Minecraft.getInstance().level;
+            if (level == null) return true;
+            BlockPos below = new BlockPos(x, y - 1, z);
+            var state = level.getBlockState(below);
+            return state.getFluidState().isEmpty() && state.isFaceSturdy(level, below, Direction.UP);
+        }
+
         @Override
         public boolean isInGoal(int x, int y, int z) {
-            return !isLava(x, y, z) && !isLavaAdjacent(x, y, z);
+            return isSafeCell(isLava(x, y, z), isLavaAdjacent(x, y, z), hasFloor(x, y, z));
         }
 
         @Override
