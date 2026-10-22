@@ -45,7 +45,7 @@ import net.minecraft.world.entity.animal.rabbit.Rabbit;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.component.SwingAnimation;
+import baritone.behavior.LegacyCombat;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -1163,8 +1163,9 @@ public interface MovementHelper extends ActionCosts, Helper {
         return HitBlocker.hittable(true, e.hasCustomName(), leashed, e.isPassenger() || e.isVehicle(), inReach);
     }
 
-    // straight to gameMode.attack like BoatTrip and SelfDefenseProcess. not CLICK_LEFT: that only knows blocks. and no
-    // looking at it either, the movement is aiming its place click and the attack packet doesn't care where we look
+    // straight to the attack packet (LegacyCombat.hit) like BoatTrip and SelfDefenseProcess. not CLICK_LEFT: that only
+    // knows blocks. and no looking at it either, the movement is aiming its place click and the attack packet doesn't care
+    // where we look
     static void swingAtBlocker(MovementState state, IPlayerContext ctx, LivingEntity target) {
         LocalPlayer player = ctx.player();
         // obstruction already said no target when the hands are busy or alto paused us, this is just belt and braces
@@ -1172,8 +1173,7 @@ public interface MovementHelper extends ActionCosts, Helper {
             return;
         }
         if (state.swingDue(player.getAttackStrengthScale(0.5f), player.tickCount)) {
-            ctx.minecraft().gameMode.attack(player, target);
-            player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            LegacyCombat.hit(ctx.minecraft().gameMode, player, target, InteractionHand.MAIN_HAND);
         }
     }
 

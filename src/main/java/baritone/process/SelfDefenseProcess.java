@@ -27,6 +27,7 @@ import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
 import baritone.behavior.CombatAim;
+import baritone.behavior.LegacyCombat;
 import baritone.utils.BaritoneProcessHelper;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -40,7 +41,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -295,10 +295,24 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
         LocalPlayer p = ctx.player();
         // the ray from the last look packet has to hit it, not just point roughly its way: our onTick runs before this
         // tick's look gets applied, the server only knows what was in the last packet
-        boolean onTarget = baritone.getLookBehavior().combat().onTarget(target, reach());
+        CombatAim combat = baritone.getLookBehavior().combat();
+        boolean onTarget = combat.onTarget(target, reach());
+        if (LegacyCombat.active()) {
+            maybeClick(combat, onTarget);
+            return;
+        }
         if (SelfDefenseRules.swing(p.getAttackStrengthScale(0.5f), onTarget)) {
-            ctx.minecraft().gameMode.attack(p, target);
-            p.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            LegacyCombat.hit(ctx.minecraft().gameMode, p, target, InteractionHand.MAIN_HAND);
+        }
+    }
+
+    // pre 1.9 the charge is faked full and means nothing, the shared clicker paces us instead (same clock as alto's swings,
+    // so the two of them never click in the same tick)
+    private void maybeClick(CombatAim combat, boolean onTarget) {
+        long now = ctx.world().getGameTime();
+        if (onTarget && combat.clicker().due(now)) {
+            LegacyCombat.hit(ctx.minecraft().gameMode, ctx.player(), target, InteractionHand.MAIN_HAND);
+            combat.clicker().clicked(now);
         }
     }
 

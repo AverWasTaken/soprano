@@ -12,6 +12,9 @@ import net.minecraft.world.item.ItemStack;
 // sword's 8, iron axe 8.1 against an iron sword's 9.6)
 //
 // a target with a raised shield is the one case the axe wins anyway: it knocks the shield down for a few seconds
+//
+// none of that holds on a pre 1.9 server: no cooldown, so we click as fast as a hand does and every weapon swings at the
+// same rate, no shields, and a sword is the harder hit there anyway. legacy goes sword then axe like SelfDefenseRules
 public final class WeaponPick {
 
     private WeaponPick() {
@@ -43,7 +46,7 @@ public final class WeaponPick {
         for (Candidate c : candidates) {
             if (c == null || isWeapon(c.item()) || !ItemHelper.hitsHarderThanFists(c.item())) continue;
             if (ToolWear.wornOut(c.damage(), c.maxDamage())) continue;
-            if (best == null || beats(c, best, false, false)) {
+            if (best == null || beats(c, best, false, false, false)) {
                 best = c;
             }
         }
@@ -53,10 +56,15 @@ public final class WeaponPick {
     // crowd: two or more melee mobs around us, damage per second decides. shieldedTarget: something is holding a shield up
     // at us, any axe beats any sword (and it wins over the crowd rule, a shield up in a crowd still eats a sword's hits)
     public static Item best(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget) {
+        return best(candidates, crowd, shieldedTarget, false);
+    }
+
+    // legacy: the server is pre 1.9 (LegacyCombat.active), see the top
+    public static Item best(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget, boolean legacy) {
         Candidate best = null;
         for (Candidate c : candidates) {
             if (c == null || !isWeapon(c.item())) continue;
-            if (best == null || beats(c, best, crowd, shieldedTarget)) {
+            if (best == null || beats(c, best, crowd, shieldedTarget, legacy)) {
                 best = c;
             }
         }
@@ -89,13 +97,18 @@ public final class WeaponPick {
         return inHand;
     }
 
-    private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget) {
+    private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget, boolean legacy) {
         boolean aWorn = ToolWear.wornOut(a.damage(), a.maxDamage());
         boolean bWorn = ToolWear.wornOut(b.damage(), b.maxDamage());
         if (aWorn != bWorn) {
             return bWorn;
         }
-        if (shieldedTarget) {
+        if (legacy) {
+            boolean aSword = ItemHelper.isSword(a.item());
+            if (aSword != ItemHelper.isSword(b.item())) {
+                return aSword;
+            }
+        } else if (shieldedTarget) {
             boolean aAxe = ItemHelper.isAxe(a.item());
             if (aAxe != ItemHelper.isAxe(b.item())) {
                 return aAxe;

@@ -6,6 +6,7 @@ import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
 import baritone.behavior.CombatAim;
+import baritone.behavior.LegacyCombat;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -156,7 +157,8 @@ public class KillAura {
                         if (_forceHit != null) {
                             attack(mod, _forceHit, true);
                         }
-                        if (_hitDelay.elapsed()) {
+                        // pre 1.9 the clicker in attack() paces this, the fixed 0.2 s would be half a hand's cps
+                        if (LegacyCombat.active() || _hitDelay.elapsed()) {
                             _hitDelay.reset();
 
                             Optional<Entity> toHit = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));

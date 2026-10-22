@@ -12,13 +12,13 @@ import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
 import baritone.behavior.CombatAim;
+import baritone.behavior.LegacyCombat;
 import net.minecraft.world.item.Item;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -94,11 +94,18 @@ public class PlayerExtraController {
         if (now == _lastSwingTick || !canSwingAt(entity)) {
             return false;
         }
+        // pre 1.9 there is no cooldown to wait on, so everybody calls this every tick and the clicker is the pacing
+        boolean legacy = LegacyCombat.active();
+        if (legacy && !combat().clicker().due(now)) {
+            return false;
+        }
         _lastSwingTick = now;
         // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
         _mod.getEntityTracker().noteProvoked(entity);
-        _mod.getController().attack(_mod.getPlayer(), entity);
-        _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+        LegacyCombat.hit(_mod.getController(), _mod.getPlayer(), entity, InteractionHand.MAIN_HAND);
+        if (legacy) {
+            combat().clicker().clicked(now);
+        }
         _swings++;
         return true;
     }
@@ -190,12 +197,21 @@ public class PlayerExtraController {
 
     // a swing now would be at full strength, as the server will see it
     public boolean attackReady() {
+        // pre 1.9 there is nothing to charge (ViaFabricPlus fakes a full scale there anyway). not clicker().due either: the
+        // kill task's back-off reads this, and a due that flips every other tick starts and cancels a run-away path every tick
+        if (LegacyCombat.active()) {
+            return true;
+        }
         return _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL) >= 1;
     }
 
     // ticks of cooldown the held item has charged, capped at its delay. the weapon pick uses it to tell a fresh swing (a swap
     // is free) from a half charged one (a swap throws it away)
     public double chargedTicks() {
+        // nothing to throw away pre 1.9, so every swap counts as right after a swing. the fake full scale would block them all
+        if (LegacyCombat.active()) {
+            return 0;
+        }
         LocalPlayer player = _mod.getPlayer();
         return player.getAttackStrengthScale(SERVER_PARTIAL) * player.getCurrentItemAttackStrengthDelay();
     }
@@ -210,7 +226,7 @@ public class PlayerExtraController {
     // (see CritTiming.LEAD_TICKS) and has to be steered all the way down, so those ticks are worth a call. false whenever
     // baritone is walking, then nobody jumps and the old "wait for full" rules are the whole story
     public boolean wantsCritTick() {
-        if (!Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()) {
             return false;
         }
         // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
@@ -230,7 +246,9 @@ public class PlayerExtraController {
     // cooldown is full and we are on the ground, falling, in water, or rising with no crit hop in flight
     public boolean melee(Entity entity) {
         LocalPlayer player = _mod.getPlayer();
-        if (!(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
+        // pre 1.9 the scale is faked full, so CritTiming would see a charged swing every tick and hop at everything. plain
+        // clicking it is
+        if (LegacyCombat.active() || !(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
             _crit.reset();
             return plainSwing(player, entity);
         }
@@ -366,7 +384,7 @@ public class PlayerExtraController {
     // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
     // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
-        if (!Baritone.settings().altoJumpCrits.value) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value) {
             return false;
         }
         if (critInFlight()) {
