@@ -353,9 +353,9 @@ public class PlayerExtraController {
         return reach > 0 ? reach : ReachRules.MELEE_REACH;
     }
 
-    // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself. this asks the real
-    // hop question for this mob with the pathing veto left out: the path in the way is usually the back-off itself, and
-    // asking wantsCritTick (which says no to any path) is how the back-off used to veto the hop that would have cancelled it
+    // a hop is on, or planned for this cooldown, and the back-off in the kill tasks should keep its hands to itself. this
+    // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
+    // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
         if (!Baritone.settings().altoJumpCrits.value) {
             return false;
@@ -367,9 +367,7 @@ public class PlayerExtraController {
             return false;
         }
         LocalPlayer player = _mod.getPlayer();
-        CritTiming.Sample s = sample(player, target, reachGap(player, target));
-        s.pathing = false;
-        return CritTiming.wantsHop(s);
+        return CritTiming.hopPlanned(sample(player, target, reachGap(player, target)));
     }
 
     // on the ground, coming down or swimming is the old rule, and it is what keeps a swing from spending the rise of a crit hop.
