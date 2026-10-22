@@ -770,6 +770,13 @@ public class GamerTask extends Task {
         if (machine.ended()) {
             return null;
         }
+        // dead and not respawned yet: the bag reads empty, and a regress decided off it sent the run back to gather before the
+        // respawn got to start the walk back for our things. nothing to decide until the new body shows up
+        if (deadSeen) {
+            machine.observe();
+            machine.holdClocks();
+            return null;
+        }
         // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
         // for our things (the recovery branches below return before the night branch is asked)
         if (nightTrip != null && mod.getPlayer() != nightPlayer) {
