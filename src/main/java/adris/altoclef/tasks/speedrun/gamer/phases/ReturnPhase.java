@@ -98,7 +98,7 @@ public class ReturnPhase implements PhaseHandler {
         if (goOverworld == null) {
             onEnter(mod, ctx);
         }
-        standingInPortal = WorldHelper.isInNetherPortal(mod);
+        standingInPortal = WorldHelper.isStandingInPortal(mod);
         recordPortal(mod, ctx.state());
         if (ctx.facts().dimension() == Dimension.OVERWORLD) {
             return stepOffPortal(mod);

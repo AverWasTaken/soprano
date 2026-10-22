@@ -37,6 +37,7 @@ import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -462,7 +463,8 @@ public class NightSleepTask extends Task {
         for (int i = 1; i <= raise + 2; i++) {
             BlockPos up = feet.above(i);
             BlockState s = world.getBlockState(up);
-            if (!s.getCollisionShape(world, up).isEmpty() || !s.getFluidState().isEmpty()) {
+            // (a portal has no collision, it still takes us to the nether the moment we pillar into it)
+            if (!s.getCollisionShape(world, up).isEmpty() || !s.getFluidState().isEmpty() || s.is(Blocks.NETHER_PORTAL)) {
                 break;
             }
             open++;
@@ -801,11 +803,33 @@ public class NightSleepTask extends Task {
         return best;
     }
 
+    // a bed site next to a portal, or made of its frame, is no site: the portal teleports us mid build, and obsidian is not ours to
+    // dig up for a bed (a diamond pick makes it "breakable"). the six cells the bed uses may not be portal or obsidian, and none
+    // of them may touch a portal
+    public static boolean portalSite(BlockPos foot, BlockPos head, Function<BlockPos, Block> at) {
+        BlockPos[] cells = {foot, head, foot.above(), head.above(), foot.below(), head.below()};
+        for (BlockPos cell : cells) {
+            Block b = at.apply(cell);
+            if (b == Blocks.NETHER_PORTAL || b == Blocks.OBSIDIAN) {
+                return true;
+            }
+            for (Direction d : Direction.values()) {
+                if (at.apply(cell.relative(d)) == Blocks.NETHER_PORTAL) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // the foot, the head and the air over both have to be free (the game refuses an obstructed bed), liquid is a no
     private int siteCost(AltoClef mod, BlockPos stand, Direction d) {
         ClientLevel world = mod.getWorld();
         BlockPos footCell = stand.relative(d);
         BlockPos headCell = footCell.relative(d);
+        if (portalSite(footCell, headCell, c -> world.getBlockState(c).getBlock())) {
+            return INF;
+        }
         int cost = 0;
         for (BlockPos cell : new BlockPos[]{footCell, headCell, footCell.above(), headCell.above()}) {
             BlockState s = world.getBlockState(cell);

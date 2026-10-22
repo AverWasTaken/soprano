@@ -41,8 +41,15 @@ public final class NightSleep {
     // everything the branch can see before it starts. busy is the engine's side (a nether trip, a recovery, a station being
     // picked up, a phase that must not be interrupted), fighting is a commitment the combat machine already holds, spent is
     // "this night is used up" (tries or seconds) and cooling is "a try just failed, wait a bit"
+    // inPortal is "our feet or head are in a nether portal": the trip would start inside it, and the game teleports us out of it
+    // six seconds later
     public record Inputs(boolean enabled, boolean overworld, boolean windowOpen, boolean busy, boolean fighting, boolean lowHealth,
-                         boolean spent, boolean cooling, BedSource bed, boolean leftoverBed) {
+                         boolean spent, boolean cooling, BedSource bed, boolean leftoverBed, boolean inPortal) {
+        // the callers that have nothing to say about portals (BuildNightSleep walks its own way out)
+        public Inputs(boolean enabled, boolean overworld, boolean windowOpen, boolean busy, boolean fighting, boolean lowHealth,
+                      boolean spent, boolean cooling, BedSource bed, boolean leftoverBed) {
+            this(enabled, overworld, windowOpen, busy, fighting, lowHealth, spent, cooling, bed, leftoverBed, false);
+        }
     }
 
     // a bed of ours still standing from an earlier trip is picked up whatever the clock says, as long as nothing else has the
@@ -55,7 +62,8 @@ public final class NightSleep {
         if (!in.overworld()) {
             return Why.WRONG_PLACE;
         }
-        if (in.busy()) {
+        // (coming out of a portal at night: the return phase walks us off it first, then the trip can start on solid ground)
+        if (in.busy() || in.inPortal()) {
             return Why.BUSY;
         }
         if (in.fighting()) {
@@ -566,6 +574,12 @@ public final class NightSleep {
             case RETURN -> 45;
             case DESCEND -> 10 + 3.0 * blocks;
         };
+    }
+
+    // a trip that is not finished but is no longer in the overworld was dragged away (a portal, mostly). that is a failed try
+    // with a cooldown, or the walk back and the next try start in the same breath
+    public static boolean droppedByDimension(boolean finished, boolean overworld) {
+        return !finished && !overworld;
     }
 
     public static boolean timedOut(Stage stage, int blocks, double secondsInStage) {

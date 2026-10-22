@@ -165,4 +165,39 @@ public class NightSleepTaskTest {
         world.put(aimed, bed(BedPart.FOOT, Direction.EAST));
         assertEquals(aimed, NightSleepTask.appearedFoot(cellsAround(aimed), before, p -> world.getOrDefault(p, Blocks.AIR.defaultBlockState())));
     }
+
+    // ---- bed sites next to a portal
+
+    private static final BlockPos FOOT = new BlockPos(10, 64, 10);
+    private static final BlockPos HEAD = new BlockPos(11, 64, 10);
+
+    private static boolean portalSite(Map<BlockPos, net.minecraft.world.level.block.Block> world) {
+        return NightSleepTask.portalSite(FOOT, HEAD, p -> world.getOrDefault(p, Blocks.AIR));
+    }
+
+    @Test
+    public void openGroundIsNotAPortalSite() {
+        assertFalse(portalSite(new HashMap<>()));
+        assertFalse(portalSite(Map.of(FOOT.below(), Blocks.STONE, HEAD.below(), Blocks.STONE)));
+    }
+
+    @Test
+    public void portalAndObsidianCellsOfTheBedAreNoSite() {
+        assertTrue(portalSite(Map.of(FOOT, Blocks.NETHER_PORTAL)));
+        assertTrue(portalSite(Map.of(HEAD.above(), Blocks.NETHER_PORTAL)));
+        // the frame is never dug up for a bed, and never stood a bed on either
+        assertTrue(portalSite(Map.of(HEAD, Blocks.OBSIDIAN)));
+        assertTrue(portalSite(Map.of(FOOT.below(), Blocks.OBSIDIAN)));
+    }
+
+    @Test
+    public void aPortalTouchingTheSiteIsNoSite() {
+        assertTrue(portalSite(Map.of(FOOT.west(), Blocks.NETHER_PORTAL)));
+        assertTrue(portalSite(Map.of(HEAD.east().above(), Blocks.NETHER_PORTAL)));
+        assertTrue(portalSite(Map.of(HEAD.below().south(), Blocks.NETHER_PORTAL)));
+        // two cells off is far enough
+        assertFalse(portalSite(Map.of(FOOT.west(2), Blocks.NETHER_PORTAL)));
+        // obsidian only counts when the bed itself would use it
+        assertFalse(portalSite(Map.of(FOOT.west(), Blocks.OBSIDIAN)));
+    }
 }
