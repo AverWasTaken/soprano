@@ -17,6 +17,7 @@
 
 package baritone.behavior;
 
+import baritone.utils.portal.Portal;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
@@ -30,10 +31,10 @@ public final class LegacyCombat {
     private LegacyCombat() {
     }
 
-    // 26.3 only ever talks to 26.3 servers, so never. version-agnostic swaps this one line for the portal's server version
-    // check, keep it alone
+    // whatever viafabricplus is talking to right now is pre 1.9 (false without vfp, see Portal). on 26.3 this is just
+    // false, keep it to the one line so the merges stay boring
     public static boolean active() {
-        return false;
+        return Portal.legacyCombat();
     }
 
     // a 1.8 client sends the arm swing and then the attack, and old anticheats want to see a swing before every hit.

@@ -103,4 +103,17 @@ public final class Portal {
             return false;
         }
     }
+
+    // is the server pre 1.9: no attack cooldown, click spam and swing before hit, see LegacyCombat. false means 26.3 rules
+    public static boolean legacyCombat() {
+        if (!available() || broken) {
+            return false;
+        }
+        try {
+            return ViaPortal.legacyCombat();
+        } catch (LinkageError | RuntimeException e) {
+            broken = true;
+            return false;
+        }
+    }
 }

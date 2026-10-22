@@ -110,6 +110,12 @@ public final class ViaPortal {
         return ViaFabricPlus.api().targetVersion().olderThanOrEqualTo(ProtocolVersion.v1_21_4);
     }
 
+    // not serverOlderThan: its SPECIAL carve out would also skip classic c0_30cpe, which is SPECIAL but sorts with the
+    // classics. auto and bedrock sort newest anyway, so the plain compare already leaves them out
+    public static boolean legacyCombat() {
+        return ViaFabricPlus.api().targetVersion().olderThan(ProtocolVersion.v1_9);
+    }
+
     public static void select(int step) {
         List<ProtocolVersion> list = steps();
         ViaFabricPlus.api().setTargetVersion(list.get(Math.max(0, Math.min(step, list.size() - 1))));
