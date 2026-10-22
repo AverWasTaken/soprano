@@ -57,7 +57,11 @@ public class EntityHelper {
         }
         if (entity instanceof Raider raider && mod.getPlayer().closerThan(raider, 16)) return true;
         if (entity instanceof Warden warden && mod.getPlayer().closerThan(warden, 16)) return true;
-        if (entity instanceof Enderman enderman && enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
+        // the aggressive flag plus a line of sight is a stare in progress. an enderman that is already angry (creepy is the
+        // synced flag) or that just hit us is coming for us whether it can see us this tick or not, it teleports
+        if (entity instanceof Enderman enderman && ((enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
+                || enderman.isCreepy()
+                || NeutralMobs.hitRecently(mod.getEntityTracker().getProvocations().sinceHit(enderman.getId(), mod.getWorld().getGameTime()))))
             return true;
         if (entity instanceof Blaze blaze && isBlazeThreat(mod, blaze)) return true;
         if (entity instanceof Raider || entity instanceof Warden
