@@ -82,6 +82,8 @@ public final class RecoverHold {
             skipNextEnd = false;
             return;
         }
+        // (a dead player is not recovering, whatever else ended on the same tick)
+        if (health <= 0) return;
         if (on || !wants(mode, health) || !mayStart(body)) return;
         on = true;
         startTick = now;
