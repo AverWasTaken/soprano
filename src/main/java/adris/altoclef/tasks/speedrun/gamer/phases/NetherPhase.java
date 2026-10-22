@@ -384,11 +384,13 @@ public class NetherPhase implements PhaseHandler {
         }
         NetherGold.Bag bag = goldBag(f);
         if (goldTask == null) {
-            if (piglins) {
-                return null;
-            }
             String slot = PiglinGold.netherSlot(f, KitPlanner.armorNames(ctx.cfg().overworld));
             int need = PiglinGold.ingotsFor(slot);
+            // only the digging angers them. a piece folded from what the bag already holds is the thing that calms the piglins
+            // standing right there, waiting for them to leave first is backwards
+            if (piglins && NetherGold.stage(bag, need) == NetherGold.Stage.MINE) {
+                return null;
+            }
             BlockPos me = mod.getPlayer().blockPosition();
             // the cheap answers first, the walk over the tracker's gold ore is twice a second at most. digging takes a pick the bag
             // already has (pickSide makes one from the bag, the mining task would go and fetch one, and there is nothing to fetch)
