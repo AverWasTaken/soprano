@@ -120,6 +120,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private int _meleeAround;
 
     private final CombatBrain _brain = new CombatBrain();
+    private final LavaKnockGuard _lavaGuard = new LavaKnockGuard();
 
     // ---- for the gamer card: the commitment as it stands, plain field reads, nothing here moves the machine
 
@@ -236,6 +237,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // trip asks it)
             _brain.dropHold();
             dropCapSneak(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -266,6 +268,7 @@ public class MobDefenseChain extends SingleTaskChain {
             _killAura.stopShielding(mod);
             stopShielding(mod);
             dropCapSneak(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -275,11 +278,13 @@ public class MobDefenseChain extends SingleTaskChain {
         if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth(), mod.getWorld().getGameTime())) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
+            _lavaGuard.release(mod);
             return Float.NEGATIVE_INFINITY;
         }
 
         // Force field
         doForceField(mod);
+        _lavaGuard.tick(mod, _brain);
 
         return commitPriority(mod);
     }

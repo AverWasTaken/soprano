@@ -223,6 +223,19 @@ final class CombatBrain {
         }
     }
 
+    // the mob the lava guard leans toward: the fight's own target, else whatever hostile is in contact
+    Entity lavaFoe(AltoClef mod) {
+        if (_commit.mode() == Mode.FIGHT) {
+            Entity target = mod.getWorld().getEntity(_commit.targetId());
+            if (target instanceof Mob mob && mob.isAlive()) return mob;
+        }
+        LocalPlayer player = mod.getPlayer();
+        for (Mob mob : _foeMobs) {
+            if (mob.isAlive() && mob.distanceTo(player) <= 3.5) return mob;
+        }
+        return null;
+    }
+
     // the goal asks this from the main thread once a tick
     private List<Entity> crowd() {
         return new ArrayList<>(_foeMobs);
