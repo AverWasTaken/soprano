@@ -325,6 +325,12 @@ public final class NetherSweepPlanner {
         stuckFor = 0;
     }
 
+    // how close counts as there. the walk uses the same radius as its goal, so it ends by itself right where the planner
+    // moves on instead of getting replaced mid-path (that cancel is what dropped us off a ledge)
+    public double arriveRadius() {
+        return cfg.waypointArriveBlocks;
+    }
+
     // the waypoint to walk to, or null when this cell is done. arrived, given up on, nowhere to stand and avoided ones are
     // skipped
     private Point nextWaypoint(int px, int pz, double now) {

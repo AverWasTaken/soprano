@@ -72,7 +72,7 @@ public class FindNetherStructureTask extends Task {
     // a new GetToXZTask object only when the waypoint changes, a new one per tick would restart its pathing every tick
     private Task walkTo(int x, int z) {
         if (walk == null || walkX != x || walkZ != z) {
-            walk = new GetToXZTask(x, z);
+            walk = new GetToXZTask(x, z, planner.arriveRadius());
             walkX = x;
             walkZ = z;
         }
