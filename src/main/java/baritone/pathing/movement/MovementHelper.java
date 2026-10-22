@@ -36,7 +36,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.util.Mth;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ambient.Bat;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Rabbit;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Leashable;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -58,7 +66,9 @@ import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.BooleanOp;
 import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.*;
 import java.util.stream.Stream;
@@ -1080,7 +1090,7 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     // every movement wants this one: the block is for the path in front of us, so protected throwaways are fair game
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak) {
-        return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true);
+        return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true, true);
     }
 
     // once per 5 seconds (NoThrowawayLogGate), at normal log level: the next run's logs say why we had nothing to place
@@ -1109,23 +1119,96 @@ public interface MovementHelper extends ActionCosts, Helper {
         return !ctx.world().isUnobstructed(ctx.player(), Shapes.block().move(pos.getX(), pos.getY(), pos.getZ()));
     }
 
+    // what's in the cell and, if it's a critter we may punch, which one. target is null unless cell is HIT
+    record Obstruction(HitBlocker.Cell cell, LivingEntity target) {
+    }
+
+    // the same list the server walks in isUnobstructed (alive, blocksBuilding, not riding with us, actually overlapping),
+    // just sorted into punchable and not. hit false says nobody is punchable, for callers that must never swing. same
+    // when we can't swing right now: the old wait and give up is better than burning the hit clock on swings that
+    // never go out
+    static Obstruction obstruction(IPlayerContext ctx, BlockPos pos, boolean hit) {
+        LocalPlayer player = ctx.player();
+        hit = hit && !player.isHandsBusy() && !AltoClefSettings.getInstance().isInteractionPaused();
+        VoxelShape cell = Shapes.block().move(pos.getX(), pos.getY(), pos.getZ());
+        int blockers = 0;
+        int stubborn = 0;
+        int alive = 0;
+        LivingEntity target = null;
+        for (Entity e : ctx.world().getEntities(player, cell.bounds())) {
+            if (e.isRemoved() || !e.blocksBuilding || e.isPassengerOfSameVehicle(player)
+                    || !Shapes.joinIsNotEmpty(cell, Shapes.create(e.getBoundingBox()), BooleanOp.AND)) {
+                continue;
+            }
+            blockers++;
+            if (!hit || !hittableBlocker(ctx, e)) {
+                stubborn++;
+            } else if (!((LivingEntity) e).isDeadOrDying()) {
+                alive++;
+                target = (LivingEntity) e;
+            }
+        }
+        HitBlocker.Cell verdict = HitBlocker.cell(blockers, stubborn, alive);
+        return new Obstruction(verdict, verdict == HitBlocker.Cell.HIT ? target : null);
+    }
+
+    // exact types on purpose: "any animal" would have us slapping hoglins, goats, bees and somebody's horse
+    static boolean hittableBlocker(IPlayerContext ctx, Entity e) {
+        Class<?> type = e.getClass();
+        boolean critter = type == Bat.class || type == Chicken.class || type == Rabbit.class;
+        if (!critter) {
+            return false;
+        }
+        double reach = ctx.player().entityInteractionRange();
+        // eye to the nearest bit of its box, same as SelfDefenseProcess.reachDistance and the server
+        boolean inReach = e.getBoundingBox().distanceToSqr(ctx.player().getEyePosition()) <= reach * reach;
+        boolean leashed = e instanceof Leashable leashable && leashable.isLeashed();
+        return HitBlocker.hittable(true, e.hasCustomName(), leashed, e.isPassenger() || e.isVehicle(), inReach);
+    }
+
+    // straight to gameMode.attack like BoatTrip and SelfDefenseProcess. not CLICK_LEFT: that only knows blocks. and no
+    // looking at it either, the movement is aiming its place click and the attack packet doesn't care where we look
+    static void swingAtBlocker(MovementState state, IPlayerContext ctx, LivingEntity target) {
+        LocalPlayer player = ctx.player();
+        // obstruction already said no target when the hands are busy or alto paused us, this is just belt and braces
+        if (target == null || player.isHandsBusy() || AltoClefSettings.getInstance().isInteractionPaused()) {
+            return;
+        }
+        if (state.swingDue(player.getAttackStrengthScale(0.5f), player.tickCount)) {
+            ctx.minecraft().gameMode.attack(player, target);
+            player.swing(InteractionHand.MAIN_HAND);
+        }
+    }
+
     // the real one. a mob in the cell means the click goes out and nothing happens, forever, so a ready or attempting
-    // answer turns into BLOCKED (hold still, no click) for a while and then into UNREACHABLE so the planner goes around
+    // answer turns into BLOCKED (hold still, no click) for a while and then into UNREACHABLE so the planner goes around.
+    // backfill comes through here and must never swing at anything, so only the movement overload punches
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
+        return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, allowProtected, false);
+    }
+
+    private static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected, boolean hit) {
         PlaceResult result = findPlace(state, baritone, placeAt, preferDown, wouldSneak, allowProtected);
         if (result != PlaceResult.READY_TO_PLACE && result != PlaceResult.ATTEMPTING) {
             return result;
         }
-        switch (state.placeBlocked(entityInTheWay(baritone.getPlayerContext(), placeAt))) {
-            case CLEAR:
+        Obstruction in = obstruction(baritone.getPlayerContext(), placeAt, hit);
+        switch (state.placeInto(in.cell())) {
+            case PLACE:
                 return result;
+            case HIT:
+                swingAtBlocker(state, baritone.getPlayerContext(), in.target());
+                if (wouldSneak) {
+                    state.setInput(Input.SNEAK, true);
+                }
+                return PlaceResult.BLOCKED;
             case WAIT:
                 if (wouldSneak) {
                     state.setInput(Input.SNEAK, true);
                 }
                 return PlaceResult.BLOCKED;
             default:
-                Helper.HELPER.logDebug("something stood in the way of the block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " for " + PlaceWait.MOVEMENT_PATIENCE + " ticks, giving up on this one");
+                Helper.HELPER.logDebug("something stood in the way of the block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " and wouldn't leave, giving up on this one");
                 state.setStatus(MovementStatus.UNREACHABLE);
                 return PlaceResult.NO_OPTION;
         }

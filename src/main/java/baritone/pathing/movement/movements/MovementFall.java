@@ -131,6 +131,8 @@ public class MovementFall extends Movement {
     // shears so they're never recorded, and a ladder somebody else put up never is either, it's theirs
     private BlockPos ladder;
     private boolean ladderIn;
+    // any clutch click at all, vines too. before the first one an unplanned clutch can still just walk away
+    private boolean clutchClicked;
     // our own clock, so the pickup can give up. pickupStart is -1 until we land with a ladder to fetch, goneAt is the tick
     // the block disappeared and the drop starts counting
     private int ticks, clickedAt, pickupStart = -1, goneAt = -1, pickupMisses;
@@ -153,6 +155,7 @@ public class MovementFall extends Movement {
         plannedDamage = -1;
         ladder = null;
         ladderIn = false;
+        clutchClicked = false;
         ticks = clickedAt = pickupMisses = 0;
         pickupStart = goneAt = -1;
     }
@@ -449,6 +452,7 @@ public class MovementFall extends Movement {
                     ladder = new BlockPos(placed.getX(), placed.getY(), placed.getZ()); // no BetterBlockPos in vanilla's hands
                     clickedAt = ticks;
                 }
+                clutchClicked = true;
                 state.setTarget(new MovementTarget(ctx.playerRotations(), true));
                 state.setInput(Input.CLICK_RIGHT, true);
                 return true;
@@ -665,6 +669,11 @@ public class MovementFall extends Movement {
             return false;
         }
         return LadderClutch.pick(pos.y, player.getDeltaMovement().y, player.fallDistance, dest.y, mask, 0, ctx.playerController().getBlockReachDistance()) != null;
+    }
+
+    // something might be on the wall already. after that the clutch has to see it through, updateUnplanned fetches the ladder
+    public boolean clutchClicked() {
+        return clutchClicked;
     }
 
     // all there is to an unplanned fall: clutch on the way down, fetch the ladder once we're standing. no centering, no

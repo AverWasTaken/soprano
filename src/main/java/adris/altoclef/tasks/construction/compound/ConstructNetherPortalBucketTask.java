@@ -16,6 +16,7 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
@@ -232,15 +233,20 @@ public class ConstructNetherPortalBucketTask extends Task {
                 _firstSearch = false;
                 _lavaSearchTimer.reset();
                 Debug.logMessage("(Searching for lava lake with portalable spot nearby...)");
-                BlockPos lavaPos = findLavaLake(mod, mod.getPlayer().blockPosition());
-                if (lavaPos != null) {
-                    // We have a lava lake, set our portal origin!
-                    BlockPos foundPortalRegion = getPortalableRegion(mod, lavaPos, mod.getPlayer().blockPosition(), new Vec3i(-1, 0, 0), PORTALABLE_REGION_SIZE, 20);
-                    if (foundPortalRegion == null) {
+                List<BlockPos> lakes = findLavaLakes(mod, mod.getPlayer().blockPosition());
+                if (!lakes.isEmpty()) {
+                    // nearest lake first, but a lake whose every site is wet, too slow to clear or banned by a ruined cast
+                    // used to mean sitting out the whole give up timer next to it. the next lake over is right there
+                    for (BlockPos lavaPos : lakes) {
+                        BlockPos foundPortalRegion = getPortalableRegion(mod, lavaPos, mod.getPlayer().blockPosition(), new Vec3i(-1, 0, 0), PORTALABLE_REGION_SIZE, 20);
+                        if (foundPortalRegion != null) {
+                            _portalOrigin = foundPortalRegion.offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
+                            foundSpot = true;
+                            break;
+                        }
+                    }
+                    if (!foundSpot) {
                         Debug.logWarning("Failed to find portalable region nearby. Consider increasing the search timeout range");
-                    } else {
-                        _portalOrigin = foundPortalRegion.offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
-                        foundSpot = true;
                     }
                 } else {
                     Debug.logMessage("(lava lake not found)");
@@ -406,28 +412,23 @@ public class ConstructNetherPortalBucketTask extends Task {
         return out;
     }
 
-    private BlockPos findLavaLake(AltoClef mod, BlockPos playerPos) {
+    // every lake big enough, one spot each, nearest first. walking the sources nearest first means the first source of a
+    // lake we flood from is that lake's closest one, so the list comes out sorted for free
+    private List<BlockPos> findLavaLakes(AltoClef mod, BlockPos playerPos) {
         HashSet<BlockPos> alreadyExplored = new HashSet<>();
-        double nearestSqDistance = Double.POSITIVE_INFINITY;
-        BlockPos nearestLake = null;
-        List<BlockPos> lavas = mod.getBlockTracker().getKnownLocations(Blocks.LAVA);
-        if (!lavas.isEmpty()) {
-            for (BlockPos pos : lavas) {
-                if (alreadyExplored.contains(pos)) continue;
-                double sqDist = playerPos.distSqr(pos);
-                if (sqDist < nearestSqDistance) {
-                    int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
-                    if (depth != 0) {
-                        Debug.logMessage("Found with depth " + depth);
-                        if (depth >= 12) {
-                            nearestSqDistance = sqDist;
-                            nearestLake = pos;
-                        }
-                    }
-                }
+        List<BlockPos> lakes = new ArrayList<>();
+        List<BlockPos> lavas = new ArrayList<>(mod.getBlockTracker().getKnownLocations(Blocks.LAVA));
+        lavas.sort(Comparator.comparingDouble(playerPos::distSqr));
+        for (BlockPos pos : lavas) {
+            if (alreadyExplored.contains(pos)) continue;
+            int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
+            // every lone source gets flooded now, only the real lakes are worth a chat line
+            if (depth >= 12) {
+                Debug.logMessage("Found with depth " + depth);
+                lakes.add(pos);
             }
         }
-        return nearestLake;
+        return lakes;
     }
 
     // Used to flood-scan for blocks of lava.

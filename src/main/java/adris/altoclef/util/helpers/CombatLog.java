@@ -95,6 +95,7 @@ public final class CombatLog {
             case HEAVY -> "something nasty close, hp " + hp;
             case CROWD -> "a crowd on us, hp " + hp;
             case UNARMED -> "it hit us and we have nothing to hit back with, hp " + hp;
+            case REPEAT_CREEPER -> "a creeper that keeps coming back, hp " + hp;
             default -> "hp " + hp;
         };
     }

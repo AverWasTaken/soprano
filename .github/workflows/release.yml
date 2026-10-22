@@ -1,6 +1,7 @@
 # builds the jars and makes a github release when a tag like soprano-v1.1.0 is pushed
 # the api jar per loader plus unoptimized fabric, and a one line note saying which minecraft
 # version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4, 1.1.x is 26.3, 1.2.x is 1.21.11), see CONTRIBUTING.md
+# soprano-v1.1.7-nightly.1 (and -nightly.1-anyversion) is a nightly: pre-release, an "expect bugs" line on top
 
 name: Release
 
@@ -33,6 +34,12 @@ jobs:
         if [ "$BASE" != "$VERSION" ]; then ANYVERSION=1; fi
         echo "BASE_VERSION=${BASE}" >> "$GITHUB_ENV"
         echo "ANYVERSION=${ANYVERSION}" >> "$GITHUB_ENV"
+        # 1.1.7-nightly.1 or 1.1.7-nightly.1-anyversion. the in-game updater only offers these to nightly players
+        NIGHTLY=0
+        case "$VERSION" in
+          *-nightly.*) NIGHTLY=1 ;;
+        esac
+        echo "NIGHTLY=${NIGHTLY}" >> "$GITHUB_ENV"
         JAVA_VERSION="$(grep '^java_version=' gradle.properties | cut -d= -f2)"
         echo "MC_VERSION=${MC_VERSION}" >> "$GITHUB_ENV"
         echo "JAVA_VERSION=${JAVA_VERSION}" >> "$GITHUB_ENV"
@@ -63,11 +70,17 @@ jobs:
         ls dist/soprano-api-fabric-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Fabric is supported."
         ls dist/soprano-api-neoforge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} NeoForge is supported."
         # the any version build only ships fabric and runs on a 26.3 client against any server,
-        # so the usual line would be lying. discord_release.py reads this one for "Supports" too
+        # so the usual line would be lying
         if [ "$ANYVERSION" = "1" ]; then
           NOTES="This version is base ${MC_VERSION} MC that is compatible with every server version. May be bug prone. Fabric only."
         fi
-        echo "$NOTES" > release-notes.md
+        # nightlies say so before anything else, people grab whatever is on top of the releases page
+        if [ "$NIGHTLY" = "1" ]; then
+          printf '%s\n\n' "**Nightly build.** Expect bugs. This is not a confirmed stable release." > release-notes.md
+          echo "$NOTES" >> release-notes.md
+        else
+          echo "$NOTES" > release-notes.md
+        fi
         # the what's fixed list lives in release-notes/<version>.md, tack it on when there is one
         if [ -f "release-notes/${VERSION}.md" ]; then
           echo "" >> release-notes.md
@@ -97,7 +110,8 @@ jobs:
           TITLE="Soprano v${BASE_VERSION} Any Version (base ${MC_VERSION})"
         fi
 
-        # github hands out latest by semver, so 1.2.0 on 1.21.11 would steal it from 26.3. spell it out every time
+        # github hands out latest by semver, so 1.2.0 on 1.21.11 would steal it from 26.3. spell it out every time.
+        # anything with a hyphen (anyversion, nightly, both) is a pre-release and never latest
         FLAGS="--latest=false"
         case "$VERSION" in
           *-*) FLAGS="--latest=false --prerelease" ;;
@@ -108,12 +122,3 @@ jobs:
         echo "flags: $FLAGS"
         echo "files:$FILES"
         gh release create "$GITHUB_REF_NAME" --title "$TITLE" $FLAGS --notes-file release-notes.md $FILES
-
-    # a release made with this token never fires the release event, so discord.yml wouldn't see it
-    - name: Post the release to discord
-      # set the repo variable DISCORD_RELEASE_POST to false to skip the post, e.g. when several lines ship at once
-      if: ${{ vars.DISCORD_RELEASE_POST != 'false' }}
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      run: python3 .github/scripts/discord_release.py "$GITHUB_REF_NAME" "${{ github.repository }}"

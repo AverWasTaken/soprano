@@ -120,4 +120,47 @@ public class ReconcileTest {
         assertNull(Reconcile.run(self, OURS, "26.3").staged());
         assertFalse(Files.exists(junk));
     }
+
+    // ----- stable <-> nightly
+
+    private Path nightlySelf() throws Exception {
+        return TestJars.jar(mods(), "soprano-api-fabric-1.1.7-nightly.2.jar", TestJars.soprano("fabric", "1.1.7-nightly.2", "26.3"));
+    }
+
+    @Test
+    public void anUnfinishedSwitchBackToStableIsKept() throws Exception {
+        Path self = nightlySelf();
+        Path stable = staged("1.1.6", "26.3");
+        Reconcile.writeTries(Reconcile.triesFor(stable), 1);
+        Reconcile.Result r = Reconcile.run(self, ModVersion.parse("1.1.7-nightly.2"), "26.3");
+        assertEquals(stable, r.staged());
+        assertEquals("1.1.6", r.version());
+        assertTrue(Files.exists(stable));
+    }
+
+    @Test
+    public void anOlderNightlyIsStillJunk() throws Exception {
+        Path self = nightlySelf();
+        Path older = staged("1.1.7-nightly.1", "26.3");
+        Path same = staged("1.1.7-nightly.2", "26.3");
+        Path otherChannel = staged("1.1.6-anyversion", "26.3");
+        Path otherMc = staged("1.2.0", "1.21.11");
+        assertNull(Reconcile.run(self, ModVersion.parse("1.1.7-nightly.2"), "26.3").staged());
+        assertFalse(Files.exists(older));
+        assertFalse(Files.exists(same));
+        assertFalse(Files.exists(otherChannel));
+        assertFalse(Files.exists(otherMc));
+    }
+
+    @Test
+    public void aStableNeverTakesAnOlderNightly() throws Exception {
+        // the downgrade is only ever nightly -> stable, a stable player with an old nightly .new lying around bins it
+        Path self = self();
+        Path nightly = staged("1.1.6-nightly.3", "26.3");
+        assertNull(Reconcile.run(self, OURS, "26.3").staged());
+        assertFalse(Files.exists(nightly));
+        // a newer nightly is a normal staged upgrade though, that's a switch to nightly that didn't finish
+        Path newer = staged("1.1.7-nightly.1", "26.3");
+        assertEquals(newer, Reconcile.run(self, OURS, "26.3").staged());
+    }
 }

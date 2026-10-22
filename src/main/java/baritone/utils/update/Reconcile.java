@@ -113,7 +113,7 @@ public final class Reconcile {
         return name.startsWith("soprano-") && name.endsWith(".jar" + NEW);
     }
 
-    // the staged jar's version when it's a real upgrade for us, null otherwise
+    // the staged jar's version when it's a real upgrade for us, or a switch from nightly back to stable, null otherwise
     static ModVersion worthFinishing(Path staged, ModVersion running, String minecraftVersion) {
         Properties props = JarCheck.buildId(staged);
         if (props == null) {
@@ -121,8 +121,15 @@ public final class Reconcile {
         }
         ModVersion v = ModVersion.parse(props.getProperty("version"));
         String mc = props.getProperty("minecraftVersion");
-        boolean ok = v != null && v.sameChannel(running) && v.newerThan(running) && mc != null && mc.trim().equals(minecraftVersion);
+        boolean ok = v != null && v.sameChannel(running) && mc != null && mc.trim().equals(minecraftVersion)
+                && (v.newerThan(running) || backToStable(v, running));
         return ok ? v : null;
+    }
+
+    // the switch to stable is allowed to go down (1.1.7-nightly.2 -> 1.1.6), so an unfinished one of those has to
+    // survive the "older is junk" rule or it gets binned on the very launch that was meant to finish it
+    static boolean backToStable(ModVersion staged, ModVersion running) {
+        return !staged.isNightly() && running.isNightly() && !staged.equals(running);
     }
 
     public static Path triesFor(Path staged) {

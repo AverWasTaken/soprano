@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.util.Map;
 import java.util.regex.Pattern;
 
 // picks our next release out of GET /repos/AverWasTaken/soprano/releases. every mc line shares one repo and the
@@ -40,12 +41,22 @@ public final class ReleasePicker {
     public record Pick(ModVersion version, String tag, String title, String htmlUrl, String body, Asset asset, String notInstallable) {
     }
 
+    // pick is the normal update on our own track, switchTarget the newest installable build on the other one (stable
+    // <-> nightly). either can be null
+    public record Result(Pick pick, Pick switchTarget) {
+    }
+
     private ReleasePicker() {
     }
 
-    // null means nothing newer for us. throws on json that isn't a release list, which the caller files under
-    // "check failed" along with every other weird response
+    // the update only, for callers that don't care about switching tracks
     public static Pick pick(String json, ModVersion running, String minecraftVersion, Flavor flavor) {
+        return check(json, running, minecraftVersion, flavor).pick();
+    }
+
+    // throws on json that isn't a release list, which the caller files under "check failed" along with every other
+    // weird response
+    public static Result check(String json, ModVersion running, String minecraftVersion, Flavor flavor) {
         JsonElement root = JsonParser.parseString(json);
         if (!root.isJsonArray()) {
             throw new IllegalStateException("not a release list");
@@ -53,21 +64,49 @@ public final class ReleasePicker {
         Pattern title = titlePattern(minecraftVersion);
         JsonObject best = null;
         ModVersion bestVersion = null;
+        JsonObject other = null;
+        ModVersion otherVersion = null;
         for (JsonElement e : (JsonArray) root) {
             if (!e.isJsonObject()) {
                 continue;
             }
             JsonObject r = e.getAsJsonObject();
-            ModVersion v = candidate(r, running, title);
-            if (v != null && (bestVersion == null || v.newerThan(bestVersion))) {
-                best = r;
-                bestVersion = v;
+            ModVersion v = listed(r, running, title);
+            if (v == null) {
+                continue;
+            }
+            if (v.sameTrack(running)) {
+                if (v.newerThan(running) && (bestVersion == null || v.newerThan(bestVersion))) {
+                    best = r;
+                    bestVersion = v;
+                }
+            } else if (switchable(v, running, minecraftVersion) && (otherVersion == null || v.newerThan(otherVersion))) {
+                other = r;
+                otherVersion = v;
             }
         }
-        if (best == null) {
-            return null;
+        Pick update = best == null ? null : toPick(best, bestVersion, flavor);
+        Pick target = other == null ? null : toPick(other, otherVersion, flavor);
+        // only the newest of the other track counts. if that one can't be installed we don't go digging for an older
+        // one that can, a switch button that lands you two builds behind is a weird surprise
+        return new Result(update, target != null && target.asset() != null ? target : null);
+    }
+
+    // the first stable on each line that wrote its own version into build-id.properties. anything older (v1.1.6 on
+    // 26.3, every 1.0.x and 1.2.x so far) gets turned down by JarCheck after the whole download, and has no updater to
+    // come back with anyway. a line that isn't here has no stable worth switching to. nightlies only come from 26.3
+    // and version-agnostic, which is the 26.3 line too
+    private static final Map<String, ModVersion> OLDEST_SWITCHABLE_STABLE = Map.of("26.3", ModVersion.parse("1.1.7"));
+
+    // going to nightly has to be a step forward: once 1.1.7 is out, 1.1.7-nightly.3 is the older buggier one and
+    // nobody should be offered that. going back to stable is the escape hatch, so any stable will do, older included,
+    // as long as it's one that can actually be installed from here
+    static boolean switchable(ModVersion target, ModVersion running, String minecraftVersion) {
+        if (target.isNightly()) {
+            return target.newerThan(running);
         }
-        return toPick(best, bestVersion, flavor);
+        ModVersion oldest = OLDEST_SWITCHABLE_STABLE.get(minecraftVersion);
+        return oldest != null && !oldest.newerThan(target);
     }
 
     // "(26.3)" for the normal ones, "(base 26.3)" for anyversion. quoted so the dot in 26.3 doesn't also match 26x3
@@ -75,10 +114,10 @@ public final class ReleasePicker {
         return Pattern.compile("\\((?:base )?" + Pattern.quote(minecraftVersion) + "\\)");
     }
 
-    // the version of a release we would take, or null
-    static ModVersion candidate(JsonObject r, ModVersion running, Pattern title) {
-        // prerelease is not checked on purpose: the anyversion builds are prereleases, and the channel already keeps
-        // them away from base players
+    // the version of a release on our line and channel, either track, or null. newer or not is the caller's question
+    static ModVersion listed(JsonObject r, ModVersion running, Pattern title) {
+        // prerelease is not checked on purpose: the anyversion and nightly builds are prereleases, the channel and the
+        // track already keep them away from the players they aren't for
         if (bool(r, "draft")) {
             return null;
         }
@@ -87,7 +126,7 @@ public final class ReleasePicker {
             return null;
         }
         ModVersion v = ModVersion.parse(tag.substring(TAG_PREFIX.length()));
-        if (v == null || !v.sameChannel(running) || !v.newerThan(running)) {
+        if (v == null || !v.sameChannel(running)) {
             return null;
         }
         String name = str(r, "name");

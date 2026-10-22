@@ -173,7 +173,9 @@ public abstract class Movement implements IMovement, MovementHelper {
                     currentState.setInput(Input.SPRINT, false);
                     ctx.player().setSprinting(false);
                 }
-                if (ctx.player().position().y < dest.y + 0.6) {
+                // the dest.y rule is the old bob. deep under (a clutch into a pool, a dive gone long) dest can be level with
+                // us or below and that never lets go of the bottom, so running low on air goes up no matter where dest is
+                if (ctx.player().position().y < dest.y + 0.6 || Surfacing.wantsAir(ctx.player())) {
                     currentState.setInput(Input.JUMP, true);
                 }
             }
@@ -224,7 +226,7 @@ public abstract class Movement implements IMovement, MovementHelper {
      * Air ticks (of the 300 max) at which a swimmer crawling along the bottom of shallow water stands up to
      * breathe: 5 seconds of margin before drowning damage starts
      */
-    private static final int SURFACE_AT_AIR = 100;
+    static final int SURFACE_AT_AIR = 100;
 
     // vanilla swim physics per tick, from LivingEntity.jumpInLiquid, Player.travel and LivingEntity.travel:
     // holding jump adds SWIM_JUMP_BOOST, then vertical speed is pulled toward the look vector's y by

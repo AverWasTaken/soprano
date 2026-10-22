@@ -40,6 +40,38 @@ public class MovementState {
         return PlaceWait.judge(placeBlockedTicks, PlaceWait.MOVEMENT_PATIENCE);
     }
 
+    // ticks spent punching critters out of the cell. never reset, so a bat flitting in and out still runs into the cap
+    private int hitTicks;
+    // tickCount of our last swing. an int's worth back counts as never, and a long so the subtraction can't wrap
+    private long lastSwingTick = Integer.MIN_VALUE;
+
+    // the hitting version of placeBlocked. critters get HitBlocker's own clock, corpses are waited out for free (they
+    // vanish on their own), anything else goes to PlaceWait like before
+    public HitBlocker.Action placeInto(HitBlocker.Cell cell) {
+        switch (cell) {
+            case CLEAR:
+                placeBlockedTicks = 0;
+                return HitBlocker.Action.PLACE;
+            case CLEARING:
+                return HitBlocker.Action.WAIT;
+            case HIT:
+                placeBlockedTicks = 0;
+                hitTicks++;
+                return hitTicks > HitBlocker.HIT_PATIENCE ? HitBlocker.Action.GIVE_UP : HitBlocker.Action.HIT;
+            default:
+                return placeBlocked(true) == PlaceWait.Verdict.GIVE_UP ? HitBlocker.Action.GIVE_UP : HitBlocker.Action.WAIT;
+        }
+    }
+
+    // true means swing now, and remembers that we did
+    public boolean swingDue(float attackStrength, long now) {
+        if (!HitBlocker.swingNow(attackStrength, now, lastSwingTick)) {
+            return false;
+        }
+        lastSwingTick = now;
+        return true;
+    }
+
     public MovementState setStatus(MovementStatus status) {
         this.status = status;
         return this;

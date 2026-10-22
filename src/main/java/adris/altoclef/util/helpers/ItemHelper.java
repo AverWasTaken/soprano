@@ -421,7 +421,7 @@ public class ItemHelper {
         return BuiltInRegistries.BLOCK.wrapAsHolder(b).is(tag);
     }
 
-    private static boolean isStackProtected(AltoClef mod, ItemStack stack) {
+    static boolean isStackProtected(AltoClef mod, ItemStack stack) {
         if (stack.isEnchanted() && Baritone.settings().altoDontThrowAwayEnchantedItems.value)
             return true;
         if (stack.getItem().components().has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)

@@ -71,3 +71,15 @@ The [release workflow](.github/workflows/release.yml) builds with the JDK from `
 Don't change the release title format or the jar names. The in-game updater finds a player's release by the `(1.21.4)` at the end of the title (any version builds go by `(base 26.3)` plus the `-anyversion` tag suffix), and picks the jar by its `soprano-<api|unoptimized>-<loader>-<version>.jar` name. Change either and every installed copy stops seeing updates. A release made by hand needs the same title, and its jars have to come from a build with `-Prelease_version`, because the updater refuses a jar that doesn't carry its own version and Minecraft version.
 
 If a release goes wrong, delete the release and the tag on GitHub, fix it, and push the tag again.
+
+### Nightlies
+
+A nightly is a build that's out early and allowed to be buggy. Players on a stable build only ever get stable updates, players on a nightly only get newer nightlies, and the title screen card offers a small "Switch to nightly" / "Switch to stable" button when they're up to date. Which track a player is on comes from the version of the jar they run, there is no setting.
+
+- Tag format: `soprano-v<next stable>-nightly.<N>`, for example `soprano-v1.1.7-nightly.1`, and `soprano-v1.1.7-nightly.1-anyversion` for the version-agnostic build. `-anyversion` always goes last, the workflow strips it off the end. N starts at 1 and counts up per stable version.
+- Nightlies come from `26.3` and `version-agnostic` only. The older lines don't get them. Merge `26.3` into `version-agnostic` before tagging an anyversion nightly, a build without the nightly support can't read its own version and its updater turns itself off.
+- No `mod_version` bump needed, the jars get their version from the tag.
+- One nightly release per line on GitHub. When you release nightly N+1, delete nightly N's GitHub release but keep its tag.
+- The workflow makes them pre-releases, never Latest, puts a "Nightly build. Expect bugs." line at the top of the notes. Discord announcements are posted separately by the Soprano-Helper bot, the workflow doesn't post anything.
+- Players stay on their track until they press the switch button. Once the stable `1.1.7` is out, the `1.1.7` nightlies count as older than it: nightly players see "Switch to stable" (and no newer nightly), and stable players aren't offered a nightly again until `1.1.8-nightly.1`.
+- "Switch to stable" only goes to stables that carry their own version (1.1.7 and up on 26.3, see `OLDEST_SWITCHABLE_STABLE` in `ReleasePicker`). Older ones can't be installed by the updater.

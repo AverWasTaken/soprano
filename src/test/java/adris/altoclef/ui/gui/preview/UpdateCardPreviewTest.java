@@ -133,6 +133,16 @@ public class UpdateCardPreviewTest {
         public void openMods(Path folder) {
             actions.add("openMods " + folder);
         }
+
+        @Override
+        public void beginSwitch() {
+            actions.add("beginSwitch");
+        }
+
+        @Override
+        public void cancelSwitch() {
+            actions.add("cancelSwitch");
+        }
     }
 
     private static final Snapshot.Release RELEASE = new Snapshot.Release("1.1.7", "v1.1.7 · Descent floors and schematica", NOTES,
@@ -143,7 +153,28 @@ public class UpdateCardPreviewTest {
     private static Snapshot snap(UpdateState state, boolean canInstall, String reason, Snapshot.Release r, long done, long total,
                                  String error, boolean unfinished) {
         return new Snapshot(state, "1.1.6", canInstall, reason, r, done, total, error, unfinished, MODS,
-                "soprano-1.1.6-fabric.jar", "soprano-1.1.7-fabric.jar.new", "soprano-1.1.7-fabric.jar", Snapshot.RELEASES_PAGE);
+                "soprano-1.1.6-fabric.jar", "soprano-1.1.7-fabric.jar.new", "soprano-1.1.7-fabric.jar", Snapshot.RELEASES_PAGE,
+                null, false);
+    }
+
+    private static final Snapshot.Release NIGHTLY = new Snapshot.Release("1.1.7-nightly.1", "Soprano v1.1.7-nightly.1 (26.3)", NOTES,
+            "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-nightly.1", 10_300_000L);
+    private static final Snapshot.Release STABLE = new Snapshot.Release("1.1.7", "Soprano v1.1.7 (26.3)", NOTES,
+            "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7", 10_200_000L);
+    private static final Snapshot.Release STABLE_ANY = new Snapshot.Release("1.1.7-anyversion", "Soprano v1.1.7 Any Version (base 26.3)",
+            NOTES, "https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.7-anyversion", 10_200_000L);
+
+    // up to date with a way over to the other track
+    private static Snapshot upToDate(String current, Snapshot.Release target) {
+        return new Snapshot(UpdateState.UP_TO_DATE, current, false, null, null, 0, 0, null, false, MODS,
+                null, null, null, Snapshot.RELEASES_PAGE, target, false);
+    }
+
+    // mid switch: release is the target, the same as beginSwitch publishes
+    private static Snapshot switching(UpdateState state, String current, Snapshot.Release target, boolean canInstall, String reason,
+                                      String error) {
+        return new Snapshot(state, current, canInstall, reason, target, 0, 0, error, false, MODS,
+                null, null, null, Snapshot.RELEASES_PAGE, target, true);
     }
 
     private static List<Object[]> states() {
@@ -271,6 +302,114 @@ public class UpdateCardPreviewTest {
         assertFalse(h.card.hasFocusable());
     }
 
+    // ----- stable <-> nightly
+
+    // 1080p at gui scale 2 leaves 688 design px before the logo, gui scale 3 leaves 368. 400 is a normal window
+    private static final int ROOMY = 400;
+
+    @Test
+    public void upToDateOffersTheOtherTrack() throws Exception {
+        Harness h = new Harness(1f, 960, 540);
+        h.show(upToDate("1.1.6", null), ROOMY);
+        int plainH = h.card.h();
+        assertTrue(h.card.buttons().isEmpty());
+        h.show(upToDate("1.1.6", NIGHTLY), ROOMY);
+        h.save("update_up_to_date_switch_nightly");
+        assertTrue(h.card.compact());
+        assertEquals(1, h.card.buttons().size());
+        assertEquals("Switch to nightly", h.card.buttons().get(0).text());
+        assertTrue(h.card.w() <= h.theme.px(ROOMY));
+        // one row, the button doesn't make the card any taller
+        assertEquals(plainH, h.card.h());
+        h.click(h.card.buttons().get(0));
+        assertEquals(List.of("beginSwitch"), h.actions);
+        h.card.focusEnd(false);
+        assertEquals("Switch to nightly", h.card.focusedLabel());
+        assertEquals("Soprano v1.1.6, up to date", h.card.summary());
+        h.show(upToDate("1.1.8-nightly.2", STABLE), ROOMY);
+        h.save("update_up_to_date_switch_stable");
+        assertEquals("Switch to stable", h.card.buttons().get(0).text());
+        assertEquals(plainH, h.card.h());
+        // an update always wins, the switch is only on the up to date row
+        h.show(new Snapshot(UpdateState.CHECK_FAILED, "1.1.6", false, null, null, 0, 0, null, false, MODS, null, null, null,
+                Snapshot.RELEASES_PAGE, NIGHTLY, false), ROOMY);
+        assertEquals(List.of("Retry"), labels(h));
+    }
+
+    // the longest name there is, on the widest cap and the narrowest ones. the button never takes the card under the logo
+    @Test
+    public void longNightlyNameKeepsClearOfTheLogo() throws Exception {
+        Snapshot s = upToDate("1.1.8-nightly.1-anyversion", STABLE_ANY);
+        Harness h = new Harness(1f, 960, 540);
+        h.show(s, ROOMY);
+        h.save("update_up_to_date_switch_long");
+        assertTrue(h.card.w() <= h.theme.px(ROOMY));
+        h.show(s, UpdateCard.RICH_W);
+        h.save("update_up_to_date_switch_long_300");
+        assertTrue(h.card.w() <= h.theme.px(UpdateCard.RICH_W));
+        h.show(s, UpdateCard.MIN_W);
+        h.save("update_up_to_date_switch_long_narrow");
+        assertTrue("card " + h.card.w() + " over " + h.theme.px(UpdateCard.MIN_W), h.card.w() <= h.theme.px(UpdateCard.MIN_W));
+        Button b = h.card.buttons().get(0);
+        assertTrue("the button went under the row", b.y() > h.card.y() + h.theme.px(8));
+        assertTrue(b.text() + " ellipsized", b.w() >= b.preferredWidth());
+        Harness big = new Harness(2f, 1920, 1080);
+        big.show(s, 208);
+        big.save("update_up_to_date_switch_long_1080p_scale4");
+        assertTrue(big.card.w() <= big.theme.px(208));
+        // a normal name on the narrow cap still gets its button on the one row
+        h.show(upToDate("1.1.6", NIGHTLY), UpdateCard.MIN_W);
+        h.save("update_up_to_date_switch_narrow");
+        assertTrue(h.card.w() <= h.theme.px(UpdateCard.MIN_W));
+    }
+
+    @Test
+    public void switchingCardSaysWhereItGoes() throws Exception {
+        Harness h = new Harness(1f, 960, 540);
+        h.show(switching(UpdateState.AVAILABLE, "1.1.6", NIGHTLY, true, null, null), UpdateCard.RICH_W);
+        h.save("update_switch_to_nightly");
+        assertTrue(h.card.summary(), h.card.summary().startsWith("Nightly v1.1.7-nightly.1, nightly builds can be buggy"));
+        assertEquals(List.of("Switch", "What's new", "Cancel"), labels(h));
+        assertTrue(h.card.w() <= h.theme.px(UpdateCard.RICH_W));
+        for (Button b : List.copyOf(h.card.buttons())) {
+            h.click(b);
+        }
+        assertEquals(List.of("update", "whatsNew", "cancelSwitch"), h.actions);
+        h.show(switching(UpdateState.AVAILABLE, "1.1.8-nightly.2", STABLE, true, null, null), UpdateCard.RICH_W);
+        h.save("update_switch_to_stable");
+        assertTrue(h.card.summary(), h.card.summary().startsWith("Stable v1.1.7, you have v1.1.8-nightly.2"));
+        assertEquals(List.of("Switch", "What's new", "Cancel"), labels(h));
+        // can't install: the page instead of switch, cancel still there
+        h.show(switching(UpdateState.AVAILABLE, "1.1.6", NIGHTLY, false, "pretending to be 1.1.6, install is off", null),
+                UpdateCard.RICH_W);
+        h.save("update_switch_to_nightly_dev");
+        assertEquals(List.of("Open download page", "What's new", "Cancel"), labels(h));
+        assertTrue(h.card.w() <= h.theme.px(UpdateCard.RICH_W));
+        // a failed switch retries the same build or backs out
+        h.show(switching(UpdateState.FAILED, "1.1.6", NIGHTLY, true, null, "the jar's checksum didn't match"), UpdateCard.RICH_W);
+        h.save("update_switch_failed");
+        assertEquals(List.of("Retry", "Open download page", "Cancel"), labels(h));
+        assertTrue(h.card.summary().startsWith("The switch didn't finish"));
+        // the narrow caps stack and stay inside
+        for (int cap : new int[]{UpdateCard.MIN_W, 208}) {
+            h.show(switching(UpdateState.AVAILABLE, "1.1.8-nightly.1-anyversion", STABLE_ANY, true, null, null), cap);
+            assertTrue(h.card.w() <= h.theme.px(cap));
+        }
+        h.save("update_switch_to_stable_narrow");
+        Harness big = new Harness(2f, 1920, 1080);
+        big.show(switching(UpdateState.AVAILABLE, "1.1.6", NIGHTLY, true, null, null), 208);
+        big.save("update_switch_to_nightly_1080p_scale4");
+        assertTrue(big.card.w() <= big.theme.px(208));
+    }
+
+    private static List<String> labels(Harness h) {
+        List<String> out = new ArrayList<>();
+        for (Button b : h.card.buttons()) {
+            out.add(b.text());
+        }
+        return out;
+    }
+
     @Test
     public void downloadCounterMovesWithoutRelayout() throws Exception {
         Harness h = new Harness(1f, 960, 540);
@@ -363,6 +502,13 @@ public class UpdateCardPreviewTest {
         n.panel.mouseDown(n.panel.back().x() + 5, n.panel.back().y() + 5, 0, 0);
         n.panel.mouseUp(n.panel.back().x() + 5, n.panel.back().y() + 5, 0, 0);
         assertEquals(List.of("update", "back"), n.actions);
+    }
+
+    @Test
+    public void notesSaySwitchWhileSwitching() throws Exception {
+        Notes n = new Notes(1f, 960, 540, switching(UpdateState.AVAILABLE, "1.1.6", NIGHTLY, true, null, null));
+        assertEquals("Switch", n.panel.primary().text());
+        n.save("update_notes_switch");
     }
 
     @Test

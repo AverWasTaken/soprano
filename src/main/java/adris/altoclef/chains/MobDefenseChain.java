@@ -46,8 +46,14 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
+import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -241,7 +247,8 @@ public class MobDefenseChain extends SingleTaskChain {
         Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
 
         // a lit creeper right next to us: a couple of steps out of the blast, or the shield when boxed in. not a commitment,
-        // the machine never hears of it, and whatever it was holding (a fight, a run) gets the wheel back after the bang
+        // the machine only hears of one that keeps coming back, and whatever it was holding (a fight, a run) gets the wheel
+        // back after the bang
         boolean creeperShield = false;
         float stepPriority = Float.NaN;
         if (_creeperStep.active()) {
@@ -255,7 +262,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 }
                 creeperShield = true;
             } else {
-                setTask(new CreeperStepTask(_creeperStep.creeperId()));
+                setTask(new CreeperStepTask(_creeperStep.creeperId(), _creeperStep.baiting()));
                 stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
             }
         }
@@ -502,15 +509,17 @@ public class MobDefenseChain extends SingleTaskChain {
                 && Baritone.settings().altoCommitCombat.value
                 // (the night trip's stand down: nothing gets committed to up there, and one already held is let go of)
                 && !NightSleepHook.standsDown(player.getHealth(), mod.getWorld().getGameTime());
-        _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
-        stepCreepers(mod, now);
+        // the step goes first so a creeper that came back is a run on this same tick, not one tick of nobody at the wheel
+        // (it reads the mode the machine left last tick, which is the one that had the wheel anyway)
+        stepCreepers(mod, now, enabled);
+        _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled, _creeperStep.escalate());
         _stance = _brain.stance();
         _meleeNear = _brain.meleeNear();
         _meleeAround = _brain.meleeAround();
     }
 
     // the creeper preempt moves once per tick too, wheel or not, so its 2.5 s clock is a real 2.5 s
-    private void stepCreepers(AltoClef mod, long now) {
+    private void stepCreepers(AltoClef mod, long now, boolean enabled) {
         LocalPlayer player = mod.getPlayer();
         Dimension dimension = WorldHelper.getCurrentDimension();
         if (player != _creeperPlayer || dimension != _creeperDimension) {
@@ -518,6 +527,8 @@ public class MobDefenseChain extends SingleTaskChain {
             _creeperPlayer = player;
             _creeperDimension = dimension;
         }
+        CombatCommit.Mode mode = _brain.mode();
+        boolean running = mode == CombatCommit.Mode.RUN;
         List<CreeperStep.Seen> seen = new ArrayList<>();
         List<int[]> ahead = null;
         try {
@@ -528,12 +539,18 @@ public class MobDefenseChain extends SingleTaskChain {
                 // swell dir and ignited are both synced to the client, so the fuse counts from its very first tick
                 boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
                 boolean pathNear = false;
-                if (lit && distance > CreeperStep.TRIGGER) {
-                    if (ahead == null) ahead = pathAhead(mod);
+                // a run only steps for its own path walking into one, close or not (see CreeperStep.step)
+                if (lit && (running || distance > CreeperStep.TRIGGER)) {
+                    if (ahead == null) ahead = pathAhead(mod, running);
                     pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
                 }
+                // the block scan is only for one that is about to get the bait, not every creeper every tick (the bait is for an
+                // idle commitment only, see CreeperStep.step)
+                boolean nearStuff = lit && mode == CombatCommit.Mode.NONE && !_creeperStep.active()
+                        && (distance <= CreeperStep.TRIGGER || pathNear) && nearStuff(mod.getWorld(), creeper.blockPosition());
                 // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
-                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f));
+                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f,
+                        creeper.isPowered(), nearStuff));
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
@@ -541,20 +558,45 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
-        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady);
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled);
         if (event == CreeperStep.Event.START && _creeperStep.shouldLog()) {
             Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
         }
     }
 
-    // the next few nodes of the path we are walking, as block corners. empty when nothing is pathing
-    private static List<int[]> pathAhead(AltoClef mod) {
+    // stuff a creeper popping beside would cost us: a portal frame on its way (obsidian, or the portal itself), a bed, storage,
+    // a furnace of any kind, a table. within NEAR_STUFF of its feet, the blast's own reach for this sort of block more or less
+    private static final int NEAR_STUFF = 5;
+
+    private static boolean nearStuff(Level level, BlockPos center) {
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int dx = -NEAR_STUFF; dx <= NEAR_STUFF; dx++) {
+            for (int dy = -NEAR_STUFF; dy <= NEAR_STUFF; dy++) {
+                for (int dz = -NEAR_STUFF; dz <= NEAR_STUFF; dz++) {
+                    if (dx * dx + dy * dy + dz * dz > NEAR_STUFF * NEAR_STUFF) continue;
+                    pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                    if (isStuff(level.getBlockState(pos).getBlock())) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isStuff(Block block) {
+        return block == Blocks.NETHER_PORTAL || block == Blocks.OBSIDIAN || block == Blocks.CRAFTING_TABLE
+                || block instanceof BedBlock || block instanceof ChestBlock || block instanceof BarrelBlock
+                || block instanceof AbstractFurnaceBlock;
+    }
+
+    // the next few nodes of the path we are walking, as block corners. empty when nothing is pathing. skipCurrent leaves out
+    // the node we are standing on: for a run that only asks where it is going, and we stand next to the creeper either way
+    private static List<int[]> pathAhead(AltoClef mod, boolean skipCurrent) {
         List<int[]> nodes = new ArrayList<>();
         IPathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
         if (current == null) return nodes;
         IPath path = current.getPath();
         List<BetterBlockPos> positions = path.positions();
-        int from = Math.max(0, current.getPosition());
+        int from = Math.max(0, current.getPosition()) + (skipCurrent ? 1 : 0);
         for (int i = from; i < positions.size() && i <= from + CreeperStep.PATH_LOOKAHEAD; i++) {
             BetterBlockPos p = positions.get(i);
             nodes.add(new int[]{p.x, p.y, p.z});

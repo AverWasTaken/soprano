@@ -257,5 +257,15 @@ public final class UpdateCardWidget extends AbstractWidget {
         public void openMods(Path folder) {
             Util.getPlatform().openPath(folder);
         }
+
+        @Override
+        public void beginSwitch() {
+            Updater.get().beginSwitch();
+        }
+
+        @Override
+        public void cancelSwitch() {
+            Updater.get().cancelSwitch();
+        }
     }
 }
