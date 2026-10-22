@@ -103,7 +103,12 @@ public class MovementTraverse extends Movement {
             double WC = WALK_ONE_BLOCK_COST;
             boolean water = false;
             boolean sneaking = false;
-            if (MovementHelper.isWater(pb0) || MovementHelper.isWater(pb1)) {
+            if (context.swimsLava(pb1, pb0) || MovementHelper.isLava(context.get(x, y, z))) {
+                // isWater says yes to lava while swim through lava is on, the price must not. leaving the lake is still
+                // half a step in it, same as the diagonal, or straight exits look free next to diagonal ones
+                WC = context.lavaSwimCost;
+                water = true;
+            } else if (MovementHelper.isWater(pb0) || MovementHelper.isWater(pb1)) {
                 WC = context.waterCost(destX, y, destZ);
                 water = true;
             } else {
@@ -169,7 +174,7 @@ public class MovementTraverse extends Movement {
                 double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
                 hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
                 hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
-                double WC = throughWater ? context.waterWalkSpeed : WALK_ONE_BLOCK_COST;
+                double WC = context.swimsLava(pb1, pb0) ? context.lavaSwimCost : throughWater ? context.waterWalkSpeed : WALK_ONE_BLOCK_COST;
                 for (int i = 0; i < 5; i++) {
                     int againstX = destX + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepX();
                     int againstY = y - 1 + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepY();
@@ -204,6 +209,12 @@ public class MovementTraverse extends Movement {
             }
             return COST_INF;
         }
+    }
+
+    // feet below the cell we're traversing to, the ledge or the next surface cell after we sank. forward into a wall is what
+    // triggers the hop
+    static boolean pushesForwardWhileRising(boolean inLava, int feetY, int destY) {
+        return inLava && feetY < destY;
     }
 
     @Override
@@ -285,7 +296,11 @@ public class MovementTraverse extends Movement {
         if (feet.getY() != dest.getY() && !ladder) {
             logDebug("Wrong Y coordinate");
             if (feet.getY() < dest.getY()) {
-                System.out.println("In movement traverse");
+                if (pushesForwardWhileRising(ctx.player().isInLava(), feet.getY(), dest.getY())) {
+                    // jump alone just bobs in place at the surface. vanilla hops 0.3 up out of a fluid when we're pressed
+                    // against something we could stand on top of, so lean on the wall (water has Movement.update's bob)
+                    MovementHelper.moveTowards(ctx, state, dest);
+                }
                 return state.setInput(Input.JUMP, true);
             }
             if (ctx.player().onGround()) {

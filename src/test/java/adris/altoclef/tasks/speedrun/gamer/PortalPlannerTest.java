@@ -166,12 +166,12 @@ public class PortalPlannerTest {
     public void gateOnABareInventoryAsksForEverythingInOrder() {
         FakeFacts f = new FakeFacts();
         List<String> names = PortalPlanner.gate(f, cfg, 10).stream().map(KitNeed::catalogueName).toList();
-        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "build_blocks"), names);
+        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "crafting_table", "build_blocks"), names);
     }
 
     @Test
     public void gateIsEmptyWhenReady() {
-        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
@@ -179,7 +179,7 @@ public class PortalPlannerTest {
 
     @Test
     public void fireChargeIsALightToo() {
-        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1);
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
@@ -187,7 +187,7 @@ public class PortalPlannerTest {
 
     @Test
     public void gateAsksForOneMoreEmptyBucketWhenOnlyTheWaterOneIsHeld() {
-        FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
         assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg, 10));
@@ -195,7 +195,7 @@ public class PortalPlannerTest {
 
     @Test
     public void gateWantsArmorOn() {
-        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1)
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1)
                 .give(Items.IRON_BOOTS, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
@@ -205,7 +205,7 @@ public class PortalPlannerTest {
     }
 
     private FakeFacts readyToGo() {
-        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
         return f;
@@ -272,8 +272,8 @@ public class PortalPlannerTest {
         FakeFacts f = new FakeFacts();
         cfg.netherSparePicks = 3;
         List<String> names = PortalPlanner.gate(f, cfg, 10).stream().map(KitNeed::catalogueName).toList();
-        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "stone_pickaxe", "build_blocks"), names);
-        assertEquals(4, PortalPlanner.gate(f, cfg, 10).get(4).count());
+        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "crafting_table", "stone_pickaxe", "build_blocks"), names);
+        assertEquals(4, PortalPlanner.gate(f, cfg, 10).get(5).count());
     }
 
     @Test

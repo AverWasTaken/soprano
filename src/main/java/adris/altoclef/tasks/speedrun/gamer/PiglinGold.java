@@ -8,7 +8,8 @@ import java.util.List;
 
 // pure: piglins only leave us alone while ONE piece of gold armor is on, so the kit swaps one iron piece for a gold one
 // when that is cheap. a gold helmet is 2 armor like the iron one (and saves 5 iron), gold boots lose 1 armor and save 4.
-// never a reason to mine for gold, only gold we hold or can unpack/smelt from what we hold counts
+// the gold itself: the overworld detour digs raw gold with the iron (ResourceDetour.gold), the portal gate crafts the piece, and
+// NetherGoldTask is the last chance in the nether (nugget ore, when piglins are not around to be angered by it)
 public final class PiglinGold {
     // the order we would rather give a slot up, by armor lost vs iron: helmet 0, chestplate 1, boots 1, leggings 2
     private static final String[] SLOTS = {"helmet", "chestplate", "boots", "leggings"};
@@ -26,6 +27,21 @@ public final class PiglinGold {
             }
         }
         return false;
+    }
+
+    // nothing gold on or in the bag and not the gold for a piece either: the nether fallback will dig nuggets, and turning them into
+    // a piece takes a crafting table, so one rides along from the overworld (four planks here, nothing but luck there). a table the planner only
+    // remembers at a far station does not count, the portal stops waiting for it past 48 blocks
+    public static List<KitNeed> tableForNether(GamerFacts f) {
+        if (worn(f) || holdsPiece(f) || available(f) >= BOOTS_INGOTS || f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby()) {
+            return List.of();
+        }
+        return List.of(new KitNeed("crafting_table", 1));
+    }
+
+    // a gold piece in the bag (not on us), the gate has nothing left to craft then and the equip step puts it on
+    public static boolean holdsPiece(GamerFacts f) {
+        return f.count(GOLD) > 0;
     }
 
     // gold ingots we could end up with without leaving the spot: ingots, blocks (9), nuggets (9 a piece) and raw gold
@@ -71,6 +87,28 @@ public final class PiglinGold {
             return "boots";
         }
         return null;
+    }
+
+    // the slot the nether fallback digs for: the one slot() already settled on (gold held, or a piece in the bag), else the boots,
+    // 4 ingots and the cheapest to dig. 36 nuggets is a lot of ore as it is
+    public static String netherSlot(GamerFacts f, List<String> names) {
+        String slot = slot(f, names);
+        return slot == null ? "boots" : slot;
+    }
+
+    // the gold piece for a slot
+    public static Item piece(String slot) {
+        for (int i = 0; i < SLOTS.length; i++) {
+            if (SLOTS[i].equals(slot)) {
+                return GOLD[i];
+            }
+        }
+        return null;
+    }
+
+    // ingots of that slot's gold piece
+    public static int ingotsFor(String slot) {
+        return "helmet".equals(slot) ? HELMET_INGOTS : BOOTS_INGOTS;
     }
 
     // the helmet is already diamond and the boots are not: the gold goes on the boots (4 ingots, 5 spent diamonds stay on our head).

@@ -51,9 +51,9 @@ public class RecoverHoldTest {
     // ---- the rules
 
     @Test
-    public void runEndUnderTwelveIsAHold() {
-        assertTrue(RecoverHold.wants(Mode.RUN, 11.5f));
-        assertFalse(RecoverHold.wants(Mode.RUN, 12));
+    public void runEndUnderTheRunLineIsAHold() {
+        assertTrue(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW - 0.5f));
+        assertFalse(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW));
     }
 
     @Test
@@ -85,9 +85,9 @@ public class RecoverHoldTest {
     }
 
     @Test
-    public void runThatEndsAtTwelveDoesNot() {
+    public void runThatEndsAtTheRunLineDoesNot() {
         CombatCommit c = new CombatCommit();
-        runAndClear(c, 1000, 12, FED);
+        runAndClear(c, 1000, RecoverHold.RUN_BELOW, FED);
         assertFalse(c.recovering());
     }
 
@@ -131,12 +131,12 @@ public class RecoverHoldTest {
     }
 
     @Test
-    public void healedToFourteenLetsGo() {
+    public void healedToTheDoneLineLetsGo() {
         CombatCommit c = new CombatCommit();
         long end = runAndClear(c, 1000, 6, FED);
-        c.step(tick(end + 1, 13, 30, FED));
+        c.step(tick(end + 1, RecoverHold.DONE_AT - 1, 30, FED));
         assertTrue(c.recovering());
-        c.step(tick(end + 2, 14, 30, FED));
+        c.step(tick(end + 2, RecoverHold.DONE_AT, 30, FED));
         assertFalse(c.recovering());
     }
 

@@ -148,6 +148,12 @@ public class OverworldConfig {
     public double diamondSideBudget = 12;
     public int diamondSideCap = 24;
     public double diamondSideSeconds = 30;
+    // gold on the way (DetourSpec.GOLD): piglins only leave us alone in the nether with a gold piece on, and nothing else ever
+    // digs for the gold. same reach and clock as the diamonds, with an iron pick, while the piece is short. goldSide = false
+    // turns it off
+    public boolean goldSide = true;
+    public double goldSideBudget = 12;
+    public double goldSideSeconds = 30;
 
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early. counted
     // from the last frame cell that turned obsidian, or from the cast start when none has. without the pickaxe we keep

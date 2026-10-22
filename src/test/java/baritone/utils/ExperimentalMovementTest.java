@@ -42,6 +42,32 @@ public class ExperimentalMovementTest {
     }
 
     @Test
+    public void jumpsStayOffOnlyWhileTheStampIsAhead() {
+        long until = 102;
+        // fastMode on and the setting off is the nether bug: the stamp has to beat fastMode
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, false, until, 100));
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, true, until, 102)); // the last tick still counts
+        // nobody refreshed it, so it lapses and fastMode gets its jumps back
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, until, 103));
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(false, true, until, 500));
+        // never stamped
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, Long.MIN_VALUE, 0));
+        // a stamp from a world with a longer clock is junk, not a lifetime ban
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, 9_000_000L, 10));
+        // and with neither fastMode nor the setting there were never any jumps to take away
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(false, false, Long.MIN_VALUE, 0));
+    }
+
+    @Test
+    public void stampFromTheSettingsHoldsJumpsOffUntilReset() {
+        baritone.altoclef.AltoClefSettings s = baritone.altoclef.AltoClefSettings.getInstance();
+        s.noJumpsFor(100);
+        assertFalse(ExperimentalMovement.jumpMoveAllowed(true, false, s.jumpsOffUntilTick(), 102));
+        s.resetAll();
+        assertTrue(ExperimentalMovement.jumpMoveAllowed(true, false, s.jumpsOffUntilTick(), 102));
+    }
+
+    @Test
     public void healthGateKeepsTheMinimum() {
         assertTrue(ExperimentalMovement.canAffordFall(20, 4, 12));
         assertTrue(ExperimentalMovement.canAffordFall(20, 8, 12)); // ending exactly on the minimum is fine

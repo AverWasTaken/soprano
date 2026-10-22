@@ -80,6 +80,16 @@ public class NetherSweepPlannerTest {
         assertEquals(200, c.x());
     }
 
+    // the walk's goal uses this radius, so the path ends where the planner moves on and nothing is replaced mid-path
+    @Test
+    public void walkRadiusIsTheArriveRadiusTheStepUses() {
+        assertEquals(cfg.waypointArriveBlocks, planner.arriveRadius(), 0);
+        planner.step(Goal.FORTRESS, -300, 0, 0);
+        int edge = (int) planner.arriveRadius();
+        assertEquals(0, planner.step(Goal.FORTRESS, -edge - 1, 0, 1).x());
+        assertEquals(100, planner.step(Goal.FORTRESS, -edge, 0, 2).x());
+    }
+
     @Test
     public void finishedCellIsMarkedVisitedAndTheNextOneStarts() {
         planner.step(Goal.FORTRESS, 0, 0, 0);

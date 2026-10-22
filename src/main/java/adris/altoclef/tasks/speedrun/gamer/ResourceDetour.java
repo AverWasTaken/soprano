@@ -90,6 +90,12 @@ public final class ResourceDetour {
         return new ResourceDetour(DetourSpec.DIAMOND, new Block[]{Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE}, Items.DIAMOND, MiningRequirement.IRON);
     }
 
+    // the two overworld gold ores (badlands has plain gold_ore up high, everywhere else it is deepslate or stone). raw gold needs an iron pick like the
+    // diamonds do, and the tool gate in inputs() means we only get here holding one
+    public static ResourceDetour gold() {
+        return new ResourceDetour(DetourSpec.GOLD, new Block[]{Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE}, Items.RAW_GOLD, MiningRequirement.IRON);
+    }
+
     public DetourSpec spec() {
         return spec;
     }
@@ -254,6 +260,13 @@ public final class ResourceDetour {
                 CookGate.raw(f), CookGate.woodSmeltsAfterClaims(f, cfg, ctx.wood()), KitPlanner.smeltLoads(f, cfg));
     }
 
+    // DetourSpec.goldNeed over the facts. a gold piece worn or in the bag means the gate has what it needs
+    static int goldNeed(GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        return DetourSpec.goldNeed(ctx.cfg().overworld.goldSide, PiglinGold.worn(f) || PiglinGold.holdsPiece(f), PiglinGold.available(f),
+                f.count(Items.RAW_GOLD));
+    }
+
     static int flintNeed(GamerFacts f) {
         return DetourSpec.flintNeed(f.count(Items.FLINT), f.count(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE) > 0);
     }
@@ -282,7 +295,7 @@ public final class ResourceDetour {
         return switch (spec.resource) {
             case GRAVEL -> true;
             case COAL -> hasPickaxe(f);
-            case DIAMOND -> hasIronPickaxe(f);
+            case DIAMOND, GOLD -> hasIronPickaxe(f);
         };
     }
 
@@ -292,6 +305,7 @@ public final class ResourceDetour {
             case GRAVEL -> flintNeed(ctx.facts());
             case COAL -> coalNeed(ctx);
             case DIAMOND -> DetourSpec.diamondNeed(ctx.cfg().overworld.diamondSide, ctx.cfg().overworld.diamondSideCap);
+            case GOLD -> goldNeed(ctx);
         };
     }
 
@@ -326,6 +340,7 @@ public final class ResourceDetour {
             case GRAVEL -> BanPolicy.gravelBanned(bans, WorldHelper.getCurrentDimension(), x, y, z);
             case COAL -> BanPolicy.coalBanned(bans, x, y, z);
             case DIAMOND -> BanPolicy.diamondBanned(bans, x, y, z);
+            case GOLD -> BanPolicy.goldBanned(bans, x, y, z);
         };
     }
 
@@ -335,6 +350,7 @@ public final class ResourceDetour {
             case GRAVEL -> BanPolicy.gravel(bans, WorldHelper.getCurrentDimension(), x, y, z);
             case COAL -> BanPolicy.coal(bans, x, y, z);
             case DIAMOND -> BanPolicy.diamond(bans, x, y, z);
+            case GOLD -> BanPolicy.gold(bans, x, y, z);
         };
     }
 
@@ -365,7 +381,7 @@ public final class ResourceDetour {
         if (!visible(mod, pos)) {
             return false;
         }
-        if (spec.resource == Resource.DIAMOND) {
+        if (spec.resource == Resource.DIAMOND || spec.resource == Resource.GOLD) {
             return !lavaBeside(mod.getWorld(), pos);
         }
         if (spec.resource != Resource.GRAVEL) {

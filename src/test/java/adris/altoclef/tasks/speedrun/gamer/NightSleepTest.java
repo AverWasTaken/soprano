@@ -76,6 +76,31 @@ public class NightSleepTest {
     }
 
     @Test
+    public void standingInAPortalKeepsTheTripOut() {
+        // coming out of a nether portal at night: the trip would start inside it and get teleported away mid build
+        Inputs inPortal = new Inputs(true, true, true, false, false, false, false, false, BedSource.BAG, false, true);
+        assertEquals(Why.BUSY, NightSleep.decide(inPortal));
+        Inputs leftover = new Inputs(true, true, true, false, false, false, false, false, BedSource.NONE, true, true);
+        assertEquals(Why.BUSY, NightSleep.decide(leftover));
+        // the same inputs on dry land are a go
+        assertEquals(Why.GO, NightSleep.decide(new Inputs(true, true, true, false, false, false, false, false, BedSource.BAG, false, false)));
+    }
+
+    @Test
+    public void aTripDraggedToAnotherDimensionCoolsDown() {
+        assertTrue(NightSleep.droppedByDimension(false, false));
+        assertFalse(NightSleep.droppedByDimension(true, false));
+        assertFalse(NightSleep.droppedByDimension(false, true));
+        NightSleep.Budget b = new NightSleep.Budget();
+        b.roll(1);
+        b.began();
+        b.failed(100, 20);
+        assertTrue(b.cooling(110));
+        assertFalse(b.cooling(120));
+        assertEquals(1, b.attempts());
+    }
+
+    @Test
     public void aSpentNightAndACooldownAreQuiet() {
         assertEquals(Why.QUIET, NightSleep.decide(inputs(true, true, true, false, false, true, false, BedSource.BAG, false)));
         assertEquals(Why.QUIET, NightSleep.decide(inputs(true, true, true, false, false, false, true, BedSource.BAG, false)));

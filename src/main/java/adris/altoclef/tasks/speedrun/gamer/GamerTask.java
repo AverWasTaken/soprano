@@ -40,6 +40,7 @@ import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.StationHook;
+import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
@@ -766,6 +767,10 @@ public class GamerTask extends Task {
         // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
         // for our things (the recovery branches below return before the night branch is asked)
         if (nightTrip != null && mod.getPlayer() != nightPlayer) {
+            // (a dimension change makes a new player too, and that one is a failed try, not a clean slate)
+            if (NightSleep.droppedByDimension(nightTrip.isFinished(mod), facts.dimension() == Dimension.OVERWORLD)) {
+                nightBudget.failed(facts.gameTime() * 0.05, cfg.overworld.nightCooldownSeconds);
+            }
             dropNightTrip();
         }
         if (nightPrepPlayer != mod.getPlayer()) {
@@ -1118,6 +1123,9 @@ public class GamerTask extends Task {
         if (nightTrip != null) {
             if (nightTrip.isFinished(mod) || facts.dimension() != Dimension.OVERWORLD) {
                 // (the bed a dead or dropped trip left is picked up by a cleanup trip)
+                if (NightSleep.droppedByDimension(nightTrip.isFinished(mod), facts.dimension() == Dimension.OVERWORLD)) {
+                    nightBudget.failed(seconds, cfg.overworld.nightCooldownSeconds);
+                }
                 dropNightTrip();
                 machine.releaseHold();
                 return null;
@@ -1137,8 +1145,9 @@ public class GamerTask extends Task {
         boolean fighting = nightFighting(mod);
         boolean hurt = NightSleep.shouldAbandon(mod.getPlayer().getHealth());
         boolean spent = nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds);
+        boolean inPortal = WorldHelper.isStandingInPortal(mod);
         NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, windowOpen, busy != NightSleep.Busy.NONE, fighting, hurt, spent,
-                nightBudget.cooling(seconds), NightSleep.BedSource.BAG, leftover);
+                nightBudget.cooling(seconds), NightSleep.BedSource.BAG, leftover, inPortal);
         NightSleep.Why why = NightSleep.decide(cheap);
         if (why == NightSleep.Why.GO) {
             nightPrepDone(mod);
@@ -1161,7 +1170,7 @@ public class GamerTask extends Task {
             return nightTrip;
         }
         // not time yet, or not allowed to go: the bed gets made ready for when it is
-        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE,
+        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, inPortal || (busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE),
                 fighting, hurt, spent, windowOpen);
         Task prep = nightPrep.tick(mod, gate, () -> nightBedReady(mod, leftover));
         sayNight(mod, why, busy, null);

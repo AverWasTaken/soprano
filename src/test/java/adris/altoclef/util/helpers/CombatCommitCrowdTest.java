@@ -101,7 +101,8 @@ public class CombatCommitCrowdTest {
     @Test
     public void twoAttackersWhileHurtAreACrowd() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, zombie(7, 2, 0), zombie(7, 2, 0))));
+        // (starts hurt: a 7.5 drop out of 20 would be read as a big hit and bail on the low hp line before the crowd rule)
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 12.5f, zombie(7, 2, 0), zombie(7, 2, 0))));
         Foe target = zombie(7, 2, 5);
         assertEquals(Event.NONE, c.step(tick(NOW + 5, 12.5f, target, target, zombie(8, 2.5, 5))));
         assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 6, 12f, target, target, zombie(8, 2.5, 6))));

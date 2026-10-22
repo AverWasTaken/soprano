@@ -314,6 +314,16 @@ public interface WorldHelper {
         return portalManager.isInsidePortalThisTick();
     }
 
+    // the flag only flips once the game has noticed us (a fresh player after a dimension change has none yet), the cells answer from the first tick
+    static boolean isStandingInPortal(AltoClef mod) {
+        if (mod.getPlayer() == null || mod.getWorld() == null) {
+            return false;
+        }
+        BlockPos feet = mod.getPlayer().blockPosition();
+        return isInNetherPortal(mod) || mod.getWorld().getBlockState(feet).is(Blocks.NETHER_PORTAL)
+                || mod.getWorld().getBlockState(feet.above()).is(Blocks.NETHER_PORTAL);
+    }
+
     static boolean dangerousToBreakIfRightAbove(AltoClef mod, BlockPos toBreak) {
         // There might be mumbo jumbo next to it, we fall and we get killed by lava or something.
         if (MovementHelper.avoidBreaking(mod.getClientBaritone().bsi, toBreak.getX(), toBreak.getY(), toBreak.getZ(), mod.getWorld().getBlockState(toBreak))) {

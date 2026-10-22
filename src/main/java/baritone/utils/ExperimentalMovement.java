@@ -30,7 +30,18 @@ public final class ExperimentalMovement {
     // hp we must still have after a missed bucket, so only the misses that would kill us are refused
     public static final double BUCKET_MISS_FLOOR = 1;
 
+    // how far ahead combat keeps pushing the no jumps stamp each tick it wants it. a stamp further out than this was
+    // written against some other clock (new world, game time starts over) and is junk, see jumpMoveAllowed
+    public static final long JUMPS_OFF_TICKS = 2;
+
     private ExperimentalMovement() {}
+
+    // the jump family (parkour, neos, climbs, momentum) gate: fastMode or the setting turns it on, and combat's stamp turns it
+    // off again while it is still ahead of the clock. pure so the expiry can be tested without a world
+    public static boolean jumpMoveAllowed(boolean fastMode, boolean setting, long jumpsOffUntil, long now) {
+        boolean off = jumpsOffUntil >= now && jumpsOffUntil - now <= JUMPS_OFF_TICKS;
+        return !off && (fastMode || setting);
+    }
 
     public static boolean on() {
         return Baritone.settings().fastMode.value;

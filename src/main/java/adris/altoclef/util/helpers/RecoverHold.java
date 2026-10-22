@@ -7,12 +7,15 @@ package adris.altoclef.util.helpers;
 public final class RecoverHold {
 
     // a run that ends under this is a hold. a run is what a hurt bot does, so its line is above the flee line: at 11 one
-    // skeleton volley and we are back at the respawn screen's door
-    public static final float RUN_BELOW = 12;
+    // skeleton volley and we are back at the respawn screen's door. the bail line rides on the last hit now and starts
+    // runs as high as 14 at armor 0, so the hold has to cover those too or a run from 14 walks straight back in at 14
+    public static final float RUN_BELOW = 15;
     // a fight that ends at or under the flee line. a fight we won at 10 is a won fight, the task carries on
     public static final float FIGHT_AT = CombatRules.FLEE_HEALTH;
-    // healed enough to go back in
-    public static final float DONE_AT = 14;
+    // healed enough to go back in. 14 was one creeper short: a pack in the dark takes 6 a blast through iron, and two of
+    // those from 15 is the respawn screen while from 18 it is a bad day. regen at a full bar is quick, the stall exit
+    // still lets go when it isn't happening
+    public static final float DONE_AT = 18;
     // no hp back for this long (not counting meals): regen is not happening, standing here is just standing here.
     // plain regen at hunger 18 is a heart every 4 s, so 12 s is three misses in a row
     public static final long STALL_TICKS = 240;

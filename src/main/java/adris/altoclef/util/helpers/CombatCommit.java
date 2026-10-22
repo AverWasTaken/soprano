@@ -123,6 +123,18 @@ public final class CombatCommit {
     public static final long PIN_WINDOW = 160;
     // a shooter with a line to us that hit us this lately counts as near for the low hp rule, whatever the distance
     public static final long SHOT_MEMORY = 100;
+    // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
+    // skeleton that steps out past the range): the meal is 1.6 s and one arrow in it is 4
+    public static final long SHOT_LATCH = 60;
+
+    // the bail line moves with how hard we are being hit: leave when a hit like the last big one would put us at or under
+    // FLEE_HP, not when we are already there. the biggest single drop in the last NEXT_HIT_WINDOW ticks (capped, a fall or a
+    // creeper is not a model for the next swing) is the guess. at armor 0 with hits of 3 to 5 the line sits at 11 to 13, in full
+    // iron (about 2 an arrow) it is the old 10. checking "<= 8" only ever passed at 6 when the hits skip over 8
+    public static final long NEXT_HIT_WINDOW = 40;
+    public static final float NEXT_HIT_CAP = 6;
+    // two steps further apart than this are not one continuous watch (the chain was off), a drop across the gap is no hit
+    private static final long HIT_WATCH_GAP = 10;
 
     // whether a run is really trying to get somewhere this tick, for noRoomFight. the "search came back with no path" half is
     // only believed while it is the latest news: any path executing or search going takes the count of failures as the new base
@@ -247,7 +259,9 @@ public final class CombatCommit {
             return ranged && !creeper && kind == Kind.NORMAL;
         }
 
-        // it landed two hits on us close together, from where it stands, and still has a line. fresh only in the cooldown
+        // it landed two hits on us close together, from where it stands, and still has a line. fresh only in the cooldown.
+        // sinceHitBefore counts from now, so "the older of the two is inside PIN_WINDOW" is also "the two are less than
+        // PIN_WINDOW apart": the newer one is never older than that. no separate gap check needed
         public boolean pinning(boolean freshOnly) {
             return sniper() && sight && distance <= FOE_RANGE && sinceHitBefore <= PIN_WINDOW && (!freshOnly || fresh());
         }
@@ -282,8 +296,15 @@ public final class CombatCommit {
     // creeperRepeat: CreeperStep just started a step on a creeper that came back (CreeperStep.escalate), idle makes it a run
     // body: hunger, food and whether a heal-up hold is allowed at all (RecoverHold). NONE by default, which never holds
     // boxed: every side of us is a wall or a mob (BoxRules), so a run has nowhere to go. false by default
+    // nextHit: the machine's own guess at the next hit (see NEXT_HIT_WINDOW), filled in by step() from the hp it watches. whatever
+    // a caller puts there is replaced, 0 by default
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
+                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
+            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, 0);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
                     boolean anchored, boolean creeperRepeat, RecoverHold.Body body) {
             this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, false);
@@ -315,6 +336,21 @@ public final class CombatCommit {
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target) {
             this(now, health, x, z, foes, target, Way.NONE, true, false);
         }
+
+        // hp is at or under the bail line, counting the next hit
+        public boolean low() {
+            return health - nextHit <= FLEE_HP;
+        }
+
+        // hp as the heavy hitter rules see it. their line is the higher of HEAVY_FLEE_HP and the moving one, so past the 2 it
+        // already sits above the flee line the hp slides down by the rest, instead of every call learning a second number
+        public float guardHealth() {
+            return CombatCommit.guardHealth(health, nextHit);
+        }
+
+        Tick withNextHit(float hit) {
+            return new Tick(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, hit);
+        }
     }
 
     // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
@@ -339,16 +375,25 @@ public final class CombatCommit {
     //    alone would start the same run all over again
     // 3. it hit us and it is in contact: a fight. hitting back is the only way that one stops
     public static Trigger trigger(float health, List<Foe> foes, boolean freshOnly) {
+        return trigger(health, 0, foes, freshOnly);
+    }
+
+    static float guardHealth(float health, float nextHit) {
+        return health - Math.max(0, nextHit - (HEAVY_FLEE_HP - FLEE_HP));
+    }
+
+    public static Trigger trigger(float health, float nextHit, List<Foe> foes, boolean freshOnly) {
+        float guard = guardHealth(health, nextHit);
         Foe danger = null;
         Foe near = null;
         for (Foe foe : foes) {
-            if (foe.danger(health) && (danger == null || foe.distance < danger.distance)) danger = foe;
+            if (foe.danger(guard) && (danger == null || foe.distance < danger.distance)) danger = foe;
             boolean counts = !freshOnly || foe.distance <= CONTACT || foe.fresh();
             // a shooter with a line that hit us lately is near enough, however far it stands
             if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
-        if (health <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
+        if (health - nextHit <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
         Foe hit = hitInContact(foes, freshOnly);
         return hit == null ? null : new Trigger(Why.HIT, hit);
     }
@@ -387,6 +432,14 @@ public final class CombatCommit {
     // CombatRules.FAST_MOB_SPEED, infinity for none), and whether a bite is already under way
     public record Bite(boolean shotAt, double nearestFast, boolean biting) {
         public static final Bite NONE = new Bite(false, Double.POSITIVE_INFINITY, false);
+    }
+
+    // is this foe a reason not to sit down to a meal: a shooter in SHOOTER_RANGE with a line to us right now, or one that already
+    // hit us lately and still has a line, however far it stands (the range is for the ones that have not proved anything yet).
+    // lineToUs is the ray the caller cast, only asked for the first kind
+    public static boolean shotAt(Foe foe, boolean lineToUs) {
+        if (!foe.ranged() || foe.creeper()) return false;
+        return foe.shooting() || (foe.distance() <= CombatRules.SHOOTER_RANGE && (foe.sight() || lineToUs));
     }
 
     // fight / flee / eat for the food chain. a fight is never a mealtime. a run is one on a hysteresis pair: a bite may start
@@ -471,6 +524,8 @@ public final class CombatCommit {
     private double originZ;
     private long startTick;
     private long lastTick = Long.MIN_VALUE;
+    private float lastHp;
+    private final java.util.ArrayDeque<HitSize> hitSizes = new java.util.ArrayDeque<>();
     private long cooldownUntil = Long.MIN_VALUE / 2;
     // the commitment that ended on this step right before the one step() returned started, NONE when nothing chained
     private Event endedFirst = Event.NONE;
@@ -594,6 +649,7 @@ public final class CombatCommit {
         targetId = -1;
         cornered = false;
         lastTick = Long.MIN_VALUE;
+        hitSizes.clear();
         cooldownUntil = Long.MIN_VALUE / 2;
         endedFirst = Event.NONE;
         extended = false;
@@ -633,9 +689,25 @@ public final class CombatCommit {
         }
     }
 
+    // hp that dropped between two steps is a hit, and the biggest of the lately ones is the guess for the next. pure numbers off
+    // the hp we are handed, so a poison tick or a fall counts too and ages out in two seconds like the rest
+    private float watchHits(Tick t) {
+        boolean watching = lastTick != Long.MIN_VALUE && t.now() - lastTick <= HIT_WATCH_GAP;
+        if (watching && lastHp - t.health() > 0.01f) hitSizes.addLast(new HitSize(t.now(), lastHp - t.health()));
+        lastHp = t.health();
+        while (!hitSizes.isEmpty() && t.now() - hitSizes.peekFirst().at() > NEXT_HIT_WINDOW) hitSizes.removeFirst();
+        float biggest = 0;
+        for (HitSize hit : hitSizes) biggest = Math.max(biggest, hit.size());
+        return Math.min(biggest, NEXT_HIT_CAP);
+    }
+
+    private record HitSize(long at, float size) {
+    }
+
     public Event step(Tick t) {
         // a clock that went backwards is a new world, nobody is owed a grudge from there
         if (lastTick != Long.MIN_VALUE && t.now() < lastTick) reset();
+        t = t.withNextHit(watchHits(t));
         lastTick = t.now();
         endedFirst = Event.NONE;
         recover.update(t.now(), t.health(), mode != Mode.NONE, t.body());
@@ -662,7 +734,7 @@ public final class CombatCommit {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
-                t.body(), t.boxed());
+                t.body(), t.boxed(), t.nextHit());
     }
 
     // ---- NONE
@@ -727,7 +799,7 @@ public final class CombatCommit {
     private Foe boxedTarget(Tick t) {
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (foe.distance() > CONTACT || foe.creeper() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.health())) continue;
+            if (foe.distance() > CONTACT || foe.creeper() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.guardHealth())) continue;
             if (gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || (foe.melee() && !best.melee()) || (foe.melee() == best.melee() && foe.distance() < best.distance())) best = foe;
         }
@@ -751,7 +823,7 @@ public final class CombatCommit {
     // anyway. standing still (at a furnace, a table, an ore face) breaks it, and a sniper with a line that has landed two hits
     // on us close together is not scenery. above the bail line only: below it the low hp rule is the one that decides
     private Foe pinnedBy(Tick t, boolean freshOnly) {
-        if (!t.anchored() || t.health() <= FLEE_HP) return null;
+        if (!t.anchored() || t.low()) return null;
         Foe best = null;
         for (Foe foe : candidates(t)) {
             if (foe.pinning(freshOnly) && (best == null || foe.distance() < best.distance())) best = foe;
@@ -768,7 +840,7 @@ public final class CombatCommit {
         for (Foe foe : candidates(t)) {
             // (no shooters: they back off on their own, so in the way at 3 and gone at 5 is a fight, a clear, and the same
             // fight again a few steps later, and they never block a cell for long anyway)
-            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.health())) continue;
+            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.guardHealth())) continue;
             if (close == null || foe.distance() < close.distance()) close = foe;
             if (t.way().inWay().contains(foe.id()) && (blocking == null || foe.distance() < blocking.distance())) blocking = foe;
         }
@@ -810,19 +882,19 @@ public final class CombatCommit {
     private static Why runReason(Tick t, boolean freshOnly) {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
-        if (target != null && target.danger(t.health())) return Why.HEAVY;
-        Trigger trigger = trigger(t.health(), t.foes(), freshOnly);
+        if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
+        Trigger trigger = trigger(t.health(), t.nextHit(), t.foes(), freshOnly);
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
-        if (target != null && t.health() <= FLEE_HP && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
+        if (target != null && t.low() && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
         if (crowded(t.health(), t.foes(), freshOnly)) return Why.CROWD;
         return Why.NONE;
     }
 
     private static boolean anyDanger(Tick t) {
-        if (t.target() != null && t.target().danger(t.health())) return true;
+        if (t.target() != null && t.target().danger(t.guardHealth())) return true;
         for (Foe foe : t.foes()) {
-            if (foe.danger(t.health())) return true;
+            if (foe.danger(t.guardHealth())) return true;
         }
         return false;
     }
@@ -930,7 +1002,7 @@ public final class CombatCommit {
         }
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (foe.id() == target.id() || !foe.melee() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.health())) continue;
+            if (foe.id() == target.id() || !foe.melee() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.guardHealth())) continue;
             if (!foe.hitUs() || !foe.inReach() || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.reachGap() < best.reachGap()) best = foe;
         }
@@ -963,7 +1035,7 @@ public final class CombatCommit {
         // the next thing chewing on us, same rule as starting one. (not one we gave up on, idle sorts that out once this fight
         // is over, and not one we only run from, runReason already had its say)
         List<Foe> rest = candidates(t).stream()
-                .filter(foe -> foe.id() != targetId && !ignored.containsKey(foe.id()) && !foe.mustRun(t.health()) && !gaveUpOn(foe, t.now()))
+                .filter(foe -> foe.id() != targetId && !ignored.containsKey(foe.id()) && !foe.mustRun(t.guardHealth()) && !gaveUpOn(foe, t.now()))
                 .toList();
         return hitInContact(rest, false);
     }
@@ -1129,7 +1201,7 @@ public final class CombatCommit {
         Foe best = null;
         for (Foe foe : t.foes()) {
             // (stillIgnored, not ignored: one we gave up on that bites us again is news, same as candidates())
-            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.health()) || stillIgnored(foe, t.now())) continue;
+            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.guardHealth()) || stillIgnored(foe, t.now())) continue;
             if (foe.sinceHit() >= t.now() - startTick) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
@@ -1152,7 +1224,7 @@ public final class CombatCommit {
     private void countRunHits(Tick t) {
         for (Foe foe : t.foes()) {
             if (!foe.hitUs() || !foe.melee() || foe.distance() > CombatRules.SWARM_RANGE) continue;
-            if (foe.mustRun(t.health()) || stillIgnored(foe, t.now())) continue;
+            if (foe.mustRun(t.guardHealth()) || stillIgnored(foe, t.now())) continue;
             long at = t.now() - foe.sinceHit();
             if (at <= startTick + RUN_HIT_GRACE) continue;
             Long counted = runHitAt.get(foe.id());
@@ -1168,7 +1240,7 @@ public final class CombatCommit {
         Foe onUs = null;
         Foe hitter = null;
         for (Foe foe : t.foes()) {
-            if (!foe.melee() || foe.mustRun(t.health()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (!foe.melee() || foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (foe.distance() <= CONTACT && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
             if (foe.distance() <= LOW_HP_RANGE && runHitAt.containsKey(foe.id()) && (hitter == null || foe.distance() < hitter.distance())) {
                 hitter = foe;
@@ -1185,7 +1257,7 @@ public final class CombatCommit {
     // still on our heels at the cap: hurt with something near, or a crowd that is still on us
     private static boolean chased(Tick t) {
         if (crowded(t.health(), t.foes(), false)) return true;
-        if (t.health() > FLEE_HP) return false;
+        if (!t.low()) return false;
         for (Foe foe : t.foes()) {
             if (foe.distance() <= LOW_HP_RANGE) return true;
         }

@@ -11,7 +11,7 @@ import java.util.function.ToIntFunction;
 // what is different between one detour and the next: the words, the numbers, and the bits of maths only one resource has.
 // pure, no blocks or items in here (ResourceDetour maps a Resource to those), so the tests can poke it without a bootstrap
 public final class DetourSpec {
-    public enum Resource { COAL, GRAVEL, DIAMOND }
+    public enum Resource { COAL, GRAVEL, DIAMOND, GOLD }
 
     // ---- coal: the coal the plan still burns. a coal is 8 smelts, and a couple more than the sum so a stray smelt does not send
     // us out. whatever the sum says, a detour never takes us past the ceiling, a full run's iron and meat is about 10
@@ -42,6 +42,12 @@ public final class DetourSpec {
     public static final DetourSpec DIAMOND = new DetourSpec(Resource.DIAMOND, "diamond", "diamond", "ore", "Diamonds! Might as well mine them",
             "Mining diamonds while they are close", "mining diamonds", DetourRules.COOLDOWN_TICKS,
             c -> c.diamondSideBudget, c -> c.diamondSideCap, c -> c.diamondSideSeconds, c -> 0, c -> c.diamondSideCap);
+
+    // raw gold for the piglin piece (PiglinGold). the need is what the piece is short (goldNeed), the cap is the most raw gold a
+    // detour will ever ask for: a boots' worth. the cooldown is coal's, same reasoning as diamonds
+    public static final DetourSpec GOLD = new DetourSpec(Resource.GOLD, "gold", "raw_gold", "ore", "Gold! Piglins will want to see some",
+            "Mining gold while it is close", "mining gold", DetourRules.COOLDOWN_TICKS,
+            c -> c.goldSideBudget, c -> PiglinGold.BOOTS_INGOTS, c -> c.goldSideSeconds, c -> 0, c -> PiglinGold.BOOTS_INGOTS);
 
     public final Resource resource;
     // for the log lines ("coal side job: ...") and the activity words
@@ -155,6 +161,19 @@ public final class DetourSpec {
     // table, and whoever spends them (KitPlanner) only gets to when we hold some
     public static int diamondNeed(boolean on, int cap) {
         return on ? Math.max(0, cap) : 0;
+    }
+
+    // ---- gold
+
+    // the raw gold we want to be holding for the piglin piece. `available` already counts the raw gold in the bag, so what is
+    // missing is added to it once and no more. nothing when the config has it off, when a gold piece is on or in the bag already (the gate wears
+    // it), or when the gold we hold and could smelt already pays for the boots. `available` is PiglinGold.available
+    public static int goldNeed(boolean on, boolean wornOrHeld, int available, int rawHeld) {
+        if (!on || wornOrHeld) {
+            return 0;
+        }
+        int missing = Math.max(0, PiglinGold.BOOTS_INGOTS - available);
+        return missing == 0 ? 0 : rawHeld + missing;
     }
 
     // "is there lava in that cell", the caller closes over the world so this file stays free of blocks

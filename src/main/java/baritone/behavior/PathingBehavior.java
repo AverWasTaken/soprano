@@ -65,6 +65,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private boolean safeToCancel;
     private boolean pauseRequestedLastTick;
+    // a handover that landed mid-step, waiting for the executor to reach a safe tick (see DeferredCancel)
+    private final DeferredCancel deferredCancel = new DeferredCancel();
     private boolean unpausedLastTick;
     private boolean pausedThisTick;
     private boolean cancelRequested;
@@ -181,6 +183,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private void tickPath() {
         // before the pause return below, or a stop during a pause would leave the held search running until the pause ends
         settleHeldCancel();
+        // before the pause too, a pause is a safe tick as well and the old path has nothing left to say
+        settleDeferredCancel();
         pausedThisTick = false;
         if (pauseRequestedLastTick && safeToCancel) {
             pauseRequestedLastTick = false;
@@ -220,6 +224,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             safeToCancel = current.onTick();
             if (current.failed() || current.finished()) {
                 current = null;
+                // the segment it was waiting on is gone, and the next path to show up is not the one to cancel
+                deferredCancel.clear();
                 if (goal == null || goal.isInGoal(ctx.playerFeet())) {
                     logDebug("All done. At " + goal);
                     queuePathEvent(PathEvent.AT_GOAL);
@@ -341,6 +347,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
         synchronized (pathPlanLock) {
             if (current != null) {
+                if (goal.equals(current.getPath().getGoal())) {
+                    // the next task walks to the very same place, the path we were waiting to drop is the right one
+                    deferredCancel.clear();
+                }
                 return false;
             }
             synchronized (pathCalcLock) {
@@ -432,6 +442,35 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
     }
 
+    // a handover that had to wait: every tick until the executor is on a safe one, nothing planned for the old goal gets
+    // to splice in, then the segment goes the way forceCancel's does (without cancelEverything, the new task owns the
+    // processes by now)
+    private void settleDeferredCancel() {
+        if (!deferredCancel.pending()) {
+            return;
+        }
+        synchronized (pathPlanLock) {
+            if (current == null) {
+                deferredCancel.clear();
+                return;
+            }
+            next = null;
+            if (deferredCancel.fire(safeToCancel)) {
+                dropSegmentAndSearch();
+            }
+        }
+    }
+
+    private void dropSegmentAndSearch() {
+        secretInternalSegmentCancel();
+        synchronized (pathCalcLock) {
+            // a search that was held back stays in the slot, the next ask or the next tickPath settles it
+            if (!hold.isPending()) {
+                inProgress = null;
+            }
+        }
+    }
+
     // the one place the search in the slot gets cancelled from the outside. caller holds pathPlanLock. a cancel that
     // SearchHold holds back leaves it running (and in the slot) for the next ask to pick up
     private void cancelSearch() {
@@ -514,6 +553,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         queuePathEvent(PathEvent.CANCELED);
         synchronized (pathPlanLock) {
             keep.drop();
+            deferredCancel.clear();
             cancelSearch();
             if (current != null) {
                 current = null;
@@ -527,19 +567,23 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     @Override
     public void forceCancel() { // exposed on public api because :sob:
         cancelEverything();
-        secretInternalSegmentCancel();
-        synchronized (pathCalcLock) {
-            // a search that was held back stays in the slot, the next ask or the next tickPath settles it
-            if (!hold.isPending()) {
-                inProgress = null;
-            }
-        }
+        dropSegmentAndSearch();
     }
 
     // forceCancel for an alto movement task starting or stopping, the one cancel that parks the path (PathKeep). a stop and
     // the next task's start are two cancels in the same tick, so the second one (with nothing left to park) keeps the
     // first one's park. NOT exposed on public api
     public void handoverCancel() {
+        if (current != null && !isSafeToCancel()) {
+            // mid-step, letting go of every key here is how you walk off a ledge. the processes go now, the path goes on
+            // the first safe tick. a plain cancelEverything is not enough: current would drive the whole old path
+            cancelEverything();
+            synchronized (pathPlanLock) {
+                deferredCancel.request();
+                next = null;
+            }
+            return;
+        }
         PathExecutor running = current;
         PathKeep.Park<PathExecutor> before = keep.peek();
         forceCancel();
@@ -765,7 +809,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     if (executor.isPresent()) {
                         if (executor.get().getPath().getSrc().equals(current.getPath().getDest())) {
                             queuePathEvent(PathEvent.NEXT_SEGMENT_CALC_FINISHED);
-                            next = executor.get();
+                            // a plan for the goal we are about to drop is not worth splicing into
+                            if (!deferredCancel.pending()) {
+                                next = executor.get();
+                            }
                         } else {
                             logDebug("Warning: discarding orphan next segment with incorrect start");
                         }
