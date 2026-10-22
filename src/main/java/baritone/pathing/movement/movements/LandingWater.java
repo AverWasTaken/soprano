@@ -27,7 +27,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 // does the water at the bottom of this fall already save it. one ray down the middle of us said no to a flowing cell the
 // hitbox was half in, so this looks at every column the 0.6 wide box covers, the way vanilla's fluid check does.
-// vanilla 26.3: being in water (any level, flowing, waterlogged, as long as its top is above feet + 0.001) wipes the fall
+// vanilla: being in water (any level, flowing, waterlogged, as long as its top is above feet + 0.001) wipes the fall
 // distance, and the landing tick runs that check again where we stop. lava wipes nothing. water passed through way up
 // the column only buys a reset there, the rest of the fall still counts
 public final class LandingWater {
