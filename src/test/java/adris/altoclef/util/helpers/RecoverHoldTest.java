@@ -131,12 +131,12 @@ public class RecoverHoldTest {
     }
 
     @Test
-    public void healedToFourteenLetsGo() {
+    public void healedToTheDoneLineLetsGo() {
         CombatCommit c = new CombatCommit();
         long end = runAndClear(c, 1000, 6, FED);
-        c.step(tick(end + 1, 13, 30, FED));
+        c.step(tick(end + 1, RecoverHold.DONE_AT - 1, 30, FED));
         assertTrue(c.recovering());
-        c.step(tick(end + 2, 14, 30, FED));
+        c.step(tick(end + 2, RecoverHold.DONE_AT, 30, FED));
         assertFalse(c.recovering());
     }
 
