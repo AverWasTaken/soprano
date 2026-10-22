@@ -342,4 +342,44 @@ public class StationContradictionsTest {
         assertTrue(FurnaceWatch.ours(home, "furnace", at, DIM));
         assertFalse(FurnaceWatch.ours(home, "furnace", at, "NETHER"));
     }
+
+    // (H) FIXED. a far smoker (walk back, nothing in the bag makes another) and a furnace sitting right on the line that is busy with
+    // iron. the furnace cannot take meat, so it is not "at hand" for the smoker rule: bobbing over the line used to flip the smoker
+    // flag, and the food count (and the whole cook plan) with it, every step
+    @Test
+    public void aFurnaceBusyWithIronDoesNotSwingTheFarSmokerAcrossTheLine() {
+        RunState state = new RunState();
+        place(state, Kind.FURNACE, pos(0, 64, 0), DIM);
+        place(state, Kind.SMOKER, pos(-57, 64, 0), DIM);
+        RunState.FurnaceJob job = new RunState.FurnaceJob();
+        job.pos = pos(0, 64, 0);
+        job.dimension = DIM;
+        job.kind = "furnace";
+        state.furnaceJobs.add(job);
+        Bag broke = new Bag();
+        broke.canMake = false;
+        StationLatches latches = new StationLatches();
+        // in, out, in, out over the furnace's line: the smoker stays the walk worth making every time
+        for (double d : new double[]{20.5, 21.5, 20.5, 21.5, 19.5, 22.5}) {
+            assertTrue("smoker at " + d, lookAt(state, broke, latches, d).smoker().heldForPlanner());
+        }
+        // a furnace cooking meat for us is not iron: it takes the next batch, so it is still at hand
+        RunState meat = new RunState();
+        place(meat, Kind.FURNACE, pos(0, 64, 0), DIM);
+        place(meat, Kind.SMOKER, pos(-57, 64, 0), DIM);
+        RunState.FurnaceJob food = new RunState.FurnaceJob();
+        food.pos = pos(0, 64, 0);
+        food.dimension = DIM;
+        food.kind = "furnace";
+        food.unitsEach = 8;
+        meat.furnaceJobs.add(food);
+        StationVerdict cooking = lookAt(meat, broke, new StationLatches(), 10.5);
+        assertFalse(cooking.smoker().heldForPlanner());
+        assertFalse(cooking.smokerStandingNear());
+        // a free furnace right here still beats the far smoker
+        RunState free = new RunState();
+        place(free, Kind.FURNACE, pos(0, 64, 0), DIM);
+        place(free, Kind.SMOKER, pos(-57, 64, 0), DIM);
+        assertFalse(lookAt(free, broke, new StationLatches(), 10.5).smoker().heldForPlanner());
+    }
 }
