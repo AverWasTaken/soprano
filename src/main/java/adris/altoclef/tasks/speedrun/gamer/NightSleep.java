@@ -474,6 +474,19 @@ public final class NightSleep {
         return up && !shouldAbandon(health);
     }
 
+    // in bed while the trip still thinks it is getting there (a stray click on the bed does that): the sleep is the whole point,
+    // so the trip catches up with it instead of finishing the build around a sleeping player. the stages after the sleep
+    // already know what being in bed means
+    public static Stage stageWhenAsleep(boolean asleep, Stage stage) {
+        if (!asleep) {
+            return stage;
+        }
+        return switch (stage) {
+            case CRAFT, WALK, LIFT, BUILD -> Stage.SLEEP;
+            default -> stage;
+        };
+    }
+
     public static boolean shouldAbandon(float health) {
         return health <= CombatRules.FLEE_HEALTH;
     }
@@ -530,6 +543,13 @@ public final class NightSleep {
             case TOO_FAR -> closers < 1 ? Next.CLOSER : Next.GIVE_UP;
             default -> Next.GIVE_UP;
         };
+    }
+
+    // "only at night" with the morning already here is not the bed saying no, the night ended under us. daylight says so, and
+    // so does the day count having moved on since the trip began (the backstop for a sky reading that lags the clock). at
+    // real night it stays a failed try
+    public static boolean nightIsOver(Refusal refusal, boolean bright, long nightThen, long nightNow) {
+        return refusal == Refusal.NOT_NOW && (bright || nightNow > nightThen);
     }
 
     // ---- clocks

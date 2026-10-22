@@ -39,11 +39,15 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -53,7 +57,8 @@ import java.util.function.Supplier;
 // standing (state.nightBed) only takes that back and ends, the next trip is a fresh decision
 public class NightSleepTask extends Task {
     public enum Outcome {
-        SLEPT, GAVE_UP
+        // NIGHT_OVER: the morning got there before the bed did. nothing failed, there is just nothing left to sleep through
+        SLEPT, GAVE_UP, NIGHT_OVER
     }
 
     private static final int INF = 1_000_000;
@@ -65,6 +70,12 @@ public class NightSleepTask extends Task {
     // under the interact's 5 s click timer and 6 s no-progress check, both of which end in a wander
     private static final int PLACE_PATIENCE_TICKS = 60;
     static final String BED_WOULD_NOT_GO_DOWN = "the bed would not go down";
+    // a click is answered within a few ticks. a bed that left the bag and shows up nowhere near the spot after this long is not
+    // coming, and crafting a new one mid night is not on
+    private static final int BED_SHOW_UP_TICKS = 20;
+    static final String LOST_THE_BED = "the bed went missing after the click";
+    // (the bag said bed when the trip started and says none now, without a click from us)
+    static final String NO_BED_IN_BAG = "no bed in the bag";
 
     private final RunState state;
     private final Supplier<OverworldConfig> cfg;
@@ -99,6 +110,14 @@ public class NightSleepTask extends Task {
     private Task placeBed;
     private BlockPos placeFor;
     private long placeSince;
+    // where a bed from the click can land (the foot cell and its four neighbours) and which of those held a bed before it. a
+    // new bed there is ours, an old one never is: a village bed is not ours to pick up
+    private List<BlockPos> clickCells;
+    private Set<BlockPos> bedsBefore;
+    private int bagBeforeClick;
+    private long bedLeftBagAt = -1;
+    // the day count the trip began on, so a "not at night" still reads as the morning when the sky has not caught up yet
+    private long nightAtStart;
     // holding back + sneak to get a toe out of the foot cell
     private boolean stepping;
     private long retrievalSince;
@@ -193,6 +212,11 @@ public class NightSleepTask extends Task {
         }
         stage = next;
         stageSince = now;
+        if (next != Stage.BUILD) {
+            // the snapshot is the last click's, a later BUILD takes its own
+            clickCells = null;
+            bedLeftBagAt = -1;
+        }
         if (next == Stage.SLEEP) {
             // a line from before the click is not the bed's answer
             overlay = null;
@@ -223,8 +247,9 @@ public class NightSleepTask extends Task {
         }
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        // (once we slept, the morning's pickup and the way down are not tonight's, the budget has rolled on to the next night)
-        if (!cleanup && outcome != Outcome.SLEPT) {
+        // (once we slept or the morning came, the pickup and the way down are not tonight's, the budget has rolled on to the next
+        // night)
+        if (!cleanup && outcome == Outcome.GAVE_UP) {
             budget.spend(TICK_SECONDS);
         }
         if (!begun) {
@@ -243,6 +268,7 @@ public class NightSleepTask extends Task {
             finish(now);
             return null;
         }
+        catchUpWithSleep(mod, now);
         if (!cleanup && budget.seconds() >= cfg.get().nightSeconds
                 && stage != Stage.PICKUP && stage != Stage.RETURN && stage != Stage.DESCEND && stage != Stage.SLEEP) {
             fail("out of time for tonight", now);
@@ -260,8 +286,36 @@ public class NightSleepTask extends Task {
         };
     }
 
+    // only SLEEP looks at the bed flag, so a stray click that put us in bed mid build went unseen and the night skip with it.
+    // the bed we are in is tonight's: SLEEP takes it from here and credits the night when we get up
+    private void catchUpWithSleep(AltoClef mod, long now) {
+        LocalPlayer player = mod.getPlayer();
+        if (NightSleep.stageWhenAsleep(inBed(player), stage) == stage) {
+            return;
+        }
+        // a bed of ours that came down on the way is written down first, so the morning picks up the right one
+        BlockPos placed = placedBed(mod);
+        if (placed != null) {
+            claim(placed);
+        }
+        ClientLevel world = mod.getWorld();
+        BlockPos slept = player.getSleepingPos().map(p -> footOf(p, world.getBlockState(p))).orElse(null);
+        if (slept != null) {
+            foot = slept;
+        } else if (placed != null) {
+            foot = placed;
+        }
+        clickedAt = -1;
+        enter(Stage.SLEEP, now, "already in bed");
+    }
+
+    private static boolean inBed(LocalPlayer player) {
+        return player.isSleeping() || Minecraft.getInstance().gui.screen() instanceof InBedChatScreen;
+    }
+
     private void begin(AltoClef mod, long now) {
         stageSince = now;
+        nightAtStart = NightSleep.nightOf(mod.getWorld().getOverworldClockTime());
         // (a container screen that sat open past the patience of the busy gate is stuck, and a bed click or a block break behind it
         // goes nowhere)
         StorageHelper.closeScreen();
@@ -491,6 +545,9 @@ public class NightSleepTask extends Task {
             fail(BED_WOULD_NOT_GO_DOWN, now);
             return null;
         }
+        if (settlingClick(mod, now)) {
+            return null;
+        }
         // monsters came while we were building and we have not been up yet: start over from here, higher
         if (foot == null || !(world.getBlockState(foot).getBlock() instanceof BedBlock)) {
             int raise = raiseAt(mod, stand);
@@ -514,15 +571,12 @@ public class NightSleepTask extends Task {
         }
         BlockPos footCell = stand.relative(facing);
         BlockPos headCell = footCell.relative(facing);
-        if (world.getBlockState(footCell).getBlock() instanceof BedBlock) {
-            foot = footCell;
-            state.nightBed = new RunState.Pos(footCell.getX(), footCell.getY(), footCell.getZ());
-            save.run();
-            clickedAt = -1;
-            enter(Stage.SLEEP, now, "bed is down at " + footCell.toShortString());
-            return null;
-        }
         for (BlockPos cell : new BlockPos[]{footCell, headCell, footCell.above(), headCell.above()}) {
+            if (world.getBlockState(cell).getBlock() instanceof BedBlock) {
+                // somebody's bed (ours turned up in settlingClick already): not ours to break, pick another side
+                facing = null;
+                return null;
+            }
             if (inTheWay(world.getBlockState(cell), world, cell)) {
                 setDebugState("Clearing room for the bed.");
                 return new DestroyBlockTask(cell);
@@ -595,12 +649,106 @@ public class NightSleepTask extends Task {
         }
         if (placeBed == null || !support.equals(placeFor)) {
             placeSince = now;
+            snapshotBeds(support.above());
             // when the support looks out of reach the walk is back to the stand cell, not the goal next to the support's top
             // that nobody can stand in
             placeBed = new InteractWithBlockTask(new ItemTarget("bed", 1), Direction.UP, support, false).walkTo(p -> new GoalBlock(stand));
             placeFor = support;
         }
         return placeBed;
+    }
+
+    // ---- after the click
+
+    private void snapshotBeds(BlockPos footCell) {
+        ClientLevel world = mod.getWorld();
+        clickCells = List.of(footCell, footCell.north(), footCell.south(), footCell.east(), footCell.west());
+        bedsBefore = new HashSet<>();
+        for (BlockPos cell : clickCells) {
+            if (world.getBlockState(cell).getBlock() instanceof BedBlock) {
+                bedsBefore.add(cell);
+            }
+        }
+        bagBeforeClick = bedsInBag(mod);
+        bedLeftBagAt = -1;
+    }
+
+    // the bed can land a cell off from the one we aimed at (the ray ends where it ends), so the foot cell alone misses it, and
+    // walking back to click again is how one night ends up with two beds or none. so after a click: a new bed near the spot is
+    // ours, a bed gone from the bag gets a few ticks to show up with nothing else going on, and an empty bag with no bed in
+    // sight ends the try. the place interact only ever runs with a bed in the bag (it would hand the missing bed to the
+    // catalogue, which crafts one and mines the nearest bed it knows of, ours included). true when this tick is spoken for
+    private boolean settlingClick(AltoClef mod, long now) {
+        BlockPos placed = placedBed(mod);
+        if (placed != null) {
+            bedDown(placed, now);
+            return true;
+        }
+        int bag = bedsInBag(mod);
+        if (!bedLeftBag(bag)) {
+            bedLeftBagAt = -1;
+            return false;
+        }
+        if (bedLeftBagAt < 0) {
+            bedLeftBagAt = now;
+        }
+        if (now - bedLeftBagAt <= BED_SHOW_UP_TICKS) {
+            setDebugState("Waiting for the bed to show up.");
+            return true;
+        }
+        if (bag == 0) {
+            fail(clickCells == null ? NO_BED_IN_BAG : LOST_THE_BED, now);
+            return true;
+        }
+        // a second bed in the bag: the first went somewhere we do not look, the next click takes a fresh snapshot
+        clickCells = null;
+        bedLeftBagAt = -1;
+        return false;
+    }
+
+    private boolean bedLeftBag(int bag) {
+        return bag == 0 || (clickCells != null && bag < bagBeforeClick);
+    }
+
+    // the foot of a bed that showed up near the spot since the snapshot, null when none did (or no click was made yet)
+    private BlockPos placedBed(AltoClef mod) {
+        if (clickCells == null) {
+            return null;
+        }
+        return appearedFoot(clickCells, bedsBefore, mod.getWorld()::getBlockState);
+    }
+
+    private void bedDown(BlockPos at, long now) {
+        foot = at;
+        claim(at);
+        clickedAt = -1;
+        enter(Stage.SLEEP, now, "bed is down at " + at.toShortString());
+    }
+
+    private void claim(BlockPos at) {
+        state.nightBed = new RunState.Pos(at.getX(), at.getY(), at.getZ());
+        save.run();
+    }
+
+    // the first cell holding a bed that was not there before, walked back to that bed's foot
+    public static BlockPos appearedFoot(List<BlockPos> cells, Set<BlockPos> before, Function<BlockPos, BlockState> at) {
+        for (BlockPos cell : cells) {
+            if (!before.contains(cell)) {
+                BlockPos bedFoot = footOf(cell, at.apply(cell));
+                if (bedFoot != null) {
+                    return bedFoot;
+                }
+            }
+        }
+        return null;
+    }
+
+    // either half of a bed to its foot, the way the bed's own facing says. null for anything that is not a bed
+    public static BlockPos footOf(BlockPos at, BlockState s) {
+        if (!(s.getBlock() instanceof BedBlock)) {
+            return null;
+        }
+        return s.getValue(BedBlock.PART) == BedPart.FOOT ? at : at.relative(s.getValue(BedBlock.FACING).getOpposite());
     }
 
     public enum Spot {
@@ -661,7 +809,8 @@ public class NightSleepTask extends Task {
         int cost = 0;
         for (BlockPos cell : new BlockPos[]{footCell, headCell, footCell.above(), headCell.above()}) {
             BlockState s = world.getBlockState(cell);
-            if (!s.getFluidState().isEmpty()) {
+            // (a bed there is somebody's, it does not get broken to make room for ours)
+            if (!s.getFluidState().isEmpty() || s.getBlock() instanceof BedBlock) {
                 return INF;
             }
             if (inTheWay(s, world, cell)) {
@@ -688,8 +837,7 @@ public class NightSleepTask extends Task {
     private Task sleep(AltoClef mod, long now) {
         LocalPlayer player = mod.getPlayer();
         ClientLevel world = mod.getWorld();
-        boolean asleep = player.isSleeping() || Minecraft.getInstance().gui.screen() instanceof InBedChatScreen;
-        if (asleep) {
+        if (inBed(player)) {
             if (!wasAsleep) {
                 asleepDayTime = world.getOverworldClockTime();
             }
@@ -739,6 +887,10 @@ public class NightSleepTask extends Task {
         Refusal refusal = NightSleep.refusal(overlay);
         if (refusal != Refusal.NONE) {
             overlay = null;
+            if (NightSleep.nightIsOver(refusal, world.isBrightOutside(), nightAtStart, NightSleep.nightOf(world.getOverworldClockTime()))) {
+                nightOver(mod, now);
+                return null;
+            }
             return refused(mod, refusal, now);
         }
         if (monstersBlock(mod, head)) {
@@ -773,6 +925,13 @@ public class NightSleepTask extends Task {
         }
         fail("the bed said no (" + refusal.name().toLowerCase() + ")", now);
         return null;
+    }
+
+    // the morning beat the bed to it. nothing failed: no cooldown, no "not sleeping tonight", the bed still comes back
+    private void nightOver(AltoClef mod, long now) {
+        outcome = Outcome.NIGHT_OVER;
+        why = "";
+        wrapUp(mod, now);
     }
 
     private void getUp(LocalPlayer player) {
