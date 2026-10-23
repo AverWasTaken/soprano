@@ -185,6 +185,16 @@ public class PortalPlannerTest {
     }
 
     @Test
+    public void gateSettlesForTheMinimumWhenTheFillUpIsOff() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        FoodPlan p = FoodPlan.ofBeds(f, cfg, 10);
+        assertTrue(PortalPlanner.gate(f, cfg, 10, p, BuildBlocks.NONE, false).isEmpty());
+        f.foodUnits = 60;
+        assertTrue(PortalPlanner.gate(f, cfg, 10, FoodPlan.ofBeds(f, cfg, 10), BuildBlocks.NONE, false).isEmpty());
+    }
+
+    @Test
     public void gateStopsAtTheMinimumWhenTheBagIsFull() {
         FakeFacts f = readyToGo();
         f.foodUnits = 90;

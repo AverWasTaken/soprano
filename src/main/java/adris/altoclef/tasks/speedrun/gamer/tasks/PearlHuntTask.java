@@ -51,6 +51,8 @@ public class PearlHuntTask extends Task {
     private final Task goToDimension;
 
     private GetWithinRangeOfBlockTask toHotspot;
+    // the walk is waiting on hp, not done
+    private boolean walkHeld;
     private RunState.Pos hotspotWalkingTo;
     // these two are phase clocks, not time on task: each only ticks in its own branch and restarts with its target.
     // the caps survive interrupts, and a long fight with something else (or a death) in between does not eat them
@@ -111,6 +113,10 @@ public class PearlHuntTask extends Task {
         if (walk != null) {
             return say("Heading for the warped forest", walk);
         }
+        if (walkHeld) {
+            // (the loot task wanders when nothing is around, which is no way to heal)
+            return say("Recovering before the walk", null);
+        }
         if (dimension == Dimension.NETHER && !mayStartOne(mod)) {
             // no nook to do it from and not in shape to start one in the open: stand and let it pass
             return say("Recovering before the next enderman", null);
@@ -168,7 +174,9 @@ public class PearlHuntTask extends Task {
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
-            dist[i] = man.isAlive() && man.hasLineOfSight(mod.getPlayer()) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
+            double d = man.distanceTo(mod.getPlayer());
+            // (the cheap distance first, the ray is the dear part and the latch does not care past its range)
+            dist[i] = man.isAlive() && d <= EndermanNook.LATCH_RANGE && man.hasLineOfSight(mod.getPlayer()) ? d : Double.NaN;
         }
         return EndermanNook.nearestSeen(dist);
     }
@@ -203,6 +211,7 @@ public class PearlHuntTask extends Task {
 
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
     private Task walkToHotspot(AltoClef mod) {
+        walkHeld = false;
         RunState.Pos spot = hotspot.get();
         boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod)), System.currentTimeMillis() / 1000.0);
         if (spot == null) {
@@ -226,6 +235,7 @@ public class PearlHuntTask extends Task {
         boolean there = EndermanNook.atHotspot(dx, mod.getPlayer().getY() - spot.y, dz, AT_HOTSPOT_BLOCKS, AT_HOTSPOT_Y);
         // hurt: stand still and heal first, the walk waits (its clock too)
         if (!there && !EndermanNook.mayWalkIn(mod.getPlayer().getHealth())) {
+            walkHeld = true;
             return null;
         }
         hotspotSpent.tick();
