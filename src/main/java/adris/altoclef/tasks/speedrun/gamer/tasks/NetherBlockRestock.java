@@ -43,10 +43,15 @@ public class NetherBlockRestock {
     // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
     // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack. returns the dig to run, or null for "not now"
     public Task tick(AltoClef mod, boolean gaveUp, double now) {
+        return tick(mod, gaveUp ? NetherRestock.GIVE_UP_LOW : NetherRestock.LOW, now);
+    }
+
+    // startBelow: see NetherRestock.update
+    public Task tick(AltoClef mod, int startBelow, double now) {
         Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);
         boolean exhausted = task != null && task.wandering();
-        boolean on = restock.update(held, gaveUp, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
+        boolean on = restock.update(held, startBelow, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
                 exhausted, now);
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft

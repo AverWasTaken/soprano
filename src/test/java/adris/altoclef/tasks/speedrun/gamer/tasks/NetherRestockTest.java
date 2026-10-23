@@ -124,4 +124,14 @@ public class NetherRestockTest {
         assertFalse(r.update(NetherRestock.TARGET, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
         assertEquals(0, r.exhaustedEnds());
     }
+
+    @Test
+    public void aTopUpAskStartsOnAnyBagUnderTheTarget() {
+        NetherRestock r = new NetherRestock();
+        // 30 would never start on the sweep's bars
+        assertTrue(r.update(30, NetherRestock.TARGET, true, false, 0));
+        assertFalse(r.update(NetherRestock.TARGET, NetherRestock.TARGET, true, false, 10));
+        NetherRestock full = new NetherRestock();
+        assertFalse(full.update(NetherRestock.TARGET, NetherRestock.TARGET, true, false, 0));
+    }
 }

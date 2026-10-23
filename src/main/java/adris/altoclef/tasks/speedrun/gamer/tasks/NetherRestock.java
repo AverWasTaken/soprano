@@ -54,6 +54,12 @@ public final class NetherRestock {
     // held = every placeable throwaway in the bag. exhausted = the dig has nothing left to go to. true = dig (until the
     // target) instead of walking
     public boolean update(int held, boolean gaveUp, boolean hasPick, boolean exhausted, double now) {
+        return update(held, gaveUp ? GIVE_UP_LOW : LOW, hasPick, exhausted, now);
+    }
+
+    // startBelow = the bag size that starts a dig. the sweep goes by LOW / GIVE_UP_LOW, a caller that knows a long walk is
+    // coming can ask for a full top up
+    public boolean update(int held, int startBelow, boolean hasPick, boolean exhausted, double now) {
         if (!hasPick) {
             active = false;
             return false;
@@ -77,7 +83,7 @@ public final class NetherRestock {
         if (now < coolUntil) {
             return false;
         }
-        if (held < LOW || (gaveUp && held < GIVE_UP_LOW)) {
+        if (held < startBelow) {
             active = true;
             startedAt = now;
             exhaustedSince = Double.NaN;

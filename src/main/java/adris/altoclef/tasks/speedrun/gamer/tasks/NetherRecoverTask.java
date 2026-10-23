@@ -48,8 +48,8 @@ public class NetherRecoverTask extends Task {
     // last tick the mark was asked about: a fight or a meal that held the wheel is not time the walk spent not getting closer
     private long portalSeenTick;
     private Task toPile;
-    // the walk's dig for blocks (same driver the sweep uses). the first nether tick asks with gaveUp: the bag comes through the
-    // portal with about 20 and netherrack is right there, the long walk is where they run out
+    // the walk's dig for blocks (same driver the sweep uses). the first nether tick asks for a full bag: it comes through the
+    // portal with the 24 the dirt stage got and netherrack is right there, the long walk is where they run out
     private final NetherBlockRestock blockRestock = new NetherBlockRestock();
     private boolean portalRestockAsked;
     // the dig held the wheel this tick, and the last tick it did (the trip budget is paid back for that time)
@@ -214,7 +214,8 @@ public class NetherRecoverTask extends Task {
                 if (toPile == null) {
                     toPile = new GetWithinRangeOfBlockTask(at, NetherTripRules.WALK_RANGE);
                 }
-                Task dig = blockRestock.tick(mod, !portalRestockAsked, facts.gameTime() / 20.0);
+                Task dig = blockRestock.tick(mod, portalRestockAsked ? NetherRestock.LOW : NetherRestock.TARGET,
+                        facts.gameTime() / 20.0);
                 portalRestockAsked = true;
                 if (dig != null) {
                     long t = facts.gameTime();
