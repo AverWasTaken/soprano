@@ -299,7 +299,7 @@ public final class TungstenJumps {
         double ux = dx / dist, uz = dz / dist;
         int ox = Mth.floor(x + 0.5 + ux * 0.85), oz = Mth.floor(z + 0.5 + uz * 0.85);
         if (!hole(context, ox, y, oz) && !(grab && !MovementHelper.fullyPassable(context, ox, y + 1, oz))
-                && neoSide(context, x, y, z, dx, dy, dz) == null) {
+                && neoSide(context, x, y, z, dx, dy, dz) == null && cornerVia(context, x, y, z, dx, dy, dz) == null) {
             return false;
         }
         if (grab) {
@@ -312,6 +312,15 @@ public final class TungstenJumps {
     }
 
     static final double GRAB_EXTRA = 0.7;
+
+    // the straight line out from src leaves it over a hole (the usual jump), not into a wall
+    static boolean leavesOverAHole(CalculationContext context, int x, int y, int z, double dx, double dz) {
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 1.0E-6) {
+            return false;
+        }
+        return hole(context, Mth.floor(x + 0.5 + dx / dist * 0.85), y, Mth.floor(z + 0.5 + dz / dist * 0.85));
+    }
 
     // a run up this long on ice, behind src and pointing at dest, and the rule's ice hops (JumpPolicy.ICE_VARIANTS) can go
     // further than any standing start: past REACH, up to RANGE
@@ -332,40 +341,64 @@ public final class TungstenJumps {
         return n;
     }
 
-    // a neo, the shape of one: straight along x or z, a wall right in front of src, and the row beside the line open at
-    // body height all the way from src to dest, to swing out through. and dest the first thing to land on past the wall
-    // (anything further on the same line goes from there), or past a second wall with a one block pad between the two: two
-    // neos in one flight, for when the second can't go from standing on the pad. null if not one, else {side x, side z, 1
-    // if it's two in one}
+    // a neo, the shape of one, straight along x or z. either from right behind the wall (a wall in front of src, the row
+    // beside the line open at body height all the way to dest, to swing out through), and dest the first thing to land on
+    // past the wall (anything further on the same line goes from there), or past a second wall with a one block pad
+    // between the two: two neos in one flight, for when the second can't go from standing on the pad. or from the side
+    // block: src in the row beside the wall's, at its start, and dest behind the wall in the wall's row, one over. that's
+    // how the long ones (a triple neo, round a wall three thick, level) are done, with a run up along the side row.
+    // null if not one, else {side x, side z (from the wall's row out to the open one), 1 if it's two in one, 1 if it goes
+    // from the side block}
     static int[] neoSide(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
-        if ((dx == 0) == (dz == 0) || dy > 0 || dy < -2) {
+        if (dy > 0 || dy < -2) {
             return null;
         }
-        int dist = Math.abs(dx + dz);
+        boolean sideStart = false;
+        int ux, uz, dist, rx = 0, rz = 0; // rx rz: from src's row over to the wall's row, for a side block start
+        if ((dx == 0) != (dz == 0)) {
+            dist = Math.abs(dx + dz);
+            ux = Integer.signum(dx);
+            uz = Integer.signum(dz);
+        } else if (Math.abs(dx) >= 2 && Math.abs(dz) == 1) {
+            sideStart = true;
+            dist = Math.abs(dx);
+            ux = Integer.signum(dx);
+            uz = 0;
+            rz = dz;
+        } else if (Math.abs(dz) >= 2 && Math.abs(dx) == 1) {
+            sideStart = true;
+            dist = Math.abs(dz);
+            ux = 0;
+            uz = Integer.signum(dz);
+            rx = dx;
+        } else {
+            return null;
+        }
         if (dist < 2 || dist > 6) {
             return null;
         }
-        int ux = Integer.signum(dx), uz = Integer.signum(dz);
-        // what's on the line between: walls, then nothing to stand on (or one pad and more wall: a combo)
-        int walls = 0, pads = 0, phase = 0; // 0 first walls, 1 pad seen, 2 second walls, 3 open
+        // the wall's row: the line itself, or the row over from the side block
+        int lx = x + rx, lz = z + rz;
+        if (MovementHelper.fullyPassable(context, lx + ux, y, lz + uz) && MovementHelper.fullyPassable(context, lx + ux, y + 1, lz + uz)) {
+            return null;
+        }
+        // what's on the wall's row between: walls, then nothing to stand on (or one pad and more wall: a combo)
+        int pads = 0, phase = 0; // 0 first walls, 1 pad seen, 2 second walls, 3 open
         for (int i = 1; i < dist; i++) {
-            int cx = x + ux * i, cz = z + uz * i;
+            int cx = lx + ux * i, cz = lz + uz * i;
             boolean wall = !MovementHelper.fullyPassable(context, cx, y, cz) || !MovementHelper.fullyPassable(context, cx, y + 1, cz);
             boolean pad = !wall && (MovementHelper.canWalkOn(context, cx, y - 1, cz) || dy < 0 && MovementHelper.canWalkOn(context, cx, y + dy - 1, cz));
             if (i == 1 && !wall) {
                 return null;
             }
             if (wall) {
-                if (phase == 0 || phase == 2) {
-                    walls++;
-                } else if (phase == 1) {
+                if (phase == 1) {
                     phase = 2;
-                    walls++;
-                } else {
+                } else if (phase == 3) {
                     return null; // open, then more wall: not a shape we know
                 }
             } else if (pad) {
-                if (phase != 0 || dy != 0) {
+                if (phase != 0 || dy != 0 || sideStart) {
                     return null; // a second pad, or a pad on the way down: there's a nearer landing
                 }
                 phase = 1;
@@ -380,6 +413,18 @@ public final class TungstenJumps {
         if (phase == 1) {
             return null;
         }
+        if (sideStart) {
+            // src's own row has to be open all along, it's the one the swing goes through, and nothing to stand on along it
+            // past src (that would be a landing of its own, and a plain jump)
+            for (int i = 1; i <= dist; i++) {
+                int cx = x + ux * i, cz = z + uz * i;
+                if (!MovementHelper.fullyPassable(context, cx, y, cz) || !MovementHelper.fullyPassable(context, cx, y + 1, cz)
+                        || MovementHelper.canWalkOn(context, cx, y - 1, cz)) {
+                    return null;
+                }
+            }
+            return new int[]{-rx, -rz, 0, 1};
+        }
         Direction along = ux > 0 ? Direction.EAST : ux < 0 ? Direction.WEST : uz > 0 ? Direction.SOUTH : Direction.NORTH;
         for (Direction side : new Direction[]{along.getClockWise(), along.getCounterClockWise()}) {
             boolean open = true;
@@ -388,7 +433,46 @@ public final class TungstenJumps {
                 open = MovementHelper.fullyPassable(context, cx, y, cz) && MovementHelper.fullyPassable(context, cx, y + 1, cz);
             }
             if (open) {
-                return new int[]{side.getStepX(), side.getStepZ(), pads > 0 ? 1 : 0};
+                return new int[]{side.getStepX(), side.getStepZ(), pads > 0 ? 1 : 0, 0};
+            }
+        }
+        return null;
+    }
+
+    // a jump at an angle (not straight along x or z, those are neoSide's) whose straight line runs into something on the
+    // way, a pillar or the end of a wall, with room to go round it: the point beside the first thing in the way, on the
+    // side that's open, for the search to go by. null if it isn't one of those
+    static final double CORNER_REACH = 4.6;
+
+    static double[] cornerVia(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
+        if (dx == 0 || dz == 0 || dy > 1 || dy < -2) {
+            return null;
+        }
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > CORNER_REACH) {
+            return null;
+        }
+        double ux = dx / dist, uz = dz / dist;
+        int top = Math.max(y, y + dy);
+        int ox = 0, oz = 0;
+        boolean hit = false;
+        for (double t = 0.5; t < dist - 0.5 && !hit; t += 0.25) {
+            ox = Mth.floor(x + 0.5 + ux * t);
+            oz = Mth.floor(z + 0.5 + uz * t);
+            if ((ox != x || oz != z) && (ox != x + dx || oz != z + dz)) {
+                hit = !MovementHelper.fullyPassable(context, ox, top, oz) || !MovementHelper.fullyPassable(context, ox, top + 1, oz);
+            }
+        }
+        if (!hit) {
+            return null;
+        }
+        // either side of it, a block out square to the line: the side that's open (both feet and head) is the way round
+        for (int sgn : new int[]{1, -1}) {
+            double px = ox + 0.5 - uz * sgn, pz = oz + 0.5 + ux * sgn;
+            int cx = Mth.floor(px), cz = Mth.floor(pz);
+            if (MovementHelper.fullyPassable(context, cx, top, cz) && MovementHelper.fullyPassable(context, cx, top + 1, cz)
+                    && MovementHelper.fullyPassable(context, cx, y, cz) && MovementHelper.fullyPassable(context, cx, y + 1, cz)) {
+                return new double[]{px, pz};
             }
         }
         return null;
@@ -419,7 +503,20 @@ public final class TungstenJumps {
 
     // the landing a node is: a ladder to grab, or a block to stand on
     public static Landing landing(CalculationContext context, BetterBlockPos dest) {
-        return grabCell(context, dest.x, dest.y, dest.z) ? Landing.grab(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+        if (grabCell(context, dest.x, dest.y, dest.z)) {
+            return Landing.grab(dest.x, dest.y, dest.z);
+        }
+        BlockState floor = context.get(dest.x, dest.y - 1, dest.z);
+        if (MovementHelper.isBottomSlab(floor)) {
+            return Landing.slab(dest.x, dest.y, dest.z);
+        }
+        return stepped(floor) ? Landing.step(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+    }
+
+    // a block with a step in it half way down (a bottom half stair): land on the low step and the feet are in its own cell
+    public static boolean stepped(BlockState state) {
+        return state.getBlock() instanceof net.minecraft.world.level.block.StairBlock
+                && state.getValue(net.minecraft.world.level.block.StairBlock.HALF) == net.minecraft.world.level.block.state.properties.Half.BOTTOM;
     }
 
     // something bouncy under the line from src to dest, somewhere a jump would come down on it
@@ -443,13 +540,13 @@ public final class TungstenJumps {
 
     private static final BlockPos.MutableBlockPos SHAPE_POS = new BlockPos.MutableBlockPos();
 
-    // something to jump from or land on: anything Baritone walks on except a bottom slab, and the odd blocks parkour maps
-    // love that it won't (fences, walls, panes, bars, hoppers, trapdoors, end rods): whatever has a collision top between
+    // something to jump from or land on: anything Baritone walks on (a bottom slab too, half a block down), and the odd
+    // blocks parkour maps love that it won't (fences, walls, panes, bars, hoppers, trapdoors, end rods): whatever has a collision top between
     // three quarters of a block and a block and a half up from its cell. nodes like that only ever join other Tungsten
     // jumps, nothing else in the planner will step on or off them, and the sim decides whether the box really stays up there
     static boolean jumpFloor(CalculationContext context, int x, int y, int z) {
         BlockState state = context.get(x, y, z);
-        if (MovementHelper.isBottomSlab(state) || SafeCollision.hazard(state) || !state.getFluidState().isEmpty()) {
+        if (SafeCollision.hazard(state) || !state.getFluidState().isEmpty()) {
             return false;
         }
         if (MovementHelper.canWalkOn(context, x, y, z, state)) {
@@ -487,15 +584,20 @@ public final class TungstenJumps {
         sim.vy = -0.0784; // what gravity leaves someone standing on the floor
         sim.onGround = true;
         Landing land = landing(context, dest);
-        JumpPolicy.Rollout r = JumpPolicy.forgiving(sim, land);
         double dx = dest.x - src.x, dz = dest.z - src.z;
+        int[] neo = land.grab() ? null : neoSide(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
+        // round a wall from right behind it: the rule's aimed variants (a few thousand sim ticks of looking ahead each) all
+        // but never do one of those, the background search is what does. don't spend the planner's budget finding that out
+        double[] corner = land.grab() || neo != null ? null : cornerVia(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
+        boolean behindWall = (neo != null && neo[3] == 0 || corner != null) && !leavesOverAHole(context, src.x, src.y, src.z, dx, dz);
+        JumpPolicy.Rollout r = behindWall ? null : JumpPolicy.forgiving(sim, land);
         // never cheaper than sprinting the straight line, which is what the heuristic assumes is the best there is
         double straight = Math.sqrt(dx * dx + dz * dz) * ActionCosts.SPRINT_ONE_BLOCK_COST;
         if (r != null) {
             // a neo of the rule's (aimed off the line round a wall) is the last resort, behind MovementNeo's tables when it
             // has one: it's the touchiest thing the rule does
-            double neo = r.variant().aim() != 0F ? NEO_COST : 1;
-            double cost = context.biasJump(Math.max(r.ticks(), straight) * neo + context.jumpPenalty);
+            double aimed = r.variant().aim() != 0F ? NEO_COST : 1;
+            double cost = context.biasJump(Math.max(r.ticks(), straight) * aimed + context.jumpPenalty);
             return new Jump(src, dest, cost, r.variant(), List.copyOf(r.states()), null);
         }
         if (land.grab() && dest.y == src.y && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())) {
@@ -507,16 +609,29 @@ public final class TungstenJumps {
                 return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
             }
         }
-        int[] neo = land.grab() ? null : neoSide(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
         if (neo != null && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())
                 && !movementNeoDoes(context, src, dest)) {
             // round a wall the rule can't get round (three thick, two back to back): the full search, in the background
-            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, neo[0], neo[1], neo[2] == 1, schedule);
+            // the swing goes through the row beside the wall, halfway along: the side row for a run from right behind the
+            // wall, src's own row for one from the side block
+            double[] via = neo[3] == 1
+                    ? new double[]{(src.x + 0.5 + land.centerX()) / 2 + neo[0] * 0.5, (src.z + 0.5 + land.centerZ()) / 2 + neo[1] * 0.5}
+                    : NeoSearches.via(src, land, neo[0], neo[1]);
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, via, neo[2] == 1, schedule);
             if (plan == null || plan == NeoSearches.WAIT) {
                 return plan == null ? null : PENDING;
             }
             // two in one flight has the least room of anything: only when there's no way with a stop on the pad between
             double cost = context.biasJump(Math.max(plan.ticks(), straight) * (neo[2] == 1 ? COMBO_COST : NEO_COST) + context.jumpPenalty);
+            return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+        }
+        if (corner != null && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())) {
+            // round the corner of a pillar or a wall at an angle: the same background search, by way of the corner
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, corner, false, schedule);
+            if (plan == null || plan == NeoSearches.WAIT) {
+                return plan == null ? null : PENDING;
+            }
+            double cost = context.biasJump(Math.max(plan.ticks(), straight) * NEO_COST + context.jumpPenalty);
             return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
         }
         return null;
@@ -538,6 +653,7 @@ public final class TungstenJumps {
                 }
             }
         }
-        return !Double.isNaN(top) && top > y - 0.2 ? top : Double.NaN;
+        // a bottom slab under the cell: half a block down, still where Baritone says we stand
+        return !Double.isNaN(top) && top > y - 0.55 ? top : Double.NaN;
     }
 }

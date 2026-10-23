@@ -41,12 +41,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class NeoSearches {
 
     // sim ticks per search, a few seconds of it. most of these are found well inside it or not at all
-    static final long BUDGET = 2_000_000;
+    static final long BUDGET = 1_500_000;
     // the margins tried, in the order they most often turn up something that flies, and whether the search is told to go by
     // way of the row beside the wall: much quicker when it works, but the flight it finds is sometimes not one that flies
     // every time, and then the plain search often has one that does
-    static final double[] MARGINS = {0.01, 0.01, 0.0, 0.02};
-    static final boolean[] VIA = {true, false, false, true};
+    static final double[] MARGINS = {0.01, 0.01, 0.0};
+    static final boolean[] VIA = {true, false, false};
     static final int FLIGHTS = 16;
     // what the jitter flights call a wobbly aim: LookBehavior's randomLooking113 is up to a degree either side
     static final double JITTER = 2.0;
@@ -59,9 +59,17 @@ public final class NeoSearches {
     private static final Map<Key, Object> RESULTS = new ConcurrentHashMap<>();
     private static final List<Job> QUEUE = new ArrayList<>();
     private static int workers;
-    private static final int MAX_WORKERS = 2;
+    // one thread, at the lowest priority: these are seconds of work each, and the game needs the cores more
+    private static final int MAX_WORKERS = 1;
+    // a job further than this from the player when its turn comes is dropped (asked again if a path gets near it again):
+    // a long #goto asks about every wall along the way, and working them all out up front is minutes of a busy core
+    private static final double MAX_JOB_DISTANCE = 48;
+    // the blocks' hash per src and dest, worked out at most this often: A* asks about the same pair over and over
+    private static final long HASH_MS = 3000;
+    private record Hashed(long hash, long at) {}
+    private static final Map<Long, Hashed> HASHES = new ConcurrentHashMap<>();
     // where the player is: the jobs nearest it go first, they're the ones a path is about to want
-    private static volatile double focusX, focusY, focusZ;
+    private static volatile double focusX = Double.NaN, focusY = Double.NaN, focusZ = Double.NaN;
 
     private record Job(Key key, SnapshotCollision world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region,
                        double[] via, boolean combo) {}
@@ -76,14 +84,23 @@ public final class NeoSearches {
 
     // the searched plan from src to land, standing still at src's middle with the feet at floorY. null when there's none,
     // WAIT when there's none yet and it's being worked out (only when schedule, which is what queues it)
-    // side: the way out round the wall (a unit step in x or z), the swing goes through the row beside the line on that side
-    static TungstenSearch.Plan lookup(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, int sideX, int sideZ,
+    // via: the point the swing round the wall goes through (see TungstenSearch's heuristic)
+    static TungstenSearch.Plan lookup(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, double[] via,
                                       boolean combo, boolean schedule) {
         TungstenSearch.Region region = region(src, land);
-        int minY = Math.min(src.y, land.y()) - 5, maxY = Math.max(src.y, land.y()) + 4;
-        SnapshotCollision snap = new SnapshotCollision(world, Mth.floor(region.minX()) - 2, minY, Mth.floor(region.minZ()) - 2,
-                Mth.floor(region.maxX()) + 2, maxY, Mth.floor(region.maxZ()) + 2);
-        Key key = new Key(BetterBlockPos.longHash(src), BetterBlockPos.longHash(land.x(), land.y(), land.z()), snap.hash);
+        long srcKey = BetterBlockPos.longHash(src), destKey = BetterBlockPos.longHash(land.x(), land.y(), land.z());
+        long pair = srcKey * 31 + destKey, now = System.currentTimeMillis();
+        Hashed hashed = HASHES.get(pair);
+        SnapshotCollision snap = null;
+        if (hashed == null || now - hashed.at() > HASH_MS) {
+            snap = snapshot(world, src, land, region);
+            hashed = new Hashed(snap.hash, now);
+            if (HASHES.size() > 20_000) {
+                HASHES.clear();
+            }
+            HASHES.put(pair, hashed);
+        }
+        Key key = new Key(srcKey, destKey, hashed.hash());
         Object known = RESULTS.get(key);
         if (known instanceof TungstenSearch.Plan plan) {
             return plan;
@@ -98,8 +115,11 @@ public final class NeoSearches {
         }
         if (RESULTS.putIfAbsent(key, PENDING) == null) {
             PendingTables.missed(key, () -> RESULTS.get(key) != PENDING);
+            if (snap == null) {
+                snap = snapshot(world, src, land, region);
+            }
             synchronized (QUEUE) {
-                QUEUE.add(new Job(key, snap, src, floorY, land, region, via(src, land, sideX, sideZ), combo));
+                QUEUE.add(new Job(key, snap, src, floorY, land, region, via, combo));
                 if (workers < MAX_WORKERS) {
                     workers++;
                     Thread t = new Thread(NeoSearches::work, "Soprano neo search");
@@ -110,6 +130,12 @@ public final class NeoSearches {
             }
         }
         return WAIT;
+    }
+
+    private static SnapshotCollision snapshot(CollisionProvider world, BetterBlockPos src, Landing land, TungstenSearch.Region region) {
+        int minY = Math.min(src.y, land.y()) - 5, maxY = Math.max(src.y, land.y()) + 4;
+        return new SnapshotCollision(world, Mth.floor(region.minX()) - 2, minY, Mth.floor(region.minZ()) - 2,
+                Mth.floor(region.maxX()) + 2, maxY, Mth.floor(region.maxZ()) + 2);
     }
 
     // what lookup says for "being worked out"
@@ -146,6 +172,11 @@ public final class NeoSearches {
                     }
                 }
                 job = QUEUE.remove(best);
+            }
+            double fx = job.src().x + 0.5 - focusX, fz = job.src().z + 0.5 - focusZ;
+            if (!Double.isNaN(fx + fz) && fx * fx + fz * fz > MAX_JOB_DISTANCE * MAX_JOB_DISTANCE) {
+                RESULTS.remove(job.key()); // not now: whoever asks again when it's nearer gets it queued again
+                continue;
             }
             TungstenSearch.Plan plan = null;
             long t0 = System.currentTimeMillis();
@@ -203,7 +234,7 @@ public final class NeoSearches {
 
     // two neos in one flight: only ever turned up by the plain search with no margin (and then flies fine, the pad in the middle
     // puts it back on track), so that's all it gets, it's a lot of searching for something that's usually not there
-    static final long COMBO_BUDGET = 3_000_000;
+    static final long COMBO_BUDGET = 2_000_000;
 
     public static TungstenSearch.Plan solveCombo(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region) {
         TungstenSearch.Plan plan = TungstenSearch.search(standing(world, src, floorY), land, region, COMBO_BUDGET, null);

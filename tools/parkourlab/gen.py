@@ -206,7 +206,7 @@ def build():
 
     # 7. odd blocks: things that aren't a full block to land on
     c.start_section("Odd blocks", "Landings on a fence, a cobblestone wall, a glass pane, iron bars, a top slab, stairs, "
-                    "a hopper, a top trapdoor and an end rod.", "TUNGSTEN")
+                    "a hopper, a top trapdoor, an end rod, and bottom slabs.", "TUNGSTEN")
     c.jump(2, 0, 0, "oak_fence", kind="odd")
     c.jump(2, 0, 1, "oak_fence", kind="odd")
     c.jump(2, 0, -1, "cobblestone_wall", kind="odd")
@@ -217,6 +217,17 @@ def build():
     c.jump(2, 0, 0, "hopper", kind="odd")
     c.jump(2, 0, 1, "oak_trapdoor[half=top]", kind="odd")
     c.jump(2, 0, 0, "end_rod[facing=up]", kind="odd")
+    # lone stairs, every way round: land on one with nothing past it, and jump on off it
+    c.jump(2, 0, 0, "oak_stairs[facing=west]", kind="stair, low side first")
+    c.jump(2, 0, 1, "oak_stairs[facing=north]", kind="stair, side on")
+    c.jump(3, 0, 0, "oak_stairs[facing=south]", kind="stair, side on")
+    c.jump(2, 1, -1, "oak_stairs[facing=east]", kind="stair, one up")
+    c.jump(3, -1, 0, "quartz_block", kind="off a stair")
+    # bottom slabs: half a block down, slab to slab and back up onto a full block
+    c.jump(2, 0, 0, "smooth_stone_slab", kind="slab")
+    c.jump(3, 0, 1, "smooth_stone_slab", kind="slab to slab")
+    c.jump(3, 0, -1, "quartz_slab", kind="slab to slab")
+    c.jump(3, 0, 0, "quartz_block", kind="slab to block")
     c.end_section(2, 0, 0, "7: Odd blocks")
 
     # 8. fence and pane run: a whole line of them, gaps and diagonals between, nothing full to stand on until the end
@@ -232,7 +243,50 @@ def build():
     c.jump(2, 0, -1, "white_stained_glass_pane", kind="pane")
     c.jump(3, 0, 0, "white_stained_glass_pane", kind="pane")
     c.jump(2, 0, 2, "iron_bars", kind="pane")
+    # walls going up: wall to wall a block higher, twice, then back down
+    c.jump(2, 0, 0, "cobblestone_wall", kind="wall")
+    c.jump(2, 1, 0, "cobblestone_wall", kind="wall one up")
+    c.jump(2, 1, 1, "andesite_wall", kind="wall one up")
+    c.jump(2, 0, -1, "oak_fence", kind="fence")
+    c.jump(3, -1, 0, "dark_oak_planks", kind="down")
     c.end_section(3, 0, 0, "8: Fence run")
+
+    # 8b. stairs and walls, longer: lone stairs (nothing past them to walk on) across three and four block gaps, every
+    # way round, walls across three gaps and up a block, and a wall on a block to get round
+    c.start_section("Stairs and walls", "Lone stairs across 3 and 4 gaps, facing every way, onto a stair one up, wall to "
+                    "wall across gaps and a block up.", "TUNGSTEN")
+    c.jump(4, 0, 0, "spruce_stairs[facing=east]", kind="stair 3 gap, high side first")
+    c.jump(4, 0, 0, "spruce_stairs[facing=west]", kind="stair 3 gap, low side first")
+    c.jump(4, 0, 1, "spruce_stairs[facing=north]", kind="stair 3+1, side on")
+    c.jump(3, 0, -1, "quartz_block")
+    c.walk(1, "quartz_block")
+    c.jump(5, 0, 0, "spruce_stairs[facing=south]", kind="stair 4 gap off a run up, side on")
+    c.jump(3, 1, 0, "spruce_stairs[facing=west]", kind="stair 2 gap, one up")
+    c.jump(4, -1, 0, "quartz_block", kind="off a stair")
+    c.jump(4, 0, 0, "cobblestone_wall", kind="wall 3 gap")
+    c.jump(4, 0, -1, "cobblestone_wall", kind="wall to wall 3+1")
+    c.jump(3, 1, 0, "cobblestone_wall", kind="wall to wall 2 gap, one up")
+    c.jump(3, 0, 1, "stone_brick_wall", kind="wall to wall")
+    c.jump(3, -1, 0, "quartz_block", kind="off a wall")
+    # round pillars: a block with a wall stood on it, in the way of the straight line, hugged round its corner
+    def pillar(px, pz, y):
+        for py in range(y - 3, y + 1):
+            c.put(px, py, pz, "polished_andesite")
+        c.put(px, y + 1, pz, "cobblestone_wall")
+    x, y, z = c.cur
+    pillar(x + 1, z, y)
+    c.jump(2, 0, 1, "quartz_block", kind="round a pillar's corner")
+    x, y, z = c.cur
+    pillar(x + 1, z, y)
+    c.jump(2, 0, -1, "quartz_block", kind="round a pillar's corner")
+    x, y, z = c.cur
+    pillar(x + 1, z, y)
+    pillar(x + 2, z, y)
+    c.jump(3, 0, -1, "quartz_block", kind="round a long pillar's corner")
+    x, y, z = c.cur
+    pillar(x + 1, z, y)
+    c.jump(2, 1, 1, "quartz_block", kind="round a corner, one up")
+    c.end_section(3, 0, 0, "9: Stairs and walls")
 
     # 9. ladders and vines: catch one in the air, climb, step off the top
     c.start_section("Ladders", "Jump across a gap onto a ladder, climb it, then the same with a vine.", "CLIMB")
@@ -246,7 +300,7 @@ def build():
         c.cur = (x + 3, y + 4, z)
         c.jumps.append({"from": [x, y, z], "to": [x + 3, y + 4, z], "kind": "climb", "block": block})
         c.jump(2, -2, 0, "mossy_stone_bricks")
-    c.end_section(3, 0, 0, "9: Ladders")
+    c.end_section(3, 0, 0, "10: Ladders")
 
     # 10. ladder neos: round the end of a wall onto a ladder (then a vine) hung on its far side, up it and onto the top of
     # the wall. the runway is two wide, the wall's row and the open row beside it
@@ -271,7 +325,7 @@ def build():
         c.jumps.append({"from": [wx, y + 4, wz], "to": [wx, y + 4, wz - 3], "kind": "walk", "block": "stone_bricks"})
         c.jump(3, -2, 1, "stone_bricks")
         c.jump(2, -1, 2, "stone_bricks")
-    c.end_section(3, 0, 0, "10: Ladder neos")
+    c.end_section(3, 0, 0, "11: Ladder neos")
 
     # 11. ice palace: every takeoff is off ice (packed, blue, plain), which keeps more of the jump's push than stone does,
     # so the gaps are longer than anywhere else. the landings are snow, you'd slide off a single block of ice
@@ -288,7 +342,7 @@ def build():
     c.jump(4, 1, -2, "snow_block", kind="ice 3+2 up")
     c.walk(1, "ice")
     c.jump(5, 0, -1, "snow_block", kind="ice 4+1")
-    c.end_section(3, 0, 0, "11: Ice palace")
+    c.end_section(3, 0, 0, "12: Ice palace")
 
     # 12. sky tower: a spiral of diagonal one-up jumps round a pillar, round and round to the top
     c.start_section("Sky tower", "A spiral of diagonal jumps one up, round a pillar, six blocks up.", "TUNGSTEN")
@@ -302,7 +356,7 @@ def build():
     for py in range(y - 6, top + 2):
         c.put(cx, py, cz, "purpur_pillar")
     c.put(cx, top + 2, cz, "end_rod[facing=up]")
-    c.end_section(3, 0, 0, "12: Sky tower")
+    c.end_section(3, 0, 0, "13: Sky tower")
 
     # 13. slime factory: down onto slime and bounced across to a ledge no jump reaches. the slime is five down, the
     # ledges a block or two under where you started
@@ -319,25 +373,31 @@ def build():
     bounce(5, 3, 3, 5, -1, 5)
     bounce(5, 3, -3, 5, -1, -5)
     bounce(5, 4, 0, 7, -1, 0)
-    c.end_section(3, 0, 0, "13: Slime factory")
+    c.end_section(3, 0, 0, "14: Slime factory")
 
-    # 14. thick neos: round the end of a wall three thick. on the level there's no air time for it, so the landing is a
-    # block down: the extra fall is what gets you round. one with the wall's end on the +z side, one on the -z side
-    c.start_section("Thick neos", "Triple neos: round the end of a wall three thick onto a block one down, the wall's end "
-                    "on one side and then the other.", "TUNGSTEN (searched neo)")
+    # 14. triple neos: round the end of a wall three thick, level. no standing start gets round one of those: the way it's
+    # done is a run up of seven blocks along the row beside the wall's, off the side block at the wall's start, and a curve
+    # in onto the block right behind the wall. once with the wall's end on the -z side of the run, once on the +z side
+    c.start_section("Triple neos", "Level triple neos: a seven block run up along the side of a wall three thick, off the "
+                    "side block and round onto the block behind it. Once on each side.", "TUNGSTEN (searched neo)")
     def wall(x0, x1, z0, z1, y):
         for wx in range(x0, x1 + 1):
             for wz in range(z0, z1 + 1):
                 for wy in range(y - 2, y + 3):
                     c.put(wx, wy, wz, "deepslate_bricks" if (wx + wy + wz) % 4 else "cracked_deepslate_bricks")
-    for side in (1, -1):
-        c.jump(2, 0, 0, "polished_deepslate")
-        c.walk(1, "polished_deepslate")
+    def triple_neo(side, block):
+        # side: which way the wall's row is from the run's row (-1: the wall is on -z of the run)
+        c.jump(2, 0, -side, block)              # onto the start of the run up, one row over from the wall's
+        c.walk(6, block)                         # seven blocks of run up, the last one the side block
         x, y, z = c.cur
-        wall(x + 1, x + 3, z - 3 if side > 0 else z, z if side > 0 else z + 3, y)
-        c.jump(4, -1, 0, "polished_deepslate", kind="triple neo")
-        c.walk(2, "polished_deepslate")
-    c.end_section(3, 0, 0, "14: Thick neos")
+        wz = z + side                            # the wall's row
+        wall(x + 1, x + 3, min(wz, wz + 3 * side), max(wz, wz + 3 * side), y)
+        c.jump(4, 0, side, block, kind="triple neo")
+    triple_neo(1, "polished_deepslate")
+    c.walk(2, "polished_deepslate")
+    triple_neo(-1, "polished_deepslate")
+    c.walk(2, "polished_deepslate")
+    c.end_section(3, 0, 0, "15: Triple neos")
 
     # 15. neo chains: neos back to back with a one block pad between. three one thick ones (each off the pad the last one
     # came down on, the wall it came round right behind), then two two thick ones where the pad between is no use to stand
@@ -359,7 +419,7 @@ def build():
     c.jumps.append({"from": [x, y, z], "to": [x + 6, y, z], "kind": "double neo x2", "block": "polished_tuff"})
     c.cur = (x + 6, y, z)
     c.walk(2, "polished_tuff")
-    c.end_section(3, 0, 0, "15: Neo chains")
+    c.end_section(3, 0, 0, "16: Neo chains")
 
     # 16. combo: a head hitter, straight into a neo, straight into a ladder neo, along the top of the wall and down
     c.start_section("Combo", "A three gap head hitter, then a neo, then a ladder neo up onto a wall, along it and off the "
@@ -389,7 +449,7 @@ def build():
     c.jumps.append({"from": [wx, y + 4, z], "to": [wx, y + 4, z - 3], "kind": "walk", "block": "weathered_cut_copper"})
     c.jump(3, -2, 1, "cut_copper")
     c.jump(2, -1, 2, "cut_copper")
-    c.end_section(3, 0, 0, "16: Combo")
+    c.end_section(3, 0, 0, "17: Combo")
 
     # 17. slime to ladder: off the ledge, down onto slime, and the bounce up onto a ladder on a tower, up and over the top.
     # then the same onto a vine
@@ -410,7 +470,7 @@ def build():
         c.jumps.append({"from": [x, y, z], "to": [tx, y + 3, z], "kind": "slime to ladder", "block": climb})
         c.cur = (tx, y + 3, z)
         c.jump(2, -3, 0, "lime_concrete")
-    c.end_section(3, 0, 0, "17: Slime to ladder")
+    c.end_section(3, 0, 0, "18: Slime to ladder")
 
     # 18. ice tunnel: a long packed ice runway under a ceiling at head height (hop along it, every hop bonking the ceiling,
     # and the ice keeps every bit of the push), out from under it at the end, and the longest jumps on the course
@@ -428,96 +488,118 @@ def build():
                 c.put(cx, y + 2, cz, "light_blue_stained_glass")
         c.cur = (x + n, y, z)
         c.jump(gap + 1, 0, 0, "snow_block", kind=f"ice tunnel {gap}b")
-    c.end_section(3, 0, 0, "18: Ice tunnel")
+    c.end_section(3, 0, 0, "19: Ice tunnel")
 
-    # 19. chess. the hard one: down onto the pawns, diagonal captures across them, a knight's tour climbing up the
-    # knights, the bishop's diagonal, along the rook's battlements, a neo round the queen, and up the king's ladder to the
-    # top. the pieces stand on a board thirty blocks down. fall off and it's back to the checkpoint
-    c.start_section("Chess", "Pawn captures (diagonals) down on the board, a knight's tour climbing up, the bishop's "
-                    "diagonal, the rook's battlements, a neo round the queen and up the king's ladder.", "THE BOSS")
-    chess_start = c.cur
-    route = []  # (x, y, z feet, piece)
-    def j(dx, dy, dz, piece):
-        nx, ny, nz = c.cur[0] + dx, c.cur[1] + dy, c.cur[2] + dz
-        colour = "white" if len(route) % 2 == 0 else "black"
-        block = "white_concrete" if colour == "white" else "black_concrete"
-        c.jump(dx, dy, dz, "quartz_block" if colour == "white" else "polished_blackstone", kind=piece)
-        route.append((nx, ny, nz, piece, colour))
-    # pawns: down a block, then captures
-    j(3, -1, 3, "pawn")
-    j(3, 0, -3, "pawn")
-    j(3, 0, 3, "pawn")
-    j(3, 0, -3, "pawn")
-    # knights: knight's moves, climbing
-    j(2, 1, 1, "knight")
-    j(1, 1, 2, "knight")
-    j(2, 0, -1, "knight")
-    j(2, 1, -1, "knight")
-    # bishop: the long diagonal
-    j(2, 1, 2, "bishop")
-    j(2, 0, 2, "bishop")
-    j(3, 0, 3, "bishop")
-    # rook: along the battlements
-    j(3, 0, 0, "rook")
-    j(2, 0, 0, "rook")
-    j(0, 0, -2, "rook")
-    j(2, 0, 0, "rook")
-    # the queen: a tall wall to neo round, with a bit of the rook's wall to run up on
-    c.walk(2, "quartz_block")
-    for i in (1, 2):
-        route.append((c.cur[0] - 2 + i, c.cur[1], c.cur[2], "rook", "white"))
+    # 19. the finale: a bit of every section, one after the other, no checkpoints between. straights, diagonals, ups and
+    # downs, a neo, a four blocker, a head hitter, fences, a ladder, ice, a slime bounce, a triple neo, a neo chain, slime
+    # onto a ladder, the ice tunnel, a ladder neo up a wall, and the finish on top
+    c.start_section("Finale", "Every section in one run: straights, diagonals, ups and downs, a neo, a four blocker, a "
+                    "head hitter, slabs, fences, a ladder, ice, a slime bounce, a triple neo, a neo chain, slime to a ladder, the "
+                    "ice tunnel and a ladder neo up to the finish.", "THE BOSS")
+    F = "white_concrete"
+    G = "black_concrete"
+    # straights, diagonals, ups and downs
+    c.jump(3, 0, 0, F, kind="straight")
+    c.jump(4, 0, 0, G, kind="straight 3b")
+    c.jump(3, 0, 2, F, kind="diagonal")
+    c.jump(2, 1, -2, G, kind="diagonal up")
+    c.jump(3, -1, 2, F, kind="diagonal down")
+    c.jump(3, -1, -1, G, kind="down")
+    # a neo round a one thick wall
+    c.walk(1, G)
     x, y, z = c.cur
-    c.put(x, y - 1, z - 1, "quartz_block")
-    route.append((x, y, z - 1, "queen-step", "white"))
-    queen_base = y
-    for wz in range(z - 3, z + 1):
-        for wy in range(BASE - 30, y + 4):
-            c.put(x + 1, wy, wz, "white_concrete" if (wy + wz) % 2 == 0 else "quartz_pillar")
-    j(2, 0, 0, "queen")
-    # the king: a ladder up the side of a 3x3 tower to its top, the finish
+    wall(x + 1, x + 1, z - 3, z, y)
+    c.jump(2, 0, 0, F, kind="neo")
+    # a four blocker off a run up
+    c.walk(2, F)
+    c.jump(5, 0, 0, G, kind="4b")
+    # a head hitter, three gap
     x, y, z = c.cur
-    for kx in range(x + 3, x + 6):
-        for kz in range(z - 1, z + 2):
-            for ky in range(BASE - 30, y + 5):
-                c.put(kx, ky, kz, "polished_blackstone_bricks")
-    for ly in range(y, y + 5):
+    for cx in range(x, x + 4):
+        c.put(cx, y + 3, z, "polished_blackstone_bricks")
+    c.jump(4, 0, 0, F, kind="headhitter 3b")
+    # slabs and fences
+    c.jump(3, 0, 0, "smooth_stone_slab", kind="slab")
+    c.jump(3, 0, -1, "smooth_stone_slab", kind="slab to slab")
+    c.jump(2, 0, 1, "dark_oak_fence", kind="fence")
+    c.jump(2, 0, -1, "white_stained_glass_pane", kind="pane")
+    c.jump(3, 0, 0, G, kind="off a pane")
+    # a ladder: across and up it
+    x, y, z = c.cur
+    for py in range(y - 1, y + 4):
+        c.put(x + 3, py, z, G)
+    for ly in range(y, y + 4):
         c.put(x + 2, ly, z, "ladder[facing=west]")
-    c.jumps.append({"from": [x, y, z], "to": [x + 3, y + 5, z], "kind": "king-ladder", "block": "ladder"})
-    c.sections[-1]["to"] = None
-    finish = {"id": len(c.checkpoints), "x": x + 4, "y": y + 5, "z": z, "name": "Checkmate"}
-    for kx in range(x + 3, x + 6):
-        for kz in range(z - 1, z + 2):
-            c.put(kx, y + 4, kz, "emerald_block")
+    c.jumps.append({"from": [x, y, z], "to": [x + 3, y + 4, z], "kind": "climb", "block": "ladder"})
+    c.cur = (x + 3, y + 4, z)
+    c.jump(2, -2, 0, F)
+    # an ice jump
+    c.walk(2, "packed_ice")
+    c.jump(5, 0, 0, "snow_block", kind="ice 4b")
+    # a slime bounce
+    x, y, z = c.cur
+    for i in (-1, 0, 1):
+        for k in (-1, 0, 1):
+            c.put(x + 4 + i, y - 6, z + k, "slime_block")
+    c.jump(7, -1, 0, G, kind="slime bounce")
+    # a triple neo
+    c.walk(1, G)
+    triple_neo(1, F)
+    # a neo chain: two one thick neos, a pad between
+    c.walk(2, F)
+    x, y, z = c.cur
+    for i in range(2):
+        wall(x + 1 + 2 * i, x + 1 + 2 * i, z - 3, z, y)
+        c.jump(2, 0, 0, G if i == 0 else F, kind="neo off a pad")
+    # slime onto a ladder on a tower, up and over
+    c.walk(2, F)
+    x, y, z = c.cur
+    for i in range(2, 5):
+        for k in (-1, 0, 1):
+            c.put(x + i, y - 6, z + k, "slime_block")
+    tx = x + 7
+    for ty in range(y - 8, y + 3):
+        for tz in (z - 1, z, z + 1):
+            c.put(tx, ty, tz, "polished_blackstone")
+    for ly in range(y - 4, y + 3):
+        c.put(tx - 1, ly, z, "ladder[facing=west]")
+    c.jumps.append({"from": [x, y, z], "to": [tx, y + 3, z], "kind": "slime to ladder", "block": "ladder"})
+    c.cur = (tx, y + 3, z)
+    c.jump(2, -3, 0, F)
+    # the ice tunnel
+    c.jump(2, 0, 0, "snow_block")
+    x, y, z = c.cur
+    for i in range(1, 9):
+        for k in (-1, 0, 1):
+            c.put(x + i, y - 1, z + k, "packed_ice")
+    for cx in range(x, x + 7):
+        for k in (-1, 0, 1):
+            c.put(cx, y + 2, z + k, "light_blue_stained_glass")
+    c.cur = (x + 8, y, z)
+    c.jump(6, 0, 0, "snow_block", kind="ice tunnel 5b")
+    # a ladder neo up onto a wall, and the finish on top of it
+    c.jump(2, 0, 1, G)
+    x, y, z = c.cur          # the open row, z; the wall's row is z - 1
+    for i in range(0, 3):
+        c.put(x + i, y - 1, z, G)
+        c.put(x + i, y - 1, z - 1, G)
+    wx, wz = x + 3, z - 1
+    for wy in range(y - 2, y + 4):
+        for cz in range(wz - 3, wz + 1):
+            c.put(wx, wy, cz, "polished_blackstone_bricks")
+    for ly in range(y - 1, y + 4):
+        for cz in (wz - 1, wz):
+            c.put(wx + 1, ly, cz, "ladder[facing=east]")
+    c.jumps.append({"from": [x + 2, y, z], "to": [wx, y + 4, wz], "kind": "ladder neo", "block": "ladder"})
+    # the finish: emerald along the top of the wall
+    fx, fy, fz = wx, y + 4, wz - 2
+    for dz in (-1, 0, 1):
+        c.put(fx, fy - 1, fz + dz, "emerald_block")
+    c.jumps.append({"from": [wx, y + 4, wz], "to": [fx, fy, fz], "kind": "walk", "block": "emerald_block"})
+    finish = {"id": len(c.checkpoints), "x": fx, "y": fy, "z": fz, "name": "Finish"}
     c.checkpoints.append(finish)
-    c.labels.append((x + 4.5, y + 7.2, z + 0.5, "Checkmate"))
+    c.labels.append((fx + 0.5, fy + 2.2, fz + 0.5, "Finish"))
     c.sections[-1]["to"] = finish["id"]
-
-    # the pieces: a column from the board up to every route block, with a bit of shape at its foot
-    # the board is far down, so falling onto it is a long fall nobody plans (and the fall reset catches you on the way)
-    board_top = BASE - 30
-    xs = [r[0] for r in route] + [x + 5]
-    zs = [r[2] for r in route] + [z + 1]
-    bx0 = (min(xs) - 3) - ((min(xs) - 3 - OX) % 3)
-    bz0 = (min(zs) - 3) - ((min(zs) - 3 - OZ) % 3)
-    files = max(8, math.ceil((max(xs) + 3 - bx0 + 1) / 3))
-    ranks = max(8, math.ceil((max(zs) + 3 - bz0 + 1) / 3))
-    for f in range(files):
-        for r in range(ranks):
-            block = "white_concrete" if (f + r) % 2 == 0 else "black_concrete"
-            for i in range(3):
-                for k in range(3):
-                    c.put(bx0 + 3 * f + i, board_top - 1, bz0 + 3 * r + k, block, overwrite=False)
-    for (rx, ry, rz, piece, colour) in route:
-        body = "quartz_block" if colour == "white" else "polished_blackstone"
-        for py in range(board_top, ry - 1):
-            c.put(rx, py, rz, body, overwrite=False)
-        # a wider foot, two blocks high, so it reads as a piece standing on the board
-        if piece in ("pawn", "knight", "bishop", "rook"):
-            for dx in (-1, 0, 1):
-                for dz in (-1, 0, 1):
-                    if dx or dz:
-                        c.put(rx + dx, board_top, rz + dz, body, overwrite=False)
-    c.chess = {"board": [bx0, board_top - 1, bz0, bx0 + 3 * files - 1, bz0 + 3 * ranks - 1], "route": route}
     return c
 
 
@@ -668,7 +750,6 @@ def datapack(c, outdir):
             tellraw(f"[Parkour Lab] At checkpoint {cp['id']}: {cp['name']}"),
         ]
 
-    bx0, by, bz0, bx1, bz1 = c.chess["board"]
     fn["tick"] = [
         "scoreboard players add @a[tag=pl_run] pl_t 1",
         f"execute as @e[type=marker,tag=pl_cp] at @s as @a[tag=pl_run,distance=..2.3] run function {PACK}:at_cp",

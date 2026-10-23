@@ -64,6 +64,7 @@ public final class TungstenSearch {
     // weighted A*: a bit greedy, which is the difference between tens of milliseconds and seconds, for plans a few ticks long
     private static final double GREED = 1.6;
 
+    public static boolean STRAFE = false;
     private static final float[] AIR_SPREAD = {0F, 15F, -15F, 40F, -40F, 90F, -90F};
     // from a node on the ground this close to the landing, try JumpPolicy straight to the end before expanding it tick by tick.
     // one rollout of the rule is cheaper than the two or three levels of the tree it takes the search to find the same jump,
@@ -186,6 +187,16 @@ public final class TungstenSearch {
                 out.add(Keys.run(toward + d, false));
                 out.add(Keys.run(toward + d, true));
             }
+            if (STRAFE) {
+                // W and A or D together, facing 45 degrees off the way we want to go: the input is squared off to a full
+                // 1 instead of W's 0.98, two percent more push (the 45 strafe). the jump's own push goes the way we face
+                for (float d : new float[]{0F, 22.5F, -22.5F, 45F, -45F}) {
+                    for (int side : new int[]{1, -1}) {
+                        out.add(Keys.strafe(toward + d, side, false));
+                        out.add(Keys.strafe(toward + d, side, true));
+                    }
+                }
+            }
             if (s.horizontalSpeed() > 1.0E-3) {
                 out.add(Keys.push(Keys.yaw(-s.vx, -s.vz), false));
             }
@@ -193,6 +204,10 @@ public final class TungstenSearch {
         } else {
             for (float d : AIR_SPREAD) {
                 out.add(Keys.run(toward + d, false));
+                if (STRAFE) {
+                    out.add(Keys.strafe(toward + d, 1, false));
+                    out.add(Keys.strafe(toward + d, -1, false));
+                }
             }
             if (s.horizontalSpeed() > 1.0E-3) {
                 out.add(Keys.run(Keys.yaw(-s.vx, -s.vz), false));

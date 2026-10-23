@@ -101,6 +101,7 @@ public final class JumpPilot {
     // on it (see stage), and whenever we're back there
     private TungstenSearch.Plan fallback;
     private boolean ruleRefused;
+    private int fineTicks;
     // following fallback rather than a plan of the rule's: a bit more slack, there's no rule to replan with
     private boolean onFallback;
 
@@ -329,6 +330,14 @@ public final class JumpPilot {
             tracking = true;
             return Decision.press(track(live, plan, planAt++));
         }
+        if (fallback != null && off <= 0.12 && speed <= STAGE_NEAR_SPEED && ++fineTicks > FINE_GIVE_UP) {
+            // been at it a while and it won't settle any closer: go from here, the steering takes up the rest
+            fineTicks = 0;
+            follow(fallback);
+            onFallback = true;
+            tracking = true;
+            return Decision.press(track(live, plan, planAt++));
+        }
         if (fallback != null && off <= FINE_STAGE && (off > stageOff || speed > STAGE_STILL)) {
             // a searched plan wants the exact spot, and one tick of W is a fifth of a block by the time it's coasted out:
             // walking at it overshoots back and forth for ever. look two ticks ahead instead (any push this tick, any push
@@ -352,7 +361,7 @@ public final class JumpPilot {
     }
 
     private static final double STAGE_NEAR = 0.25, STAGE_NEAR_SPEED = 0.04, FINE_STAGE = 0.4;
-    private static final int FINE_YAWS = 16, FINE_COAST = 20;
+    private static final int FINE_YAWS = 16, FINE_COAST = 12, FINE_GIVE_UP = 30;
 
     private PlayerSim.Controls fineStage(PlayerSim live) {
         List<PlayerSim.Controls> options = new ArrayList<>(FINE_YAWS + 1);

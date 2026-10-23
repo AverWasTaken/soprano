@@ -92,6 +92,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private final PathKeep<PathExecutor> keep = new PathKeep<>();
     // our own tick count for the park's age, ticksElapsedSoFar gets reset by the eta
     private long tickCount;
+    // the last time planning ahead found nothing, and from where (see AHEAD_RETRY_TICKS)
+    private BetterBlockPos aheadFailedFrom;
+    private long aheadFailedAt;
+    private static final long AHEAD_RETRY_TICKS = 40;
 
     private final SwimStalls swimStalls = new SwimStalls();
     private final FailedMoves failedMoves = new FailedMoves();
@@ -297,6 +301,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 }
                 if (goal == null || goal.isInGoal(current.getPath().getDest())) {
                     // and this path doesn't get us all the way there
+                    return;
+                }
+                if (current.getPath().getDest().equals(aheadFailedFrom) && tickCount - aheadFailedAt < AHEAD_RETRY_TICKS) {
+                    // planning ahead from this same spot just came up empty: give it a moment (a jump on the way may still be
+                    // being worked out in the background) instead of starting the same search again every single tick
                     return;
                 }
                 if (ticksRemainingInSegment(false).get() < Baritone.settings().planningTickLookahead.value) {
@@ -742,6 +751,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             failureTimeout = Baritone.settings().planAheadFailureTimeoutMS.value;
         }
         AbstractNodeCostSearch pathfinder = createPathfinder(start, goal, current == null ? null : current.getPath(), context);
+        if (current != null) {
+            pathfinder.planningAhead();
+        }
         if (!Objects.equals(pathfinder.getGoal(), goal)) { // will return the exact same object if simplification didn't happen
             logDebug("Simplifying " + goal.getClass() + " to GoalXZ due to distance");
         }
@@ -817,6 +829,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                             logDebug("Warning: discarding orphan next segment with incorrect start");
                         }
                     } else {
+                        aheadFailedFrom = new BetterBlockPos(start);
+                        aheadFailedAt = tickCount;
                         queuePathEvent(PathEvent.NEXT_CALC_FAILED);
                     }
                 } else {

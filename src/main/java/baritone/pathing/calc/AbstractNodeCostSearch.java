@@ -283,13 +283,23 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         if (logInfo) {
             logDebug("Even with a cost coefficient of " + COEFFICIENTS[COEFFICIENTS.length - 1] + ", I couldn't get more than " + Math.sqrt(bestDist) + " blocks");
             logDebug("No path found =(");
-            logNotification("No path found =(", true);
+            if (!planningAhead) {
+                logNotification("No path found =(", true);
+            }
         }
         return Optional.empty();
     }
 
     // an empty result from a search that ran out of nodes is a real "can't get there", from a timed out one it is only "not
     // yet". NOT exposed on public api
+    // planning the next segment while the current one still runs: coming up empty there isn't news (the path goes on, and
+    // it's asked again in a moment), so no popup for it. NOT exposed on public api
+    protected boolean planningAhead;
+
+    public final void planningAhead() {
+        planningAhead = true;
+    }
+
     public final void quiet() {
         quiet = true;
     }
