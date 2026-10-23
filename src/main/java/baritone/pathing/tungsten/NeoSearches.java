@@ -55,7 +55,10 @@ public final class NeoSearches {
     // what the jitter flights call a wobbly aim: LookBehavior's randomLooking113 is up to a degree either side
     static final double JITTER = 2.0;
 
-    record Key(long src, long dest, long hash) {}
+    record Key(long src, long dest, long hash, int kind) {}
+
+    // what a job is: a neo (the full search), two neos in one flight, or a chain of walks and jumps by way of ledges
+    static final int NEO = 0, COMBO = 1, LEDGES = 2;
 
     static final boolean LOG = System.getenv("SOPRANO_NEO_LOG") != null;
 
@@ -76,7 +79,11 @@ public final class NeoSearches {
     private static volatile double focusX = Double.NaN, focusY = Double.NaN, focusZ = Double.NaN;
 
     private record Job(Key key, SnapshotCollision world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region,
-                       double[] via, boolean combo) {}
+                       double[] via, int kind) {
+        boolean combo() {
+            return kind == COMBO;
+        }
+    }
 
     private NeoSearches() {}
 
@@ -91,7 +98,15 @@ public final class NeoSearches {
     // via: the point the swing round the wall goes through (see TungstenSearch's heuristic)
     static TungstenSearch.Plan lookup(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, double[] via,
                                       boolean combo, boolean schedule) {
-        TungstenSearch.Region region = region(src, land);
+        return lookup(world, src, floorY, land, via, combo ? COMBO : NEO, schedule);
+    }
+
+    static TungstenSearch.Plan lookup(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, double[] via,
+                                      int kind, boolean schedule) {
+        // a ledge chain looks at everything round src (Ledges keeps that for every landing it's asked about)
+        TungstenSearch.Region region = kind == LEDGES
+                ? TungstenSearch.Region.around(src.x + 0.5, src.z + 0.5, src.x + 0.5, src.z + 0.5, src.y - 6, Ledges.REACH + 1)
+                : region(src, land);
         long srcKey = BetterBlockPos.longHash(src), destKey = BetterBlockPos.longHash(land.x(), land.y(), land.z());
         long pair = srcKey * 31 + destKey, now = System.currentTimeMillis();
         Hashed hashed = HASHES.get(pair);
@@ -104,7 +119,7 @@ public final class NeoSearches {
             }
             HASHES.put(pair, hashed);
         }
-        Key key = new Key(srcKey, destKey, hashed.hash());
+        Key key = new Key(srcKey, destKey, hashed.hash(), kind);
         Object known = RESULTS.get(key);
         if (known instanceof TungstenSearch.Plan plan) {
             return plan;
@@ -123,7 +138,7 @@ public final class NeoSearches {
                 snap = snapshot(world, src, land, region);
             }
             synchronized (QUEUE) {
-                QUEUE.add(new Job(key, snap, src, floorY, land, region, via, combo));
+                QUEUE.add(new Job(key, snap, src, floorY, land, region, via, kind));
                 if (workers < MAX_WORKERS) {
                     workers++;
                     Thread t = new Thread(NeoSearches::work, "Soprano neo search");
@@ -174,8 +189,11 @@ public final class NeoSearches {
                     Landing l = QUEUE.get(i).land();
                     double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
                     boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
-                    double d = (QUEUE.get(i).combo() ? 1.0E9 : 0) + (back ? 1.0E7 : 0)
-                            + (Double.isNaN(dx + dy + dz) ? i : dx * dx + dy * dy + dz * dz);
+                    // near the player first, a ledge chain as if it were ten blocks further off (they're the way when nothing
+                    // else is, and a lot more of them get asked about), going back as if thirty
+                    boolean far = Double.isNaN(dx + dy + dz);
+                    double d = (QUEUE.get(i).combo() ? 1.0E9 : 0) + (far ? i + (QUEUE.get(i).kind() == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
+                            : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
                     if (d < bestD) {
                         bestD = d;
                         best = i;
@@ -191,13 +209,14 @@ public final class NeoSearches {
             TungstenSearch.Plan plan = null;
             long t0 = System.currentTimeMillis();
             try {
-                plan = job.combo() ? solveCombo(job.world(), job.src(), job.floorY(), job.land(), job.region())
+                plan = job.kind() == COMBO ? solveCombo(job.world(), job.src(), job.floorY(), job.land(), job.region())
+                        : job.kind() == LEDGES ? Ledges.plan(job.world(), job.src(), job.floorY(), job.land())
                         : solve(job.world(), job.src(), job.floorY(), job.land(), job.region(), job.via());
             } catch (Throwable t) {
                 // a search that fell over is a search that found nothing
             }
             if (LOG) {
-                System.out.println("[neo search] " + job.src() + " -> " + job.land() + ": " + (plan == null ? "none" : plan.ticks() + " ticks")
+                System.out.println("[neo search] " + (job.kind() == LEDGES ? "(ledges) " : "") + job.src() + " -> " + job.land() + ": " + (plan == null ? "none" : plan.ticks() + " ticks")
                         + " in " + (System.currentTimeMillis() - t0) + " ms, " + QUEUE.size() + " queued");
             }
             RESULTS.put(job.key(), plan == null ? NONE : plan);

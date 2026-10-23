@@ -223,6 +223,83 @@ public final class RimWalk {
             }
             hash = h;
         }
+
+        // the same over a box already gathered (all), for a floor at floorY: Ledges has several floors in one place
+        Area(BoxList all, double x0, double z0, double x1, double z1, double floorY) {
+            this.x0 = x0;
+            this.z0 = z0;
+            this.x1 = x1;
+            this.z1 = z1;
+            this.floorY = floorY;
+            for (int b = 0; b < all.size(); b++) {
+                double minY = all.get(b, 1), maxY = all.get(b, 4);
+                if (all.get(b, 3) < x0 - 1 || all.get(b, 0) > x1 + 1 || all.get(b, 5) < z0 - 1 || all.get(b, 2) > z1 + 1) {
+                    continue;
+                }
+                if (Math.abs(maxY - floorY) < 1.0E-4) {
+                    floor.add(all.get(b, 0), minY, all.get(b, 2), all.get(b, 3), maxY, all.get(b, 5));
+                } else if (maxY > floorY + 1.0E-3 && minY < floorY + HEIGHT) {
+                    solid.add(all.get(b, 0), minY, all.get(b, 2), all.get(b, 3), maxY, all.get(b, 5));
+                }
+            }
+            hash = 0;
+        }
+    }
+
+    // boxes filed by the block columns they cover
+    static final class Columns {
+        final BoxList boxes;
+        final int cx0, cz0, ncx, ncz;
+        final int[][] lists;
+
+        Columns(BoxList boxes, double x0, double z0, double x1, double z1) {
+            this.boxes = boxes;
+            cx0 = Mth.floor(x0);
+            cz0 = Mth.floor(z0);
+            ncx = Mth.floor(x1) - cx0 + 1;
+            ncz = Mth.floor(z1) - cz0 + 1;
+            int[] counts = new int[ncx * ncz];
+            int[][] lists = null;
+            for (int pass = 0; pass < 2; pass++) {
+                for (int b = 0; b < boxes.size(); b++) {
+                    int ax = Math.max(0, Mth.floor(boxes.get(b, 0)) - cx0), bx = Math.min(ncx - 1, Mth.floor(boxes.get(b, 3) - 1.0E-9) - cx0);
+                    int az = Math.max(0, Mth.floor(boxes.get(b, 2)) - cz0), bz = Math.min(ncz - 1, Mth.floor(boxes.get(b, 5) - 1.0E-9) - cz0);
+                    for (int i = ax; i <= bx; i++) {
+                        for (int k = az; k <= bz; k++) {
+                            int c = i * ncz + k;
+                            if (pass == 0) {
+                                counts[c]++;
+                            } else {
+                                lists[c][--counts[c]] = b;
+                            }
+                        }
+                    }
+                }
+                if (pass == 0) {
+                    lists = new int[ncx * ncz][];
+                    for (int c = 0; c < counts.length; c++) {
+                        lists[c] = new int[counts[c]];
+                    }
+                }
+            }
+            this.lists = lists;
+        }
+
+        // any box overlapping the square half either side of (x, z), in plan
+        boolean any(double x, double z, double half) {
+            int ax = Math.max(0, Mth.floor(x - half) - cx0), bx = Math.min(ncx - 1, Mth.floor(x + half) - cx0);
+            int az = Math.max(0, Mth.floor(z - half) - cz0), bz = Math.min(ncz - 1, Mth.floor(z + half) - cz0);
+            for (int i = ax; i <= bx; i++) {
+                for (int k = az; k <= bz; k++) {
+                    for (int b : lists[i * ncz + k]) {
+                        if (boxes.get(b, 0) < x + half && boxes.get(b, 3) > x - half && boxes.get(b, 2) < z + half && boxes.get(b, 5) > z - half) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
     }
 
     // where the box fits (MARGIN clear of anything in the way) and has FOOTING of floor under it, on a RES grid over the area,
@@ -239,11 +316,14 @@ public final class RimWalk {
             nx = (int) Math.round((area.x1 - x0) / RES) + 1;
             nz = (int) Math.round((area.z1 - z0) / RES) + 1;
             ok = new boolean[nx * nz];
+            // the boxes by block column, so a spot only looks at the few next to it (a big area has thousands)
+            Columns solid = new Columns(area.solid, x0 - 1, z0 - 1, area.x1 + 1, area.z1 + 1);
+            Columns floor = new Columns(area.floor, x0 - 1, z0 - 1, area.x1 + 1, area.z1 + 1);
             for (int i = 0; i < nx; i++) {
                 double x = x0 + i * RES;
                 for (int k = 0; k < nz; k++) {
                     double z = z0 + k * RES;
-                    ok[i * nz + k] = fits(area.solid, x, z, HALF + margin) && footed(area.floor, x, z, HALF - footing);
+                    ok[i * nz + k] = !solid.any(x, z, HALF + margin) && floor.any(x, z, HALF - footing);
                 }
             }
             room = new int[nx * nz];
@@ -383,7 +463,7 @@ public final class RimWalk {
         }
     }
 
-    private static boolean fits(BoxList solid, double x, double z, double half) {
+    static boolean fits(BoxList solid, double x, double z, double half) {
         for (int b = 0; b < solid.size(); b++) {
             if (solid.get(b, 0) < x + half && solid.get(b, 3) > x - half && solid.get(b, 2) < z + half && solid.get(b, 5) > z - half) {
                 return false;
@@ -392,7 +472,7 @@ public final class RimWalk {
         return true;
     }
 
-    private static boolean footed(BoxList floor, double x, double z, double half) {
+    static boolean footed(BoxList floor, double x, double z, double half) {
         for (int b = 0; b < floor.size(); b++) {
             if (floor.get(b, 0) < x + half && floor.get(b, 3) > x - half && floor.get(b, 2) < z + half && floor.get(b, 5) > z - half) {
                 return true;

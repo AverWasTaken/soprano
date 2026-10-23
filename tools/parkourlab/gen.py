@@ -515,7 +515,81 @@ def build():
         c.jump(gap + 1, 0, 0, "snow_block", kind=f"ice tunnel {gap}b")
     c.end_section(3, 0, 0, "19: Ice tunnel")
 
-    # 19. the finale: a bit of every section, one after the other, no checkpoints between. straights, diagonals, ups and
+    # 20. CubeCraft: three bits copied block for block out of a recording of a CubeCraft parkour map (#record), the ones the
+    # bot couldn't do. the wall bit: off black wool a block up onto the strip of quartz outside a ring of walls, round it,
+    # along the far side and off the end onto a lone stair. the wall neo: off the top of a wall round a wall post onto a
+    # block. the stair drop: down the halves of one stair onto another and off it onto a stair two down
+    c.start_section("CubeCraft", "Copied from a CubeCraft map: a hop up onto the rim of a ring of walls, round it and off "
+                    "the end onto a stair; a neo off a wall top round a post; and a drop off a lone stair onto another two down.",
+                    "LEDGES")
+    WALL_BIT = [
+        (0, -2, -1, "black_wool"), (0, -2, 0, "black_wool"), (0, -1, -3, "smooth_quartz"), (0, -1, -2, "smooth_quartz"),
+        (0, -1, -1, "black_wool"), (0, -1, 0, "black_wool"), (0, 0, -3, "smooth_quartz"), (0, 0, -2, "smooth_quartz"),
+        (0, 1, -3, "diorite_wall[east=tall,north=none,south=tall,up=true]"), (0, 1, -2, "diorite_wall[east=tall,north=tall,south=none,up=true]"),
+        (0, 2, -3, "diorite_wall[east=low,north=none,south=low,up=true]"), (0, 2, -2, "diorite_wall[east=low,north=low,south=none,up=true]"),
+        (1, -2, -1, "black_wool"), (1, -2, 0, "black_wool"), (1, -1, -3, "smooth_quartz"), (1, -1, -2, "smooth_quartz"),
+        (1, -1, -1, "black_wool"), (1, -1, 0, "black_wool"), (1, 0, -3, "smooth_quartz"), (1, 0, -2, "smooth_quartz"),
+        (1, 1, -3, "diorite_wall[east=none,north=none,south=tall,up=true,west=tall]"), (1, 1, -2, "diorite_wall[east=tall,north=tall,south=none,up=true,west=tall]"),
+        (1, 2, -3, "diorite_wall[east=none,north=none,south=low,up=true,west=low]"), (1, 2, -2, "diorite_wall[east=low,north=low,south=none,up=true,west=low]"),
+        (2, 1, -2, "diorite_wall[east=none,north=none,south=tall,up=true,west=tall]"), (2, 1, -1, "diorite_wall[east=none,north=tall,south=none,up=true,west=none]"),
+        (2, 2, -2, "diorite_wall[east=none,north=none,south=low,up=true,west=low]"), (2, 2, -1, "diorite_wall[east=none,north=low,south=none,up=true,west=none]"),
+        (6, 0, -3, "polished_blackstone_brick_stairs[facing=east,half=bottom]"), (6, 0, -2, "polished_blackstone_brick_stairs[facing=east,half=bottom]"),
+        (7, 0, -3, "black_wool"), (7, 0, -2, "black_wool"),
+        (7, 1, -3, "polished_blackstone_brick_stairs[facing=east,half=bottom]"), (7, 1, -2, "polished_blackstone_brick_stairs[facing=east,half=bottom]"),
+    ]
+    WALL_NEO_AND_DROP = [
+        (-14, -3, -5, "smooth_quartz_stairs[facing=east,half=bottom]"), (-13, -3, -6, "smooth_quartz"),
+        (-13, -2, -6, "smooth_quartz_stairs[facing=east,half=bottom]"),
+        (-8, -1, -5, "polished_blackstone_brick_stairs[facing=east,half=bottom]"), (-7, -1, -6, "black_wool"),
+        (-7, 0, -6, "polished_blackstone_brick_stairs[facing=east,half=bottom]"),
+        (-3, -1, -6, "smooth_quartz"), (-3, -1, -5, "smooth_quartz"), (-3, 0, -6, "smooth_quartz"), (-3, 0, -5, "smooth_quartz"),
+        (-2, -1, -6, "smooth_quartz"), (-2, -1, -5, "smooth_quartz"), (-2, 0, -6, "smooth_quartz"), (-2, 0, -5, "smooth_quartz"),
+        (3, -1, -6, "black_wool"), (3, -1, -5, "black_wool"), (3, 0, -6, "black_wool"), (3, 0, -5, "black_wool"),
+        (3, 1, -6, "blackstone_wall[south=tall,up=true]"), (3, 1, -5, "blackstone_wall[north=tall,up=true]"),
+        (3, 2, -6, "blackstone_wall[south=low,up=true]"), (3, 2, -5, "blackstone_wall[north=low,up=true]"),
+        (4, -1, -6, "black_wool"), (4, -1, -5, "black_wool"), (4, -1, -3, "smooth_quartz"),
+        (4, -1, -1, "diorite_wall[south=low,up=true]"), (4, -1, 0, "blackstone_wall[north=low,up=true]"),
+        (4, 0, -6, "black_wool"), (4, 0, -5, "black_wool"), (4, 0, -1, "diorite_wall[up=true]"), (4, 1, -1, "diorite_wall[up=true]"),
+    ]
+    def copy(blocks, ax, ay, az):
+        for dx, dy, dz, state in blocks:
+            c.put(ax + dx, ay + dy, az + dz, state)
+    def ledge_jump(to, kind, block):
+        x, y, z = c.cur
+        c.jumps.append({"from": [x, y, z], "to": list(to), "kind": kind, "block": block})
+        c.cur = tuple(to)
+    # the wall bit, its black wool three on
+    x, y, z = c.cur
+    ax, ay, az = x + 3, y, z
+    copy(WALL_BIT, ax, ay, az)
+    c.jumps.append({"from": [x, y, z], "to": [ax, ay, az], "kind": "onto black wool", "block": "black_wool"})
+    c.cur = (ax, ay, az)
+    ledge_jump((ax + 7, ay + 2, az - 2), "cubecraft wall bit: up onto the rim, round, off onto a stair", "polished_blackstone_brick_stairs")
+    # on east along the stair's row and north, then up onto the wall top from the south (the map has another wall top 4 west
+    # of it, left out here: from it the quartz past the neo is in reach, and the bot would skip the neo). everything after it is laid out
+    # so the only way on is the way the CubeCraft map goes: the bot took every shortcut the first layouts had (off the wall
+    # neo straight across onto the finale, and back along the run in to skip the stair drop)
+    c.jump(3, 0, 0)
+    c.jump(3, 0, 0)
+    c.jump(4, 0, 0)
+    c.jump(0, 0, -3)
+    c.jump(0, 0, -3)
+    x, y, z = c.cur
+    ax, ay, az = x - 4, y, z - 3
+    copy(WALL_NEO_AND_DROP, ax, ay, az)
+    ledge_jump((ax + 4, ay, az), "onto a wall top", "blackstone_wall")
+    ledge_jump((ax + 4, ay, az - 3), "cubecraft wall neo: off a wall top round a post", "smooth_quartz")
+    ledge_jump((ax + 4, ay + 1, az - 5), "up onto wool", "black_wool")
+    ledge_jump((ax - 2, ay + 1, az - 5), "past a walled block, 4 gap", "smooth_quartz")
+    ledge_jump((ax - 7, ay + 1, az - 6), "onto a lone stair", "polished_blackstone_brick_stairs")
+    ledge_jump((ax - 13, ay - 1, az - 6), "cubecraft stair drop: down a stair's halves and off onto a stair two down", "smooth_quartz_stairs")
+    # off it to the west and away north, out of reach of all of the above
+    c.jump(-3, 0, 0)
+    for _ in range(4):
+        c.jump(0, 0, -3)
+    c.end_section(3, 0, 0, "20: CubeCraft")
+
+    # 21. the finale: a bit of every section, one after the other, no checkpoints between. straights, diagonals, ups and
     # downs, a neo, a four blocker, a head hitter, fences, a ladder, ice, a slime bounce, a triple neo, a neo chain, slime
     # onto a ladder, the ice tunnel, a ladder neo up a wall, and the finish on top
     c.start_section("Finale", "Every section in one run: straights, diagonals, ups and downs, a neo, a four blocker, a "

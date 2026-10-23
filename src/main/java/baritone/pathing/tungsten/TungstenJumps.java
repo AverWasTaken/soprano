@@ -22,6 +22,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Helper;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.movements.PendingTables;
 import baritone.pathing.movement.movements.MovementParkour;
 import baritone.utils.pathing.MutableMoveResult;
 import net.minecraft.core.BlockPos;
@@ -113,6 +114,8 @@ public final class TungstenJumps {
     // per context: the node we last answered for, the jumps we've worked out, the sim budget
     public static final class Cache {
         private long lastNode = Long.MIN_VALUE;
+        // whether the last jump() came back "still being worked out"
+        private boolean lastPending;
         private Jump[] lastBuckets;
         private final Map<Long, Map<Long, Known>> pairs = new HashMap<>();
         private int pairCount;
@@ -172,7 +175,8 @@ public final class TungstenJumps {
             }
             // nearest first in each bucket: the first that works is the one it offers
             List<int[]> todo = new ArrayList<>();
-            for (int dy = MAX_UP; dy >= -Math.min(MAX_DOWN, context.maxFallHeightNoWater); dy--) {
+            boolean posts = ledgesWanted(x, y, z);
+            for (int dy = posts ? LEDGE_UP : MAX_UP; dy >= -Math.min(MAX_DOWN, context.maxFallHeightNoWater); dy--) {
                 for (int dx = -RANGE; dx <= RANGE; dx++) {
                     for (int dz = -RANGE; dz <= RANGE; dz++) {
                         if (candidate(context, x, y, z, dx, dy, dz, false)) {
@@ -183,14 +187,24 @@ public final class TungstenJumps {
             }
             todo.sort((a, b) -> Integer.compare(a[3], b[3]));
             BetterBlockPos src = new BetterBlockPos(x, y, z);
+            // a bucket gets one ledge chain worked out in the background at a time (they're a second or so each), the
+            // nearest: the rest of its ledge pairs wait for the next time it's asked
+            boolean[] ledgeAsked = new boolean[BUCKETS];
             for (int[] c : todo) {
                 int b = bucket(c[0], c[2]);
                 if (out[b] != NONE) {
                     continue;
                 }
+                boolean ledgeOnly = posts && !plainCandidate(context, x, y, z, c[0], c[1], c[2], false);
+                if (ledgeOnly && ledgeAsked[b]) {
+                    continue;
+                }
+                lastPending = false;
                 Jump j = jump(context, src, new BetterBlockPos(x + c[0], y + c[1], z + c[2]), false);
                 if (j != null) {
                     out[b] = j;
+                } else if (ledgeOnly && lastPending) {
+                    ledgeAsked[b] = true;
                 }
             }
             return out;
@@ -206,7 +220,8 @@ public final class TungstenJumps {
             if (known != null && (!anyBudget || now - known.at() < RECHECK_MS)) {
                 return known.jump() == NONE ? null : known.jump();
             }
-            if (budget <= 0 && !anyBudget) {
+            // (a ledge chain is only ever looked up here, worked out in the background: no budget of the planner's to spend)
+            if (budget <= 0 && !anyBudget && plainCandidate(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z, true)) {
                 if (!warned) {
                     warned = true;
                     Helper.HELPER.logDebug("Tungsten jumps: out of sim budget for this search (tungstenPlannerBudget)");
@@ -220,6 +235,7 @@ public final class TungstenJumps {
             Jump j = simulate(context, world, src, dest, !anyBudget);
             budget -= PlayerSim.ticks() - before;
             if (j == PENDING) {
+                lastPending = true;
                 return null;
             }
             if (pairCount > 50_000) {
@@ -269,13 +285,101 @@ public final class TungstenJumps {
 
     // is dest (src plus dx dy dz) worth a sim at all
     public static boolean candidate(CalculationContext context, int x, int y, int z, int dx, int dy, int dz, boolean existing) {
+        return plainCandidate(context, x, y, z, dx, dy, dz, existing)
+                || (existing || ledgesWanted(x, y, z)) && ledgeCandidate(context, x, y, z, dx, dy, dz);
+    }
+
+    // ledge chains are a last resort, and a lot of background work: they're only looked for round where a search just came
+    // up empty (and for a minute after), not everywhere a path goes past a wall
+    private record LedgeSpot(int x, int y, int z, long until) {}
+    private static final List<LedgeSpot> LEDGE_SPOTS = new java.util.concurrent.CopyOnWriteArrayList<>();
+    static final long LEDGE_MS = 120_000;
+    static final int LEDGE_AROUND = 16, MAX_LEDGE_SPOTS = 8;
+
+    public static void wantLedges(int x, int y, int z) {
+        long now = System.currentTimeMillis();
+        LEDGE_SPOTS.removeIf(s -> s.until() < now);
+        boolean known = ledgesWanted(x, y, z);
+        LEDGE_SPOTS.removeIf(s -> s.x() == x && s.y() == y && s.z() == z);
+        LEDGE_SPOTS.add(new LedgeSpot(x, y, z, now + LEDGE_MS));
+        while (LEDGE_SPOTS.size() > MAX_LEDGE_SPOTS) {
+            LEDGE_SPOTS.remove(0);
+        }
+        if (NeoSearches.LOG) {
+            System.out.println("[neo search] ledges wanted round " + x + " " + y + " " + z + (known ? "" : " (new)"));
+        }
+        if (!known) {
+            // whoever's waiting on the search should try it again: there's more to look at now
+            PendingTables.missed(new Object(), () -> true);
+        }
+    }
+
+    static boolean ledgesWanted(int x, int y, int z) {
+        long now = System.currentTimeMillis();
+        for (LedgeSpot s : LEDGE_SPOTS) {
+            if (now < s.until() && Math.abs(x - s.x()) <= LEDGE_AROUND && Math.abs(z - s.z()) <= LEDGE_AROUND && Math.abs(y - s.y()) <= LEDGE_AROUND / 2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a chain of walks and jumps by way of the rims of blocks with walls or fences on them (Ledges): from a node with posts
+    // round it, to a landing a few blocks off, up to two up
+    static final int LEDGE_RANGE = 7, LEDGE_UP = 2, LEDGE_DOWN = 3;
+
+    static boolean ledgeCandidate(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) < 2 || dy > LEDGE_UP || dy < -LEDGE_DOWN || -dy > context.maxFallHeightNoWater
+                || dx * dx + dz * dz > LEDGE_RANGE * LEDGE_RANGE || !context.isLoaded(x + dx, z + dz)) {
+            return false;
+        }
+        // (anywhere a search came up empty: rims of walled blocks are the usual reason, but the halves of a stair, a slab, a
+        // short run up across a gap are all things the grid can't stand on either)
+        return destOk(context, x + dx, y + dy, z + dz);
+    }
+
+    // a wall, a fence, a pane, a post of any kind (taller than a block, or not covering its cell) within two blocks of x y z
+    static boolean postsNear(CalculationContext context, int x, int y, int z) {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    if (post(context, x + dx, y + dy, z + dz)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean post(CalculationContext context, int x, int y, int z) {
+        BlockState state = context.get(x, y, z);
+        if (state.isAir() || MovementHelper.isClimbable(state.getBlock()) || !state.getFluidState().isEmpty()) {
+            return false;
+        }
+        VoxelShape shape;
+        synchronized (SHAPE_POS) {
+            shape = state.getCollisionShape(context.bsi.access, SHAPE_POS.set(x, y, z));
+        }
+        if (shape.isEmpty()) {
+            return false;
+        }
+        double top = shape.max(Direction.Axis.Y);
+        boolean narrow = shape.min(Direction.Axis.X) > 0.01 || shape.max(Direction.Axis.X) < 0.99
+                || shape.min(Direction.Axis.Z) > 0.01 || shape.max(Direction.Axis.Z) < 0.99;
+        return top > 1.0 || narrow && top > 0.5;
+    }
+
+    public static boolean plainCandidate(CalculationContext context, int x, int y, int z, int dx, int dy, int dz, boolean existing) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) < 2 || dy > MAX_UP || dy < -MAX_DOWN || -dy > context.maxFallHeightNoWater) {
             return false; // next door is the grid moves' business
         }
         int tx = x + dx, ty = y + dy, tz = z + dz;
         // a straight line MovementParkour already jumps is its, it's cheaper to plan. one it won't (under a ceiling, onto a
         // fence, a gap it thinks is too long) is fair game
-        if (!existing && context.allowParkour && dy >= 0 && (dx == 0 || dz == 0)) {
+        // (onto a stair it isn't: it lands at a run and the run carries on down the low step and off the end, where the
+        // sim settles on it)
+        if (!existing && context.allowParkour && dy >= 0 && (dx == 0 || dz == 0) && !stepped(context.get(x + dx, y + dy - 1, z + dz))) {
             MutableMoveResult r = new MutableMoveResult();
             Direction d = dx > 0 ? Direction.EAST : dx < 0 ? Direction.WEST : dz > 0 ? Direction.SOUTH : Direction.NORTH;
             MovementParkour.cost(context, x, y, z, d, r);
@@ -306,6 +410,11 @@ public final class TungstenJumps {
         if (grab) {
             return true;
         }
+        return destOk(context, tx, ty, tz);
+    }
+
+    // somewhere to stand in tx ty tz
+    static boolean destOk(CalculationContext context, int tx, int ty, int tz) {
         return jumpFloor(context, tx, ty - 1, tz)
                 && MovementHelper.fullyPassable(context, tx, ty, tz) && MovementHelper.fullyPassable(context, tx, ty + 1, tz)
                 && (!tall(context, tx, ty - 1, tz) || MovementHelper.fullyPassable(context, tx, ty + 2, tz))
@@ -586,6 +695,10 @@ public final class TungstenJumps {
         sim.onGround = true;
         Landing land = landing(context, dest);
         double dx = dest.x - src.x, dz = dest.z - src.z;
+        if (!plainCandidate(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z, true)) {
+            // too far, too high or no hole to jump over: only ever by way of ledges
+            return ledges(context, world, src, dest, floor, land, schedule);
+        }
         int[] neo = land.grab() ? null : neoSide(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
         // round a wall from right behind it: the rule's aimed variants (a few thousand sim ticks of looking ahead each) all
         // but never do one of those, the background search is what does. don't spend the planner's budget finding that out
@@ -636,8 +749,11 @@ public final class TungstenJumps {
                     ? new double[]{(src.x + 0.5 + land.centerX()) / 2 + neo[0] * 0.5, (src.z + 0.5 + land.centerZ()) / 2 + neo[1] * 0.5}
                     : NeoSearches.via(src, land, neo[0], neo[1]);
             TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, via, neo[2] == 1, schedule);
-            if (plan == null || plan == NeoSearches.WAIT) {
-                return plan == null ? null : PENDING;
+            if (plan == NeoSearches.WAIT) {
+                return PENDING;
+            }
+            if (plan == null) {
+                return ledges(context, world, src, dest, floor, land, schedule);
             }
             // two in one flight has the least room of anything: only when there's no way with a stop on the pad between
             double cost = context.biasJump(Math.max(plan.ticks(), straight) * (neo[2] == 1 ? COMBO_COST : NEO_COST) + context.jumpPenalty);
@@ -646,13 +762,37 @@ public final class TungstenJumps {
         if (corner != null && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())) {
             // round the corner of a pillar or a wall at an angle: the same background search, by way of the corner
             TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, corner, false, schedule);
-            if (plan == null || plan == NeoSearches.WAIT) {
-                return plan == null ? null : PENDING;
+            if (plan == NeoSearches.WAIT) {
+                return PENDING;
+            }
+            if (plan == null) {
+                return ledges(context, world, src, dest, floor, land, schedule);
             }
             double cost = context.biasJump(Math.max(plan.ticks(), straight) * NEO_COST + context.jumpPenalty);
             return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
         }
-        return null;
+        return ledges(context, world, src, dest, floor, land, schedule);
+    }
+
+    static final double LEDGE_COST = 1.2;
+
+    // by way of ledges (Ledges), worked out in the background, when there are posts round src to make rims
+    private static Jump ledges(CalculationContext context, SafeCollision world, BetterBlockPos src, BetterBlockPos dest, double floor, Landing land,
+                               boolean schedule) {
+        if (land.grab() || !ledgeCandidate(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z)) {
+            return null;
+        }
+        TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, null, NeoSearches.LEDGES, schedule);
+        if (plan == NeoSearches.WAIT) {
+            return PENDING;
+        }
+        if (plan == null) {
+            return null;
+        }
+        double dx = dest.x - src.x, dz = dest.z - src.z;
+        double straight = Math.sqrt(dx * dx + dz * dz) * ActionCosts.SPRINT_ONE_BLOCK_COST;
+        double cost = context.biasJump(Math.max(plan.ticks(), straight) * LEDGE_COST + context.jumpPenalty);
+        return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
     }
 
     // where the feet rest standing in x y z: the top of whatever's under them, or NaN if that's not within a few
