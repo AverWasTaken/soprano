@@ -47,6 +47,10 @@ public class PortalPhase implements PhaseHandler {
     // flint from gravel we walk past while the gate packs (DetourSpec.portalMayDetour). no PrepSupport here, so its own
     private final ResourceDetour gravel = ResourceDetour.gravel();
     private boolean gateDone;
+    // the tick the food first sat at the minimum with the fill-up to the trip's stop still going, -1 = not yet
+    private long fillUpSince = -1;
+    // how long the fill-up past the minimum may take before the gate settles for the minimum
+    private static final long FILL_UP_TICKS = 20 * 240;
     // what altoAsyncSmelting was when we came in, null when we are not holding it
     private Boolean userAsync;
     private boolean noGoldSaid;
@@ -111,6 +115,7 @@ public class PortalPhase implements PhaseHandler {
         // the furnace we empty on the way out comes down with us, but never gets a batch of meat on the way
         furnaces.newExitPhase();
         gateDone = false;
+        fillUpSince = -1;
         resetCastClock();
         // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
         // leaving-the-dimension rule below takes the ore straight back out, forever. so it's off for this phase
@@ -185,7 +190,13 @@ public class PortalPhase implements PhaseHandler {
         // PORTAL ends the moment we are in the nether, which is too late for a table left standing in the overworld (this phase
         // used to have no station tracking at all, and the gate crafts a bucket at one). so no portal task runs while one of
         // ours is coming down or still owed: the same rule GATHER and IRON end by, with the gate as the plan
-        List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.buildBlocks());
+        if (ctx.food().shortOfMinimum()) {
+            fillUpSince = -1;
+        } else if (fillUpSince < 0) {
+            fillUpSince = f.gameTime();
+        }
+        boolean fillUp = fillUpSince < 0 || f.gameTime() - fillUpSince < FILL_UP_TICKS;
+        List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.buildBlocks(), fillUp);
         if (f.dimension() == Dimension.OVERWORLD) {
             Task pickup = benches.tick(mod, ctx, gate);
             if (pickup != null) {

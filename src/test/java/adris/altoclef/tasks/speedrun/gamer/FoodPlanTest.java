@@ -866,7 +866,8 @@ public class FoodPlanTest {
         assertEquals(bag + " (kit)", shortOfMinimum, FoodGate.index(KitPlanner.plan(f, cfg, end.beds, p), p) >= 0);
         assertEquals(bag + " (gather)", shortOfMinimum, KitPlanner.gather(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
-        assertEquals(bag + " (portal)", shortOfMinimum, PortalPlanner.gate(f, cfg, end.beds, p).stream()
+        // (the portal is the last stop before the nether: it fills to the trip's stop, so it is short of more than the minimum)
+        assertEquals(bag + " (portal)", p.shortOf(p.tripEnd()), PortalPlanner.gate(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
         assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
     }
@@ -1035,7 +1036,8 @@ public class FoodPlanTest {
         assertFalse(p.wantsRefill());
         assertFalse(planHasMinimum(f, p));
         assertFalse(hasFood(KitPlanner.gather(f, cfg, 8, p)));
-        assertFalse(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
+        // (the portal is the exception: the last stop before the nether fills to the trip's stop)
+        assertTrue(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
         // and the soft top-up does not start on the surface either, it only lives inside a refill
         assertFalse(p.leads(true, false, false));
         assertFalse(p.nextTopUp(false, true));

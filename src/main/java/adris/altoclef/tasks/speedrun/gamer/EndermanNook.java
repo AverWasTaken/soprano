@@ -82,6 +82,28 @@ public final class EndermanNook {
         return nearestDistance <= LATCH_RANGE;
     }
 
+    // the nearest enderman the latch may count: the bait needs line of sight (NookHuntTask.baitFor), so one behind a hill is no reason
+    // to dig a nook that idles out and wakes the next one for free. dead ones and ones out of sight come in as NaN, infinity = none
+    public static double nearestSeen(double[] distances) {
+        double best = Double.POSITIVE_INFINITY;
+        for (double d : distances) {
+            if (!Double.isNaN(d)) {
+                best = Math.min(best, d);
+            }
+        }
+        return best;
+    }
+
+    // the hotspot walk is over: close in the plane and not stranded on a hill above (or in a hole under) the forest floor
+    public static boolean atHotspot(double dx, double dy, double dz, double radius, double yBand) {
+        return dx * dx + dz * dz <= radius * radius && Math.abs(dy) <= yBand;
+    }
+
+    // walking into a crowd of endermen is the same call as starting one on purpose
+    public static boolean mayWalkIn(float health) {
+        return health >= AGGRO_MIN_HP;
+    }
+
     // the combat brain keeps its hands off while the hunt is running and every foe in view is an enderman: running from a
     // teleporter is useless and the nook is the plan
     public static boolean brainStandsDown(boolean huntRunning, int foes, int endermen) {

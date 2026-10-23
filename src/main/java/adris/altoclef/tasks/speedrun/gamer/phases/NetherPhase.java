@@ -3,12 +3,15 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.misc.EquipArmorTask;
+import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
+import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
+import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -104,6 +107,15 @@ public class NetherPhase implements PhaseHandler {
     private PearlHuntTask hunt;
     private int huntTarget;
     private final HomePortalWalk homeWalk = new HomePortalWalk();
+    // the bag ran dry out here: home through the portal, the overworld's food floor, and back (FoodTripRules). rods, pearls and the
+    // sweep all live in RunState, so none of it is lost on the way
+    private final FoodFloor foodFloor = new FoodFloor();
+    private DefaultGoToDimensionTask goHome;
+    private boolean foodTrip;
+    private int foodTrips;
+    private double foodTripStart;
+    private boolean foodTripUp;
+    private int foodDeathsSeen;
     // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
     private final ResourceDetour gravel = ResourceDetour.gravel();
     // a barter ticked this recently is still going (see gravelSide)
@@ -222,6 +234,12 @@ public class NetherPhase implements PhaseHandler {
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
         homeWalk.reset();
+        foodFloor.reset();
+        goHome = null;
+        foodTrip = false;
+        foodTrips = 0;
+        foodTripUp = false;
+        foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
         hunt = null;
         trade = null;
@@ -278,6 +296,22 @@ public class NetherPhase implements PhaseHandler {
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
+            if (foodTrip) {
+                // the hunt's clock starts when we are up here, not when we left the fortress
+                if (!foodTripUp) {
+                    foodTripUp = true;
+                    foodTripStart = ctx.secondsInPhase();
+                }
+                Task hunt = foodFloor.tickTrip(ctx);
+                if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart)) {
+                    hudState = foodFloor.hud();
+                    return hunt;
+                }
+                foodTrip = false;
+                foodTripUp = false;
+                foodFloor.reset();
+                ctx.progress("food trip done");
+            }
             return toTheNether(mod, ctx);
         }
         homeWalk.stopTracking(mod);
@@ -291,6 +325,10 @@ public class NetherPhase implements PhaseHandler {
         if (cover != null) {
             gravel.preempted(ctx.facts().gameTime());
             return cover;
+        }
+        Task home = foodTripHome(mod, ctx);
+        if (home != null) {
+            return home;
         }
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
@@ -308,6 +346,42 @@ public class NetherPhase implements PhaseHandler {
             return gold;
         }
         return nextStep(mod, ctx, now);
+    }
+
+    // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
+    private Task foodTripHome(AltoClef mod, GamerContext ctx) {
+        double now = ctx.secondsInPhase();
+        // a respawn is a new body: whatever trip we were on went with the old one
+        int deaths = ctx.state().deaths.size();
+        if (deaths != foodDeathsSeen) {
+            foodDeathsSeen = deaths;
+            foodTrip = false;
+            foodTripUp = false;
+        }
+        if (!foodTrip) {
+            // the nether side of the pair is the way home (ReturnPhase.recordPortal keeps state.netherPortal), the overworld one is
+            // where we come out
+            boolean portalKnown = ctx.state().netherPortal != null
+                    || mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER).isPresent();
+            if (!FoodTripRules.goHome(ctx.facts().foodUnits(), portalKnown, ctx.state().netherTrip != null, foodTrips)) {
+                return null;
+            }
+            foodTrip = true;
+            foodTripUp = false;
+            foodTrips++;
+            foodTripStart = now;
+            goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
+            ctx.log("nether: out of food, going home for more");
+            ctx.progress("food trip");
+        }
+        if (FoodTripRules.tripOver(true, now - foodTripStart)) {
+            // the walk home ate its whole clock: this portal is not getting us there, no second try
+            foodTrip = false;
+            foodTrips = FoodTripRules.MAX_TRIPS;
+            return null;
+        }
+        hudState = "Going home for food";
+        return goHome;
     }
 
     // a piglin close enough to be angered by a gold block breaking (NetherGold.angerBox): the whole box around the player, no sight

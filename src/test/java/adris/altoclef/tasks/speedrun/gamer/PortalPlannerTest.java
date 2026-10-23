@@ -172,15 +172,40 @@ public class PortalPlannerTest {
     @Test
     public void gateIsEmptyWhenReady() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         f.buildBlocks = 32;
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    @Test
+    public void gateFillsTheFoodToTheTripStopNotTheMinimum() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+    }
+
+    @Test
+    public void gateSettlesForTheMinimumWhenTheFillUpIsOff() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        FoodPlan p = FoodPlan.ofBeds(f, cfg, 10);
+        assertTrue(PortalPlanner.gate(f, cfg, 10, p, BuildBlocks.NONE, false).isEmpty());
+        f.foodUnits = 60;
+        assertTrue(PortalPlanner.gate(f, cfg, 10, FoodPlan.ofBeds(f, cfg, 10), BuildBlocks.NONE, false).isEmpty());
+    }
+
+    @Test
+    public void gateStopsAtTheMinimumWhenTheBagIsFull() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        f.bagFull = true;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
     public void fireChargeIsALightToo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         f.buildBlocks = 32;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
@@ -188,7 +213,7 @@ public class PortalPlannerTest {
     @Test
     public void gateAsksForOneMoreEmptyBucketWhenOnlyTheWaterOneIsHeld() {
         FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         f.buildBlocks = 32;
         assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg, 10));
     }
@@ -197,7 +222,7 @@ public class PortalPlannerTest {
     public void gateWantsArmorOn() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1)
                 .give(Items.IRON_BOOTS, 1);
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         f.buildBlocks = 32;
         assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg, 10));
         f.worn.add(Items.IRON_BOOTS);
@@ -206,7 +231,7 @@ public class PortalPlannerTest {
 
     private FakeFacts readyToGo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         f.buildBlocks = 32;
         return f;
     }

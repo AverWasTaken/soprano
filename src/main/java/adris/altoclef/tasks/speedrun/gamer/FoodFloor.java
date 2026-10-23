@@ -32,6 +32,21 @@ public final class FoodFloor {
         return runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, food.overworldMinimum())));
     }
 
+    // the same hunt for a nether food trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
+    // to the minimum and not only under the floor
+    public Task tickTrip(GamerContext ctx) {
+        FoodPlan food = ctx.facts().dimension() == Dimension.OVERWORLD ? ctx.food() : null;
+        boolean was = active;
+        active = food != null && food.shortOfMinimum();
+        if (!active) {
+            if (was) {
+                runner.reset();
+            }
+            return null;
+        }
+        return runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, food.overworldMinimum())));
+    }
+
     public boolean active() {
         return active;
     }

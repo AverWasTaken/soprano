@@ -98,11 +98,21 @@ public final class PortalPlanner {
 
     // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under portalBuildBlocksLow and runs to portalBuildBlocks
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, BuildBlocks build) {
+        return gate(f, cfg, endBeds, food, build, true);
+    }
+
+    // `fillUp` = the food runs past the minimum to the trip's stop. the phase turns it off when that top-up drags on (an island
+    // with nothing to hunt), the minimum is all the gate insists on then
+    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, BuildBlocks build, boolean fillUp) {
         List<KitNeed> out = new ArrayList<>();
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
         // the same refill gap: 69 at the portal is not a trip
         if (food.wantsRefill()) {
             out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
+        } else if (fillUp && food.shortOf(food.tripEnd())) {
+            // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
+            // is the minimum on a full bag, so this cannot ask for a pile there is no room for
+            out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {
