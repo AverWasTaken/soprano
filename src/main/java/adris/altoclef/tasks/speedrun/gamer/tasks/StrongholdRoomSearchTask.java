@@ -16,10 +16,13 @@ import adris.altoclef.world.FrameGeometry;
 import adris.altoclef.world.StrongholdRoomPlan;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Predicate;
 
 // dig down at the start chunk until stone bricks show, then walk the chunk spiral looking for end portal frames.
 // only frames we SEE count. once three of them agree on a ring the other nine are given (the ring is rigid)
@@ -79,6 +83,16 @@ public class StrongholdRoomSearchTask extends Task {
     private double chunkSince;
     private final RoomCoverage.Stall stall = new RoomCoverage.Stall();
     private static final int CHUNK_GOAL_RANGE = 7;
+    // a corridor cell is a spot we can stand on, so get right onto it
+    private static final int CORRIDOR_GOAL_RANGE = 2;
+    // set while the leg in progress is a walk to a corridor cell instead of a chunk's middle
+    private BlockPos corridorGoal;
+    private final RoomCoverage.Visited visitedCells = new RoomCoverage.Visited();
+    private int timedOutInLeg;
+    private int noPathStreak;
+    // chunks that ended on no path while the cascade guard was on. not picked again, but they are not skipped either: a new
+    // level or any leg that gets somewhere gives them back
+    private final Set<String> heldChunks = new HashSet<>();
     private Task hintTask;
     private BlockPos hintPos;
     private Task approachTask;
@@ -255,10 +269,9 @@ public class StrongholdRoomSearchTask extends Task {
     private void enterSpiral(AltoClef mod) {
         if (Double.isNaN(workY)) {
             // the level of the bricks we hit, not wherever the dig stopped. no bricks = the floor, the estimate was off
-            List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
-            workFromBricks = !hit.isEmpty();
-            workY = RoomCoverage.workY(hit.isEmpty() ? OptionalInt.empty() : OptionalInt.of(hit.get(0).getY()),
-                    mod.getPlayer().getY());
+            OptionalInt level = brickLevel(mod);
+            workFromBricks = level.isPresent();
+            workY = RoomCoverage.workY(level, mod.getPlayer().getY());
         }
         stall.reset();
         enter(mod, Stage.SPIRAL);
@@ -293,22 +306,39 @@ public class StrongholdRoomSearchTask extends Task {
         if (stage == Stage.SPIRAL && !workFromBricks) {
             // we searched a level that was only a guess (a timed out dig): the first bricks we see correct it.
             // only ones near where we are, a level far from us would never count
-            List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
-            if (!hit.isEmpty()) {
-                double oldY = workY;
-                workY = hit.get(0).getY();
+            OptionalInt level = brickLevel(mod);
+            if (level.isPresent()) {
                 workFromBricks = true;
-                // chunks marked at the guessed level were never seen from the real one: both sets start over. a retry of the
-                // skipped ones is owed again too
-                if (RoomCoverage.clearForNewLevel(state.roomChunksVisited, skippedChunks, oldY, workY)) {
-                    retriedSkipped = false;
-                    ctx.save();
-                }
-                // the walk in progress aims at the old level: drop it, the next pick rebuilds the goal at the new one
-                chunkTarget = null;
-                chunkTask = null;
+                adoptLevel(level.getAsInt(), state);
             }
         }
+    }
+
+    // the level of the bricks around us (a few of them, not the one nearest, which may be a ceiling)
+    private OptionalInt brickLevel(AltoClef mod) {
+        return RoomCoverage.walkLevel(seenBricks(mod, 8, mod.getPlayer().getY()), mod.getPlayer().getX(), mod.getPlayer().getZ());
+    }
+
+    private void adoptLevel(double newY, RunState state) {
+        double oldY = workY;
+        workY = newY;
+        // a new level is a new try at everything the no paths said
+        noPathStreak = 0;
+        heldChunks.clear();
+        // chunks marked at the guessed level were never seen from the real one: both sets start over. a retry of the
+        // skipped ones is owed again too
+        if (RoomCoverage.clearForNewLevel(state.roomChunksVisited, skippedChunks, oldY, workY)) {
+            retriedSkipped = false;
+            ctx.save();
+        }
+        // the walk in progress aims at the old level: drop it, the next pick rebuilds the goal at the new one
+        dropLeg();
+    }
+
+    private void dropLeg() {
+        chunkTarget = null;
+        chunkTask = null;
+        corridorGoal = null;
     }
 
     private BlockPos nearestFrame(AltoClef mod, List<int[]> frames) {
@@ -370,11 +400,18 @@ public class StrongholdRoomSearchTask extends Task {
     // (NaN = any level). tracker order is scan order, so sort before asking the seen filter or the same few hidden ones
     // eat its budget forever
     private List<BlockPos> seenBricks(AltoClef mod, int limit, double nearY) {
+        return seenBricks(mod, limit, nearY, p -> false);
+    }
+
+    // skip drops candidates before the nearest 200 cut: bricks all around where we have been would fill it and push the
+    // frontier out
+    private List<BlockPos> seenBricks(AltoClef mod, int limit, double nearY, Predicate<BlockPos> skip) {
         RunState.Pos start = ctx.state().strongholdStart;
         List<BlockPos> out = new ArrayList<>();
         // filter first, then take the nearest 200: a village next to us would fill all of them with the wrong bricks
         List<BlockPos> candidates = RoomCoverage.brickCandidates(mod.getBlockTracker().getKnownLocations(BRICKS), BRICK_MAX_Y,
                 start != null, start == null ? 0 : start.x, start == null ? 0 : start.z, BRICK_MAX_DIST, nearY);
+        candidates.removeIf(skip);
         for (BlockPos pos : StrongholdScan.nearest(candidates, mod.getPlayer().blockPosition(), StrongholdScan.MAX_SCAN)) {
             if (SeenFilter.isSeen(mod, pos)) {
                 out.add(pos);
@@ -486,23 +523,47 @@ public class StrongholdRoomSearchTask extends Task {
         RunState state = ctx.state();
         ChunkPos here = mod.getPlayer().chunkPosition();
         markCovered(mod, here, state);
+        visitedCells.add(mod.getPlayer().getBlockX(), mod.getPlayer().getBlockY(), mod.getPlayer().getBlockZ());
         if (rearmChunkTimer) {
             rearmChunkTimer = false;
             chunkSince = timeOnTaskSeconds();
         }
-        boolean covered = chunkTarget != null && state.roomChunksVisited.contains(chunkTarget.key());
+        // a corridor leg is about its cell, the chunk it sits in being covered already is no reason to drop it
+        boolean corridorLeg = corridorGoal != null;
+        boolean covered = chunkTarget != null && !corridorLeg && state.roomChunksVisited.contains(chunkTarget.key());
         boolean walkFinished = chunkTarget != null && chunkTask != null && chunkTask.isFinished(mod);
         boolean timerOut = chunkTarget != null && timeOnTaskSeconds() - chunkSince >= cfg.perChunkSeconds;
         boolean stalled = chunkTarget != null && stall.stalled(mod.getPlayer().getX(), mod.getPlayer().getY(),
                 mod.getPlayer().getZ(), timeOnTaskSeconds());
-        if (chunkTarget != null && RoomCoverage.legOver(covered, walkFinished, timerOut, stalled, noPathNow(mod))) {
-            // only markCovered says a chunk is searched. the walk ending short, the timer or a stall
-            // just mean we will not pick it again, the room was never seen from there
-            if (!RoomCoverage.giveUp(state.roomChunksVisited, skippedChunks, chunkTarget.key())) {
-                ctx.progress("chunk searched");
+        boolean noPathHere = noPathNow(mod);
+        if (chunkTarget != null && RoomCoverage.legOver(covered, walkFinished, timerOut, stalled, noPathHere)) {
+            boolean noPathEnd = noPathHere && !covered && !walkFinished;
+            noPathStreak = noPathEnd ? noPathStreak + 1 : 0;
+            if (!noPathEnd) {
+                heldChunks.clear();
             }
-            chunkTarget = null;
-            chunkTask = null;
+            boolean cascade = RoomCoverage.noPathCascade(noPathStreak);
+            if (corridorLeg) {
+                // reached or not, never aim at this cell again
+                visitedCells.add(corridorGoal.getX(), corridorGoal.getY(), corridorGoal.getZ());
+            } else if (cascade && noPathEnd) {
+                // not the chunk's fault, so no skip. but picking it again at once would just fail it again, forever
+                heldChunks.add(chunkTarget.key());
+            } else {
+                // only markCovered says a chunk is searched. the walk ending short, the timer or a stall
+                // just mean we will not pick it again, the room was never seen from there
+                if (!RoomCoverage.giveUp(state.roomChunksVisited, skippedChunks, chunkTarget.key())) {
+                    ctx.progress("chunk searched");
+                }
+            }
+            dropLeg();
+            if (cascade) {
+                OptionalInt level = brickLevel(mod);
+                // a couple of blocks of jitter is not a new level, it would wipe the chunks we have covered
+                if (level.isPresent() && Math.abs(level.getAsInt() - workY) >= 2) {
+                    adoptLevel(level.getAsInt(), state);
+                }
+            }
         }
         if (chunkTarget == null && !pickNextChunk(mod, here)) {
             return null;
@@ -532,7 +593,22 @@ public class StrongholdRoomSearchTask extends Task {
     private boolean pickNextChunk(AltoClef mod, ChunkPos here) {
         RunState.Pos start = ctx.state().strongholdStart;
         StrongholdRoomPlan.Chunk startChunk = new StrongholdRoomPlan.Chunk(Math.floorDiv(start.x, 16), Math.floorDiv(start.z, 16));
-        // bricks we have already seen say where corridors are: follow those before walking the blind spiral
+        // seen bricks have air in front of them: walk to the nearest such spot we have not been by. every step of it shows
+        // more bricks, so the frontier grows on its own. the chunk centre is usually solid rock and baritone tunnels at it
+        Optional<BlockPos> cell = nextCorridorCell(mod, start);
+        if (cell.isPresent()) {
+            BlockPos c = cell.get();
+            step = "Following the stronghold corridors";
+            corridorGoal = c;
+            chunkTarget = new StrongholdRoomPlan.Chunk(Math.floorDiv(c.getX(), 16), Math.floorDiv(c.getZ(), 16));
+            chunkTask = new GetWithinRangeOfBlockTask(c, CORRIDOR_GOAL_RANGE);
+            chunkSince = timeOnTaskSeconds();
+            stall.reset();
+            armNoPath(mod);
+            return true;
+        }
+        corridorGoal = null;
+        // no corridor left to walk: the bricks' chunks, then the blind spiral
         Optional<StrongholdRoomPlan.Chunk> next = guidedChunk(mod, startChunk);
         if (next.isPresent()) {
             step = "Following the stronghold corridors";
@@ -564,15 +640,44 @@ public class StrongholdRoomSearchTask extends Task {
         return true;
     }
 
+    private Optional<BlockPos> nextCorridorCell(AltoClef mod, RunState.Pos start) {
+        List<BlockPos> bricks = seenBricks(mod, StrongholdScan.MAX_SCAN, workY,
+                b -> visitedCells.near(b.getX(), b.getY(), b.getZ()));
+        if (bricks.isEmpty()) {
+            return Optional.empty();
+        }
+        List<BlockPos> cells = RoomCoverage.corridorCells(bricks, p -> standable(mod, p));
+        return RoomCoverage.pickCorridorCell(cells, visitedCells, mod.getPlayer().getX(), mod.getPlayer().getY(),
+                mod.getPlayer().getZ(), start.x, start.z, workY);
+    }
+
+    // feet and head free of anything solid or wet (a lava pool beside a wall is not a corridor), something to stand on
+    private boolean standable(AltoClef mod, BlockPos feet) {
+        if (!mod.getChunkTracker().isChunkLoaded(feet)) {
+            return false;
+        }
+        BlockGetter level = mod.getWorld();
+        BlockPos below = feet.below();
+        return passable(level, feet) && passable(level, feet.above())
+                && level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+    }
+
+    private static boolean passable(BlockGetter level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        return state.getCollisionShape(level, pos).isEmpty() && state.getFluidState().isEmpty();
+    }
+
     private void armNoPath(AltoClef mod) {
+        // a fresh leg (or a fresh look after someone else had the wheel) starts its timed out count over
+        timedOutInLeg = 0;
         var pathing = mod.getClientBaritone().getPathingBehavior();
         // failures first, then exhausted: the pathing thread writes them the other way round
         int failures = pathing.calcFailures();
         noPath.arm(failures, pathing.calcExhausted());
     }
 
-    // baritone searched everything and found no way to this chunk: waiting out the 90 s timer would be standing still.
-    // timed out searches say nothing about the chunk, only exhausted ones skip it
+    // baritone searched everything and found no way there, or twice gave up on getting 5 blocks closer: waiting out the 90 s
+    // timer would be standing still
     private boolean noPathNow(AltoClef mod) {
         if (!noPath.armed()) {
             // another task had the wheel (spawner, interrupt): whatever failed then was not this leg's
@@ -582,7 +687,11 @@ public class StrongholdRoomSearchTask extends Task {
         var pathing = mod.getClientBaritone().getPathingBehavior();
         int failures = pathing.calcFailures();
         int exhaustedNow = pathing.calcExhausted();
-        return noPath.poll(failures, exhaustedNow, pathing.isPathing()) == NoPathScope.Verdict.EXHAUSTED;
+        NoPathScope.Verdict verdict = noPath.poll(failures, exhaustedNow, pathing.isPathing());
+        if (verdict == NoPathScope.Verdict.TIMED_OUT) {
+            timedOutInLeg++;
+        }
+        return RoomCoverage.noPathEnds(verdict == NoPathScope.Verdict.EXHAUSTED, timedOutInLeg);
     }
 
     private Optional<StrongholdRoomPlan.Chunk> guidedChunk(AltoClef mod, StrongholdRoomPlan.Chunk startChunk) {
@@ -599,6 +708,7 @@ public class StrongholdRoomSearchTask extends Task {
     private Set<String> doneOrSkipped() {
         Set<String> all = new HashSet<>(ctx.state().roomChunksVisited);
         all.addAll(skippedChunks);
+        all.addAll(heldChunks);
         return all;
     }
 

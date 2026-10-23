@@ -3,10 +3,14 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Predicate;
 
 // when a chunk of the stronghold counts as searched, and which chunk to look at next when we have already seen bricks.
 // pure. the portal room is only found by line of sight, so standing in a chunk (a dry tunnel through the rock) is not
@@ -193,6 +197,134 @@ public final class RoomCoverage {
     // the level to search on is where the bricks are, not where the dig happened to end
     public static double workY(OptionalInt brickY, double playerY) {
         return brickY.isPresent() ? brickY.getAsInt() : playerY;
+    }
+
+    // a bunch of bricks around us says the level better than the one nearest brick, which can be a ceiling or a floor.
+    // median of the few nearest within this horizontally, plus one for the floor they mostly are
+    static final double LEVEL_RADIUS = 16;
+    static final int LEVEL_SAMPLE = 5;
+
+    // bricks nearest first. under three close enough to vote and a median is just a coin flip between a floor and a ceiling:
+    // the nearest one alone, as it always was
+    public static OptionalInt walkLevel(List<BlockPos> nearestFirst, double px, double pz) {
+        if (nearestFirst.isEmpty()) {
+            return OptionalInt.empty();
+        }
+        List<Integer> ys = new ArrayList<>();
+        for (BlockPos b : nearestFirst) {
+            if (ys.size() < LEVEL_SAMPLE && Math.hypot(b.getX() + 0.5 - px, b.getZ() + 0.5 - pz) <= LEVEL_RADIUS) {
+                ys.add(b.getY());
+            }
+        }
+        if (ys.size() < 3) {
+            return OptionalInt.of(nearestFirst.get(0).getY());
+        }
+        ys.sort(null);
+        return OptionalInt.of(ys.get(ys.size() / 2) + 1);
+    }
+
+    // a leg whose search keeps timing out is going nowhere just as much as an exhausted one: a timed out search already
+    // means baritone could not get 5 blocks closer. one is noise, two in the same leg is the leg
+    static final int TIMED_OUT_ENDS = 2;
+    // this many legs in a row ending on no path and the fault is where we stand or the level we aim at, not the chunks
+    static final int NO_PATH_CASCADE = 4;
+
+    public static boolean noPathEnds(boolean exhausted, int timedOutInLeg) {
+        return exhausted || timedOutInLeg >= TIMED_OUT_ENDS;
+    }
+
+    public static boolean noPathCascade(int streak) {
+        return streak >= NO_PATH_CASCADE;
+    }
+
+    // air cells we have stood in or near, quantised to 2 block cells so it stays small. oldest go first past the cap
+    public static final class Visited {
+        static final int CAP = 4096;
+        private final LinkedHashSet<Long> keys = new LinkedHashSet<>();
+
+        private static long key(int x, int y, int z) {
+            return BlockPos.asLong(x >> 1, y >> 1, z >> 1);
+        }
+
+        public void add(int x, int y, int z) {
+            long k = key(x, y, z);
+            // re-adding moves it to the back, so the cells we keep standing in are the last to go
+            keys.remove(k);
+            keys.add(k);
+            if (keys.size() > CAP) {
+                Iterator<Long> it = keys.iterator();
+                it.next();
+                it.remove();
+            }
+        }
+
+        // within about 4 blocks of somewhere we have been
+        public boolean near(int x, int y, int z) {
+            int qx = x >> 1;
+            int qy = y >> 1;
+            int qz = z >> 1;
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        if (keys.contains(BlockPos.asLong(qx + dx, qy + dy, qz + dz))) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        public int size() {
+            return keys.size();
+        }
+    }
+
+    private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    // places to stand next to bricks we saw: above a floor brick, beside a wall brick at foot or head height. the face we saw
+    // is the air in front of it, so those cells are known. standable says feet and head free with a floor under
+    public static List<BlockPos> corridorCells(Collection<BlockPos> bricks, Predicate<BlockPos> standable) {
+        Set<BlockPos> tried = new LinkedHashSet<>();
+        for (BlockPos b : bricks) {
+            // plain offsets: Direction would drag minecraft's static init into a pure class the unit tests load
+            tried.add(b.offset(0, 1, 0));
+            for (int[] d : SIDES) {
+                BlockPos side = b.offset(d[0], 0, d[1]);
+                tried.add(side);
+                tried.add(side.offset(0, -1, 0));
+            }
+        }
+        List<BlockPos> out = new ArrayList<>();
+        for (BlockPos c : tried) {
+            if (standable.test(c)) {
+                out.add(c.immutable());
+            }
+        }
+        return out;
+    }
+
+    // nearest cell we have not been by, nudged toward the ones further from the staircase so the walk pushes outward
+    public static Optional<BlockPos> pickCorridorCell(Collection<BlockPos> cells, Visited visited, double px, double py,
+                                                      double pz, double startX, double startZ, double workY) {
+        BlockPos best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (BlockPos c : cells) {
+            if (!Double.isNaN(workY) && Math.abs(c.getY() - workY) > VERTICAL_BLOCKS) {
+                continue;
+            }
+            if (visited.near(c.getX(), c.getY(), c.getZ())) {
+                continue;
+            }
+            double dist = Math.hypot(c.getX() + 0.5 - px, c.getZ() + 0.5 - pz) + 2 * Math.abs(c.getY() - py);
+            double out = Math.hypot(c.getX() + 0.5 - startX, c.getZ() + 0.5 - startZ);
+            double score = dist - 0.25 * out;
+            if (score < bestScore) {
+                bestScore = score;
+                best = c;
+            }
+        }
+        return Optional.ofNullable(best);
     }
 
     // tracked bricks that can be the stronghold's, before any cap. the cap has to come after this: a village or a ruin

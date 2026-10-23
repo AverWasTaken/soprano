@@ -317,4 +317,76 @@ public class RoomCoverageTest {
         visited.add("1,1");
         assertFalse(RoomCoverage.clearForNewLevel(visited, skipped, Double.NaN, Double.NaN));
     }
+
+    @Test
+    public void walkLevelIsTheMedianOfNearbyBricksPlusOne() {
+        // a ceiling brick nearest, floor bricks around it: the median ignores the odd one
+        List<BlockPos> bricks = List.of(new BlockPos(1, 34, 0), new BlockPos(2, 30, 0), new BlockPos(3, 30, 1),
+                new BlockPos(4, 31, 0), new BlockPos(5, 30, 2));
+        assertEquals(31, RoomCoverage.walkLevel(bricks, 0, 0).getAsInt());
+        // too far horizontally to vote (50 away): the nearest alone
+        assertEquals(40, RoomCoverage.walkLevel(List.of(new BlockPos(50, 40, 0), new BlockPos(51, 20, 0)), 0, 0).getAsInt());
+        assertTrue(RoomCoverage.walkLevel(List.of(), 0, 0).isEmpty());
+        // the far ones are not counted when near ones exist
+        List<BlockPos> mixed = List.of(new BlockPos(2, 30, 0), new BlockPos(60, 10, 0), new BlockPos(61, 10, 0));
+        assertEquals(30, RoomCoverage.walkLevel(mixed, 0, 0).getAsInt());
+        // two voters is not a median: a floor and a ceiling brick must not give a level inside the ceiling
+        List<BlockPos> two = List.of(new BlockPos(1, 30, 0), new BlockPos(2, 34, 0));
+        assertEquals(30, RoomCoverage.walkLevel(two, 0, 0).getAsInt());
+    }
+
+    @Test
+    public void corridorCellsAreStandableSpotsBesideSeenBricks() {
+        // a wall brick at (0,30,0): the air east of it is standable, the rest is rock
+        Set<BlockPos> air = Set.of(new BlockPos(1, 30, 0), new BlockPos(-1, 29, 0));
+        List<BlockPos> cells = RoomCoverage.corridorCells(List.of(new BlockPos(0, 30, 0)), air::contains);
+        assertEquals(2, cells.size());
+        assertTrue(cells.contains(new BlockPos(1, 30, 0)));
+        // a floor brick gives the cell on top of it
+        List<BlockPos> floor = RoomCoverage.corridorCells(List.of(new BlockPos(0, 29, 0)), new BlockPos(0, 30, 0)::equals);
+        assertEquals(List.of(new BlockPos(0, 30, 0)), floor);
+        assertTrue(RoomCoverage.corridorCells(List.of(new BlockPos(0, 30, 0)), p -> false).isEmpty());
+    }
+
+    @Test
+    public void corridorPickSkipsVisitedAndPrefersOutward() {
+        RoomCoverage.Visited visited = new RoomCoverage.Visited();
+        BlockPos near = new BlockPos(4, 30, 0);
+        BlockPos far = new BlockPos(-12, 30, 0);
+        // standing at the origin: near wins when both are unvisited
+        assertEquals(near, RoomCoverage.pickCorridorCell(List.of(near, far), visited, 0, 30, 0, 0, 0, 30).get());
+        // been within 4 blocks of it: the other one
+        visited.add(4, 30, 0);
+        assertEquals(far, RoomCoverage.pickCorridorCell(List.of(near, far), visited, 0, 30, 0, 0, 0, 30).get());
+        visited.add(-12, 30, 0);
+        assertTrue(RoomCoverage.pickCorridorCell(List.of(near, far), visited, 0, 30, 0, 0, 0, 30).isEmpty());
+        // the push outward breaks ties: both 10 from us, the staircase is at z 20 so the -10 one is the way out
+        RoomCoverage.Visited fresh = new RoomCoverage.Visited();
+        BlockPos inward = new BlockPos(0, 30, 10);
+        BlockPos outward = new BlockPos(0, 30, -10);
+        assertEquals(outward, RoomCoverage.pickCorridorCell(List.of(inward, outward), fresh, 0.5, 30, 0.5, 0.5, 20.5, 30).get());
+        // a cell on another level is not this search's
+        assertTrue(RoomCoverage.pickCorridorCell(List.of(new BlockPos(2, 60, 0)), fresh, 0, 30, 0, 0, 0, 30).isEmpty());
+    }
+
+    @Test
+    public void visitedStaysBounded() {
+        RoomCoverage.Visited visited = new RoomCoverage.Visited();
+        for (int i = 0; i < RoomCoverage.Visited.CAP + 500; i++) {
+            visited.add(i * 2, 0, 0);
+        }
+        assertEquals(RoomCoverage.Visited.CAP, visited.size());
+        assertFalse(visited.near(0, 0, 0));
+        assertTrue(visited.near((RoomCoverage.Visited.CAP + 499) * 2, 0, 0));
+    }
+
+    @Test
+    public void aLegEndsOnExhaustedOrTheSecondTimeOut() {
+        assertFalse(RoomCoverage.noPathEnds(false, 0));
+        assertFalse(RoomCoverage.noPathEnds(false, 1));
+        assertTrue(RoomCoverage.noPathEnds(false, 2));
+        assertTrue(RoomCoverage.noPathEnds(true, 0));
+        assertFalse(RoomCoverage.noPathCascade(3));
+        assertTrue(RoomCoverage.noPathCascade(4));
+    }
 }
