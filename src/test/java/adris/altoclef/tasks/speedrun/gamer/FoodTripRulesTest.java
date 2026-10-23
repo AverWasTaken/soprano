@@ -221,4 +221,32 @@ public class FoodTripRulesTest {
         assertTrue(FoodTripRules.goHome(0, 0, true, false, foodTrips));
         assertFalse(FoodTripRules.goHome(0, 0, true, false, foodTrips + 1));
     }
+
+    @Test
+    public void aRetryInTheOverworldResumesTheTripWhileTheBagIsShort() {
+        assertTrue(FoodTripRules.resume(true, true, false, true));
+        assertFalse(FoodTripRules.resume(false, true, false, true));
+        assertFalse(FoodTripRules.resume(true, false, false, true));
+        // bag is back at the line: the trip is done, nothing to resume
+        assertFalse(FoodTripRules.resume(true, true, false, false));
+        assertFalse(FoodTripRules.resume(true, true, true, true));
+    }
+
+    @Test
+    public void aStalledWalkCoolsDownForAMinute() {
+        assertFalse(FoodTripRules.coolingDown(5000, -1));
+        assertTrue(FoodTripRules.coolingDown(5000, 5000));
+        assertTrue(FoodTripRules.coolingDown(5000 + FoodTripRules.COOLDOWN_TICKS - 1, 5000));
+        assertFalse(FoodTripRules.coolingDown(5000 + FoodTripRules.COOLDOWN_TICKS, 5000));
+        // clock went backwards = restart
+        assertFalse(FoodTripRules.coolingDown(100, 5000));
+    }
+
+    @Test
+    public void gainedOnlyOnARiseAfterAFirstLook() {
+        assertFalse(FoodTripRules.gained(-1, 10));
+        assertFalse(FoodTripRules.gained(10, 10));
+        assertFalse(FoodTripRules.gained(10, 8));
+        assertTrue(FoodTripRules.gained(10, 12));
+    }
 }

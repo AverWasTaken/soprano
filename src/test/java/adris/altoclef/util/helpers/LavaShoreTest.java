@@ -192,4 +192,28 @@ public class LavaShoreTest {
         assertTrue(LavaShore.lavaClose(w, 0.5, 0, 0.5));
         assertFalse(LavaShore.lavaClose(new World().lava(4, -1, 0), 0.5, 0, 0.5));
     }
+
+    @Test
+    public void passiveOnlyCaresAboutLavaByTheAnimal() {
+        // lava by us and on the line, the cow is on dry stone: baritone paths around it, nothing to wait for
+        World w = new World().lava(-1, -1, 0).lava(5, -1, 0);
+        assertTrue(LavaShore.approachBlocked(w, 0.5, 0, 0.5, 12.5, 0, 0.5));
+        assertFalse(LavaShore.blockedFor(true, w, 0.5, 0, 0.5, 12.5, 0, 0.5));
+        assertTrue(LavaShore.blockedFor(false, w, 0.5, 0, 0.5, 12.5, 0, 0.5));
+    }
+
+    @Test
+    public void passiveByThePoolIsBlockedAndLetGoOfAtOnce() {
+        World w = new World().lava(7, -1, 0);
+        assertTrue(LavaShore.blockedFor(true, w, 0.5, 0, 0.5, 6.5, 0, 0.5));
+        assertTrue(LavaShore.giveUp(true, 1));
+    }
+
+    @Test
+    public void hostileWaitEndsAtTheCap() {
+        assertFalse(LavaShore.giveUp(false, 1));
+        assertFalse(LavaShore.giveUp(false, LavaShore.WAIT_CAP_TICKS - 1));
+        assertTrue(LavaShore.giveUp(false, LavaShore.WAIT_CAP_TICKS));
+        assertEquals(240, LavaShore.WAIT_CAP_TICKS);
+    }
 }

@@ -138,6 +138,12 @@ public class NetherPhase implements PhaseHandler {
     private boolean tripBlocks;
     private double foodTripStart;
     private boolean foodTripUp;
+    // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
+    private long tripEndedTick = -1;
+    // food units at the last look up top, so a gain pings the watchdog (-1 = no look yet)
+    private int lastTripUnits = -1;
+    // the live trip already came back from a watchdog retry once
+    private boolean tripResumed;
     private int foodDeathsSeen;
     // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
     private final ResourceDetour gravel = ResourceDetour.gravel();
@@ -260,6 +266,12 @@ public class NetherPhase implements PhaseHandler {
         homeWalk.reset();
         foodFloor.reset();
         goHome = null;
+        // a retry that lands in the overworld with the hunt half of a trip in flight: that trip is not over, so it is kept
+        // (below) instead of cleared and walked straight back down with an empty bag
+        boolean upTop = ctx.facts().dimension() != Dimension.NETHER;
+        boolean tripWasUp = foodTrip && foodTripUp && !FoodTripRules.countersReset(ctx.attempt());
+        FoodTripRules.Reason keptReason = tripReason;
+        boolean keptBlocks = tripBlocks;
         foodTrip = false;
         tripReason = FoodTripRules.Reason.FOOD;
         tripBlocks = false;
@@ -268,9 +280,25 @@ public class NetherPhase implements PhaseHandler {
         if (FoodTripRules.countersReset(ctx.attempt())) {
             foodTrips = 0;
             blockTrips = 0;
+            tripEndedTick = -1;
+            tripResumed = false;
         }
         lastUnsafeTick = -1;
         foodTripUp = false;
+        lastTripUnits = -1;
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, ctx.food().shortOfMinimum() || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+            // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
+            // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
+            tripResumed = true;
+            goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
+            homeMark = null;
+            foodTrip = true;
+            tripReason = keptReason;
+            tripBlocks = keptBlocks;
+            foodTripUp = true;
+            foodTripStart = ctx.secondsInPhase();
+            tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
+        }
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
         hunt = null;
@@ -345,6 +373,12 @@ public class NetherPhase implements PhaseHandler {
                     tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
                 }
                 // over when nothing is short any more: food at the overworld minimum and, on a blocks trip, the entry stack held
+                // a kill or a pickup raises the count, and the hunt is the one thing up here that should keep the watchdog quiet
+                int units = FoodTripRules.units(ctx.food());
+                if (FoodTripRules.gained(lastTripUnits, units)) {
+                    ctx.progress("food");
+                }
+                lastTripUnits = units;
                 Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
                     hudState = foodFloor.hud();
@@ -460,6 +494,10 @@ public class NetherPhase implements PhaseHandler {
             // blocks trip is the same walk home (and tops the food up on the way), so it waits too and a food trip that is
             // waiting does not hand over to it
             long tick = ctx.facts().gameTime();
+            // the last walk home stalled: the next try waits out the cooldown instead of walking the same wall again
+            if (FoodTripRules.coolingDown(tick, tripEndedTick) && !FoodTripRules.underFloor(units, portalDistance)) {
+                return null;
+            }
             if (FoodTripRules.goHome(units, portalDistance, portalKnown, deathTrip, foodTrips)) {
                 if (FoodTripRules.mayStart(FoodTripRules.underFloor(units, portalDistance), tick, lastUnsafeTick)) {
                     why = FoodTripRules.Reason.FOOD;
@@ -482,6 +520,8 @@ public class NetherPhase implements PhaseHandler {
                 findWarped.clearExhaustedEnds();
             }
             foodTripUp = false;
+            lastTripUnits = -1;
+            tripResumed = false;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
             homeMark = null;
@@ -507,6 +547,7 @@ public class NetherPhase implements PhaseHandler {
             // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
             // taken from the budget, and the next try has to earn its own start
             foodTrip = false;
+            tripEndedTick = tick;
             return null;
         }
         // stuck for a bit with the bag nearly empty: the bridges ate the blocks and the path home needs them. one top up per

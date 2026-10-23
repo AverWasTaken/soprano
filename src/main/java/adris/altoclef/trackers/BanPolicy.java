@@ -30,6 +30,8 @@ public final class BanPolicy {
     public static final long NO_ROOM = 1200;
     // two path searches for a mob came back empty (CalcFailureWatch). it ends early when the mob hits us
     public static final long NO_PATH = 2400;
+    // a foe we stopped waiting on because of lava by it (LavaShore). a minute: it wanders off the shore, the pool does not move
+    public static final long LAVA_SHORE = 1200;
     // the neighbours of a block a search proved unreachable (MineAndCollectTask)
     public static final long NO_PATH_VEIN = 600;
     // a coal detour that ran out of time or wandered off. 5 minutes, then the cluster gets one more 30 s try
@@ -67,6 +69,11 @@ public final class BanPolicy {
     // it costs nothing either
     public static boolean entityStrike(Bans bans, int id, int allowed, double distSq, String reason) {
         return bans.strike(Key.entity(id), reason, allowed, distSq, ENTITY_STRIKES, Until.BETTER_TOOL, Until.HIT_US);
+    }
+
+    // a mob by the lava we will not walk at: banned outright, not a strike (a stall never adds one while we wait)
+    public static boolean lavaShore(Bans bans, int id, String what) {
+        return bans.ban(Key.entity(id), "lava by it: " + what, LAVA_SHORE, Until.HIT_US);
     }
 
     // ---- entities. `what` is EntityTracker.describe, it goes in the line

@@ -62,6 +62,22 @@ public final class LavaShore {
                 || lineHitsLava(cells, ux, uy, uz, tx, ty, tz);
     }
 
+    // how long a foe by the lava gets to walk up to us before we stop waiting on it: 12 s. a wait with no end
+    // is a bot standing still at a pool until something else gives
+    public static final int WAIT_CAP_TICKS = 240;
+
+    // approachBlocked with the kind of target in it. a cow does not knock us in and baritone paths around lava on its own,
+    // so the only thing that matters for a passive one is the drop burning when it dies by the pool. a hostile still gets the
+    // whole check (our spot, the line)
+    public static boolean blockedFor(boolean passive, Cells cells, double ux, double uy, double uz, double tx, double ty, double tz) {
+        return passive ? lavaNear(cells, tx, ty, tz, NEAR) : approachBlocked(cells, ux, uy, uz, tx, ty, tz);
+    }
+
+    // should this foe be let go of right now: passive ones by the pool never get a wait, hostiles get WAIT_CAP_TICKS of it
+    public static boolean giveUp(boolean passive, int waitedTicks) {
+        return passive || waitedTicks >= WAIT_CAP_TICKS;
+    }
+
     // is a spot a bad place to land: lava in it, or open air over lava or over nothing for CliffAvoidance.DEPTH blocks.
     // the box is the player's width, so a knock that clips a corner counts
     public static boolean spotUnsafe(Cells cells, double x, double y, double z) {

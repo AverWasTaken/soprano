@@ -148,6 +148,27 @@ public final class FoodTripRules {
         return attempt <= 1;
     }
 
+    // a trip that ended on a stalled walk home waits this long (60 s) before the next one may start. the comment on the stall
+    // always said the next try has to earn its start, and nothing made it
+    public static final long COOLDOWN_TICKS = 1200;
+
+    // endedAt < 0 = no trip has ended. a clock that went backwards is a restart, so no cooldown either
+    public static boolean coolingDown(long now, long endedAt) {
+        return endedAt >= 0 && now >= endedAt && now - endedAt < COOLDOWN_TICKS;
+    }
+
+    // the phase restarted (the watchdog's retry) with a trip's overworld half in flight and the bag still short. the retry
+    // used to wipe the trip and walk straight back down with nothing. same trip, so no counter is spent on it. stillShort is
+    // the same read the overworld half ends on (tripOver). once per trip: a hunt that stalls again goes the old way
+    public static boolean resume(boolean inOverworld, boolean tripWasUp, boolean alreadyResumed, boolean stillShort) {
+        return inOverworld && tripWasUp && !alreadyResumed && stillShort;
+    }
+
+    // food units went up since the last look: the hunt is getting somewhere, so the watchdog's clock restarts
+    public static boolean gained(int lastUnits, int units) {
+        return lastUnits >= 0 && units > lastUnits;
+    }
+
     private FoodTripRules() {
     }
 }

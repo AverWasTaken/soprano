@@ -9,7 +9,12 @@ import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.ApproachRules;
+import adris.altoclef.util.helpers.EntityHelper;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enemy;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -212,9 +217,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     _blocker = null;
                     return onEntityInteract(mod, entity);
                 case APPROACH:
-                    // lava on the foe, under us or between us: it comes to us. the walk in is what put us in the lava, and a
+                    // lava on the foe, under us or between us (just the foe, for an animal): it comes to us. the walk in is what put us in the lava, and a
                     // foe that never comes just stalls out. returning null also lets go of an approach already walking
-                    if (isKillTask() && lavaInTheWay(mod, entity)) {
+                    if (isKillTask() && lavaHold(mod, entity)) {
                         _progress.reset();
                         _blocker = null;
                         setDebugState("Lava by the foe, letting it come");
@@ -254,7 +259,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     return null;
                 default:
                     // the shuffle is a walk too
-                    if (plan == ApproachRules.Plan.WANDER && isKillTask() && lavaInTheWay(mod, entity)) {
+                    if (plan == ApproachRules.Plan.WANDER && isKillTask() && lavaHold(mod, entity)) {
                         setDebugState("Lava by the foe, not shuffling");
                         return null;
                     }
@@ -270,13 +275,48 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return new TimeoutWanderTask();
     }
 
+    // waiting on one foe by the lava. an animal is let go of at once (the picker takes the next one), anything that can bite
+    // gets LavaShore.WAIT_CAP_TICKS to come to us. a ban takes it out of getClosestEntity, so the next tick has another target.
+    // the count is per mob id and static: callers rebuild this task whenever their pick changes, and two foes swapping places
+    // as the closest would restart a count that lives in the task forever
+    private static final java.util.Map<Integer, int[]> LAVA_WAITS = new java.util.HashMap<>();
+    // a gap this long between two holds on one mob is a different wait
+    private static final int LAVA_WAIT_GAP = 100;
+
+    private boolean lavaHold(AltoClef mod, Entity entity) {
+        if (!lavaInTheWay(mod, entity)) {
+            return false;
+        }
+        int now = mod.getPlayer().tickCount;
+        if (LAVA_WAITS.size() > 64) {
+            LAVA_WAITS.clear();
+        }
+        int[] wait = LAVA_WAITS.computeIfAbsent(entity.getId(), k -> new int[]{0, now});
+        if (now < wait[1] || now - wait[1] > LAVA_WAIT_GAP) {
+            wait[0] = 0;
+        }
+        wait[0]++;
+        wait[1] = now;
+        if (LavaShore.giveUp(isAnimal(mod, entity), wait[0])) {
+            BanPolicy.lavaShore(mod.getBans(), entity.getId(), EntityTracker.describe(entity));
+            LAVA_WAITS.remove(entity.getId());
+        }
+        return true;
+    }
+
+    // by type, not by mood: an enderman nobody has angered yet or a day spider reads as not hostile until the first hit, and
+    // that hit is what throws us into the pool
+    private static boolean isAnimal(AltoClef mod, Entity entity) {
+        return !(entity instanceof Enemy) && !(entity instanceof NeutralMob) && !EntityHelper.isGenerallyHostileToPlayer(mod, entity);
+    }
+
     // the approach walk near lava, see LavaShore. every dimension: a cave lava pool behind a spider is the overworld's version
     private static boolean lavaInTheWay(AltoClef mod, Entity entity) {
         // only the ones that walk up and hit. a blaze hovers over the lava on purpose, and waiting for it to come is no rods
         if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         var us = mod.getPlayer();
-        return LavaShore.approachBlocked(cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
+        return LavaShore.blockedFor(isAnimal(mod, entity), cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
     }
 
     // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks go by the eye to box
