@@ -40,16 +40,17 @@ import java.util.concurrent.ConcurrentHashMap;
 // it (JumpPilot). a flight that doesn't land every time isn't offered
 public final class NeoSearches {
 
-    // sim ticks per search, a few seconds of it. most of these are found well inside it or not at all
-    static final long BUDGET = 1_500_000;
     // the margins tried, in the order they most often turn up something that flies, and whether the search is told to go by
     // way of the row beside the wall: much quicker when it works, but the flight it finds is sometimes not one that flies
     // every time, and then the plain search often has one that does
     // never 0, and a couple of hundredths when it can: a flight that brushes a wall in the plan is one the real game pushes
     // off it differently (the sprint after a bump goes by the camera, see JumpPolicy.bumpsAWall), and the real player is
     // never exactly where the plan said
-    static final double[] MARGINS = {0.02, 0.02, 0.01, 0.01};
-    static final boolean[] VIA = {true, false, true, false};
+    static final double[] MARGINS = {0.02, 0.01, 0.01, 0.02};
+    static final boolean[] VIA = {true, true, false, false};
+    // sim ticks per search, a second or two each: the search by way of the side is quick when it works at all, the plain
+    // one needs more room
+    static final long[] BUDGETS = {1_000_000, 1_000_000, 1_500_000, 1_500_000};
     static final int FLIGHTS = 16;
     // what the jitter flights call a wobbly aim: LookBehavior's randomLooking113 is up to a degree either side
     static final double JITTER = 2.0;
@@ -168,7 +169,13 @@ public final class NeoSearches {
                     double dx = s.x + 0.5 - focusX, dy = s.y - focusY, dz = s.z + 0.5 - focusZ;
                     // a combo (two neos in one flight) only matters when the second one can't go from standing on the pad,
                     // so it waits until the single ones are done, and then it may not be needed at all
-                    double d = (QUEUE.get(i).combo() ? 1.0E9 : 0) + (Double.isNaN(dx + dy + dz) ? i : dx * dx + dy * dy + dz * dz);
+                    // and the ones going away from the player (onwards) before the ones coming back towards it: a path
+                    // forwards needs the first kind, the second kind is A* looking behind itself
+                    Landing l = QUEUE.get(i).land();
+                    double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
+                    boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
+                    double d = (QUEUE.get(i).combo() ? 1.0E9 : 0) + (back ? 1.0E7 : 0)
+                            + (Double.isNaN(dx + dy + dz) ? i : dx * dx + dy * dy + dz * dz);
                     if (d < bestD) {
                         bestD = d;
                         best = i;
@@ -208,7 +215,7 @@ public final class NeoSearches {
         for (int attempt = 0; attempt < MARGINS.length; attempt++) {
             double m = MARGINS[attempt];
             InflatedCollision fat = new InflatedCollision(world, m, minFeet, maxFeet);
-            TungstenSearch.Plan plan = TungstenSearch.search(standing(fat, src, floorY), land, region, BUDGET, null, floorY,
+            TungstenSearch.Plan plan = TungstenSearch.search(standing(fat, src, floorY), land, region, BUDGETS[attempt], null, floorY,
                     VIA[attempt] ? via : null);
             if (plan == null || plan.ticks() == 0) {
                 if (LOG) {

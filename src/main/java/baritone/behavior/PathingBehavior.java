@@ -303,7 +303,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     // and this path doesn't get us all the way there
                     return;
                 }
-                if (current.getPath().getDest().equals(aheadFailedFrom) && tickCount - aheadFailedAt < AHEAD_RETRY_TICKS) {
+                if (current.getPath().getDest().equals(aheadFailedFrom) && tickCount - aheadFailedAt < AHEAD_RETRY_TICKS
+                        && ticksRemainingInSegment(false).orElse(0.0) > AHEAD_RETRY_TICKS) {
+                    // (not when the path runs out sooner than that: then every tick it might come through counts)
                     // planning ahead from this same spot just came up empty: give it a moment (a jump on the way may still be
                     // being worked out in the background) instead of starting the same search again every single tick
                     return;

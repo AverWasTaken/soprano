@@ -86,6 +86,6 @@ Full run: `/function parkourlab:start`, then `#goto 1732 162 1019`.
 
 **In the real game** (a 26.3 client with the default look wobble): start to finish from one `#goto`, 0 falls in all 20 sections.
 
-The first time through the neo chains and the finale, the bot waits in front of the searched neos while the background search works them out (both took about 45 to 50 s on this slow 2-core machine). The answers are kept for the rest of the session.
+The first time through the neo chains and the finale, the bot waits in front of the searched neos while the background search works them out (up to about a minute on this slow 2-core machine). The answers are kept for the rest of the session.
 
 **In the sim:** every section plans, and every one lands 12/12 with the aim wobbling. Full table in `scorecard.md`.
