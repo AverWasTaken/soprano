@@ -109,7 +109,9 @@ public final class PortalPlanner {
         // the same refill gap: 69 at the portal is not a trip
         if (food.wantsRefill()) {
             out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
-        } else if (fillUp && food.shortOf(food.tripEnd())) {
+        } else if (fillUp && !food.covered() && food.shortOf(food.tripEnd())) {
+            // covered: the gap is raw meat that counts once the smoker is in reach. without it the count read 124 away from the
+            // smoker and 132 next to it, so food and water took turns as the head every few seconds and neither finished
             // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
             // is the minimum on a full bag, so this cannot ask for a pile there is no room for
             out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
