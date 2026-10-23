@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Action;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.RunZones;
 
 import java.util.function.DoubleSupplier;
 
@@ -23,6 +24,13 @@ public class FindNetherStructureTask extends Task {
     private int walkZ;
     private String failure;
     private String step = "Looking for a fortress";
+    // what the path predicate sees, from baritone's thread: where we stand, the game clock, and the waypoint we are walking to
+    // (NaN = none yet). written every tick, so the zones from RunZones are judged against where we are now
+    private volatile int zoneX;
+    private volatile int zoneZ;
+    private volatile long zoneNow;
+    private volatile double goalX = Double.NaN;
+    private volatile double goalZ = Double.NaN;
 
     public FindNetherStructureTask(NetherSweepPlanner planner, Goal goal, DoubleSupplier clock) {
         this.planner = planner;
@@ -46,11 +54,15 @@ public class FindNetherStructureTask extends Task {
         failure = null;
         // bastions are where piglin brutes live, the path planner treats the avoid zone as a wall
         mod.getBehaviour().push();
-        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ()));
+        noteZoneInputs(mod);
+        // (and the spots a heavy hitter ran us off from lately, see RunZones for which zones never count as a wall)
+        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ())
+                || RunZones.INSTANCE.blocks(p.getX(), p.getZ(), zoneNow, zoneX, zoneZ, goalX, goalZ));
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        noteZoneInputs(mod);
         int px = mod.getPlayer().blockPosition().getX();
         int pz = mod.getPlayer().blockPosition().getZ();
         // mid restock the planner is not asked: the idle gap is handled there like any other fight or meal
@@ -80,6 +92,12 @@ public class FindNetherStructureTask extends Task {
         }
     }
 
+    private void noteZoneInputs(AltoClef mod) {
+        zoneX = mod.getPlayer().blockPosition().getX();
+        zoneZ = mod.getPlayer().blockPosition().getZ();
+        zoneNow = mod.getWorld().getGameTime();
+    }
+
     // the count the restock goes by, for the phase that decides on a trip home when the dig keeps coming up empty
     public static int heldThrowaways(AltoClef mod) {
         return NetherBlockRestock.heldThrowaways(mod);
@@ -104,6 +122,8 @@ public class FindNetherStructureTask extends Task {
             walk = new GetToXZTask(x, z, planner.arriveRadius());
             walkX = x;
             walkZ = z;
+            goalX = x;
+            goalZ = z;
         }
         return walk;
     }

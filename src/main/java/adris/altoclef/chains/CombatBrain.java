@@ -26,6 +26,7 @@ import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.RecoverHold;
+import adris.altoclef.util.helpers.RunZones;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -314,6 +315,12 @@ final class CombatBrain {
                 // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
                 // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
                 if (event != Event.RUN_EXTENDED) _run = null;
+                // the nether sweep keeps off the spot we were chased out of by a heavy hitter (nether coordinates only, the
+                // zones mean nothing in another dimension)
+                if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
+                        && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
+                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now);
+                }
                 // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
                 if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
                     mod.getClientBaritone().getPathingBehavior().cancelEverything();

@@ -593,6 +593,9 @@ public final class CombatCommit {
 
     // mobs we gave up on, and when. they get another go when they hit us again
     private final Map<Integer, Long> ignored = new HashMap<>();
+    // heavy hitters we already ran from for standing in the path, and when. the second time one of them is in the way we walk on
+    // (it hits us and that is the HIT fight, or the path goes round) instead of running the same 24 blocks over and over
+    private final Map<Integer, Long> ranFrom = new HashMap<>();
 
     // heal up before going back in: on after a commitment that ended hurt. not a mode, nothing is committed while it holds
     private final RecoverHold recover = new RecoverHold();
@@ -675,6 +678,7 @@ public final class CombatCommit {
         wayBoxSince = -1;
         wayGapSince = -1;
         ignored.clear();
+        ranFrom.clear();
         lobberGaveUpAt = Long.MIN_VALUE / 2;
         sniperGaveUpAt = Long.MIN_VALUE / 2;
         atRange = false;
@@ -781,6 +785,16 @@ public final class CombatCommit {
         // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
         // with what is around us, and this one is a path that cannot go on until it is gone
         Foe way = inTheWay(t);
+        // a heavy hitter in the path is not a fight we go and pick, at any hp: one swing is 8 to 13 and they come in threes.
+        // it is a run, and the sweep keeps a zone round where we ran from (RunZones) so the path does not walk back into it.
+        // one that hits us is still the HIT fight above, that is unchanged
+        if (way == null) {
+            Foe heavy = heavyInTheWay(t);
+            if (heavy != null) {
+                ranFrom.put(heavy.id(), t.now());
+                return startRun(t, Why.HEAVY, Event.RUN_START);
+            }
+        }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         if (way == null || !t.armed()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
@@ -849,6 +863,8 @@ public final class CombatCommit {
             // (no shooters: they back off on their own, so in the way at 3 and gone at 5 is a fight, a clear, and the same
             // fight again a few steps later, and they never block a cell for long anyway)
             if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.guardHealth())) continue;
+            // (heavy hitters are heavyInTheWay's, a run. not a swing at any hp, and not the boxed in pick either)
+            if (foe.kind() == Kind.HEAVY) continue;
             if (close == null || foe.distance() < close.distance()) close = foe;
             if (t.way().inWay().contains(foe.id()) && (blocking == null || foe.distance() < blocking.distance())) blocking = foe;
         }
@@ -879,6 +895,19 @@ public final class CombatCommit {
         if (t.now() - wayBoxSince < WAY_BOXED_TICKS) return null;
         wayBoxSince = -1;
         return close;
+    }
+
+    // a heavy hitter in contact that sits in the next path nodes. same filter as inTheWay, minus the boxed in half: boxed in
+    // with one on us is the cornered rules' business
+    private Foe heavyInTheWay(Tick t) {
+        for (Foe foe : candidates(t)) {
+            if (foe.kind() != Kind.HEAVY || foe.distance() > CONTACT || !foe.melee() || !t.way().inWay().contains(foe.id())) continue;
+            // (a run we already made for this one, lately: not again. RunZones is what keeps the sweep's path off it)
+            Long ran = ranFrom.get(foe.id());
+            if (ran != null && t.now() >= ran && t.now() - ran < RunZones.EXPIRY_TICKS) continue;
+            return foe;
+        }
+        return null;
     }
 
     private static double sq(double v) {

@@ -171,6 +171,11 @@ public class FoodChain extends SingleTaskChain {
         }
     }
 
+    // ticks since a mob or an arrow last hit us, Integer.MAX_VALUE for never. the nether death trip's walk reads it
+    public int ticksSinceBodyHit(AltoClef mod) {
+        return hitAge(mod);
+    }
+
     private int hitAge(AltoClef mod) {
         if (_hitAt == Long.MIN_VALUE) return BiteRules.NO_HIT;
         return (int) Math.max(Math.min(mod.getWorld().getGameTime() - _hitAt, BiteRules.NO_HIT - 1L), Integer.MIN_VALUE);

@@ -4,6 +4,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
+import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
@@ -14,9 +16,13 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Stage;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.StorageHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -33,6 +39,9 @@ import java.util.function.Supplier;
 public class NetherRecoverTask extends Task {
     // at the pile, the pile task gets this long on its own (the walk there is the trip's budget, not this one's)
     private static final double PILE_SECONDS = 90;
+    // a shooter this far out with a line on us is one the hold would stand in front of (ghasts shoot from way out, so no tracker: it
+    // only lists what is angry within 16)
+    private static final double SHOOTER_RANGE = 64;
 
     private final RunState state;
     private final GamerFacts facts;
@@ -42,6 +51,13 @@ public class NetherRecoverTask extends Task {
     private final HomePortalWalk walk = new HomePortalWalk();
     private Task blocks;
     private Task pick;
+    private Task food;
+    private final HealUpTask heal = new HealUpTask();
+    // the walk stands still to heal (NetherTripRules.walkHold): how long it has in total, when it last did, and if it is doing it now.
+    // the time is paid back to the trip budget like a dig, and the no progress clock stands still for it too
+    private long heldTicks;
+    private long lastHoldTick = Long.MIN_VALUE;
+    private boolean holding;
     // how far the portal was when the walk last made real headway, and when. MIN_VALUE = not set for this stage yet
     private double portalMark;
     private long portalMarkTick = Long.MIN_VALUE;
@@ -144,7 +160,8 @@ public class NetherRecoverTask extends Task {
         boolean hasPick = StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE);
         return new NetherTripRules.Inputs(stage, facts.dimension(), NetherTripRules.netherTicks(trip.netherTick, now),
                 now - trip.stageTick, facts.buildBlocks(), homeGone, dist, finished, gained,
-                NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now));
+                NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now), facts.foodUnits(),
+                mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod));
     }
 
     // ticks since the walk last got 8 blocks closer. PORTAL: straight line to the portal, the horizontal number closes fast
@@ -164,7 +181,7 @@ public class NetherRecoverTask extends Task {
             portalMarkTick = Long.MIN_VALUE;
             return 0;
         }
-        if (stage == Stage.WALK && digging && portalMarkTick != Long.MIN_VALUE) {
+        if (stage == Stage.WALK && (digging || holding) && portalMarkTick != Long.MIN_VALUE) {
             // the clock stands still while we dig: resetting it instead would let a dig that finds nothing, then its cooldown
             // and another empty dig, keep the mark fresh forever
             portalMarkTick += NetherTripRules.restockCredit(portalSeenTick, now);
@@ -185,6 +202,7 @@ public class NetherRecoverTask extends Task {
         BlockPos at = new BlockPos(trip.pile.x, trip.pile.y, trip.pile.z);
         if (stage != Stage.WALK) {
             digging = false;
+            holding = false;
         }
         switch (stage) {
             case BLOCKS -> {
@@ -205,6 +223,18 @@ public class NetherRecoverTask extends Task {
                 setDebugState("Getting a pickaxe for the way down.", "Making a pickaxe");
                 return pick;
             }
+            case FOOD -> {
+                if (food == null) {
+                    // junk on top, same as FoodPlan.collect: the task counts rotten flesh and our facts do not
+                    food = new CollectFoodTask(NetherTripRules.FOOD_WANTED + facts.junkFoodUnits());
+                }
+                setDebugState("Getting food for the walk.", "Getting food");
+                return food;
+            }
+            case HEAL -> {
+                setDebugState("Healing up before the walk.", "Healing up");
+                return heal;
+            }
             case PORTAL -> {
                 setDebugState("Back to the portal.", "Going back for our stuff");
                 return walk.toTheNether(mod, state, save);
@@ -213,6 +243,10 @@ public class NetherRecoverTask extends Task {
                 walk.stopTracking(mod);
                 if (toPile == null) {
                     toPile = new GetWithinRangeOfBlockTask(at, NetherTripRules.WALK_RANGE);
+                }
+                if (walkHolds(mod, trip)) {
+                    setDebugState("Healing up before the walk goes on.", "Healing up");
+                    return heal;
                 }
                 Task dig = blockRestock.tick(mod, portalRestockAsked ? NetherRestock.LOW : NetherRestock.TARGET,
                         facts.gameTime() / 20.0);
@@ -260,6 +294,41 @@ public class NetherRecoverTask extends Task {
         }
     }
 
+    // hurt on the way, nobody shooting: stand still and let it heal instead of walking up to the pile at half a bar. the standing
+    // is not walking, so the budget is paid back for it the way a dig's is
+    private boolean walkHolds(AltoClef mod, RunState.NetherTrip trip) {
+        long t = facts.gameTime();
+        boolean hold = NetherTripRules.walkHold(mod.getPlayer().getHealth(), shooterSees(mod), holding, heldTicks);
+        if (hold) {
+            digging = false;
+            long gap = NetherTripRules.restockCredit(lastHoldTick, t);
+            trip.netherTick += gap;
+            heldTicks += gap;
+            lastHoldTick = t;
+        }
+        // (the payback above is only worth anything if a relog sees it)
+        if (holding && !hold) {
+            save.run();
+        }
+        holding = hold;
+        return hold;
+    }
+
+    // anything that shoots, has a line to us and is close enough to matter. a standing target against these is a dead one
+    private boolean shooterSees(AltoClef mod) {
+        for (Entity entity : mod.getWorld().entitiesForRendering()) {
+            if (!(entity instanceof Mob mob) || !mob.isAlive() || mob.distanceTo(mod.getPlayer()) > SHOOTER_RANGE) {
+                continue;
+            }
+            String type = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath();
+            boolean shoots = (MobReachability.isRanged(mob) && !type.equals("wither_skeleton")) || type.equals("blaze") || type.equals("ghast");
+            if (shoots && mob.hasLineOfSight(mod.getPlayer())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private List<Item> toEquip() {
         return KitPlanner.toEquip(facts, cfg.get().overworld);
     }
@@ -267,6 +336,8 @@ public class NetherRecoverTask extends Task {
     private String entered(Stage next) {
         return switch (next) {
             case PICK -> "no pickaxe, getting one first";
+            case FOOD -> "only " + facts.foodUnits() + " food, getting some first";
+            case HEAL -> "healing up before the portal";
             case PORTAL -> facts.buildBlocks() >= cfg.get().death.netherBlocks ? "got " + facts.buildBlocks() + " blocks"
                     : "going with " + facts.buildBlocks() + " blocks";
             case WALK -> "through the portal";
