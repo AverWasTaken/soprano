@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.resources.CollectBucketLiquidTask;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
@@ -96,6 +97,7 @@ public class PlaceObsidianBucketTask extends Task {
     private int _dudClicks;
     // the ban on this cell is out, the parent moves the frame
     private boolean _dropped;
+    private Task _fetch;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
         this(pos, List.of());
@@ -173,13 +175,21 @@ public class PlaceObsidianBucketTask extends Task {
         return next;
     }
 
-    // our lava just went out, or some of it is loose around the cast. either way it's ours to sort out, and a parent
-    // that goes off for a fresh bucket now walks away from it
     // the collect is told to leave these alone, or it scoops back the pour we just made
     public boolean scoopOff(BlockPos cell) {
         return CastLava.scoopOff(cell, _pos, _footprint, _earlierCells);
     }
 
+    // the cast's own lava fetch, same rule as the parent's: not the cells we are casting in
+    private Task ownFetch() {
+        if (_fetch == null) {
+            _fetch = new CollectBucketLiquidTask.CollectLavaBucketTask(1).leaveAlone(this::scoopOff);
+        }
+        return _fetch;
+    }
+
+    // our lava just went out, or some of it is loose around the cast. either way it's ours to sort out, and a parent
+    // that goes off for a fresh bucket now walks away from it
     public boolean ownsTheLava(AltoClef mod) {
         // the parent asks before we tick, so last tick's click hasn't been read yet
         watchLavaClick(mod);
@@ -285,7 +295,7 @@ public class PlaceObsidianBucketTask extends Task {
             // The only excuse is that we have lava at our position. the world, the tracker's cache can be stale
             if (mod.getWorld().getBlockState(_pos).getBlock() != Blocks.LAVA) {
                 _progressChecker.reset();
-                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+                return ownFetch();
             }
         }
 
@@ -372,7 +382,7 @@ public class PlaceObsidianBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
                 letGoOfTheClick(mod);
                 _progressChecker.reset();
-                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+                return ownFetch();
             }
             _lavaBefore = mod.getItemStorage().getItemCount(Items.LAVA_BUCKET);
             _heldFor = null;

@@ -47,7 +47,8 @@ public final class PortalPlanner {
     }
 
     // looped = the cast's pour and lava fetch kept undoing each other (CastLava.collectLoop). that is a cast going nowhere
-    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go
+    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go (and the frame to have
+    // stood still for a minute, a half built one is not worth mining for the obsidian)
     public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
                                 boolean sawLava, boolean hasDiamondPickaxe, boolean looped) {
         if (current == Method.OBSIDIAN) {
@@ -58,7 +59,8 @@ public final class PortalPlanner {
         if (!hasDiamondPickaxe) {
             return Method.CAST;
         }
-        if (looped) {
+        // a minute dry as well: a cast that still lands cells is slow, not looping
+        if (looped && sinceProgressSeconds >= 60) {
             return Method.OBSIDIAN;
         }
         if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {

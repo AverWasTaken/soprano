@@ -377,7 +377,8 @@ public class PortalPlannerTest {
 
     @Test
     public void aLoopingCastGoesObsidianAtOnceWithAPick() {
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 30, 90, cfg, true, true, true));
+        assertEquals("still landing cells", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 10, cfg, true, true, true));
         assertEquals("no pick, nowhere to go", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, false, true));
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, false));
     }

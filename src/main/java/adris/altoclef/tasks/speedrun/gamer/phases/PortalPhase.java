@@ -282,7 +282,7 @@ public class PortalPhase implements PhaseHandler {
         Method before = PortalPlanner.parse(ctx.state().portalMethod);
         double castSeconds = (f.gameTime() - castStartTick) / 20.0;
         if (before == Method.CAST) {
-            trackCastProgress(mod, f.gameTime());
+            trackCastProgress(mod, ctx, f.gameTime());
         }
         double sinceProgressSeconds = lastProgressTick < 0 ? castSeconds : (f.gameTime() - lastProgressTick) / 20.0;
         boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA);
@@ -299,7 +299,7 @@ public class PortalPhase implements PhaseHandler {
 
     // a frame cell turning obsidian is the only proof the cast is getting somewhere. a new frame spot starts from what is
     // already there (obsidian we happened to build next to, or a frame the cast moved) and earns nothing for it
-    private void trackCastProgress(AltoClef mod, long now) {
+    private void trackCastProgress(AltoClef mod, GamerContext ctx, long now) {
         BlockPos origin = cast.bucketPortalTask().portalOrigin();
         if (origin == null) {
             return;
@@ -311,6 +311,8 @@ public class PortalPhase implements PhaseHandler {
         } else if (count > bestCount) {
             bestCount = count;
             lastProgressTick = now;
+            // the phase's no-progress clock only listens to real progress, and a cast standing still pouring is some
+            ctx.progress("portal frame cell " + count);
         }
     }
 
