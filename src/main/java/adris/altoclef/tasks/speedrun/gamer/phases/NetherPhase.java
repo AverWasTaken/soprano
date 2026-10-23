@@ -325,7 +325,7 @@ public class NetherPhase implements PhaseHandler {
                 foodTrip = false;
                 foodTripUp = false;
                 foodFloor.reset();
-                ctx.progress(blocksTrip() ? "blocks trip done" : "food trip done");
+                ctx.progress(tripBlocks ? "blocks trip done" : "food trip done");
             }
             return toTheNether(mod, ctx);
         }
@@ -385,9 +385,12 @@ public class NetherPhase implements PhaseHandler {
             foodTrip = true;
             tripReason = why;
             tripBlocks = why == FoodTripRules.Reason.BLOCKS || FindNetherStructureTask.heldThrowaways(mod) < FoodTripRules.BLOCKS_LOW;
-            // new body or new bag: the dry digs counted so far say nothing about what the next dig finds
-            findFortress.clearExhaustedEnds();
-            findWarped.clearExhaustedEnds();
+            if (tripBlocks) {
+                // a new bag: the dry digs counted so far say nothing about what the next dig finds. a food trip that brings no
+                // blocks keeps the count, the band is just as empty when we come back
+                findFortress.clearExhaustedEnds();
+                findWarped.clearExhaustedEnds();
+            }
             foodTripUp = false;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
@@ -412,7 +415,7 @@ public class NetherPhase implements PhaseHandler {
             }
             return null;
         }
-        hudState = blocksTrip() ? "Going home for blocks" : "Going home for food";
+        hudState = tripBlocks ? "Going home for blocks" : "Going home for food";
         return goHome;
     }
 
