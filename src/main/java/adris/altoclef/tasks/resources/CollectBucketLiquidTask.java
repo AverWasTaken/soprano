@@ -24,6 +24,7 @@ import adris.altoclef.util.helpers.BucketSourceRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.PoolMisses;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
@@ -434,15 +435,22 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private BucketFillRules.Fill fillPlan(AltoClef mod) {
         NonNullList<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
         int[] bucketStacks = new int[slots.size()];
-        boolean freeSlot = false;
+        int empty = 0;
         for (int i = 0; i < bucketStacks.length; i++) {
             ItemStack stack = slots.get(i);
             if (stack.isEmpty()) {
-                freeSlot = true;
+                empty++;
             } else if (stack.is(Items.BUCKET)) {
                 bucketStacks[i] = stack.getCount();
             }
         }
+        // a stack on the cursor is the room task halfway through throwing it, and the slot it came out of is its home until it
+        // lands somewhere. counting that slot as free said GO, the wander cut the room task off, the stack went back, MAKE_ROOM,
+        // twice a second for minutes
+        if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
+            empty--;
+        }
+        boolean freeSlot = empty > 0;
         if (!BucketFillRules.needsFreeSlot(bucketStacks, freeSlot)) {
             _roomTask = null;
             _noRoom = false;
