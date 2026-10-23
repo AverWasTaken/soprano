@@ -282,7 +282,13 @@ public class MobDefenseChain extends SingleTaskChain {
         // up on a pillar with a bed (NightSleep): a zombie at the foot of it is the reason we are up here, not a fight, and a run
         // would walk us off the top. same stand down as a meal, minus the lit creeper (it can still blow the pillar up) and minus
         // low health, which hands the wheel back inside standsDown
-        if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth(), mod.getWorld().getGameTime())) {
+        LocalPlayer self = mod.getPlayer();
+        var hitBy = self.getLastDamageSource();
+        // (the mob swung at us itself, an arrow on the pillar is not "still in reach of the ground")
+        if (self.hurtTime > 0 && hitBy != null && hitBy.getEntity() instanceof Mob && hitBy.getDirectEntity() == hitBy.getEntity()) {
+            NightSleepHook.noteMeleeHit(mod.getWorld().getGameTime());
+        }
+        if (!_creeperStep.active() && NightSleepHook.standsDown(self.getHealth(), mod.getWorld().getGameTime())) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
             _lavaGuard.release(mod);
