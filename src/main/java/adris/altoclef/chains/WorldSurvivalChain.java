@@ -13,6 +13,8 @@ import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BucketPour;
+import adris.altoclef.util.helpers.DunkRules;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
@@ -26,6 +28,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 public class WorldSurvivalChain extends SingleTaskChain {
 
@@ -34,6 +38,12 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private TimerGame _portalStuckTimer = new TimerGame(5);
 
     private BlockPos _extinguishWaterPosition;
+    // the block and face the dunk clicked, the pickup clicks the same ones
+    private BlockPos _extinguishHit;
+    private Direction _extinguishFace = Direction.UP;
+    private int _dunkAimTicks;
+    private boolean _dunkGaveUp;
+    private boolean _trackingWater;
 
     public WorldSurvivalChain(TaskRunner runner) {
         super(runner);
@@ -75,31 +85,20 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         // Extinguish with water
+        if (!mod.getPlayer().isOnFire()) {
+            endBurn(mod);
+        }
         if (Baritone.settings().altoExtinguishSelfWithWater.value) {
             if (!(_mainTask instanceof EscapeFromLavaTask && isCurrentlyRunning(mod)) && mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE) && !WorldHelper.waterEvaporates(mod.getWorld())) {
                 // Extinguish ourselves
-                if (mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-                    BlockPos targetWaterPos = mod.getPlayer().blockPosition();
-                    if (WorldHelper.isSolid(mod, targetWaterPos.below()) && WorldHelper.canPlace(mod, targetWaterPos)) {
-                        Optional<Rotation> reach = LookHelper.getReach(targetWaterPos.below(), Direction.UP);
-                        if (reach.isPresent()) {
-                            mod.getClientBaritone().getLookBehavior().updateTarget(reach.get(), true);
-                            if (mod.getClientBaritone().getPlayerContext().isLookingAt(targetWaterPos.below())) {
-                                if (mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET)) {
-                                    _extinguishWaterPosition = targetWaterPos;
-                                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
-                                    setTask(null);
-                                    return 90;
-                                }
-                            }
-                        }
-                    }
+                trackWaterWhileBurning(mod);
+                float dunk = dunkOrWalk(mod);
+                if (dunk != Float.NEGATIVE_INFINITY) {
+                    return dunk;
                 }
-                setTask(new DoToClosestBlockTask(GetToBlockTask::new, Blocks.WATER));
-                return 90;
             } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockTracker().blockIsValid(_extinguishWaterPosition, Blocks.WATER)) {
                 // Pick up the water
-                setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), Direction.UP, _extinguishWaterPosition.below(), true));
+                setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), _extinguishFace, _extinguishHit, true));
                 return 60;
             } else {
                 _extinguishWaterPosition = null;
@@ -123,6 +122,74 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         return Float.NEGATIVE_INFINITY;
+    }
+
+    // the burn is over (or never was): next one gets a fresh aim budget
+    private void endBurn(AltoClef mod) {
+        _dunkAimTicks = 0;
+        _dunkGaveUp = false;
+        if (_trackingWater) {
+            _trackingWater = false;
+            mod.getBlockTracker().stopTracking(Blocks.WATER);
+        }
+    }
+
+    // the far-water check needs the tracker to know about water before any task is walking there to ask for it
+    private void trackWaterWhileBurning(AltoClef mod) {
+        if (!_trackingWater) {
+            _trackingWater = true;
+            mod.getBlockTracker().trackBlock(Blocks.WATER);
+        }
+    }
+
+    // dunk where we stand if a face puts the water in our cell, and hold still until the look lands (a walk's pathing
+    // rewrites the camera every tick, so the old fall-through to a pond never got to click). only when there is no face,
+    // or the aim gave up, do we walk, and then only to water that is close. NEGATIVE_INFINITY means nothing to do here
+    private float dunkOrWalk(AltoClef mod) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        // a click mid jump lands in the cell we were in, not the one we are in by the time it goes through
+        boolean airborne = !mod.getPlayer().onGround() && !mod.getPlayer().onClimbable() && !mod.getPlayer().isInWater();
+        if (airborne && !_dunkGaveUp) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        if (mod.getItemStorage().hasItem(Items.WATER_BUCKET) && !_dunkGaveUp && WorldHelper.canPlace(mod, feet)) {
+            for (DunkRules.Face face : DunkRules.candidates(mod.getWorld(), feet)) {
+                Optional<Rotation> reach = LookHelper.getReach(face.hit(), face.face());
+                if (reach.isEmpty()) {
+                    continue;
+                }
+                if (!DunkRules.keepAiming(_dunkAimTicks)) {
+                    _dunkGaveUp = true;
+                    break;
+                }
+                _dunkAimTicks++;
+                setTask(null);
+                mod.getClientBaritone().getPathingBehavior().cancelEverything();
+                mod.getClientBaritone().getLookBehavior().updateTarget(reach.get(), true);
+                if (aimedAt(mod, face) && mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET)) {
+                    _extinguishWaterPosition = face.lands();
+                    _extinguishHit = face.hit();
+                    _extinguishFace = face.face();
+                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+                }
+                return 90;
+            }
+        }
+        Optional<BlockPos> water = mod.getBlockTracker().getNearestTracking(Blocks.WATER);
+        // below the mob defense run (80) and fight (65) so a pond walk never keeps them off the wheel
+        if (water.isPresent() && DunkRules.walkWorthIt(mod.getPlayer().position().distanceTo(WorldHelper.toVec3d(water.get())))) {
+            // the exact block we measured, not whichever one the closest-block task likes better
+            setTask(new GetToBlockTask(water.get()));
+            return 60;
+        }
+        return Float.NEGATIVE_INFINITY;
+    }
+
+    // the crosshair is on the block and the face we picked, anything else puts the water somewhere else
+    private static boolean aimedAt(AltoClef mod, DunkRules.Face face) {
+        HitResult hit = mod.getClientBaritone().getPlayerContext().objectMouseOver();
+        return hit instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK
+                && BucketPour.aimedRight(b.getBlockPos(), b.getDirection(), face.hit(), face.face());
     }
 
     private void handleDrowning(AltoClef mod) {
