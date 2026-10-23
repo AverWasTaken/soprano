@@ -321,7 +321,116 @@ def build():
     bounce(5, 4, 0, 7, -1, 0)
     c.end_section(3, 0, 0, "13: Slime factory")
 
-    # 14. chess. the hard one: down onto the pawns, diagonal captures across them, a knight's tour climbing up the
+    # 14. thick neos: round the end of a wall three thick. on the level there's no air time for it, so the landing is a
+    # block down: the extra fall is what gets you round. one with the wall's end on the +z side, one on the -z side
+    c.start_section("Thick neos", "Triple neos: round the end of a wall three thick onto a block one down, the wall's end "
+                    "on one side and then the other.", "TUNGSTEN (searched neo)")
+    def wall(x0, x1, z0, z1, y):
+        for wx in range(x0, x1 + 1):
+            for wz in range(z0, z1 + 1):
+                for wy in range(y - 2, y + 3):
+                    c.put(wx, wy, wz, "deepslate_bricks" if (wx + wy + wz) % 4 else "cracked_deepslate_bricks")
+    for side in (1, -1):
+        c.jump(2, 0, 0, "polished_deepslate")
+        c.walk(1, "polished_deepslate")
+        x, y, z = c.cur
+        wall(x + 1, x + 3, z - 3 if side > 0 else z, z if side > 0 else z + 3, y)
+        c.jump(4, -1, 0, "polished_deepslate", kind="triple neo")
+        c.walk(2, "polished_deepslate")
+    c.end_section(3, 0, 0, "14: Thick neos")
+
+    # 15. neo chains: neos back to back with a one block pad between. three one thick ones (each off the pad the last one
+    # came down on, the wall it came round right behind), then two two thick ones where the pad between is no use to stand
+    # on: the second only works off the speed of the first, so it's one flight with a touchdown in the middle
+    c.start_section("Neo chains", "Three neos in a row with one block pads between, then two double neos back to back "
+                    "(no stopping on the pad between).", "TUNGSTEN (searched neo)")
+    c.jump(2, 0, 0, "polished_tuff")
+    c.walk(1, "polished_tuff")
+    x, y, z = c.cur
+    for i in range(3):
+        wall(x + 1 + 2 * i, x + 1 + 2 * i, z - 3, z, y)
+        c.jump(2, 0, 0, "polished_tuff", kind="neo off a pad")
+    c.walk(3, "polished_tuff")
+    x, y, z = c.cur
+    wall(x + 1, x + 2, z - 3, z, y)
+    c.put(x + 3, y - 1, z, "tuff_bricks")
+    wall(x + 4, x + 5, z - 3, z, y)
+    c.put(x + 6, y - 1, z, "polished_tuff")
+    c.jumps.append({"from": [x, y, z], "to": [x + 6, y, z], "kind": "double neo x2", "block": "polished_tuff"})
+    c.cur = (x + 6, y, z)
+    c.walk(2, "polished_tuff")
+    c.end_section(3, 0, 0, "15: Neo chains")
+
+    # 16. combo: a head hitter, straight into a neo, straight into a ladder neo, along the top of the wall and down
+    c.start_section("Combo", "A three gap head hitter, then a neo, then a ladder neo up onto a wall, along it and off the "
+                    "end.", "TUNGSTEN (combo)")
+    c.jump(2, 0, 0, "cut_copper")
+    x, y, z = c.cur
+    for cx in range(x, x + 4):   # not over the landing: the neo goes from right under it
+        c.put(cx, y + 3, z, "oxidized_cut_copper")
+    c.jump(4, 0, 0, "cut_copper", kind="headhitter 3b")
+    c.walk(1, "cut_copper")
+    x, y, z = c.cur
+    wall(x + 1, x + 1, z - 3, z, y)
+    c.jump(2, 0, 0, "cut_copper", kind="neo")
+    c.walk(1, "cut_copper")
+    x, y, z = c.cur
+    c.put(x, y - 1, z + 1, "cut_copper")    # the ladder neo's runway is two wide: the wall's row and the open row
+    c.put(x - 1, y - 1, z + 1, "cut_copper")
+    wx = x + 1
+    for wy in range(y - 2, y + 4):
+        for cz in range(z - 3, z + 1):
+            c.put(wx, wy, cz, "weathered_cut_copper")
+    for ly in range(y - 1, y + 4):
+        for cz in (z - 1, z):
+            c.put(wx + 1, ly, cz, "ladder[facing=east]")
+    c.jumps.append({"from": [x, y, z + 1], "to": [wx, y + 4, z], "kind": "ladder neo", "block": "ladder"})
+    c.cur = (wx, y + 4, z - 3)
+    c.jumps.append({"from": [wx, y + 4, z], "to": [wx, y + 4, z - 3], "kind": "walk", "block": "weathered_cut_copper"})
+    c.jump(3, -2, 1, "cut_copper")
+    c.jump(2, -1, 2, "cut_copper")
+    c.end_section(3, 0, 0, "16: Combo")
+
+    # 17. slime to ladder: off the ledge, down onto slime, and the bounce up onto a ladder on a tower, up and over the top.
+    # then the same onto a vine
+    c.start_section("Slime to ladder", "Drop onto slime and bounce up onto a ladder on a tower, climb over the top, then "
+                    "the same onto a vine.", "TUNGSTEN (bounce to ladder)")
+    for climb in ("ladder[facing=west]", "vine[east=true]"):
+        c.jump(2, 0, 0, "lime_concrete")
+        x, y, z = c.cur
+        for i in range(2, 5):
+            for k in (-1, 0, 1):
+                c.put(x + i, y - 6, z + k, "slime_block")
+        tx = x + 7           # the tower: three wide, its west face carries the ladder from the slime up past the ledge
+        for ty in range(y - 8, y + 3):
+            for tz in (z - 1, z, z + 1):
+                c.put(tx, ty, tz, "lime_terracotta")
+        for ly in range(y - 4, y + 3):
+            c.put(tx - 1, ly, z, climb)
+        c.jumps.append({"from": [x, y, z], "to": [tx, y + 3, z], "kind": "slime to ladder", "block": climb})
+        c.cur = (tx, y + 3, z)
+        c.jump(2, -3, 0, "lime_concrete")
+    c.end_section(3, 0, 0, "17: Slime to ladder")
+
+    # 18. ice tunnel: a long packed ice runway under a ceiling at head height (hop along it, every hop bonking the ceiling,
+    # and the ice keeps every bit of the push), out from under it at the end, and the longest jumps on the course
+    c.start_section("Ice tunnel", "Hop along a packed ice tunnel under a low ceiling and out into a five gap, then a six "
+                    "gap off a longer one.", "TUNGSTEN (ice hops)")
+    for n, gap in ((8, 5), (10, 6)):
+        c.jump(2, 0, 0, "snow_block")
+        x, y, z = c.cur
+        for i in range(1, n + 1):
+            c.put(x + i, y - 1, z, "packed_ice")
+            c.put(x + i, y - 1, z - 1, "packed_ice")
+            c.put(x + i, y - 1, z + 1, "packed_ice")
+        for cx in range(x, x + n - 1):
+            for cz in (z - 1, z, z + 1):
+                c.put(cx, y + 2, cz, "light_blue_stained_glass")
+        c.cur = (x + n, y, z)
+        c.jump(gap + 1, 0, 0, "snow_block", kind=f"ice tunnel {gap}b")
+    c.end_section(3, 0, 0, "18: Ice tunnel")
+
+    # 19. chess. the hard one: down onto the pawns, diagonal captures across them, a knight's tour climbing up the
     # knights, the bishop's diagonal, along the rook's battlements, a neo round the queen, and up the king's ladder to the
     # top. the pieces stand on a board thirty blocks down. fall off and it's back to the checkpoint
     c.start_section("Chess", "Pawn captures (diagonals) down on the board, a knight's tour climbing up, the bishop's "

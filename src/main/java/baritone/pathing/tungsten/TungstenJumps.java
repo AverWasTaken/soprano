@@ -55,7 +55,8 @@ public final class TungstenJumps {
     static final double[] REACH = {4.9 /* -3 */, 3.5 /* -2 */, 6.3 /* -1 */, 6.2 /* 0 */, 4.7 /* +1 */};
     static final int MAX_UP = 1, MAX_DOWN = 3, RANGE = 9;
     // with something bouncy (slime) under the way across, a jump comes down on it and goes up again: further than any
-    // standing start, never higher than it started. how far the rule has made one of those go, middle to middle
+    // standing start, never higher than it started (a ladder is caught on the way up, that can be). how far the rule has
+    // made one of those go, middle to middle
     static final double BOUNCE_REACH = 9.5;
     // how far under the line to look for it
     static final int BOUNCE_DEPTH = 10;
@@ -66,10 +67,12 @@ public final class TungstenJumps {
                        TungstenSearch.Plan plan) {}
 
     private static final Jump NONE = new Jump(null, null, ActionCosts.COST_INF, null, List.of(), null);
+    // no answer yet, it's being worked out in the background (NeoSearches): not kept, the next ask may have it
+    private static final Jump PENDING = new Jump(null, null, ActionCosts.COST_INF, null, List.of(), null);
     // the full search's budget for a ladder neo the rule can't do, in sim ticks. the 1 thick wall with a runway behind it is
     // a couple of thousand
     static final long NEO_SEARCH_BUDGET = 40_000;
-    static final double NEO_COST = 1.5;
+    static final double NEO_COST = 1.5, COMBO_COST = 3.0;
 
     private TungstenJumps() {}
 
@@ -212,9 +215,12 @@ public final class TungstenJumps {
             if (world == null) {
                 world = new SafeCollision(context.bsi);
             }
-            long before = PlayerSim.ticksRun;
-            Jump j = simulate(context, world, src, dest);
-            budget -= PlayerSim.ticksRun - before;
+            long before = PlayerSim.ticks();
+            Jump j = simulate(context, world, src, dest, !anyBudget);
+            budget -= PlayerSim.ticks() - before;
+            if (j == PENDING) {
+                return null;
+            }
             if (pairCount > 50_000) {
                 pairs.clear();
                 pairCount = 0;
@@ -283,14 +289,17 @@ public final class TungstenJumps {
         boolean grab = grabCell(context, tx, ty, tz);
         // a ladder only has to be touched, not stood on: a bit further than a landing
         double reach = REACH[dy + MAX_DOWN] + (grab ? GRAB_EXTRA : 0);
-        if (dist > reach && (grab || dy > 0 || dist > BOUNCE_REACH || !bounceOnTheWay(context, x, y, z, dx, dz, dist))) {
+        // a bounce goes up as high as it came down from, so a ladder (caught on the way up) can be a block over src too
+        if (dist > reach && (dy > 0 && !grab || dist > BOUNCE_REACH || !bounceOnTheWay(context, x, y, z, dx, dz, dist))
+                && !(dy <= 0 && iceRunway(context, x, y, z, dx, dz, dist) >= ICE_RUNWAY)) {
             return false;
         }
         // the line out has to leave src over a hole, or it's a jump from some other node (or no jump at all). a ladder round
         // the end of a wall (a ladder neo) has the wall right there instead
         double ux = dx / dist, uz = dz / dist;
         int ox = Mth.floor(x + 0.5 + ux * 0.85), oz = Mth.floor(z + 0.5 + uz * 0.85);
-        if (!hole(context, ox, y, oz) && !(grab && !MovementHelper.fullyPassable(context, ox, y + 1, oz))) {
+        if (!hole(context, ox, y, oz) && !(grab && !MovementHelper.fullyPassable(context, ox, y + 1, oz))
+                && neoSide(context, x, y, z, dx, dy, dz) == null) {
             return false;
         }
         if (grab) {
@@ -303,6 +312,99 @@ public final class TungstenJumps {
     }
 
     static final double GRAB_EXTRA = 0.7;
+
+    // a run up this long on ice, behind src and pointing at dest, and the rule's ice hops (JumpPolicy.ICE_VARIANTS) can go
+    // further than any standing start: past REACH, up to RANGE
+    static final int ICE_RUNWAY = 4;
+
+    // how many blocks of ice there are to run up on, back from src the other way from dest (src's own floor counts)
+    static int iceRunway(CalculationContext context, int x, int y, int z, int dx, int dz, double dist) {
+        double ux = dx / dist, uz = dz / dist;
+        int n = 0;
+        for (int i = 0; i <= 10; i++) {
+            int bx = Mth.floor(x + 0.5 - ux * i), bz = Mth.floor(z + 0.5 - uz * i);
+            BlockState floor = context.get(bx, y - 1, bz);
+            if (floor.getBlock().getFriction() <= 0.7F || bouncy(floor) || !MovementHelper.fullyPassable(context, bx, y, bz)) {
+                break;
+            }
+            n++;
+        }
+        return n;
+    }
+
+    // a neo, the shape of one: straight along x or z, a wall right in front of src, and the row beside the line open at
+    // body height all the way from src to dest, to swing out through. and dest the first thing to land on past the wall
+    // (anything further on the same line goes from there), or past a second wall with a one block pad between the two: two
+    // neos in one flight, for when the second can't go from standing on the pad. null if not one, else {side x, side z, 1
+    // if it's two in one}
+    static int[] neoSide(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
+        if ((dx == 0) == (dz == 0) || dy > 0 || dy < -2) {
+            return null;
+        }
+        int dist = Math.abs(dx + dz);
+        if (dist < 2 || dist > 6) {
+            return null;
+        }
+        int ux = Integer.signum(dx), uz = Integer.signum(dz);
+        // what's on the line between: walls, then nothing to stand on (or one pad and more wall: a combo)
+        int walls = 0, pads = 0, phase = 0; // 0 first walls, 1 pad seen, 2 second walls, 3 open
+        for (int i = 1; i < dist; i++) {
+            int cx = x + ux * i, cz = z + uz * i;
+            boolean wall = !MovementHelper.fullyPassable(context, cx, y, cz) || !MovementHelper.fullyPassable(context, cx, y + 1, cz);
+            boolean pad = !wall && (MovementHelper.canWalkOn(context, cx, y - 1, cz) || dy < 0 && MovementHelper.canWalkOn(context, cx, y + dy - 1, cz));
+            if (i == 1 && !wall) {
+                return null;
+            }
+            if (wall) {
+                if (phase == 0 || phase == 2) {
+                    walls++;
+                } else if (phase == 1) {
+                    phase = 2;
+                    walls++;
+                } else {
+                    return null; // open, then more wall: not a shape we know
+                }
+            } else if (pad) {
+                if (phase != 0 || dy != 0) {
+                    return null; // a second pad, or a pad on the way down: there's a nearer landing
+                }
+                phase = 1;
+                pads++;
+            } else {
+                if (phase == 1) {
+                    return null; // a pad then a gap: the pad is the landing
+                }
+                phase = 3;
+            }
+        }
+        if (phase == 1) {
+            return null;
+        }
+        Direction along = ux > 0 ? Direction.EAST : ux < 0 ? Direction.WEST : uz > 0 ? Direction.SOUTH : Direction.NORTH;
+        for (Direction side : new Direction[]{along.getClockWise(), along.getCounterClockWise()}) {
+            boolean open = true;
+            for (int i = 0; i <= dist && open; i++) {
+                int cx = x + ux * i + side.getStepX(), cz = z + uz * i + side.getStepZ();
+                open = MovementHelper.fullyPassable(context, cx, y, cz) && MovementHelper.fullyPassable(context, cx, y + 1, cz);
+            }
+            if (open) {
+                return new int[]{side.getStepX(), side.getStepZ(), pads > 0 ? 1 : 0};
+            }
+        }
+        return null;
+    }
+
+    // MovementNeo has this one (its tables do flat neos with a runway, and are cheaper to plan than a search)
+    private static boolean movementNeoDoes(CalculationContext context, BetterBlockPos src, BetterBlockPos dest) {
+        if (dest.y != src.y) {
+            return false;
+        }
+        int dx = dest.x - src.x, dz = dest.z - src.z;
+        Direction d = dx > 0 ? Direction.EAST : dx < 0 ? Direction.WEST : dz > 0 ? Direction.SOUTH : Direction.NORTH;
+        MutableMoveResult r = new MutableMoveResult();
+        baritone.pathing.movement.movements.MovementNeo.cost(context, src.x, src.y, src.z, d, r);
+        return r.cost < ActionCosts.COST_INF && r.x == dest.x && r.z == dest.z;
+    }
 
     // a ladder or vine cell to catch in mid air: climbable, nothing to stand on in it (that'd be a landing), and room for
     // the head over it (more ladder, or air)
@@ -373,7 +475,7 @@ public final class TungstenJumps {
     }
 
     // roll the rule out from a standing start in the middle of src
-    private static Jump simulate(CalculationContext context, SafeCollision world, BetterBlockPos src, BetterBlockPos dest) {
+    private static Jump simulate(CalculationContext context, SafeCollision world, BetterBlockPos src, BetterBlockPos dest, boolean schedule) {
         PlayerSim sim = new PlayerSim(PlayerSim.Params.vanilla(), world);
         double floor = floorTop(world, src.x, src.y, src.z);
         if (Double.isNaN(floor)) {
@@ -404,6 +506,18 @@ public final class TungstenJumps {
                 double cost = context.biasJump(Math.max(plan.ticks(), straight) * 1.5 + context.jumpPenalty);
                 return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
             }
+        }
+        int[] neo = land.grab() ? null : neoSide(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
+        if (neo != null && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())
+                && !movementNeoDoes(context, src, dest)) {
+            // round a wall the rule can't get round (three thick, two back to back): the full search, in the background
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, neo[0], neo[1], neo[2] == 1, schedule);
+            if (plan == null || plan == NeoSearches.WAIT) {
+                return plan == null ? null : PENDING;
+            }
+            // two in one flight has the least room of anything: only when there's no way with a stop on the pad between
+            double cost = context.biasJump(Math.max(plan.ticks(), straight) * (neo[2] == 1 ? COMBO_COST : NEO_COST) + context.jumpPenalty);
+            return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
         }
         return null;
     }

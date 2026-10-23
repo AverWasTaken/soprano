@@ -78,6 +78,9 @@ public final class JumpPolicy {
     };
     // a run up walks back at walking speed, a block in about 5 ticks
     static final int MAX_BACK_TICKS = 30;
+    // on ice everything takes longer: the walk back slides, and the run takes a long time to get going (the speed comes from
+    // the jumps, a hop's boost stays on ice where ground friction would eat it)
+    static final int ICE_BACK_TICKS = 70, ICE_RUN = 48, ICE_HOP_RUN = 70;
     // hopping takes longer to get to the edge than running
     static final int MAX_HOP_RUN = 40;
 
@@ -107,6 +110,9 @@ public final class JumpPolicy {
         // the straight line to the landing goes through something (a neo): the steering looks where it's going
         boolean neo;
         int gripTicks;
+        // took off from something slippery (ice): the run up's limits are longer, see ICE_RUN
+        boolean slip;
+        private boolean slipKnown;
 
         public Memo copy() {
             Memo m = new Memo();
@@ -126,6 +132,8 @@ public final class JumpPolicy {
             m.runFloorY = runFloorY;
             m.neo = neo;
             m.gripTicks = gripTicks;
+            m.slip = slip;
+            m.slipKnown = slipKnown;
             return m;
         }
 
@@ -142,6 +150,10 @@ public final class JumpPolicy {
     // left to press
     public static PlayerSim.Controls decide(PlayerSim sim, PlayerSim probe, Landing land, Variant variant, Memo memo) {
         SimState now = SimState.of(sim);
+        if (!memo.slipKnown) {
+            memo.slipKnown = true;
+            memo.slip = now.onGround && slippery(sim);
+        }
         if (memo.phase == Phase.RUN && variant.back() > 0 && memo.backTicks == 0 && !memo.anchored) {
             memo.phase = Phase.BACK;
         }
@@ -247,7 +259,7 @@ public final class JumpPolicy {
         double along = (now.x - memo.anchorX) * memo.backX + (now.z - memo.anchorZ) * memo.backZ;
         // the slide we're on would carry us this much further back
         double coast = (now.vx * memo.backX + now.vz * memo.backZ) * 1.2;
-        if (along + Math.max(0, coast) >= variant.back() - 0.05 || ++memo.backTicks > MAX_BACK_TICKS) {
+        if (along + Math.max(0, coast) >= variant.back() - 0.05 || ++memo.backTicks > (memo.slip ? ICE_BACK_TICKS : MAX_BACK_TICKS)) {
             memo.phase = Phase.RUN;
             memo.backTicks = Math.max(memo.backTicks, 1);
             return null; // the caller asks again, now as a run
@@ -284,14 +296,14 @@ public final class JumpPolicy {
             }
             if (!now.onGround) {
                 // mid hop: keep sprinting at it, and let go of space so the next touchdown can jump straight away
-                if (memo.runTicks++ >= MAX_HOP_RUN) {
+                if (memo.runTicks++ >= (memo.slip ? ICE_HOP_RUN : MAX_HOP_RUN)) {
                     memo.fail("never got to jump");
                     return Keys.release(yaw);
                 }
                 return Keys.run(yaw, false);
             }
         }
-        if (memo.runTicks++ >= (variant.hop() ? MAX_HOP_RUN : MAX_RUN)) {
+        if (memo.runTicks++ >= (variant.hop() ? memo.slip ? ICE_HOP_RUN : MAX_HOP_RUN : memo.slip ? ICE_RUN : MAX_RUN)) {
             memo.fail("never got to jump");
             return Keys.release(yaw);
         }
@@ -300,8 +312,10 @@ public final class JumpPolicy {
             return Keys.release(yaw);
         }
         boolean jump = variant.jumpAt() >= 0 && variant.jumpAt() != Variant.NEVER && memo.runTicks - 1 >= variant.jumpAt();
-        if (variant.hop() && memo.runTicks > 1 && ceilingAt(probe, now.x, now.y, now.z, 2)) {
-            jump = true; // every touchdown under the ceiling. out from under it it's a plain run to the edge
+        if (variant.hop() && memo.runTicks > 1 && (memo.slip || ceilingAt(probe, now.x, now.y, now.z, 2))) {
+            // every touchdown under the ceiling (out from under it it's a plain run to the edge), and on ice every touchdown
+            // anyway: each jump's push stays, the ice hardly takes any of it back
+            jump = true;
         }
         if (!jump && variant.jumpAt() != Variant.NEVER) {
             // the edge: if this tick without space walks us off the floor, this tick is the last one we can jump on
@@ -513,7 +527,30 @@ public final class JumpPolicy {
 
     // the variants worth trying from start: the neo ones when the straight line goes through a wall, the rest otherwise
     static Variant[] variants(PlayerSim start, Landing land) {
-        return blocked(start.world(), start.x, start.y, start.z, land.centerX(), land.y(), land.centerZ()) ? NEO_VARIANTS : VARIANTS;
+        if (blocked(start.world(), start.x, start.y, start.z, land.centerX(), land.y(), land.centerZ())) {
+            return NEO_VARIANTS;
+        }
+        return start.onGround && slippery(start) ? ICE_VARIANTS : VARIANTS;
+    }
+
+    // on ice a longer run up is still getting faster, and hopping along it (every touchdown a jump) faster still
+    public static final Variant[] ICE_VARIANTS;
+
+    static {
+        List<Variant> ice = new ArrayList<>(List.of(VARIANTS));
+        for (float back : new float[]{5.5F, 7.5F, 9.5F}) {
+            ice.add(new Variant(-1, 0F, back));
+        }
+        for (float back : new float[]{1.5F, 5.5F, 7.5F, 9.5F}) {
+            ice.add(new Variant(-1, 0F, back, true));
+        }
+        ICE_VARIANTS = ice.toArray(new Variant[0]);
+    }
+
+    // standing on something with ice's friction or more
+    static boolean slippery(PlayerSim sim) {
+        int x = net.minecraft.util.Mth.floor(sim.x), z = net.minecraft.util.Mth.floor(sim.z), y = net.minecraft.util.Mth.floor(sim.y - 0.5000001);
+        return sim.world().friction(x, y, z) > 0.7F && sim.world().bounce(x, y, z) == 0F;
     }
 
     // a whole jump played out in the sim
@@ -549,7 +586,7 @@ public final class JumpPolicy {
         List<SimState> states = new ArrayList<>();
         states.add(SimState.of(sim));
         double floor = Math.min(sim.y, land.y()) - 1.0;
-        int cap = MAX_BACK_TICKS + MAX_HOP_RUN + MAX_AIR + MAX_SETTLE + 4;
+        int cap = ICE_BACK_TICKS + ICE_HOP_RUN + MAX_AIR + MAX_SETTLE + 4;
         for (int i = 0; i < cap; i++) {
             PlayerSim.Controls c = decide(sim, probe, land, variant, memo);
             if (memo.phase == Phase.DONE) {
@@ -651,7 +688,7 @@ public final class JumpPolicy {
         }
         boolean standingShort = false;
         for (Variant v : neos ? variants(start, land) : VARIANTS) {
-            if (v.equals(first) || standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start)) {
+            if (v.equals(first) || standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start) && !slippery(start)) {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
@@ -688,7 +725,7 @@ public final class JumpPolicy {
         }
         boolean standingShort = false;
         for (Variant v : order) {
-            if (standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start)) {
+            if (standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start) && !slippery(start)) {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
@@ -718,9 +755,23 @@ public final class JumpPolicy {
     // the planner's question: is there a variant that lands even with the aim off by AIM_ERRORS all the way through. a jump
     // that only works with a perfect aim gets flown by a bot whose aim isn't, so it isn't one to plan. quickest such first
     public static Rollout forgiving(PlayerSim start, Landing land) {
+        return forgiving(start, land, null);
+    }
+
+    // the same, trying `first` before the rest
+    public static Rollout forgiving(PlayerSim start, Landing land, Variant first) {
         boolean standingShort = false;
+        List<Variant> order = new ArrayList<>();
+        if (first != null) {
+            order.add(first);
+        }
         for (Variant v : variants(start, land)) {
-            if (standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start)) {
+            if (!v.equals(first)) {
+                order.add(v);
+            }
+        }
+        for (Variant v : order) {
+            if (standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start) && !slippery(start)) {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);

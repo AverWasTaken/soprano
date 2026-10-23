@@ -19,7 +19,7 @@ COLORS = [
     ("white_concrete", "#f4f4f4"), ("black_concrete", "#1b1b22"), ("blackstone_bricks", "#2c272b"),
     ("polished_blackstone", "#3a3438"), ("cyan_terracotta", "#4c7f86"), ("lime_terracotta", "#7a9a3d"),
     ("orange_terracotta", "#b5602c"), ("polished_andesite", "#9aa0a0"), ("mossy", "#6b7b55"), ("stone_bricks", "#7f7f7f"),
-    ("dark_prismarine", "#2f5e57"), ("prismarine", "#5aa59a"), ("ladder", "#a8803e"), ("vine", "#3f8f2f"),
+    ("deepslate", "#4a4a52"), ("tuff", "#6d6f63"), ("copper", "#c0704a"), ("lime_concrete", "#5ec42e"), ("dark_prismarine", "#2f5e57"), ("prismarine", "#5aa59a"), ("ladder", "#a8803e"), ("vine", "#3f8f2f"),
     ("stone", "#8a8a8a"), ("oak", "#b48a52"), ("cobblestone", "#7a7a7a"), ("glass", "#cfe8ef"), ("iron_bars", "#9a9a9a"),
     ("hopper", "#4a4a4a"), ("end_rod", "#f0eadf"),
 ]

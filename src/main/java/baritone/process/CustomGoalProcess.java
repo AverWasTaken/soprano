@@ -153,7 +153,7 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         }
     }
 
-    private static final int TABLE_RETRIES = 3, TABLE_WAIT_TICKS = 300;
+    private static final int TABLE_RETRIES = 8, TABLE_WAIT_TICKS = 600;
     private int tableRetries, tableWaitTicks;
     private long tableMisses;
 

@@ -37,6 +37,17 @@ public class JumpDebug {
         BetterBlockPos src = pos(ends[0]), dest = pos(ends[1]);
         CalculationContext ctx = new VineLogPathTest.Ctx(w, false);
         TungstenJumps.Jump j = TungstenJumps.between(ctx, src, dest);
+        if (j == null && System.getenv("NEO_SIDE") != null) {
+            // a searched neo: what the background search would hand the planner
+            String[] sd = System.getenv("NEO_SIDE").split(",");
+            Landing l0 = TungstenJumps.landing(ctx, dest);
+            baritone.pathing.tungsten.TungstenSearch.Plan p = baritone.pathing.tungsten.NeoSearches.solve(new SafeCollision(w), src, src.y, l0,
+                    baritone.pathing.tungsten.NeoSearches.region(src, l0),
+                    baritone.pathing.tungsten.NeoSearches.via(src, l0, Integer.parseInt(sd[0]), Integer.parseInt(sd[1])));
+            if (p != null) {
+                j = new TungstenJumps.Jump(src, dest, 0, JumpPolicy.Variant.EDGE, p.states(), p);
+            }
+        }
         System.out.println("jump " + src + " -> " + dest + ": " + (j == null ? "none" : j.variant() + " cost " + j.cost() + (j.plan() != null ? " (search plan)" : "")));
         Landing land = TungstenJumps.landing(ctx, dest);
         SafeCollision world = new SafeCollision(w);
