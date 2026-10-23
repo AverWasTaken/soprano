@@ -3,7 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
-import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -33,6 +33,8 @@ import java.util.function.Supplier;
 public class PearlHuntTask extends Task {
     // close enough to the forest that the endermen are in view distance
     private static final double AT_HOTSPOT_BLOCKS = 40;
+    // a sighted forest block is a floor, the hills around it are not. further off than this up or down is not "there"
+    private static final double AT_HOTSPOT_Y = 8;
     // a nook that came up empty is not tried again for this long (the loot walk below moves us somewhere else meanwhile)
     private static final long NOOK_RETRY_TICKS = 400;
     private static final int NOOK_TRIES = 4;
@@ -48,7 +50,7 @@ public class PearlHuntTask extends Task {
     private final KillAndLootTask loot;
     private final Task goToDimension;
 
-    private GetToXZTask toHotspot;
+    private GetWithinRangeOfBlockTask toHotspot;
     private RunState.Pos hotspotWalkingTo;
     // these two are phase clocks, not time on task: each only ticks in its own branch and restarts with its target.
     // the caps survive interrupts, and a long fight with something else (or a death) in between does not eat them
@@ -160,15 +162,15 @@ public class PearlHuntTask extends Task {
         return EndermanNook.mayAggro(mod.getPlayer().isOnFire(), mod.getPlayer().getHealth(), lava ? 1 : 99, 0, Double.MAX_VALUE);
     }
 
-    // distance to the nearest tracked enderman of any mood, infinity for none
+    // distance to the nearest tracked enderman we have line of sight to, infinity for none (see EndermanNook.nearestSeen)
     private static double nearestEnderman(AltoClef mod) {
-        double best = Double.POSITIVE_INFINITY;
-        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (man.isAlive()) {
-                best = Math.min(best, man.distanceTo(mod.getPlayer()));
-            }
+        List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
+        double[] dist = new double[men.size()];
+        for (int i = 0; i < dist.length; i++) {
+            Enderman man = men.get(i);
+            dist[i] = man.isAlive() && man.hasLineOfSight(mod.getPlayer()) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
-        return best;
+        return EndermanNook.nearestSeen(dist);
     }
 
     // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored. the
@@ -216,15 +218,24 @@ public class PearlHuntTask extends Task {
         if (!spot.equals(hotspotWalkingTo)) {
             hotspotWalkingTo = spot;
             hotspotSpent.reset();
-            toHotspot = new GetToXZTask(spot.x, spot.z);
+            // near the spot in 3D, not its column: GoalXZ is happy on top of a hill. the block itself may sit under fungus
+            toHotspot = new GetWithinRangeOfBlockTask(new BlockPos(spot.x, spot.y, spot.z), (int) AT_HOTSPOT_Y);
         }
         double dx = mod.getPlayer().getX() - spot.x;
         double dz = mod.getPlayer().getZ() - spot.z;
-        boolean there = dx * dx + dz * dz <= AT_HOTSPOT_BLOCKS * AT_HOTSPOT_BLOCKS;
+        boolean there = EndermanNook.atHotspot(dx, mod.getPlayer().getY() - spot.y, dz, AT_HOTSPOT_BLOCKS, AT_HOTSPOT_Y);
+        // hurt: stand still and heal first, the walk waits (its clock too)
+        if (!there && !EndermanNook.mayWalkIn(mod.getPlayer().getHealth())) {
+            return null;
+        }
         hotspotSpent.tick();
         boolean tooLong = hotspotSpent.over(HOTSPOT_WALK_SECONDS);
         if (there || tooLong) {
             hotspotDone = true;
+            return null;
+        }
+        // hurt: stand still and heal first, the walk waits (its clock does too)
+        if (!EndermanNook.mayWalkIn(mod.getPlayer().getHealth())) {
             return null;
         }
         return toHotspot;

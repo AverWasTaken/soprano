@@ -112,6 +112,32 @@ public class EndermanNookTest {
     }
 
     @Test
+    public void latchOnlyCountsEndermenInSight() {
+        // (NaN = dead or behind a hill)
+        assertEquals(Double.POSITIVE_INFINITY, EndermanNook.nearestSeen(new double[]{Double.NaN, Double.NaN}), 0);
+        assertEquals(Double.POSITIVE_INFINITY, EndermanNook.nearestSeen(new double[]{}), 0);
+        assertEquals(30, EndermanNook.nearestSeen(new double[]{Double.NaN, 30, 44}), 0);
+        assertTrue(EndermanNook.latchSees(EndermanNook.nearestSeen(new double[]{25})));
+        assertFalse(EndermanNook.latchSees(EndermanNook.nearestSeen(new double[]{Double.NaN})));
+    }
+
+    @Test
+    public void hotspotNeedsTheYBandToo() {
+        assertTrue(EndermanNook.atHotspot(10, 3, 10, 40, 8));
+        assertTrue(EndermanNook.atHotspot(0, -8, 0, 40, 8));
+        // a hill 17 above the forest floor is not the forest
+        assertFalse(EndermanNook.atHotspot(10, 17, 10, 40, 8));
+        assertFalse(EndermanNook.atHotspot(41, 0, 0, 40, 8));
+    }
+
+    @Test
+    public void walkingInNeedsTheAggroHealth() {
+        assertTrue(EndermanNook.mayWalkIn(18));
+        assertFalse(EndermanNook.mayWalkIn(17.5f));
+        assertFalse(EndermanNook.mayWalkIn(3));
+    }
+
+    @Test
     public void brainStandsDownOnlyForEndermenAloneDuringTheHunt() {
         assertTrue(EndermanNook.brainStandsDown(true, 1, 1));
         assertTrue(EndermanNook.brainStandsDown(true, 2, 2));

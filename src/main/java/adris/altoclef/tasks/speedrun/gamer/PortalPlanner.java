@@ -103,6 +103,10 @@ public final class PortalPlanner {
         // the same refill gap: 69 at the portal is not a trip
         if (food.wantsRefill()) {
             out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
+        } else if (food.shortOf(food.tripEnd())) {
+            // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
+            // is the minimum on a full bag, so this cannot ask for a pile there is no room for
+            out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {
