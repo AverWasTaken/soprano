@@ -175,6 +175,11 @@ public class PlaceObsidianBucketTask extends Task {
 
     // our lava just went out, or some of it is loose around the cast. either way it's ours to sort out, and a parent
     // that goes off for a fresh bucket now walks away from it
+    // the collect is told to leave these alone, or it scoops back the pour we just made
+    public boolean scoopOff(BlockPos cell) {
+        return CastLava.scoopOff(cell, _pos, _footprint, _earlierCells);
+    }
+
     public boolean ownsTheLava(AltoClef mod) {
         // the parent asks before we tick, so last tick's click hasn't been read yet
         watchLavaClick(mod);
@@ -760,7 +765,9 @@ public class PlaceObsidianBucketTask extends Task {
         // Check if the other task is an instance of PlaceObsidianBucketTask
         if (other instanceof PlaceObsidianBucketTask task) {
             // Check if the positions are equal
-            boolean isEqual = task.getPos().equals(getPos());
+            // same spot with a different footprint is a rebuilt cast (the frame moved), and the parent asks the new
+            // one about its lava, so the old one can't be the one that keeps ticking
+            boolean isEqual = CastLava.sameCast(task.getPos(), task._footprint, getPos(), _footprint);
             // Return the result
             return isEqual;
         }

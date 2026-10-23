@@ -374,4 +374,11 @@ public class PortalPlannerTest {
         PortalPlanner.recordArrival(state, f);
         assertEquals(new RunState.Pos(10, 70, -4), state.netherPortal);
     }
+
+    @Test
+    public void aLoopingCastGoesObsidianAtOnceWithAPick() {
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, true));
+        assertEquals("no pick, nowhere to go", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, false, true));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, false));
+    }
 }

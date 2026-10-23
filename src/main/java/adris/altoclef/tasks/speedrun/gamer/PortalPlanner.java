@@ -43,6 +43,13 @@ public final class PortalPlanner {
     // (that mined a half done frame to build a new one), only once it has stalled too
     public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
                                 boolean sawLava, boolean hasDiamondPickaxe) {
+        return decide(current, castSeconds, sinceProgressSeconds, cfg, sawLava, hasDiamondPickaxe, false);
+    }
+
+    // looped = the cast's pour and lava fetch kept undoing each other (CastLava.collectLoop). that is a cast going nowhere
+    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go
+    public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
+                                boolean sawLava, boolean hasDiamondPickaxe, boolean looped) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
@@ -50,6 +57,9 @@ public final class PortalPlanner {
         // wandering for a lake and the phase budget is what ends it
         if (!hasDiamondPickaxe) {
             return Method.CAST;
+        }
+        if (looped) {
+            return Method.OBSIDIAN;
         }
         if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {
             return Method.OBSIDIAN;

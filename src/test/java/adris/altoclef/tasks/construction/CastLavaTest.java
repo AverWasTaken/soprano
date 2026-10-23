@@ -255,4 +255,44 @@ public class CastLavaTest {
         // a cell that worked wipes the count, the task resets both to 0
         assertFalse(CastLava.spoiled(0, 0));
     }
+
+    @Test
+    public void ourOwnCellsAreNotScoopable() {
+        List<BlockPos> frame = List.of(P.offset(0, 0, 1));
+        List<BlockPos> foot = CastLava.footprint(P, List.of(P.offset(5, 0, 0)));
+        assertTrue(CastLava.scoopOff(P, P, foot, frame));
+        assertTrue(CastLava.scoopOff(P.offset(0, 0, 1), P, foot, frame));
+        assertTrue(CastLava.scoopOff(S, P, foot, frame));
+        assertTrue(CastLava.scoopOff(P.offset(5, 0, 0), P, foot, frame));
+        assertFalse("a separate pool is fair game", CastLava.scoopOff(P.offset(20, -3, 9), P, foot, frame));
+    }
+
+    @Test
+    public void fiveFetchesInAMinuteIsALoop() {
+        List<Integer> starts = new java.util.ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            starts.add(i * 200);
+            assertFalse(CastLava.collectLoop(starts, i * 200));
+        }
+        starts.add(800);
+        assertTrue(CastLava.collectLoop(starts, 800));
+    }
+
+    @Test
+    public void slowFetchesAreNotALoop() {
+        List<Integer> starts = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            starts.add(i * 400);
+            assertFalse(CastLava.collectLoop(starts, i * 400));
+        }
+    }
+
+    @Test
+    public void aRebuiltCastIsADifferentTask() {
+        List<BlockPos> a = CastLava.footprint(P, List.of(P.offset(5, 0, 0)));
+        List<BlockPos> same = CastLava.footprint(P, List.of(P.offset(5, 0, 0)));
+        List<BlockPos> moved = CastLava.footprint(P, List.of(P.offset(-5, 0, 0)));
+        assertTrue(CastLava.sameCast(P, a, P, same));
+        assertFalse("same cell, new frame: the old instance must not keep ticking", CastLava.sameCast(P, a, P, moved));
+    }
 }

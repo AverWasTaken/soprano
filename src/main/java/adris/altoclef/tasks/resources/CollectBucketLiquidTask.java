@@ -107,6 +107,14 @@ public class CollectBucketLiquidTask extends ResourceTask {
     // the "got nowhere near it" misses, per pool (see missedPool). lives as long as this task instance does
     private final PoolMisses _poolMisses = new PoolMisses();
 
+    // sources the caller wants left alone (the cast's own pour), checked next to the tracker's bans
+    private Predicate<BlockPos> _leaveAlone = p -> false;
+
+    public CollectBucketLiquidTask leaveAlone(Predicate<BlockPos> leaveAlone) {
+        _leaveAlone = leaveAlone;
+        return this;
+    }
+
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
         super(filledBucket, targetCount);
         _liquidName = liquidName;
@@ -212,6 +220,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
         // what is a source at all, banned or not. the ranking below decides which of those are worth going to
         Predicate<BlockPos> isSource = blockPos -> {
             if (mod.getBlockTracker().unreachable(blockPos)) return false;
+            if (_leaveAlone.test(blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos.above())) return false; // We may try reaching the block above.
             assert Minecraft.getInstance().level != null;
