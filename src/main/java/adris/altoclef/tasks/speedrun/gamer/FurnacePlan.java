@@ -18,6 +18,9 @@ public final class FurnacePlan {
     // within this of done counts as done: the trip leaves a little early (the walk is the rest of the wait) and at the station we
     // stand and wait instead of walking off and coming straight back. also how far ahead of its guess an unvisited job is due
     public static final long NEARLY_TICKS = 200;
+    // food still cooking when we leave the dimension is waited for all the way (the cap of the visit still ends it). the nether
+    // cooks nothing, and taking a batch back raw just lets the cook gate load it again, whatever its size
+    public static final long FOOD_LEAVE_TICKS = Integer.MAX_VALUE;
     // how long past the estimate we keep standing there: a furnace that never finishes (no fuel, a chunk that stopped ticking) must
     // not hold the run. the progress credit of a wait and the cap of one visit use it (a quick smoker's stand-by has its own, shorter
     // budget), and so does the revisit delay of a visit that gave up, so a capped job is not due again before it had its half minute
@@ -516,8 +519,10 @@ public final class FurnacePlan {
     // trip (PackUp for a mine, the soonest for a dimension), and the answer is always to take it with us
     public static Verdict leaving(RunState.FurnaceJob job, Leaving why, int depth) {
         boolean area = why == Leaving.AREA;
-        Verdict v = new Verdict(job, Call.TAKE_ALL, area ? Why.LEAVING_AREA : Why.LEAVING_DIMENSION, Mode.TAKE_ALL,
-                area ? leaveWindow(depth) : NEARLY_TICKS);
+        // the nether has no smoker, so meat we walk out on stays raw (and the PORTAL gate would just load it again). food on its
+        // way out of the dimension is waited for, whole
+        long window = area ? leaveWindow(depth) : job.unitsEach > 0 && !job.stranded ? FOOD_LEAVE_TICKS : NEARLY_TICKS;
+        Verdict v = new Verdict(job, Call.TAKE_ALL, area ? Why.LEAVING_AREA : Why.LEAVING_DIMENSION, Mode.TAKE_ALL, window);
         job.track.call = v.call();
         job.track.why = v.why();
         return v;

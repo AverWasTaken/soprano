@@ -652,6 +652,17 @@ public class FurnacePlanTest {
         assertEquals(FurnacePlan.NEARLY_TICKS, v.nearly());
     }
 
+
+    @Test
+    public void leavingTheDimensionWaitsOutFoodButNotColdMeat() {
+        // a smoker batch that is not stalled is waited for all the way: the nether cooks nothing, and a take back would be loaded again
+        assertEquals(FurnacePlan.FOOD_LEAVE_TICKS, FurnacePlan.leaving(smoker(9000), Leaving.DIMENSION, 0).nearly());
+        RunState.FurnaceJob cold = smoker(9000);
+        cold.stranded = true;
+        assertEquals(FurnacePlan.NEARLY_TICKS, FurnacePlan.leaving(cold, Leaving.DIMENSION, 0).nearly());
+        // leaving a mine is the climb's window, food or not
+        assertEquals(FurnacePlan.NEARLY_TICKS, FurnacePlan.leaving(smoker(9000), Leaving.AREA, 1).nearly());
+    }
     @Test
     public void leavingTheMineWaitsAsLongAsTheClimbCostsAnyway() {
         RunState.FurnaceJob job = furnace(9000);

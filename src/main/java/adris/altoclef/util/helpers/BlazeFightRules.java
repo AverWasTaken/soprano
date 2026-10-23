@@ -23,6 +23,9 @@ public final class BlazeFightRules {
     // KILL and COVER stay put at least this long before flipping to each other. one tick of "reachable" or "not reachable" (a
     // blaze bobbing over a fence line, a cached raycast landing) was swapping the whole task every couple of seconds
     public static final int MIN_DWELL_TICKS = 20;
+    // leaving COVER for camping or hunting waits until no blaze has had a line on us for this long. a blaze strafing in and out of
+    // sight flipped the mode every tick or so, and every flip drops the shield and walks. entering cover stays instant
+    public static final int COVER_EXIT_TICKS = 40;
 
     // after the last blaze that could see us, wait this long before going out to find one. COVER hides us so they come
     // round the corner, walking off the moment we are hidden throws that away
@@ -179,8 +182,9 @@ public final class BlazeFightRules {
         return Mode.CAMP;
     }
 
-    // decide, but KILL and COVER hold for MIN_DWELL_TICKS before swapping with each other. retreating (in or out), camping
-    // and hunting are never held back: low hp should not wait on a timer, and nothing to fight is nothing to dwell on
+    // decide, but KILL and COVER hold for MIN_DWELL_TICKS before swapping with each other, and COVER holds COVER_EXIT_TICKS since the
+    // last threat before camping or hunting. retreating (in or out), entering cover and the kill are never held back: low hp should
+    // not wait on a timer
     public static Mode decide(float health, boolean retreating, int threats, int reachable, Mode current, long ticksInMode) {
         return decide(health, retreating, threats, reachable, 0, Long.MAX_VALUE, current, ticksInMode);
     }
@@ -195,6 +199,8 @@ public final class BlazeFightRules {
         Mode next = decide(health, retreating, retreatGaveUp, threats, reachable, huntable, ticksSinceThreat);
         boolean flip = (current == Mode.KILL && next == Mode.COVER) || (current == Mode.COVER && next == Mode.KILL);
         if (flip && ticksInMode < MIN_DWELL_TICKS) return current;
+        // the short overloads pass Long.MAX_VALUE for ticksSinceThreat, so they never hold
+        if (current == Mode.COVER && (next == Mode.CAMP || next == Mode.HUNT) && ticksSinceThreat < COVER_EXIT_TICKS) return current;
         return next;
     }
 }

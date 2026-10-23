@@ -273,6 +273,51 @@ public class PortalPlannerTest {
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
+    // ---- the cook before the nether
+
+    // while iron is owed the furnace is the iron's and meat only goes in a smoker (CookGateTest sets up the same way)
+    private void freeTheFurnace() {
+        cfg.ironKit.clear();
+        cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
+    }
+
+    @Test
+    public void gateEndsWithTheCookWhenRawMeatCanBeCooked() {
+        FakeFacts f = readyToGo().give(Items.PORKCHOP, 6).give(Items.COAL, 4);
+        // plenty over the line so the food need stays out of the way of what is under test
+        f.foodUnits = 300;
+        f.furnacePlaced = true;
+        freeTheFurnace();
+        List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
+        assertEquals(List.of(new KitNeed(KitNeed.COOK_FURNACE, CookGate.MIN_RAW)), out);
+        // last, after the build blocks it would otherwise have asked for
+        f.buildBlocks = 0;
+        List<KitNeed> names = PortalPlanner.gate(f, cfg, 10);
+        assertEquals(KitNeed.BUILD_BLOCKS, names.get(0).catalogueName());
+        assertTrue(KitNeed.isCookName(names.get(names.size() - 1).catalogueName()));
+    }
+
+    @Test
+    public void gateHasNoCookWithoutAStationOrOnceTheBatchIsCooking() {
+        // no station and nothing to build one from: meat is eaten raw, nothing to ask for
+        FakeFacts raw = readyToGo().give(Items.PORKCHOP, 6);
+        raw.foodUnits = 300;
+        assertTrue(PortalPlanner.gate(raw, cfg, 10).isEmpty());
+        // loaded: the meat left the bag and a job exists, so the gate goes empty and the leave visit holds the phase
+        FakeFacts f = readyToGo().give(Items.PORKCHOP, 3).give(Items.COAL, 4).cookingFood("cooked_porkchop", 3, 8, 15);
+        f.foodUnits = 300;
+        f.furnacePlaced = true;
+        freeTheFurnace();
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+        // and mid load the cook keeps its place, the meat in the slot is not in the bag any more
+        FakeFacts loading = readyToGo().give(Items.COAL, 4);
+        loading.foodUnits = 300;
+        loading.furnacePlaced = true;
+        freeTheFurnace();
+        loading.cookStation = "furnace";
+        assertEquals(1, PortalPlanner.gate(loading, cfg, 10).size());
+    }
+
     // ---- the spare picks for the nether
 
     private List<KitNeed> picksGate(FakeFacts f) {

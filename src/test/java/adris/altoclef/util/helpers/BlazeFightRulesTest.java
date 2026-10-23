@@ -89,6 +89,23 @@ public class BlazeFightRulesTest {
         assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, reachableCount));
     }
 
+
+    @Test
+    public void coverHoldsUntilNoBlazeHasSeenUsForAWhile() {
+        int hold = BlazeFightRules.COVER_EXIT_TICKS;
+        assertEquals(COVER, BlazeFightRules.decide(20, false, false, 0, 0, 0, hold - 1, COVER, 500));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, false, 0, 0, 0, hold, COVER, 500));
+        // hunting waits on the longer HIDE_HOLD_TICKS by itself, and COVER does not hold past either
+        assertEquals(COVER, BlazeFightRules.decide(20, false, false, 0, 0, 1, hold - 1, COVER, 500));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, false, 0, 0, 1, hold, COVER, 500));
+        assertEquals(HUNT, BlazeFightRules.decide(20, false, false, 0, 0, 1, BlazeFightRules.HIDE_HOLD_TICKS, COVER, 500));
+        // entering cover is instant, kill preempts it on the old dwell, retreat preempts at once
+        assertEquals(COVER, BlazeFightRules.decide(20, false, false, 1, 0, 0, 0, CAMP, 0));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, false, 1, 1, 0, 0, COVER, BlazeFightRules.MIN_DWELL_TICKS));
+        assertEquals(RETREAT, BlazeFightRules.decide(5, false, false, 0, 0, 0, 0, COVER, 0));
+        // the short overloads say Long.MAX_VALUE and never hold
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, COVER, 0));
+    }
     @Test
     public void killAndCoverHoldForTheDwellBeforeFlipping() {
         int dwell = BlazeFightRules.MIN_DWELL_TICKS;

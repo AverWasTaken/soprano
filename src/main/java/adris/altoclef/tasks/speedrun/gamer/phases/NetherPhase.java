@@ -42,6 +42,8 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
@@ -121,6 +123,9 @@ public class NetherPhase implements PhaseHandler {
     private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
     private int blockTrips;
+    // last game tick a blaze could see us, we were burning or hurt (FoodTripRules.unsafe). a food trip waits for it to be 3 s old.
+    // read off the blazes directly: the rods task is not always the one ticking, so BlazeFight's mode can be stale or absent
+    private long lastUnsafeTick = -1;
     // the overworld half's clock, set by what was short when we got up there
     private double tripSeconds = FoodTripRules.MAX_SECONDS;
     // the overworld half also brings blocks: a blocks trip always, a food trip when the bag was empty of them on the way out (or it
@@ -254,6 +259,7 @@ public class NetherPhase implements PhaseHandler {
         tripReason = FoodTripRules.Reason.FOOD;
         tripBlocks = false;
         foodTrips = 0;
+        lastUnsafeTick = -1;
         blockTrips = 0;
         foodTripUp = false;
         foodDeathsSeen = ctx.state().deaths.size();
@@ -351,6 +357,7 @@ public class NetherPhase implements PhaseHandler {
         endermanHere = endermanLatch.update(PearlHuntTask.endermanNear(mod), now);
         // before the cover, whatever path that one walks must not break gold either
         boolean piglins = guardGold(mod);
+        noteUnsafe(mod, ctx);
         Task cover = ghastCover(mod, now);
         if (cover != null) {
             gravel.preempted(ctx.facts().gameTime());
@@ -378,6 +385,55 @@ public class NetherPhase implements PhaseHandler {
         return nextStep(mod, ctx, now);
     }
 
+    // flat blocks to the way home, 0 when it is not known (the trip does not start then anyway)
+    private static double portalDistance(AltoClef mod, GamerContext ctx) {
+        Player p = mod.getPlayer();
+        RunState.Pos known = ctx.state().netherPortal;
+        double px;
+        double pz;
+        if (known != null) {
+            px = known.x;
+            pz = known.z;
+        } else {
+            Optional<BlockPos> used = mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER);
+            if (used.isEmpty()) {
+                return 0;
+            }
+            px = used.get().getX();
+            pz = used.get().getZ();
+        }
+        return Math.hypot(p.getX() - px, p.getZ() - pz);
+    }
+
+    // runs every tick off the trip so the "3 s calm" has something to measure. only the line crossed matters, but the blaze that
+    // saw us a second before it was crossed counts. same call and range as BlazeFight's scan
+    private void noteUnsafe(AltoClef mod, GamerContext ctx) {
+        if (foodTrip || foodTrips >= FoodTripRules.MAX_TRIPS) {
+            return;
+        }
+        Player p = mod.getPlayer();
+        if (FoodTripRules.unsafe(blazeSeesUs(mod, p), p.isOnFire(), p.getHealth())) {
+            lastUnsafeTick = ctx.facts().gameTime();
+        }
+    }
+
+    private static boolean blazeSeesUs(AltoClef mod, Player p) {
+        List<Blaze> blazes;
+        try {
+            blazes = new ArrayList<>(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+        } catch (java.util.ConcurrentModificationException e) {
+            // the tracker rebuilds on another thread sometimes, one tick of stale blazes is fine
+            return false;
+        }
+        for (Blaze blaze : blazes) {
+            if (blaze.isAlive() && p.distanceTo(blaze) <= BlazeFightRules.SIGHT_RANGE
+                    && LookHelper.seesPlayer(blaze, p, BlazeFightRules.SIGHT_RANGE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
@@ -388,10 +444,20 @@ public class NetherPhase implements PhaseHandler {
                     || mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER).isPresent();
             boolean deathTrip = ctx.state().netherTrip != null;
             FoodTripRules.Reason why = null;
-            if (FoodTripRules.goHome(ctx.facts().foodUnits(), portalKnown, deathTrip, foodTrips)) {
-                why = FoodTripRules.Reason.FOOD;
+            double portalDistance = portalDistance(mod, ctx);
+            int units = FoodTripRules.units(ctx.food());
+            // due is not the same as go: walking out of cover mid fight is how the last trip died, so it waits for a calm spell
+            // unless the bag is nearly empty. waiting touches nothing (no trip, no budget, no clock), it just falls through. a
+            // blocks trip is the same walk home (and tops the food up on the way), so it waits too and a food trip that is
+            // waiting does not hand over to it
+            long tick = ctx.facts().gameTime();
+            if (FoodTripRules.goHome(units, portalDistance, portalKnown, deathTrip, foodTrips)) {
+                if (FoodTripRules.mayStart(FoodTripRules.underFloor(units, portalDistance), tick, lastUnsafeTick)) {
+                    why = FoodTripRules.Reason.FOOD;
+                }
             } else if (FoodTripRules.goHomeForBlocks(FindNetherStructureTask.heldThrowaways(mod),
-                    Math.max(findFortress.exhaustedEnds(), findWarped.exhaustedEnds()), portalKnown, deathTrip, blockTrips)) {
+                    Math.max(findFortress.exhaustedEnds(), findWarped.exhaustedEnds()), portalKnown, deathTrip, blockTrips)
+                    && FoodTripRules.mayStart(false, tick, lastUnsafeTick)) {
                 why = FoodTripRules.Reason.BLOCKS;
             }
             if (why == null) {

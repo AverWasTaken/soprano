@@ -157,6 +157,12 @@ public final class PortalPlanner {
         if (blocks > 0) {
             out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
         }
+        // raw meat does not cook in the nether, so it is the last thing done here, same spot as KitPlanner.plan. null when no
+        // station is feasible or a batch is already cooking (PortalPhase's leave visit waits that one out)
+        KitNeed cook = CookGate.need(f, cfg, endBeds);
+        if (cook != null) {
+            out.add(cook);
+        }
         return out;
     }
 

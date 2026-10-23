@@ -3,17 +3,54 @@ package adris.altoclef.tasks.speedrun.gamer;
 // the nether has no food of its own, so when the bag runs dry out there the way back is the portal we came by and the overworld's
 // own food floor (FoodFloor). pure, the phase only feeds it numbers
 public final class FoodTripRules {
-    // under this many food units in the bag the nether run stops and goes home. FoodPlan's floor (24) in spirit: past it one fortress
-    // fight eats the rest
-    public static final int GO_HOME_UNITS = 24;
+    // the line moves out with the walk home: a trip from 400 blocks away eats food on the way, so it has to start with more in the bag.
+    // 36 at the portal (a fortress fight burns well over the old 24 just healing), plus a unit per 40 blocks of walk
+    public static final int GO_HOME_BASE = 36;
+    // under this the bag is nearly empty and the trip goes whatever is going on around us. same slope as the line
+    public static final int FLOOR_BASE = 12;
+    public static final double BLOCKS_PER_UNIT = 40;
+    // nothing hostile in the way (a blaze that sees us, fire, low hp) for this long before the trip starts, a walk out of cover into
+    // a fireball is how a trip kills. 3 s
+    public static final int CALM_TICKS = 60;
+    // below this hp the trip waits for the regen, same as burning or a blaze looking at us
+    public static final float CALM_HEALTH = 14;
     // trips per nether phase entry. a world with no food in reach would otherwise ping pong forever
     public static final int MAX_TRIPS = 2;
     // each half (the walk home, the hunt up top) gets this long, then we carry on with what we have
     public static final double MAX_SECONDS = 480;
 
+    public static double goHomeLine(double distToPortal) {
+        return GO_HOME_BASE + distToPortal / BLOCKS_PER_UNIT;
+    }
+
+    public static double floorLine(double distToPortal) {
+        return FLOOR_BASE + distToPortal / BLOCKS_PER_UNIT;
+    }
+
+    // the one count the line is read against: FoodPlan's held with nothing pending. out here raw meat is raw (FoodPlan already
+    // knows nothing cooks past PORTAL) and a smoker still cooking up top is not food we can reach
+    public static int units(FoodPlan food) {
+        return food.held() - food.pending();
+    }
+
     // no food in the bag at all is just the same line: nothing to eat means no regen once hunger drops, and the floor is far over that
-    public static boolean goHome(int foodUnits, boolean portalKnown, boolean deathTripLive, int tripsDone) {
-        return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && foodUnits < GO_HOME_UNITS;
+    public static boolean goHome(double foodUnits, double distToPortal, boolean portalKnown, boolean deathTripLive, int tripsDone) {
+        return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && foodUnits < goHomeLine(distToPortal);
+    }
+
+    public static boolean underFloor(double foodUnits, double distToPortal) {
+        return foodUnits < floorLine(distToPortal);
+    }
+
+    // something is trying to hurt us right now. pure so the wait below can be tested
+    public static boolean unsafe(boolean blazeSeesUs, boolean onFire, float health) {
+        return blazeSeesUs || onFire || health < CALM_HEALTH;
+    }
+
+    // the line is crossed, may the trip start. under the floor it goes anyway, else it waits until nothing unsafe has held for
+    // CALM_TICKS. lastUnsafe < 0 = never seen, a clock that went backwards is a restart (same as the other timers)
+    public static boolean mayStart(boolean underFloor, long now, long lastUnsafe) {
+        return underFloor || lastUnsafe < 0 || now < lastUnsafe || now - lastUnsafe >= CALM_TICKS;
     }
 
     // the overworld half is over: the bag is back at the line, or the clock ran out
