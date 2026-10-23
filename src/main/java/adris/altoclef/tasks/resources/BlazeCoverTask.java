@@ -4,9 +4,11 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.control.KillAura;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.BlazeCoverHook;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import net.minecraft.client.player.LocalPlayer;
@@ -21,6 +23,9 @@ public final class BlazeCoverTask extends Task {
 
     // a spot we cannot get to in this long gets handed back so the picker can find a different one
     private static final int STUCK_TICKS = 120;
+    // no step closer than this for this long is a walk that is going nowhere, and then the food chain may eat after all
+    private static final double PROGRESS_BLOCKS = 0.25;
+    private static final int STALL_TICKS = 40;
 
     private final BlockPos spot;
     private final boolean allowShield;
@@ -29,13 +34,18 @@ public final class BlazeCoverTask extends Task {
     // our own aura object just for its shield handling (food in hand, sneak, pausing the path), same code mob defense uses
     // the shield keys under our name, like a plain hold from onTick always was: letGoOfKeys on a finished root task lifts them
     private final KillAura shield = new KillAura(this);
+    private final BooleanSupplier threatened;
     private int ticksTrying;
+    private double closest;
+    private int ticksNoProgress;
 
-    public BlazeCoverTask(BlockPos spot, boolean allowShield, Supplier<Blaze> shieldAt, Consumer<BlockPos> onStuck) {
+    public BlazeCoverTask(BlockPos spot, boolean allowShield, Supplier<Blaze> shieldAt, Consumer<BlockPos> onStuck,
+                          BooleanSupplier threatened) {
         this.spot = spot;
         this.allowShield = allowShield;
         this.shieldAt = shieldAt;
         this.onStuck = onStuck;
+        this.threatened = threatened;
     }
 
     private boolean atSpot(LocalPlayer player) {
@@ -47,11 +57,27 @@ public final class BlazeCoverTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         ticksTrying = 0;
+        closest = Double.POSITIVE_INFINITY;
+        ticksNoProgress = 0;
+    }
+
+    // tells the food chain a walk is on and how it is going. eating slows the walk to a crawl, so it waits for the spot
+    private void noteWalk(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        double distance = player.position().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(spot));
+        if (distance < closest - PROGRESS_BLOCKS) {
+            closest = distance;
+            ticksNoProgress = 0;
+        } else {
+            ticksNoProgress++;
+        }
+        BlazeCoverHook.set(mod.getWorld().getGameTime(), distance, ticksNoProgress >= STALL_TICKS, threatened.getAsBoolean());
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
         if (!atSpot(mod.getPlayer())) {
+            noteWalk(mod);
             shield.stopShielding(mod);
             if (++ticksTrying > STUCK_TICKS) {
                 ticksTrying = 0;
@@ -61,6 +87,7 @@ public final class BlazeCoverTask extends Task {
             return new GetToBlockTask(spot);
         }
         ticksTrying = 0;
+        BlazeCoverHook.clear();
         Blaze target = allowShield ? shieldAt.get() : null;
         boolean hasShield = mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
         ItemStack offhand = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
@@ -81,6 +108,7 @@ public final class BlazeCoverTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        BlazeCoverHook.clear();
         shield.stopShielding(mod);
     }
 

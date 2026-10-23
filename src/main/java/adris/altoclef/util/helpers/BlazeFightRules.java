@@ -49,6 +49,23 @@ public final class BlazeFightRules {
     public static final float PANIC_HEALTH = 8;
     // once we have left we stay left until we are back up here, otherwise 12 hp flips the mode every heal tick
     public static final float RECOVERED_HEALTH = 14;
+    // burning with a blaze looking is a volley plus 1 hp a second on top, 12 hp was one bad second from the respawn screen by
+    // the time the walk to cover finished. so leave earlier, and stay left until the fire is out and we are a bit higher up.
+    // the 2 hp gap between the two is what keeps 14-15 from flipping the mode
+    public static final float RETREAT_HEALTH_BURNING = 15;
+    public static final float RECOVERED_HEALTH_BURNING = 17;
+
+    // held cover spot: the spot we already walk to is kept while it hides us from all but one shooter, drops after this many
+    // picks in a row where it does not, and is never traded for a farther one when we are this close to it (blocks)
+    public static final int HELD_SPOT_MISSES_TO_DROP = 2;
+    public static final double HELD_SPOT_NEAR = 2;
+    // a search that comes back empty keeps the held spot this many picks (SPOT_EVERY each), a blaze bobbing out of line for
+    // a moment is not a reason to stand in the open. past it the spot really is bad
+    public static final int HELD_SPOT_EMPTY_KEEP_PICKS = 6;
+
+    // no bite while walking to cover that is this close and a blaze is looking. chewing slows the walk to 20%, and the fatal
+    // bites were all taken a few blocks short of a spot we would have reached in a second
+    public static final double COVER_WALK_NEAR = 4;
 
     private BlazeFightRules() {
     }
@@ -153,8 +170,50 @@ public final class BlazeFightRules {
 
     // same hp line decide leaves on, so this only says RETREAT at a health decide would not have covered at anyway
     public static NoCover noCoverSpot(boolean spawnerKnown, boolean nearSpawner, float health) {
+        return noCoverSpot(spawnerKnown, nearSpawner, health, false);
+    }
+
+    public static NoCover noCoverSpot(boolean spawnerKnown, boolean nearSpawner, float health, boolean burning) {
         if (!spawnerKnown || nearSpawner) return NoCover.SHIELD_HERE;
-        return health > RETREAT_HEALTH ? NoCover.BACK_TO_SPAWNER : NoCover.RETREAT;
+        return health > retreatHealth(burning) ? NoCover.BACK_TO_SPAWNER : NoCover.RETREAT;
+    }
+
+    // the hp at or below which a looking blaze sends us away
+    public static float retreatHealth(boolean burning) {
+        return burning ? RETREAT_HEALTH_BURNING : RETREAT_HEALTH;
+    }
+
+    // the hp we have to be back up to before the retreat lets go
+    public static float recoveredHealth(boolean burning) {
+        return burning ? RECOVERED_HEALTH_BURNING : RECOVERED_HEALTH;
+    }
+
+    // does the spot we hold still do the job. all shooters hidden is the dream, one peeking in is fine (they bob, the list
+    // changes, and walking off to a spot that is five blocks the other way is worse than one fireball line). with a single
+    // shooter that one has to be hidden or the spot hides nothing
+    public static boolean heldSpotHolds(int exposedShooters, int shooters) {
+        return exposedShooters <= 1 && exposedShooters < shooters;
+    }
+
+    // misses is picks in a row where the held spot did not hold
+    public static boolean heldSpotGivenUp(int misses) {
+        return misses >= HELD_SPOT_MISSES_TO_DROP;
+    }
+
+    public static boolean emptySearchKeeps(int misses) {
+        return misses < HELD_SPOT_MISSES_TO_DROP + HELD_SPOT_EMPTY_KEEP_PICKS;
+    }
+
+    // may the held spot be swapped for the candidate. not when we are practically standing on it, it still hides us from at
+    // least one shooter and the candidate is a longer walk, that is how a bot dies one block from cover. a spot that hides
+    // us from nobody any more is just a place to stand in the open, however close it is
+    public static boolean swapAllowed(double heldDistance, double candidateDistance, boolean heldHidesAny) {
+        return !(heldHidesAny && heldDistance <= HELD_SPOT_NEAR && candidateDistance > heldDistance);
+    }
+
+    // hold the bite: a cover walk is on, a blaze is looking, the spot is a few steps away and we are actually getting there
+    public static boolean holdBiteForCover(boolean walking, boolean threatInSight, double spotDistance, boolean stalled) {
+        return walking && threatInSight && !stalled && spotDistance <= COVER_WALK_NEAR;
     }
 
     // threats is blazes with a line of sight to us inside SIGHT_RANGE, reachable is blazes we could hit right now
@@ -172,9 +231,15 @@ public final class BlazeFightRules {
     // hp rules can send us back, so 12 hp with nothing looking goes back to work instead of waiting for a 14 that never comes
     public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, int threats, int reachable, int huntable,
                               long ticksSinceThreat) {
+        return decide(health, retreating, retreatGaveUp, false, threats, reachable, huntable, ticksSinceThreat);
+    }
+
+    // burning: we are on fire, see RETREAT_HEALTH_BURNING. only the deepest overloads take it, the short ones are never burning
+    public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, boolean burning, int threats, int reachable,
+                              int huntable, long ticksSinceThreat) {
         boolean leave = retreating && !retreatGaveUp
-                ? health < RECOVERED_HEALTH
-                : (health <= RETREAT_HEALTH && threats > 0) || health <= PANIC_HEALTH;
+                ? health < recoveredHealth(burning)
+                : (health <= retreatHealth(burning) && threats > 0) || health <= PANIC_HEALTH;
         if (leave) return Mode.RETREAT;
         if (reachable > 0) return Mode.KILL;
         if (threats > 0) return Mode.COVER;
@@ -196,7 +261,12 @@ public final class BlazeFightRules {
 
     public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, int threats, int reachable, int huntable,
                               long ticksSinceThreat, Mode current, long ticksInMode) {
-        Mode next = decide(health, retreating, retreatGaveUp, threats, reachable, huntable, ticksSinceThreat);
+        return decide(health, retreating, retreatGaveUp, false, threats, reachable, huntable, ticksSinceThreat, current, ticksInMode);
+    }
+
+    public static Mode decide(float health, boolean retreating, boolean retreatGaveUp, boolean burning, int threats, int reachable,
+                              int huntable, long ticksSinceThreat, Mode current, long ticksInMode) {
+        Mode next = decide(health, retreating, retreatGaveUp, burning, threats, reachable, huntable, ticksSinceThreat);
         boolean flip = (current == Mode.KILL && next == Mode.COVER) || (current == Mode.COVER && next == Mode.KILL);
         if (flip && ticksInMode < MIN_DWELL_TICKS) return current;
         // the short overloads pass Long.MAX_VALUE for ticksSinceThreat, so they never hold

@@ -299,4 +299,107 @@ public class BlazeFightRulesTest {
             }
         }
     }
+
+    // burning with a looking blaze: leave at 15, stay left until 17, and the 2 hp gap means 14-15 does not flip
+    @Test
+    public void burningLeavesEarlierAndStaysLeftLonger() {
+        assertEquals(RETREAT, BlazeFightRules.decide(15, false, false, true, 1, 0, 0, 0L));
+        assertEquals(COVER, BlazeFightRules.decide(15.5f, false, false, true, 1, 0, 0, 0L));
+        assertEquals(COVER, BlazeFightRules.decide(15, false, false, false, 1, 0, 0, 0L));
+        assertEquals(RETREAT, BlazeFightRules.decide(16.5f, true, false, true, 1, 0, 0, 0L));
+        assertEquals(COVER, BlazeFightRules.decide(17, true, false, true, 1, 0, 0, 0L));
+        // fire out while retreating: the normal exit line takes over
+        assertEquals(COVER, BlazeFightRules.decide(14, true, false, false, 1, 0, 0, 0L));
+        assertEquals(RETREAT, BlazeFightRules.decide(13.9f, true, false, false, 1, 0, 0, 0L));
+    }
+
+    @Test
+    public void burningWithNothingLookingDoesNotLeaveEarly() {
+        assertEquals(CAMP, BlazeFightRules.decide(15, false, false, true, 0, 0, 0, 0L));
+    }
+
+    @Test
+    public void burningNoFlipBetweenFourteenAndFifteen() {
+        BlazeFightRules.Mode mode = RETREAT;
+        for (float hp : new float[]{14, 15, 14, 15, 16, 14.5f}) {
+            mode = BlazeFightRules.decide(hp, mode == RETREAT, false, true, 1, 0, 0, 0L);
+            assertEquals(RETREAT, mode);
+        }
+    }
+
+    @Test
+    public void notBurningIsUnchanged() {
+        assertEquals(BlazeFightRules.decide(12, false, 1, 0), BlazeFightRules.decide(12, false, false, false, 1, 0, 0, 0L));
+        assertEquals(BlazeFightRules.decide(14, true, 0, 1), BlazeFightRules.decide(14, true, false, false, 0, 1, 0, 0L));
+    }
+
+    @Test
+    public void noCoverSpotUsesTheBurningLine() {
+        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, 14, false));
+        assertEquals(BlazeFightRules.NoCover.RETREAT, BlazeFightRules.noCoverSpot(true, false, 14, true));
+        assertEquals(BlazeFightRules.NoCover.RETREAT, BlazeFightRules.noCoverSpot(true, false, 15, true));
+        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, 16, true));
+        assertEquals(BlazeFightRules.NoCover.RETREAT, BlazeFightRules.noCoverSpot(true, false, 12));
+    }
+
+    @Test
+    public void heldSpotToleratesOneShooterPeekingIn() {
+        assertTrue(BlazeFightRules.heldSpotHolds(0, 3));
+        assertTrue(BlazeFightRules.heldSpotHolds(1, 3));
+        assertFalse(BlazeFightRules.heldSpotHolds(2, 3));
+        assertTrue(BlazeFightRules.heldSpotHolds(0, 1));
+        // a lone shooter that can see the spot means the spot hides nothing
+        assertFalse(BlazeFightRules.heldSpotHolds(1, 1));
+    }
+
+    @Test
+    public void heldSpotDropsOnlyAfterTwoMissesInARow() {
+        assertFalse(BlazeFightRules.heldSpotGivenUp(1));
+        assertTrue(BlazeFightRules.heldSpotGivenUp(2));
+        assertTrue(BlazeFightRules.emptySearchKeeps(2));
+        assertFalse(BlazeFightRules.emptySearchKeeps(BlazeFightRules.HELD_SPOT_MISSES_TO_DROP + BlazeFightRules.HELD_SPOT_EMPTY_KEEP_PICKS));
+    }
+
+    @Test
+    public void nearHeldSpotIsNeverTradedForAFartherOne() {
+        assertFalse(BlazeFightRules.swapAllowed(1.5, 5, true));
+        assertFalse(BlazeFightRules.swapAllowed(2, 2.5, true));
+        assertTrue(BlazeFightRules.swapAllowed(1.5, 1, true));
+        assertTrue(BlazeFightRules.swapAllowed(4, 6, true));
+        assertTrue(BlazeFightRules.swapAllowed(2.5, 5, true));
+    }
+
+    // standing on a spot that hides us from nobody is not worth keeping, however close the better one is not
+    @Test
+    public void nearHeldSpotThatHidesNothingIsSwapped() {
+        assertTrue(BlazeFightRules.swapAllowed(0.5, 3, false));
+    }
+
+    @Test
+    public void shortCoverWalkUnderFireHoldsTheBite() {
+        assertTrue(BlazeFightRules.holdBiteForCover(true, true, 3, false));
+        assertTrue(BlazeFightRules.holdBiteForCover(true, true, 4, false));
+        assertFalse(BlazeFightRules.holdBiteForCover(true, true, 5, false));
+        assertFalse(BlazeFightRules.holdBiteForCover(true, true, 3, true));
+        assertFalse(BlazeFightRules.holdBiteForCover(true, false, 3, false));
+        assertFalse(BlazeFightRules.holdBiteForCover(false, true, 3, false));
+    }
+
+    @Test
+    public void coverHookHoldsFreshStampsOnly() {
+        try {
+            BlazeCoverHook.clear();
+            assertFalse(BlazeCoverHook.holdsBite(100));
+            BlazeCoverHook.set(100, 2, false, true);
+            assertTrue(BlazeCoverHook.holdsBite(100));
+            assertTrue(BlazeCoverHook.holdsBite(100 + BlazeCoverHook.STALE_TICKS));
+            assertFalse(BlazeCoverHook.holdsBite(101 + BlazeCoverHook.STALE_TICKS));
+            // game time going backwards is a world change, not a walk
+            assertFalse(BlazeCoverHook.holdsBite(50));
+            BlazeCoverHook.set(100, 2, true, true);
+            assertFalse(BlazeCoverHook.holdsBite(100));
+        } finally {
+            BlazeCoverHook.clear();
+        }
+    }
 }

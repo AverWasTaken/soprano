@@ -19,6 +19,7 @@ import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.level.ClipContext;
@@ -82,9 +83,16 @@ final class BlazeFight {
     // blazes we walked at for too long, by entity id and when. skipped for BAD_SPOT_TICKS, same idea as badSpots
     private final Map<Integer, Long> skippedHunts = new HashMap<>();
 
-    private BlockPos spot;
-    private long spotTick = Long.MIN_VALUE;
-    private boolean spotForRetreat;
+    // cover and retreat each hold their own spot, a cover pick used to overwrite the retreat's and send it the other way
+    private static final class Held {
+        BlockPos spot;
+        long tick = Long.MIN_VALUE;
+        // picks in a row where the spot no longer hid us well enough
+        int misses;
+    }
+
+    private final Held coverHeld = new Held();
+    private final Held retreatHeld = new Held();
     // the last place we hid. when nothing is shooting we go stand there instead of in the open next to the spawner
     private BlockPos campSpot;
     private final Map<BlockPos, Long> badSpots = new HashMap<>();
@@ -151,8 +159,8 @@ final class BlazeFight {
         long sinceThreat = lastThreatTick != Long.MIN_VALUE && now >= lastThreatTick ? now - lastThreatTick : Long.MAX_VALUE;
         // hp going up is what the retreat waits for, so any rise means it is working again
         if (health > lastHealth) retreatGaveUp = false;
-        Mode next = BlazeFightRules.decide(health, retreating, retreatGaveUp, threats.size(), reachable, huntable.size(), sinceThreat,
-                mode, dwelled);
+        Mode next = BlazeFightRules.decide(health, retreating, retreatGaveUp, burning(player), threats.size(), reachable,
+                huntable.size(), sinceThreat, mode, dwelled);
         retreating = next == Mode.RETREAT;
         if (next != mode) modeSince = now;
         mode = next;
@@ -302,6 +310,15 @@ final class BlazeFight {
         return null;
     }
 
+    // fire resistance keeps the flag but not the damage, no reason to run early for it
+    private static boolean burning(LocalPlayer player) {
+        return player.isOnFire() && !player.hasEffect(MobEffects.FIRE_RESISTANCE);
+    }
+
+    private boolean anyThreat() {
+        return !threats.isEmpty();
+    }
+
     private List<Entity> threatEntities() {
         return new ArrayList<>(threats);
     }
@@ -313,7 +330,7 @@ final class BlazeFight {
         // no spot at all is mostly us being out past the spawner (a run, a chase), and the candidates are only ever by it
         if (pick == null) return noCover(mod, now, spawner);
         campSpot = pick;
-        return new BlazeCoverTask(pick, true, this::shieldTarget, this::markBad);
+        return new BlazeCoverTask(pick, true, this::shieldTarget, this::markBad, this::anyThreat);
     }
 
     // campSpot is only written for the shield in place, our own block out past the spawner is not somewhere to come back to
@@ -321,11 +338,12 @@ final class BlazeFight {
         BlockPos feet = mod.getPlayer().blockPosition();
         // the same measure GoalNear finishes on, so "near" here and "arrived" there agree
         boolean near = spawner != null && feet.distSqr(spawner) <= BACK_TO_SPAWNER_RANGE * BACK_TO_SPAWNER_RANGE;
-        return switch (BlazeFightRules.noCoverSpot(spawner != null, near, mod.getPlayer().getHealth())) {
+        return switch (BlazeFightRules.noCoverSpot(spawner != null, near, mod.getPlayer().getHealth(),
+                burning(mod.getPlayer()))) {
             case BACK_TO_SPAWNER -> new GetWithinRangeOfBlockTask(spawner, BACK_TO_SPAWNER_RANGE);
             case SHIELD_HERE -> {
                 campSpot = feet;
-                yield new BlazeCoverTask(feet, true, this::shieldTarget, this::markBad);
+                yield new BlazeCoverTask(feet, true, this::shieldTarget, this::markBad, this::anyThreat);
             }
             case RETREAT -> retreat(mod, now, spawner);
         };
@@ -336,7 +354,7 @@ final class BlazeFight {
         if (threats.isEmpty()) return null;
         BlockPos pick = chooseSpot(mod, now, spawner, true);
         if (pick != null) {
-            return new BlazeCoverTask(pick, false, this::shieldTarget, this::markBad);
+            return new BlazeCoverTask(pick, false, this::shieldTarget, this::markBad, this::anyThreat);
         }
         // nowhere nearby hides us from all of them. run from them, the threat list is who we mean (not just the charged ones)
         return new RunAwayFromHostilesTask(RUN_DISTANCE, true, this::threatEntities);
@@ -382,7 +400,13 @@ final class BlazeFight {
 
     private void markBad(BlockPos bad) {
         badSpots.put(bad.immutable(), mod().getWorld().getGameTime());
-        spotTick = Long.MIN_VALUE;
+        for (Held h : new Held[]{coverHeld, retreatHeld}) {
+            h.tick = Long.MIN_VALUE;
+            if (bad.equals(h.spot)) {
+                h.spot = null;
+                h.misses = 0;
+            }
+        }
     }
 
     private AltoClef mod() {
@@ -403,21 +427,60 @@ final class BlazeFight {
     // them (and stays close to the spawner, that is where the rods come from), retreating needs one that hides us from all
     // of them and takes the nearest. null means nothing nearby does that
     private BlockPos chooseSpot(AltoClef mod, long now, BlockPos spawner, boolean forRetreat) {
-        if (spotTick != Long.MIN_VALUE && now >= spotTick && now - spotTick < SPOT_EVERY && spotForRetreat == forRetreat) {
-            return spot;
-        }
-        spotTick = now;
-        spotForRetreat = forRetreat;
+        Held h = forRetreat ? retreatHeld : coverHeld;
+        if (h.tick != Long.MIN_VALUE && now >= h.tick && now - h.tick < SPOT_EVERY) return h.spot;
+        h.tick = now;
+        LocalPlayer player = mod.getPlayer();
+        Level level = mod.getWorld();
         List<Blaze> shooters = threats.size() > MAX_SHOOTERS ? threats.subList(0, MAX_SHOOTERS) : threats;
-        BlockPos best = search(mod, now, spawner, forRetreat ? RETREAT_RADIUS : COVER_RADIUS, shooters, forRetreat);
-        if (best == null && forRetreat) {
-            best = search(mod, now, spawner, RETREAT_RADIUS_WIDE, shooters, true);
+        if (h.spot != null && (isBad(h.spot, now) || !standable(level, h.spot)
+                || outsideSearch(player.blockPosition(), h.spot, spawner, forRetreat ? RETREAT_RADIUS_WIDE : COVER_RADIUS))) {
+            h.spot = null;
+            h.misses = 0;
         }
-        spot = best;
+        // the spot we hold gets the benefit of the doubt: blazes bob and the shooter list changes, and the strict search
+        // used to throw away a spot we were halfway to over one flickering ray
+        if (h.spot != null) {
+            int exposed = shooters.size() - countBlocked(player, level, h.spot, shooters);
+            if (BlazeFightRules.heldSpotHolds(exposed, shooters.size())) {
+                h.misses = 0;
+                return h.spot;
+            }
+            h.misses++;
+            if (!BlazeFightRules.heldSpotGivenUp(h.misses)) return h.spot;
+        }
+        BlockPos best = search(mod, now, spawner, forRetreat ? RETREAT_RADIUS : COVER_RADIUS, shooters, forRetreat, h.spot);
+        if (best == null && forRetreat) {
+            best = search(mod, now, spawner, RETREAT_RADIUS_WIDE, shooters, true, h.spot);
+        }
+        if (h.spot != null) {
+            // an empty search is a bad moment, not an answer. and a few steps from a spot beats a better one far off
+            if (best == null && BlazeFightRules.emptySearchKeeps(h.misses)) return h.spot;
+            if (best != null && !best.equals(h.spot)
+                    && !BlazeFightRules.swapAllowed(distance(player, h.spot), distance(player, best),
+                    countBlocked(player, level, h.spot, shooters) > 0)) {
+                return h.spot;
+            }
+        }
+        if (!java.util.Objects.equals(best, h.spot)) h.misses = 0;
+        h.spot = best;
         return best;
     }
 
-    private BlockPos search(AltoClef mod, long now, BlockPos spawner, int radius, List<Blaze> shooters, boolean needAll) {
+    // the fight lives as long as the rods task, so a spot from an earlier fight can be anywhere. the search only ever looks in
+    // this box, a held spot outside it would be a long walk under fire that nothing else could have picked
+    private static boolean outsideSearch(BlockPos origin, BlockPos pos, BlockPos spawner, int radius) {
+        int dy = pos.getY() - origin.getY();
+        return Math.abs(pos.getX() - origin.getX()) > radius || Math.abs(pos.getZ() - origin.getZ()) > radius
+                || dy < -2 || dy > 1 || (spawner != null && pos.distSqr(spawner) > SPOT_NEAR_SPAWNER_SQ);
+    }
+
+    private static double distance(LocalPlayer player, BlockPos pos) {
+        return player.position().distanceTo(Vec3.atCenterOf(pos));
+    }
+
+    private BlockPos search(AltoClef mod, long now, BlockPos spawner, int radius, List<Blaze> shooters, boolean needAll,
+                             BlockPos held) {
         LocalPlayer player = mod.getPlayer();
         Level level = mod.getWorld();
         BlockPos origin = player.blockPosition();
@@ -443,7 +506,7 @@ final class BlazeFight {
             double score = blocked * 100 - Math.sqrt(origin.distSqr(pos)) * 2;
             // the rods come from the spawner, so while we are just covering do not wander off from it
             if (!needAll && spawner != null) score -= Math.sqrt(pos.distSqr(spawner)) * 0.5;
-            if (pos.equals(spot)) score += STAY_BONUS;
+            if (pos.equals(held)) score += STAY_BONUS;
             if (score > bestScore) {
                 bestScore = score;
                 best = pos;
