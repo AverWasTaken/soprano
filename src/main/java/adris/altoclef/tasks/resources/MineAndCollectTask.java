@@ -574,7 +574,11 @@ public class MineAndCollectTask extends ResourceTask {
             // halfway through a block is not the time to go and get a drop. the drop gets its turn when the block is gone
             // (a drop we are already walking to is not traded for a block that happens to be cracking behind us)
             BlockPos breaking = mod.getControllerExtras().getBreakingBlockPos();
-            if (locked == null && breaking != null && mod.getControllerExtras().isBreakingBlock() && stillOurs(mod, breaking)) {
+            // only the crack on the block we picked is a commitment. a stray click a frame after re-aiming lands on the neighbour,
+            // and adopting that one aimed us back at it, whose first click landed on the first one: two dirt blocks took turns
+            // every tick for four minutes and neither ever broke
+            if (locked == null && breaking != null && breaking.equals(_miningPos) && mod.getControllerExtras().isBreakingBlock()
+                    && stillOurs(mod, breaking)) {
                 _stick.breaking(now, breaking);
             } else if (locked == null) {
                 beginHold(mod, now);
@@ -1302,6 +1306,8 @@ public class MineAndCollectTask extends ResourceTask {
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
             if (mod.getBlockTracker().unreachable(pos)) return false;
             if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
+            // same answer as isValid, or a block that went unbreakable got dropped there and handed straight back here
+            if (!WorldHelper.canBreak(mod, pos)) return false;
             // a block we placed is scaffolding, holding on to it skipped the notOurs filter in pickBlock. stone only: everyone
             // else has the "nothing else within 16, take our own" fallback, and dropping that pick every tick would just repick it
             if (_stoneOnly && PlacedByUs.GLOBAL.recent(pos.getX(), pos.getY(), pos.getZ(), mod.getWorld().getGameTime())) return false;
