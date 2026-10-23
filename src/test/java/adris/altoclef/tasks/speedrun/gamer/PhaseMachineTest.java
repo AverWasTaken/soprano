@@ -218,7 +218,7 @@ public class PhaseMachineTest {
         start();
         // 100 s of nothing, then the inventory changes: the stall timer starts over
         tickAfter(100);
-        host.facts.fingerprint++;
+        host.facts.give(Items.COBBLESTONE, 1);
         tickAfter(100);
         tickAfter(100);
         assertEquals(List.of("enter1"), h(GamerPhase.GATHER).events);

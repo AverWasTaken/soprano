@@ -181,4 +181,9 @@ public interface GamerFacts {
     default int inventoryFingerprint() {
         return 0;
     }
+
+    // what we carry per item type, for the high water marks (HighWater). null = this snapshot cannot tell, the fingerprint is used
+    default java.util.Map<net.minecraft.world.item.Item, Integer> inventoryCounts() {
+        return null;
+    }
 }

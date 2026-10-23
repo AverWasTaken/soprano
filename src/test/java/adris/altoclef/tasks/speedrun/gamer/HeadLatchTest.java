@@ -97,8 +97,9 @@ public class HeadLatchTest {
 
     @Test
     public void onlyThePlainGathersAreHeldWhileGone() {
-        // food, cook, armor and blocks have no item count to check, gone is done
-        assertEquals(LOG, HeadLatch.pick(FOOD, 0, 40, 41, List.of(LOG), new FakeFacts()));
+        // cook, armor and blocks have no item count to check, gone is done. food is a bag count and is held like the gathers
+        assertEquals(FOOD, HeadLatch.pick(FOOD, 0, 40, 41, List.of(LOG), new FakeFacts()));
+        assertEquals(LOG, HeadLatch.pick(FOOD, 0, 40, 40 + HeadLatch.DWELL_TICKS + 1, List.of(LOG), new FakeFacts()));
         assertEquals(LOG, HeadLatch.pick(new KitNeed(KitNeed.BUILD_BLOCKS, 32), 0, 40, 41, List.of(LOG), new FakeFacts()));
         // iron drops out once the batch in the furnace covers it, and the bag can't see that: holding it would go mining for more
         FakeFacts cooking = new FakeFacts().give(Items.STONE_PICKAXE, 1).cooking("iron_ingot", 39, 60);
@@ -275,5 +276,36 @@ public class HeadLatchTest {
         // and a cook the plan dropped is let go whatever the pin says
         running.cookStation = "smoker";
         assertEquals(IRON, pick(cook, 0, 6000, List.of(IRON), running));
+    }
+
+    @Test
+    public void aNeedThatJustLeftTheHeadDoesNotTakeItBackInsideTheDwellOrAfterIt() {
+        HeadLatch.Flips flips = new HeadLatch.Flips();
+        flips.left(KitNeed.FOOD, 1000);
+        // iron has been running 10 s, food wants back in 15 s after it left: past the dwell, still held
+        assertEquals(IRON, HeadLatch.pick(IRON, 1000, HeadLatch.NEVER, 1300, List.of(FOOD, IRON), f, flips));
+        // 30 s on the same job and it is a plain change of plan
+        assertEquals(FOOD, HeadLatch.pick(IRON, 1000, HeadLatch.NEVER, 1000 + HeadLatch.FLIP_TICKS, List.of(FOOD, IRON), f, flips));
+    }
+
+    @Test
+    public void aNeedThatLeftLongAgoGetsTheOrdinaryDwell() {
+        HeadLatch.Flips flips = new HeadLatch.Flips();
+        flips.left(KitNeed.FOOD, 0);
+        long now = HeadLatch.FLIP_TICKS + 500;
+        assertEquals(FOOD, HeadLatch.pick(IRON, now - 300, HeadLatch.NEVER, now, List.of(FOOD, IRON), f, flips));
+    }
+
+    @Test
+    public void aResizedHeadOfTheSameJobIsNotAFlip() {
+        HeadLatch.Flips flips = new HeadLatch.Flips();
+        flips.left(KitNeed.FOOD, 1000);
+        KitNeed more = new KitNeed(KitNeed.FOOD, 90);
+        assertEquals(more, HeadLatch.pick(FOOD, 1000, HeadLatch.NEVER, 1300, List.of(more), f, flips));
+    }
+
+    @Test
+    public void foodGoneFromThePlanIsHeldForTheDwellWhileTheBagIsShort() {
+        assertTrue(HeadLatch.keepWhileGone(FOOD, HeadLatch.NEVER, 500, f));
     }
 }

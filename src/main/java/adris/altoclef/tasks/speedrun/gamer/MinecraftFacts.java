@@ -511,4 +511,9 @@ public final class MinecraftFacts implements GamerFacts {
     public int inventoryFingerprint() {
         return fingerprint;
     }
+
+    @Override
+    public java.util.Map<Item, Integer> inventoryCounts() {
+        return counts;
+    }
 }

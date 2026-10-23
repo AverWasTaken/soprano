@@ -261,7 +261,8 @@ public class KitRunnerTest {
         List<String> lines = captured.toString().lines().filter(l -> l.contains("food: need")).toList();
         assertEquals(lines.toString(), 3, lines.size());
         assertTrue(lines.get(0), lines.get(0).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
-        assertTrue(lines.get(1), lines.get(1).endsWith("food: need off, held 60 of 70 (station 0, pending 0, raw left out 0), running iron_ingot"));
+        // food is held for a dwell once it drops out of the plan while the bag is short, so it is still the one running
+        assertTrue(lines.get(1), lines.get(1).endsWith("food: need off, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
         assertTrue(lines.get(2), lines.get(2).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
     }
 

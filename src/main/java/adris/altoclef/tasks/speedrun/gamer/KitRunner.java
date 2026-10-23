@@ -36,6 +36,8 @@ public final class KitRunner {
     private KitNeed key;
     // game tick the current key started at, for the dwell
     private long keySince;
+    // which needs just gave up the head, so a swap back is held longer (HeadLatch.Flips)
+    private final HeadLatch.Flips flips = new HeadLatch.Flips();
     // game tick the key dropped out of the plan, HeadLatch.NEVER while it is in it
     private long missingSince = HeadLatch.NEVER;
     private List<Item> equipKey = List.of();
@@ -91,6 +93,7 @@ public final class KitRunner {
         armorLastTick = HeadLatch.NEVER;
         armorGaveUp = null;
         key = null;
+        flips.clear();
         keySince = 0;
         missingSince = HeadLatch.NEVER;
         equipKey = List.of();
@@ -165,7 +168,7 @@ public final class KitRunner {
         }
         List<KitNeed> picks = armorGaveUp == null ? HeadLatch.armorFirst(needs) : HeadLatch.armorLast(needs);
         // the need we are running keeps the head for a few seconds, see HeadLatch
-        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), picks, f);
+        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), picks, f, flips);
         watchArmor(need, wantOn, f.gameTime());
         if (missingSince != HeadLatch.NEVER && !need.equals(key)) {
             Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " handed over to " + need.catalogueName() + " x" + need.count()
@@ -184,6 +187,9 @@ public final class KitRunner {
         }
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
             if (!need.equals(key)) {
+                if (key != null && !key.catalogueName().equals(need.catalogueName())) {
+                    flips.left(key.catalogueName(), f.gameTime());
+                }
                 keySince = f.gameTime();
                 logHead(key, need, needs);
             }
