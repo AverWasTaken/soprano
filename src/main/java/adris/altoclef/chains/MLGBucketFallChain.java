@@ -2,13 +2,23 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.InteractWithBlockTask;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.LadderClutchFallTask;
 import adris.altoclef.tasks.movement.MLGBucketTask;
+import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasksystem.ITaskOverridesGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BucketFillRules;
 import adris.altoclef.util.helpers.BucketPour;
+import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.WaterUpkeep;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.pathing.movement.IMovement;
@@ -23,12 +33,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.NonNullList;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -39,7 +51,8 @@ import net.minecraft.world.phys.Vec3;
 public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverridesGrounded {
 
     // how long after landing we keep trying to get our water back, timed from the first tick on the ground
-    private final TimerGame _cleanupTimer = new TimerGame(4);
+    // (5 s: the walk back to a cell we drifted off of fits in it, and not much more than that)
+    private final TimerGame _cleanupTimer = new TimerGame(5);
     // the cells we really poured into (MLGBucketTask.placedCells), copied every tick so a restarted task loses nothing
     private final List<BlockPos> _ourWater = new ArrayList<>();
     // the ones we've seen hold water on our side. a waterlogged block only fills on the server, so ours lags a round
@@ -64,11 +77,33 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     private final TimerGame _surfaceTimer = new TimerGame(10);
     private final SurfaceTask _surface = new SurfaceTask();
 
+    // the water top up (see waterUpkeep). tick stamps, not timers, so the pure WaterUpkeep rules can be tested bare
+    private WaterUpkeepTask _upkeep = null;
+    private BlockPos _upkeepSource = null;
+    private int _upkeepStart;
+    private int _upkeepFailedAt = Integer.MIN_VALUE / 2;
+    private int _upkeepLookAt = Integer.MIN_VALUE / 2;
+    // ponds a go already timed out on, so a pond behind a ravine does not win every minute. forgotten with the chain
+    private final Set<BlockPos> _upkeepFailedPonds = new HashSet<>();
+
     // a few ticks for our eyes to go under after the splash, the first tick in the water can still have them above it
     static final int SPLASH_TICKS = 10;
 
-    // further than this from a cell and we walked off (or got knocked off), the water's not worth a walk back
+    // a cell this close gets clicked from where we stand
     static final double CLEANUP_REACH = 3;
+    // further than this from a cell and we walked off (or got knocked off), the water's not worth a walk back. between the
+    // two the pickup walks, inside the cleanup clock
+    static final double CLEANUP_WALK = 8;
+    // a pour that never showed gets looked for this far around the cell (the server may have put it a block or two over)
+    static final int RELOCATE_RADIUS = 2;
+
+    // below this much hp left after the landing, or from this many blocks up, the water is worth spending. in between
+    // it just costs the only bucket for a few hp we heal back by walking. 6 is three hearts: the damage number already has
+    // armor and feather falling in it, so the margin only covers the landing block being a bit off
+    static final double CLUTCH_FLOOR_HP = 6;
+    static final double CLUTCH_LONG_FALL = 12;
+    // under the food chain (55), over the user task (50)
+    static final float UPKEEP_PRIORITY = 54;
 
     enum CellEnd {
         KEEP, PICKED_UP, GONE, TOO_FAR
@@ -102,7 +137,10 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         // still gets the task, losing the whole inventory is worse than one wrong block the builder breaks again
         boolean hasClutchItem = falling && mod.getClientBaritone().getInventoryBehavior().clutchWanted() && MLGBucketTask.hasClutchItem(mod);
         boolean deadly = falling && !hasClutchItem && !mod.getPlayer().getAbilities().invulnerable && MLGBucketTask.fallIsDeadly(mod);
-        if (claimsFall(falling, hasClutchItem, deadly)) {
+        // a fall we'd walk away from keeps the bucket. once the clutch has the fall it keeps it, the forecast wobbles as the
+        // landing spot is re-cast and flipping out of the task mid air is worse than either answer
+        boolean worthIt = hasClutchItem && (_clutching || clutchWorth(mod));
+        if (claimsFall(falling, worthIt, deadly)) {
             setTask(new MLGBucketTask());
             _lastMLG = (MLGBucketTask) _mainTask;
             _clutching = true;
@@ -135,6 +173,10 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         float cleanup = cleanUp(mod);
         if (cleanup != Float.NEGATIVE_INFINITY) {
             return cleanup;
+        }
+        float upkeep = waterUpkeep(mod);
+        if (upkeep != Float.NEGATIVE_INFINITY) {
+            return upkeep;
         }
         if (mod.getPlayer().hasEffect(MobEffects.LEVITATION) &&
                 !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(Items.CHORUS_FRUIT)) &&
@@ -196,13 +238,29 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         _lastWaterBuckets = buckets;
         boolean settled = WorldHelper.getTicks() - _landedAt >= BucketPour.settleTicks(pingMs(mod));
         Vec3 me = mod.getPlayer().position();
+        List<BlockPos> found = new ArrayList<>();
         _ourWater.removeIf(cell -> {
             boolean source = BucketPour.isWaterSource(mod.getWorld(), cell);
             if (source) {
                 _seenWater.add(cell);
             }
-            return cellEnd(source, _seenWater.contains(cell), settled, gained, Math.sqrt(cell.distToCenterSqr(me))) != CellEnd.KEEP;
+            boolean seen = _seenWater.contains(cell);
+            CellEnd end = cellEnd(source, seen, settled, gained, Math.sqrt(cell.distToCenterSqr(me)));
+            if (end == CellEnd.GONE && !seen) {
+                // the click went through (we have the pour on record) but the cell never held water, so it landed a block or
+                // two off. whatever source is near it is ours to fetch, the walk back handles the distance
+                BlockPos near = sourceNear(cell, RELOCATE_RADIUS, p -> FluidSources.exposedSource(mod.getWorld().getFluidState(p),
+                        mod.getWorld().getFluidState(p.above())) && BucketPour.isWaterSource(mod.getWorld(), p));
+                if (near != null && !_ourWater.contains(near) && !found.contains(near)) {
+                    found.add(near);
+                }
+            }
+            return end != CellEnd.KEEP;
         });
+        for (BlockPos near : found) {
+            _ourWater.add(near);
+            _seenWater.add(near);
+        }
         if (_ourWater.isEmpty()) {
             endCleanup();
             return Float.NEGATIVE_INFINITY;
@@ -227,6 +285,169 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         _pickup.target = target;
         setTask(_pickup);
         return 59;
+    }
+
+    // the bucket the clutch spent, filled back up from a pond we can see. a bag with an empty bucket and no water is one lava
+    // pit away from a bad time, and the next pond is rarely close when that happens. everything about it is capped: a pond
+    // already in sight (no search, no wander), one go of WaterUpkeep.TIMEOUT_TICKS, a rest after any failure. it never hands
+    // off to the water collector (that one wanders forever), and the gamer phase says where it stays out of the way
+    private float waterUpkeep(AltoClef mod) {
+        int now = WorldHelper.getTicks();
+        boolean haveWater = mod.getItemStorage().hasItem(Items.WATER_BUCKET);
+        if (_upkeep != null) {
+            if (haveWater) {
+                endUpkeep(false);
+                return Float.NEGATIVE_INFINITY;
+            }
+            boolean stuck = WaterUpkeep.timedOut(now, _upkeepStart) || mod.getBlockTracker().unreachable(_upkeepSource);
+            if (stuck || threatened(mod) || !WaterUpkeep.phaseAllows(gamerPhase(mod)) || !pondSource(mod, _upkeepSource)) {
+                // only a pond that ate the whole clock is written off, a fight or a phase change says nothing about it
+                if (stuck) {
+                    if (_upkeepFailedPonds.size() > 32) {
+                        _upkeepFailedPonds.clear();
+                    }
+                    _upkeepFailedPonds.add(_upkeepSource);
+                }
+                endUpkeep(true);
+                return Float.NEGATIVE_INFINITY;
+            }
+            setTask(_upkeep);
+            return UPKEEP_PRIORITY;
+        }
+        if (WaterUpkeep.coolingDown(now, _upkeepFailedAt) || WaterUpkeep.lookedRecently(now, _upkeepLookAt)) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        LocalPlayer player = mod.getPlayer();
+        boolean calm = (player.onGround() || player.isInWater()) && !_clutching && !_surfacing && !_tookFall && !_doingChorusFruit && _ourWater.isEmpty()
+                && !mod.getFoodChain().isTryingToEat() && !player.isOnFire() && !player.isInLava();
+        if (!WaterUpkeep.wanted(mod.getItemStorage().hasItem(Items.BUCKET), haveWater, WorldHelper.waterEvaporates(mod.getWorld()),
+                threatened(mod), calm, fillHasRoom(mod), gamerPhase(mod))) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        _upkeepLookAt = now;
+        BlockPos pond = nearestPond(mod);
+        if (pond == null) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        _upkeepSource = pond;
+        _upkeepStart = now;
+        _upkeep = new WaterUpkeepTask(pond);
+        setTask(_upkeep);
+        return UPKEEP_PRIORITY;
+    }
+
+    // a failure earns the rest, getting the water (or never starting) does not
+    private void endUpkeep(boolean failed) {
+        if (failed) {
+            _upkeepFailedAt = WorldHelper.getTicks();
+        }
+        if (_mainTask == _upkeep) {
+            setTask(null);
+        }
+        _upkeep = null;
+        _upkeepSource = null;
+    }
+
+    private static GamerPhase gamerPhase(AltoClef mod) {
+        return mod.getUserTaskChain().getCurrentTask() instanceof GamerTask gamer ? gamer.phase() : null;
+    }
+
+    // a fight, a run, or somebody lining us up. the defense chain would win the wheel anyway, this is so we don't even start
+    private static boolean threatened(AltoClef mod) {
+        MobDefenseChain defense = mod.getMobDefenseChain();
+        return defense.combatMode() != CombatCommit.Mode.NONE || defense.getCombatStance(mod) != CombatRules.Stance.CALM || defense.isShotAt(mod);
+    }
+
+    // the full bucket needs a slot of its own when we carry a stack of empties and the bag is full (see BucketFillRules)
+    private static boolean fillHasRoom(AltoClef mod) {
+        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
+        int[] bucketStacks = new int[slots.size()];
+        boolean freeSlot = false;
+        for (int i = 0; i < bucketStacks.length; i++) {
+            ItemStack stack = slots.get(i);
+            if (stack.isEmpty()) {
+                freeSlot = true;
+            } else if (stack.is(Items.BUCKET)) {
+                bucketStacks[i] = stack.getCount();
+            }
+        }
+        return !BucketFillRules.needsFreeSlot(bucketStacks, freeSlot);
+    }
+
+    // water we can scoop from above: a source with open air over it
+    private static boolean pondSource(AltoClef mod, BlockPos p) {
+        return BucketPour.isWaterSource(mod.getWorld(), p)
+                && FluidSources.exposedSource(mod.getWorld().getFluidState(p), mod.getWorld().getFluidState(p.above()))
+                && mod.getWorld().getBlockState(p.above()).getCollisionShape(mod.getWorld(), p.above()).isEmpty();
+    }
+
+    // nearest pond source within WaterUpkeep.RANGE (and 8 up or down), straight line. a cube walk, which is why the caller
+    // only asks every LOOK_TICKS
+    private BlockPos nearestPond(AltoClef mod) {
+        BlockPos me = mod.getPlayer().blockPosition();
+        int r = (int) WaterUpkeep.RANGE;
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        BlockPos best = null;
+        double bestDist = WaterUpkeep.RANGE * WaterUpkeep.RANGE;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                for (int dy = -8; dy <= 8; dy++) {
+                    double d = dx * dx + dy * dy + dz * dz;
+                    if (d > bestDist) {
+                        continue;
+                    }
+                    p.set(me.getX() + dx, me.getY() + dy, me.getZ() + dz);
+                    if (pondSource(mod, p) && !mod.getBlockTracker().unreachable(p) && !_upkeepFailedPonds.contains(p)) {
+                        best = p.immutable();
+                        bestDist = d;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // the walk and the scoop are the interact task's. this wrapper is only here so the source-only ray (a bucket ray sees
+    // through water otherwise) is on while we run and off again when somebody interrupts us, same as the collector does it
+    private static final class WaterUpkeepTask extends Task {
+        private final BlockPos source;
+        private final InteractWithBlockTask scoop;
+
+        WaterUpkeepTask(BlockPos source) {
+            this.source = source;
+            this.scoop = InteractWithBlockTask.scoop(new ItemTarget(Items.BUCKET, 1), source, true);
+        }
+
+        @Override
+        protected void onStart(AltoClef mod) {
+            mod.getBehaviour().push();
+            mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.SOURCE_ONLY);
+        }
+
+        @Override
+        protected Task onTick(AltoClef mod) {
+            return scoop;
+        }
+
+        @Override
+        protected void onStop(AltoClef mod, Task interruptTask) {
+            mod.getBehaviour().pop();
+        }
+
+        @Override
+        public boolean isFinished(AltoClef mod) {
+            return false; // the chain decides, by water in the bag, the clock, or a reason to stop
+        }
+
+        @Override
+        protected boolean isEqual(Task other) {
+            return other instanceof WaterUpkeepTask task && task.source.equals(source);
+        }
+
+        @Override
+        protected String toDebugString() {
+            return "Topping up the water bucket at " + source;
+        }
     }
 
     private void endCleanup() {
@@ -308,7 +529,26 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         if (!stillSource && (seenSource || settled)) {
             return seenSource && gainedBucket ? CellEnd.PICKED_UP : CellEnd.GONE;
         }
-        return distance > CLEANUP_REACH ? CellEnd.TOO_FAR : CellEnd.KEEP;
+        return distance > CLEANUP_WALK ? CellEnd.TOO_FAR : CellEnd.KEEP;
+    }
+
+    // the source closest to a cell, within r of it on every axis. null when there is none. pure for the tests
+    static BlockPos sourceNear(BlockPos cell, int r, Predicate<BlockPos> isSource) {
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dy = -r; dy <= r; dy++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    BlockPos p = cell.offset(dx, dy, dz);
+                    double d = p.distSqr(cell);
+                    if (d < bestDist && isSource.test(p)) {
+                        best = p;
+                        bestDist = d;
+                    }
+                }
+            }
+        }
+        return best;
     }
 
     // an mlg with nothing to place is a task that stares at the ground saying "no clutch item" while it cancels the path
@@ -318,6 +558,22 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     // pure so it's testable without a game, same idea as FallCover
     static boolean claimsFall(boolean falling, boolean hasClutchItem, boolean deadly) {
         return falling && (hasClutchItem || deadly);
+    }
+
+    private static boolean clutchWorth(AltoClef mod) {
+        if (mod.getPlayer().getAbilities().invulnerable) {
+            return false;
+        }
+        // no landing to read (void, too far down for the cast) is not a fall to gamble on
+        return MLGBucketTask.forecast(mod)
+                .map(f -> clutchWorthIt(mod.getPlayer().getHealth(), f.damage(), f.blocks(), f.hazard()))
+                .orElse(true);
+    }
+
+    // is the water worth spending on this fall. a hazard landing (lava) always is, a long fall is, and so is one that would
+    // leave us on the edge. pure for the tests
+    static boolean clutchWorthIt(double health, double damage, double blocks, boolean hazard) {
+        return hazard || blocks >= CLUTCH_LONG_FALL || health - damage <= CLUTCH_FLOOR_HP;
     }
 
     @Override
@@ -407,15 +663,17 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             mod.getBehaviour().push();
             mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.SOURCE_ONLY);
             Optional<Rotation> reach = LookHelper.getReach(target, Direction.UP);
-            if (reach.isPresent()) {
-                mod.getClientBaritone().getLookBehavior().updateTarget(reach.get(), true);
-                if (mod.getClientBaritone().getPlayerContext().isLookingAt(target) && mod.getSlotHandler().forceEquipItem(Items.BUCKET) && _repeat.elapsed()) {
-                    _repeat.reset();
-                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
-                }
+            if (reach.isEmpty()) {
+                // drifted off the pour: walk back. the chain only keeps cells within CLEANUP_WALK and its clock bounds the
+                // trip, so this can't turn into the old wander to some other pond
+                mod.getBehaviour().pop();
+                return new GetWithinRangeOfBlockTask(target, 2);
             }
-            // out of reach just waits, the chain ends the cell once we're too far. no walk back, that's how the old
-            // fallback went off to some other pond
+            mod.getClientBaritone().getLookBehavior().updateTarget(reach.get(), true);
+            if (mod.getClientBaritone().getPlayerContext().isLookingAt(target) && mod.getSlotHandler().forceEquipItem(Items.BUCKET) && _repeat.elapsed()) {
+                _repeat.reset();
+                mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+            }
             mod.getBehaviour().pop();
             return null;
         }

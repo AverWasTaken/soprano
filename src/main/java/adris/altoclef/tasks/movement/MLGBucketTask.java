@@ -15,6 +15,7 @@ import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -438,6 +439,32 @@ public class MLGBucketTask extends Task {
     // asks so an off-plan deadly fall still gets the steering toward lava or water, even with an empty hand
     public static boolean fallIsDeadly(AltoClef mod) {
         return getBlockWeWillLandOn(mod).map(MLGBucketTask::isFallDeadly).orElse(false);
+    }
+
+    // what the fall we are in ends on: hp it costs after armor and effects, how many blocks it is in all, and whether the
+    // landing is something water has to fix whatever the damage says (lava, fire, a cactus, a dripstone point)
+    public record FallForecast(double damage, double blocks, boolean hazard) {
+    }
+
+    // empty when the cast down finds nothing (void), which the chain reads as "clutch". same landing pick and damage math
+    // as fallIsDeadly, so the two never disagree about where we come down
+    public static Optional<FallForecast> forecast(AltoClef mod) {
+        return getBlockWeWillLandOn(mod).map(pos -> {
+            BlockState state = mod.getWorld().getBlockState(pos);
+            Block block = state.getBlock();
+            double damage = calculateFallDamageToLandOn(pos);
+            if (block == Blocks.HAY_BLOCK) {
+                damage *= 0.2f;
+            }
+            // coming down in water ends the fall right there, so it is not a long one either
+            boolean water = state.getFluidState().is(FluidTags.WATER);
+            if (water) {
+                damage = 0;
+            }
+            boolean hazard = block == Blocks.LAVA || block == Blocks.MAGMA_BLOCK || block == Blocks.CACTUS || block == Blocks.POINTED_DRIPSTONE;
+            double blocks = water ? 0 : mod.getPlayer().fallDistance + (mod.getPlayer().getY() - pos.getY() - 1);
+            return new FallForecast(damage, blocks, hazard);
+        });
     }
 
     // static so the chain can ask before it commits to taking over the fall

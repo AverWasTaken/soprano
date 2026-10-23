@@ -1,0 +1,68 @@
+package adris.altoclef.util.helpers;
+
+import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import org.junit.Test;
+
+import static org.junit.Assert.*;
+
+public class WaterUpkeepTest {
+
+    private static boolean wanted(boolean empty, boolean water, boolean evaporates, boolean threat, boolean calm, boolean room, GamerPhase phase) {
+        return WaterUpkeep.wanted(empty, water, evaporates, threat, calm, room, phase);
+    }
+
+    @Test
+    public void anEmptyBucketAndNoWaterInACalmRunIsWanted() {
+        assertTrue(wanted(true, false, false, false, true, true, GamerPhase.IRON));
+    }
+
+    @Test
+    public void everyConditionIsNeeded() {
+        assertFalse(wanted(false, false, false, false, true, true, GamerPhase.IRON));
+        assertFalse(wanted(true, true, false, false, true, true, GamerPhase.IRON));
+        assertFalse(wanted(true, false, true, false, true, true, GamerPhase.IRON));
+        assertFalse(wanted(true, false, false, true, true, true, GamerPhase.IRON));
+        assertFalse(wanted(true, false, false, false, false, true, GamerPhase.IRON));
+        assertFalse(wanted(true, false, false, false, true, false, GamerPhase.IRON));
+    }
+
+    @Test
+    public void thePhasesThatJuggleBucketsAreLeftAlone() {
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.PORTAL, GamerPhase.END_PREP, GamerPhase.DRAGON, GamerPhase.DONE, GamerPhase.STUCK}) {
+            assertFalse(p.name(), WaterUpkeep.phaseAllows(p));
+        }
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN,
+                GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN}) {
+            assertTrue(p.name(), WaterUpkeep.phaseAllows(p));
+        }
+    }
+
+    @Test
+    public void noGamerRunMeansNoUpkeep() {
+        assertFalse(WaterUpkeep.phaseAllows(null));
+    }
+
+    @Test
+    public void aFailureRestsForAMinute() {
+        assertTrue(WaterUpkeep.coolingDown(1000 + WaterUpkeep.COOLDOWN_TICKS - 1, 1000));
+        assertFalse(WaterUpkeep.coolingDown(1000 + WaterUpkeep.COOLDOWN_TICKS, 1000));
+        // never failed
+        assertFalse(WaterUpkeep.coolingDown(0, Integer.MIN_VALUE / 2));
+    }
+
+    @Test
+    public void oneGoIsFifteenSeconds() {
+        assertFalse(WaterUpkeep.timedOut(500 + WaterUpkeep.TIMEOUT_TICKS - 1, 500));
+        assertTrue(WaterUpkeep.timedOut(500 + WaterUpkeep.TIMEOUT_TICKS, 500));
+        assertEquals(300, WaterUpkeep.TIMEOUT_TICKS);
+    }
+
+    @Test
+    public void aReconnectDoesNotFreezeTheRules() {
+        // the tick counter starts over, so "now" can be smaller than any stamp from before
+        assertFalse(WaterUpkeep.coolingDown(50, 400000));
+        assertTrue(WaterUpkeep.timedOut(50, 400000));
+        assertFalse(WaterUpkeep.lookedRecently(50, 400000));
+        assertTrue(WaterUpkeep.lookedRecently(110, 100));
+    }
+}

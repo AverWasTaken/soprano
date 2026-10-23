@@ -79,8 +79,8 @@ public class MLGBucketFallChainTest {
 
     @Test
     public void walkingOffLeavesIt() {
-        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, seen(true, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
-        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, MLGBucketFallChain.cellEnd(false, false, false, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
+        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, seen(true, false, MLGBucketFallChain.CLEANUP_WALK + 0.01));
+        assertEquals(MLGBucketFallChain.CellEnd.TOO_FAR, MLGBucketFallChain.cellEnd(false, false, false, false, MLGBucketFallChain.CLEANUP_WALK + 0.01));
     }
 
     @Test
@@ -90,6 +90,48 @@ public class MLGBucketFallChainTest {
         // once the round trip is over and it never came, the server said no
         assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, false, 1));
         assertEquals(MLGBucketFallChain.CellEnd.GONE, MLGBucketFallChain.cellEnd(false, false, true, true, 1));
+    }
+
+    @Test
+    public void aDriftOffTheCellIsAWalkBackNotAGiveUp() {
+        // past click reach but inside the walk: the cell stays on the list
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, seen(true, false, MLGBucketFallChain.CLEANUP_REACH + 0.01));
+        assertEquals(MLGBucketFallChain.CellEnd.KEEP, seen(true, false, MLGBucketFallChain.CLEANUP_WALK));
+    }
+
+    @Test
+    public void aSurvivableDropKeepsTheBucket() {
+        // 4 blocks at full hp: 1 damage, nowhere near the edge
+        assertFalse(MLGBucketFallChain.clutchWorthIt(20, 1, 4, false));
+        assertFalse(MLGBucketFallChain.clutchWorthIt(20, 8, 11, false));
+    }
+
+    @Test
+    public void aFallThatLeavesUsOnTheEdgeGetsTheWater() {
+        assertTrue(MLGBucketFallChain.clutchWorthIt(10, 5, 8, false));
+        assertTrue(MLGBucketFallChain.clutchWorthIt(5, 1, 4, false));
+        // exactly the floor still counts
+        assertTrue(MLGBucketFallChain.clutchWorthIt(8, 2, 5, false));
+        assertFalse(MLGBucketFallChain.clutchWorthIt(9, 2, 5, false));
+    }
+
+    @Test
+    public void longFallsAndHazardsAlwaysGetTheWater() {
+        assertTrue(MLGBucketFallChain.clutchWorthIt(20, 4, MLGBucketFallChain.CLUTCH_LONG_FALL, false));
+        // a short hop onto lava is not about the damage
+        assertTrue(MLGBucketFallChain.clutchWorthIt(20, 0, 2, true));
+    }
+
+    @Test
+    public void aMissedPourIsLookedForAroundTheCell() {
+        net.minecraft.core.BlockPos cell = new net.minecraft.core.BlockPos(10, 64, 10);
+        net.minecraft.core.BlockPos near = new net.minecraft.core.BlockPos(11, 63, 10);
+        net.minecraft.core.BlockPos far = new net.minecraft.core.BlockPos(12, 64, 12);
+        // both inside the radius: the closer one wins
+        assertEquals(near, MLGBucketFallChain.sourceNear(cell, 2, p -> p.equals(near) || p.equals(far)));
+        // outside it: nothing
+        assertNull(MLGBucketFallChain.sourceNear(cell, 2, p -> p.equals(new net.minecraft.core.BlockPos(13, 64, 10))));
+        assertNull(MLGBucketFallChain.sourceNear(cell, 2, p -> false));
     }
 
     private static MLGBucketFallChain.Surface surface(boolean timedOut, boolean splashing, boolean inWater, boolean under, boolean wentUnder, boolean open) {

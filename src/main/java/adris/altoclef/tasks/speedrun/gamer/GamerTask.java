@@ -964,6 +964,11 @@ public class GamerTask extends Task {
         mod.getGamerHudOverlay().win(GamerHud.won(hudSnapshot, cfg, total));
     }
 
+    // the phase the run is in, null before it has begun. a plain read for the chains that behave differently per phase
+    public GamerPhase phase() {
+        return begun && state != null ? state.phase : null;
+    }
+
     // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card
     public GamerHudState hudSnapshot() {
         return begun && !machine.ended() ? hudSnapshot : null;
