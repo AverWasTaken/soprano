@@ -394,4 +394,54 @@ public class NetherTripRulesTest {
         Step home = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 0, 100, 0, false, 300, false, 0, true, 0, LIMITS, false, 99999));
         assertEquals(Stage.HOME, home.stage());
     }
+
+    // ---- the nether walk's stall clock
+
+    private static Inputs netherWalk(double distance, long tripTicks, long stuckTicks) {
+        return new Inputs(Stage.WALK, Dimension.NETHER, tripTicks, 100, 24, false, distance, false, 0, true, 0, LIMITS, true,
+                stuckTicks);
+    }
+
+    @Test
+    public void theNetherWalkGivesUpAfterTwoMinutesWithoutGettingCloser() {
+        long twoMinutes = NetherTripRules.WALK_PROGRESS_SECONDS * 20L;
+        assertEquals(Stage.WALK, NetherTripRules.next(netherWalk(300, 100, twoMinutes)).stage());
+        Step stuck = NetherTripRules.next(netherWalk(300, 100, twoMinutes + 1));
+        assertEquals("no closer to the pile", stuck.giveUp());
+        // kit gone and still down here: same exit as the budget running out
+        assertEquals(Stage.HOME, stuck.stage());
+    }
+
+    @Test
+    public void theNetherWalkBarIsLongerThanThePortalOne() {
+        assertTrue(NetherTripRules.WALK_PROGRESS_SECONDS > NetherTripRules.PORTAL_PROGRESS_SECONDS);
+        // a minute and a half stuck is fine on the nether walk and not on the portal walk
+        long minuteAndHalf = 90 * 20L;
+        assertNull(NetherTripRules.next(netherWalk(300, 100, minuteAndHalf)).giveUp());
+        assertNotNull(NetherTripRules.next(walking(2000, minuteAndHalf)).giveUp());
+    }
+
+    @Test
+    public void arrivingBeatsTheStallClock() {
+        long stuck = NetherTripRules.WALK_PROGRESS_SECONDS * 20L + 500;
+        assertEquals(Stage.RECOVER, NetherTripRules.next(netherWalk(NetherTripRules.ARRIVE_BLOCKS, 100, stuck)).stage());
+    }
+
+    @Test
+    public void restockTimeIsPaidBackToTheTripBudget() {
+        // dig ticks that follow each other add up, a first tick or a gap (fight, meal) adds nothing
+        assertEquals(1, NetherTripRules.restockCredit(99, 100));
+        assertEquals(0, NetherTripRules.restockCredit(Long.MIN_VALUE, 100));
+        assertEquals(0, NetherTripRules.restockCredit(100, 100));
+        assertEquals(0, NetherTripRules.restockCredit(0, 1000));
+        // a 75 s dig moves the arrival back by the full 75 s, so the budget sees the same time as without it
+        long arrived = 1000;
+        long credit = 0;
+        for (long t = 5000; t < 5000 + 75 * 20; t++) {
+            credit += NetherTripRules.restockCredit(t - 1, t);
+        }
+        long now = 5000 + 75 * 20;
+        assertEquals(now - arrived - credit, NetherTripRules.netherTicks(arrived + credit, now));
+        assertTrue(NetherTripRules.netherTicks(arrived + credit, now) < NetherTripRules.netherTicks(arrived, now));
+    }
 }

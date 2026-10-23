@@ -48,6 +48,13 @@ public class NetherRecoverTask extends Task {
     // last tick the mark was asked about: a fight or a meal that held the wheel is not time the walk spent not getting closer
     private long portalSeenTick;
     private Task toPile;
+    // the walk's dig for blocks (same driver the sweep uses). the first nether tick asks with gaveUp: the bag comes through the
+    // portal with about 20 and netherrack is right there, the long walk is where they run out
+    private final NetherBlockRestock blockRestock = new NetherBlockRestock();
+    private boolean portalRestockAsked;
+    // the dig held the wheel this tick, and the last tick it did (the trip budget is paid back for that time)
+    private boolean digging;
+    private long lastDigTick = Long.MIN_VALUE;
     private RecoverItemsTask pile;
     private Task home;
     // what the bag held at its lowest since the pile task started, and the most it ever climbed from there. the bag shrinks
@@ -140,15 +147,30 @@ public class NetherRecoverTask extends Task {
                 NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now));
     }
 
-    // ticks since the walk to the portal last got 8 blocks closer, straight line. the horizontal number closes fast and then
-    // sits there when the portal is a shaft under our feet
+    // ticks since the walk last got 8 blocks closer. PORTAL: straight line to the portal, the horizontal number closes fast
+    // and then sits there when the portal is a shaft under our feet. WALK: horizontal to the pile, and a dig for blocks is not
+    // a walk that failed to get closer, so the clock pauses for it
     private long stuckTicks(AltoClef mod, Stage stage, long now) {
         RunState.Pos home = state.overworldPortal;
-        if (stage != Stage.PORTAL || home == null || facts.dimension() != Dimension.OVERWORLD) {
+        double dist;
+        if (stage == Stage.PORTAL && home != null && facts.dimension() == Dimension.OVERWORLD) {
+            dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(new BlockPos(home.x, home.y, home.z)));
+        } else if (stage == Stage.WALK && facts.dimension() == Dimension.NETHER) {
+            RunState.Pos pile = state.netherTrip.pile;
+            double dx = mod.getPlayer().getX() - pile.x;
+            double dz = mod.getPlayer().getZ() - pile.z;
+            dist = Math.sqrt(dx * dx + dz * dz);
+        } else {
             portalMarkTick = Long.MIN_VALUE;
             return 0;
         }
-        double dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(new BlockPos(home.x, home.y, home.z)));
+        if (stage == Stage.WALK && digging && portalMarkTick != Long.MIN_VALUE) {
+            // the clock stands still while we dig: resetting it instead would let a dig that finds nothing, then its cooldown
+            // and another empty dig, keep the mark fresh forever
+            portalMarkTick += NetherTripRules.restockCredit(portalSeenTick, now);
+            portalSeenTick = now;
+            return now - portalMarkTick;
+        }
         boolean away = NetherTripRules.markStale(portalSeenTick, now);
         portalSeenTick = now;
         if (portalMarkTick == Long.MIN_VALUE || away || NetherTripRules.closedIn(portalMark, dist)) {
@@ -161,6 +183,9 @@ public class NetherRecoverTask extends Task {
     private Task childFor(AltoClef mod, Stage stage) {
         RunState.NetherTrip trip = state.netherTrip;
         BlockPos at = new BlockPos(trip.pile.x, trip.pile.y, trip.pile.z);
+        if (stage != Stage.WALK) {
+            digging = false;
+        }
         switch (stage) {
             case BLOCKS -> {
                 if (blocks == null) {
@@ -188,6 +213,21 @@ public class NetherRecoverTask extends Task {
                 walk.stopTracking(mod);
                 if (toPile == null) {
                     toPile = new GetWithinRangeOfBlockTask(at, NetherTripRules.WALK_RANGE);
+                }
+                Task dig = blockRestock.tick(mod, !portalRestockAsked, facts.gameTime() / 20.0);
+                portalRestockAsked = true;
+                if (dig != null) {
+                    long t = facts.gameTime();
+                    // digging is not walking: the budget does not run for it
+                    trip.netherTick += NetherTripRules.restockCredit(lastDigTick, t);
+                    lastDigTick = t;
+                    digging = true;
+                    setDebugState("Restocking building blocks.", "Restocking building blocks");
+                    return dig;
+                }
+                if (digging) {
+                    digging = false;
+                    save.run();
                 }
                 setDebugState("Walking to where we died.", "Going back for our stuff");
                 return toPile;

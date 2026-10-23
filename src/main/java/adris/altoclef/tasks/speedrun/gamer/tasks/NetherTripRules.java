@@ -25,6 +25,8 @@ public final class NetherTripRules {
     // long or it is not getting there
     public static final int PORTAL_PROGRESS_BLOCKS = 8;
     public static final int PORTAL_PROGRESS_SECONDS = 60;
+    // the nether walk gets longer: going round a lava ocean is legit, a bridge that went nowhere is not
+    public static final int WALK_PROGRESS_SECONDS = 120;
 
     private NetherTripRules() {
     }
@@ -127,6 +129,13 @@ public final class NetherTripRules {
         return now - lastSeenTick > 40;
     }
 
+    // a restock dig is not time the trip spent walking: ticks to push the nether arrival back by, 0 when the dig was not
+    // running last tick either (first tick of a dig, or a fight in between)
+    public static long restockCredit(long lastDigTick, long now) {
+        long gap = now - lastDigTick;
+        return gap > 0 && gap <= 40 ? gap : 0;
+    }
+
     // the portal walk got far enough in since the mark to count as moving
     public static boolean closedIn(double markDistance, double distance) {
         return markDistance - distance >= PORTAL_PROGRESS_BLOCKS;
@@ -144,7 +153,7 @@ public final class NetherTripRules {
     }
 
     // everything one decision looks at. tripTicks is game time since we reached the nether (netherTicks, 0 before that),
-    // stageTicks since this stage began, stuckTicks since the portal walk last closed PORTAL_PROGRESS_BLOCKS
+    // stageTicks since this stage began, stuckTicks since the portal walk (or the nether walk, with its own bar) last closed PORTAL_PROGRESS_BLOCKS
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                          double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
                          boolean hasPick, long stuckTicks) {
@@ -233,6 +242,9 @@ public final class NetherTripRules {
         }
         if (in.pileDistance() <= ARRIVE_BLOCKS) {
             return new Step(Stage.RECOVER, null, false);
+        }
+        if (in.stuckTicks() > WALK_PROGRESS_SECONDS * 20L) {
+            return giveUp(in, "no closer to the pile");
         }
         return stay(Stage.WALK);
     }
