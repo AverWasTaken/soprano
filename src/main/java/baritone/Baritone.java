@@ -90,6 +90,7 @@ public class Baritone implements IBaritone {
     private final InventoryBehavior inventoryBehavior;
     private final InputOverrideHandler inputOverrideHandler;
     private final TripBehavior tripBehavior;
+    private final RecordingBehavior recordingBehavior;
 
     private final FollowProcess followProcess;
     private final MineProcess mineProcess;
@@ -100,6 +101,7 @@ public class Baritone implements IBaritone {
     private final FarmProcess farmProcess;
     private final InventoryPauserProcess inventoryPauserProcess;
     private final IElytraProcess elytraProcess;
+    private final TungstenProcess tungstenProcess;
 
     private final PathingControlManager pathingControlManager;
     private final SelectionManager selectionManager;
@@ -135,6 +137,7 @@ public class Baritone implements IBaritone {
             this.registerBehavior(WaypointBehavior::new);
             this.registerBehavior(ActivityBehavior::new);
             this.tripBehavior         = this.registerBehavior(TripBehavior::new);
+            this.recordingBehavior    = this.registerBehavior(RecordingBehavior::new);
         }
 
         this.pathingControlManager = new PathingControlManager(this);
@@ -151,6 +154,7 @@ public class Baritone implements IBaritone {
             this.registerProcess(BackfillProcess::new);
             this.registerProcess(SelfDefenseProcess::new);
             this.registerProcess(TorchProcess::new);
+            this.tungstenProcess         = this.registerProcess(TungstenProcess::new);
         }
 
         this.worldProvider = new WorldProvider(this);
@@ -182,6 +186,10 @@ public class Baritone implements IBaritone {
     @Override
     public InputOverrideHandler getInputOverrideHandler() {
         return this.inputOverrideHandler;
+    }
+
+    public TungstenProcess getTungstenProcess() {
+        return this.tungstenProcess;
     }
 
     @Override
@@ -279,6 +287,10 @@ public class Baritone implements IBaritone {
                 mc.execute(() -> mc.gui.setScreen(new GuiClick()));
             } catch (Exception ignored) {}
         }).start();
+    }
+
+    public RecordingBehavior getRecordingBehavior() {
+        return this.recordingBehavior;
     }
 
     public Path getDirectory() {

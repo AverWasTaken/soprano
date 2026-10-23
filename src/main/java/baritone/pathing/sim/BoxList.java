@@ -24,6 +24,16 @@ import java.util.Arrays;
 public final class BoxList {
 
     double[] data = new double[96];
+
+    private static final ThreadLocal<BoxList> TEMP = ThreadLocal.withInitial(BoxList::new);
+
+    // an empty list to look something up in, this thread's own. only for a quick look that's done with it before anything
+    // else asks for one (never across a call into something that might): a list per look was a lot of the planners' garbage
+    public static BoxList temp() {
+        BoxList b = TEMP.get();
+        b.clear();
+        return b;
+    }
     private int size;
 
     public void clear() {
@@ -46,6 +56,11 @@ public final class BoxList {
         data[at + 4] = maxY;
         data[at + 5] = maxZ;
         size++;
+    }
+
+    // the backing array, 6 doubles a box, size() of them in use
+    public double[] raw() {
+        return data;
     }
 
     // 0..2 is the min corner, 3..5 the max corner

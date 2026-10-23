@@ -22,6 +22,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.SlimeBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -75,6 +77,55 @@ public final class WorldCollision implements CollisionProvider {
             return true;
         }
         return plain.computeIfAbsent(state, WorldCollision::isPlain);
+    }
+
+    @Override
+    public float friction(int x, int y, int z) {
+        return bsi.get0(x, y, z).getBlock().getFriction();
+    }
+
+    @Override
+    public float speedFactor(int x, int y, int z) {
+        return bsi.get0(x, y, z).getBlock().getSpeedFactor();
+    }
+
+    @Override
+    public float jumpFactor(int x, int y, int z) {
+        return bsi.get0(x, y, z).getBlock().getJumpFactor();
+    }
+
+    @Override
+    public boolean climbable(int x, int y, int z) {
+        BlockState state = bsi.get0(x, y, z);
+        return state.is(BlockTags.CLIMBABLE) || CLIMBABLE.contains(state.getBlock());
+    }
+
+    // what the tag holds in vanilla 26.3, for when the tags aren't bound (the tests don't load data packs)
+    private static final java.util.Set<net.minecraft.world.level.block.Block> CLIMBABLE = java.util.Set.of(
+            net.minecraft.world.level.block.Blocks.LADDER, net.minecraft.world.level.block.Blocks.VINE,
+            net.minecraft.world.level.block.Blocks.SCAFFOLDING, net.minecraft.world.level.block.Blocks.WEEPING_VINES,
+            net.minecraft.world.level.block.Blocks.WEEPING_VINES_PLANT, net.minecraft.world.level.block.Blocks.TWISTING_VINES,
+            net.minecraft.world.level.block.Blocks.TWISTING_VINES_PLANT, net.minecraft.world.level.block.Blocks.CAVE_VINES,
+            net.minecraft.world.level.block.Blocks.CAVE_VINES_PLANT);
+
+    @Override
+    public float bounce(int x, int y, int z) {
+        BlockState state = bsi.get0(x, y, z);
+        return state.is(BlockTags.SUPPRESSES_BOUNCE) ? 0.0F : state.getBlock().getBounceRestitution();
+    }
+
+    @Override
+    public boolean slimeStep(int x, int y, int z) {
+        return bsi.get0(x, y, z).getBlock() instanceof SlimeBlock;
+    }
+
+    @Override
+    public int supportKind(int x, int y, int z) {
+        BlockState state = bsi.get0(x, y, z);
+        if (state.is(BlockTags.WALLS) || state.getBlock() instanceof FenceGateBlock) {
+            return 2;
+        }
+        return state.is(BlockTags.FENCES) ? 1 : 0;
     }
 
     // what Entity / LivingEntity read off a block that makes movement more than friction 0.6 and a flat floor

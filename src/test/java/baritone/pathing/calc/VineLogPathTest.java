@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
 public class VineLogPathTest {
 
     static final class MapWorld extends BlockStateInterface {
-        final Map<Long, BlockState> blocks = new HashMap<>();
+        final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<BlockState> blocks = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
 
         MapWorld() {
             super(new BetterWorldBorder(new WorldBorder()), -64, 384);
@@ -62,7 +62,8 @@ public class VineLogPathTest {
         @Override
         protected BlockState getUncached(int x, int y, int z) {
             // y comes in shifted by -minY
-            return blocks.getOrDefault(BlockPos.asLong(x, y - 64, z), Blocks.AIR.defaultBlockState());
+            BlockState s = blocks.get(BlockPos.asLong(x, y - 64, z));
+            return s == null ? Blocks.AIR.defaultBlockState() : s;
         }
 
         @Override
@@ -322,9 +323,10 @@ public class VineLogPathTest {
             assertTrue("the climb sim fills never finished", ForkJoinPool.commonPool().awaitQuiescence(120, TimeUnit.SECONDS));
         }
         assertTrue(r.found && r.inGoal);
+        // fastMode has Tungsten jumps on too, and those catch vines now (Landing.grab): either kind of grab is the one
         boolean grabbed = false;
         for (String m : r.moves) {
-            grabbed |= m.startsWith("CLIMB_GRAB");
+            grabbed |= m.startsWith("CLIMB_GRAB") || m.startsWith("TUNGSTEN_");
         }
         assertTrue("expected a climb grab, got " + r.moves, grabbed);
     }

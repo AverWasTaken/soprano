@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement.movements;
 
+import baritone.pathing.tungsten.TungstenJumps;
 import baritone.Baritone;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.MovementStatus;
@@ -97,6 +98,12 @@ public class MovementParkour extends Movement {
         if (MovementHelper.isClimbable(standingOn.getBlock()) || standingOn.getBlock() instanceof StairBlock || MovementHelper.isBottomSlab(standingOn)) {
             return;
         }
+        // a node on a fence, pane, wall, end rod... (only Tungsten jumps get there): the edge this executor jumps at is the
+        // edge of a full block, so on a pane it walks straight off the side before it ever gets to it. Tungsten's
+        // jumps take off from those
+        if (!MovementHelper.canWalkOn(context, x, y - 1, z, standingOn)) {
+            return;
+        }
         // we can't jump from (frozen) water with assumeWalkOnWater because we can't be sure it will be frozen
         if (context.assumeWalkOnWater && !standingOn.getFluidState().isEmpty()) {
             return;
@@ -149,7 +156,10 @@ public class MovementParkour extends Movement {
             // a bottom slab comes down half a block low (see the ascend landing above). not a landing, but the jump can still go over it
             // farmland needs to be canWalkOn otherwise farm can never work at all, but we want to specifically disallow ending a jump on farmland haha
             // frostwalker works here because we can't jump from possibly unfrozen water
-            if ((landingOn.getBlock() != Blocks.FARMLAND && !MovementHelper.isBottomSlab(landingOn) && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
+            // a long one onto a lone bottom stair comes in at a run that carries on down its low step and off it: Tungsten's
+            // jumps settle on it, so it's theirs when they're on
+            boolean stairRun = context.allowTungstenJumps && i >= 3 && TungstenJumps.stepped(landingOn);
+            if ((landingOn.getBlock() != Blocks.FARMLAND && !MovementHelper.isBottomSlab(landingOn) && !stairRun && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
                     || (Math.min(16, context.frostWalker + 2) >= i && MovementHelper.canUseFrostWalker(context, landingOn))
             ) {
                 if (checkOvershootSafety(context.bsi, destX + xDiff, y, destZ + zDiff)) {

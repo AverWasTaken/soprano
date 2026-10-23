@@ -97,6 +97,12 @@ public class MovementTraverse extends Movement {
         BlockState destOn = context.get(destX, y - 1, destZ);
         BlockState srcDown = context.get(x, y - 1, z);
         Block srcDownBlock = srcDown.getBlock();
+        if (MovementHelper.isClimbable(srcDownBlock) && MovementHelper.isClimbable(destOn.getBlock())) {
+            // on a ladder (two wide, or a vine wall), or over the top of one, and "walking" across to the next column: there's
+            // nothing to stand on either side (a ladder's box is a plate against the wall, the feet miss it), so the executor
+            // walks it sliding down and the path rewinds and replays it over and over. climb the column we're on instead
+            return COST_INF;
+        }
         boolean standingOnABlock = MovementHelper.mustBeSolidToWalkOn(context, x, y - 1, z, srcDown);
         boolean frostWalker = standingOnABlock && !context.assumeWalkOnWater && MovementHelper.canUseFrostWalker(context, destOn);
         if (frostWalker || MovementHelper.canWalkOn(context, destX, y - 1, destZ, destOn)) { //this is a walk, not a bridge

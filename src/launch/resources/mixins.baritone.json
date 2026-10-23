@@ -14,6 +14,7 @@
     "MixinAltoClefBlock",
     "MixinAltoClefBlockBreak",
     "MixinAltoClefChatListener",
+    "MixinRecorderChat",
     "MixinAltoClefConnection",
     "MixinAltoClefContainerMenu",
     "MixinAltoClefDeathScreen",

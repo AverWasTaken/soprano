@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.calc.IPathFinder;
 import baritone.api.pathing.goals.Goal;
+import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Helper;
 import baritone.api.utils.PathCalculationResult;
@@ -67,6 +68,11 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
     protected PathNode mostRecentConsidered;
 
     protected final PathNode[] bestSoFar = new PathNode[COEFFICIENTS.length];
+
+    // partial paths (no path to the goal yet) must end at or above this y (see Settings.partialPathMaxDrop). bestSoFar only
+    // takes nodes up here; bestLowSoFar takes any node, for when there's really nothing else
+    protected int partialFloorY = Integer.MIN_VALUE;
+    protected final PathNode[] bestLowSoFar = new PathNode[COEFFICIENTS.length];
 
     private volatile boolean isFinished;
 
@@ -118,6 +124,7 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         this.goal = goal;
         this.context = context;
         this.cells = new Long2ObjectOpenHashMap<>(Baritone.settings().pathingMapDefaultSize.value, Baritone.settings().pathingMapLoadFactor.value);
+        keepAbove(goal);
     }
 
     public void cancel() {
@@ -252,6 +259,17 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         return bestSoFar(false, 0);
     }
 
+    // where partial paths have to stay (see Settings.partialPathMaxDrop): goal is the goal as asked for, before a far one gets
+    // its y dropped. a goal without a height (going to an x z, exploring, a set of blocks) leaves partial paths alone
+    public void keepAbove(Goal goal) {
+        int drop = Baritone.settings().partialPathMaxDrop.value;
+        if (drop < 0 || !(goal instanceof IGoalRenderPos)) {
+            partialFloorY = Integer.MIN_VALUE;
+            return;
+        }
+        partialFloorY = Math.min(startY, ((IGoalRenderPos) goal).getGoalPos().getY()) - drop;
+    }
+
     protected Optional<IPath> bestSoFar(boolean logInfo, int numNodes) {
         if (startNode == null) {
             return Optional.empty();
@@ -280,16 +298,40 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         }
         // instead of returning bestSoFar[0], be less misleading
         // if it actually won't find any path, don't make them think it will by rendering a dark blue that will never actually happen
+        // nowhere from here with the usual moves: next time, look for chains by way of ledges round here too
+        boolean stuckHereBefore = baritone.pathing.tungsten.TungstenJumps.wantLedges(startX, startY, startZ);
+        // nowhere to go at this height. going lower is a last resort: only once we've already been stuck right here, and nothing
+        // (a neo, a ledge chain) is still being worked out that might show a way on up here
+        if (partialFloorY != Integer.MIN_VALUE && stuckHereBefore && !baritone.pathing.movement.movements.PendingTables.waiting()) {
+            for (int i = 0; i < COEFFICIENTS.length; i++) {
+                if (bestLowSoFar[i] != null && getDistFromStartSq(bestLowSoFar[i]) > MIN_DIST_PATH * MIN_DIST_PATH) {
+                    if (logInfo) {
+                        logDebug("Nothing on at this height, going lower");
+                    }
+                    return Optional.of(new Path(realStart, startNode, bestLowSoFar[i], numNodes, goal, context));
+                }
+            }
+        }
         if (logInfo) {
             logDebug("Even with a cost coefficient of " + COEFFICIENTS[COEFFICIENTS.length - 1] + ", I couldn't get more than " + Math.sqrt(bestDist) + " blocks");
             logDebug("No path found =(");
-            logNotification("No path found =(", true);
+            if (!planningAhead) {
+                logNotification("No path found =(", true);
+            }
         }
         return Optional.empty();
     }
 
     // an empty result from a search that ran out of nodes is a real "can't get there", from a timed out one it is only "not
     // yet". NOT exposed on public api
+    // planning the next segment while the current one still runs: coming up empty there isn't news (the path goes on, and
+    // it's asked again in a moment), so no popup for it. NOT exposed on public api
+    protected boolean planningAhead;
+
+    public final void planningAhead() {
+        planningAhead = true;
+    }
+
     public final void quiet() {
         quiet = true;
     }

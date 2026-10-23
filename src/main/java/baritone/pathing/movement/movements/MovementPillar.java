@@ -34,6 +34,7 @@ import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.*;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.Vec3;
@@ -189,6 +190,17 @@ public class MovementPillar extends Movement {
         return !placing;
     }
 
+    // the side of dest there's a floor to step off onto (at dest's height, with room to stand), null if none
+    private Direction climbOff(BetterBlockPos dest) {
+        for (Direction d : Direction.Plane.HORIZONTAL) {
+            BetterBlockPos n = dest.relative(d);
+            if (MovementHelper.canWalkOn(ctx, n.below()) && MovementHelper.fullyPassable(ctx, n) && MovementHelper.fullyPassable(ctx, n.above())) {
+                return d;
+            }
+        }
+        return null;
+    }
+
     @Override
     public MovementState updateState(MovementState state) {
         placing = false;
@@ -228,8 +240,16 @@ public class MovementPillar extends Movement {
             if (ctx.playerFeet().equals(dest)) {
                 return state.setStatus(MovementStatus.SUCCESS);
             }
-
-            MovementHelper.moveTowards(ctx, state, dest);
+            // the last step up off the top of a vine: vines have no collision box, so centred on the vine nothing pushes us
+            // against the wall, and the feet bob just over and just under the top of it (climbable below, not above) without
+            // ever getting onto the block. push into the wall the way off is: that's a horizontal collision, which climbs at
+            // full speed, and it carries us over the top onto the block. a ladder's own box does the pushing already
+            Direction off = MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock()) ? null : climbOff(dest);
+            if (off != null && !MovementHelper.fullyPassable(ctx, ctx.playerFeet().relative(off))) {
+                MovementHelper.moveTowards(ctx, state, dest.relative(off));
+            } else {
+                MovementHelper.moveTowards(ctx, state, dest);
+            }
             state.setInput(Input.JUMP, true);
             return state;
         } else {

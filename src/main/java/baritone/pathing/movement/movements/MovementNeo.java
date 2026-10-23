@@ -387,7 +387,11 @@ public class MovementNeo extends Movement implements CurvedMovement {
         }
         // same as NeoJump.rollout, which is what told A* this works. don't get creative here
         NeoJump.Plan plan = !st.hop() && u > NeoJump.EARLIEST ? sim.plan(u, v, vu, vv, 0, 0, true, 1, null) : null;
-        if (plan != null && plan.margin() >= NeoJump.JUMP_MARGIN) {
+        // a plan that says jump this tick has already been weighed against jumping next tick and won, so holding out for
+        // JUMP_MARGIN there just means running on into the wall: the 2 thick wall's best jump is often 0.017 and then
+        // nothing at all a tick later. take it down to NOW_MARGIN
+        boolean takeIt = plan != null && (plan.margin() >= NeoJump.JUMP_MARGIN || plan.runup() == 0 && plan.margin() >= NeoJump.NOW_MARGIN);
+        if (takeIt) {
             steer(state, plan.headingU(), plan.headingV());
             state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
             if (plan.runup() == 0) {
@@ -397,6 +401,23 @@ public class MovementNeo extends Movement implements CurvedMovement {
             }
             stuckTicks = 0;
             return state;
+        }
+        if (!st.hop() && running && u > NeoJump.EARLIEST) {
+            // the jump we'd like (JUMP_MARGIN) isn't there, and one more tick of the run hits the wall or goes off the side.
+            // a jump the model still lands, however thinly, beats a run that certainly ends in the wall. on a 2 thick wall
+            // the comfortable jump comes or doesn't on a few thousandths of a block of sideways drift, and missing it is
+            // what sent the run back to the start over and over
+            double[] heading = sim.runTick(u, v, vu, vv, st.runTarget(), st.takeoff());
+            if (sim.lastRunTick(u, v, vu, vv, heading[0], heading[1])) {
+                NeoJump.Plan now = sim.plan(u, v, vu, vv, 0, 0, true, 0, null);
+                if (now != null && now.margin() > 0) {
+                    steer(state, now.headingU(), now.headingV());
+                    jumped = true;
+                    flight = now;
+                    stuckTicks = 0;
+                    return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true).setInput(Input.JUMP, true);
+                }
+            }
         }
         if (st.hop() && running && runTicks <= st.runup() + 3) {
             // the hop's own run up: line the jump up so the hop comes down on the neo takeoff spot

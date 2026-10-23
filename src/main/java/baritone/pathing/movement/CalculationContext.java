@@ -100,6 +100,10 @@ public class CalculationContext {
     public final boolean allowNeos;
     public final boolean allowClimbJumps;
     public final boolean allowMomentumJumps;
+    // jumps at any angle, planned by rolling Tungsten's jump rule out in the sim, see TungstenJumps
+    public final boolean allowTungstenJumps;
+    private final long tungstenBudget;
+    private baritone.pathing.tungsten.TungstenJumps.Cache tungsten;
     public final boolean assumeWalkOnWater;
     public boolean allowFallIntoLava;
     public final int frostWalker;
@@ -285,6 +289,8 @@ public class CalculationContext {
         this.allowNeos = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowNeos.value, jumpsOffUntil, now);
         this.allowClimbJumps = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowClimbJumps.value, jumpsOffUntil, now);
         this.allowMomentumJumps = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowMomentumJumps.value, jumpsOffUntil, now);
+        this.allowTungstenJumps = ExperimentalMovement.jumpMoveAllowed(nether, fastMode, Baritone.settings().allowTungstenJumps.value, jumpsOffUntil, now);
+        this.tungstenBudget = Baritone.settings().tungstenPlannerBudget.value;
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
@@ -506,9 +512,21 @@ public class CalculationContext {
     // questions and die. searches now borrow a worker's arrays and detach them when they're done
     // it's also the only thread allowed to touch them. PathExecutor checks costs with this same context on the main thread,
     // and two threads scribbling on one open addressed table is how you get the key from one block and the value from another
+    // the Tungsten jump answers and sim budget for this context, made on first use. one per context because the budget is per
+    // search, and the answers are only good for the blocks this context sees
+    public synchronized baritone.pathing.tungsten.TungstenJumps.Cache tungsten() {
+        if (tungsten == null) {
+            tungsten = new baritone.pathing.tungsten.TungstenJumps.Cache(tungstenBudget);
+        }
+        return tungsten;
+    }
+
     public synchronized void claimSearchCaches() {
         if (miningOwner != null) {
             return; // somebody else is searching with this context. they keep it, we go without
+        }
+        if (tungsten != null) {
+            tungsten.newSearch(tungstenBudget); // the budget is per search, and a context can see a few of them
         }
         miningBuffers = SearchCache.acquireMining(1 << miningCacheBits);
         miningKeys = miningBuffers.keys;

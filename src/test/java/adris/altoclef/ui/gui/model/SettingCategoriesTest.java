@@ -27,10 +27,18 @@ public class SettingCategoriesTest {
 
     @Test
     public void movementAndSafety() {
-        is(SettingCategories.MOVEMENT, "allowBreak", "allowParkour", "assumeWalkOnWater", "avoidance", "sprintAscends",
-                "walkOnWaterOnePenalty", "jumpPenalty", "fallDamageCost", "mobAvoidanceRadius", "allowOnlyExposedOres");
+        is(SettingCategories.MOVEMENT, "allowBreak", "assumeWalkOnWater", "avoidance", "sprintAscends",
+                "walkOnWaterOnePenalty", "fallDamageCost", "mobAvoidanceRadius", "allowOnlyExposedOres");
         // the keyword can sit anywhere in the name
         is(SettingCategories.MOVEMENT, "maxFallHeightNoWater", "strictFallCheck");
+    }
+
+    @Test
+    public void everyJumpIsInParkour() {
+        is(SettingCategories.PARKOUR, "allowParkour", "allowParkourPlace", "allowNeos", "allowMomentumJumps", "allowClimbJumps",
+                "allowTungstenJumps", "tungstenPlannerBudget", "tungstenSearchBudget", "sprintJumping", "headHitters", "jumpPenalty");
+        // the jumps elytra does are still elytra's
+        is(SettingCategories.ELYTRA, "elytraAutoJump");
     }
 
     @Test
@@ -104,7 +112,7 @@ public class SettingCategoriesTest {
         assertEquals(SettingCategories.ALTO, names.get(0));
         assertEquals(SettingCategories.GENERAL, names.get(names.size() - 1));
         assertEquals(names.size(), names.stream().distinct().count());
-        assertEquals(11, names.size());
+        assertEquals(12, names.size());
     }
 
     @Test

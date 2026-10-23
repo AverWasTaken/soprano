@@ -417,6 +417,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             // the ascend decides on a brake before shouldSprintNextTick has spoken, and a brake is a waste if sprint isn't kept anyway
             ((MovementAscend) movement).setKeepsSprint(ascendBlocker((MovementAscend) movement, false) == null);
         }
+        baritone.pathing.tungsten.NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
+        if (movement instanceof MovementTungsten) {
+            // a jump that comes down where the next jump can go from without stopping carries its speed into it
+            ((MovementTungsten) movement).next(pathPosition + 1 < path.movements().size() ? path.movements().get(pathPosition + 1) : null);
+        }
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
@@ -825,6 +830,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             if (path.movements().get(pathPosition) instanceof MovementFall) {
                 BlockPos fallDest = path.positions().get(pathPosition + 1); // .get(pathPosition) is the block we fell off of
                 return VecUtils.entityFlatDistanceToCenter(ctx.player(), fallDest) >= leniency; // ignore Y by using flat distance
+            } else if (path.movements().get(pathPosition) instanceof baritone.pathing.movement.movements.MovementTungsten tungsten) {
+                // a Tungsten jump can be a long way from both its ends in the middle of it: the run up backs off the far side of
+                // src, a bounce goes down into the slime pit. its own corridor (the planner's rollout and the box round it) is
+                // the path there
+                return !tungsten.getValidPositions().contains(ctx.playerFeet());
             } else {
                 return true;
             }

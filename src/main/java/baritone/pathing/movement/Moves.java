@@ -567,6 +567,200 @@ public enum Moves {
         public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
             MovementClimb.leap(context, x, y, z, Direction.WEST, result);
         }
+    },
+
+    // any angle jumps, one bucket of directions and distances each, see TungstenJumps. the offset is a cell in the middle of the
+    // bucket, for the loaded chunk check
+    TUNGSTEN_NEAR_EAST(+2, 0, +0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 0);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 0, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_SOUTHEAST(+1, 0, +1, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 1);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 1, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_SOUTH(+0, 0, +2, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 2);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 2, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_SOUTHWEST(-1, 0, +1, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 3);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 3, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_WEST(-2, 0, +0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 4);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 4, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_NORTHWEST(-1, 0, -1, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 5);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 5, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_NORTH(+0, 0, -2, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 6);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 6, result);
+        }
+    },
+
+    TUNGSTEN_NEAR_NORTHEAST(+1, 0, -1, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 7);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 7, result);
+        }
+    },
+
+    TUNGSTEN_FAR_EAST(+4, 0, +0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 8);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 8, result);
+        }
+    },
+
+    TUNGSTEN_FAR_SOUTHEAST(+3, 0, +3, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 9);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 9, result);
+        }
+    },
+
+    TUNGSTEN_FAR_SOUTH(+0, 0, +4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 10);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 10, result);
+        }
+    },
+
+    TUNGSTEN_FAR_SOUTHWEST(-3, 0, +3, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 11);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 11, result);
+        }
+    },
+
+    TUNGSTEN_FAR_WEST(-4, 0, +0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 12);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 12, result);
+        }
+    },
+
+    TUNGSTEN_FAR_NORTHWEST(-3, 0, -3, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 13);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 13, result);
+        }
+    },
+
+    TUNGSTEN_FAR_NORTH(+0, 0, -4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 14);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 14, result);
+        }
+    },
+
+    TUNGSTEN_FAR_NORTHEAST(+3, 0, -3, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.cost(context, src, 15);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.cost(context, x, y, z, 15, result);
+        }
     };
 
     public final boolean dynamicXZ;
