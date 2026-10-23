@@ -24,10 +24,38 @@ public final class RoomCoverage {
         return Math.hypot(px - cx, pz - cz) <= HORIZONTAL_BLOCKS && Math.abs(py - workY) <= VERTICAL_BLOCKS;
     }
 
-    // a leg ends when the chunk is covered, the walk finished, the timer ran out or we stopped moving. being inside the
-    // chunk at the wrong height is none of those, the room is only seen from its own level
-    public static boolean legOver(boolean covered, boolean walkFinished, boolean timerOut, boolean stalled) {
-        return covered || walkFinished || timerOut || stalled;
+    // a leg ends when the chunk is covered, the walk finished, the timer ran out, we stopped moving or baritone searched
+    // everything and found no way there. being inside the chunk at the wrong height is none of those, the room is only
+    // seen from its own level
+    public static boolean legOver(boolean covered, boolean walkFinished, boolean timerOut, boolean stalled, boolean noPath) {
+        return covered || walkFinished || timerOut || stalled || noPath;
+    }
+
+    // the staircase column is the only place the dig may call a floor. a block and a half of slack: the player stands
+    // anywhere on the block and baritone clips corners
+    static final double COLUMN_SLACK = 1.5;
+    // once we are walking back to the column we go on until we are really on it, or the dig and the walk trade places
+    // every other tick
+    static final double COLUMN_REJOIN = 1.2;
+
+    public static boolean onColumn(double px, double pz, int columnX, int columnZ) {
+        return Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5)) <= COLUMN_SLACK;
+    }
+
+    // walking = we are already heading back to the column. true means walk (or start walking), false means dig
+    public static boolean needsRewalk(boolean walking, double px, double pz, int columnX, int columnZ) {
+        double d = Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5));
+        return d > (walking ? COLUMN_REJOIN : COLUMN_SLACK);
+    }
+
+    // the work level changed, so every chunk marked at the old one was seen from the wrong height. true if it cleared
+    public static boolean clearForNewLevel(Set<String> visited, Set<String> skipped, double oldY, double newY) {
+        if (Double.compare(oldY, newY) == 0) {
+            return false;
+        }
+        visited.clear();
+        skipped.clear();
+        return true;
     }
 
     // stand-still check: re-anchors whenever we get further than STALL_BLOCKS from the anchor, stalled once STALL_SECONDS
@@ -61,12 +89,13 @@ public final class RoomCoverage {
     public enum DigVerdict {KEEP_DIGGING, BRICKS, FLOOR}
 
     // the dig down the start column ends on bricks (we are in the stronghold) or on the floor with none (the estimate is
-    // wrong). never on a fixed depth: the stronghold sits anywhere from the floor up to y 53
-    public static DigVerdict digVerdict(boolean bricksSeen, double y, int floorY) {
+    // wrong). never on a fixed depth: the stronghold sits anywhere from the floor up to y 53. a floor reached off the
+    // column proves nothing (a cave carried us around the staircase), so it only counts on the column
+    public static DigVerdict digVerdict(boolean bricksSeen, double y, int floorY, boolean onColumn) {
         if (bricksSeen) {
             return DigVerdict.BRICKS;
         }
-        return y <= floorY + 2 ? DigVerdict.FLOOR : DigVerdict.KEEP_DIGGING;
+        return onColumn && y <= floorY + 2 ? DigVerdict.FLOOR : DigVerdict.KEEP_DIGGING;
     }
 
     // a target chunk we are done with (arrived at the wrong level, or the timer ran out): if nothing saw it, it goes in

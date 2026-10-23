@@ -9,6 +9,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.StrongholdConfig;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.NoPathScope;
 import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.world.FrameGeometry;
@@ -32,7 +33,12 @@ import java.util.Set;
 public class StrongholdRoomSearchTask extends Task {
     private enum Stage {TO_START, DIG, SPIRAL, HINT, APPROACH}
 
-    private static final Block[] BRICKS = {Blocks.STONE_BRICKS, Blocks.MOSSY_STONE_BRICKS, Blocks.CRACKED_STONE_BRICKS};
+    // everything only a stronghold builds with. the infested ones look the same from outside and the silverfish rooms are
+    // some of the first walls we touch. the height and distance caps are what keep a stray bar from a village out
+    static final Block[] BRICKS = {Blocks.STONE_BRICKS, Blocks.MOSSY_STONE_BRICKS, Blocks.CRACKED_STONE_BRICKS,
+            Blocks.CHISELED_STONE_BRICKS, Blocks.INFESTED_STONE_BRICKS, Blocks.INFESTED_MOSSY_STONE_BRICKS,
+            Blocks.INFESTED_CRACKED_STONE_BRICKS, Blocks.INFESTED_CHISELED_STONE_BRICKS, Blocks.IRON_BARS,
+            Blocks.END_PORTAL_FRAME};
     // the whole stronghold sits under this (the top is at most sea level - 10) and surface ruins do not
     private static final int BRICK_MAX_Y = 56;
     private static final int BRICK_MAX_DIST = 140;
@@ -78,6 +84,11 @@ public class StrongholdRoomSearchTask extends Task {
     private Task approachTask;
     private final SilverfishSpawnerBreaker spawnerBreaker = new SilverfishSpawnerBreaker();
     private int lastDigY = Integer.MAX_VALUE;
+    // task time, like the chunk timer: a fight or a night trip in the middle of the dig is not the dig being slow
+    private double digSince;
+    // the walk back onto the staircase column when the dig drifted off it
+    private Task rewalkTask;
+    private final NoPathScope.Watch noPath = new NoPathScope.Watch();
     private String step = "Searching the stronghold";
 
     public StrongholdRoomSearchTask(GamerContext ctx) {
@@ -150,6 +161,8 @@ public class StrongholdRoomSearchTask extends Task {
             step = "Breaking the silverfish spawner";
             // the stall clock is task time, this detour must not count as standing still
             stall.reset();
+            // its own searches are not the leg's no path
+            noPath.disarm();
             setDebugState("Breaking the silverfish spawner", step);
             return spawner;
         }
@@ -166,6 +179,7 @@ public class StrongholdRoomSearchTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL_FRAME, Blocks.SPAWNER);
         mod.getBlockTracker().stopTracking(BRICKS);
+        noPath.disarm();
         if (pushedBehaviour) {
             mod.getBehaviour().pop();
             pushedBehaviour = false;
@@ -202,8 +216,24 @@ public class StrongholdRoomSearchTask extends Task {
             goStartTask = null;
             startLeg = null;
         }
+        if (next == Stage.DIG) {
+            digSince = timeOnTaskSeconds();
+            rewalkTask = null;
+        }
         stage = next;
         stageSince = seconds(mod);
+    }
+
+    private boolean onStartColumn(AltoClef mod) {
+        RunState.Pos start = ctx.state().strongholdStart;
+        return RoomCoverage.onColumn(mod.getPlayer().getX(), mod.getPlayer().getZ(), start.x, start.z);
+    }
+
+    // the estimate was wrong, the column bottomed out with no bricks anywhere. RoomPhase throws eyes again from somewhere
+    // else (once), instead of us spiralling around a floor guess
+    private void estimateWrong() {
+        ctx.save();
+        exhausted = true;
     }
 
     private void enterSpiral(AltoClef mod) {
@@ -245,12 +275,19 @@ public class StrongholdRoomSearchTask extends Task {
         // a cave) are no reason to skip the dig
         bricksSeen = !seenBricks(mod, 1, mod.getPlayer().getY()).isEmpty();
         if (stage == Stage.SPIRAL && !workFromBricks) {
-            // we searched a level that was only a guess (the floor, a timed out dig): the first bricks we see correct it.
+            // we searched a level that was only a guess (a timed out dig): the first bricks we see correct it.
             // only ones near where we are, a level far from us would never count
             List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
             if (!hit.isEmpty()) {
+                double oldY = workY;
                 workY = hit.get(0).getY();
                 workFromBricks = true;
+                // chunks marked at the guessed level were never seen from the real one: both sets start over. a retry of the
+                // skipped ones is owed again too
+                if (RoomCoverage.clearForNewLevel(state.roomChunksVisited, skippedChunks, oldY, workY)) {
+                    retriedSkipped = false;
+                    ctx.save();
+                }
                 // the walk in progress aims at the old level: drop it, the next pick rebuilds the goal at the new one
                 chunkTarget = null;
                 chunkTask = null;
@@ -347,8 +384,12 @@ public class StrongholdRoomSearchTask extends Task {
         startLeg.update(seconds(mod), dist);
         if (dist <= cfg.startReachBlocks || startLeg.expired(seconds(mod))) {
             // frames seen on the way in are handled by scan(), so heading down is the only thing left to decide
-            if (RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY) == RoomCoverage.DigVerdict.KEEP_DIGGING) {
+            RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY,
+                    onStartColumn(mod));
+            if (verdict == RoomCoverage.DigVerdict.KEEP_DIGGING) {
                 enter(mod, Stage.DIG);
+            } else if (verdict == RoomCoverage.DigVerdict.FLOOR) {
+                estimateWrong();
             } else {
                 enterSpiral(mod);
             }
@@ -367,16 +408,36 @@ public class StrongholdRoomSearchTask extends Task {
             lastDigY = y;
             ctx.progress("dug down");
         }
-        RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY);
-        if (verdict != RoomCoverage.DigVerdict.KEEP_DIGGING || seconds(mod) - stageSince > cfg.digDownSeconds) {
+        RunState.Pos start = ctx.state().strongholdStart;
+        RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY,
+                onStartColumn(mod));
+        if (verdict == RoomCoverage.DigVerdict.FLOOR) {
+            // on the column, at the bottom, nothing: the chunk is not the stronghold's
+            estimateWrong();
+            return null;
+        }
+        if (verdict == RoomCoverage.DigVerdict.BRICKS || timeOnTaskSeconds() - digSince > cfg.digDownSeconds) {
             Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
             enterSpiral(mod);
             return null;
         }
+        // GoalColumnDown only says where the dig ends, baritone is free to take a cave to get there. the staircase is
+        // the column and nothing else, so off it we walk back at this height before digging any deeper
+        if (RoomCoverage.needsRewalk(rewalkTask != null, mod.getPlayer().getX(), mod.getPlayer().getZ(), start.x, start.z)) {
+            if (rewalkTask == null) {
+                // done anywhere on the column at this height or lower, so a drop into the hollow core ends it too and nobody has
+                // to stand in mid-air or pillar up to reach it
+                rewalkTask = new GetDownColumnTask(start.x, start.z, (int) Math.floor(mod.getPlayer().getY()), false);
+            }
+            step = "Back onto the dig column";
+            setDebugState("Walking back onto the dig column", step);
+            return rewalkTask;
+        }
+        rewalkTask = null;
         if (digTask == null) {
             // the column the eye dived into: the start piece is the top of the stronghold, it can only be under this
-            RunState.Pos start = ctx.state().strongholdStart;
-            digTask = new GetDownColumnTask(start.x, start.z, cfg.digFloorY);
+            // no wander: a failed progress check walking off into the open is how the column got lost in the first place
+            digTask = new GetDownColumnTask(start.x, start.z, cfg.digFloorY, false);
         }
         return digTask;
     }
@@ -395,7 +456,7 @@ public class StrongholdRoomSearchTask extends Task {
         boolean timerOut = chunkTarget != null && timeOnTaskSeconds() - chunkSince >= cfg.perChunkSeconds;
         boolean stalled = chunkTarget != null && stall.stalled(mod.getPlayer().getX(), mod.getPlayer().getY(),
                 mod.getPlayer().getZ(), timeOnTaskSeconds());
-        if (chunkTarget != null && RoomCoverage.legOver(covered, walkFinished, timerOut, stalled)) {
+        if (chunkTarget != null && RoomCoverage.legOver(covered, walkFinished, timerOut, stalled, noPathNow(mod))) {
             // only markCovered says a chunk is searched. the walk ending short, the timer or a stall
             // just mean we will not pick it again, the room was never seen from there
             if (!RoomCoverage.giveUp(state.roomChunksVisited, skippedChunks, chunkTarget.key())) {
@@ -460,7 +521,29 @@ public class StrongholdRoomSearchTask extends Task {
                 chunkTarget.cz() * 16 + 8), CHUNK_GOAL_RANGE);
         chunkSince = timeOnTaskSeconds();
         stall.reset();
+        armNoPath(mod);
         return true;
+    }
+
+    private void armNoPath(AltoClef mod) {
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        // failures first, then exhausted: the pathing thread writes them the other way round
+        int failures = pathing.calcFailures();
+        noPath.arm(failures, pathing.calcExhausted());
+    }
+
+    // baritone searched everything and found no way to this chunk: waiting out the 90 s timer would be standing still.
+    // timed out searches say nothing about the chunk, only exhausted ones skip it
+    private boolean noPathNow(AltoClef mod) {
+        if (!noPath.armed()) {
+            // another task had the wheel (spawner, interrupt): whatever failed then was not this leg's
+            armNoPath(mod);
+            return false;
+        }
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        int failures = pathing.calcFailures();
+        int exhaustedNow = pathing.calcExhausted();
+        return noPath.poll(failures, exhaustedNow, pathing.isPathing()) == NoPathScope.Verdict.EXHAUSTED;
     }
 
     private Optional<StrongholdRoomPlan.Chunk> guidedChunk(AltoClef mod, StrongholdRoomPlan.Chunk startChunk) {

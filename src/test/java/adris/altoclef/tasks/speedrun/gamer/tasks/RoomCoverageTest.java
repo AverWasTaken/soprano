@@ -57,16 +57,16 @@ public class RoomCoverageTest {
     @Test
     public void digEndsOnBricksNotOnDepth() {
         // surface, mid, and one block above the floor: still digging until bricks show
-        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 70, -54));
-        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 9, -54));
-        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, 40, -54));
-        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, -54, -54));
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 70, -54, true));
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, 9, -54, true));
+        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, 40, -54, true));
+        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, -54, -54, true));
     }
 
     @Test
     public void reachingTheFloorWithoutBricksFallsBack() {
-        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -52, -54));
-        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -60, -54));
+        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -52, -54, true));
+        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -60, -54, true));
     }
 
     @Test
@@ -160,10 +160,53 @@ public class RoomCoverageTest {
 
     @Test
     public void aLegOnlyEndsOnCoveredFinishedTimerOrStall() {
-        assertFalse(RoomCoverage.legOver(false, false, false, false));
-        assertTrue(RoomCoverage.legOver(true, false, false, false));
-        assertTrue(RoomCoverage.legOver(false, true, false, false));
-        assertTrue(RoomCoverage.legOver(false, false, true, false));
-        assertTrue(RoomCoverage.legOver(false, false, false, true));
+        assertFalse(RoomCoverage.legOver(false, false, false, false, false));
+        assertTrue(RoomCoverage.legOver(true, false, false, false, false));
+        assertTrue(RoomCoverage.legOver(false, true, false, false, false));
+        assertTrue(RoomCoverage.legOver(false, false, true, false, false));
+        assertTrue(RoomCoverage.legOver(false, false, false, true, false));
+        assertTrue(RoomCoverage.legOver(false, false, false, false, true));
+    }
+
+    @Test
+    public void aFloorOffTheColumnIsNotAFloor() {
+        // the caves took us eight blocks around the staircase: keep going, the column is where the answer is
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING, RoomCoverage.digVerdict(false, -52, -54, false));
+        assertEquals(RoomCoverage.DigVerdict.BRICKS, RoomCoverage.digVerdict(true, -52, -54, false));
+        assertEquals(RoomCoverage.DigVerdict.FLOOR, RoomCoverage.digVerdict(false, -52, -54, true));
+    }
+
+    @Test
+    public void theColumnIsWithinAboutABlockAndAHalf() {
+        assertTrue(RoomCoverage.onColumn(996.5, 1684.5, 996, 1684));
+        assertTrue(RoomCoverage.onColumn(997.5, 1684.9, 996, 1684));
+        assertFalse(RoomCoverage.onColumn(1004.5, 1687.5, 996, 1684));
+    }
+
+    @Test
+    public void rewalkStartsLateAndEndsOnTheColumn() {
+        // not walking: only past the slack. walking: until we are properly back on it
+        assertFalse(RoomCoverage.needsRewalk(false, 997.4, 1684.5, 996, 1684));
+        assertTrue(RoomCoverage.needsRewalk(false, 1004.5, 1684.5, 996, 1684));
+        assertTrue(RoomCoverage.needsRewalk(true, 997.9, 1684.5, 996, 1684));
+        assertFalse(RoomCoverage.needsRewalk(true, 996.9, 1684.5, 996, 1684));
+    }
+
+    @Test
+    public void aNewWorkLevelWipesBothSets() {
+        Set<String> visited = new HashSet<>(Set.of("62,105", "63,105"));
+        Set<String> skipped = new HashSet<>(Set.of("64,105"));
+        assertFalse(RoomCoverage.clearForNewLevel(visited, skipped, -52, -52));
+        assertEquals(2, visited.size());
+        assertTrue(RoomCoverage.clearForNewLevel(visited, skipped, -52, 31));
+        assertTrue(visited.isEmpty());
+        assertTrue(skipped.isEmpty());
+        // the first level we ever learn counts as a change too
+        visited.add("1,1");
+        assertTrue(RoomCoverage.clearForNewLevel(visited, skipped, Double.NaN, 31));
+        assertTrue(visited.isEmpty());
+        // and a NaN that stays NaN is not one
+        visited.add("1,1");
+        assertFalse(RoomCoverage.clearForNewLevel(visited, skipped, Double.NaN, Double.NaN));
     }
 }
