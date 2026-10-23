@@ -84,36 +84,17 @@ public class ParkourLabScorecard {
         // neos, momentum jumps and ladder grabs come out of tables that get worked out in the background the first time
         // something asks (in game that's the first path of the session). ask once for everything and give them time
         settings.allowTungstenJumps.value = true;
-        // and again, as long as each pass turns up shapes nobody had asked about (a landing only reachable through a jump that
-        // was itself still being worked out last time), and until the background work is done or the time is up
-        long warmUntil = System.currentTimeMillis() + Long.parseLong(System.getenv().getOrDefault("PARKOURLAB_WARM_MS", "45000"));
-        for (int pass = 0; pass < 6 && System.currentTimeMillis() < warmUntil; pass++) {
-            long missesBefore = baritone.pathing.movement.movements.PendingTables.misses();
-            String only0 = System.getenv("PARKOURLAB_SECTIONS");
-            for (JsonElement e : course.getAsJsonArray("sections")) {
-                JsonObject sec = e.getAsJsonObject();
-                if (only0 != null && !("," + only0.replace(" ", "") + ",").contains("," + sec.get("id").getAsInt() + ",")) {
-                    continue;
-                }
-                for (JsonElement je : sec.getAsJsonArray("jumps")) {
-                    JsonArray a = je.getAsJsonObject().getAsJsonArray("from"), b = je.getAsJsonObject().getAsJsonArray("to");
-                    VineLogPathTest.path(w, new BetterBlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()),
-                            new GoalBlock(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()), false);
-                }
-                // a section with no jumps listed (a course from a recording that only flew round the map): the section as a
-                // whole is the only thing to ask about. (only then: a whole section asks about every shape it looks at, and
-                // the background search would be working those out instead of the ones the jumps need)
-                if (sec.getAsJsonArray("jumps").isEmpty()) {
-                    VineLogPathTest.path(w, cps.get(sec.get("from").getAsInt()), new GoalBlock(cps.get(sec.get("to").getAsInt())), false);
-                }
+        // a section at a time, the way the bot comes to them in game: the ledge chains are only looked for round where the
+        // bot got stuck, a handful of spots at once, so asking for the whole course in one go would push the early spots out
+        // before their searches ran
+        long warmMs = Long.parseLong(System.getenv().getOrDefault("PARKOURLAB_WARM_MS", "120000"));
+        String only0 = System.getenv("PARKOURLAB_SECTIONS");
+        for (JsonElement e : course.getAsJsonArray("sections")) {
+            JsonObject sec = e.getAsJsonObject();
+            if (only0 != null && !("," + only0.replace(" ", "") + ",").contains("," + sec.get("id").getAsInt() + ",")) {
+                continue;
             }
-
-            while (baritone.pathing.movement.movements.PendingTables.waiting() && System.currentTimeMillis() < warmUntil) {
-                Thread.sleep(500);
-            }
-            if (baritone.pathing.movement.movements.PendingTables.misses() == missesBefore) {
-                break;
-            }
+            warm(w, cps, sec, warmMs, false);
         }
         String only = System.getenv("PARKOURLAB_SECTIONS");
         java.util.Set<Integer> wanted = new java.util.HashSet<>();
@@ -129,6 +110,10 @@ public class ParkourLabScorecard {
             if (!wanted.isEmpty() && !wanted.contains(sec.get("id").getAsInt())) {
                 continue;
             }
+            // a short warm-up again right before: the ledge chains are only looked for round spots the bot got stuck at in the
+            // last couple of minutes, the way it is in game when the bot gets there
+            settings.allowTungstenJumps.value = true;
+            warm(w, cps, sec, 30000, true);
             BetterBlockPos from = cps.get(sec.get("from").getAsInt()), to = cps.get(sec.get("to").getAsInt());
             settings.allowTungstenJumps.value = false;
             VineLogPathTest.Result off = VineLogPathTest.path(w, from, new GoalBlock(to), false);
@@ -170,6 +155,32 @@ public class ParkourLabScorecard {
         String file = System.getenv("PARKOURLAB_SCORECARD");
         if (file != null) {
             Files.writeString(Path.of(file), out.toString());
+        }
+    }
+
+    // ask for a section's jumps and the section as a whole, again as long as each pass turns up shapes nobody had asked about,
+    // until the background work is done or the time is up
+    private static void warm(VineLogPathTest.MapWorld w, List<BetterBlockPos> cps, JsonObject sec, long warmMs, boolean whole) throws InterruptedException {
+        long warmUntil = System.currentTimeMillis() + warmMs;
+        for (int pass = 0; pass < 6 && System.currentTimeMillis() < warmUntil; pass++) {
+            long missesBefore = baritone.pathing.movement.movements.PendingTables.misses();
+            for (JsonElement je : sec.getAsJsonArray("jumps")) {
+                JsonArray a = je.getAsJsonObject().getAsJsonArray("from"), b = je.getAsJsonObject().getAsJsonArray("to");
+                VineLogPathTest.path(w, new BetterBlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()),
+                        new GoalBlock(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()), false);
+            }
+            // the section as a whole: from the second pass on (by then the jumps' own shapes are being worked out, and a
+            // section that came up empty has had its ledge chains asked for), or straight away for a section with no
+            // jumps listed (a course from a recording that only flew round the map) or when warming up again
+            if (whole || sec.getAsJsonArray("jumps").isEmpty() || pass > 0) {
+                VineLogPathTest.path(w, cps.get(sec.get("from").getAsInt()), new GoalBlock(cps.get(sec.get("to").getAsInt())), false);
+            }
+            while (baritone.pathing.movement.movements.PendingTables.waiting() && System.currentTimeMillis() < warmUntil) {
+                Thread.sleep(500);
+            }
+            if (baritone.pathing.movement.movements.PendingTables.misses() == missesBefore) {
+                break;
+            }
         }
     }
 

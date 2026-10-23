@@ -333,10 +333,18 @@ COLORS = [
 
 def color(state):
     s = short(state).split("[")[0]
+    base = "#b0b0b0"
     for k, v in COLORS:
         if k in s:
-            return v
-    return "#b0b0b0"
+            base = v
+            break
+    # stairs and slabs tinted, so a dark stair doesn't pass for a block: orange for stairs, blue for slabs
+    tint = "#ff9a30" if s.endswith("_stairs") else "#3fa9ff" if s.endswith("_slab") else None
+    if tint is None:
+        return base
+    b = [int(base[i:i + 2], 16) for i in (1, 3, 5)]
+    t = [int(tint[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join("%02x" % int(0.45 * x + 0.55 * y) for x, y in zip(b, t))
 
 
 def props(state):
@@ -347,7 +355,7 @@ def props(state):
     return name, dict(kv.split("=", 1) for kv in rest.rstrip("]").split(",") if "=" in kv)
 
 
-NO_COLLISION = ("air", "grass", "fern", "flower", "torch", "sapling", "button", "lever", "sign", "banner", "rail", "wire",
+NO_COLLISION = ("grass", "fern", "flower", "torch", "sapling", "button", "lever", "sign", "banner", "rail", "wire",
                 "tripwire", "string", "water", "lava", "light", "barrier", "structure_void", "kelp", "seagrass", "vine",
                 "dandelion", "poppy", "tulip", "orchid", "allium", "bluet", "daisy", "cornflower", "lily_of", "rose", "bush",
                 "mushroom", "pressure_plate", "carpet_x")
@@ -368,7 +376,8 @@ def shapes(state):
             if p.get(side) == "true":
                 out.append(box)
         return out
-    if any(k in name for k in NO_COLLISION):
+    # (air by its whole name: "stairs" has "air" in it)
+    if name in ("air", "cave_air", "void_air") or any(k in name for k in NO_COLLISION):
         return []
     if name.endswith("_slab"):
         t = p.get("type", "bottom")

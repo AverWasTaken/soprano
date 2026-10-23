@@ -20,7 +20,7 @@ COLORS = [
     ("polished_blackstone", "#3a3438"), ("cyan_terracotta", "#4c7f86"), ("lime_terracotta", "#7a9a3d"),
     ("orange_terracotta", "#b5602c"), ("polished_andesite", "#9aa0a0"), ("mossy", "#6b7b55"), ("stone_bricks", "#7f7f7f"),
     ("deepslate", "#4a4a52"), ("spruce", "#6b4e2e"), ("andesite", "#8f9494"), ("smooth_stone", "#a0a0a0"), ("tuff", "#6d6f63"), ("copper", "#c0704a"), ("lime_concrete", "#5ec42e"), ("dark_prismarine", "#2f5e57"), ("prismarine", "#5aa59a"), ("ladder", "#a8803e"), ("vine", "#3f8f2f"),
-    ("stone", "#8a8a8a"), ("oak", "#b48a52"), ("cobblestone", "#7a7a7a"), ("glass", "#cfe8ef"), ("iron_bars", "#9a9a9a"),
+    ("black_wool", "#1d1d23"), ("diorite", "#d4d2cc"), ("blackstone", "#2a2528"), ("stone", "#8a8a8a"), ("oak", "#b48a52"), ("cobblestone", "#7a7a7a"), ("glass", "#cfe8ef"), ("iron_bars", "#9a9a9a"),
     ("hopper", "#4a4a4a"), ("end_rod", "#f0eadf"),
 ]
 
@@ -57,10 +57,18 @@ secs = d["sections"][:-1]  # the finale gets a picture of its own
 cols_n = 4
 rows_n = (len(secs) + cols_n - 1) // cols_n
 fig = plt.figure(figsize=(cols_n * 6, rows_n * 4.6), dpi=100)
-for i, sec in enumerate(secs):
+def area(sec, m=3):
+    # the section's blocks: everything round its checkpoints and its jumps (a section can double back, the CubeCraft one does)
     a, b = cps[sec["from"]], cps[sec["to"]]
-    lo = min(a["y"], b["y"]) - 12
-    part = [x for x in blocks if a["x"] - 1 <= x[0] <= b["x"] + 1 and x[1] >= lo]
+    pts = [(a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"])] + [tuple(j[k]) for j in sec["jumps"] for k in ("from", "to")]
+    x0, x1 = min(p[0] for p in pts) - m, max(p[0] for p in pts) + m
+    z0, z1 = min(p[2] for p in pts) - m, max(p[2] for p in pts) + m
+    lo = min(p[1] for p in pts) - 12
+    return [x for x in blocks if x0 <= x[0] <= x1 and z0 <= x[2] <= z1 and x[1] >= lo]
+
+
+for i, sec in enumerate(secs):
+    part = area(sec)
     ax = fig.add_subplot(rows_n, cols_n, i + 1, projection="3d")
     voxels(ax, part, 30, -70)
     ax.set_title(f'{sec["id"]}. {sec["name"]}', fontsize=15)
@@ -69,13 +77,13 @@ fig.savefig(out + "/course_sections.png", facecolor="white")
 plt.close(fig)
 
 fin_x0 = cps[-2]["x"]
-fin = [b for b in blocks if b[0] >= fin_x0 - 2]
+fin = [b for b in area(d["sections"][-1], 3) if b[0] >= fin_x0 - 2]
 mid = (fin_x0 + max(b[0] for b in fin)) // 2
 fig = plt.figure(figsize=(16, 13), dpi=110)
 for k, part in enumerate(([b for b in fin if b[0] <= mid + 1], [b for b in fin if b[0] >= mid - 1])):
     ax = fig.add_subplot(2, 1, k + 1, projection="3d")
     voxels(ax, part, 28, -70)
-    ax.set_title("20. Finale: every section in one run" + (" (first half)" if k == 0 else " (second half)"), fontsize=14)
+    ax.set_title(f'{d["sections"][-1]["id"]}. Finale: every section in one run' + (" (first half)" if k == 0 else " (second half)"), fontsize=14)
 plt.tight_layout()
 fig.savefig(out + "/course_finale.png", facecolor="white")
 plt.close(fig)

@@ -280,6 +280,8 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         }
         // instead of returning bestSoFar[0], be less misleading
         // if it actually won't find any path, don't make them think it will by rendering a dark blue that will never actually happen
+        // nowhere from here with the usual moves: next time, look for chains by way of ledges round here too
+        baritone.pathing.tungsten.TungstenJumps.wantLedges(startX, startY, startZ);
         if (logInfo) {
             logDebug("Even with a cost coefficient of " + COEFFICIENTS[COEFFICIENTS.length - 1] + ", I couldn't get more than " + Math.sqrt(bestDist) + " blocks");
             logDebug("No path found =(");

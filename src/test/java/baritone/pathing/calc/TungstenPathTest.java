@@ -148,9 +148,9 @@ public class TungstenPathTest {
                 w.set(x, FLOOR, z, Blocks.STONE.defaultBlockState());
             }
         }
-        long before = baritone.pathing.sim.PlayerSim.ticksRun;
+        long before = baritone.pathing.sim.PlayerSim.ticks(); // this thread's: a search left running in the background by another test counts in ticksRun
         VineLogPathTest.Result r = VineLogPathTest.path(w, START, new GoalBlock(new BetterBlockPos(15, FLOOR + 1, 12)), false);
         assertTrue(r.found && r.inGoal);
-        assertEquals(before, baritone.pathing.sim.PlayerSim.ticksRun);
+        assertEquals(before, baritone.pathing.sim.PlayerSim.ticks());
     }
 }

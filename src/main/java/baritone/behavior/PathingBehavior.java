@@ -235,6 +235,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             safeToCancel = current.onTick();
             if (current.failed() || current.finished()) {
                 current = null;
+                // this tick's keys are still to be played: hold on (sneak) already, not a tick late
+                holdOnToTheLadder();
                 // the segment it was waiting on is gone, and the next path to show up is not the one to cancel
                 deferredCancel.clear();
                 if (goal == null || goal.isInGoal(ctx.playerFeet())) {
@@ -500,13 +502,16 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
     }
 
-    // between paths on a ladder (the next one still being worked out): sneak, which holds you where you are, instead of
-    // letting go and sliding off the bottom of it
+    // between paths (the next one still being worked out): sneak, which holds you where you are on a ladder instead of
+    // letting go and sliding off the bottom of it, and on the ground stops the run the last jump carried in from taking
+    // you off the edge of a one block landing
     private boolean ladderHold;
 
     private void holdOnToTheLadder() {
         LocalPlayer p = ctx.player();
-        boolean hold = goal != null && p != null && p.onClimbable() && !p.onGround() && !goal.isInGoal(ctx.playerFeet());
+        boolean hold = goal != null && p != null
+                && (p.onClimbable() && !p.onGround() || p.onGround() && !p.isInWater() && p.getDeltaMovement().horizontalDistance() > 0.04)
+                && !goal.isInGoal(ctx.playerFeet()) && baritone.getPathingControlManager().mostRecentInControl().isPresent();
         if (hold != ladderHold) {
             ladderHold = hold;
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, hold);
