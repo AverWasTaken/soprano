@@ -229,4 +229,30 @@ public class EyeThrowObserverTest {
         Result r = obs.observe(1000 + EyeThrowObserver.EMPTY_TICKS, false, 0, 0, 0);
         assertFalse(r.outcome() == Outcome.INTERRUPTED || r.outcome() == Outcome.EMPTY);
     }
+
+    @Test
+    public void thirdInterruptedThrowInARowBooksAsEmpty() {
+        EyeThrowObserver.Streak streak = new EyeThrowObserver.Streak();
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        // (a pending tick says nothing about the streak)
+        assertEquals(Outcome.PENDING, streak.book(Outcome.PENDING));
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        assertEquals(Outcome.EMPTY, streak.book(Outcome.INTERRUPTED));
+        // and it starts over after that
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+    }
+
+    @Test
+    public void aSightingOrAnyOtherOutcomeBreaksTheStreak() {
+        EyeThrowObserver.Streak streak = new EyeThrowObserver.Streak();
+        streak.book(Outcome.INTERRUPTED);
+        streak.book(Outcome.INTERRUPTED);
+        assertEquals(Outcome.RAY, streak.book(Outcome.RAY));
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        assertEquals(Outcome.UNUSABLE, streak.book(Outcome.UNUSABLE));
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        assertEquals(Outcome.INTERRUPTED, streak.book(Outcome.INTERRUPTED));
+        assertEquals(Outcome.EMPTY, streak.book(Outcome.INTERRUPTED));
+    }
 }

@@ -9,6 +9,7 @@ import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
+import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
@@ -36,7 +37,6 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherPickTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
-import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
@@ -96,6 +96,10 @@ public class NetherPhase implements PhaseHandler {
     private CampPinger campPinger;
     private GhastWatch ghastWatch;
     private HoldLatch endermanLatch;
+    // the latch above as of this tick, read by everything that asks "is an enderman about" (updated once at the top of tick)
+    private boolean endermanHere;
+    // game time as of the last tick, for the hunt's freshness check (stallSeconds gets no context)
+    private long lastGameTime;
     private GetToXZTask walkToFortress;
     private RunState.Pos fortressWalkTo;
     private double fortressWalkSince;
@@ -237,6 +241,7 @@ public class NetherPhase implements PhaseHandler {
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
         endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+        endermanHere = false;
         walkToFortress = null;
         fortressWalkTo = null;
         fortressWalkGivenUp = null;
@@ -304,7 +309,7 @@ public class NetherPhase implements PhaseHandler {
     // the watchdog (see PearlHuntTask), stares do not
     @Override
     public double stallSeconds() {
-        return EndermanNook.stallSeconds(hunt != null && hunt.inNook());
+        return EndermanNook.stallSeconds(hunt != null && hunt.inNook(lastGameTime), PhaseHandler.super.stallSeconds());
     }
 
     @Override
@@ -313,6 +318,7 @@ public class NetherPhase implements PhaseHandler {
             onEnter(mod, ctx);
         }
         noteRespawn(ctx);
+        lastGameTime = ctx.facts().gameTime();
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
@@ -341,6 +347,8 @@ public class NetherPhase implements PhaseHandler {
         ReturnPhase.recordPortal(mod, ctx.state());
         rememberOverworldPortal(mod, ctx);
         double now = ctx.secondsInPhase();
+        // once per tick before anything reads it: the pick and gravel detours ask too, off the raw ray they flipped every tick
+        endermanHere = endermanLatch.update(PearlHuntTask.endermanNear(mod), now);
         // before the cover, whatever path that one walks must not break gold either
         boolean piglins = guardGold(mod);
         Task cover = ghastCover(mod, now);
@@ -670,7 +678,7 @@ public class NetherPhase implements PhaseHandler {
     private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
         boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
-        boolean hunting = pearlsNext(ctx) && PearlHuntTask.endermanNear(mod);
+        boolean hunting = pearlsNext(ctx) && endermanHere;
         return atSpawner || trading || hunting || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
     }
 
@@ -681,9 +689,9 @@ public class NetherPhase implements PhaseHandler {
         // trade is "going" only while it was ticked a moment ago, or one finished barter would keep gravel off for the phase
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
         // the pearl hunt like a picked spawner: pearls are what nextStep is on and an enderman is in sight (angry or not, it is
-        // what we walk at). asked fresh every tick and not off a hunt tick, so one that shows up halfway through a detour ends it.
+        // what we walk at). asked every tick off the phase latch and not off a hunt tick, so one that shows up halfway through a detour ends it (it holds a few seconds after the ray loses it).
         // the wander with no enderman around is a walk, gravel on the way is fair there
-        boolean hunting = pearlsNext(ctx) && PearlHuntTask.endermanNear(mod);
+        boolean hunting = pearlsNext(ctx) && endermanHere;
         if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading, hunting)) {
             gravel.preempted(ctx.facts().gameTime());
             return null;
@@ -904,7 +912,6 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        boolean endermanHere = endermanLatch.update(PearlHuntTask.endermanNear(mod), now);
         if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by

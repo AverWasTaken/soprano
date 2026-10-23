@@ -18,6 +18,30 @@ public final class EyeThrowObserver {
         UNUSABLE
     }
 
+    // interrupted throws in a row. an interrupt is not a dud, but the same throw getting cut off over and over is a throw that
+    // never gets watched, so the third one in a row books as the empty throw it effectively is. lives on the task, not on
+    // the observer: every throw gets a fresh observer
+    public static final class Streak {
+        static final int MAX_IN_A_ROW = 3;
+        private int run;
+
+        // what to act on for a finished throw. PENDING says nothing about the streak
+        public Outcome book(Outcome outcome) {
+            if (outcome == Outcome.PENDING) {
+                return outcome;
+            }
+            if (outcome != Outcome.INTERRUPTED) {
+                run = 0;
+                return outcome;
+            }
+            if (++run >= MAX_IN_A_ROW) {
+                run = 0;
+                return Outcome.EMPTY;
+            }
+            return outcome;
+        }
+    }
+
     public record Result(Outcome outcome, StrongholdEstimator.Ray ray, boolean dived, String why) {
     }
 

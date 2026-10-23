@@ -149,7 +149,9 @@ public class EndermanNookTest {
 
     @Test
     public void theNookHuntGetsALongerStallWindow() {
-        assertEquals(EndermanNook.DEFAULT_STALL_SECONDS, EndermanNook.stallSeconds(false), 0);
-        assertTrue(EndermanNook.stallSeconds(true) > EndermanNook.stallSeconds(false));
+        assertEquals(120, EndermanNook.stallSeconds(false, 120), 0);
+        assertTrue(EndermanNook.stallSeconds(true, 120) > EndermanNook.stallSeconds(false, 120));
+        // a phase that already waits longer than the nook does is not shortened by being in one
+        assertEquals(500, EndermanNook.stallSeconds(true, 500), 0);
     }
 }

@@ -21,9 +21,10 @@ import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -44,6 +45,7 @@ public class PearlHuntTask extends Task {
     // an angry one across a lava lake never arrives: after this long on one target it is somebody else's problem
     private static final double ANGRY_SECONDS = 20;
     private static final double ENDERMAN_HOLD_SECONDS = 6;
+    private static final long NOOK_FRESH_TICKS = 200;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -66,8 +68,10 @@ public class PearlHuntTask extends Task {
     private Entity angryTarget;
     private KillEntityTask angryTask;
     private final AngryClock angrySpent = new AngryClock();
-    private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private NookHuntTask nook;
+    private long lastTickAt = Long.MIN_VALUE;
+    // fight time per enderman across every nook this hunt builds, so a new hole does not hand an unreachable one a fresh minute
+    private final AngryClock nookFight = new AngryClock();
     private int nookFails;
     private long nookRetryAt = Long.MIN_VALUE;
     private String step = "Looking for endermen";
@@ -89,15 +93,31 @@ public class PearlHuntTask extends Task {
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
 
-    // ticks of fighting per enderman id, it carries over when the nearest angry one changes back and forth
+    // ticks of fighting per enderman id, it carries over when the nearest angry one changes back and forth. an id that ran
+    // out stays given up (ids are not pruned: one that teleports off and comes back keeps its id and its spent clock, and a
+    // run's worth of ints is nothing)
     static final class AngryClock {
-        private final java.util.Map<Integer, Integer> ticks = new java.util.HashMap<>();
+        private final Map<Integer, Integer> ticks = new HashMap<>();
+        private final Set<Integer> gaveUp = new HashSet<>();
 
         // one more tick on this one, true once it is over the limit
         boolean tick(int id, double limitSeconds) {
             int t = ticks.merge(id, 1, Integer::sum);
-            return t / 20.0 > limitSeconds;
+            boolean over = t / 20.0 > limitSeconds;
+            if (over) {
+                gaveUp.add(id);
+            }
+            return over;
         }
+
+        boolean givenUp(int id) {
+            return gaveUp.contains(id);
+        }
+    }
+
+    // the stamp on nook is this fresh or it is a leftover from a hunt that stopped being ticked
+    static boolean nookFresh(long lastTickAt, long now) {
+        return lastTickAt != Long.MIN_VALUE && now - lastTickAt <= NOOK_FRESH_TICKS;
     }
 
     public String step() {
@@ -105,8 +125,9 @@ public class PearlHuntTask extends Task {
     }
 
     // the nook is up: a still, patient stage that makes no distance and picks nothing up until something walks into it
-    public boolean inNook() {
-        return nook != null;
+    // (a hunt that finished or got swapped out mid-nook leaves nook set, so it only counts while we are being ticked)
+    public boolean inNook(long gameTime) {
+        return nook != null && nookFresh(lastTickAt, gameTime);
     }
 
     // the cheap-then-dear enderman check the nook and the phases share: one in range and in sight
@@ -142,6 +163,12 @@ public class PearlHuntTask extends Task {
             return say("Heading to " + HudText.dimension(dimension), goToDimension);
         }
         long gameTime = mod.getWorld().getGameTime();
+        // a nook left over from before we stopped being ticked is dropped: if it was still being built its clock ran on without us and it would
+        // fail on the first tick back, which is not a nook failure (a built one would be fine, but a fresh find() is cheap)
+        if (nook != null && !nookFresh(lastTickAt, gameTime)) {
+            nook = null;
+        }
+        lastTickAt = gameTime;
         noteKills(mod);
         if (dimension == Dimension.NETHER) {
             Task hole = nookStep(mod, gameTime);
@@ -192,7 +219,7 @@ public class PearlHuntTask extends Task {
             if (!EndermanNook.latchSees(nearestEnderman(mod)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
                 return null;
             }
-            nook = new NookHuntTask();
+            nook = new NookHuntTask(nookFight);
         }
         return nook;
     }
@@ -237,7 +264,7 @@ public class PearlHuntTask extends Task {
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
-            dist[i] = man.isAlive() && man.isCreepy() && !angryGivenUp.contains(man) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
+            dist[i] = man.isAlive() && man.isCreepy() && !angrySpent.givenUp(man.getId()) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
         int at = EndermanNook.nearestAngry(dist);
         if (at < 0) {
@@ -250,7 +277,6 @@ public class PearlHuntTask extends Task {
         }
         // per enderman: two that trade places as the nearest must not each get a fresh clock every time
         if (angrySpent.tick(man.getId(), ANGRY_SECONDS)) {
-            angryGivenUp.add(man);
             return null;
         }
         return angryTask;

@@ -110,11 +110,10 @@ public final class EndermanNook {
         return huntRunning && foes > 0 && foes == endermen;
     }
 
-    // the nether watchdog's stall window: the default, or longer while the nook hunt sits in its hole
-    public static double stallSeconds(boolean inNook) {
-        return inNook ? NOOK_STALL_SECONDS : DEFAULT_STALL_SECONDS;
+    // the nether watchdog's stall window: the phase default, or longer while the nook hunt sits in its hole
+    public static double stallSeconds(boolean inNook, double normal) {
+        return inNook ? Math.max(NOOK_STALL_SECONDS, normal) : normal;
     }
 
-    public static final double DEFAULT_STALL_SECONDS = 120;
     public static final double NOOK_STALL_SECONDS = 300;
 }

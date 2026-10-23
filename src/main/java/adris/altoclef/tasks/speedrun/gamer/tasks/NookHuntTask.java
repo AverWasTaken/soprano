@@ -60,7 +60,7 @@ public class NookHuntTask extends Task {
     private static final int PLACE_TICKS = 120;
     // an angry one this close is fought right away even if the nook is not finished
     private static final double HURRY_RANGE = 16;
-    private static final int FIGHT_GIVEUP_TICKS = 1200;
+    private static final int FIGHT_GIVEUP_SECONDS = 60;
     // the pearl is somebody else's problem after this many ticks of trying to reach it (down a hole, stuck in a wall)
     private static final int PEARL_GIVEUP_TICKS = 600;
 
@@ -75,14 +75,17 @@ public class NookHuntTask extends Task {
     private int stareId = -1;
     // enderman id -> game tick we stop caring that it ignored a stare
     private final Map<Integer, Long> skipped = new HashMap<>();
-    // angry ones that never arrived, same shape
-    private final Map<Integer, Long> ignored = new HashMap<>();
     private KillEntityTask brawl;
     private int brawlId = -1;
-    private int fightTicks;
+    // shared with the hunt that built us, see PearlHuntTask.AngryClock
+    private final PearlHuntTask.AngryClock fightClock;
     private int pearlId = -1;
     private int pearlTicks;
     private final Set<Integer> pearlGivenUp = new HashSet<>();
+
+    public NookHuntTask(PearlHuntTask.AngryClock fightClock) {
+        this.fightClock = fightClock;
+    }
 
     public boolean failed() {
         return failed;
@@ -153,13 +156,9 @@ public class NookHuntTask extends Task {
         }
         if (angry != null) {
             idleSince = now;
-            // (no reset on a new target: a give up fails the whole nook, which is a fresh instance next time)
-            // one that never makes it to the door (a ledge, a lava lake) is not worth the whole hunt standing here
-            if (++fightTicks > FIGHT_GIVEUP_TICKS) {
-                // for good, and the nook is done: an enderman that stays angry and never arrives would bring the fight clock
-                // round again and again. the hunt counts it as a failed nook and moves on
-                ignored.put(angry.getId(), Long.MAX_VALUE);
-                failed = true;
+            // fight time is per enderman and lives on the hunt, so a fresh nook does not hand an unreachable one another minute
+            if (fightClock.tick(angry.getId(), FIGHT_GIVEUP_SECONDS)) {
+                // this one is given up for good (nearestAngry skips it now) but the nook is fine, it ends on its own idle clock
                 return null;
             }
             return fight(mod, player, angry);
@@ -565,7 +564,7 @@ public class NookHuntTask extends Task {
         double[] d = new double[men.size()];
         for (int i = 0; i < d.length; i++) {
             Enderman man = men.get(i);
-            boolean skip = ignored.getOrDefault(man.getId(), 0L) > now;
+            boolean skip = fightClock.givenUp(man.getId());
             d[i] = man.isAlive() && man.isCreepy() && !skip ? man.distanceTo(player) : Double.NaN;
         }
         int at = EndermanNook.nearestAngry(d);
