@@ -212,6 +212,7 @@ public final class NeoSearches {
     public static TungstenSearch.Plan solve(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region,
                                             double[] via) {
         int minFeet = Math.min(src.y, land.y()), maxFeet = Math.max(src.y, land.y());
+        // (a walk round it on the level is RimWalk's, tried before anything gets this far)
         for (int attempt = 0; attempt < MARGINS.length; attempt++) {
             double m = MARGINS[attempt];
             InflatedCollision fat = new InflatedCollision(world, m, minFeet, maxFeet);
@@ -257,6 +258,19 @@ public final class NeoSearches {
             }
         }
         return plan;
+    }
+
+    static boolean fliesEveryTime(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Plan plan) {
+        return fliesEveryTime(world, src, floorY, land, plan, FLIGHTS);
+    }
+
+    static boolean fliesEveryTime(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Plan plan, int flights) {
+        for (long seed = 0; seed < flights; seed++) {
+            if (fly(standing(world, src, floorY), land, plan, src.x + 0.5, src.z + 0.5, seed, JITTER) != null) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static PlayerSim standing(CollisionProvider world, BetterBlockPos src, double floorY) {

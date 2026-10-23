@@ -4,7 +4,16 @@ A test course for Soprano's parkour: 20 sections and 204 jumps, each section aim
 
 It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 735 blocks. Gold pads are checkpoints. Fall below y 140 and you're put back on your last one.
 
-## What's new in v5
+## What's new in this build (bot v6, same course)
+
+- **Walking along the edge of a block with a wall or fence on it.** The player is 0.6 wide and only needs a sliver of floor under them, so the strip of block outside a wall post is somewhere to walk. The bot now finds that walk in a few milliseconds: it maps where the player fits and has floor under them, takes the shortest way through that keeps off the edges, and then checks it holds up with the aim wobbling. It walks round walled and fenced platforms and round a pillar's corner instead of jumping round them like a neo. Before, it waited about 25 s for the background search.
+- **Walk along the rim, stop, jump.** Where the landing is across a gap past the wall, it walks the rim to a spot with a clear jump, stops, and jumps from there.
+- **Stairs and walls: 71 s down to 22 s** in the real game, with 0 falls.
+- **Held on ladders.** If the next path isn't ready while the bot is on a ladder, it sneaks, which holds it in place. Before, it let go and slid off the bottom.
+- **Less planning-ahead lag at the end of a path.** It retries every 8 ticks instead of every tick.
+- **Recording (`#record`)**, Flashback style: see RECORDING.md.
+
+## What was new in v5
 
 - **Proper triple neos (section 15).** Round the end of a wall three blocks thick, onto a block at the same height. You take off from the side block (the block beside the wall's start) after a 7-block run-up along that side. That's how they're done in game: a standing start doesn't have the speed.
 - **Stairs and walls (new section 9).** Lone stairs across 3 and 4 gaps, facing every way, with nothing past them to walk on. Also a stair one up, cobblestone walls across 3 gaps and one block up, jumps round the corner of a pillar (a block with a wall on top of it), and 2x2 platforms with a wall or fence two high on every block: the way past is round the rim outside the walls.
@@ -84,7 +93,7 @@ Full run: `/function parkourlab:start`, then `#goto 1732 162 1019`.
 
 ## Results
 
-**In the real game** (a 26.3 client with the default look wobble): start to finish from one `#goto`, 0 falls in all 20 sections.
+**In the real game** (a 26.3 client with the default look wobble): start to finish from one `#goto`, 0 falls in all 20 sections, about 4.5 minutes in all on a cold start.
 
 The first time through the neo chains and the finale, the bot waits in front of the searched neos while the background search works them out (up to about a minute on this slow 2-core machine). The answers are kept for the rest of the session.
 

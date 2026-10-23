@@ -114,6 +114,13 @@ public final class TungstenSearch {
     // wall the straight line goes through
     public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled, double startPeakY,
                               double[] via) {
+        return search(start, land, region, budget, cancelled, startPeakY, via, false);
+    }
+
+    // walkOnly: no jump keys at all, run or walk only. round a walled platform along its rim, along a ledge: a walk where
+    // one goes is steadier than any jump round the same thing, so the neo searches ask for one of these first
+    public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled, double startPeakY,
+                              double[] via, boolean walkOnly) {
         Heuristic h = via == null ? new Heuristic(land, Double.NaN, Double.NaN, 0, 0, 0) : Heuristic.via(start, land, via[0], via[1]);
         PlayerSim cursor = start.copy();
         PlayerSim probe = start.copy();
@@ -133,7 +140,7 @@ public final class TungstenSearch {
                 continue;
             }
             nodes++;
-            if ((n.s.onGround || n.parent == null) && land.horizontalDistance(n.s.x, n.s.z) <= SHORTCUT_REACH) {
+            if (!walkOnly && (n.s.onGround || n.parent == null) && land.horizontalDistance(n.s.x, n.s.z) <= SHORTCUT_REACH) {
                 n.s.write(cursor);
                 JumpPolicy.Rollout r = JumpPolicy.bestFrom(cursor, land, n.peakY);
                 if (r != null) {
@@ -141,7 +148,11 @@ public final class TungstenSearch {
                 }
             }
             options.clear();
-            generate(n.s, land, options);
+            if (walkOnly) {
+                generateWalk(n.s, land, options);
+            } else {
+                generate(n.s, land, options);
+            }
             for (PlayerSim.Controls c : options) {
                 n.s.write(cursor);
                 if (!Keys.step(cursor, c)) {
@@ -175,6 +186,29 @@ public final class TungstenSearch {
     // ground: run or jump at every 22.5 degrees, plus straight at the landing and a few degrees either side of it (the yaw
     // that lines a jump up is rarely a round number), plus braking and letting go. air: W at a spread of yaws round the
     // landing and back against the way we're going, or nothing
+    // on the ground: run or walk (W, no sprint: slower, for the narrow bits) every 22.5 degrees and straight at the landing,
+    // braking, letting go. never a jump. in the air (stepped off something) the usual steering
+    private static void generateWalk(SimState s, Landing land, List<PlayerSim.Controls> out) {
+        if (!s.onGround) {
+            generate(s, land, out);
+            return;
+        }
+        float toward = Keys.yaw(land.centerX() - s.x, land.centerZ() - s.z);
+        for (int i = 0; i < 16; i++) {
+            float yaw = Mth.wrapDegrees(i * 22.5F);
+            out.add(Keys.run(yaw, false));
+            out.add(Keys.push(yaw, false));
+        }
+        for (float d : new float[]{0F, 7F, -7F}) {
+            out.add(Keys.run(toward + d, false));
+            out.add(Keys.push(toward + d, false));
+        }
+        if (s.horizontalSpeed() > 1.0E-3) {
+            out.add(Keys.push(Keys.yaw(-s.vx, -s.vz), false));
+        }
+        out.add(Keys.release(toward));
+    }
+
     private static void generate(SimState s, Landing land, List<PlayerSim.Controls> out) {
         float toward = Keys.yaw(land.centerX() - s.x, land.centerZ() - s.z);
         if (s.onGround) {
@@ -217,7 +251,7 @@ public final class TungstenSearch {
     }
 
     // JumpPolicy's settle from where the cursor is, keys or null
-    private static List<PlayerSim.Controls> settle(PlayerSim cursor, PlayerSim probe, Landing land) {
+    static List<PlayerSim.Controls> settle(PlayerSim cursor, PlayerSim probe, Landing land) {
         PlayerSim sim = cursor;
         SimState saved = SimState.of(cursor);
         JumpPolicy.Memo memo = new JumpPolicy.Memo();

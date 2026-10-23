@@ -26,6 +26,7 @@ import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.process.PathingCommand;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Helper;
+import baritone.api.utils.input.Input;
 import baritone.api.utils.PathCalculationResult;
 import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.pathing.calc.AStarPathFinder;
@@ -42,6 +43,7 @@ import baritone.utils.PathRenderer;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.pathing.Favoring;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
@@ -95,7 +97,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // the last time planning ahead found nothing, and from where (see AHEAD_RETRY_TICKS)
     private BetterBlockPos aheadFailedFrom;
     private long aheadFailedAt;
-    private static final long AHEAD_RETRY_TICKS = 40;
+    private static final long AHEAD_RETRY_TICKS = 40, AHEAD_RETRY_SOON_TICKS = 8;
 
     private final SwimStalls swimStalls = new SwimStalls();
     private final FailedMoves failedMoves = new FailedMoves();
@@ -223,7 +225,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 }
             }
             if (current == null) {
+                holdOnToTheLadder();
                 return;
+            }
+            if (ladderHold) {
+                ladderHold = false;
+                baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, false);
             }
             safeToCancel = current.onTick();
             if (current.failed() || current.finished()) {
@@ -303,9 +310,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     // and this path doesn't get us all the way there
                     return;
                 }
-                if (current.getPath().getDest().equals(aheadFailedFrom) && tickCount - aheadFailedAt < AHEAD_RETRY_TICKS
-                        && ticksRemainingInSegment(false).orElse(0.0) > AHEAD_RETRY_TICKS) {
-                    // (not when the path runs out sooner than that: then every tick it might come through counts)
+                if (current.getPath().getDest().equals(aheadFailedFrom) && tickCount - aheadFailedAt
+                        < (ticksRemainingInSegment(false).orElse(0.0) > AHEAD_RETRY_TICKS ? AHEAD_RETRY_TICKS : AHEAD_RETRY_SOON_TICKS)) {
+                    // (only a moment when the path runs out sooner than that: then it might come through any time, but a
+                    // search every tick is a search every tick of lag)
                     // planning ahead from this same spot just came up empty: give it a moment (a jump on the way may still be
                     // being worked out in the background) instead of starting the same search again every single tick
                     return;
@@ -489,6 +497,19 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             if (inProgress != null && hold.cancel(tickCount) == SearchHold.Verdict.CANCEL) {
                 inProgress.cancel();
             }
+        }
+    }
+
+    // between paths on a ladder (the next one still being worked out): sneak, which holds you where you are, instead of
+    // letting go and sliding off the bottom of it
+    private boolean ladderHold;
+
+    private void holdOnToTheLadder() {
+        LocalPlayer p = ctx.player();
+        boolean hold = goal != null && p != null && p.onClimbable() && !p.onGround() && !goal.isInGoal(ctx.playerFeet());
+        if (hold != ladderHold) {
+            ladderHold = hold;
+            baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, hold);
         }
     }
 

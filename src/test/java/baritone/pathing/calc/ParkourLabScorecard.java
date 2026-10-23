@@ -100,6 +100,12 @@ public class ParkourLabScorecard {
                     VineLogPathTest.path(w, new BetterBlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()),
                             new GoalBlock(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()), false);
                 }
+                // a section with no jumps listed (a course from a recording that only flew round the map): the section as a
+                // whole is the only thing to ask about. (only then: a whole section asks about every shape it looks at, and
+                // the background search would be working those out instead of the ones the jumps need)
+                if (sec.getAsJsonArray("jumps").isEmpty()) {
+                    VineLogPathTest.path(w, cps.get(sec.get("from").getAsInt()), new GoalBlock(cps.get(sec.get("to").getAsInt())), false);
+                }
             }
 
             while (baritone.pathing.movement.movements.PendingTables.waiting() && System.currentTimeMillis() < warmUntil) {

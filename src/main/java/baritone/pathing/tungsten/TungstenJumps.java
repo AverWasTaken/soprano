@@ -590,10 +590,22 @@ public final class TungstenJumps {
         // round a wall from right behind it: the rule's aimed variants (a few thousand sim ticks of looking ahead each) all
         // but never do one of those, the background search is what does. don't spend the planner's budget finding that out
         double[] corner = land.grab() || neo != null ? null : cornerVia(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
-        boolean behindWall = (neo != null && neo[3] == 0 || corner != null) && !leavesOverAHole(context, src.x, src.y, src.z, dx, dz);
-        JumpPolicy.Rollout r = behindWall ? null : JumpPolicy.forgiving(sim, land);
+        // and round a corner on the level (a walk round it is RimWalk's, below, and beats any jump the rule would make round
+        // the same thing)
+        boolean behindWall = (neo != null && neo[3] == 0 || corner != null)
+                && (!leavesOverAHole(context, src.x, src.y, src.z, dx, dz) || corner != null && dest.y == src.y);
         // never cheaper than sprinting the straight line, which is what the heuristic assumes is the best there is
         double straight = Math.sqrt(dx * dx + dz * dz) * ActionCosts.SPRINT_ONE_BLOCK_COST;
+        // something in the way on the level: walk round it if there's floor to (along the rim of a block with a wall on it,
+        // round a pillar's corner, round a walled platform). quicker to find than any jump round it and nothing to miss
+        if (!land.grab() && dest.y == src.y && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())) {
+            TungstenSearch.Plan walk = RimWalk.plan(world, src, floor, land);
+            if (walk != null) {
+                double cost = context.biasJump(Math.max(walk.ticks(), straight));
+                return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(walk.states()), walk);
+            }
+        }
+        JumpPolicy.Rollout r = behindWall ? null : JumpPolicy.forgiving(sim, land);
         if (r != null) {
             // a neo of the rule's (aimed off the line round a wall) is the last resort, behind MovementNeo's tables when it
             // has one: it's the touchiest thing the rule does

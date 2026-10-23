@@ -26,6 +26,8 @@ public final class ArrayWorld implements CollisionProvider {
     // a ladder on the west side of its cell (hung on the block to the west, ladder[facing=east]) and a vine, which has
     // no box at all
     public static final byte LADDER_ON_WEST = 7, VINE = 8;
+    // a cobblestone wall and an oak fence: a post a block and a half tall, joined to the same next door the way the game does
+    public static final byte WALL = 9, FENCE = 10;
 
     private final byte[] blocks;
     private final int sx, sy, sz;
@@ -77,8 +79,30 @@ public final class ArrayWorld implements CollisionProvider {
             case LADDER_ON_WEST:
                 out.add(x, y, z, x + 0.1875, y + 1, z + 1);
                 break;
+            case WALL:
+                post(x, y, z, 0.25, 0.3125, WALL, out);
+                break;
+            case FENCE:
+                post(x, y, z, 0.375, 0.375, FENCE, out);
+                break;
             default:
                 break;
+        }
+    }
+
+    private void post(int x, int y, int z, double post, double arm, byte kind, BoxList out) {
+        out.add(x + post, y, z + post, x + 1 - post, y + 1.5, z + 1 - post);
+        if (at(x, y, z - 1) == kind) {
+            out.add(x + arm, y, z, x + 1 - arm, y + 1.5, z + 0.5);
+        }
+        if (at(x, y, z + 1) == kind) {
+            out.add(x + arm, y, z + 0.5, x + 1 - arm, y + 1.5, z + 1);
+        }
+        if (at(x - 1, y, z) == kind) {
+            out.add(x, y, z + arm, x + 0.5, y + 1.5, z + 1 - arm);
+        }
+        if (at(x + 1, y, z) == kind) {
+            out.add(x + 0.5, y, z + arm, x + 1, y + 1.5, z + 1 - arm);
         }
     }
 
