@@ -35,7 +35,7 @@ public final class FoodFloor {
 
     // the same hunt for a nether trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
     // to the minimum and not only under the floor. one runner over whichever needs are short: food to the minimum, and on a blocks
-    // trip the entry stack (emitted straight, no refill latch: BuildBlocks.NONE like the portal gate's short form). null = none short
+    // trip the entry stack (emitted straight, no BuildBlocks band; KitRunner still notes a refill, which the next phase entry wipes). null = none short
     public Task tickTrip(GamerContext ctx, boolean wantBlocks) {
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
         FoodPlan food = overworld ? ctx.food() : null;

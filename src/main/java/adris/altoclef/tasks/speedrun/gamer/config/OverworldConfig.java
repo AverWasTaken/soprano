@@ -164,6 +164,9 @@ public class OverworldConfig {
     // what the portal gate fills to, and what a blocks trip home brings back. the nether bridges eat throwaways and hand nothing
     // back, 32 got a lava pool crossing about halfway. portalBuildBlocks stays the small number everything else shares
     public int netherEntryBlocks = 128;
+    // the portal gate only tops up under this, so a bag at 64 does not go through as it is but one at 120 is not worth a trip to the
+    // stone. portalBuildBlocksLow stays the mark for everything else
+    public int netherEntryBlocksLow = 96;
     // the refill only starts under these marks (BuildBlocks), then runs to the target. a pillar or two, or a bridge, takes a
     // bag from 32 to 20 and that is not a reason to go mining. while a furnace cooks the base is 8: enough for a few pillars.
     // at the portal it is what the lava pool still places (the slab and the two top row pads) plus what the nether walk should

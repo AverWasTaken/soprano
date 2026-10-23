@@ -284,6 +284,7 @@ public class OverworldPhasesTest {
         assertEquals(20.0, o.villageBedEachSeconds, 0);
         assertEquals(32, o.portalBuildBlocks);
         assertEquals(128, o.netherEntryBlocks);
+        assertEquals(96, o.netherEntryBlocksLow);
         assertEquals(32, o.golemHuntRadius);
         assertEquals(5, o.golemMinBlocks);
         assertEquals(14.0, o.golemMinHealth, 0);

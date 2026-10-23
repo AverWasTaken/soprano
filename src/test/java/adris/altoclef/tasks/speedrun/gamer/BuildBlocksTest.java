@@ -154,9 +154,9 @@ public class BuildBlocksTest {
 
     @Test
     public void portalGateIgnoresAHalfBagAndFinishesWhatItStarted() {
-        ctx.facts.buildBlocks = cfg.portalBuildBlocksLow + 2;
+        ctx.facts.buildBlocks = cfg.netherEntryBlocksLow + 2;
         assertTrue("a bag over the low mark is a half bag, the old gate went mining", gate().isEmpty());
-        ctx.facts.buildBlocks = cfg.portalBuildBlocksLow - 1;
+        ctx.facts.buildBlocks = cfg.netherEntryBlocksLow - 1;
         assertEquals(List.of(GATE), gate());
         // the runner picks it up, and from then on the gate keeps asking until the bag is full
         BuildBlocks.started(ctx.state, 128, false);

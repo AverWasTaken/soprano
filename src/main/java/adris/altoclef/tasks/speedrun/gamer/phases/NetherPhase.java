@@ -119,6 +119,9 @@ public class NetherPhase implements PhaseHandler {
     private int blockTrips;
     // the overworld half's clock, set by what was short when we got up there
     private double tripSeconds = FoodTripRules.MAX_SECONDS;
+    // the overworld half also brings blocks: a blocks trip always, a food trip when the bag was empty of them on the way out (or it
+    // would come back and go straight home again)
+    private boolean tripBlocks;
     private double foodTripStart;
     private boolean foodTripUp;
     private int foodDeathsSeen;
@@ -244,6 +247,7 @@ public class NetherPhase implements PhaseHandler {
         goHome = null;
         foodTrip = false;
         tripReason = FoodTripRules.Reason.FOOD;
+        tripBlocks = false;
         foodTrips = 0;
         blockTrips = 0;
         foodTripUp = false;
@@ -310,10 +314,10 @@ public class NetherPhase implements PhaseHandler {
                 if (!foodTripUp) {
                     foodTripUp = true;
                     foodTripStart = ctx.secondsInPhase();
-                    tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), blocksTrip() && FoodFloor.blocksShort(ctx));
+                    tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
                 }
                 // over when nothing is short any more: food at the overworld minimum and, on a blocks trip, the entry stack held
-                Task hunt = foodFloor.tickTrip(ctx, blocksTrip());
+                Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
                     hudState = foodFloor.hud();
                     return hunt;
@@ -380,6 +384,10 @@ public class NetherPhase implements PhaseHandler {
             }
             foodTrip = true;
             tripReason = why;
+            tripBlocks = why == FoodTripRules.Reason.BLOCKS || FindNetherStructureTask.heldThrowaways(mod) < FoodTripRules.BLOCKS_LOW;
+            // new body or new bag: the dry digs counted so far say nothing about what the next dig finds
+            findFortress.clearExhaustedEnds();
+            findWarped.clearExhaustedEnds();
             foodTripUp = false;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
@@ -389,9 +397,6 @@ public class NetherPhase implements PhaseHandler {
                 ctx.progress("food trip");
             } else {
                 blockTrips++;
-                // the next dig starts counting dry ends from nothing, whatever the trip brings back
-                findFortress.clearExhaustedEnds();
-                findWarped.clearExhaustedEnds();
                 ctx.log("nether: out of building blocks, going home for more");
                 ctx.progress("blocks trip");
             }
@@ -424,6 +429,8 @@ public class NetherPhase implements PhaseHandler {
             foodTrip = false;
             foodTripUp = false;
             foodFloor.reset();
+            findFortress.clearExhaustedEnds();
+            findWarped.clearExhaustedEnds();
         }
     }
 
