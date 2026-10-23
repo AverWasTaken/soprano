@@ -10,7 +10,8 @@ public class GamerConfig {
     // without the bump every existing run keeps the old kit forever (that is how the bot went to the nether with no
     // ladders). GamerConfigsTest has a hash of the defaults that fails until you do
     // (5 moved the old station pickup defaults. those keys are gone now, an old file still loads, gson skips them)
-    public static final int VERSION = 5;
+    // (6 moved the sweep spacing default 9 -> 14, a saved 9 is the old default and goes along, see GamerConfigs.migrate)
+    public static final int VERSION = 6;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;

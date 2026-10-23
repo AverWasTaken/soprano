@@ -98,7 +98,7 @@ public class SeenFilterTest {
     public void theDefaultsAreTheDesignNumbers() {
         assertEquals(8, SeenFilter.RAYS_PER_TICK);
         assertEquals(50_000, SeenFilter.MEMO_CAP);
-        assertEquals(80, SeenFilter.NETHER_RANGE, 0);
+        assertEquals(128, SeenFilter.NETHER_RANGE, 0);
         assertEquals(128, SeenFilter.OTHER_RANGE, 0);
     }
 

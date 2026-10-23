@@ -46,6 +46,8 @@ public class RunState {
 
     // nether: 27 chunk structure cells as "cx,cz"
     public Set<String> visitedCells = new LinkedHashSet<>();
+    // cells a pocket gave up on: cell -> revisits used. not visited, they get one more go once nothing fresh is near the portal
+    public Map<String, Integer> deferredCells = new HashMap<>();
     public Set<String> bastionCells = new LinkedHashSet<>();
     public Set<String> fortressCells = new LinkedHashSet<>();
     public List<Pos> fortress = new ArrayList<>();

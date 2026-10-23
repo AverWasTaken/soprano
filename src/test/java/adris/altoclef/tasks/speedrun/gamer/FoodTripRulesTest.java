@@ -130,4 +130,95 @@ public class FoodTripRulesTest {
         assertEquals(128, BuildBlocks.reserveFor(64, 128));
         assertEquals(200, BuildBlocks.reserveFor(200, 128));
     }
+
+    // ---- the walk home: stall, cap, restock, counters
+
+    private static final long SEC = 20;
+
+    @Test
+    public void walkKeepsGoingWhileItClosesInAndStallsAfterNinetySeconds() {
+        FoodTripRules.Mark m = FoodTripRules.advance(null, 400, 0, 0, false);
+        long t = 0;
+        double dist = 400;
+        // 1 block a second: 8 blocks closer every 8 s, never stalled
+        for (int s = 1; s <= 300; s++) {
+            t = s * SEC;
+            dist = 400 - s;
+            m = FoodTripRules.advance(m, dist, t - 1, t, false);
+            assertFalse("s=" + s, FoodTripRules.stalled(m, t));
+        }
+        // stops dead: stalled exactly 90 s after the last mark
+        long markTick = m.tick();
+        for (long k = 1; k <= 90 * SEC; k++) {
+            m = FoodTripRules.advance(m, dist, t + k - 1, t + k, false);
+        }
+        assertTrue(FoodTripRules.stalled(m, markTick + 90 * SEC));
+        assertFalse(FoodTripRules.stalled(m, markTick + 90 * SEC - 1));
+    }
+
+    @Test
+    public void aGapInTicksRestartsTheMarkAndTheDigPushesItForward() {
+        FoodTripRules.Mark m = FoodTripRules.advance(null, 100, 0, 0, false);
+        // a fight had the wheel for 200 ticks: the clock starts over
+        m = FoodTripRules.advance(m, 100, 0, 200, false);
+        assertEquals(200, m.tick());
+        // digging every tick for 60 s moves the mark with it
+        for (long t = 201; t <= 200 + 60 * SEC; t++) {
+            m = FoodTripRules.advance(m, 100, t - 1, t, true);
+        }
+        assertEquals(200 + 60 * SEC, m.tick());
+        assertFalse(FoodTripRules.stalled(m, 200 + 60 * SEC + 80 * SEC));
+        assertTrue(FoodTripRules.stalled(m, 200 + 60 * SEC + 90 * SEC));
+    }
+
+    @Test
+    public void hardCapEndsAWalkThatIsStillMoving() {
+        assertFalse(FoodTripRules.walkOver(false, FoodTripRules.HOME_HARD_SECONDS - 1));
+        assertTrue(FoodTripRules.walkOver(false, FoodTripRules.HOME_HARD_SECONDS));
+        // the old 480 s clock no longer ends it
+        assertFalse(FoodTripRules.walkOver(false, FoodTripRules.MAX_SECONDS + 1));
+        assertTrue(FoodTripRules.walkOver(true, 5));
+        assertEquals(900, FoodTripRules.HOME_HARD_SECONDS, 0);
+    }
+
+    @Test
+    public void restockIsDueTwentySecondsIntoAStallWithAnEmptyBagOncePerStall() {
+        FoodTripRules.Mark m = new FoodTripRules.Mark(100, 1000, false);
+        assertFalse(FoodTripRules.restockDue(m, 1000 + 20 * SEC - 1, 0));
+        assertTrue(FoodTripRules.restockDue(m, 1000 + 20 * SEC, 15));
+        // enough blocks already
+        assertFalse(FoodTripRules.restockDue(m, 1000 + 20 * SEC, 16));
+        // asked once this stall
+        assertFalse(FoodTripRules.restockDue(new FoodTripRules.Mark(100, 1000, true), 5000, 0));
+        // progress starts a fresh mark that may ask again
+        FoodTripRules.Mark moved = FoodTripRules.advance(new FoodTripRules.Mark(100, 1000, true), 90, 1999, 2000, false);
+        assertFalse(moved.asked());
+        assertFalse(FoodTripRules.restockDue(null, 5000, 0));
+    }
+
+    @Test
+    public void hungryDigIsShorter() {
+        assertEquals(32, FoodTripRules.restockStopAt(false));
+        assertEquals(16, FoodTripRules.restockStopAt(true));
+    }
+
+    // a trip budget belongs to one visit of the nether phase: a retry (attempt 2+) keeps it, only a fresh entry refills it.
+    // nothing about the dimension is an input, so the trip coming back down to the nether cannot reset it. the only callers
+    // of NetherPhase.onEnter are PhaseMachine (begin, retry, moveTo) and the planner == null fallback in NetherPhase.tick, and
+    // none of them runs on a dimension change. a death trip stays in the phase (counters kept), a regress that sends the run
+    // to GATHER/IRON comes back through moveTo with attempt 1, which is a new visit and refills the budget
+    @Test
+    public void counterResetOnlyOnAFreshEntry() {
+        assertTrue(FoodTripRules.countersReset(1));
+        assertFalse(FoodTripRules.countersReset(2));
+        assertFalse(FoodTripRules.countersReset(3));
+        // one trip used, the phase retried: still one used, so a second is allowed and a third is not
+        int foodTrips = 1;
+        if (FoodTripRules.countersReset(2)) {
+            foodTrips = 0;
+        }
+        assertEquals(1, foodTrips);
+        assertTrue(FoodTripRules.goHome(0, 0, true, false, foodTrips));
+        assertFalse(FoodTripRules.goHome(0, 0, true, false, foodTrips + 1));
+    }
 }

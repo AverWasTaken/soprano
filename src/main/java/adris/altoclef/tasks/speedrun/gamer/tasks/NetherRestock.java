@@ -17,6 +17,7 @@ public final class NetherRestock {
     static final double EXHAUSTED_SECONDS = 4;
 
     private boolean active;
+    private int activeStopAt = TARGET;
     private double startedAt;
     private double exhaustedSince = Double.NaN;
     private double coolUntil = Double.NEGATIVE_INFINITY;
@@ -60,6 +61,11 @@ public final class NetherRestock {
     // startBelow = the bag size that starts a dig. the sweep goes by LOW / GIVE_UP_LOW, a caller that knows a long walk is
     // coming can ask for a full top up
     public boolean update(int held, int startBelow, boolean hasPick, boolean exhausted, double now) {
+        return update(held, startBelow, TARGET, hasPick, exhausted, now);
+    }
+
+    // stopAt = the bag size that ends the dig, for a caller that only wants a short top up
+    public boolean update(int held, int startBelow, int stopAt, boolean hasPick, boolean exhausted, double now) {
         if (!hasPick) {
             active = false;
             return false;
@@ -72,8 +78,8 @@ public final class NetherRestock {
                 exhaustedSince = now;
             }
             boolean dry = !Double.isNaN(exhaustedSince) && now - exhaustedSince >= EXHAUSTED_SECONDS;
-            if (held >= TARGET || dry || now - startedAt >= MAX_SECONDS) {
-                exhaustedEnds = held < TARGET && dry ? exhaustedEnds + 1 : 0;
+            if (held >= activeStopAt || dry || now - startedAt >= MAX_SECONDS) {
+                exhaustedEnds = held < activeStopAt && dry ? exhaustedEnds + 1 : 0;
                 active = false;
                 exhaustedSince = Double.NaN;
                 coolUntil = now + COOLDOWN_SECONDS;
@@ -85,6 +91,7 @@ public final class NetherRestock {
         }
         if (held < startBelow) {
             active = true;
+            activeStopAt = stopAt;
             startedAt = now;
             exhaustedSince = Double.NaN;
         }

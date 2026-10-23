@@ -220,11 +220,12 @@ public class NetherSweepPlannerTest {
     public void slowWaypointIsSkippedAfterTheTimeout() {
         // a stationary player would trip the no progress rule at 20 s, this one pins the flat backstop
         cfg.waypointNoProgressSeconds = 0;
-        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 0, 89).x());
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, -225, 0, 0, 89).x());
         // 90 s: skipped, the timer restarts on the next one
-        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 90, 90).x());
-        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 91, 179).x());
-        assertEquals(200, stepAt(planner, Goal.FORTRESS, 500, 500, 180, 180).x());
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, -225, 0, 90, 90).x());
+        // and its own clock is scaled to the leg it started from: 325 blocks is 130 s, not the flat 90
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, -225, 0, 91, 219).x());
+        assertEquals(200, stepAt(planner, Goal.FORTRESS, -225, 0, 220, 220).x());
     }
 
     @Test
@@ -235,7 +236,8 @@ public class NetherSweepPlannerTest {
         assertNotNull(a);
         assertEquals(Kind.FAIL, a.kind());
         assertEquals(3, small.cellsStarted(Goal.FORTRESS));
-        assertEquals(3, state.visitedCells.size());
+        // every cell was a pocket (nobody moves), so they are deferred, not visited
+        assertEquals(3, state.visitedCells.size() + state.deferredCells.size());
     }
 
     @Test
@@ -357,12 +359,12 @@ public class NetherSweepPlannerTest {
     @Test
     public void idlingDoesNotEatTheWaypointClock() {
         cfg.waypointNoProgressSeconds = 0;
-        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 0).x());
+        assertEquals(0, planner.step(Goal.FORTRESS, -225, 0, 0).x());
         // rods, a ghast, whatever had the wheel for ten minutes: the waypoint is as fresh as it was
-        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 600).x());
-        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 601, 689).x());
+        assertEquals(0, planner.step(Goal.FORTRESS, -225, 0, 600).x());
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, -225, 0, 601, 689).x());
         // and then it times out normally, 90 s after it was picked up again
-        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 690, 690).x());
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, -225, 0, 690, 690).x());
     }
 
     @Test
@@ -437,8 +439,107 @@ public class NetherSweepPlannerTest {
         Action a = stepAt(planner, Goal.FORTRESS, 510, 505, 21, 41);
         assertEquals(Kind.GOTO, a.kind());
         assertEquals(1000, a.x());
-        assertTrue(state.visitedCells.contains("0,0"));
+        // a pocket defers the cell, it is not visited for good
+        assertFalse(state.visitedCells.contains("0,0"));
+        assertEquals(Integer.valueOf(0), state.deferredCells.get("0,0"));
         assertEquals("1,0", planner.currentCellKey());
+    }
+
+    // cells 0..n-1 in a row, three waypoints each, the plain fresh-then-deferred default for the rest
+    private static NetherSweepPlanner.Grid rowOf(int n) {
+        return new NetherSweepPlanner.Grid() {
+            @Override
+            public List<Point> waypoints(Cell cell, int spacingChunks, int px, int pz) {
+                return ROW.waypoints(cell, spacingChunks, px, pz);
+            }
+
+            @Override
+            public Optional<Cell> nextCell(int px, int pz, Set<String> visited) {
+                for (int cx = 0; cx < n; cx++) {
+                    if (!visited.contains(new Cell(cx, 0).key())) {
+                        return Optional.of(new Cell(cx, 0));
+                    }
+                }
+                return Optional.empty();
+            }
+        };
+    }
+
+    @Test
+    public void deferredCellGetsExactlyOneRevisitWithCleanMemory() {
+        planner = new NetherSweepPlanner(state, cfg, rowOf(2), 12);
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 20);
+        // pocket: cell 0 deferred, its first waypoint is dead and retried now
+        assertEquals(1000, stepAt(planner, Goal.FORTRESS, 510, 505, 21, 41).x());
+        assertEquals(Integer.valueOf(0), state.deferredCells.get("0,0"));
+        // cell 1 walked out normally
+        planner.step(Goal.FORTRESS, 1000, 0, 42);
+        planner.step(Goal.FORTRESS, 1100, 0, 43);
+        Action back = planner.step(Goal.FORTRESS, 1200, 0, 44);
+        assertTrue(state.visitedCells.contains("1,0"));
+        // nothing fresh is left: the deferred cell comes back, and its dead first waypoint is walkable again
+        assertEquals(Kind.GOTO, back.kind());
+        assertEquals(0, back.x());
+        assertEquals("0,0", planner.currentCellKey());
+        assertEquals(Integer.valueOf(1), state.deferredCells.get("0,0"));
+        // a pocket on the revisit too: visited for good, nothing to come back to
+        stepAt(planner, Goal.FORTRESS, 500, 500, 45, 65);
+        Action end = stepAt(planner, Goal.FORTRESS, 505, 505, 66, 86);
+        assertEquals(Kind.FAIL, end.kind());
+        assertTrue(state.visitedCells.contains("0,0"));
+        assertTrue(state.deferredCells.isEmpty());
+    }
+
+    @Test
+    public void theCellJustDeferredSitsOutThePickItWasDeferredIn() {
+        planner = new NetherSweepPlanner(state, cfg, rowOf(1), 12);
+        stepAt(planner, Goal.FORTRESS, 500, 500, 0, 20);
+        // the only cell is the one we are standing in: it is not handed straight back for a revisit from the same wall
+        Action a = stepAt(planner, Goal.FORTRESS, 510, 505, 21, 41);
+        assertEquals(Kind.FAIL, a.kind());
+        assertEquals(Integer.valueOf(0), state.deferredCells.get("0,0"));
+        assertFalse(state.visitedCells.contains("0,0"));
+    }
+
+    @Test
+    public void revisitWalksAwayFromThePocketOnTheRealGrid() {
+        Cell cell = new Cell(0, 0);
+        NetherSweepPlanner real = new NetherSweepPlanner(state, cfg, NetherSweepPlanner.REAL_GRID, 12);
+        // wedge against the low corner of cell 0 twice: pocket
+        Action first = real.step(Goal.FORTRESS, 40, 40, 0);
+        assertEquals("0,0", real.currentCellKey());
+        assertEquals(new Point(72, 72), new Point(first.x(), first.z()));
+        stepAt(real, Goal.FORTRESS, 20, 20, 1, 21);
+        // (second give-up within 24 blocks of the first)
+        stepAt(real, Goal.FORTRESS, 25, 25, 22, 42);
+        assertEquals(Integer.valueOf(0), state.deferredCells.get(cell.key()));
+        // pretend everything else is spoken for so the revisit is the only thing left
+        for (int dx = -3; dx <= 3; dx++) {
+            for (int dz = -3; dz <= 3; dz++) {
+                String k = new Cell(dx, dz).key();
+                if (!k.equals(cell.key())) {
+                    state.visitedCells.add(k);
+                }
+            }
+        }
+        state.netherPortal = new RunState.Pos(10, 64, 10);
+        real.giveUpFortress();
+        Action again = real.step(Goal.FORTRESS, 30, 30, 100);
+        assertEquals("0,0", real.currentCellKey());
+        // the corner farthest from the pocket at (25,25), not the one next to it
+        assertEquals(new Point(296, 296), new Point(again.x(), again.z()));
+    }
+
+    @Test
+    public void legSecondsScalesWithTheLegAndHasAFloor() {
+        assertEquals(45, NetherSweepPlanner.legSeconds(0), 0);
+        assertEquals(45, NetherSweepPlanner.legSeconds(100), 0);
+        assertEquals(120, NetherSweepPlanner.legSeconds(300), 0);
+        assertEquals(224 / 2.5, NetherSweepPlanner.legSeconds(224), 0.5);
+        // a longer soft limit holds off the no progress verdict the old flat 90 would have given
+        assertFalse(NetherSweepPlanner.softTimedOut(100, 10, 120, cfg));
+        assertTrue(NetherSweepPlanner.softTimedOut(120, 10, 120, cfg));
+        assertTrue(NetherSweepPlanner.softTimedOut(240, 0, 400, cfg));
     }
 
     @Test

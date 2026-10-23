@@ -28,6 +28,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.NetherConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.CampPinger;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherBlockRestock;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
@@ -123,6 +124,10 @@ public class NetherPhase implements PhaseHandler {
     private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
     private int blockTrips;
+    // the walk home: progress mark, last tick it ran, and its own dig for blocks (fresh per trip so an old cooldown does not carry)
+    private FoodTripRules.Mark homeMark;
+    private long homeLastTick;
+    private NetherBlockRestock homeRestock = new NetherBlockRestock();
     // last game tick a blaze could see us, we were burning or hurt (FoodTripRules.unsafe). a food trip waits for it to be 3 s old.
     // read off the blazes directly: the rods task is not always the one ticking, so BlazeFight's mode can be stale or absent
     private long lastUnsafeTick = -1;
@@ -258,9 +263,13 @@ public class NetherPhase implements PhaseHandler {
         foodTrip = false;
         tripReason = FoodTripRules.Reason.FOOD;
         tripBlocks = false;
-        foodTrips = 0;
+        // the trip budget is per visit: a watchdog retry is the same visit and keeps it, only a fresh entry refills it. the
+        // overworld half of a trip runs inside this phase, so coming back down never lands here
+        if (FoodTripRules.countersReset(ctx.attempt())) {
+            foodTrips = 0;
+            blockTrips = 0;
+        }
         lastUnsafeTick = -1;
-        blockTrips = 0;
         foodTripUp = false;
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
@@ -475,6 +484,9 @@ public class NetherPhase implements PhaseHandler {
             foodTripUp = false;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
+            homeMark = null;
+            homeLastTick = tick;
+            homeRestock = new NetherBlockRestock();
             if (why == FoodTripRules.Reason.FOOD) {
                 foodTrips++;
                 ctx.log("nether: out of food, going home for more");
@@ -485,16 +497,28 @@ public class NetherPhase implements PhaseHandler {
                 ctx.progress("blocks trip");
             }
         }
-        if (FoodTripRules.tripOver(true, now - foodTripStart, FoodTripRules.MAX_SECONDS)) {
-            // the walk home ate its whole clock: this portal is not getting us there (the walk crosses the same lava with the
-            // same empty bag, so a blocks trip can end up here), no second try for this kind of trip
+        // the walk ends when it stops getting closer to the portal (or at the hard cap), not on a flat clock: a long honest walk
+        // used to get killed right after it broke free of a pocket. a fight or a cover that had the wheel shows up as a gap in
+        // lastTick and restarts the mark (same as NetherRecoverTask), the restock dig pushes it forward instead
+        long tick = ctx.facts().gameTime();
+        homeMark = FoodTripRules.advance(homeMark, portalDistance(mod, ctx), homeLastTick, tick, homeRestock.isActive());
+        homeLastTick = tick;
+        if (FoodTripRules.walkOver(FoodTripRules.stalled(homeMark, tick), now - foodTripStart)) {
+            // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
+            // taken from the budget, and the next try has to earn its own start
             foodTrip = false;
-            if (blocksTrip()) {
-                blockTrips = FoodTripRules.MAX_TRIPS;
-            } else {
-                foodTrips = FoodTripRules.MAX_TRIPS;
-            }
             return null;
+        }
+        // stuck for a bit with the bag nearly empty: the bridges ate the blocks and the path home needs them. one top up per
+        // stall, shorter when the food is what is nearly gone
+        if (homeRestock.isActive() || FoodTripRules.restockDue(homeMark, tick, FindNetherStructureTask.heldThrowaways(mod))) {
+            int stopAt = FoodTripRules.restockStopAt(FoodTripRules.underFloor(FoodTripRules.units(ctx.food()), portalDistance(mod, ctx)));
+            Task dig = homeRestock.tick(mod, FoodTripRules.RESTOCK_BELOW, stopAt, tick / 20.0);
+            homeMark = new FoodTripRules.Mark(homeMark.dist(), homeMark.tick(), true);
+            if (dig != null) {
+                hudState = "Digging blocks for the walk home";
+                return dig;
+            }
         }
         hudState = tripBlocks ? "Going home for blocks" : "Going home for food";
         return goHome;

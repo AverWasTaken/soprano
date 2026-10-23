@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+
 // the nether has no food of its own, so when the bag runs dry out there the way back is the portal we came by and the overworld's
 // own food floor (FoodFloor). pure, the phase only feeds it numbers
 public final class FoodTripRules {
@@ -16,7 +18,7 @@ public final class FoodTripRules {
     public static final float CALM_HEALTH = 14;
     // trips per nether phase entry. a world with no food in reach would otherwise ping pong forever
     public static final int MAX_TRIPS = 2;
-    // each half (the walk home, the hunt up top) gets this long, then we carry on with what we have
+    // the hunt up top gets this long, then we carry on with what we have. the walk home has no flat clock, see STALL_SECONDS
     public static final double MAX_SECONDS = 480;
 
     public static double goHomeLine(double distToPortal) {
@@ -85,6 +87,65 @@ public final class FoodTripRules {
     // the same end check with the trip's own clock. stillShort = any need left (food under the minimum, blocks under the entry stack)
     public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit) {
         return !stillShort || secondsOnTrip >= limit;
+    }
+
+    // ---- the walk home (nether half of a trip)
+
+    // the walk home ends when it stops getting closer, not on a flat clock: the best horizontal distance to the portal has to
+    // drop STALL_BLOCKS every STALL_SECONDS. same numbers and same mark as NetherRecoverTask's portal walk. the clock only has
+    // to stop a walk that is stuck, a long honest one can take as long as it likes up to the hard cap
+    public static final double STALL_SECONDS = 90;
+    public static final double HOME_HARD_SECONDS = 900;
+    // this long without progress and an empty bag, then the walk digs itself some blocks (the bridges ate them, and a walk
+    // with no blocks is the walk that stalls)
+    public static final double RESTOCK_AFTER_STALL_SECONDS = 20;
+    public static final int RESTOCK_BELOW = 16;
+    public static final int RESTOCK_STOP_AT = 32;
+    // under the food floor the bag is nearly empty and time is the thing we are short of, so the dig is shorter
+    public static final int RESTOCK_STOP_AT_HUNGRY = 16;
+
+    // the progress mark: the distance at the last time we got somewhere, and the tick that was. asked = this stall already had
+    // its restock
+    public record Mark(double dist, long tick, boolean asked) {
+    }
+
+    // one tick of the walk. lastSeen = the last tick the walk was ticked at all (combat, food or a cover had the wheel in
+    // between if it is old), digging = the restock holds the wheel right now, so its time is pushed onto the mark and does not
+    // count as standing still
+    public static Mark advance(Mark mark, double dist, long lastSeen, long now, boolean digging) {
+        if (mark == null || NetherTripRules.markStale(lastSeen, now) || NetherTripRules.closedIn(mark.dist(), dist)) {
+            return new Mark(dist, now, false);
+        }
+        if (digging) {
+            return new Mark(mark.dist(), mark.tick() + NetherTripRules.restockCredit(lastSeen, now), mark.asked());
+        }
+        return mark;
+    }
+
+    public static boolean stalled(Mark mark, long now) {
+        return mark != null && now - mark.tick() >= STALL_SECONDS * 20;
+    }
+
+    // the dig is due: stuck for a bit already, throwaways under the bar, and not asked yet this stall
+    public static boolean restockDue(Mark mark, long now, int held) {
+        return mark != null && !mark.asked() && held < RESTOCK_BELOW && now - mark.tick() >= RESTOCK_AFTER_STALL_SECONDS * 20;
+    }
+
+    public static int restockStopAt(boolean underFloor) {
+        return underFloor ? RESTOCK_STOP_AT_HUNGRY : RESTOCK_STOP_AT;
+    }
+
+    // the walk home is over: it stopped getting closer, or it ran the hard cap. either way the trip counts as used (the counter
+    // went up when it started), and it is not the reason to give up on trips for good
+    public static boolean walkOver(boolean stalled, double secondsOnTrip) {
+        return stalled || secondsOnTrip >= HOME_HARD_SECONDS;
+    }
+
+    // trip counters belong to one visit of the nether phase. a retry is the same visit (the trip budget would otherwise refill
+    // every time the watchdog restarts the phase), a fresh entry is a new one. never on a dimension change: the overworld half of
+    // a trip runs inside the nether phase and coming back down is not a new visit
+    public static boolean countersReset(int attempt) {
+        return attempt <= 1;
     }
 
     private FoodTripRules() {

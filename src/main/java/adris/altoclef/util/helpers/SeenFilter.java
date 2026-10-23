@@ -17,8 +17,9 @@ import net.minecraft.world.phys.Vec3;
 // it for its own structure discovery so it does not x-ray through rock. a block only counts as seen once, then it stays
 // seen (until the world or the dimension changes)
 public final class SeenFilter {
-    // fortress scale structures are never farther than this to be recognised, and the nether fog eats most of it anyway
-    static final double NETHER_RANGE = 80;
+    // about 160 blocks of nether are loaded and a fortress is big enough to recognise from way out, so the sweep legs
+    // (14 chunks apart) can lean on this much instead of needing a leg every 9 chunks
+    static final double NETHER_RANGE = 128;
     static final double OTHER_RANGE = 128;
     // about a minute of walking past a fortress; the set is cleared when it fills, seen blocks just get seen again
     static final int MEMO_CAP = 50_000;

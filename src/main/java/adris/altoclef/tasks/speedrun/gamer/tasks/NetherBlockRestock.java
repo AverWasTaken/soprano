@@ -48,16 +48,21 @@ public class NetherBlockRestock {
 
     // startBelow: see NetherRestock.update
     public Task tick(AltoClef mod, int startBelow, double now) {
+        return tick(mod, startBelow, NetherRestock.TARGET, now);
+    }
+
+    // stopAt: how full the bag has to get before the dig ends (a walk home only wants a short top up)
+    public Task tick(AltoClef mod, int startBelow, int stopAt, double now) {
         Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);
         boolean exhausted = task != null && task.wandering();
-        boolean on = restock.update(held, startBelow, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
+        boolean on = restock.update(held, startBelow, stopAt, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
                 exhausted, now);
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft
             BlockPos origin = mod.getPlayer().blockPosition();
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
-            task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, NetherRestock.TARGET)},
+            task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
                     MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p));
         } else if (!on) {
             task = null;

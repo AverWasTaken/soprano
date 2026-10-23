@@ -160,7 +160,7 @@ public class NetherSweepGroundTest {
 
     @Test
     public void aSlowCrawlStillHitsTheNinetySecondBackstop() {
-        int px = -300;
+        int px = -225;
         for (int t = 0; t < 90; t++) {
             if (t > 0 && t % 15 == 0) {
                 px += 8;
@@ -175,7 +175,8 @@ public class NetherSweepGroundTest {
     public void aWaypointGivenUpOnIsNeverHandedBack() {
         walk(-300, 0, 0, 20);
         walk(-300, 0, 21, 41);
-        state.visitedCells.remove("0,0");
+        // the pocket deferred it, take that back so the cell is fresh again and only the dead waypoint is left to check
+        state.deferredCells.remove("0,0");
         planner.giveUpFortress();
         assertEquals(100, walk(-300, 0, 42, 42).x());
     }
@@ -222,7 +223,7 @@ public class NetherSweepGroundTest {
     @Test
     public void switchingTheNoProgressRuleOffLeavesOnlyTheBackstop() {
         cfg.waypointNoProgressSeconds = 0;
-        assertEquals(0, walk(-300, 0, 0, 89).x());
-        assertEquals(100, walk(-300, 0, 90, 90).x());
+        assertEquals(0, walk(-225, 0, 0, 89).x());
+        assertEquals(100, walk(-225, 0, 90, 90).x());
     }
 }

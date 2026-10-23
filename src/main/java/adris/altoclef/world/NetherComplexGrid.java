@@ -1,6 +1,7 @@
 package adris.altoclef.world;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -14,7 +15,7 @@ public final class NetherComplexGrid {
     public static final int CANDIDATE_CHUNKS = 23;
     // the structure is not one chunk big, so the sweep covers the candidate square plus this much on top
     public static final int STRUCTURE_MARGIN_CHUNKS = 4;
-    public static final int DEFAULT_SPACING_CHUNKS = 9;
+    public static final int DEFAULT_SPACING_CHUNKS = 14;
 
     // middle of the candidate square: chunk 11, block centre of it
     private static final int CANDIDATE_MID_CHUNK = (CANDIDATE_CHUNKS - 1) / 2;
@@ -53,27 +54,39 @@ public final class NetherComplexGrid {
     // same grid, but flipped so the first waypoint is the corner of the grid nearest the player. a serpentine only
     // has four sensible starts and walking the far one first is a pointless hike across the cell
     public static List<Point> sweepWaypoints(Cell cell, int spacingChunks, int playerX, int playerZ) {
+        return sweepWaypoints(cell, spacingChunks, playerX, playerZ, false);
+    }
+
+    // the revisit of a cell we gave up on: start at the corner farthest from where we got wedged and walk the serpentine
+    // away from it, so the first legs do not run straight back into the same pocket
+    public static List<Point> sweepWaypointsAwayFrom(Cell cell, int spacingChunks, int fromX, int fromZ) {
+        return sweepWaypoints(cell, spacingChunks, fromX, fromZ, true);
+    }
+
+    private static List<Point> sweepWaypoints(Cell cell, int spacingChunks, int playerX, int playerZ, boolean farthest) {
         int[] offs = offsets(spacingChunks);
         int last = offs.length - 1;
         long fromLow = dist2(playerX, playerZ, centreBlock(cell.cx(), offs[0]), centreBlock(cell.cz(), offs[0]));
         long fromHighX = dist2(playerX, playerZ, centreBlock(cell.cx(), offs[last]), centreBlock(cell.cz(), offs[0]));
         long fromHighZ = dist2(playerX, playerZ, centreBlock(cell.cx(), offs[0]), centreBlock(cell.cz(), offs[last]));
         long fromHighBoth = dist2(playerX, playerZ, centreBlock(cell.cx(), offs[last]), centreBlock(cell.cz(), offs[last]));
+        // negated for the farthest pick so the same strict less does both jobs
+        long sign = farthest ? -1 : 1;
         // strict less so the unflipped order wins ties
-        long best = fromLow;
+        long best = sign * fromLow;
         boolean flipX = false;
         boolean flipZ = false;
-        if (fromHighX < best) {
-            best = fromHighX;
+        if (sign * fromHighX < best) {
+            best = sign * fromHighX;
             flipX = true;
             flipZ = false;
         }
-        if (fromHighZ < best) {
-            best = fromHighZ;
+        if (sign * fromHighZ < best) {
+            best = sign * fromHighZ;
             flipX = false;
             flipZ = true;
         }
-        if (fromHighBoth < best) {
+        if (sign * fromHighBoth < best) {
             flipX = true;
             flipZ = true;
         }
@@ -83,6 +96,60 @@ public final class NetherComplexGrid {
     // nearest cell not in visitedKeys (Cell.key()) by distance from the player to the cell's centre. rings of cells
     // around the player's own cell are scanned outward, ties go to the cell met first in that spiral
     public static Optional<Cell> nextCell(int blockX, int blockZ, Set<String> visitedKeys) {
+        return nearestFree(blockX, blockZ, visitedKeys);
+    }
+
+    // fresh cells first. a deferred cell (a pocket gave up on it, it is not visited) only comes up once no fresh cell is left
+    // within FRESH_RINGS cells of the portal: the run is going to walk home from here, a cell we never really tried that is
+    // close beats a brand new one three rings out. portal == null = unknown, fresh always wins. deferredKeys must not overlap
+    // visitedKeys, both are kept out of the fresh pick
+    public static Optional<Cell> nextCell(int blockX, int blockZ, Set<String> visitedKeys, Set<String> deferredKeys,
+                                          Point portal) {
+        if (deferredKeys.isEmpty()) {
+            return nearestFree(blockX, blockZ, visitedKeys);
+        }
+        Set<String> taken = new HashSet<>(visitedKeys);
+        taken.addAll(deferredKeys);
+        Optional<Cell> fresh = nearestFree(blockX, blockZ, taken);
+        if (portal == null || freshNear(portal, taken)) {
+            return fresh.isPresent() ? fresh : nearestAmong(blockX, blockZ, deferredKeys);
+        }
+        Optional<Cell> back = nearestAmong(blockX, blockZ, deferredKeys);
+        return back.isPresent() ? back : fresh;
+    }
+
+    // how many rings around the portal's own cell count as "close" for the deferred pick
+    public static final int FRESH_RINGS = 2;
+
+    private static boolean freshNear(Point portal, Set<String> taken) {
+        Cell home = cellOf(portal.x(), portal.z());
+        for (int dx = -FRESH_RINGS; dx <= FRESH_RINGS; dx++) {
+            for (int dz = -FRESH_RINGS; dz <= FRESH_RINGS; dz++) {
+                if (!taken.contains(new Cell(home.cx() + dx, home.cz() + dz).key())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static Optional<Cell> nearestAmong(int blockX, int blockZ, Set<String> keys) {
+        Cell best = null;
+        long bestD = Long.MAX_VALUE;
+        // sorted so a tie does not depend on hash order
+        for (String key : new java.util.TreeSet<>(keys)) {
+            Cell c = Cell.parse(key);
+            Point mid = cellCentre(c);
+            long d = dist2(blockX, blockZ, mid.x(), mid.z());
+            if (d < bestD) {
+                bestD = d;
+                best = c;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    private static Optional<Cell> nearestFree(int blockX, int blockZ, Set<String> visitedKeys) {
         Cell home = cellOf(blockX, blockZ);
         // ring k holds 8k cells so by ring visited.size() something is free, that is the hard stop
         int limit = visitedKeys.size() + 1;

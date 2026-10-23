@@ -302,6 +302,18 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysNineMovesToTheNewSweepSpacing() throws IOException {
+        write("{\"version\": 5, \"nether\": {\"sweepSpacingChunks\": 9}}");
+        assertEquals(14, GamerConfigs.load().nether.sweepSpacingChunks);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 5, \"nether\": {\"sweepSpacingChunks\": 5}}");
+        assertEquals(5, GamerConfigs.load().nether.sweepSpacingChunks);
+        // and a current file that says 9 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"nether\": {\"sweepSpacingChunks\": 9}}");
+        assertEquals(9, GamerConfigs.load().nether.sweepSpacingChunks);
+    }
+
+    @Test
     public void aCurrentFileKeepsItsKitLists() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"ironKit\": [{\"item\": \"bucket\", \"count\": 2}]}}");
         assertEquals(List.of("bucket x2"), names(GamerConfigs.load().overworld.ironKit));
@@ -310,7 +322,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 5;
+    private static final int PINNED_VERSION = 6;
     private static final String PINNED_KIT_HASH = "f30524e1";
 
     @Test

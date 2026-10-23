@@ -7,8 +7,10 @@ import adris.altoclef.world.NetherComplexGrid.Cell;
 import adris.altoclef.world.NetherComplexGrid.Point;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -43,6 +45,26 @@ public final class NetherSweepPlanner {
         List<Point> waypoints(Cell cell, int spacingChunks, int playerX, int playerZ);
 
         Optional<Cell> nextCell(int playerX, int playerZ, Set<String> visited);
+
+        // fresh cells first, then the deferred ones once nothing fresh is near the portal. fakes that only know the plain
+        // pick get fresh-then-any-deferred
+        default Optional<Cell> nextCell(int playerX, int playerZ, Set<String> visited, Set<String> deferred, Point portal) {
+            if (deferred.isEmpty()) {
+                return nextCell(playerX, playerZ, visited);
+            }
+            Set<String> taken = new HashSet<>(visited);
+            taken.addAll(deferred);
+            Optional<Cell> fresh = nextCell(playerX, playerZ, taken);
+            if (fresh.isPresent()) {
+                return fresh;
+            }
+            return deferred.stream().sorted().findFirst().map(Cell::parse);
+        }
+
+        // the order for a revisit: start far from where we got wedged
+        default List<Point> waypointsAwayFrom(Cell cell, int spacingChunks, int fromX, int fromZ) {
+            return waypoints(cell, spacingChunks, fromX, fromZ);
+        }
     }
 
     public static final Grid REAL_GRID = new Grid() {
@@ -54,6 +76,16 @@ public final class NetherSweepPlanner {
         @Override
         public Optional<Cell> nextCell(int playerX, int playerZ, Set<String> visited) {
             return NetherComplexGrid.nextCell(playerX, playerZ, visited);
+        }
+
+        @Override
+        public Optional<Cell> nextCell(int playerX, int playerZ, Set<String> visited, Set<String> deferred, Point portal) {
+            return NetherComplexGrid.nextCell(playerX, playerZ, visited, deferred, portal);
+        }
+
+        @Override
+        public List<Point> waypointsAwayFrom(Cell cell, int spacingChunks, int fromX, int fromZ) {
+            return NetherComplexGrid.sweepWaypointsAwayFrom(cell, spacingChunks, fromX, fromZ);
         }
     };
 
@@ -119,7 +151,7 @@ public final class NetherSweepPlanner {
     private double lastStepAt = Double.NaN;
     // where the last stuck give-up happened and in which cell. planner local on purpose, same as 'dead': a rebuilt planner
     // (phase entry after a retry, a death or a regress) starts over, the worst case is one more try at a pocket. a dropped
-    // cell is in visitedCells, that part does survive
+    // cell is in visitedCells or deferredCells, that part does survive
     private int pocketX;
     private int pocketZ;
     private String pocketCell;
@@ -127,6 +159,16 @@ public final class NetherSweepPlanner {
     private final Set<Long> retried = new HashSet<>();
     // a waypoint was given up on since the task last asked (the bag may be what ran dry, see FindNetherStructureTask)
     private boolean gaveUp;
+    // the current cell was dropped by a pocket (not walked out): step() defers it instead of marking it visited
+    private boolean pocketDropped;
+    // the cell that was just deferred sits out the very next pick: the player is standing in it, so "nearest deferred" would hand
+    // it straight back and the revisit would start from the same wall it gave up at
+    private String justDeferred;
+    // where the pocket that deferred each cell was, so the revisit can start on the far side. planner local like pocketX, a
+    // rebuilt planner just walks the revisit in the normal nearest-first order
+    private final Map<String, Point> pocketPoints = new HashMap<>();
+    // the waypoint on the clock gets this long before the no progress rule may end it, scaled to the leg when it became current
+    private double softSeconds;
 
     // read by the path predicate on the pathing threads, so snapshots and volatiles only
     private volatile int[] avoidXZ = new int[0];
@@ -138,6 +180,7 @@ public final class NetherSweepPlanner {
         this.cfg = cfg;
         this.grid = grid;
         this.maxCells = maxCells;
+        this.softSeconds = cfg.waypointSeconds;
         refreshAvoid();
     }
 
@@ -209,6 +252,7 @@ public final class NetherSweepPlanner {
         // the cell is spoken for either way: never sweep it again
         fresh |= state.fortressCells.add(key);
         state.visitedCells.add(key);
+        state.deferredCells.remove(key);
         dropCell(key);
         return fresh;
     }
@@ -226,6 +270,7 @@ public final class NetherSweepPlanner {
         }
         fresh |= state.bastionCells.add(key);
         state.visitedCells.add(key);
+        state.deferredCells.remove(key);
         dropCell(key);
         return fresh;
     }
@@ -301,7 +346,8 @@ public final class NetherSweepPlanner {
         if (goalMet(goal)) {
             return new Action(Kind.FOUND, px, pz, "found");
         }
-        // every pass of this loop either returns or finishes a cell, and a finished cell is visited, so it ends
+        // every pass of this loop either returns or finishes a cell. a finished cell is visited or deferred, a deferred one is never a
+        // fresh pick and its revisit ends visited, so it ends
         while (true) {
             if (cell == null) {
                 Action fail = startNextCell(goal, px, pz, now);
@@ -313,9 +359,24 @@ public final class NetherSweepPlanner {
             if (target != null) {
                 return new Action(Kind.GOTO, target.x(), target.z(), "cell " + cell.key());
             }
-            state.visitedCells.add(cell.key());
-            cell = null;
+            finishCell();
         }
+    }
+
+    // a cell is done. walked out = visited. dropped by a pocket = deferred for one revisit, and a pocket on the revisit too is
+    // visited for good (the cell is nothing but a dead end pocket)
+    private void finishCell() {
+        String key = cell.key();
+        Integer used = state.deferredCells.get(key);
+        if (pocketDropped && used == null) {
+            state.deferredCells.put(key, 0);
+            justDeferred = key;
+        } else {
+            state.visitedCells.add(key);
+            state.deferredCells.remove(key);
+        }
+        pocketDropped = false;
+        cell = null;
     }
 
     // null = a cell is current now
@@ -324,17 +385,54 @@ public final class NetherSweepPlanner {
         if (started >= maxCells) {
             return new Action(Kind.FAIL, px, pz, "swept " + started + " cells and found nothing");
         }
-        Optional<Cell> next = grid.nextCell(px, pz, state.visitedCells);
+        // a revisit in flight (count 1) is spent: out of the fresh pick, and not offered as a deferred one either
+        Set<String> spent = state.visitedCells;
+        Set<String> waiting = new HashSet<>();
+        String sitOut = justDeferred;
+        justDeferred = null;
+        for (var e : state.deferredCells.entrySet()) {
+            if (e.getValue() == 0 && !e.getKey().equals(sitOut)) {
+                waiting.add(e.getKey());
+            } else {
+                if (spent == state.visitedCells) {
+                    spent = new HashSet<>(state.visitedCells);
+                }
+                spent.add(e.getKey());
+            }
+        }
+        RunState.Pos home = state.netherPortal;
+        Optional<Cell> next = grid.nextCell(px, pz, spent, waiting, home == null ? null : new Point(home.x, home.z));
         if (next.isEmpty()) {
             return new Action(Kind.FAIL, px, pz, "ran out of cells");
         }
         cell = next.get();
         cellsStarted[goal.ordinal()]++;
-        waypoints = grid.waypoints(cell, cfg.sweepSpacingChunks, px, pz);
+        pocketDropped = false;
+        if (waiting.contains(cell.key())) {
+            beginRevisit(px, pz);
+        } else {
+            waypoints = grid.waypoints(cell, cfg.sweepSpacingChunks, px, pz);
+        }
         index = 0;
         waypointSince = now;
         freshWaypoint();
+        beginLeg(px, pz);
         return null;
+    }
+
+    // the second go at a cell a pocket ate: the waypoints that were dead or retried get a clean slate, the walk starts at
+    // the corner farthest from the pocket, and the pocket rule forgets the old spot so it takes two new give-ups to drop it
+    private void beginRevisit(int px, int pz) {
+        state.deferredCells.put(cell.key(), 1);
+        for (Point w : grid.waypoints(cell, cfg.sweepSpacingChunks, px, pz)) {
+            dead.remove(key(w));
+            retried.remove(key(w));
+        }
+        pocketCell = null;
+        Point from = pocketPoints.get(cell.key());
+        waypoints = from == null
+                ? grid.waypoints(cell, cfg.sweepSpacingChunks, px, pz)
+                : grid.waypointsAwayFrom(cell, cfg.sweepSpacingChunks, from.x(), from.z());
     }
 
     private void freshWaypoint() {
@@ -342,6 +440,19 @@ public final class NetherSweepPlanner {
         judged = false;
         bestDist = Double.NaN;
         stuckFor = 0;
+    }
+
+    // a long leg gets longer before the soft timeout may fire (about 2.5 blocks/s is a slow nether walk), measured from where we
+    // stand when the waypoint becomes current. a gap reset later moves the clock, not this
+    private void beginLeg(int px, int pz) {
+        if (index < waypoints.size()) {
+            Point w = waypoints.get(index);
+            softSeconds = legSeconds(Math.sqrt(dist2(px, pz, w.x(), w.z())));
+        }
+    }
+
+    static double legSeconds(double legBlocks) {
+        return Math.max(45, legBlocks / 2.5);
     }
 
     // how close counts as there. the walk uses the same radius as its goal, so it ends by itself right where the planner
@@ -381,7 +492,7 @@ public final class NetherSweepPlanner {
                     if (stuckGiveUp(w, px, pz)) {
                         log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", no closer in "
                                 + (int) cfg.waypointNoProgressSeconds + " s (" + away(px, pz, to) + " away)");
-                        // the rest of the cell is behind the same wall, step() marks it visited and picks another
+                        // the rest of the cell is behind the same wall, step() defers it (visited if this was the revisit) and picks another
                         index = waypoints.size();
                         return null;
                     }
@@ -389,6 +500,7 @@ public final class NetherSweepPlanner {
                         // first time stuck here: same waypoint again, the bag gets looked at in between
                         waypointSince = now;
                         freshWaypoint();
+                        beginLeg(px, pz);
                         return to;
                     }
                     log.accept("sweep: gave up on " + to.x() + " " + to.z() + ", no closer in "
@@ -398,22 +510,27 @@ public final class NetherSweepPlanner {
             index++;
             waypointSince = now;
             freshWaypoint();
+            beginLeg(px, pz);
         }
         return null;
     }
 
-    // the 90 s is only a verdict on a walk that has also stopped getting closer (half the stuck seconds is enough, a walk that
+    // the soft timeout (max(45, leg / 2.5) s) is only a verdict on a walk that has also stopped getting closer (half the stuck seconds is enough, a walk that
     // is still closing at 1.5 blocks/s resets them every few seconds). the hard cap catches the crawl that never trips either.
     // waypointSince and the stuck seconds are on the same clock: both restart on an idle gap and only stepped time adds up
     private boolean timedOut(double now) {
-        return softTimedOut(now - waypointSince, stuckFor, cfg);
+        return softTimedOut(now - waypointSince, stuckFor, softSeconds, cfg);
     }
 
     static boolean softTimedOut(double elapsed, double stuckFor, NetherConfig cfg) {
+        return softTimedOut(elapsed, stuckFor, cfg.waypointSeconds, cfg);
+    }
+
+    static boolean softTimedOut(double elapsed, double stuckFor, double softSeconds, NetherConfig cfg) {
         if (elapsed >= cfg.waypointHardSeconds) {
             return true;
         }
-        if (elapsed < cfg.waypointSeconds) {
+        if (elapsed < softSeconds) {
             return false;
         }
         // no progress rule off = the old flat backstop
@@ -430,6 +547,8 @@ public final class NetherSweepPlanner {
         pocketCell = cell.key();
         if (same) {
             dead.add(key(w));
+            pocketDropped = true;
+            pocketPoints.put(cell.key(), new Point(px, pz));
             return true;
         }
         if (!retried.add(key(w))) {

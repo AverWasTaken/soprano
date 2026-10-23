@@ -281,4 +281,69 @@ public class NetherComplexGridTest {
         Cell d = NetherComplexGrid.nextCell(-29_000_000, 29_000_000, visited).orElseThrow();
         assertFalse(visited.contains(d.key()));
     }
+
+    // ---- spacing 14 and the deferred pick
+
+    @Test
+    public void spacingFourteenIsATwoByTwoAtChunksFourAndEighteen() {
+        List<Point> pts = NetherComplexGrid.sweepWaypoints(new Cell(0, 0), 14);
+        assertEquals(4, pts.size());
+        assertEquals(List.of(new Point(72, 72), new Point(72, 296), new Point(296, 296), new Point(296, 72)), pts);
+    }
+
+    @Test
+    public void awayFromStartsAtTheCornerFarthestFromThePocketAndSweepsTheWholeGrid() {
+        Cell c = new Cell(0, 0);
+        List<Point> away = NetherComplexGrid.sweepWaypointsAwayFrom(c, 14, 80, 80);
+        assertEquals(new Point(296, 296), away.get(0));
+        assertEquals(new HashSet<>(NetherComplexGrid.sweepWaypoints(c, 14)), new HashSet<>(away));
+        assertEquals(new Point(72, 72), NetherComplexGrid.sweepWaypointsAwayFrom(c, 14, 290, 290).get(0));
+        // consecutive legs stay axis aligned, it is still a serpentine
+        for (int i = 1; i < away.size(); i++) {
+            int dx = Math.abs(away.get(i).x() - away.get(i - 1).x());
+            int dz = Math.abs(away.get(i).z() - away.get(i - 1).z());
+            assertTrue(dx == 0 || dz == 0);
+        }
+    }
+
+    private static Set<String> cellsAround(Cell home, int rings) {
+        Set<String> out = new HashSet<>();
+        for (int dx = -rings; dx <= rings; dx++) {
+            for (int dz = -rings; dz <= rings; dz++) {
+                out.add(new Cell(home.cx() + dx, home.cz() + dz).key());
+            }
+        }
+        return out;
+    }
+
+    @Test
+    public void deferredCellComesUpOnlyWhenNothingFreshIsNearThePortal() {
+        Point portal = new Point(100, 100);
+        Set<String> deferred = Set.of("1,0");
+        Set<String> visited = cellsAround(new Cell(0, 0), NetherComplexGrid.FRESH_RINGS);
+        visited.removeAll(deferred);
+        // the 5x5 around the portal is all spoken for, fresh cells only exist further out: the deferred one wins
+        assertEquals("1,0", NetherComplexGrid.nextCell(100, 100, visited, deferred, portal).orElseThrow().key());
+        // one fresh cell left inside the rings: fresh first
+        visited.remove("2,2");
+        Cell pick = NetherComplexGrid.nextCell(100, 100, visited, deferred, portal).orElseThrow();
+        assertFalse(pick.key().equals("1,0"));
+        assertFalse(visited.contains(pick.key()));
+        // portal unknown: fresh always wins
+        visited.add("2,2");
+        assertFalse(NetherComplexGrid.nextCell(100, 100, visited, deferred, null).orElseThrow().key().equals("1,0"));
+    }
+
+    @Test
+    public void deferredCellsAreNeverTheFreshPickAndEmptyDeferredIsThePlainPick() {
+        Set<String> visited = new HashSet<>();
+        Cell pick = NetherComplexGrid.nextCell(100, 100, visited, Set.of("0,0"), new Point(100, 100)).orElseThrow();
+        assertFalse(pick.key().equals("0,0"));
+        assertEquals(NetherComplexGrid.nextCell(100, 100, visited),
+                NetherComplexGrid.nextCell(100, 100, visited, Set.of(), new Point(100, 100)));
+        // nearest deferred when several, by distance from the player
+        Set<String> all = cellsAround(new Cell(0, 0), 3);
+        all.removeAll(Set.of("3,3", "1,0"));
+        assertEquals("1,0", NetherComplexGrid.nextCell(100, 100, all, Set.of("3,3", "1,0"), new Point(100, 100)).orElseThrow().key());
+    }
 }
