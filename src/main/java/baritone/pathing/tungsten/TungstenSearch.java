@@ -105,17 +105,26 @@ public final class TungstenSearch {
     // the same, from a start that may be in the air already: startPeakY is how high this flight got before the search took it
     // over, so the fall at the end is measured from there
     public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled, double startPeakY) {
+        return search(start, land, region, budget, cancelled, startPeakY, null);
+    }
+
+    // via: a point (x z) the way to the landing goes through, round something in the way (a neo: beside the end of the wall).
+    // the heuristic goes by way of it until we're level with it, so the search doesn't spend its budget pushing at the
+    // wall the straight line goes through
+    public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled, double startPeakY,
+                              double[] via) {
+        Heuristic h = via == null ? new Heuristic(land, Double.NaN, Double.NaN, 0, 0, 0) : Heuristic.via(start, land, via[0], via[1]);
         PlayerSim cursor = start.copy();
         PlayerSim probe = start.copy();
-        long before = PlayerSim.ticksRun;
+        long before = PlayerSim.ticks();
         PriorityQueue<Node> open = new PriorityQueue<>();
         Set<Long> closed = new HashSet<>();
         SimState s0 = SimState.of(start);
-        open.add(new Node(s0, null, null, 0, h(s0, land), s0.onGround ? s0.y : Math.max(startPeakY, s0.y)));
+        open.add(new Node(s0, null, null, 0, h.of(s0), s0.onGround ? s0.y : Math.max(startPeakY, s0.y)));
         int nodes = 0;
         List<PlayerSim.Controls> options = new ArrayList<>(48);
         while (!open.isEmpty()) {
-            if (PlayerSim.ticksRun - before > budget || (nodes & 255) == 0 && cancelled != null && cancelled.getAsBoolean()) {
+            if (PlayerSim.ticks() - before > budget || (nodes & 255) == 0 && cancelled != null && cancelled.getAsBoolean()) {
                 return null;
             }
             Node n = open.poll();
@@ -127,7 +136,7 @@ public final class TungstenSearch {
                 n.s.write(cursor);
                 JumpPolicy.Rollout r = JumpPolicy.bestFrom(cursor, land, n.peakY);
                 if (r != null) {
-                    return plan(n, r, nodes, PlayerSim.ticksRun - before);
+                    return plan(n, r, nodes, PlayerSim.ticks() - before);
                 }
             }
             options.clear();
@@ -149,14 +158,14 @@ public final class TungstenSearch {
                     // down on the landing: does it stand still there? the same settle the rule does
                     List<PlayerSim.Controls> settle = settle(cursor, probe, land);
                     if (settle != null) {
-                        return plan(n, c, s, settle, cursor, nodes, PlayerSim.ticksRun - before);
+                        return plan(n, c, s, settle, cursor, nodes, PlayerSim.ticks() - before);
                     }
                     continue;
                 }
                 if (closed.contains(key(s))) {
                     continue;
                 }
-                open.add(new Node(s, n, c, n.g + 1, h(s, land), peak));
+                open.add(new Node(s, n, c, n.g + 1, h.of(s), peak));
             }
         }
         return null;
@@ -266,8 +275,20 @@ public final class TungstenSearch {
         return new Plan(keys, states, nodes, ticks);
     }
 
-    private static double h(SimState s, Landing land) {
-        return land.horizontalDistance(s.x, s.z) / TOP_SPEED;
+    private record Heuristic(Landing land, double viaX, double viaZ, double ux, double uz, double viaAlong) {
+        static Heuristic via(PlayerSim start, Landing land, double x, double z) {
+            double dx = land.centerX() - start.x, dz = land.centerZ() - start.z, len = Math.sqrt(dx * dx + dz * dz);
+            double ux = len < 1.0E-6 ? 0 : dx / len, uz = len < 1.0E-6 ? 0 : dz / len;
+            return new Heuristic(land, x, z, ux, uz, x * ux + z * uz);
+        }
+
+        double of(SimState s) {
+            if (!Double.isNaN(viaX) && s.x * ux + s.z * uz < viaAlong) {
+                double ax = viaX - s.x, az = viaZ - s.z, bx = land.centerX() - viaX, bz = land.centerZ() - viaZ;
+                return (Math.sqrt(ax * ax + az * az) + Math.sqrt(bx * bx + bz * bz)) / TOP_SPEED;
+            }
+            return land.horizontalDistance(s.x, s.z) / TOP_SPEED;
+        }
     }
 
     // two states are the same if they round to the same place and speed: a sixteenth of a block, a fiftieth of a block a tick

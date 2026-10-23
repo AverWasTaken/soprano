@@ -33,7 +33,7 @@ public final class PendingTables {
     private PendingTables() {}
 
     // a lookup came back "don't know yet" for id, and resolved says when it does know
-    static void missed(Object id, BooleanSupplier resolved) {
+    public static void missed(Object id, BooleanSupplier resolved) {
         AWAITED.putIfAbsent(id, resolved);
         misses++;
     }

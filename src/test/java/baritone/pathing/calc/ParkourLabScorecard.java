@@ -84,19 +84,45 @@ public class ParkourLabScorecard {
         // neos, momentum jumps and ladder grabs come out of tables that get worked out in the background the first time
         // something asks (in game that's the first path of the session). ask once for everything and give them time
         settings.allowTungstenJumps.value = true;
-        for (JsonElement e : course.getAsJsonArray("sections")) {
-            JsonObject sec = e.getAsJsonObject();
-            for (JsonElement je : sec.getAsJsonArray("jumps")) {
-                JsonArray a = je.getAsJsonObject().getAsJsonArray("from"), b = je.getAsJsonObject().getAsJsonArray("to");
-                VineLogPathTest.path(w, new BetterBlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()),
-                        new GoalBlock(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()), false);
+        // and again, as long as each pass turns up shapes nobody had asked about (a landing only reachable through a jump that
+        // was itself still being worked out last time), and until the background work is done or the time is up
+        long warmUntil = System.currentTimeMillis() + Long.parseLong(System.getenv().getOrDefault("PARKOURLAB_WARM_MS", "45000"));
+        for (int pass = 0; pass < 6 && System.currentTimeMillis() < warmUntil; pass++) {
+            long missesBefore = baritone.pathing.movement.movements.PendingTables.misses();
+            String only0 = System.getenv("PARKOURLAB_SECTIONS");
+            for (JsonElement e : course.getAsJsonArray("sections")) {
+                JsonObject sec = e.getAsJsonObject();
+                if (only0 != null && !("," + only0.replace(" ", "") + ",").contains("," + sec.get("id").getAsInt() + ",")) {
+                    continue;
+                }
+                for (JsonElement je : sec.getAsJsonArray("jumps")) {
+                    JsonArray a = je.getAsJsonObject().getAsJsonArray("from"), b = je.getAsJsonObject().getAsJsonArray("to");
+                    VineLogPathTest.path(w, new BetterBlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()),
+                            new GoalBlock(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()), false);
+                }
+            }
+
+            while (baritone.pathing.movement.movements.PendingTables.waiting() && System.currentTimeMillis() < warmUntil) {
+                Thread.sleep(500);
+            }
+            if (baritone.pathing.movement.movements.PendingTables.misses() == missesBefore) {
+                break;
             }
         }
-        Thread.sleep(Long.parseLong(System.getenv().getOrDefault("PARKOURLAB_WARM_MS", "45000")));
+        String only = System.getenv("PARKOURLAB_SECTIONS");
+        java.util.Set<Integer> wanted = new java.util.HashSet<>();
+        if (only != null) {
+            for (String t : only.split(",")) {
+                wanted.add(Integer.parseInt(t.trim()));
+            }
+        }
         StringBuilder jumps = new StringBuilder();
         StringBuilder out = new StringBuilder("| # | Section | Without Tungsten | With Tungsten | Flown in the sim (12 runs, jittered aim) |\n|---|---|---|---|---|\n");
         for (JsonElement e : course.getAsJsonArray("sections")) {
             JsonObject sec = e.getAsJsonObject();
+            if (!wanted.isEmpty() && !wanted.contains(sec.get("id").getAsInt())) {
+                continue;
+            }
             BetterBlockPos from = cps.get(sec.get("from").getAsInt()), to = cps.get(sec.get("to").getAsInt());
             settings.allowTungstenJumps.value = false;
             VineLogPathTest.Result off = VineLogPathTest.path(w, from, new GoalBlock(to), false);
@@ -121,12 +147,16 @@ public class ParkourLabScorecard {
                 jumps.append(sec.get("id").getAsInt()).append(' ').append(jo.get("kind").getAsString()).append(' ')
                         .append(jb.x - ja.x).append(',').append(jb.y - ja.y).append(',').append(jb.z - ja.z).append(" onto ")
                         .append(jo.get("block").getAsString()).append(": ").append(before ? "ok" : "NO").append(" / ")
-                        .append(after ? "ok " + jr.moves : "NO").append('\n');
+                        .append(after ? "ok " + jr.moves : "NO" + (jr.found ? " (ends at " + jr.positions.get(jr.positions.size() - 1) + " via " + jr.moves + ")" : "")).append('\n');
             }
         }
         out.append("\nJumps one at a time (without / with Tungsten):\n```\n").append(jumps).append("```\n");
         // and the whole thing in one go, start to checkmate
         settings.allowTungstenJumps.value = true;
+        if (!wanted.isEmpty()) {
+            System.out.println(out);
+            return;
+        }
         long t0 = System.nanoTime();
         VineLogPathTest.Result all = VineLogPathTest.path(w, cps.get(0), new GoalBlock(cps.get(cps.size() - 1)), false);
         out.append("\nWhole course in one search (start to checkmate, Tungsten on): ").append(describe(all, (System.nanoTime() - t0) / 1_000_000)).append('\n');
@@ -229,6 +259,10 @@ public class ParkourLabScorecard {
                             break;
                         }
                     }
+                }
+                if (!done && why == null) {
+                    why = src + " -> " + dest + ": timed out at " + baritone.pathing.tungsten.SimState.of(real) + " following " + pilot.following()
+                            + " seed " + seed;
                 }
                 all = done;
             }

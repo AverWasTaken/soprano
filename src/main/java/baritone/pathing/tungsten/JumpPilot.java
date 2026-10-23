@@ -17,7 +17,12 @@
 
 package baritone.pathing.tungsten;
 
+import baritone.pathing.sim.BoxList;
 import baritone.pathing.sim.PlayerSim;
+import net.minecraft.util.Mth;
+
+import java.util.ArrayList;
+import java.util.List;
 
 // flies one jump for real, a tick at a time, off the live player's state. no game in here (MovementTungsten hands it the
 // sim and presses what it says), so the tests can fly it against a sim with the aim jittered the way LookBehavior jitters it.
@@ -68,12 +73,24 @@ public final class JumpPilot {
     private int planAt;
     // ticks we've replanned on the takeoff side, and how many of those because the player wasn't where the plan said
     public int replans, drifts;
+    // what the last parting from a plan looked like, for the debug log
+    public String lastDrift;
+    // finished on the touchdown, not standing still
+    public boolean flowed;
 
     public JumpPilot(Landing land, double startX, double startZ, JumpPolicy.Variant planned) {
         this.land = land;
         this.startX = startX;
         this.startZ = startZ;
         this.planned = planned;
+    }
+
+    // asked on every tick we're down on the landing after the flight, before it's settled: can whatever comes next go from
+    // right here, moving as we are. yes and we're done, the speed carries into it instead of being braked away
+    private java.util.function.Predicate<PlayerSim> flow;
+
+    public void flow(java.util.function.Predicate<PlayerSim> flow) {
+        this.flow = flow;
     }
 
     public boolean flew() {
@@ -83,6 +100,7 @@ public final class JumpPilot {
     // a plan from the planner's full search for a jump the rule can't do: flown from the takeoff spot once we're standing still
     // on it (see stage), and whenever we're back there
     private TungstenSearch.Plan fallback;
+    private boolean ruleRefused;
     // following fallback rather than a plan of the rule's: a bit more slack, there's no rule to replan with
     private boolean onFallback;
 
@@ -101,13 +119,69 @@ public final class JumpPilot {
         this.onFallback = false;
     }
 
+    // the same, steering back onto it every tick (see track): for a searched plan, which no rule can replan
+    public void track(TungstenSearch.Plan plan) {
+        follow(plan);
+        tracking = true;
+    }
+
+    // following a searched plan: its keys are one exact flight, and a real aim that's off by a degree goes somewhere else by
+    // the end of it. so every tick the plan's keys get the yaw nudged whichever way puts us back on its states soonest
+    private boolean tracking;
+    private static final float[] NUDGE = {0F, 1.5F, -1.5F, 3F, -3F, 6F, -6F, 10F, -10F};
+
+    static PlayerSim.Controls track(PlayerSim live, TungstenSearch.Plan plan, int at) {
+        PlayerSim.Controls k = plan.keys().get(at);
+        if (at + 1 >= plan.states().size()) {
+            return k;
+        }
+        PlayerSim.Controls best = k;
+        double bestScore = Double.MAX_VALUE;
+        for (float n : NUDGE) {
+            PlayerSim.Controls c = n == 0F ? k : new PlayerSim.Controls(k.forward(), k.left(), k.jump(), k.sprint(), k.moveYaw() + n, k.viewYaw() + n);
+            PlayerSim probe = live.copy();
+            if (!Keys.step(probe, c)) {
+                continue;
+            }
+            double score = SimState.of(probe).distance(plan.states().get(at + 1));
+            // and a couple of the plan's own ticks on from there: a nudge that's right now and wrong later isn't
+            for (int i = at + 1; i < Math.min(at + 3, plan.ticks()); i++) {
+                if (!Keys.step(probe, plan.keys().get(i))) {
+                    score += 10;
+                    break;
+                }
+                score += SimState.of(probe).distance(plan.states().get(i + 1));
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                best = c;
+            }
+        }
+        if (live.onGround && !best.jump()) {
+            // a step or two ahead of the plan (the aim): these keys walk us off the edge a tick before the plan's jump.
+            // jump now, off the last bit of floor there is, and let the steering sort out the rest in the air
+            int jumpIn = jumpIn(plan, at);
+            PlayerSim probe = live.copy();
+            if (jumpIn > 0 && jumpIn <= 3 && Keys.step(probe, best) && !probe.onGround) {
+                best = best.withJump(true);
+            }
+        }
+        return best;
+    }
+
     public Decision tick(PlayerSim live) {
         if (live.onGround) {
             if (!flew) {
                 groundY = live.y;
             }
-        } else {
+        } else if (!flew && !overTakeoff(live)) {
+            // off the ground and not over the floor it left: a hop along the runway (head hitter, ice) isn't the jump yet
             flew = true;
+        }
+        if (flew && flow != null && live.onGround && live.vy <= 1.0E-3 && !land.grab() && land.holds(live.x, live.y, live.z)
+                && (memo == null || memo.phase != JumpPolicy.Phase.FAILED) && flow.test(live)) {
+            flowed = true;
+            return new Decision(Status.DONE, null, null);
         }
         if (plan != null) {
             SimState now = SimState.of(live);
@@ -115,17 +189,31 @@ public final class JumpPilot {
                 if (land.reached(now, JumpPolicy.STILL * 2)) {
                     return new Decision(Status.DONE, null, null);
                 }
-            } else if (now.distance(plan.states().get(planAt)) < (onFallback ? FALLBACK_EPS : PLAN_EPS) && !leavesEarly(live, plan, planAt)) {
-                PlayerSim.Controls k = plan.keys().get(planAt++);
+            } else if (now.distance(plan.states().get(planAt)) < (onFallback || tracking ? FALLBACK_EPS : PLAN_EPS) && (tracking || !leavesEarly(live, plan, planAt))) {
+                PlayerSim.Controls k = tracking ? track(live, plan, planAt) : plan.keys().get(planAt);
+                planAt++;
                 if (k.forward() > 0) {
                     ranUp = true;
                 }
                 return Decision.press(k);
             } else {
                 drifts++;
+                lastDrift = "tick " + planAt + "/" + plan.ticks() + (tracking ? " tracked" : "") + ": at " + now + ", plan " + plan.states().get(planAt);
             }
             int jumpIn = jumpIn(plan, planAt);
+            boolean wasSearched = tracking;
             plan = null;
+            tracking = false;
+            if (wasSearched && flew && live.onGround && !land.reached(now, JumpPolicy.STILL * 2)) {
+                // came off a searched plan with a touchdown in the middle of it (two neos in a row, the pad between them): the
+                // rule only knows one jump at a time and this one isn't over, a short search from right here picks it up
+                TungstenSearch.Plan rescue = TungstenSearch.search(live, land, region(live, land), AIR_SEARCH_BUDGET, null, live.y);
+                if (rescue != null && rescue.ticks() > 0) {
+                    follow(rescue);
+                    tracking = true;
+                    return Decision.press(track(live, plan, planAt++));
+                }
+            }
             if (!flew) {
                 return fromTheGround(live, jumpIn);
             }
@@ -153,7 +241,8 @@ public final class JumpPilot {
                         memo.phase = JumpPolicy.Phase.AIR;
                         memo.airTicks = 0;
                         follow(rescue);
-                        return Decision.press(plan.keys().get(planAt++));
+                        tracking = true;
+                        return Decision.press(track(live, plan, planAt++));
                     }
                 }
                 return new Decision(Status.FAILED, null, memo.why);
@@ -162,9 +251,34 @@ public final class JumpPilot {
         }
     }
 
+    // in the air over the floor we took off from, at its height: one of the hops along a runway, and it comes down on it
+    private boolean overTakeoff(PlayerSim live) {
+        if (Double.isNaN(groundY) || live.y < groundY - 1.0E-3) {
+            return false;
+        }
+        int fy = Mth.floor(groundY - 0.5);
+        BoxList boxes = new BoxList();
+        for (double ox : new double[]{-0.3, 0.3}) {
+            for (double oz : new double[]{-0.3, 0.3}) {
+                boxes.clear();
+                live.world().boxes(Mth.floor(live.x + ox), fy, Mth.floor(live.z + oz), boxes);
+                for (int i = 0; i < boxes.size(); i++) {
+                    if (Math.abs(boxes.get(i, 4) - groundY) < 1.0E-3) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // on the takeoff side, no plan: roll the whole jump out from right here and press its first tick. jumpIn is when the plan
     // we just came off was going to jump, tried first
     private Decision fromTheGround(PlayerSim live, int jumpIn) {
+        if (!live.onGround) {
+            // mid hop along the runway and off the plan: keep running at it, and plan again from the touchdown
+            return Decision.press(Keys.run(Keys.yaw(land.centerX() - live.x, land.centerZ() - live.z), false));
+        }
         replans++;
         JumpPolicy.Variant first = jumpIn >= 0 ? new JumpPolicy.Variant(jumpIn, 0F) : variant != null ? variant : planned;
         if (!ranUp && (variant != null ? variant : planned) != null && (variant != null ? variant : planned).back() > 0) {
@@ -179,8 +293,10 @@ public final class JumpPilot {
         } else if (variant != null && variant.hop()) {
             first = new JumpPolicy.Variant(-1, variant.aim(), 0F, true); // the jump tick of a hopping run is every touchdown
         }
-        JumpPolicy.Rollout r = JumpPolicy.robust(live, land, first);
+        // with a searched plan to fall back on, once the rule has said no it isn't asked again every tick of the staging
+        JumpPolicy.Rollout r = fallback != null && ruleRefused ? null : JumpPolicy.robust(live, land, first);
         if (r == null) {
+            ruleRefused = true;
             return stage(live);
         }
         if (r.ticks() == 0) {
@@ -205,6 +321,20 @@ public final class JumpPilot {
         double speed = Math.sqrt(live.vx * live.vx + live.vz * live.vz);
         float in = Keys.yaw(ex, ez);
         double stageOff = fallback != null ? STAGE_OFF_FALLBACK : STAGE_OFF;
+        if (fallback != null && off <= STAGE_NEAR && speed <= STAGE_NEAR_SPEED && tracksFrom(live, fallback)) {
+            // near enough: the searched plan, steered back onto as it goes, still lands from right here (in the sim). the
+            // real look wobbles too much to ever stand within a few hundredths of the exact spot
+            follow(fallback);
+            onFallback = true;
+            tracking = true;
+            return Decision.press(track(live, plan, planAt++));
+        }
+        if (fallback != null && off <= FINE_STAGE && (off > stageOff || speed > STAGE_STILL)) {
+            // a searched plan wants the exact spot, and one tick of W is a fifth of a block by the time it's coasted out:
+            // walking at it overshoots back and forth for ever. look two ticks ahead instead (any push this tick, any push
+            // the next, then coast) and take whichever comes to rest nearest the spot
+            return Decision.press(fineStage(live));
+        }
         if (off > stageOff) {
             // close and still moving: let go and coast. ground friction eats 45% a tick, holding W the whole way overshoots
             return Decision.press(off < 0.3 && speed > 0.05 ? Keys.release(in) : Keys.push(in, false));
@@ -215,9 +345,67 @@ public final class JumpPilot {
         if (fallback != null) {
             follow(fallback);
             onFallback = true;
-            return Decision.press(plan.keys().get(planAt++));
+            tracking = true;
+            return Decision.press(track(live, plan, planAt++));
         }
         return new Decision(Status.STUCK, null, "the rule has nothing from here");
+    }
+
+    private static final double STAGE_NEAR = 0.25, STAGE_NEAR_SPEED = 0.04, FINE_STAGE = 0.4;
+    private static final int FINE_YAWS = 16, FINE_COAST = 20;
+
+    private PlayerSim.Controls fineStage(PlayerSim live) {
+        List<PlayerSim.Controls> options = new ArrayList<>(FINE_YAWS + 1);
+        options.add(Keys.release(Keys.yaw(startX - live.x, startZ - live.z)));
+        for (int i = 0; i < FINE_YAWS; i++) {
+            options.add(Keys.push(i * 360F / FINE_YAWS, false));
+        }
+        PlayerSim.Controls best = options.get(0);
+        double bestOff = Double.MAX_VALUE;
+        for (PlayerSim.Controls first : options) {
+            PlayerSim one = live.copy();
+            if (!Keys.step(one, first) || !one.onGround) {
+                continue;
+            }
+            for (PlayerSim.Controls second : options) {
+                PlayerSim two = one.copy();
+                double rest = restOff(two, second);
+                if (rest < bestOff) {
+                    bestOff = rest;
+                    best = first;
+                }
+            }
+        }
+        return best;
+    }
+
+    // the keys, then nothing until it stops: how far from the spot that is (MAX_VALUE if it went off the floor on the way)
+    private double restOff(PlayerSim sim, PlayerSim.Controls keys) {
+        if (!Keys.step(sim, keys) || !sim.onGround) {
+            return Double.MAX_VALUE;
+        }
+        PlayerSim.Controls none = Keys.release(0F);
+        for (int i = 0; i < FINE_COAST && sim.vx * sim.vx + sim.vz * sim.vz > 1.0E-6; i++) {
+            if (!Keys.step(sim, none) || !sim.onGround) {
+                return Double.MAX_VALUE;
+            }
+        }
+        double ex = startX - sim.x, ez = startZ - sim.z;
+        return Math.sqrt(ex * ex + ez * ez);
+    }
+
+    // the plan flown from this state, tracked the way it will be for real, lands
+    private boolean tracksFrom(PlayerSim live, TungstenSearch.Plan p) {
+        PlayerSim probe = live.copy();
+        for (int i = 0; i < p.ticks(); i++) {
+            if (SimState.of(probe).distance(p.states().get(i)) >= FALLBACK_EPS) {
+                return false;
+            }
+            if (!Keys.step(probe, track(probe, p, i))) {
+                return false;
+            }
+        }
+        return land.reached(SimState.of(probe), JumpPolicy.STILL * 4) || land.holds(probe.x, probe.y, probe.z) && probe.onGround;
     }
 
     // on the ground, the plan's keys for this tick would take us off it when the plan has us still on it next tick: we're a

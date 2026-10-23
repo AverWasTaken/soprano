@@ -127,12 +127,12 @@ public final class AscendHop {
     // by the end of every tick, so the view yaw aiStep reads is the previous tick's aim and not the camera
     public static Decision decide(PlayerSim sim, int dx, int dz, BetterBlockPos dest, float moveYaw, float viewYaw, boolean sprint,
                                   Brakes brakes, boolean viewLags) {
-        long before = PlayerSim.ticksRun;
+        long before = PlayerSim.ticks();
         decides++;
         try {
             return decideInner(sim, dx, dz, dest, moveYaw, viewYaw, sprint, brakes, viewLags);
         } finally {
-            long used = PlayerSim.ticksRun - before;
+            long used = PlayerSim.ticks() - before;
             simTicks += used;
             worstDecideTicks = Math.max(worstDecideTicks, used);
         }

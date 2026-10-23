@@ -19,6 +19,7 @@ package baritone.pathing.movement.movements;
 
 import baritone.Baritone;
 import baritone.api.IBaritone;
+import baritone.api.pathing.movement.IMovement;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Rotation;
@@ -31,6 +32,7 @@ import baritone.pathing.sim.LiveSim;
 import baritone.pathing.sim.PlayerSim;
 import baritone.pathing.tungsten.JumpPilot;
 import baritone.pathing.tungsten.JumpPolicy;
+import baritone.pathing.tungsten.Keys;
 import baritone.pathing.tungsten.Landing;
 import baritone.pathing.tungsten.SafeCollision;
 import baritone.pathing.tungsten.SimState;
@@ -195,6 +197,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         if (pilot == null) {
             pilot = new JumpPilot(land, src.x + 0.5, src.z + 0.5, planned);
             pilot.fallback(plannedSearch);
+            pilot.flow(this::flowsOn);
         }
         BlockStateInterface bsi = ((Baritone) baritone).bsi;
         PlayerSim sim = bsi == null ? null : LiveSim.of(player, new SafeCollision(bsi));
@@ -211,7 +214,11 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             }
             return state; // let go of everything for a tick, a sneak or an item use left over from the last movement ends
         }
+        int driftsBefore = pilot.drifts;
         JumpPilot.Decision d = pilot.tick(sim);
+        if (pilot.drifts != driftsBefore && Baritone.settings().chatDebug.value) {
+            logDebug("tungsten jump: off the plan, " + pilot.lastDrift);
+        }
         switch (d.status()) {
             case PRESS:
                 return press(state, d.keys());
@@ -227,6 +234,54 @@ public class MovementTungsten extends Movement implements CurvedMovement {
                 logDebug("tungsten jump: " + d.why());
                 return state.setStatus(MovementStatus.UNREACHABLE);
         }
+    }
+
+    // the movement after this one in the path, told by the executor every tick (null at the end of the path)
+    private IMovement next;
+
+    public void next(IMovement next) {
+        this.next = next;
+    }
+
+    private Landing landing() {
+        return MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock())
+                ? Landing.grab(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+    }
+
+    // down on dest and still moving: can the next movement go from right here, without the stop
+    private boolean flowsOn(PlayerSim live) {
+        IMovement after = next;
+        if (after == null || !after.getSrc().equals(dest)) {
+            return false;
+        }
+        if (after instanceof MovementTungsten) {
+            MovementTungsten jump = (MovementTungsten) after;
+            if (jump.planned == null || jump.plannedSearch != null || jump.dest.equals(jump.src)) {
+                return false; // a jump only the full search does goes from standing still on the takeoff spot
+            }
+            // the next jump's rule, from the state we're in, with the aim as wobbly as it gets
+            JumpPolicy.Rollout r = JumpPolicy.forgiving(live, jump.landing(), jump.planned);
+            return r != null && r.ticks() > 0;
+        }
+        // anything else walks on from wherever it starts. only not if the slide we're on, let go of, would take us off the
+        // block (or off the next one): coasting has to come to a stop on one of the two
+        BetterBlockPos to = after.getDest();
+        PlayerSim probe = live.copy();
+        float yaw = Keys.yaw(to.x + 0.5 - live.x, to.z + 0.5 - live.z);
+        for (int i = 0; i < 25; i++) {
+            if (Math.sqrt(probe.vx * probe.vx + probe.vz * probe.vz) < 0.02) {
+                return true;
+            }
+            if (!Keys.step(probe, Keys.release(yaw)) || !probe.onGround) {
+                return false;
+            }
+            int fx = Mth.floor(probe.x), fz = Mth.floor(probe.z), fy = Landing.feetY(probe.y);
+            boolean onSrc = fx == dest.x && fz == dest.z && fy == dest.y, onNext = fx == to.x && fz == to.z && fy == to.y;
+            if (!onSrc && !onNext) {
+                return false;
+            }
+        }
+        return false;
     }
 
     // standing still in the middle of src (where the planner said it works from) and the rule still says no: somebody changed
@@ -262,7 +317,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
             logDebug("tungsten jump: searched " + found.nodes() + " nodes for a " + found.ticks() + " tick plan");
-            pilot.follow(found);
+            pilot.track(found);
             return state; // the plan starts from where we stand now, next tick
         }
         logDebug("tungsten jump: nothing works from here");

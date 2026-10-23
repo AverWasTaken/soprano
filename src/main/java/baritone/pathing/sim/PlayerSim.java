@@ -61,6 +61,13 @@ public final class PlayerSim {
 
     // every tick() ever run, so whoever asks the sim a question can say what it cost (AscendHop's telemetry). the client thread only
     public static long ticksRun;
+    // the same count, but only this thread's: a budget measured in sim ticks has to be measured on the thread that spends it
+    // (the background neo searches run on their own threads, and would eat everyone else's budget otherwise)
+    private static final ThreadLocal<long[]> THREAD_TICKS = ThreadLocal.withInitial(() -> new long[1]);
+
+    public static long ticks() {
+        return THREAD_TICKS.get()[0];
+    }
 
     public double x, y, z, vx, vy, vz;
     public boolean onGround, sprinting, horizontalCollision, minorHorizontalCollision, verticalCollision;
@@ -135,6 +142,7 @@ public final class PlayerSim {
     // the tick started, and the tick done anyway when it ended there
     public boolean tick(Controls c) {
         ticksRun++;
+        THREAD_TICKS.get()[0]++;
         jumped = false;
         String bad = unsupported();
         if (bad != null) {

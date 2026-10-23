@@ -48,6 +48,11 @@ public final class BoxList {
         size++;
     }
 
+    // the backing array, 6 doubles a box, size() of them in use
+    public double[] raw() {
+        return data;
+    }
+
     // 0..2 is the min corner, 3..5 the max corner
     public double get(int box, int component) {
         return data[box * 6 + component];
