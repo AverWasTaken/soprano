@@ -146,4 +146,10 @@ public class EndermanNookTest {
         assertFalse(EndermanNook.brainStandsDown(false, 1, 1));
         assertFalse(EndermanNook.brainStandsDown(true, 0, 0));
     }
+
+    @Test
+    public void theNookHuntGetsALongerStallWindow() {
+        assertEquals(EndermanNook.DEFAULT_STALL_SECONDS, EndermanNook.stallSeconds(false), 0);
+        assertTrue(EndermanNook.stallSeconds(true) > EndermanNook.stallSeconds(false));
+    }
 }

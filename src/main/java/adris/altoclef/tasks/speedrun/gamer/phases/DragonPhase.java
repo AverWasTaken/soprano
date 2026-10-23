@@ -399,7 +399,7 @@ public class DragonPhase implements PhaseHandler {
         GamerFacts facts = ctx.facts();
         boolean perched = dragonPerched(mod);
         double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
-        DragonStrat next = DragonStrat.choose(_strat, facts.count(ItemHelper.BED), facts.armorPoints(), perched,
+        DragonStrat next = DragonStrat.choose(_strat, _bedTask.bedsLeft(mod), facts.armorPoints(), perched,
                 EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool, _bedTask.healStalled());
         if (next != _strat) {
             ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds" : "fighting the dragon with the sword");

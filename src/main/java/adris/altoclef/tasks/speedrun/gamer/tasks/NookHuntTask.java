@@ -79,7 +79,6 @@ public class NookHuntTask extends Task {
     private final Map<Integer, Long> ignored = new HashMap<>();
     private KillEntityTask brawl;
     private int brawlId = -1;
-    private int fightId = -1;
     private int fightTicks;
     private int pearlId = -1;
     private int pearlTicks;
@@ -154,10 +153,7 @@ public class NookHuntTask extends Task {
         }
         if (angry != null) {
             idleSince = now;
-            if (angry.getId() != fightId) {
-                fightId = angry.getId();
-                fightTicks = 0;
-            }
+            // (no reset on a new target: a give up fails the whole nook, which is a fresh instance next time)
             // one that never makes it to the door (a ledge, a lava lake) is not worth the whole hunt standing here
             if (++fightTicks > FIGHT_GIVEUP_TICKS) {
                 // for good, and the nook is done: an enderman that stays angry and never arrives would bring the fight clock

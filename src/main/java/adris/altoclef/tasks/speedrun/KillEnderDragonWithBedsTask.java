@@ -86,10 +86,19 @@ public class KillEnderDragonWithBedsTask extends Task {
     // no beds left in the inventory and none placed and waiting to be clicked. the caller swaps to the sword when this
     // holds and the dragon is not perched (see isFinished), this task alone would pillar and wait forever
     public boolean outOfBeds(AltoClef mod) {
-        if (mod.getItemStorage().hasItem(ItemHelper.BED)) {
-            return false;
-        }
-        return _endPortalTop == null || !mod.getBlockTracker().blockIsValid(_endPortalTop.above(), ItemHelper.itemsToBlocks(ItemHelper.BED));
+        return bedsLeft(mod) == 0;
+    }
+
+    // beds in the bag plus the one on the portal waiting for its click: what the strat choice has to count, or a placed bed
+    // reads as none left and the phase drops to the sword
+    public int bedsLeft(AltoClef mod) {
+        boolean placed = _endPortalTop != null
+                && mod.getBlockTracker().blockIsValid(_endPortalTop.above(), ItemHelper.itemsToBlocks(ItemHelper.BED));
+        return countBeds(mod.getItemStorage().getItemCount(ItemHelper.BED), placed);
+    }
+
+    static int countBeds(int inBag, boolean placed) {
+        return inBag + (placed ? 1 : 0);
     }
 
     // stood too hurt to click for a while and nothing is healing us (see HealStall): the phase swaps to the sword

@@ -20,6 +20,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -47,6 +48,10 @@ public class PearlHuntTask extends Task {
     private final int pearlsTotal;
     private final Dimension dimension;
     private final Supplier<RunState.Pos> hotspot;
+    // told when an enderman dies, and only then (a stare that goes nowhere is not progress, see NetherPhase.stallSeconds)
+    private final Runnable onKill;
+    // the angry ones seen last tick, so one that is dead now was one we killed
+    private final List<Enderman> watched = new ArrayList<>();
     private final KillAndLootTask loot;
     private final Task goToDimension;
 
@@ -60,7 +65,7 @@ public class PearlHuntTask extends Task {
     private boolean hotspotDone;
     private Entity angryTarget;
     private KillEntityTask angryTask;
-    private final TaskClock angrySpent = new TaskClock();
+    private final AngryClock angrySpent = new AngryClock();
     private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private NookHuntTask nook;
     private int nookFails;
@@ -70,6 +75,12 @@ public class PearlHuntTask extends Task {
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
+        this(pearlsTotal, dimension, hotspot, () -> {
+        });
+    }
+
+    public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill) {
+        this.onKill = onKill;
         this.pearlsTotal = pearlsTotal;
         this.dimension = dimension;
         this.hotspot = hotspot;
@@ -78,8 +89,44 @@ public class PearlHuntTask extends Task {
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
 
+    // ticks of fighting per enderman id, it carries over when the nearest angry one changes back and forth
+    static final class AngryClock {
+        private final java.util.Map<Integer, Integer> ticks = new java.util.HashMap<>();
+
+        // one more tick on this one, true once it is over the limit
+        boolean tick(int id, double limitSeconds) {
+            int t = ticks.merge(id, 1, Integer::sum);
+            return t / 20.0 > limitSeconds;
+        }
+    }
+
     public String step() {
         return step;
+    }
+
+    // the nook is up: a still, patient stage that makes no distance and picks nothing up until something walks into it
+    public boolean inNook() {
+        return nook != null;
+    }
+
+    // the cheap-then-dear enderman check the nook and the phases share: one in range and in sight
+    public static boolean endermanNear(AltoClef mod) {
+        return EndermanNook.latchSees(nearestEnderman(mod));
+    }
+
+    // the angry ones we watched last tick that are dead now: those are kills
+    private void noteKills(AltoClef mod) {
+        for (Enderman man : watched) {
+            if (man.isDeadOrDying()) {
+                onKill.run();
+            }
+        }
+        watched.clear();
+        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (man.isAlive() && man.isCreepy()) {
+                watched.add(man);
+            }
+        }
     }
 
     @Override
@@ -95,6 +142,7 @@ public class PearlHuntTask extends Task {
             return say("Heading to " + HudText.dimension(dimension), goToDimension);
         }
         long gameTime = mod.getWorld().getGameTime();
+        noteKills(mod);
         if (dimension == Dimension.NETHER) {
             Task hole = nookStep(mod, gameTime);
             if (hole != null) {
@@ -199,10 +247,9 @@ public class PearlHuntTask extends Task {
         if (angryTarget != man) {
             angryTarget = man;
             angryTask = new KillEntityTask(man);
-            angrySpent.reset();
         }
-        angrySpent.tick();
-        if (angrySpent.over(ANGRY_SECONDS)) {
+        // per enderman: two that trade places as the nearest must not each get a fresh clock every time
+        if (angrySpent.tick(man.getId(), ANGRY_SECONDS)) {
             angryGivenUp.add(man);
             return null;
         }
@@ -250,7 +297,7 @@ public class PearlHuntTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         // (an interrupt is a meal, not the end of the hunt: the stamp goes stale by itself soon enough)
-        if (interruptTask == null) {
+        if (!isInterrupting()) {
             PearlHuntHook.clear();
         }
     }

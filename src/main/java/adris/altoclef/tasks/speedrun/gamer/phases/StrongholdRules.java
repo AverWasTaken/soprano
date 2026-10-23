@@ -68,4 +68,11 @@ public final class StrongholdRules {
     }
     private StrongholdRules() {
     }
+
+    // the free "still moving" retries a room window gets, a spiral that crawls forever is not a long legit search
+    public static final int MAX_MOVING_RETRIES = 2;
+
+    public static boolean mayRetryMoving(int movingRetries) {
+        return movingRetries < MAX_MOVING_RETRIES;
+    }
 }

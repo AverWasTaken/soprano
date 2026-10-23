@@ -56,6 +56,8 @@ public class OpenPhase implements PhaseHandler {
         fillTask = null;
         craftTask = null;
         craftTarget = -1;
+        // a stamp from the last visit would read as eyes missing for ages
+        ctx.state().openNoEyesSince = 0;
     }
 
     @Override
