@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 
+import java.util.ArrayList;
 import java.util.List;
 
 // a food need for the phases that have none of their own. FoodChain only eats, its own hunting reads two settings (the minimum
@@ -32,19 +33,32 @@ public final class FoodFloor {
         return runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, food.overworldMinimum())));
     }
 
-    // the same hunt for a nether food trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
-    // to the minimum and not only under the floor
-    public Task tickTrip(GamerContext ctx) {
-        FoodPlan food = ctx.facts().dimension() == Dimension.OVERWORLD ? ctx.food() : null;
+    // the same hunt for a nether trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
+    // to the minimum and not only under the floor. one runner over whichever needs are short: food to the minimum, and on a blocks
+    // trip the entry stack (emitted straight, no BuildBlocks band; KitRunner still notes a refill, which the next phase entry wipes). null = none short
+    public Task tickTrip(GamerContext ctx, boolean wantBlocks) {
+        boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
+        FoodPlan food = overworld ? ctx.food() : null;
+        List<KitNeed> needs = new ArrayList<>();
+        if (food != null && food.shortOfMinimum()) {
+            needs.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
+        }
+        if (overworld && wantBlocks && blocksShort(ctx)) {
+            needs.add(new KitNeed(KitNeed.BUILD_BLOCKS, ctx.cfg().overworld.netherEntryBlocks));
+        }
         boolean was = active;
-        active = food != null && food.shortOfMinimum();
+        active = !needs.isEmpty();
         if (!active) {
             if (was) {
                 runner.reset();
             }
             return null;
         }
-        return runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, food.overworldMinimum())));
+        return runner.run(ctx, needs);
+    }
+
+    public static boolean blocksShort(GamerContext ctx) {
+        return ctx.facts().buildBlocks() < ctx.cfg().overworld.netherEntryBlocks;
     }
 
     public boolean active() {

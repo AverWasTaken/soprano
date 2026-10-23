@@ -66,6 +66,8 @@ public final class PhaseMachine implements GamerContext {
     // the tick's StationVerdict, see stations()
     private StationVerdict stations;
     private int lastFingerprint;
+    // the most of each item held this phase, what counts as the bag getting somewhere (HighWater)
+    private final HighWater highWater = new HighWater();
     private int anchorX;
     private int anchorY;
     private int anchorZ;
@@ -155,6 +157,9 @@ public final class PhaseMachine implements GamerContext {
         GamerFacts f = host.facts();
         watchdog.reset(now());
         lastFingerprint = f.inventoryFingerprint();
+        if (f.inventoryCounts() != null) {
+            highWater.reset(f.inventoryCounts());
+        }
         anchorX = f.x();
         anchorY = f.y();
         anchorZ = f.z();
@@ -202,15 +207,21 @@ public final class PhaseMachine implements GamerContext {
         watchdog.excuse(now(), seconds);
     }
 
-    // inventory changed, dimension changed, or we got about six blocks away from where we last made progress. not "changed
+    // an item count passed its high mark, dimension changed, or we got about six blocks away from where we last made progress. not "changed
     // chunk": a bot dancing on a chunk border is not getting anywhere
     public void observe() {
         GamerFacts f = host.facts();
         double now = now();
-        if (f.inventoryFingerprint() != lastFingerprint) {
-            lastFingerprint = f.inventoryFingerprint();
+        // a count passing its high mark, not any change: a bucket swapping between water and lava and empty is a change every
+        // few seconds and never gets anywhere. a snapshot with no counts (null) keeps the any-change rule
+        if (f.inventoryCounts() != null) {
+            if (highWater.rose(f.inventoryCounts())) {
+                watchdog.progress(now);
+            }
+        } else if (f.inventoryFingerprint() != lastFingerprint) {
             watchdog.progress(now);
         }
+        lastFingerprint = f.inventoryFingerprint();
         if (f.dimension() != lastDimension) {
             lastDimension = f.dimension();
             watchdog.progress(now);

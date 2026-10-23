@@ -220,4 +220,9 @@ public class FakeFacts implements GamerFacts {
     public int inventoryFingerprint() {
         return fingerprint;
     }
+
+    @Override
+    public Map<Item, Integer> inventoryCounts() {
+        return items;
+    }
 }

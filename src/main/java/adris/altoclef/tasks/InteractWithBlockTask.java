@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.PhantomScoops;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
@@ -30,6 +31,7 @@ import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.inventory.ContainerInput;
@@ -522,6 +524,9 @@ public class InteractWithBlockTask extends Task {
                         mod.getInputControls().hold(Input.SNEAK);
                     }
                     mod.getInputControls().release(_interactInput);
+                    if (_scoop) {
+                        watchScoop(mod);
+                    }
                     return ClickResponse.CLICK_ATTEMPTED;
                 }
                 //mod.getClientBaritone().getInputOverrideHandler().setInputForceState(_interactInput, true);
@@ -535,6 +540,27 @@ public class InteractWithBlockTask extends Task {
             mod.getInputControls().release(Input.SNEAK);
         }
         return ClickResponse.CANT_REACH;
+    }
+
+    // the cell the bucket's own ray (sources only, same as vanilla's empty bucket) actually hit, not the one we aimed for.
+    // PhantomScoops looks at it a few ticks on and tells a scoop the server took from one it didn't
+    private static void watchScoop(AltoClef mod) {
+        // the equip fallback clicks with whatever is in hand, and a click with no empty bucket scoops nothing for real.
+        // one watch at a time too, a second click would swap the cell out from under the first
+        if (!mod.getPlayer().getMainHandItem().is(Items.BUCKET) || PhantomScoops.pending()) {
+            return;
+        }
+        IPlayerContext ctx = mod.getClientBaritone().getPlayerContext();
+        Vec3 start = mod.getPlayer().getEyePosition(1.0F);
+        Vec3 end = start.add(RotationUtils.calcLookDirectionFromRotation(ctx.playerRotations()).scale(ctx.playerController().getBlockReachDistance()));
+        BlockHitResult hit = mod.getWorld().clip(new ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.SOURCE_ONLY, mod.getPlayer()));
+        if (hit.getType() != HitResult.Type.BLOCK) {
+            return;
+        }
+        BlockPos at = hit.getBlockPos();
+        if (mod.getWorld().getBlockState(at).getFluidState().is(FluidTags.LAVA)) {
+            PhantomScoops.arm(WorldHelper.getCurrentDimension(), at.getX(), at.getY(), at.getZ(), WorldHelper.getTicks());
+        }
     }
 
     // a full bucket empties onto the cell on whatever face the ray is on, not the one we asked for. the crosshair being on

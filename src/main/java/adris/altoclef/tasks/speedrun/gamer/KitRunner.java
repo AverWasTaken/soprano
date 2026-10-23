@@ -7,6 +7,7 @@ import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -35,6 +36,8 @@ public final class KitRunner {
     private KitNeed key;
     // game tick the current key started at, for the dwell
     private long keySince;
+    // which needs just gave up the head, so a swap back is held longer (HeadLatch.Flips)
+    private final HeadLatch.Flips flips = new HeadLatch.Flips();
     // game tick the key dropped out of the plan, HeadLatch.NEVER while it is in it
     private long missingSince = HeadLatch.NEVER;
     private List<Item> equipKey = List.of();
@@ -90,6 +93,7 @@ public final class KitRunner {
         armorLastTick = HeadLatch.NEVER;
         armorGaveUp = null;
         key = null;
+        flips.clear();
         keySince = 0;
         missingSince = HeadLatch.NEVER;
         equipKey = List.of();
@@ -164,7 +168,7 @@ public final class KitRunner {
         }
         List<KitNeed> picks = armorGaveUp == null ? HeadLatch.armorFirst(needs) : HeadLatch.armorLast(needs);
         // the need we are running keeps the head for a few seconds, see HeadLatch
-        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), picks, f);
+        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), picks, f, flips);
         watchArmor(need, wantOn, f.gameTime());
         if (missingSince != HeadLatch.NEVER && !need.equals(key)) {
             Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " handed over to " + need.catalogueName() + " x" + need.count()
@@ -177,10 +181,15 @@ public final class KitRunner {
         watchProgress(ctx, need);
         if (KitNeed.BUILD_BLOCKS.equals(need.catalogueName())) {
             // the first tick of a fresh refill is one for the cap, the rest of it is the same refill (BuildBlocks)
-            BuildBlocks.started(ctx.state(), need.count(), need.count() > ctx.cfg().overworld.portalBuildBlocks);
+            // the entry stack is the portal gate's base need, not the smelt stock-up on top of a full base
+            OverworldConfig oc = ctx.cfg().overworld;
+            BuildBlocks.started(ctx.state(), need.count(), need.count() > oc.portalBuildBlocks && need.count() != oc.netherEntryBlocks);
         }
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
             if (!need.equals(key)) {
+                if (key != null && !key.catalogueName().equals(need.catalogueName())) {
+                    flips.left(key.catalogueName(), f.gameTime());
+                }
                 keySince = f.gameTime();
                 logHead(key, need, needs);
             }

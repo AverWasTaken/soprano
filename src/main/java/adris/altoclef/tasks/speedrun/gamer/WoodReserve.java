@@ -154,5 +154,10 @@ public final class WoodReserve {
         public int inventoryFingerprint() {
             return base.inventoryFingerprint();
         }
+
+        @Override
+        public java.util.Map<net.minecraft.world.item.Item, Integer> inventoryCounts() {
+            return base.inventoryCounts();
+        }
     }
 }

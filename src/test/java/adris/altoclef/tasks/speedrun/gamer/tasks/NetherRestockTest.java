@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 import net.minecraft.core.BlockPos;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -88,5 +89,39 @@ public class NetherRestockTest {
         // still empty, but we just tried
         assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + 10));
         assertTrue(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+    }
+
+    @Test
+    public void dryEndsCountInARowAndAnyOtherEndResetsThem() {
+        NetherRestock r = new NetherRestock();
+        double t = 0;
+        t = dryRestock(r, t);
+        assertEquals(1, r.exhaustedEnds());
+        // second one after the cooldown
+        t = dryRestock(r, t + NetherRestock.COOLDOWN_SECONDS);
+        assertEquals(2, r.exhaustedEnds());
+        // one that ends on the clock breaks the run
+        t += NetherRestock.COOLDOWN_SECONDS;
+        assertTrue(r.update(2, false, true, false, t));
+        assertFalse(r.update(2, false, true, false, t + NetherRestock.MAX_SECONDS));
+        assertEquals(0, r.exhaustedEnds());
+    }
+
+    // starts a restock at t and feeds it "nothing left to dig" until it gives up, returns when it did
+    private static double dryRestock(NetherRestock r, double t) {
+        assertTrue(r.update(2, false, true, true, t));
+        // the first exhausted tick starts the grace, the end comes EXHAUSTED_SECONDS after it
+        assertTrue(r.update(2, false, true, true, t + 1));
+        assertFalse(r.update(2, false, true, true, t + 1 + NetherRestock.EXHAUSTED_SECONDS));
+        return t + 1 + NetherRestock.EXHAUSTED_SECONDS;
+    }
+
+    @Test
+    public void aFullBagEndIsNotADryEnd() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(2, false, true, true, 0));
+        assertTrue(r.update(2, false, true, true, 1));
+        assertFalse(r.update(NetherRestock.TARGET, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertEquals(0, r.exhaustedEnds());
     }
 }

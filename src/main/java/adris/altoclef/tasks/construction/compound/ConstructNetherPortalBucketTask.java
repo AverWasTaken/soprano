@@ -6,7 +6,9 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.ClearLiquidTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.construction.CastLava;
 import adris.altoclef.tasks.construction.PlaceObsidianBucketTask;
+import adris.altoclef.tasks.resources.CollectBucketLiquidTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
@@ -94,7 +96,14 @@ public class ConstructNetherPortalBucketTask extends Task {
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private final TimeoutWanderTask wanderTask = new TimeoutWanderTask(5);
     // Stored here to cache lava blacklist
-    private final Task _collectLavaTask = TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+    // the cast's own cells are off the menu, the pour we just made is not a lake
+    private final Task _collectLavaTask = new CollectBucketLiquidTask.CollectLavaBucketTask(1)
+            .leaveAlone(cell -> this._cast != null && this._cast.scoopOff(cell));
+    // when each lava fetch started since the frame last grew, and whether that added up to a loop (see CastLava.collectLoop)
+    private final List<Integer> _fetchStarts = new ArrayList<>();
+    private boolean _fetching;
+    private int _fetchObsidian;
+    private boolean _looped;
     private final TimerGame _refreshTimer = new TimerGame(11);
     private BlockPos _portalOrigin = null;
     // the cast for the frame cell we're on, handed back every tick so it's the one that's actually running
@@ -112,6 +121,11 @@ public class ConstructNetherPortalBucketTask extends Task {
     // tell a slow cast from a stuck one
     public BlockPos portalOrigin() {
         return _portalOrigin;
+    }
+
+    // the pour and the fetch kept undoing each other, PortalPhase takes the obsidian way. stays set for this try
+    public boolean castLooped() {
+        return _looped;
     }
 
     public int castCellsDone(AltoClef mod) {
@@ -332,8 +346,10 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA && !_cast.ownsTheLava(mod)) {
                 setDebugState("Collecting lava");
                 _progressChecker.reset();
+                noteFetch(mod);
                 return _collectLavaTask;
             }
+            _fetching = false;
             return _cast;
         }
 
@@ -355,8 +371,25 @@ public class ConstructNetherPortalBucketTask extends Task {
         return new InteractWithBlockTask(new ItemTarget(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}, 1), Direction.UP, _portalOrigin.below(), true);
     }
 
+    // counts fetch starts (not ticks), and a frame cell turning obsidian wipes the count: that's the cast getting somewhere
+    private void noteFetch(AltoClef mod) {
+        int done = castCellsDone(mod);
+        if (done != _fetchObsidian) {
+            _fetchObsidian = done;
+            _fetchStarts.clear();
+        }
+        if (!_fetching) {
+            _fetching = true;
+            _fetchStarts.add(WorldHelper.getTicks());
+            if (CastLava.collectLoop(_fetchStarts, WorldHelper.getTicks())) {
+                _looped = true;
+            }
+        }
+    }
+
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        _fetching = false;
         mod.getBlockTracker().stopTracking(Blocks.LAVA);
         mod.getBehaviour().pop();
     }

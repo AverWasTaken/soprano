@@ -19,6 +19,7 @@ import adris.altoclef.util.helpers.InputHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.util.helpers.PhantomScoops;
 import baritone.api.utils.Dimension;
 import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
@@ -202,6 +203,7 @@ public class AltoClef {
             _containerSubTracker.onServerTick();
             _miscBlockTracker.tick();
             tickBans();
+            PhantomScoops.tick(this);
 
             _trackerManager.tick();
             _blockTracker.preTickTask();

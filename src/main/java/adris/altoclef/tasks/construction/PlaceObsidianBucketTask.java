@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.resources.CollectBucketLiquidTask;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
@@ -11,6 +12,7 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.PhantomScoops;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.utils.Rotation;
@@ -94,8 +96,11 @@ public class PlaceObsidianBucketTask extends Task {
     // pours that really spent a bucket and left the cell dry, and clicks that spent nothing. a lava cell wipes the duds, the failed pours are a cap per cell
     private int _failedPours;
     private int _dudClicks;
+    // PhantomScoops' count when we last looked. a phantom bucket poured nothing, so the misses since are not the cell's
+    private int _phantomSeen = PhantomScoops.epoch();
     // the ban on this cell is out, the parent moves the frame
     private boolean _dropped;
+    private Task _fetch;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
         this(pos, List.of());
@@ -171,6 +176,19 @@ public class PlaceObsidianBucketTask extends Task {
             _stillTicks = 0;
         }
         return next;
+    }
+
+    // the collect is told to leave these alone, or it scoops back the pour we just made
+    public boolean scoopOff(BlockPos cell) {
+        return CastLava.scoopOff(cell, _pos, _footprint, _earlierCells);
+    }
+
+    // the cast's own lava fetch, same rule as the parent's: not the cells we are casting in
+    private Task ownFetch() {
+        if (_fetch == null) {
+            _fetch = new CollectBucketLiquidTask.CollectLavaBucketTask(1).leaveAlone(this::scoopOff);
+        }
+        return _fetch;
     }
 
     // our lava just went out, or some of it is loose around the cast. either way it's ours to sort out, and a parent
@@ -256,6 +274,11 @@ public class PlaceObsidianBucketTask extends Task {
                 _dudClicks = 0;
             }
         }
+        if (_phantomSeen != PhantomScoops.epoch()) {
+            _phantomSeen = PhantomScoops.epoch();
+            _failedPours = 0;
+            _dudClicks = 0;
+        }
         if (CastLava.spoiled(_failedPours, _dudClicks)) {
             return dropOrigin(mod, "the lava never lands in the cell");
         }
@@ -280,7 +303,7 @@ public class PlaceObsidianBucketTask extends Task {
             // The only excuse is that we have lava at our position. the world, the tracker's cache can be stale
             if (mod.getWorld().getBlockState(_pos).getBlock() != Blocks.LAVA) {
                 _progressChecker.reset();
-                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+                return ownFetch();
             }
         }
 
@@ -367,7 +390,7 @@ public class PlaceObsidianBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
                 letGoOfTheClick(mod);
                 _progressChecker.reset();
-                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
+                return ownFetch();
             }
             _lavaBefore = mod.getItemStorage().getItemCount(Items.LAVA_BUCKET);
             _heldFor = null;
@@ -760,7 +783,9 @@ public class PlaceObsidianBucketTask extends Task {
         // Check if the other task is an instance of PlaceObsidianBucketTask
         if (other instanceof PlaceObsidianBucketTask task) {
             // Check if the positions are equal
-            boolean isEqual = task.getPos().equals(getPos());
+            // same spot with a different footprint is a rebuilt cast (the frame moved), and the parent asks the new
+            // one about its lava, so the old one can't be the one that keeps ticking
+            boolean isEqual = CastLava.sameCast(task.getPos(), task._footprint, getPos(), _footprint);
             // Return the result
             return isEqual;
         }

@@ -42,8 +42,9 @@ final class LavaKnockGuard {
 
     void tick(AltoClef mod, CombatBrain brain) {
         LocalPlayer player = mod.getPlayer();
-        // burning or swimming in lava is the escape task's, its keys and ours would fight over the wheel
-        if (player == null || WorldHelper.getCurrentDimension() != Dimension.NETHER || player.isInLava() || player.isOnFire()) {
+        // burning or swimming in lava is the escape task's, its keys and ours would fight over the wheel. every dimension: a
+        // skeleton knocking us into a cave lava pool kills just as dead as a magma cube at a nether shore
+        if (player == null || player.isInLava() || player.isOnFire()) {
             release(mod);
             _armed = false;
             _lastHurt = player == null ? 0 : player.hurtTime;

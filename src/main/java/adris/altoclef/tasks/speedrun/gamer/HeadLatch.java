@@ -1,7 +1,9 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 // the planner is recomputed every tick and KitRunner follows whatever is first, so two needs that trade places (a worn
@@ -14,9 +16,32 @@ public final class HeadLatch {
     // "the running need is in the plan", for missingSince
     public static final long NEVER = -1;
     // the needs that are a plain "hold this many" of a bag count, the ones keepWhileGone may hold on to
-    private static final Set<String> BAG_COUNTED = Set.of("log", "planks", KitPlanner.COBBLE);
+    private static final Set<String> BAG_COUNTED = Set.of("log", "planks", KitPlanner.COBBLE, KitNeed.FOOD);
 
     private HeadLatch() {
+    }
+
+    // about 30 s. a need that was the head and gave it up less than this ago, and now wants it back, is half of a flip (food and
+    // water at the portal each emptied the bag the other one needed). the running one holds for this long instead of the dwell,
+    // so the first half of the flip gets finished and not undone after 5 s
+    public static final long FLIP_TICKS = 600;
+
+    // when each need name last stopped being the head (game ticks). the runner feeds it, pick reads it
+    public static final class Flips {
+        private final Map<String, Long> left = new HashMap<>();
+
+        public void left(String name, long now) {
+            left.put(name, now);
+        }
+
+        public boolean recent(String name, long now) {
+            Long at = left.get(name);
+            return at != null && now >= at && now - at < FLIP_TICKS;
+        }
+
+        public void clear() {
+            left.clear();
+        }
     }
 
     // how long armor in the bag lets a craft finish before it cuts in. a craft is a few seconds at the table,
@@ -38,6 +63,12 @@ public final class HeadLatch {
     //   - the planner's head is not a pickaxe while we hold none at all: nothing to mine with is not something to wait out
     // side jobs and chains (golem, mob defense, food chain) sit above the runner and never come through here
     public static KitNeed pick(KitNeed running, long since, long missingSince, long now, List<KitNeed> needs, GamerFacts f) {
+        return pick(running, since, missingSince, now, needs, f, null);
+    }
+
+    // same, and `flips` (may be null) says which needs just stopped being the head: asking for one of those back holds the running
+    // need for FLIP_TICKS instead of the dwell. armor on is left out, it has its own wait and putting it on is a second
+    public static KitNeed pick(KitNeed running, long since, long missingSince, long now, List<KitNeed> needs, GamerFacts f, Flips flips) {
         KitNeed head = needs.get(0);
         if (running == null || running.equals(head)) {
             return head;
@@ -59,7 +90,10 @@ public final class HeadLatch {
         if (waitsForArmor(running, since, now, head, f)) {
             return running;
         }
-        if (now < since || now - since >= DWELL_TICKS) {
+        // a resize of the same job (a food count moving with the bag) is not a change of plan, it hands over without the flip rule
+        boolean flipBack = flips != null && !running.catalogueName().equals(head.catalogueName())
+                && !KitNeed.EQUIP_ARMOR.equals(head.catalogueName()) && flips.recent(head.catalogueName(), now);
+        if (now < since || now - since >= (flipBack ? FLIP_TICKS : DWELL_TICKS)) {
             return head;
         }
         return running;
@@ -121,8 +155,8 @@ public final class HeadLatch {
     }
 
     // a running need the plan just dropped. held: we really are done, let go now. not held: keep at it until it has been gone a
-    // whole dwell, a real change of plan stays gone and a flicker comes back first. only the plain gathers get this: their count is
-    // the bag and nothing else, so "not held" means not done. the rest drop out for reasons the bag can't see (iron cooking, a worn
+    // whole dwell, a real change of plan stays gone and a flicker comes back first. only the plain gathers and food get this: their count is
+    // the bag (food: bag plus what is cooking) and nothing else, so "not held" means not done. the rest drop out for reasons the bag can't see (iron cooking, a worn
     // pick replaced, a craft moved behind the smelt) and holding those sent the bot mining for iron already in the furnace
     static boolean keepWhileGone(KitNeed running, long missingSince, long now, GamerFacts f) {
         if (!BAG_COUNTED.contains(running.catalogueName()) || satisfied(running, f)) {
@@ -138,6 +172,10 @@ public final class HeadLatch {
 
     // the bag holds what the need asked for: a need is "hold this many in total", the same count the planner checks
     static boolean satisfied(KitNeed need, GamerFacts f) {
+        // food is not an item id: the bag's units plus what is cooking for us, the basis the planner drops the need on
+        if (KitNeed.FOOD.equals(need.catalogueName())) {
+            return f.foodUnits() + f.pendingFoodUnits() >= need.count();
+        }
         return KitPlanner.have(f, need.catalogueName()) >= need.count();
     }
 

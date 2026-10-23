@@ -43,6 +43,14 @@ public final class PortalPlanner {
     // (that mined a half done frame to build a new one), only once it has stalled too
     public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
                                 boolean sawLava, boolean hasDiamondPickaxe) {
+        return decide(current, castSeconds, sinceProgressSeconds, cfg, sawLava, hasDiamondPickaxe, false);
+    }
+
+    // looped = the cast's pour and lava fetch kept undoing each other (CastLava.collectLoop). that is a cast going nowhere
+    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go (and the frame to have
+    // stood still for a minute, a half built one is not worth mining for the obsidian)
+    public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
+                                boolean sawLava, boolean hasDiamondPickaxe, boolean looped) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
@@ -50,6 +58,10 @@ public final class PortalPlanner {
         // wandering for a lake and the phase budget is what ends it
         if (!hasDiamondPickaxe) {
             return Method.CAST;
+        }
+        // a minute dry as well: a cast that still lands cells is slow, not looping
+        if (looped && sinceProgressSeconds >= 60) {
+            return Method.OBSIDIAN;
         }
         if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {
             return Method.OBSIDIAN;
@@ -96,7 +108,7 @@ public final class PortalPlanner {
         return gate(f, cfg, endBeds, food, BuildBlocks.NONE);
     }
 
-    // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under portalBuildBlocksLow and runs to portalBuildBlocks
+    // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under netherEntryBlocksLow and runs to netherEntryBlocks
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, BuildBlocks build) {
         return gate(f, cfg, endBeds, food, build, true);
     }
@@ -109,7 +121,9 @@ public final class PortalPlanner {
         // the same refill gap: 69 at the portal is not a trip
         if (food.wantsRefill()) {
             out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
-        } else if (fillUp && food.shortOf(food.tripEnd())) {
+        } else if (fillUp && !food.covered() && food.shortOf(food.tripEnd())) {
+            // covered: the gap is raw meat that counts once the smoker is in reach. without it the count read 124 away from the
+            // smoker and 132 next to it, so food and water took turns as the head every few seconds and neither finished
             // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
             // is the minimum on a full bag, so this cannot ask for a pile there is no room for
             out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
@@ -139,7 +153,7 @@ public final class PortalPlanner {
         if (picks > 0) {
             out.add(new KitNeed("stone_pickaxe", KitPlanner.held(f, "stone_pickaxe") + picks));
         }
-        int blocks = build.want(f.buildBlocks(), cfg.portalBuildBlocksLow, cfg.portalBuildBlocks);
+        int blocks = build.want(f.buildBlocks(), cfg.netherEntryBlocksLow, cfg.netherEntryBlocks);
         if (blocks > 0) {
             out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
         }

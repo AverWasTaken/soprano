@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.DropExpect;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.NoReturn;
 import adris.altoclef.util.helpers.PursuitProgress;
 import adris.altoclef.util.helpers.ScanWait;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -26,6 +27,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private final ScanWait _scanWait = new ScanWait();
     // is the current pursuit getting anywhere, see PursuitProgress
     private final PursuitProgress _progress = new PursuitProgress();
+    private final NoReturn _noReturn = new NoReturn();
     // the block the controller was last seen breaking, so a break on the way to the pursuit counts as progress
     private BlockPos _lastBreaking;
     private Task _goalTask = null;
@@ -107,6 +109,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         _progress.clear();
         _lastBreaking = null;
         _currentlyPursuing = null;
+        _noReturn.clear();
         _heuristicMap.clear();
         _goalTask = null;
         _expect.clear();
@@ -201,7 +204,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                         // 7 s and not a step closer: the 2x rule below would keep us on it forever, whatever the pick
                         // says is nearest now gets a go instead
                         setDebugState("Current pursuit got nowhere, trying the nearest");
-                        _currentlyPursuing = newClosest;
+                        switchTo(newClosest);
                     } else if (!subclassDecided(mod, newClosest)) {
                         oldRules(mod, newClosest, h, closestDistanceSqr);
                     }
@@ -237,6 +240,12 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
     // the remembered heuristic retry, then the twice-as-close rule. what everybody gets unless switchCall says otherwise
     private void oldRules(AltoClef mod, T newClosest, CachedHeuristic h, double closestDistanceSqr) {
+        // the one we just left stays left unless the subclass insists (a half broken block, a drop)
+        boolean noReturn = _noReturn.blocks(newClosest, WorldHelper.getTicks());
+        if (noReturn && !mustSwitchTo(mod, _currentlyPursuing, newClosest)) {
+            setDebugState("Staying with the current pursuit");
+            return;
+        }
         if (_heuristicMap.containsKey(newClosest)) {
             // Our new object has a past potential heuristic calculated, if it's better try it out.
             CachedHeuristic maybeReAttempt = _heuristicMap.get(newClosest);
@@ -245,7 +254,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
             if (maybeReAttempt.getHeuristicValue() < h.getHeuristicValue() || maybeClosestDistance < maybeReAttempt.getClosestDistanceSqr() / 4) {
                 setDebugState("Retrying old heuristic!");
                 // The currently closest previously calculated heuristic is better, move towards it!
-                _currentlyPursuing = newClosest;
+                switchTo(newClosest);
                 // In theory, this next line shouldn't need to be run,
                 // but it's CRITICAL to making this work for some reason
                 maybeReAttempt.updateDistance(maybeClosestDistance);
@@ -256,7 +265,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
             // Our new object does not have a heuristic, TRY IT OUT! but only when it is clearly better: the
             // two nearest things trading places as we step (a block and the drop next to it) switched the
             // task every few ticks, and every switch lets go of the mouse button and resets the crack
-            _currentlyPursuing = newClosest;
+            switchTo(newClosest);
         } else {
             setDebugState("Staying with the current pursuit");
         }
@@ -270,11 +279,19 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         }
         if (call == SwitchCall.SWITCH) {
             setDebugState("Trying out NEW pursuit");
-            _currentlyPursuing = newClosest;
+            switchTo(newClosest);
         } else {
             setDebugState("Staying with the current pursuit");
         }
         return true;
+    }
+
+    // every swap of one live target for another goes through here so the old one gets remembered (NoReturn)
+    private void switchTo(T next) {
+        if (_currentlyPursuing != null && !_currentlyPursuing.equals(next)) {
+            _noReturn.left(_currentlyPursuing, WorldHelper.getTicks());
+        }
+        _currentlyPursuing = next;
     }
 
     // a scan is well under a second. the cap (ScanWait) is for the day one gets stuck behind a slow one

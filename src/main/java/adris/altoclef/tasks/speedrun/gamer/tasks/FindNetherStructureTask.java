@@ -106,6 +106,19 @@ public class FindNetherStructureTask extends Task {
         return false;
     }
 
+    // the count the restock goes by, for the phase that decides on a trip home when the dig keeps coming up empty
+    public static int heldThrowaways(AltoClef mod) {
+        return mod.getItemStorage().getItemCount(placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value));
+    }
+
+    public int exhaustedEnds() {
+        return restock.exhaustedEnds();
+    }
+
+    public void clearExhaustedEnds() {
+        restock.clearExhaustedEnds();
+    }
+
     private boolean restocking(AltoClef mod) {
         Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);

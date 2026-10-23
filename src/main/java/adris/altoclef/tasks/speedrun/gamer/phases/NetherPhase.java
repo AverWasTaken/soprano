@@ -112,7 +112,16 @@ public class NetherPhase implements PhaseHandler {
     private final FoodFloor foodFloor = new FoodFloor();
     private DefaultGoToDimensionTask goHome;
     private boolean foodTrip;
+    // why the live trip started, and the trips used per reason: a blocks trip that came back empty handed leaves the food budget
+    // alone and the other way round
+    private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
+    private int blockTrips;
+    // the overworld half's clock, set by what was short when we got up there
+    private double tripSeconds = FoodTripRules.MAX_SECONDS;
+    // the overworld half also brings blocks: a blocks trip always, a food trip when the bag was empty of them on the way out (or it
+    // would come back and go straight home again)
+    private boolean tripBlocks;
     private double foodTripStart;
     private boolean foodTripUp;
     private int foodDeathsSeen;
@@ -237,7 +246,10 @@ public class NetherPhase implements PhaseHandler {
         foodFloor.reset();
         goHome = null;
         foodTrip = false;
+        tripReason = FoodTripRules.Reason.FOOD;
+        tripBlocks = false;
         foodTrips = 0;
+        blockTrips = 0;
         foodTripUp = false;
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
@@ -293,6 +305,7 @@ public class NetherPhase implements PhaseHandler {
         if (planner == null) {
             onEnter(mod, ctx);
         }
+        noteRespawn(ctx);
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
@@ -301,16 +314,18 @@ public class NetherPhase implements PhaseHandler {
                 if (!foodTripUp) {
                     foodTripUp = true;
                     foodTripStart = ctx.secondsInPhase();
+                    tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
                 }
-                Task hunt = foodFloor.tickTrip(ctx);
-                if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart)) {
+                // over when nothing is short any more: food at the overworld minimum and, on a blocks trip, the entry stack held
+                Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
+                if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
                 foodTrip = false;
                 foodTripUp = false;
                 foodFloor.reset();
-                ctx.progress("food trip done");
+                ctx.progress(tripBlocks ? "blocks trip done" : "food trip done");
             }
             return toTheNether(mod, ctx);
         }
@@ -351,37 +366,75 @@ public class NetherPhase implements PhaseHandler {
     // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
-        // a respawn is a new body: whatever trip we were on went with the old one
-        int deaths = ctx.state().deaths.size();
-        if (deaths != foodDeathsSeen) {
-            foodDeathsSeen = deaths;
-            foodTrip = false;
-            foodTripUp = false;
-        }
         if (!foodTrip) {
             // the nether side of the pair is the way home (ReturnPhase.recordPortal keeps state.netherPortal), the overworld one is
             // where we come out
             boolean portalKnown = ctx.state().netherPortal != null
                     || mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER).isPresent();
-            if (!FoodTripRules.goHome(ctx.facts().foodUnits(), portalKnown, ctx.state().netherTrip != null, foodTrips)) {
+            boolean deathTrip = ctx.state().netherTrip != null;
+            FoodTripRules.Reason why = null;
+            if (FoodTripRules.goHome(ctx.facts().foodUnits(), portalKnown, deathTrip, foodTrips)) {
+                why = FoodTripRules.Reason.FOOD;
+            } else if (FoodTripRules.goHomeForBlocks(FindNetherStructureTask.heldThrowaways(mod),
+                    Math.max(findFortress.exhaustedEnds(), findWarped.exhaustedEnds()), portalKnown, deathTrip, blockTrips)) {
+                why = FoodTripRules.Reason.BLOCKS;
+            }
+            if (why == null) {
                 return null;
             }
             foodTrip = true;
+            tripReason = why;
+            tripBlocks = why == FoodTripRules.Reason.BLOCKS || FindNetherStructureTask.heldThrowaways(mod) < FoodTripRules.BLOCKS_LOW;
+            if (tripBlocks) {
+                // a new bag: the dry digs counted so far say nothing about what the next dig finds. a food trip that brings no
+                // blocks keeps the count, the band is just as empty when we come back
+                findFortress.clearExhaustedEnds();
+                findWarped.clearExhaustedEnds();
+            }
             foodTripUp = false;
-            foodTrips++;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
-            ctx.log("nether: out of food, going home for more");
-            ctx.progress("food trip");
+            if (why == FoodTripRules.Reason.FOOD) {
+                foodTrips++;
+                ctx.log("nether: out of food, going home for more");
+                ctx.progress("food trip");
+            } else {
+                blockTrips++;
+                ctx.log("nether: out of building blocks, going home for more");
+                ctx.progress("blocks trip");
+            }
         }
-        if (FoodTripRules.tripOver(true, now - foodTripStart)) {
-            // the walk home ate its whole clock: this portal is not getting us there, no second try
+        if (FoodTripRules.tripOver(true, now - foodTripStart, FoodTripRules.MAX_SECONDS)) {
+            // the walk home ate its whole clock: this portal is not getting us there (the walk crosses the same lava with the
+            // same empty bag, so a blocks trip can end up here), no second try for this kind of trip
             foodTrip = false;
-            foodTrips = FoodTripRules.MAX_TRIPS;
+            if (blocksTrip()) {
+                blockTrips = FoodTripRules.MAX_TRIPS;
+            } else {
+                foodTrips = FoodTripRules.MAX_TRIPS;
+            }
             return null;
         }
-        hudState = "Going home for food";
+        hudState = tripBlocks ? "Going home for blocks" : "Going home for food";
         return goHome;
+    }
+
+    private boolean blocksTrip() {
+        return tripReason == FoodTripRules.Reason.BLOCKS;
+    }
+
+    // a respawn is a new body: whatever trip we were on went with the old one, wherever the death happened (the overworld half
+    // included, it used to latch and walk the new body into a hunt it had no business in)
+    private void noteRespawn(GamerContext ctx) {
+        int deaths = ctx.state().deaths.size();
+        if (deaths != foodDeathsSeen) {
+            foodDeathsSeen = deaths;
+            foodTrip = false;
+            foodTripUp = false;
+            foodFloor.reset();
+            findFortress.clearExhaustedEnds();
+            findWarped.clearExhaustedEnds();
+        }
     }
 
     // a piglin close enough to be angered by a gold block breaking (NetherGold.angerBox): the whole box around the player, no sight
