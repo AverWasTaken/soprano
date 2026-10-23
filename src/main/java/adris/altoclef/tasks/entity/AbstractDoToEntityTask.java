@@ -270,9 +270,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return new TimeoutWanderTask();
     }
 
-    // nether only: the approach walk near lava, see LavaShore
+    // the approach walk near lava, see LavaShore. every dimension: a cave lava pool behind a spider is the overworld's version
     private static boolean lavaInTheWay(AltoClef mod, Entity entity) {
-        if (WorldHelper.getCurrentDimension() != Dimension.NETHER) return false;
         // only the ones that walk up and hit. a blaze hovers over the lava on purpose, and waiting for it to come is no rods
         if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
