@@ -137,6 +137,10 @@ public class LocateStrongholdTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // an eye thrown right before an interrupt is gone by the time we are back, that is not a dud throw
+        if (isInterrupting() && stage == Stage.OBSERVE && observer != null) {
+            observer.markInterrupted();
+        }
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL_FRAME);
     }
 
@@ -166,8 +170,10 @@ public class LocateStrongholdTask extends Task {
         stillTicks = 0;
     }
 
+    // the task's own clock, not game time: it only ticks while we are the running task, so a night trip or a fight
+    // in the middle of a leg (or of THROW) does not eat the leg budget. restarts keep it, see timeOnTaskSeconds
     private double seconds(AltoClef mod) {
-        return mod.getWorld().getGameTime() / 20.0;
+        return timeOnTaskSeconds();
     }
 
     private long ticks(AltoClef mod) {
@@ -397,6 +403,11 @@ public class LocateStrongholdTask extends Task {
                 : observer.observe(ticks(mod), false, 0, 0, 0);
         switch (r.outcome()) {
             case PENDING -> {
+            }
+            case INTERRUPTED -> {
+                // no dud on the ledger, the throw just never got watched. the baseline stays so a stray eye still gets collected
+                observer = null;
+                enter(mod, Stage.THROW);
             }
             case EMPTY -> {
                 ledger.empty();

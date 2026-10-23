@@ -12,6 +12,8 @@ public final class EyeThrowObserver {
         RAY,
         // never saw an eye entity in time: the throw did not happen, the eye is still in the bag
         EMPTY,
+        // we were interrupted before the first sighting: the eye lives 80 ticks, so it is long gone and says nothing
+        INTERRUPTED,
         // an eye showed up but never got far enough from the throw spot to say anything about direction
         UNUSABLE
     }
@@ -42,6 +44,7 @@ public final class EyeThrowObserver {
 
     private long firstSeen = -1;
     private int goneRun;
+    private boolean interrupted;
     private double firstY;
     private double maxY;
     private double minY;
@@ -62,6 +65,13 @@ public final class EyeThrowObserver {
 
     public boolean isDone() {
         return result.outcome() != Outcome.PENDING;
+    }
+
+    // the task got stopped for something else while we were still waiting for the first sighting
+    public void markInterrupted() {
+        if (firstSeen < 0) {
+            interrupted = true;
+        }
     }
 
     public boolean sawEye() {
@@ -88,6 +98,10 @@ public final class EyeThrowObserver {
         }
         if (firstSeen < 0) {
             if (now - throwTime >= EMPTY_TICKS) {
+                if (interrupted) {
+                    result = new Result(Outcome.INTERRUPTED, null, false, "interrupted before the eye showed up");
+                    return result;
+                }
                 result = new Result(Outcome.EMPTY, null, false, "no eye showed up within 3 s");
             }
             return result;
