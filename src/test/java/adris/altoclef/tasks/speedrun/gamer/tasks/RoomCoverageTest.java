@@ -138,4 +138,32 @@ public class RoomCoverageTest {
         // fewer than the cap just comes back sorted
         assertEquals(3, StrongholdScan.nearest(List.of(new BlockPos(9, 0, 0), new BlockPos(3, 0, 0)), origin, 200).get(0).getX());
     }
+
+    @Test
+    public void standingStillForTwentySecondsIsAStall() {
+        RoomCoverage.Stall stall = new RoomCoverage.Stall();
+        assertFalse(stall.stalled(0, 0, 0, 100));
+        assertFalse(stall.stalled(1, 0, 1, 119));
+        assertTrue(stall.stalled(1, 0, 1, 120));
+    }
+
+    @Test
+    public void movingMoreThanTwoBlocksReAnchors() {
+        RoomCoverage.Stall stall = new RoomCoverage.Stall();
+        assertFalse(stall.stalled(0, 0, 0, 0));
+        assertFalse(stall.stalled(3, 0, 0, 19));
+        assertFalse(stall.stalled(3, 0, 0, 38));
+        assertTrue(stall.stalled(3, 0, 0, 39));
+        stall.reset();
+        assertFalse(stall.stalled(3, 0, 0, 40));
+    }
+
+    @Test
+    public void aLegOnlyEndsOnCoveredFinishedTimerOrStall() {
+        assertFalse(RoomCoverage.legOver(false, false, false, false));
+        assertTrue(RoomCoverage.legOver(true, false, false, false));
+        assertTrue(RoomCoverage.legOver(false, true, false, false));
+        assertTrue(RoomCoverage.legOver(false, false, true, false));
+        assertTrue(RoomCoverage.legOver(false, false, false, true));
+    }
 }

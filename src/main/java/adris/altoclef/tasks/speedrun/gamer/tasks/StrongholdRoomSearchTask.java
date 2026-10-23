@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.tasks.movement.GetToChunkTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.GetDownColumnTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
@@ -68,10 +67,12 @@ public class StrongholdRoomSearchTask extends Task {
     private LocateLegPlanner.Leg startLeg;
     private Task digTask;
     private Task chunkTask;
-    // chunks we gave up on (timer, or stood in at the wrong level) without ever seeing them. not covered, not saved
+    // chunks we gave up on (timer, the walk ending short, or a stall) without ever seeing them. not covered, not saved
     private final Set<String> skippedChunks = new HashSet<>();
     private StrongholdRoomPlan.Chunk chunkTarget;
     private double chunkSince;
+    private final RoomCoverage.Stall stall = new RoomCoverage.Stall();
+    private static final int CHUNK_GOAL_RANGE = 7;
     private Task hintTask;
     private BlockPos hintPos;
     private Task approachTask;
@@ -147,6 +148,8 @@ public class StrongholdRoomSearchTask extends Task {
         Task spawner = spawnerBreaker.next(mod, cfg.breakSilverfishSpawner, tickCounter);
         if (spawner != null) {
             step = "Breaking the silverfish spawner";
+            // the stall clock is task time, this detour must not count as standing still
+            stall.reset();
             setDebugState("Breaking the silverfish spawner", step);
             return spawner;
         }
@@ -211,6 +214,7 @@ public class StrongholdRoomSearchTask extends Task {
             workY = RoomCoverage.workY(hit.isEmpty() ? OptionalInt.empty() : OptionalInt.of(hit.get(0).getY()),
                     mod.getPlayer().getY());
         }
+        stall.reset();
         enter(mod, Stage.SPIRAL);
     }
 
@@ -242,11 +246,14 @@ public class StrongholdRoomSearchTask extends Task {
         bricksSeen = !seenBricks(mod, 1, mod.getPlayer().getY()).isEmpty();
         if (stage == Stage.SPIRAL && !workFromBricks) {
             // we searched a level that was only a guess (the floor, a timed out dig): the first bricks we see correct it.
-            // only ones near where we are, chunk walks never change y so a level far from us would just never count
+            // only ones near where we are, a level far from us would never count
             List<BlockPos> hit = seenBricks(mod, 1, mod.getPlayer().getY());
             if (!hit.isEmpty()) {
                 workY = hit.get(0).getY();
                 workFromBricks = true;
+                // the walk in progress aims at the old level: drop it, the next pick rebuilds the goal at the new one
+                chunkTarget = null;
+                chunkTask = null;
             }
         }
     }
@@ -381,13 +388,16 @@ public class StrongholdRoomSearchTask extends Task {
         markCovered(mod, here, state);
         if (rearmChunkTimer) {
             rearmChunkTimer = false;
-            chunkSince = seconds(mod);
+            chunkSince = timeOnTaskSeconds();
         }
-        boolean arrived = chunkTarget != null && here.x() == chunkTarget.cx() && here.z() == chunkTarget.cz();
         boolean covered = chunkTarget != null && state.roomChunksVisited.contains(chunkTarget.key());
-        if (chunkTarget != null && (covered || arrived || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
-            // only markCovered says a chunk is searched. standing in it at the wrong level, or the timer running out,
-            // just means we will not pick it again, the room was never seen from there
+        boolean walkFinished = chunkTarget != null && chunkTask != null && chunkTask.isFinished(mod);
+        boolean timerOut = chunkTarget != null && timeOnTaskSeconds() - chunkSince >= cfg.perChunkSeconds;
+        boolean stalled = chunkTarget != null && stall.stalled(mod.getPlayer().getX(), mod.getPlayer().getY(),
+                mod.getPlayer().getZ(), timeOnTaskSeconds());
+        if (chunkTarget != null && RoomCoverage.legOver(covered, walkFinished, timerOut, stalled)) {
+            // only markCovered says a chunk is searched. the walk ending short, the timer or a stall
+            // just mean we will not pick it again, the room was never seen from there
             if (!RoomCoverage.giveUp(state.roomChunksVisited, skippedChunks, chunkTarget.key())) {
                 ctx.progress("chunk searched");
             }
@@ -444,8 +454,12 @@ public class StrongholdRoomSearchTask extends Task {
             return false;
         }
         chunkTarget = next.get();
-        chunkTask = new GetToChunkTask(new ChunkPos(chunkTarget.cx(), chunkTarget.cz()));
-        chunkSince = seconds(mod);
+        // baritone picks its own height for an xz-only goal (the surface, a cave), where the room can never be seen. aim at
+        // the stronghold's level instead and let it tunnel there
+        chunkTask = new GetWithinRangeOfBlockTask(new BlockPos(chunkTarget.cx() * 16 + 8, (int) Math.round(workY),
+                chunkTarget.cz() * 16 + 8), CHUNK_GOAL_RANGE);
+        chunkSince = timeOnTaskSeconds();
+        stall.reset();
         return true;
     }
 

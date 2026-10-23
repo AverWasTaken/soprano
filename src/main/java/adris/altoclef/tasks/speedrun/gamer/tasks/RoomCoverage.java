@@ -24,6 +24,40 @@ public final class RoomCoverage {
         return Math.hypot(px - cx, pz - cz) <= HORIZONTAL_BLOCKS && Math.abs(py - workY) <= VERTICAL_BLOCKS;
     }
 
+    // a leg ends when the chunk is covered, the walk finished, the timer ran out or we stopped moving. being inside the
+    // chunk at the wrong height is none of those, the room is only seen from its own level
+    public static boolean legOver(boolean covered, boolean walkFinished, boolean timerOut, boolean stalled) {
+        return covered || walkFinished || timerOut || stalled;
+    }
+
+    // stand-still check: re-anchors whenever we get further than STALL_BLOCKS from the anchor, stalled once STALL_SECONDS
+    // of task time pass without one. the walk task resets its own progress checker while baritone is pathing, so a bot
+    // wedged mid-path would never be noticed by it
+    public static final class Stall {
+        static final double STALL_BLOCKS = 2;
+        static final double STALL_SECONDS = 20;
+
+        private double ax = Double.NaN;
+        private double ay;
+        private double az;
+        private double since;
+
+        public void reset() {
+            ax = Double.NaN;
+        }
+
+        public boolean stalled(double x, double y, double z, double nowSeconds) {
+            if (Double.isNaN(ax) || Math.sqrt((x - ax) * (x - ax) + (y - ay) * (y - ay) + (z - az) * (z - az)) > STALL_BLOCKS) {
+                ax = x;
+                ay = y;
+                az = z;
+                since = nowSeconds;
+                return false;
+            }
+            return nowSeconds - since >= STALL_SECONDS;
+        }
+    }
+
     public enum DigVerdict {KEEP_DIGGING, BRICKS, FLOOR}
 
     // the dig down the start column ends on bricks (we are in the stronghold) or on the floor with none (the estimate is
