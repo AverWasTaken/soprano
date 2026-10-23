@@ -42,6 +42,12 @@ public final class Keys {
         return new PlayerSim.Controls(1, 0, false, sprint, yaw);
     }
 
+    // sprinting the way `move` points with W and A (side 1) or W and D (side -1) held, facing 45 degrees off it to make up
+    public static PlayerSim.Controls strafe(float move, int side, boolean jump) {
+        float face = move + 45F * side;
+        return new PlayerSim.Controls(1, side, jump, true, face, face);
+    }
+
     public static PlayerSim.Controls release(float yaw) {
         return new PlayerSim.Controls(0, 0, false, false, yaw);
     }

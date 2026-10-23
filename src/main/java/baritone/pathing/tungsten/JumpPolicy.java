@@ -220,7 +220,7 @@ public final class JumpPolicy {
             } else if (now.onGround) {
                 if (memo.peakY - now.y > SAFE_FALL) {
                     memo.fail("that fall hurts");
-                } else if (!onTheBlock(now, land)) {
+                } else if (!onTheBlock(now, land) && !standingOn(now, land)) {
                     memo.fail("came down off the landing");
                 } else {
                     memo.phase = Phase.SETTLE;
@@ -228,7 +228,7 @@ public final class JumpPolicy {
             }
         }
         if (memo.phase == Phase.SETTLE) {
-            if (!now.onGround || !onTheBlock(now, land)) {
+            if (!now.onGround || !onTheBlock(now, land) && !standingOn(now, land)) {
                 memo.fail("slid off the landing");
             } else if (now.horizontalSpeed() < STILL && land.holdsWell(now.x, now.y, now.z)) {
                 memo.phase = Phase.DONE;
@@ -236,9 +236,16 @@ public final class JumpPolicy {
         }
     }
 
+    // down on the landing block itself, however little of it is under us (the game says that's the block holding us up):
+    // a touchdown on its last sliver is still a touchdown, settling walks us in off the edge
+    static boolean standingOn(SimState s, Landing land) {
+        return s.onGround && s.hasSupport && s.supportX == land.x() && s.supportY == land.y() - 1 && s.supportZ == land.z()
+                && land.feetOk(s.y);
+    }
+
     // standing at the landing's height with the box over the landing block, see OVERHANG
     static boolean onTheBlock(SimState s, Landing land) {
-        return Landing.feetY(s.y) == land.y() && Math.abs(s.x - land.centerX()) < OVERHANG && Math.abs(s.z - land.centerZ()) < OVERHANG;
+        return land.feetOk(s.y) && Math.abs(s.x - land.centerX()) < OVERHANG && Math.abs(s.z - land.centerZ()) < OVERHANG;
     }
 
     // the run up: S held facing the landing until we're `back` blocks behind where we started, along the line away from it
@@ -338,7 +345,7 @@ public final class JumpPolicy {
         double[] out = new double[6], hit = new double[2];
         double cx = land.centerX(), cz = land.centerZ();
         // a ladder is caught anywhere in its cell, aim to come down through the lower part of it
-        double floorY = land.grab() ? land.y() + 0.3 : land.y();
+        double floorY = land.grab() ? land.y() + 0.3 : land.floor();
         // where doing nothing at all comes down, and so which way the correction is
         float fix = toward;
         if (Keys.coastTo(now.x, now.y, now.z, now.vx, now.vy, now.vz, floorY, gravity, hit)) {
@@ -456,12 +463,12 @@ public final class JumpPolicy {
             if (land.grab() ? land.gripping(s) : s.onGround && onTheBlock(s, land)) {
                 return t;
             }
-            if (s.onGround || s.y < land.y() - 1.5) {
+            if (s.onGround || s.y < land.floor() - 1.5) {
                 break;
             }
             c = Keys.run(lead(s, land), false);
         }
-        return 100 + land.horizontalDistance(p.x, p.z) + Math.max(0, land.y() - p.y);
+        return 100 + land.horizontalDistance(p.x, p.z) + Math.max(0, land.floor() - p.y);
     }
 
     // W at the landing less where the speed we have is taking us anyway: brakes what would overshoot, pushes what falls short
@@ -515,7 +522,9 @@ public final class JumpPolicy {
         return false;
     }
 
-    private static final double[] BODY = {0.5, 1.2}, CORNERS = {-0.29, 0.29};
+    // the corners of the box and the middle of each side too: a fence or a wall post (a quarter to half a block wide) in the
+    // middle of the line goes right between the corners
+    private static final double[] BODY = {0.5, 1.2}, CORNERS = {-0.29, 0, 0.29};
 
     // round a wall: run off to one side of the line, jump at the edge (or the wall), and steer back in once past it
     static final Variant[] NEO_VARIANTS = {
@@ -585,7 +594,7 @@ public final class JumpPolicy {
         List<PlayerSim.Controls> keys = new ArrayList<>();
         List<SimState> states = new ArrayList<>();
         states.add(SimState.of(sim));
-        double floor = Math.min(sim.y, land.y()) - 1.0;
+        double floor = Math.min(sim.y, land.floor()) - 1.0;
         int cap = ICE_BACK_TICKS + ICE_HOP_RUN + MAX_AIR + MAX_SETTLE + 4;
         for (int i = 0; i < cap; i++) {
             PlayerSim.Controls c = decide(sim, probe, land, variant, memo);
@@ -729,8 +738,8 @@ public final class JumpPolicy {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
-            if (!r.ok()) {
-                if (v == Variant.EDGE && shortOfTheMiddle(r, land)) {
+            if (!r.ok() || bumpsAWall(r)) {
+                if (!r.ok() && v == Variant.EDGE && shortOfTheMiddle(r, land)) {
                     standingShort = true; // see best
                 }
                 continue;
@@ -775,8 +784,8 @@ public final class JumpPolicy {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
-            if (!r.ok()) {
-                if (v == Variant.EDGE && shortOfTheMiddle(r, land)) {
+            if (!r.ok() || bumpsAWall(r)) {
+                if (!r.ok() && v == Variant.EDGE && shortOfTheMiddle(r, land)) {
                     standingShort = true;
                 }
                 continue;
@@ -799,6 +808,27 @@ public final class JumpPolicy {
 
     private static final float[] NEO_AIM_ERRORS = {2.0F, -2.0F, 3.5F, -3.5F};
 
+    // the run up runs into the side of something before the jump. whether the game keeps the sprint after a bump depends on
+    // where the camera looks (LocalPlayer's minor collision check goes by the real yaw, and with freeLook that's wherever
+    // the player left it, not the way we're going), and a jump without the sprint has none of its push. a jump that needs
+    // a bump first isn't planned: the searches go round with room to spare instead. (a bump in the air after the last jump,
+    // a bounce up the side of a ledge, only costs a little air steering either way)
+    static boolean bumpsAWall(Rollout r) {
+        List<SimState> s = r.states();
+        List<PlayerSim.Controls> k = r.keys();
+        for (int i = 1; i < s.size(); i++) {
+            if (!s.get(i).horizontalCollision) {
+                continue;
+            }
+            for (int j = i; j < k.size(); j++) {
+                if (k.get(j).jump()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // a rollout that failed in the air on the near side of the landing, without hitting its head on the way (a bonk is
     // short for a reason a different jump tick might not have)
     private static boolean shortOfTheMiddle(Rollout r, Landing land) {
@@ -814,6 +844,6 @@ public final class JumpPolicy {
         double tx = land.centerX() - start.x, tz = land.centerZ() - start.z;
         double ex = end.x - start.x, ez = end.z - start.z;
         double len = Math.sqrt(tx * tx + tz * tz);
-        return len > 1.0E-6 && (ex * tx + ez * tz) / len < len - 0.5 && end.y < land.y();
+        return len > 1.0E-6 && (ex * tx + ez * tz) / len < len - 0.5 && end.y < land.floor();
     }
 }

@@ -75,6 +75,8 @@ public class MovementTungsten extends Movement implements CurvedMovement {
     // the lowest the planned flight goes (feet cell). below that, a block more, and it's a fall
     private final int lowestPlanned;
     private static final int REFUSED_IN_AIR = 3;
+    // a tick of the pilot taking this long is worth a line in the debug log: the game only has 50 ms for the whole tick
+    private static final long SLOW_TICK_MS = 15;
 
     private JumpPilot pilot;
     private CompletableFuture<TungstenSearch.Plan> searching;
@@ -188,8 +190,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         LocalPlayer player = ctx.player();
         BetterBlockPos feet = ctx.playerFeet();
         // a ladder neo or any other jump onto a ladder ends hanging on it, everything else standing on dest
-        Landing land = MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock())
-                ? Landing.grab(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+        Landing land = landing();
         if (feet.y < lowestPlanned - 1) {
             logDebug("tungsten jump: fell");
             return state.setStatus(MovementStatus.UNREACHABLE);
@@ -215,7 +216,12 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             return state; // let go of everything for a tick, a sneak or an item use left over from the last movement ends
         }
         int driftsBefore = pilot.drifts;
+        long t0 = System.nanoTime();
         JumpPilot.Decision d = pilot.tick(sim);
+        long took = (System.nanoTime() - t0) / 1_000_000;
+        if (took >= SLOW_TICK_MS && Baritone.settings().chatDebug.value) {
+            logDebug("tungsten jump: a slow tick, " + took + " ms:" + pilot.lastWork);
+        }
         if (pilot.drifts != driftsBefore && Baritone.settings().chatDebug.value) {
             logDebug("tungsten jump: off the plan, " + pilot.lastDrift);
         }
@@ -244,8 +250,16 @@ public class MovementTungsten extends Movement implements CurvedMovement {
     }
 
     private Landing landing() {
-        return MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock())
-                ? Landing.grab(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+        if (MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock())) {
+            return Landing.grab(dest.x, dest.y, dest.z);
+        }
+        // a bottom slab under dest: the feet come down half a block lower than the cell
+        net.minecraft.world.level.block.state.BlockState floor = BlockStateInterface.get(ctx, dest.below());
+        if (MovementHelper.isBottomSlab(floor)) {
+            return Landing.slab(dest.x, dest.y, dest.z);
+        }
+        // a stair: the feet can come down on its low step, half a block into its own cell
+        return TungstenJumps.stepped(floor) ? Landing.step(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
     }
 
     // down on dest and still moving: can the next movement go from right here, without the stop

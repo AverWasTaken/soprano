@@ -90,6 +90,7 @@ public class Baritone implements IBaritone {
     private final InventoryBehavior inventoryBehavior;
     private final InputOverrideHandler inputOverrideHandler;
     private final TripBehavior tripBehavior;
+    private final RecordingBehavior recordingBehavior;
 
     private final FollowProcess followProcess;
     private final MineProcess mineProcess;
@@ -136,6 +137,7 @@ public class Baritone implements IBaritone {
             this.registerBehavior(WaypointBehavior::new);
             this.registerBehavior(ActivityBehavior::new);
             this.tripBehavior         = this.registerBehavior(TripBehavior::new);
+            this.recordingBehavior    = this.registerBehavior(RecordingBehavior::new);
         }
 
         this.pathingControlManager = new PathingControlManager(this);
@@ -285,6 +287,10 @@ public class Baritone implements IBaritone {
                 mc.execute(() -> mc.gui.setScreen(new GuiClick()));
             } catch (Exception ignored) {}
         }).start();
+    }
+
+    public RecordingBehavior getRecordingBehavior() {
+        return this.recordingBehavior;
     }
 
     public Path getDirectory() {

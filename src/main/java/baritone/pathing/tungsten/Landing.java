@@ -21,15 +21,53 @@ import net.minecraft.util.Mth;
 
 // the cell a jump has to end up standing in, counted the way the rest of Baritone counts feet (IPlayerContext.playerFeet:
 // the floor of y + 0.1251, so a floor a little under a full block still puts the feet in the cell above it)
-public record Landing(int x, int y, int z, boolean grab) {
+// low: the block to land on is a bottom slab, half a block down in the cell under the feet. Baritone still counts the feet in
+// the cell over the slab (IPlayerContext.playerFeet bumps a slab cell up one), so that's y, but the feet really rest half a
+// block lower, in the slab's own cell
+// a stair is low too, on its lower step: the feet can come down there, half a block into the stair's own cell, and settling
+// walks them up onto the middle of it (on the high step, where the cell is right again). half: the whole top is the low
+// one (a slab), so that's the height to aim for
+public record Landing(int x, int y, int z, boolean grab, boolean low, boolean half) {
 
     public Landing(int x, int y, int z) {
-        this(x, y, z, false);
+        this(x, y, z, false, false, false);
+    }
+
+    public Landing(int x, int y, int z, boolean grab) {
+        this(x, y, z, grab, false, false);
+    }
+
+    // a landing on a bottom slab
+    public static Landing slab(int x, int y, int z) {
+        return new Landing(x, y, z, false, true, true);
+    }
+
+    // a landing on a stair (or anything else with a step half way down)
+    public static Landing step(int x, int y, int z) {
+        return new Landing(x, y, z, false, true, false);
+    }
+
+    // how high the feet are standing on it
+    public double floor() {
+        return half ? y - 0.5 : y;
+    }
+
+    // where the rest of Baritone will say we are when we're done: in the cell. on a slab that's the slab's cell too (it bumps
+    // that up one), on a stair's low step it isn't, so a stair landing isn't finished until we're up on its high step
+    public boolean countsAsHere(double py) {
+        int fy = feetY(py);
+        return fy == y || half && fy == y - 1;
+    }
+
+    // feet at this height count as being down on the landing (the slab's or the stair's own cell too, for a low one)
+    public boolean feetOk(double py) {
+        int fy = feetY(py);
+        return fy == y || low && fy == y - 1;
     }
 
     // a ladder or vine to catch instead of a block to stand on: the feet in that cell, hanging on (see JumpPolicy's GRIP)
     public static Landing grab(int x, int y, int z) {
-        return new Landing(x, y, z, true);
+        return new Landing(x, y, z, true, false, false);
     }
 
     // holding on, in the ladder's column or one next to it (a ladder two wide: whichever half we caught, the GRIP phase
@@ -63,7 +101,7 @@ public record Landing(int x, int y, int z, boolean grab) {
     }
 
     public boolean holds(double px, double py, double pz) {
-        return Mth.floor(px) == x && Mth.floor(pz) == z && feetY(py) == y;
+        return Mth.floor(px) == x && Mth.floor(pz) == z && countsAsHere(py);
     }
 
     // holds, with MARGIN to spare on both horizontal axes

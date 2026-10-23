@@ -72,6 +72,7 @@ public final class DefaultCommands {
                 new SelCommand(baritone),
                 new ElytraCommand(baritone),
                 new TungstenCommand(baritone),
+                new RecordCommand(baritone),
                 new GuiCommand(baritone)
         ));
         ExecutionControlCommands prc = new ExecutionControlCommands(baritone);

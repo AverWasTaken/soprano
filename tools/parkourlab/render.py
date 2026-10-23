@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# pictures of the course from course.json: a contact sheet with every section on its own, and the chess board up close
+# pictures of the course from course.json: a contact sheet with every section on its own, and the finale on its own
 import json
 import sys
 
@@ -13,13 +13,13 @@ out = sys.argv[2]
 
 # first match wins, so the specific names go before the general ones
 COLORS = [
-    ("emerald_block", "#2ecc71"), ("gold_block", "#f5c542"), ("snow", "#f2f6f8"), ("blue_ice", "#5b93f0"),
+    ("emerald_block", "#2ecc71"), ("white_concrete", "#f4f4f4"), ("black_concrete", "#1b1b22"), ("gold_block", "#f5c542"), ("snow", "#f2f6f8"), ("blue_ice", "#5b93f0"),
     ("packed_ice", "#8db4f0"), ("ice", "#a9cbf7"), ("purpur", "#a77ba7"), ("slime", "#77c84f"),
     ("green_concrete", "#4b6b23"), ("dark_oak", "#4a3420"), ("stained_glass", "#d9e4e8"), ("quartz", "#ece6dc"),
     ("white_concrete", "#f4f4f4"), ("black_concrete", "#1b1b22"), ("blackstone_bricks", "#2c272b"),
     ("polished_blackstone", "#3a3438"), ("cyan_terracotta", "#4c7f86"), ("lime_terracotta", "#7a9a3d"),
     ("orange_terracotta", "#b5602c"), ("polished_andesite", "#9aa0a0"), ("mossy", "#6b7b55"), ("stone_bricks", "#7f7f7f"),
-    ("deepslate", "#4a4a52"), ("tuff", "#6d6f63"), ("copper", "#c0704a"), ("lime_concrete", "#5ec42e"), ("dark_prismarine", "#2f5e57"), ("prismarine", "#5aa59a"), ("ladder", "#a8803e"), ("vine", "#3f8f2f"),
+    ("deepslate", "#4a4a52"), ("spruce", "#6b4e2e"), ("andesite", "#8f9494"), ("smooth_stone", "#a0a0a0"), ("tuff", "#6d6f63"), ("copper", "#c0704a"), ("lime_concrete", "#5ec42e"), ("dark_prismarine", "#2f5e57"), ("prismarine", "#5aa59a"), ("ladder", "#a8803e"), ("vine", "#3f8f2f"),
     ("stone", "#8a8a8a"), ("oak", "#b48a52"), ("cobblestone", "#7a7a7a"), ("glass", "#cfe8ef"), ("iron_bars", "#9a9a9a"),
     ("hopper", "#4a4a4a"), ("end_rod", "#f0eadf"),
 ]
@@ -53,7 +53,7 @@ def voxels(ax, blocks, elev, azim):
 blocks = d["blocks"]
 base = d["base"]
 cps = d["checkpoints"]
-secs = d["sections"][:-1]  # the chess gets a picture of its own
+secs = d["sections"][:-1]  # the finale gets a picture of its own
 cols_n = 4
 rows_n = (len(secs) + cols_n - 1) // cols_n
 fig = plt.figure(figsize=(cols_n * 6, rows_n * 4.6), dpi=100)
@@ -68,13 +68,15 @@ plt.tight_layout()
 fig.savefig(out + "/course_sections.png", facecolor="white")
 plt.close(fig)
 
-chess_x0 = cps[-2]["x"]
-chess = [b for b in blocks if b[0] >= chess_x0 - 2]
-fig = plt.figure(figsize=(14, 12), dpi=110)
-ax = fig.add_subplot(projection="3d")
-voxels(ax, chess, 28, -55)
-ax.set_title("Chess: pawns, knights, bishop, rook, queen, king", fontsize=14)
+fin_x0 = cps[-2]["x"]
+fin = [b for b in blocks if b[0] >= fin_x0 - 2]
+mid = (fin_x0 + max(b[0] for b in fin)) // 2
+fig = plt.figure(figsize=(16, 13), dpi=110)
+for k, part in enumerate(([b for b in fin if b[0] <= mid + 1], [b for b in fin if b[0] >= mid - 1])):
+    ax = fig.add_subplot(2, 1, k + 1, projection="3d")
+    voxels(ax, part, 28, -70)
+    ax.set_title("20. Finale: every section in one run" + (" (first half)" if k == 0 else " (second half)"), fontsize=14)
 plt.tight_layout()
-fig.savefig(out + "/course_chess.png", facecolor="white")
+fig.savefig(out + "/course_finale.png", facecolor="white")
 plt.close(fig)
 print("ok")
