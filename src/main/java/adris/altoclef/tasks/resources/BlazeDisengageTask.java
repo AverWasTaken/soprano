@@ -8,18 +8,17 @@ import net.minecraft.world.entity.monster.Blaze;
 
 // the last rod is in and the blazes did not get the memo. the rods task finishes the moment the count is met, and with it goes the
 // "these blazes are mine" line and the fight brain: the next task then walked off with three of them still shooting, and combat
-// turned them into a run and a stand in the open. this keeps the same line up and the same cover logic running, retreat and
-// cover only (BlazeFight.disengageOnly), until nothing has seen us for a few seconds
+// turned them into a run and a stand in the open. this keeps the same line up and the same fight running (kill the one we
+// picked, run when hp says so, BlazeFight.disengageOnly) until nothing has been worth a swing or a run for a few seconds
 public class BlazeDisengageTask extends Task {
 
     private final BlazeFight fight = new BlazeFight();
     private BotBehaviour.State level;
     private long startTick = Long.MIN_VALUE;
-    // game time a blaze last had a line on us
+    // game time we were last fighting or running
     private long lastSeenTick = Long.MIN_VALUE;
     private boolean over;
 
-    // no spawner handed in: cover near it is a walk back into the fight, so the cover search looks around wherever we stand
     public BlazeDisengageTask() {
         fight.disengageOnly();
     }
@@ -32,6 +31,7 @@ public class BlazeDisengageTask extends Task {
         // used to go wrong, and the aura swinging at one six blocks off pauses the path that gets us out of its sight
         mod.getBehaviour().addMobDefenseExclusion(entity -> entity instanceof Blaze);
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
+        mod.getBehaviour().avoidBlockPlacing(pos -> fight.noPlacing());
         if (startTick == Long.MIN_VALUE) {
             startTick = mod.getWorld().getGameTime();
             // the caller starts this because one is looking, so the calm clock counts from now and not from never
@@ -42,8 +42,9 @@ public class BlazeDisengageTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         long now = mod.getWorld().getGameTime();
-        Task away = fight.tick(mod, null);
-        if (fight.seen()) {
+        Task away = fight.tick(mod);
+        // CAMP is done: nothing in reach and not running. the calm spell only counts from the last tick we were fighting
+        if (fight.mode() != BlazeFightRules.Mode.CAMP) {
             lastSeenTick = now;
         }
         // game time going backwards is a world change, the old stamps mean nothing
@@ -51,7 +52,7 @@ public class BlazeDisengageTask extends Task {
         long running = now >= startTick ? now - startTick : Long.MAX_VALUE;
         over = BlazeFightRules.disengageOver(sinceSeen, running);
         if (away != null) {
-            setDebugState("Backing away from the blazes: " + fight.mode().name().toLowerCase());
+            setDebugState("Finishing the blazes: " + fight.mode().name().toLowerCase());
             return away;
         }
         setDebugState("Waiting for the blazes to lose us");

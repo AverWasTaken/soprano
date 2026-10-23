@@ -1017,7 +1017,7 @@ public class NetherPhase implements PhaseHandler {
         if (verdict == RodsWatch.Verdict.GIVE_UP_SPAWNER) {
             return giveUpSpawner(mod, ctx, now);
         }
-        // hiding from or walking out to blazes at our spawner can stand still for a while too, and the rods watch has its
+        // fighting or running from blazes at our spawner can stand still for a while too, and the rods watch has its
         // own clocks for a spawner that goes nowhere, so that is not a stall either. a stuck walk to the spawner still is
         if (campPinger.ping(now, camping || (camped != null && rodsTask.isBusyWithBlazes()))) {
             ctx.progress("waiting at the blaze spawner");

@@ -379,7 +379,7 @@ public class FoodChain extends SingleTaskChain {
             // (a gapple meal tops up like an ordinary one afterwards, not to the last heal meal's line)
             _fillTo = 20;
             tryEat(mod, gapple, true);
-        } else if (stance.mayEat() && _hasFood && (wantsToEat() || _requestFillup) && !coverWalkHoldsBite() && _cachedPerfectFood.isPresent() &&
+        } else if (stance.mayEat() && _hasFood && (wantsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
             Item toUse = _cachedPerfectFood.get();
             // (healing up fills the bar: saturation regen only runs at 20, and that is the fast one)
@@ -471,17 +471,7 @@ public class FoodChain extends SingleTaskChain {
         CombatRules.Stance stance = stance(_mod);
         if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
         if (!stance.mayEat()) return false;
-        // a short walk to blaze cover first, the bite is for when we are there. desperate meals too, they are the ones that
-        // killed us on the way. a bite already in progress carries on
-        if (!_standing && coverWalkHoldsBite()) return false;
         return rawNeedsToEat(true) || recoverMeal();
-    }
-
-    private boolean coverWalkHoldsBite() {
-        // (a bite that is already being chewed finishes, every bite after it waits: the fillup would otherwise start the
-        // next one right in the middle of the walk)
-        return _mod != null && _mod.getWorld() != null && _mod.getPlayer() != null && !_mod.getPlayer().isUsingItem()
-                && BlazeCoverHook.holdsBite(_mod.getWorld().getGameTime());
     }
 
     // the heal-up hold is on and the bar is not full: eat, the bar being full is what makes the hold short. the stance has

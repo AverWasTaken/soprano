@@ -17,14 +17,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.Vec3;
 
 public class CollectBlazeRodsTask extends ResourceTask {
 
-    // a hiding spot further than this from the spawner is not a spot near the spawner
-    private static final double COVER_HOLD_RADIUS = 10;
-    // the cover spot is within 10 of the spawner, ten seconds of walking at it and not getting there is not a long walk
-    private static final int WALK_BACK_STUCK_TICKS = 200;
+    // blazes spawn within 4 sideways of the spawner, standing this close keeps every new one in reach
+    private static final double CAMP_RADIUS = 2;
     private final int _count;
     private final Task _searcher = new SearchChunkForBlockTask(Blocks.NETHER_BRICKS);
     // the fight logic lives in there. this task used to just camp, silently, while blazes it had decided not to see shot at it
@@ -34,9 +31,6 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
     private boolean _camping;
-    // consecutive ticks spent walking back to the camp spot, and which spot
-    private int _walkBackTicks;
-    private BlockPos _walkBackTo;
 
     public CollectBlazeRodsTask(int count) {
         super(Items.BLAZE_ROD, count);
@@ -47,12 +41,12 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return _camping;
     }
 
-    // every live blaze within chase range, hidden or not. only for saying "they are here, just not in reach" on the hud
+    // every live blaze within range, in reach or not. only for saying "they are here, just not in reach" on the hud
     public int blazesAround() {
         return _fight.around();
     }
 
-    // hunting, hiding, hitting or healing: standing still on purpose
+    // hitting or running: not waiting on the spawner
     public boolean isBusyWithBlazes() {
         return _fight.mode() != BlazeFightRules.Mode.CAMP;
     }
@@ -72,56 +66,40 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // the aura swinging and shielding at a blaze 6 blocks off pauses the path we need to get out of its sight, only
         // the ones next to us are for it
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
-        _fight.forgetCampSpot();
+        // no bridging or pillaring while fighting or running, see BlazeFight.noPlacing
+        mod.getBehaviour().avoidBlockPlacing(pos -> _fight.noPlacing());
     }
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
         _camping = false;
-        // the walk back count only survives ticks that are the walk back, anything in between (a fight, a fire) starts it over
-        int walkedBefore = _walkBackTicks;
-        _walkBackTicks = 0;
+        // the fight only sets this on ticks it runs, the walk to the nether or a rod pickup should not inherit it
+        _fight.idle();
         // We must go to the nether.
         if (WorldHelper.getCurrentDimension() != Dimension.NETHER) {
             setDebugState("Going to nether");
             return new DefaultGoToDimensionTask(Dimension.NETHER);
         }
-        // spawner bookkeeping before the fight: a hunt can run for a while, and the spawner is what keeps it near cover and
-        // starts the dry timer. finding one only between fights meant a long hunt never found it
+        // the spawner is what starts the dry timer, finding one only between fights meant a long fight never found it
         pickSpawner(mod);
-        // blazes first: kill what we can reach, hide from what we cannot, leave when it goes badly. null is "nobody to fight"
-        Task fight = _fight.tick(mod, _foundBlazeSpawner);
+        // blazes first: kill the one we picked, run when it goes badly. null is "nobody to fight"
+        Task fight = _fight.tick(mod);
         if (fight != null) {
             setDebugState("Blaze fight: " + _fight.mode().name().toLowerCase());
             return fight;
         }
-        if (_fight.mode() == BlazeFightRules.Mode.RETREAT) {
+        if (_fight.mode() == BlazeFightRules.Mode.RUN) {
             // out of their sight and healing, the spawner can wait. standing here is the plan so it counts as camping, unless
             // there are blazes we could go get, then it is just a breather and not a dud spawner
             setDebugState("Recovering away from the blazes");
-            // a retreat that stopped healing is dead time just like a dud spawner, the rods watch clocks have to see it
-            _camping = _fight.huntable() == 0 || _fight.retreatGaveUp();
+            // a run that stopped healing is dead time just like a dud spawner, the rods watch clocks have to see it
+            _camping = _fight.reachable() == 0 || _fight.runGaveUp();
             return null;
         }
 
-        // If we have a blaze spawner, go near it.
+        // If we have a blaze spawner, stand next to it in the open and let them come.
         if (_foundBlazeSpawner != null) {
-            // wherever we last hid from them near here beats standing in the open next to the spawner
-            BlockPos hide = _fight.campSpot();
-            if (hide != null && hide.closerToCenterThan(Vec3.atCenterOf(_foundBlazeSpawner), COVER_HOLD_RADIUS)) {
-                if (!hide.closerToCenterThan(mod.getPlayer().position(), 1.5)) {
-                    int walked = hide.equals(_walkBackTo) ? walkedBefore + 1 : 1;
-                    if (walked <= WALK_BACK_STUCK_TICKS) {
-                        _walkBackTo = hide;
-                        _walkBackTicks = walked;
-                        setDebugState("Going back to cover");
-                        return new GetToBlockTask(hide, false);
-                    }
-                    // cannot get back there, same as BlazeCoverTask handing a stuck spot to markBad. camp where we are
-                    // this tick, the spawner walk takes over next tick and the next cover picks somewhere else
-                    _fight.campSpotUnreachable();
-                }
-            } else if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), 4)) {
+            if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
                 setDebugState("Going to blaze spawner");
                 return new GetToBlockTask(_foundBlazeSpawner.above(), false);
             }
@@ -131,10 +109,9 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 setDebugState("Clearing fire around spawner to prevent loss of blaze rods.");
                 return new PutOutFireTask(nearestFire.get());
             }
-            // blazes we could walk to (just hid from them, the hunt is a few seconds off) are not a dud spawner. ones over
-            // lava or out past the spawner are, the relocate timer has to keep running for those
-            setDebugState(_fight.around() > 0 ? "Waiting in cover for the blazes to come out" : "Waiting near blaze spawner for blazes to spawn");
-            _camping = _fight.huntable() == 0;
+            // nothing is in reach or we would be fighting it, so this is a dud spawner as far as the relocate timer goes
+            setDebugState(_fight.around() > 0 ? "Waiting for the blazes to come in reach" : "Waiting near blaze spawner for blazes to spawn");
+            _camping = true;
             return null;
         }
         // We need to find our fortress.
@@ -147,7 +124,6 @@ public class CollectBlazeRodsTask extends ResourceTask {
         if (_foundBlazeSpawner != null && mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)) {
             Debug.logMessage("Blaze spawner at " + _foundBlazeSpawner + " too far away or invalid. Re-searching.");
             _foundBlazeSpawner = null;
-            _fight.forgetCampSpot();
         }
         if (_foundBlazeSpawner != null || !mod.getBlockTracker().isTracking(Blocks.SPAWNER)) return;
         // nearest one we can actually look at: asking for the single nearest and then throwing it out for being in an
