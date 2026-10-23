@@ -97,6 +97,18 @@ final class BlazeFight {
     private BlockPos campSpot;
     private final Map<BlockPos, Long> badSpots = new HashMap<>();
 
+    // the rods are in and this fight is only being left: cover and retreat still work, kill and hunt never come up
+    private boolean disengage;
+
+    void disengageOnly() {
+        disengage = true;
+    }
+
+    // a blaze has a line on us as of the last tick
+    boolean seen() {
+        return !threats.isEmpty();
+    }
+
     Mode mode() {
         return mode;
     }
@@ -159,8 +171,11 @@ final class BlazeFight {
         long sinceThreat = lastThreatTick != Long.MIN_VALUE && now >= lastThreatTick ? now - lastThreatTick : Long.MAX_VALUE;
         // hp going up is what the retreat waits for, so any rise means it is working again
         if (health > lastHealth) retreatGaveUp = false;
-        Mode next = BlazeFightRules.decide(health, retreating, retreatGaveUp, burning(player), threats.size(), reachable,
-                huntable.size(), sinceThreat, mode, dwelled);
+        // backing away only: nothing is worth a swing and nothing is worth a walk out to, the rods are in
+        int canHit = disengage ? 0 : reachable;
+        int canHunt = disengage ? 0 : huntable.size();
+        Mode next = BlazeFightRules.decide(health, retreating, retreatGaveUp, burning(player), threats.size(), canHit,
+                canHunt, sinceThreat, mode, dwelled);
         retreating = next == Mode.RETREAT;
         if (next != mode) modeSince = now;
         mode = next;

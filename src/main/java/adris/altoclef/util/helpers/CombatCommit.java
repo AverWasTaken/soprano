@@ -303,8 +303,15 @@ public final class CombatCommit {
     // boxed: every side of us is a wall or a mob (BoxRules), so a run has nowhere to go. false by default
     // nextHit: the machine's own guess at the next hit (see NEXT_HIT_WINDOW), filled in by step() from the hp it watches. whatever
     // a caller puts there is replaced, 0 by default
+    // watched: a shooter that is not a foe (an uncharged blaze at range is not in the hostile list) has a line to us right now. only the
+    // heal-up hold's re-run reads it, so it breaks the line before the meal and not after. false by default
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
+                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
+            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, nextHit, false);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
                     boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
             this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, 0);
@@ -354,7 +361,7 @@ public final class CombatCommit {
         }
 
         Tick withNextHit(float hit) {
-            return new Tick(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, hit);
+            return new Tick(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, hit, watched);
         }
     }
 
@@ -746,7 +753,7 @@ public final class CombatCommit {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
-                t.body(), t.boxed(), t.nextHit());
+                t.body(), t.boxed(), t.nextHit(), t.watched());
     }
 
     // ---- NONE
@@ -838,7 +845,8 @@ public final class CombatCommit {
             if (foe.shooting() && foe.fresh()) shot = true;
         }
         if (near) return Why.LOW_HP;
-        return shot ? Why.SHOT : Why.NONE;
+        // a blaze with a line that has not hit us yet counts too: the meal is a long stand in its sights
+        return shot || t.watched() ? Why.SHOT : Why.NONE;
     }
 
     // the walking premise is why a shooter past contact is scenery: a moving target is a bad target and the task is on its way
@@ -932,7 +940,7 @@ public final class CombatCommit {
     private static Tick withoutFoe(Tick t, int id) {
         List<Foe> foes = t.foes().stream().filter(foe -> foe.id() != id).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
-                t.body(), t.boxed(), t.nextHit());
+                t.body(), t.boxed(), t.nextHit(), t.watched());
     }
 
     private static boolean anyDanger(Tick t) {

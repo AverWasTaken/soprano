@@ -21,6 +21,12 @@ public final class BiteRules {
     public static final int ESCAPE_TICKS = 200;
     public static final int STARVING_HUNGER = 6;
 
+    // the shield was called for this tick or the one before (the food chain asks before mob defense has run). a stamp from the
+    // future is a clock that went backwards, a new world, and nothing there is dodging
+    public static boolean dodgeHolds(long now, long dodgeTick) {
+        return dodgeTick != Long.MIN_VALUE && now >= dodgeTick && now - dodgeTick <= 1;
+    }
+
     private BiteRules() {
     }
 

@@ -282,4 +282,19 @@ public class RecoverHoldTest {
                 .mayEat());
         assertTrue(CombatCommit.stanceWhy(Mode.NONE, 10, 11, false, quiet, true).startsWith("recovering"));
     }
+
+    @Test
+    public void aWatchingBlazeWithNoHitIsARunAgain() {
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        // no foe at all (an uncharged blaze at range is not in the hostile list), only the watched flag
+        Tick watched = new Tick(end + 1, 12, 30, 0, List.of(), null, Way.NONE, true, false, false, false, FED, false, 0, true);
+        assertEquals(Event.RUN_START, c.step(watched));
+        assertEquals(Why.SHOT, c.why());
+
+        // the same tick unwatched is a quiet hold
+        CombatCommit d = new CombatCommit();
+        long end2 = runAndClear(d, 1000, 10, FED);
+        assertEquals(Event.NONE, d.step(tick(end2 + 1, 12, 30, FED)));
+    }
 }

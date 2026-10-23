@@ -10,6 +10,7 @@ import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
+import adris.altoclef.util.helpers.BiteRules;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
@@ -103,6 +104,9 @@ public class MobDefenseChain extends SingleTaskChain {
     private boolean _capPlaced;
     private boolean _capAbove;
     // sneak while clicking, same reason as PlaceStationTask: a chest or a table in the wall opens instead of taking the block
+    // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
+    // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
+    private long _dodgeTick = Long.MIN_VALUE;
     private boolean _capSneak;
     private final Object _capOwner = new Object();
     // anything that is not a block, for the main hand while the shield is up
@@ -364,10 +368,11 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean fighting = mode == CombatCommit.Mode.FIGHT;
         if (creeperShield) {
             // the creeper's shield is up, leave it be
-        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
                 && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
+            _dodgeTick = mod.getWorld().getGameTime();
             if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                 mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
             } else {
@@ -534,7 +539,9 @@ public class MobDefenseChain extends SingleTaskChain {
                             // oh no fancy math
                             Vec3 velocity = projectile.velocity;
                             Vec3 delta = mod.getPlayer().position().subtract(projectile.position);
-                            double epsilon = 0.25;
+                            // the dot product scales with the fireball's speed and our distance, so 0.25 of slack can throw out one
+                            // that is coming straight at us. only a real "away" counts for those
+                            double epsilon = projectile.projectileType == SmallFireball.class ? 0 : 0.25;
                             // signed on purpose: abs() ignored the arrows sailing sideways past us and kept dodging the ones already flying away
                             if (velocity.dot(delta) <= epsilon) {
                                 // Arrow is going away from us, ignore it.
@@ -622,6 +629,12 @@ public class MobDefenseChain extends SingleTaskChain {
             _capSneak = false;
             mod.getInputControls().releaseOwnedBy(_capOwner);
         }
+    }
+
+    // the projectile shield was wanted this tick or last. the food chain reads this before mob defense has run for the tick, so last
+    // tick's answer counts, and a stamp from before a world change (the clock went backwards) does not
+    public boolean projectileDodging(AltoClef mod) {
+        return Baritone.settings().altoMobDefense.value && BiteRules.dodgeHolds(mod.getWorld().getGameTime(), _dodgeTick);
     }
 
     // boxed in by a lit creeper: the shield is up or going up, or a block is going over our head. the food chain keeps its hands

@@ -338,8 +338,8 @@ public class FoodChain extends SingleTaskChain {
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
         // before, "needs to eat" stayed true through a fall or a lava dip and no watchdog could fire
         _eatBlocked = eatingBlocked(mod);
-        // blocking is NOT in the shared list: mob defense drops the shield when needsToEat() is true, so counting it
-        // there would make a shielding bot unable to ever get hungry enough to put the shield down
+        // blocking is NOT in the shared list (the creeper and projectile shields are, they ask this chain to stay off the key): counting it
+        // would make a shielding bot unable to ever get hungry enough to put the shield down
         if (_eatBlocked) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
@@ -443,6 +443,9 @@ public class FoodChain extends SingleTaskChain {
         if (!Baritone.settings().altoAutoEat.value) return true;
         // a lit creeper with nowhere to run: the shield or the cap has the hands
         if (mod.getMobDefenseChain().creeperBoxedIn()) return true;
+        // a fireball or an arrow is on its way and the shield is up for it: a bite swaps the food into the hand and lets go of the use
+        // key, and that is the shield gone
+        if (mod.getMobDefenseChain().projectileDodging(mod)) return true;
         // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
         if (mod.getPlayer().isInLava()) return true;
         // We're in danger, don't eat now!!

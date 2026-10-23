@@ -6,6 +6,7 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
+import adris.altoclef.tasks.resources.BlazeDisengageTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
@@ -111,6 +112,13 @@ public class NetherPhase implements PhaseHandler {
     private FindNetherStructureTask findWarped;
     private CollectBlazeRodsTask rodsTask;
     private int rodsTaskTarget;
+    // the last-rod walk away from blazes that are still shooting, and whether it already ran for this batch of rods
+    private BlazeDisengageTask disengage;
+    private boolean disengageDone;
+    // game time of the first tick the rods were in, MIN_VALUE while they are not
+    private long disengageSince = Long.MIN_VALUE;
+    // how long after the last rod a looking blaze still starts the walk away. the pick up lands mid volley, not on a calm tick
+    private static final int DISENGAGE_WINDOW_TICKS = 40;
     private PearlHuntTask hunt;
     private int huntTarget;
     private final HomePortalWalk homeWalk = new HomePortalWalk();
@@ -301,6 +309,9 @@ public class NetherPhase implements PhaseHandler {
         }
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
+        disengage = null;
+        disengageDone = false;
+        disengageSince = Long.MIN_VALUE;
         hunt = null;
         trade = null;
         boots = null;
@@ -412,6 +423,10 @@ public class NetherPhase implements PhaseHandler {
         }
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
+        }
+        Task away = disengageStep(mod, ctx);
+        if (away != null) {
+            return away;
         }
         Task flint = gravelSide(mod, ctx, now);
         if (flint != null) {
@@ -930,6 +945,44 @@ public class NetherPhase implements PhaseHandler {
         }
         hudState = null;
         return null;
+    }
+
+    // the rods task finishes the instant the count is met, mid fight, and the blazes it was keeping mob defense off of go back to
+    // being ordinary shooters (a run, then a heal-up stand in the open). so the fight is left properly first: back away until
+    // nothing has seen us for a few seconds, capped, then the rest of the phase. decided in the first moments after the last rod
+    // only, a blaze that spots us an hour later out by the portal is not this fight. ahead of the detours: a pick or a gold walk
+    // taking the wheel with three blazes still shooting is the same death
+    private Task disengageStep(AltoClef mod, GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled);
+        int rodsNeed = EyeMath.rodsNeeded(goal, EyeMath.eyes(f), f.count(Items.BLAZE_POWDER));
+        if (f.count(Items.BLAZE_ROD) < rodsNeed) {
+            // short of rods again (or still collecting): the next batch gets its own walk away
+            disengage = null;
+            disengageDone = false;
+            disengageSince = Long.MIN_VALUE;
+            return null;
+        }
+        long now = mod.getWorld().getGameTime();
+        if (disengageSince == Long.MIN_VALUE) {
+            disengageSince = now;
+        }
+        if (disengage == null) {
+            // the window shut with nobody looking: that counts as done, whatever shows up later is the combat chain's
+            boolean windowOpen = now >= disengageSince && now - disengageSince <= DISENGAGE_WINDOW_TICKS;
+            if (!BlazeFightRules.disengageWanted(true, windowOpen && blazeSeesUs(mod, mod.getPlayer()), disengageDone)) {
+                return null;
+            }
+            // no spawner on purpose: cover near the spawner is a walk back into the fight we are leaving, and blazes keep spawning
+            // there. wherever we stand is where the cover search looks
+            disengage = new BlazeDisengageTask();
+            disengageDone = true;
+        }
+        if (disengage.isFinished(mod)) {
+            return null;
+        }
+        hudState = "Backing away from the blazes";
+        return disengage;
     }
 
     // ---- rods

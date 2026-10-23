@@ -11,6 +11,7 @@ import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.AnchorWatch;
+import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -53,6 +54,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
@@ -302,7 +304,7 @@ final class CombatBrain {
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension),
-                    boxedIn(mod, player, mobs, foes)));
+                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
@@ -565,6 +567,21 @@ final class CombatBrain {
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
                 food != null && food.isTryingToEat());
+    }
+
+    // a blaze with a line on us that the hostile list does not carry (it only lists the charged ones and the ones in melee). asked
+    // only while the heal-up hold is on: the hold re-runs on it, so the meal is not eaten in front of a blaze that has not hit us yet
+    private static boolean blazeWatching(AltoClef mod, LocalPlayer player) {
+        try {
+            for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {
+                double distance = player.distanceTo(blaze);
+                // the ray only for the ones close enough to matter
+                if (blaze.isAlive() && distance <= BlazeFightRules.SIGHT_RANGE && BlazeFightRules.watching(distance, blaze.hasLineOfSight(player))) return true;
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // one tick of stale blazes is fine
+        }
+        return false;
     }
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the

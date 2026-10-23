@@ -402,4 +402,37 @@ public class BlazeFightRulesTest {
             BlazeCoverHook.clear();
         }
     }
+
+    @Test
+    public void disengageStartsOnceForRodsDoneAndALookingBlaze() {
+        assertTrue(BlazeFightRules.disengageWanted(true, true, false));
+        assertFalse(BlazeFightRules.disengageWanted(false, true, false));
+        assertFalse(BlazeFightRules.disengageWanted(true, false, false));
+        // already ran for this batch: a blaze that follows us out does not start it again
+        assertFalse(BlazeFightRules.disengageWanted(true, true, true));
+    }
+
+    @Test
+    public void disengageEndsOnCalmOrOnTheCap() {
+        assertFalse(BlazeFightRules.disengageOver(0, 10));
+        assertFalse(BlazeFightRules.disengageOver(BlazeFightRules.DISENGAGE_CALM_TICKS - 1, 100));
+        assertTrue(BlazeFightRules.disengageOver(BlazeFightRules.DISENGAGE_CALM_TICKS, 100));
+        // still being looked at, but we have tried long enough
+        assertFalse(BlazeFightRules.disengageOver(0, BlazeFightRules.DISENGAGE_CAP_TICKS - 1));
+        assertTrue(BlazeFightRules.disengageOver(0, BlazeFightRules.DISENGAGE_CAP_TICKS));
+    }
+
+    @Test
+    public void aBlazeWithALineInRangeIsWatchingWithoutHavingHitUs() {
+        assertTrue(BlazeFightRules.watching(BlazeFightRules.SIGHT_RANGE, true));
+        assertFalse(BlazeFightRules.watching(BlazeFightRules.SIGHT_RANGE + 0.1, true));
+        assertFalse(BlazeFightRules.watching(5, false));
+    }
+
+    @Test
+    public void leavingFeedsDecideNoReachAndNoHunt() {
+        // the inputs BlazeFight.tick gives decide when it is only leaving (reach and hunt zeroed): a looking blaze is cover, never a kill
+        assertEquals(BlazeFightRules.Mode.COVER, BlazeFightRules.decide(20, false, 2, 0, 0, Long.MAX_VALUE));
+        assertEquals(BlazeFightRules.Mode.CAMP, BlazeFightRules.decide(20, false, 0, 0, 0, 0));
+    }
 }

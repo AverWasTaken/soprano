@@ -27,6 +27,11 @@ public final class BlazeFightRules {
     // sight flipped the mode every tick or so, and every flip drops the shield and walks. entering cover stays instant
     public static final int COVER_EXIT_TICKS = 40;
 
+    // rods done and a blaze still has a line on us: back away before the next task takes the wheel. the calm spell is how long
+    // nothing has seen us, the cap is how long we try (a blaze that follows us out is not going to give up)
+    public static final int DISENGAGE_CALM_TICKS = 60;
+    public static final int DISENGAGE_CAP_TICKS = 900;
+
     // after the last blaze that could see us, wait this long before going out to find one. COVER hides us so they come
     // round the corner, walking off the moment we are hidden throws that away
     public static final int HIDE_HOLD_TICKS = 100;
@@ -88,6 +93,22 @@ public final class BlazeFightRules {
     public static boolean isThreat(double distance, boolean charged, boolean lineOfSight) {
         if (distance <= MELEE_RANGE) return true;
         return charged && lineOfSight && distance <= SIGHT_RANGE;
+    }
+
+    // a blaze lined up on us from where it hovers, hit or no hit. the heal-up hold re-runs on one of these before the first
+    // fireball lands and not after the second
+    public static boolean watching(double distance, boolean lineOfSight) {
+        return lineOfSight && distance <= SIGHT_RANGE;
+    }
+
+    // start backing away: the rods are in, a blaze sees us, and we have not done this already for this batch of rods
+    public static boolean disengageWanted(boolean rodsDone, boolean blazeSeesUs, boolean alreadyDone) {
+        return rodsDone && blazeSeesUs && !alreadyDone;
+    }
+
+    // stop backing away: nothing has seen us for the calm spell, or the cap ran out and we go on anyway
+    public static boolean disengageOver(long ticksSinceSeen, long ticksRunning) {
+        return ticksSinceSeen >= DISENGAGE_CALM_TICKS || ticksRunning >= DISENGAGE_CAP_TICKS;
     }
 
     // can we walk under it and swing. over lava never (we would have to follow it in), and a blaze with no floor under it
