@@ -23,13 +23,11 @@ import baritone.pathing.sim.CollisionProvider;
 import baritone.pathing.sim.PlayerSim;
 import net.minecraft.util.Mth;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 
 /**
  * Walking round something on the level: along the rim of a block with a wall or a fence on it, round the corner of a pillar,
@@ -40,6 +38,12 @@ import java.util.PriorityQueue;
  * point a little way along, and the pilot flies it with the aim wobbling to make sure it holds up.
  */
 public final class RimWalk {
+
+    // Math.hypot is careful about overflow and slow for it (a quarter of the background searches' time went there): these
+    // are distances of a few blocks
+    static double hyp(double a, double b) {
+        return Math.sqrt(a * a + b * b);
+    }
 
     private RimWalk() {}
 
@@ -157,7 +161,7 @@ public final class RimWalk {
             double x = grid.x(c), z = grid.z(c);
             boolean near = false;
             for (int[] s : spots) {
-                if (Math.hypot(grid.x(s[0]) - x, grid.z(s[0]) - z) < 0.35) {
+                if (hyp(grid.x(s[0]) - x, grid.z(s[0]) - z) < 0.35) {
                     near = true;
                     break;
                 }
@@ -328,15 +332,17 @@ public final class RimWalk {
             }
             room = new int[nx * nz];
             Arrays.fill(room, Integer.MAX_VALUE);
-            ArrayDeque<Integer> q = new ArrayDeque<>();
+            // breadth first out from every spot that isn't free: each spot goes in the queue once, so a flat array does
+            int[] q = new int[ok.length];
+            int head = 0, tail = 0;
             for (int c = 0; c < ok.length; c++) {
                 if (!ok[c]) {
                     room[c] = 0;
-                    q.add(c);
+                    q[tail++] = c;
                 }
             }
-            while (!q.isEmpty()) {
-                int c = q.poll(), i = c / nz, k = c % nz;
+            while (head < tail) {
+                int c = q[head++], i = c / nz, k = c % nz;
                 for (int d = 0; d < 4; d++) {
                     int ii = i + (d == 0 ? 1 : d == 1 ? -1 : 0), kk = k + (d == 2 ? 1 : d == 3 ? -1 : 0);
                     if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) {
@@ -345,7 +351,7 @@ public final class RimWalk {
                     int m = ii * nz + kk;
                     if (room[m] > room[c] + 1) {
                         room[m] = room[c] + 1;
-                        q.add(m);
+                        q[tail++] = m;
                     }
                 }
             }
@@ -365,7 +371,7 @@ public final class RimWalk {
         }
 
         double distance(int c, Landing land) {
-            return Math.hypot(x(c) - land.centerX(), z(c) - land.centerZ());
+            return hyp(x(c) - land.centerX(), z(c) - land.centerZ());
         }
 
         // the free spot nearest the middle of the landing, well inside its cell, or -1
@@ -388,11 +394,12 @@ public final class RimWalk {
 
         boolean[] reachable(int start) {
             boolean[] seen = new boolean[ok.length];
-            ArrayDeque<Integer> q = new ArrayDeque<>();
+            int[] q = new int[ok.length];
+            int head = 0, tail = 0;
             seen[start] = true;
-            q.add(start);
-            while (!q.isEmpty()) {
-                int c = q.poll(), i = c / nz, k = c % nz;
+            q[tail++] = start;
+            while (head < tail) {
+                int c = q[head++], i = c / nz, k = c % nz;
                 for (int di = -1; di <= 1; di++) {
                     for (int dk = -1; dk <= 1; dk++) {
                         int ii = i + di, kk = k + dk;
@@ -402,7 +409,7 @@ public final class RimWalk {
                         int m = ii * nz + kk;
                         if (ok[m] && !seen[m]) {
                             seen[m] = true;
-                            q.add(m);
+                            q[tail++] = m;
                         }
                     }
                 }
@@ -417,18 +424,18 @@ public final class RimWalk {
             int[] from = new int[nx * nz];
             int gi = goal / nz, gk = goal % nz;
             g[start] = 0;
-            PriorityQueue<double[]> open = new PriorityQueue<>((p, r) -> Double.compare(p[0], r[0]));
-            open.add(new double[]{0, start});
+            IntHeap open = new IntHeap();
+            open.add(0, start);
             int comfortable = (int) Math.ceil(0.25 / RES);
             boolean found = false;
             while (!open.isEmpty()) {
-                double[] top = open.poll();
-                int c = (int) top[1];
+                double topKey = open.peekKey();
+                int c = open.poll();
                 if (c == goal) {
                     found = true;
                     break;
                 }
-                if (top[0] > g[c] + Math.hypot(c / nz - gi, c % nz - gk) + 1.0E-9) {
+                if (topKey > g[c] + hyp(c / nz - gi, c % nz - gk) + 1.0E-9) {
                     continue;
                 }
                 int i = c / nz, k = c % nz;
@@ -443,7 +450,7 @@ public final class RimWalk {
                         if (g[c] + step < g[m]) {
                             g[m] = g[c] + step;
                             from[m] = c;
-                            open.add(new double[]{g[m] + Math.hypot(ii - gi, kk - gk), m});
+                            open.add(g[m] + hyp(ii - gi, kk - gk), m);
                         }
                     }
                 }

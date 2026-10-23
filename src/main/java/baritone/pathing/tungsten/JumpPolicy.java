@@ -281,7 +281,7 @@ public final class JumpPolicy {
             return false;
         }
         int fy = net.minecraft.util.Mth.floor(memo.runFloorY - 0.5);
-        baritone.pathing.sim.BoxList boxes = new baritone.pathing.sim.BoxList();
+        baritone.pathing.sim.BoxList boxes = baritone.pathing.sim.BoxList.temp();
         for (double ox : new double[]{-0.3, 0.3}) {
             for (double oz : new double[]{-0.3, 0.3}) {
                 boxes.clear();
@@ -499,7 +499,7 @@ public final class JumpPolicy {
         double len = Math.sqrt(dx * dx + dz * dz);
         int n = Math.max(1, (int) Math.ceil(len / 0.2));
         double top = Math.max(ay, by);
-        baritone.pathing.sim.BoxList boxes = new baritone.pathing.sim.BoxList();
+        baritone.pathing.sim.BoxList boxes = baritone.pathing.sim.BoxList.temp();
         for (int i = 0; i <= n; i++) {
             double px = ax + dx * i / n, pz = az + dz * i / n;
             for (double h : BODY) {
@@ -638,7 +638,7 @@ public final class JumpPolicy {
     // something solid `upTo` blocks or less over the feet (from 2 up: one over the head is the lowest a ceiling can be)
     static boolean ceilingAt(PlayerSim sim, double x, double y, double z, int upTo) {
         int bx = net.minecraft.util.Mth.floor(x), bz = net.minecraft.util.Mth.floor(z), by = net.minecraft.util.Mth.floor(y + 1.0E-3);
-        baritone.pathing.sim.BoxList boxes = new baritone.pathing.sim.BoxList();
+        baritone.pathing.sim.BoxList boxes = baritone.pathing.sim.BoxList.temp();
         for (int up = 2; up <= upTo; up++) {
             sim.world().boxes(bx, by + up, bz, boxes);
         }

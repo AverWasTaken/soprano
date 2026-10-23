@@ -85,12 +85,45 @@ public final class PlayerSim {
     public boolean jumped;
     private String failure;
 
-    // scratch, so a hundred ticks of sim is not a hundred thousand allocations
-    private final BoxList boxes = new BoxList(), stepBoxes = new BoxList(), cell = new BoxList();
-    private final double[] box = new double[6], groundedBox = new double[6], swept = new double[6], query = new double[6];
-    private final double[] step = new double[3], stepped = new double[3], want = new double[3], out = new double[3];
-    private float[] candidates = new float[8];
+    // scratch, so a hundred ticks of sim is not a hundred thousand allocations. it only lives through one tick(), so it's one
+    // set per thread, not per sim: the planners copy sims by the hundred thousand (every rollout, every flight), and each one
+    // carrying 3 KB of its own scratch was most of the garbage the background searches made (and the GC pauses that froze the
+    // game when one ran, round fences and walls)
+    private static final class Scratch {
+        final BoxList boxes = new BoxList(), stepBoxes = new BoxList(), cell = new BoxList();
+        final double[] box = new double[6], groundedBox = new double[6], swept = new double[6], query = new double[6];
+        final double[] step = new double[3], stepped = new double[3], want = new double[3], out = new double[3];
+        final int[] cellA = new int[3], cellB = new int[3];
+        float[] candidates = new float[8];
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
+    private Scratch scr;
+    private BoxList boxes, stepBoxes, cell;
+    private double[] box, groundedBox, swept, query, step, stepped, want, out;
+    private int[] cellA, cellB;
     private float xxa, zza;
+
+    private void bindScratch() {
+        Scratch s = SCRATCH.get();
+        if (scr == s) {
+            return;
+        }
+        scr = s;
+        boxes = s.boxes;
+        stepBoxes = s.stepBoxes;
+        cell = s.cell;
+        box = s.box;
+        groundedBox = s.groundedBox;
+        swept = s.swept;
+        query = s.query;
+        step = s.step;
+        stepped = s.stepped;
+        want = s.want;
+        out = s.out;
+        cellA = s.cellA;
+        cellB = s.cellB;
+    }
 
     public CollisionProvider world() {
         return world;
@@ -141,6 +174,7 @@ public final class PlayerSim {
     // run one tick. false if the player is somewhere the sim does not do the maths for, with nothing changed when that is where
     // the tick started, and the tick done anyway when it ended there
     public boolean tick(Controls c) {
+        bindScratch();
         ticksRun++;
         THREAD_TICKS.get()[0]++;
         jumped = false;
@@ -320,7 +354,6 @@ public final class PlayerSim {
         out[2] = Mth.floor(z);
     }
 
-    private final int[] cellA = new int[3], cellB = new int[3];
 
     // getBlockPosBelowThatAffectsMyMovement is getOnPos(0.500001F)
     private float frictionBelow() {
@@ -541,7 +574,7 @@ public final class PlayerSim {
             int n = candidateHeights(groundedBox[1], stepBoxes, stepHeight, (float) step[1]);
             double distanceToGround = box[1] - groundedBox[1];
             for (int i = 0; i < n; i++) {
-                collideWithShapes(dx, candidates[i], dz, groundedBox, stepBoxes, stepped);
+                collideWithShapes(dx, scr.candidates[i], dz, groundedBox, stepBoxes, stepped);
                 if (stepped[0] * stepped[0] + stepped[2] * stepped[2] > step[0] * step[0] + step[2] * step[2]) {
                     out[0] = stepped[0];
                     out[1] = stepped[1] - distanceToGround;
@@ -567,18 +600,18 @@ public final class PlayerSim {
                     }
                     boolean known = false;
                     for (int j = 0; j < n && !known; j++) {
-                        known = candidates[j] == relative;
+                        known = scr.candidates[j] == relative;
                     }
                     if (!known) {
-                        if (n == candidates.length) {
-                            candidates = Arrays.copyOf(candidates, n * 2);
+                        if (n == scr.candidates.length) {
+                            scr.candidates = Arrays.copyOf(scr.candidates, n * 2);
                         }
-                        candidates[n++] = relative;
+                        scr.candidates[n++] = relative;
                     }
                 }
             }
         }
-        Arrays.sort(candidates, 0, n);
+        Arrays.sort(scr.candidates, 0, n);
         return n;
     }
 
@@ -662,6 +695,16 @@ public final class PlayerSim {
         for (int bx = x0; bx <= x1; bx++) {
             for (int by = y0; by <= y1; by++) {
                 for (int bz = z0; bz <= z1; bz++) {
+                    double[] known = world.boxArray(bx, by, bz);
+                    if (known != null) {
+                        for (int o = 0; o < known.length; o += 6) {
+                            if (known[o] < q[3] && known[o + 3] > q[0] && known[o + 1] < q[4] && known[o + 4] > q[1]
+                                    && known[o + 2] < q[5] && known[o + 5] > q[2]) {
+                                into.add(known[o], known[o + 1], known[o + 2], known[o + 3], known[o + 4], known[o + 5]);
+                            }
+                        }
+                        continue;
+                    }
                     cell.clear();
                     world.boxes(bx, by, bz, cell);
                     for (int i = 0; i < cell.size(); i++) {

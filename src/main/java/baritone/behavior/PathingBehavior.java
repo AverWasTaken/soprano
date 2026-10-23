@@ -899,7 +899,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         if (feet.getY() == realStart.getY() && Math.abs(sub.getX()) <= 1 && Math.abs(sub.getZ()) <= 1) {
             realStart = feet;
         }
-        return new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
+        AStarPathFinder finder = new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
+        finder.keepAbove(goal); // the goal as asked for: a far one keeps its height for this even when the search drops it
+        return finder;
 
     }
 

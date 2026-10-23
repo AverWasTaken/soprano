@@ -23,6 +23,12 @@ public interface CollisionProvider {
     // appends the collision boxes of one block cell, in world coordinates
     void boxes(int x, int y, int z, BoxList out);
 
+    // the same boxes as an array of 6 doubles each, when the provider keeps them like that and can hand them over without
+    // copying (the caller only reads it). null when it doesn't: then ask boxes()
+    default double[] boxArray(int x, int y, int z) {
+        return null;
+    }
+
     // false for anything the sim does not do the maths for. standing in or on one of these makes the sim give up instead of
     // lying. fluids, climbables, cobwebs, powder snow and so on never are. a provider that also answers the questions below
     // (friction, speed and jump factors, bounce) can call ice, slime and soul sand plain, one that doesn't must not

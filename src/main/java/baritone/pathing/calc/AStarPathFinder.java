@@ -74,10 +74,14 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         BinaryHeapOpenSet openSet = new BinaryHeapOpenSet();
         openSet.insert(startNode);
         double[] bestHeuristicSoFar = new double[COEFFICIENTS.length];//keep track of the best node by the metric of (estimatedCostToGoal + cost / COEFFICIENTS[i])
+        double[] bestLowHeuristicSoFar = new double[COEFFICIENTS.length]; // the same over every node, however low (see partialFloorY)
         for (int i = 0; i < bestHeuristicSoFar.length; i++) {
             bestHeuristicSoFar[i] = startNode.estimatedCostToGoal;
+            bestLowHeuristicSoFar[i] = startNode.estimatedCostToGoal;
             bestSoFar[i] = startNode;
+            bestLowSoFar[i] = startNode;
         }
+        int partialFloorY = this.partialFloorY;
         MutableMoveResult res = new MutableMoveResult();
         BetterWorldBorder worldBorder = calcContext.worldBorder;
         long startTime = System.currentTimeMillis();
@@ -209,14 +213,19 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                     } else {
                         openSet.insert(neighbor);//dont double count, dont insert into open set if it's already there
                     }
+                    boolean high = neighbor.y >= partialFloorY;
                     for (int i = 0; i < COEFFICIENTS.length; i++) {
                         double heuristic = neighbor.estimatedCostToGoal + neighbor.cost * INVERSE_COEFFICIENTS[i];
-                        if (bestHeuristicSoFar[i] - heuristic > minimumImprovement) {
+                        if (high && bestHeuristicSoFar[i] - heuristic > minimumImprovement) {
                             bestHeuristicSoFar[i] = heuristic;
                             bestSoFar[i] = neighbor;
                             if (failing && getDistFromStartSq(neighbor) > MIN_DIST_PATH * MIN_DIST_PATH) {
                                 failing = false;
                             }
+                        }
+                        if (bestLowHeuristicSoFar[i] - heuristic > minimumImprovement) {
+                            bestLowHeuristicSoFar[i] = heuristic;
+                            bestLowSoFar[i] = neighbor;
                         }
                     }
                 }

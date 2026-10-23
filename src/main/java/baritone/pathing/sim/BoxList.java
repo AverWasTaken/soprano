@@ -24,6 +24,16 @@ import java.util.Arrays;
 public final class BoxList {
 
     double[] data = new double[96];
+
+    private static final ThreadLocal<BoxList> TEMP = ThreadLocal.withInitial(BoxList::new);
+
+    // an empty list to look something up in, this thread's own. only for a quick look that's done with it before anything
+    // else asks for one (never across a call into something that might): a list per look was a lot of the planners' garbage
+    public static BoxList temp() {
+        BoxList b = TEMP.get();
+        b.clear();
+        return b;
+    }
     private int size;
 
     public void clear() {

@@ -276,7 +276,7 @@ public final class JumpPilot {
             return false;
         }
         int fy = Mth.floor(groundY - 0.5);
-        BoxList boxes = new BoxList();
+        BoxList boxes = BoxList.temp();
         for (double ox : new double[]{-0.3, 0.3}) {
             for (double oz : new double[]{-0.3, 0.3}) {
                 boxes.clear();

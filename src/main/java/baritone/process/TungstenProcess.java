@@ -49,6 +49,9 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class TungstenProcess extends BaritoneProcessHelper {
 
+    // the world as the pilot sees it this tick (see SafeCollision.forTick)
+    private SafeCollision liveWorld;
+
     private enum Phase { IDLE, SEARCHING, PLAYING }
 
     // a plan is followed while the real player is within this of where it said (SimState.distance)
@@ -110,7 +113,7 @@ public final class TungstenProcess extends BaritoneProcessHelper {
         }
         LocalPlayer player = ctx.player();
         BlockStateInterface bsi = baritone.bsi;
-        PlayerSim sim = bsi == null ? null : LiveSim.of(player, new SafeCollision(bsi));
+        PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld = SafeCollision.forTick(liveWorld, bsi));
         if (sim == null) {
             logDirect("Tungsten: the sim can't follow the player here (water, a ladder, a potion?), stopping");
             stop();

@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
 public class VineLogPathTest {
 
     static final class MapWorld extends BlockStateInterface {
-        final Map<Long, BlockState> blocks = new HashMap<>();
+        final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<BlockState> blocks = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
 
         MapWorld() {
             super(new BetterWorldBorder(new WorldBorder()), -64, 384);
@@ -62,7 +62,8 @@ public class VineLogPathTest {
         @Override
         protected BlockState getUncached(int x, int y, int z) {
             // y comes in shifted by -minY
-            return blocks.getOrDefault(BlockPos.asLong(x, y - 64, z), Blocks.AIR.defaultBlockState());
+            BlockState s = blocks.get(BlockPos.asLong(x, y - 64, z));
+            return s == null ? Blocks.AIR.defaultBlockState() : s;
         }
 
         @Override

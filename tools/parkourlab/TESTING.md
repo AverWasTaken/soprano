@@ -4,7 +4,18 @@ A test course for Soprano's parkour: 21 sections and 220 jumps, each section aim
 
 It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 740 blocks. Gold pads are checkpoints. Fall below y 140 and you're put back on your last one.
 
-## What's new in this build (course v6, bot v7)
+## What's new in bot v8 (same course)
+
+- **No more jumping off with no way back up.** When there's no path all the way to the goal yet, the bot sets off on the best part of one. That part could be a drop onto the ground under the course, sure it would find a way back up later. On a parkour map there isn't one. Now a part-path can't end more than 2 blocks below both where it starts and the goal. It waits for the jumps it's still working out, and only goes lower if it's been stuck in the same spot twice and there's nothing left to work out. On the candy level it now stays up on the course from the start. The setting is `partialPathMaxDrop` (`-1` turns it off).
+- **Less freezing, faster planning.** Measured on the fence and wall sections in the real game, with a profiler, before and after:
+  - GC pauses over 50 ms: 14 → 0 (the longest went from 216 ms to 39 ms). Those pauses were the freezes.
+  - Stairs and walls, on a cold start: 64 s → 26 s. No more "slow tick" warnings there (18 before).
+  - The background planners make about half the garbage they did. Most of it was simulated players each carrying 3 KB of scratch space, boxed numbers in the rim-walk grids, and failure messages formatted that nobody read.
+  - The jump sim looks each block's shape up once per tick, from a flat table, instead of working out a fence's or a wall's shape every time.
+  - A quarter of the background searches' time went into one slow square-root function (`Math.hypot`). It's now a plain square root.
+  - A* searches with Tungsten jumps: the finale is about 35% faster, and the other sections are about the same.
+
+## What was new in course v6 (bot v7)
 
 - **New section 20, CubeCraft.** The bits of the CubeCraft map the bot found hard, copied block for block from your recording (the stairs face the same way, the walls join the same way). The finale is now section 21.
   - **The wall bit:** off the black wool up onto the strip of quartz outside a ring of diorite walls, round the walls, along the far side and off the end onto a lone stair.
@@ -104,6 +115,8 @@ Full run: `/function parkourlab:start`, then `#goto 1737 163 990`.
   - "No path found" while planning ahead no longer pops up a notification.
 
 ## Results
+
+**In the real game, bot v8**: start to finish, all 21 checkpoints, 0 falls, 307 s (stairs and walls and the fence run had already been worked out that session; the rest were cold). The CubeCraft course: 0 falls, 141 s on a cold start. The candy level, start to the end of the recording: 22 s, never off the course.
 
 **In the real game, bot v7** (26.3 client with the default look wobble):
 - **Parkour Lab:** start to finish from one `#goto`, all 21 checkpoints, 0 falls, 265 s. Section 20 took 28 s. The bot hopped up onto the rim, walked round the walls, did the neo off the wall top, walked along the rim of the walled wool, went down the stair's halves and dropped onto the low stair, the way you did it on CubeCraft. On a cold start (nothing worked out yet this session), the first full run took 337 s with 0 falls. Most of the extra time was waiting in front of the neo chains (68 s) and the wall bit (about 30 s at the wool while the ledge chain was worked out).

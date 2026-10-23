@@ -31,6 +31,9 @@ public final class SnapshotCollision implements CollisionProvider {
     // per cell: where its boxes start in `boxes` (6 doubles each) and how many
     private final int[] start, count;
     private final double[] boxes;
+    // the same, a cell at a time (see boxArray), made the first time a cell is asked for that way
+    private final double[][] cellBoxes;
+    private static final double[] NO_BOXES = new double[0];
     private final float[] friction, speed, jump, bounce;
     private final byte[] flags, support;
     private static final byte PLAIN = 1, SLIME_STEP = 2, CLIMBABLE = 4;
@@ -81,6 +84,7 @@ public final class SnapshotCollision implements CollisionProvider {
             }
         }
         boxes = Arrays.copyOf(all.raw(), all.size() * 6);
+        cellBoxes = new double[n][];
         hash = h;
     }
 
@@ -93,6 +97,21 @@ public final class SnapshotCollision implements CollisionProvider {
             return -1;
         }
         return index(x, y, z);
+    }
+
+    @Override
+    public double[] boxArray(int x, int y, int z) {
+        int i = at(x, y, z);
+        if (i < 0) {
+            return NO_BOXES;
+        }
+        double[] known = cellBoxes[i];
+        if (known == null) {
+            // a race between two threads here only makes the same array twice
+            known = count[i] == 0 ? NO_BOXES : Arrays.copyOfRange(boxes, start[i] * 6, (start[i] + count[i]) * 6);
+            cellBoxes[i] = known;
+        }
+        return known;
     }
 
     @Override

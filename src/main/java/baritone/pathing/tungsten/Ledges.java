@@ -23,7 +23,6 @@ import baritone.pathing.sim.CollisionProvider;
 import baritone.pathing.sim.PlayerSim;
 import net.minecraft.util.Mth;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,6 +41,12 @@ import java.util.Set;
  * out in full and flown with the aim wobbling, like any searched plan.
  */
 public final class Ledges {
+
+    // Math.hypot is careful about overflow and slow for it (a quarter of the background searches' time went there): these
+    // are distances of a few blocks
+    static double hyp(double a, double b) {
+        return Math.sqrt(a * a + b * b);
+    }
 
     private Ledges() {}
 
@@ -71,7 +76,7 @@ public final class Ledges {
         }
     }
 
-    private record Ledge(int id, Floor floor, List<Integer> cells) {}
+    private record Ledge(int id, Floor floor, int[] cells) {}
 
     // everything worked out about the place, for the jumps to say where they ended up
     private record Place(List<Floor> floors, List<Ledge> ledges) {
@@ -167,7 +172,7 @@ public final class Ledges {
     private static final java.util.Map<String, Built> BUILT = new java.util.LinkedHashMap<>(64, 0.75F, true) {
         @Override
         protected boolean removeEldestEntry(java.util.Map.Entry<String, Built> e) {
-            return size() > 24;
+            return size() > 8; // a few MB each (a grid per floor height), the ones round the player are all that get asked again
         }
     };
 
@@ -208,6 +213,7 @@ public final class Ledges {
         // the floors and their ledges
         List<Ledge> ledges = new ArrayList<>();
         List<Floor> floors = new ArrayList<>();
+        int[] queue = new int[0];
         for (long t : tops) {
             double h = t / 10000.0;
             RimWalk.Area area = new RimWalk.Area(all, x0, z0, x1, z1, h);
@@ -223,14 +229,14 @@ public final class Ledges {
                 if (!grid.ok[c] || label[c] >= 0) {
                     continue;
                 }
-                List<Integer> cells = new ArrayList<>();
-                ArrayDeque<Integer> q = new ArrayDeque<>();
+                // breadth first over the free spots joined to this one: the queue is the ledge's cells, in the order found
+                int[] q = queue.length < grid.ok.length ? (queue = new int[grid.ok.length]) : queue;
+                int head = 0, tail = 0;
                 int id = ledges.size();
                 label[c] = id;
-                q.add(c);
-                while (!q.isEmpty()) {
-                    int at = q.poll();
-                    cells.add(at);
+                q[tail++] = c;
+                while (head < tail) {
+                    int at = q[head++];
                     int i = at / grid.nz, k = at % grid.nz;
                     for (int di = -1; di <= 1; di++) {
                         for (int dk = -1; dk <= 1; dk++) {
@@ -241,12 +247,12 @@ public final class Ledges {
                             int m = ii * grid.nz + kk;
                             if (grid.ok[m] && label[m] < 0) {
                                 label[m] = id;
-                                q.add(m);
+                                q[tail++] = m;
                             }
                         }
                     }
                 }
-                ledges.add(new Ledge(id, floor, cells));
+                ledges.add(new Ledge(id, floor, Arrays.copyOf(q, tail)));
             }
         }
         Built b = new Built(hash, new Place(floors, ledges), new java.util.concurrent.ConcurrentHashMap<>());
@@ -279,7 +285,7 @@ public final class Ledges {
         Ledge landLedge = place.at(land.centerX(), landFloor, land.centerZ());
         if (DEBUG) {
             for (Ledge l : ledges) {
-                if (l.cells().size() < 4) {
+                if (l.cells().length < 4) {
                     continue;
                 }
                 RimWalk.Grid g = l.floor().grid;
@@ -291,7 +297,7 @@ public final class Ledges {
                     mxz = Math.max(mxz, g.z(c));
                 }
                 System.out.printf("[ledges]   ledge %d%s at %.3f: %d cells, x %.2f..%.2f z %.2f..%.2f%n", l.id(), l == start ? " (start)" : "",
-                        l.floor().h, l.cells().size(), mnx, mxx, mnz, mxz);
+                        l.floor().h, l.cells().length, mnx, mxx, mnz, mxz);
             }
         }
         // a jump at a time: the cheapest chain of walks and jumps from where we are (Dijkstra over the ledges), its first jump
@@ -437,7 +443,7 @@ public final class Ledges {
 
     // the floor height in the landing's cell (the top of whatever's under the middle of it)
     private static double landFloor(CollisionProvider world, Landing land) {
-        BoxList boxes = new BoxList();
+        BoxList boxes = BoxList.temp();
         world.boxes(land.x(), land.y() - 1, land.z(), boxes);
         world.boxes(land.x(), land.y(), land.z(), boxes);
         double top = Double.NaN;
@@ -459,12 +465,12 @@ public final class Ledges {
         }
         // any two cells within a jump (checked on a coarse sample)
         RimWalk.Grid ga = a.floor().grid, gb = b.floor().grid;
-        int stepA = Math.max(1, a.cells().size() / 60), stepB = Math.max(1, b.cells().size() / 60);
-        for (int i = 0; i < a.cells().size(); i += stepA) {
-            int ca = a.cells().get(i);
-            for (int j = 0; j < b.cells().size(); j += stepB) {
-                int cb = b.cells().get(j);
-                if (Math.hypot(ga.x(ca) - gb.x(cb), ga.z(ca) - gb.z(cb)) <= MAX_JUMP) {
+        int stepA = Math.max(1, a.cells().length / 60), stepB = Math.max(1, b.cells().length / 60);
+        for (int i = 0; i < a.cells().length; i += stepA) {
+            int ca = a.cells()[i];
+            for (int j = 0; j < b.cells().length; j += stepB) {
+                int cb = b.cells()[j];
+                if (hyp(ga.x(ca) - gb.x(cb), ga.z(ca) - gb.z(cb)) <= MAX_JUMP) {
                     return true;
                 }
             }
@@ -474,7 +480,7 @@ public final class Ledges {
 
     // a rough walk time on the ledge from one spot to another: a straight line at a walk
     private static double walkCost(Ledge a, double[] from, double x, double z) {
-        return Math.hypot(x - from[0], z - from[1]) / 0.2;
+        return hyp(x - from[0], z - from[1]) / 0.2;
     }
 
     // the jumps from ledge a to ledge b (or to the landing, b == null), worked out from standing at a run up spot
@@ -492,10 +498,10 @@ public final class Ledges {
         } else {
             RimWalk.Grid gb = b.floor().grid;
             // scored by how near the landing they are and how short a jump from a, a few spread out
-            int step = Math.max(1, b.cells().size() / 400);
+            int step = Math.max(1, b.cells().length / 400);
             List<double[]> scored = new ArrayList<>();
-            for (int i = 0; i < b.cells().size(); i += step) {
-                int c = b.cells().get(i);
+            for (int i = 0; i < b.cells().length; i += step) {
+                int c = b.cells()[i];
                 if (gb.room[c] < 1) {
                     continue;
                 }
@@ -515,7 +521,7 @@ public final class Ledges {
                 int p = -1;
                 double pd = Double.MAX_VALUE;
                 for (int c : a.cells()) {
-                    double d = Math.hypot(ga.x(c) - t[0], ga.z(c) - t[1]);
+                    double d = hyp(ga.x(c) - t[0], ga.z(c) - t[1]);
                     if (d < pd) {
                         pd = d;
                         p = c;
@@ -537,7 +543,7 @@ public final class Ledges {
             }
         }
         for (double[] t : targets) {
-                    if (Math.hypot(t[0] - sc[0], t[1] - sc[1]) < 0.4) {
+                    if (hyp(t[0] - sc[0], t[1] - sc[1]) < 0.4) {
                         close = true;
                         break;
                     }
@@ -559,7 +565,7 @@ public final class Ledges {
                 if (ga.room[c] < 1) {
                     continue;
                 }
-                double d = Math.hypot(ga.x(c) - t[0], ga.z(c) - t[1]);
+                double d = hyp(ga.x(c) - t[0], ga.z(c) - t[1]);
                 if (d >= 0.45 && d <= MAX_JUMP) {
                     byDistance.add(new int[]{c, (int) Math.round(d * 1000)});
                 }
@@ -601,7 +607,7 @@ public final class Ledges {
             // round it from the side of the top on the same side)
             if (!byDistance.isEmpty()) {
                 int c0 = byDistance.get(0)[0];
-                double lx = t[0] - ga.x(c0), lz = t[1] - ga.z(c0), ll = Math.hypot(lx, lz);
+                double lx = t[0] - ga.x(c0), lz = t[1] - ga.z(c0), ll = hyp(lx, lz);
                 if (ll > 1.0E-6) {
                     double nx = -lz / ll, nz = lx / ll;
                     for (int w = 0; w < 4; w++) {
@@ -639,7 +645,7 @@ public final class Ledges {
                 System.out.println(sb);
             }
             for (int p : takeoffs) {
-                double px = ga.x(p), pz = ga.z(p), pd = Math.hypot(t[0] - px, t[1] - pz);
+                double px = ga.x(p), pz = ga.z(p), pd = hyp(t[0] - px, t[1] - pz);
                 // straight at it, or (something in the way) by way of a point off to one side halfway: round a post
                 List<double[]> vias = new ArrayList<>();
                 vias.add(new double[]{Double.NaN, Double.NaN, 0});
@@ -652,7 +658,7 @@ public final class Ledges {
                     }
                 }
                 for (double[] v : vias) {
-                    double ax = Double.isNaN(v[0]) ? t[0] : v[0], az = Double.isNaN(v[0]) ? t[1] : v[1], al = Math.hypot(ax - px, az - pz);
+                    double ax = Double.isNaN(v[0]) ? t[0] : v[0], az = Double.isNaN(v[0]) ? t[1] : v[1], al = hyp(ax - px, az - pz);
                     double ux = (ax - px) / al, uz = (az - pz) / al;
                     // a short hop at a walk (bumping into things on the way is fine without sprint, the game does that the
                     // same whichever way the camera looks), a long one at a sprint
@@ -744,7 +750,7 @@ public final class Ledges {
                 }
                 boolean close = false;
                 for (int o : spots) {
-                    if (Math.hypot(ga.x(o) - ga.x(c), ga.z(o) - ga.z(c)) < 0.15) {
+                    if (hyp(ga.x(o) - ga.x(c), ga.z(o) - ga.z(c)) < 0.15) {
                         close = true;
                         break;
                     }
@@ -831,17 +837,17 @@ public final class Ledges {
     private static double nearest(Ledge a, double x, double z) {
         RimWalk.Grid g = a.floor().grid;
         double best = Double.MAX_VALUE;
-        int step = Math.max(1, a.cells().size() / 200);
-        for (int i = 0; i < a.cells().size(); i += step) {
-            int c = a.cells().get(i);
-            best = Math.min(best, Math.hypot(g.x(c) - x, g.z(c) - z));
+        int step = Math.max(1, a.cells().length / 200);
+        for (int i = 0; i < a.cells().length; i += step) {
+            int c = a.cells()[i];
+            best = Math.min(best, hyp(g.x(c) - x, g.z(c) - z));
         }
         return best;
     }
 
     // every point from (rx, rz) to (px, pz) free on some floor within a step of h
     private static boolean lane(Place place, double h, double rx, double rz, double px, double pz) {
-        double len = Math.hypot(px - rx, pz - rz);
+        double len = hyp(px - rx, pz - rz);
         int steps = Math.max(1, (int) Math.ceil(len / RimWalk.RES));
         // (where a stair's halves meet, neither half's grid has the few hundredths of the step itself: a short gap is fine)
         int gap = 0;
@@ -874,7 +880,7 @@ public final class Ledges {
 
     // every point from (rx, rz) to (px, pz) free on the grid
     private static boolean lane(RimWalk.Grid g, double rx, double rz, double px, double pz) {
-        double len = Math.hypot(px - rx, pz - rz);
+        double len = hyp(px - rx, pz - rz);
         int steps = Math.max(1, (int) Math.ceil(len / RimWalk.RES));
         for (int i = 0; i <= steps; i++) {
             int c = g.at(rx + (px - rx) * i / steps, rz + (pz - rz) * i / steps);
@@ -929,9 +935,9 @@ public final class Ledges {
             } else {
                 if (!pastVia) {
                     // aimed at the via for the first viaTicks in the air (0: until it's reached), then at the target
-                    double wx = tx - vx, wz = tz - vz, wl = Math.hypot(wx, wz);
+                    double wx = tx - vx, wz = tz - vz, wl = hyp(wx, wz);
                     pastVia = viaTicks > 0 ? air >= viaTicks
-                            : Math.hypot(sim.x - vx, sim.z - vz) < 0.35 || wl > 1.0E-6 && ((sim.x - vx) * wx + (sim.z - vz) * wz) / wl > -0.05;
+                            : hyp(sim.x - vx, sim.z - vz) < 0.35 || wl > 1.0E-6 && ((sim.x - vx) * wx + (sim.z - vz) * wz) / wl > -0.05;
                 }
                 c = new PlayerSim.Controls(1, 0, false, sprint, pastVia ? Keys.yaw(tx - sim.x, tz - sim.z) : Keys.yaw(vx - sim.x, vz - sim.z));
             }
@@ -942,7 +948,7 @@ public final class Ledges {
             }
             run.step(sim, c);
             if (sim.horizontalCollision && sprint) {
-                why = String.format("bumped at %.2f %.2f %.2f%s (tick %d, from %.2f %.2f %.2f, yaw %.0f)", sim.x, sim.y, sim.z, jumped ? " in the air" : "",
+                why = !DEBUG ? "bumped" : String.format("bumped at %.2f %.2f %.2f%s (tick %d, from %.2f %.2f %.2f, yaw %.0f)", sim.x, sim.y, sim.z, jumped ? " in the air" : "",
                         t, ox, oy, oz, c.moveYaw());
                 return false;
             }
@@ -980,7 +986,7 @@ public final class Ledges {
             if (!sim.onGround) {
                 air++;
                 if (sim.y < Math.min(a.floor().h, b == null ? landFloor : place.lowest()) - 1.5) {
-                    why = String.format("fell at %.2f %.2f", sim.x, sim.z);
+                    why = !DEBUG ? "fell" : String.format("fell at %.2f %.2f", sim.x, sim.z);
                     return false;
                 }
                 continue;
@@ -992,7 +998,7 @@ public final class Ledges {
             if (b == null) {
                 SimState s = SimState.of(sim);
                 if (!JumpPolicy.onTheBlock(s, land) && !land.holds(sim.x, sim.y, sim.z)) {
-                    why = String.format("came down at %.2f %.2f %.2f", sim.x, sim.y, sim.z);
+                    why = !DEBUG ? "came down" : String.format("came down at %.2f %.2f %.2f", sim.x, sim.y, sim.z);
                     return false;
                 }
                 PlayerSim probe = sim.copy();
@@ -1009,12 +1015,12 @@ public final class Ledges {
             }
             // down somewhere: stop, and see which ledge that is (onto the low step of a stair, the run carries on up it)
             if (!stop(sim, run)) {
-                why = String.format("didn't stop after coming down at %.2f %.2f %.2f", sim.x, sim.y, sim.z);
+                why = !DEBUG ? "didn't stop" : String.format("didn't stop after coming down at %.2f %.2f %.2f", sim.x, sim.y, sim.z);
                 return false;
             }
             ended[0] = place.at(sim.x, sim.y, sim.z);
             if (ended[0] == null || ended[0] == a) {
-                why = String.format("stopped at %.2f %.2f %.2f, not on a ledge", sim.x, sim.y, sim.z);
+                why = !DEBUG ? "stopped" : String.format("stopped at %.2f %.2f %.2f, not on a ledge", sim.x, sim.y, sim.z);
                 return false;
             }
             return true;
@@ -1056,7 +1062,7 @@ public final class Ledges {
             why = "off the grid";
             return false;
         }
-        if (Math.hypot(sim.x - x, sim.z - z) < 0.08) {
+        if (hyp(sim.x - x, sim.z - z) < 0.08) {
             return true;
         }
         if (!g.ok[from]) {
@@ -1106,7 +1112,7 @@ public final class Ledges {
                 c = Keys.push(Keys.yaw(aim[0] - sim.x, aim[1] - sim.z), false);
             }
             if (!Keys.step(sim, c) || !sim.onGround || Math.abs(sim.y - h) > 1.0E-4 || sim.horizontalCollision) {
-                why = String.format("walk tick %d at %.2f %.2f %.2f%s%s", t, sim.x, sim.y, sim.z, sim.onGround ? "" : " off the ground", sim.horizontalCollision ? " bumped" : "");
+                why = !DEBUG ? "walk tick" : String.format("walk tick %d at %.2f %.2f %.2f%s%s", t, sim.x, sim.y, sim.z, sim.onGround ? "" : " off the ground", sim.horizontalCollision ? " bumped" : "");
                 return false;
             }
             run.step(sim, c);
@@ -1138,7 +1144,7 @@ public final class Ledges {
         int best = -1;
         double bd = Double.MAX_VALUE;
         for (int c : a.cells()) {
-            double d = Math.hypot(g.x(c) - x, g.z(c) - z);
+            double d = hyp(g.x(c) - x, g.z(c) - z);
             if (d < bd) {
                 bd = d;
                 best = c;
@@ -1151,7 +1157,7 @@ public final class Ledges {
         int best = -1;
         double bd = Double.MAX_VALUE;
         for (int c : a.cells()) {
-            double d = Math.hypot(g.x(c) - x, g.z(c) - z);
+            double d = hyp(g.x(c) - x, g.z(c) - z);
             if (d < bd) {
                 bd = d;
                 best = c;
@@ -1183,7 +1189,7 @@ public final class Ledges {
             return true;
         }
         double ax = Double.isNaN(e.vx()) ? e.tx() : e.vx(), az = Double.isNaN(e.vx()) ? e.tz() : e.vz();
-        double al = Math.hypot(ax - e.px(), az - e.pz());
+        double al = hyp(ax - e.px(), az - e.pz());
         if (!jump(sim, place, e.from(), e.px(), e.pz(), (ax - e.px()) / al, (az - e.pz()) / al, e.tx(), e.tz(), e.vx(), e.vz(), e.viaTicks(), e.to(), land,
                 landFloor, e.sprint(), run, ended)) {
             if (DEBUG) {

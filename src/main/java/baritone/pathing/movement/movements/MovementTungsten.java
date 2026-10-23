@@ -64,6 +64,9 @@ import static baritone.api.pathing.movement.ActionCosts.COST_INF;
  */
 public class MovementTungsten extends Movement implements CurvedMovement {
 
+    // the world as the pilot sees it this tick (see SafeCollision.forTick)
+    private SafeCollision liveWorld;
+
     private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
     private static final int SEARCH_WAIT = 100, STUCK = 40;
 
@@ -201,7 +204,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             pilot.flow(this::flowsOn);
         }
         BlockStateInterface bsi = ((Baritone) baritone).bsi;
-        PlayerSim sim = bsi == null ? null : LiveSim.of(player, new SafeCollision(bsi));
+        PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld = SafeCollision.forTick(liveWorld, bsi));
         if (sim == null) {
             // somewhere the sim doesn't model: a potion, sneaking, using an item, water. nothing to steer with
             if (player.onGround() && feet.equals(dest) && player.getDeltaMovement().horizontalDistance() < 0.05) {

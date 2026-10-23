@@ -123,16 +123,17 @@ public final class TungstenJumps {
         private boolean warned;
         private SafeCollision world;
         // per column (x z, and the y it was asked from): is there anything bouncy in the BOUNCE_DEPTH cells under it
-        private final Map<Long, Boolean> bounceColumns = new HashMap<>();
+        // (keyed by the packed position, not a hash of it: one key, one column. no boxing either, A* asks this a lot)
+        private final it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap bounceColumns = new it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap();
 
         synchronized boolean bounceBelow(CalculationContext context, int x, int y, int z) {
-            long key = BetterBlockPos.longHash(x, y, z);
-            Boolean known = bounceColumns.get(key);
-            if (known == null) {
-                known = false;
+            long key = net.minecraft.core.BlockPos.asLong(x, y, z);
+            byte known = bounceColumns.getOrDefault(key, (byte) -1);
+            if (known < 0) {
+                known = 0;
                 for (int dy = 1; dy <= BOUNCE_DEPTH; dy++) {
                     if (bouncy(context.get(x, y - dy, z))) {
-                        known = true;
+                        known = 1;
                         break;
                     }
                 }
@@ -141,7 +142,7 @@ public final class TungstenJumps {
                 }
                 bounceColumns.put(key, known);
             }
-            return known;
+            return known == 1;
         }
 
         public Cache(long budget) {
@@ -296,7 +297,8 @@ public final class TungstenJumps {
     static final long LEDGE_MS = 120_000;
     static final int LEDGE_AROUND = 16, MAX_LEDGE_SPOTS = 8;
 
-    public static void wantLedges(int x, int y, int z) {
+    // returns whether this spot was already wanted (we've been stuck round here before)
+    public static boolean wantLedges(int x, int y, int z) {
         long now = System.currentTimeMillis();
         LEDGE_SPOTS.removeIf(s -> s.until() < now);
         boolean known = ledgesWanted(x, y, z);
@@ -312,6 +314,7 @@ public final class TungstenJumps {
             // whoever's waiting on the search should try it again: there's more to look at now
             PendingTables.missed(new Object(), () -> true);
         }
+        return known;
     }
 
     static boolean ledgesWanted(int x, int y, int z) {
@@ -798,7 +801,7 @@ public final class TungstenJumps {
     // where the feet rest standing in x y z: the top of whatever's under them, or NaN if that's not within a few
     // hundredths under y (Baritone calls the cell above a floor the place you stand, and the sim wants the real height)
     static double floorTop(SafeCollision world, int x, int y, int z) {
-        BoxList boxes = new BoxList();
+        BoxList boxes = BoxList.temp();
         world.boxes(x, y - 1, z, boxes);
         world.boxes(x, y, z, boxes);
         double top = Double.NaN;

@@ -160,7 +160,7 @@ public class ParkourLabScorecard {
 
     // ask for a section's jumps and the section as a whole, again as long as each pass turns up shapes nobody had asked about,
     // until the background work is done or the time is up
-    private static void warm(VineLogPathTest.MapWorld w, List<BetterBlockPos> cps, JsonObject sec, long warmMs, boolean whole) throws InterruptedException {
+    static void warm(VineLogPathTest.MapWorld w, List<BetterBlockPos> cps, JsonObject sec, long warmMs, boolean whole) throws InterruptedException {
         long warmUntil = System.currentTimeMillis() + warmMs;
         for (int pass = 0; pass < 6 && System.currentTimeMillis() < warmUntil; pass++) {
             long missesBefore = baritone.pathing.movement.movements.PendingTables.misses();
