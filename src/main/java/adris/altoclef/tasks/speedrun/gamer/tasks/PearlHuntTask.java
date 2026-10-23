@@ -244,10 +244,6 @@ public class PearlHuntTask extends Task {
             hotspotDone = true;
             return null;
         }
-        // hurt: stand still and heal first, the walk waits (its clock does too)
-        if (!EndermanNook.mayWalkIn(mod.getPlayer().getHealth())) {
-            return null;
-        }
         return toHotspot;
     }
 
