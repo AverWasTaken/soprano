@@ -40,7 +40,7 @@ public class StrongholdRoomSearchTask extends Task {
             Blocks.INFESTED_CRACKED_STONE_BRICKS, Blocks.INFESTED_CHISELED_STONE_BRICKS, Blocks.IRON_BARS,
             Blocks.END_PORTAL_FRAME};
     // the whole stronghold sits under this (the top is at most sea level - 10) and surface ruins do not
-    private static final int BRICK_MAX_Y = 56;
+    static final int BRICK_MAX_Y = 56;
     private static final int BRICK_MAX_DIST = 140;
     private static final int SCAN_EVERY_TICKS = 5;
     private static final double SAVE_EVERY_SECONDS = 15;
@@ -88,6 +88,15 @@ public class StrongholdRoomSearchTask extends Task {
     private double digSince;
     // the walk back onto the staircase column when the dig drifted off it
     private Task rewalkTask;
+    // the column being dug (the start column, or the one next to it after a stuck dig) and the segment goal under way
+    private int digX;
+    private int digZ;
+    private int digEntryY;
+    private int lowestY;
+    private int segmentY;
+    private int digTaskY;
+    private boolean digRetried;
+    private boolean failed;
     private final NoPathScope.Watch noPath = new NoPathScope.Watch();
     private String step = "Searching the stronghold";
 
@@ -142,7 +151,7 @@ public class StrongholdRoomSearchTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (done || exhausted) {
+        if (done || exhausted || failed) {
             return null;
         }
         if (mod.getWorld() == null || WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
@@ -219,6 +228,14 @@ public class StrongholdRoomSearchTask extends Task {
         if (next == Stage.DIG) {
             digSince = timeOnTaskSeconds();
             rewalkTask = null;
+            digTask = null;
+            digRetried = false;
+            RunState.Pos start = ctx.state().strongholdStart;
+            digX = start.x;
+            digZ = start.z;
+            digEntryY = (int) Math.floor(mod.getPlayer().getY());
+            lowestY = digEntryY;
+            segmentY = RoomCoverage.firstSegmentY(lowestY, cfg.digFloorY);
         }
         stage = next;
         stageSince = seconds(mod);
@@ -227,6 +244,10 @@ public class StrongholdRoomSearchTask extends Task {
     private boolean onStartColumn(AltoClef mod) {
         RunState.Pos start = ctx.state().strongholdStart;
         return RoomCoverage.onColumn(mod.getPlayer().getX(), mod.getPlayer().getZ(), start.x, start.z);
+    }
+
+    private boolean onDigColumn(AltoClef mod) {
+        return RoomCoverage.onColumn(mod.getPlayer().getX(), mod.getPlayer().getZ(), digX, digZ);
     }
 
     // the estimate was wrong, the column bottomed out with no bricks anywhere. RoomPhase throws eyes again from somewhere
@@ -408,36 +429,60 @@ public class StrongholdRoomSearchTask extends Task {
             lastDigY = y;
             ctx.progress("dug down");
         }
-        RunState.Pos start = ctx.state().strongholdStart;
+        lowestY = Math.min(lowestY, y);
         RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY,
-                onStartColumn(mod));
+                onDigColumn(mod));
         if (verdict == RoomCoverage.DigVerdict.FLOOR) {
             // on the column, at the bottom, nothing: the chunk is not the stronghold's
             estimateWrong();
             return null;
         }
-        if (verdict == RoomCoverage.DigVerdict.BRICKS || timeOnTaskSeconds() - digSince > cfg.digDownSeconds) {
+        RoomCoverage.DigOutcome outcome = RoomCoverage.digOutcome(verdict == RoomCoverage.DigVerdict.BRICKS,
+                timeOnTaskSeconds() - digSince, cfg.digDownSeconds, digEntryY, lowestY, BRICK_MAX_Y, digRetried);
+        if (outcome == RoomCoverage.DigOutcome.RETRY) {
+            // never dug anywhere useful: spiralling from up here searches the surface. one more go from the next column
+            // over, then this attempt is over. not estimateWrong, that spends the only relocate on a mechanical stall
+            digRetried = true;
+            int[] col = RoomCoverage.retryColumn(digX, digZ);
+            digX = col[0];
+            digZ = col[1];
+            digSince = timeOnTaskSeconds();
+            digEntryY = lowestY;
+            segmentY = RoomCoverage.firstSegmentY(lowestY, cfg.digFloorY);
+            digTask = null;
+            rewalkTask = null;
+            return null;
+        }
+        if (outcome == RoomCoverage.DigOutcome.FAIL) {
+            failed = true;
+            ctx.fail("the stronghold dig never got below y " + lowestY);
+            return null;
+        }
+        if (outcome == RoomCoverage.DigOutcome.SPIRAL) {
             Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
             enterSpiral(mod);
             return null;
         }
         // GoalColumnDown only says where the dig ends, baritone is free to take a cave to get there. the staircase is
-        // the column and nothing else, so off it we walk back at this height before digging any deeper
-        if (RoomCoverage.needsRewalk(rewalkTask != null, mod.getPlayer().getX(), mod.getPlayer().getZ(), start.x, start.z)) {
+        // the column and nothing else, so well off it we walk back before digging any deeper
+        if (RoomCoverage.needsRewalk(rewalkTask != null, mod.getPlayer().getX(), mod.getPlayer().getZ(), digX, digZ)) {
             if (rewalkTask == null) {
-                // done anywhere on the column at this height or lower, so a drop into the hollow core ends it too and nobody has
-                // to stand in mid-air or pillar up to reach it
-                rewalkTask = new GetDownColumnTask(start.x, start.z, (int) Math.floor(mod.getPlayer().getY()), false);
+                // done on the column at the lowest height we reached or under it, so a drop into the hollow core ends it
+                // too. the player's own y here would be wherever the cave dumped us, which is how it ping-ponged before
+                rewalkTask = new GetDownColumnTask(digX, digZ, lowestY, false);
             }
             step = "Back onto the dig column";
             setDebugState("Walking back onto the dig column", step);
             return rewalkTask;
         }
         rewalkTask = null;
-        if (digTask == null) {
-            // the column the eye dived into: the start piece is the top of the stronghold, it can only be under this
-            // no wander: a failed progress check walking off into the open is how the column got lost in the first place
-            digTask = new GetDownColumnTask(start.x, start.z, cfg.digFloorY, false);
+        int nextSeg = RoomCoverage.nextSegmentY(segmentY, mod.getPlayer().getY(), onDigColumn(mod), cfg.digFloorY);
+        if (digTask == null || nextSeg != digTaskY) {
+            segmentY = nextSeg;
+            digTaskY = segmentY;
+            // no wander: a failed progress check walking off into the open is how the column got lost in the first place.
+            // a short segment every time, from the exact column, so the search finishes and the partial path never drifts
+            digTask = new GetDownColumnTask(digX, digZ, segmentY, false);
         }
         return digTask;
     }

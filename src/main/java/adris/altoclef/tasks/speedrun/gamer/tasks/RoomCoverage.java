@@ -31,12 +31,19 @@ public final class RoomCoverage {
         return covered || walkFinished || timerOut || stalled || noPath;
     }
 
-    // the staircase column is the only place the dig may call a floor. a block and a half of slack: the player stands
-    // anywhere on the block and baritone clips corners
-    static final double COLUMN_SLACK = 1.5;
-    // once we are walking back to the column we go on until we are really on it, or the dig and the walk trade places
-    // every other tick
-    static final double COLUMN_REJOIN = 1.2;
+    // the staircase column is the only place the dig may call a floor. the spiral is 5 wide, so 3 from the middle is
+    // inside it plus a block of slack for baritone clipping corners
+    static final double COLUMN_SLACK = 3;
+    // the dig now restarts from the exact column every segment, so drift is already cut off there. this leash is only the
+    // backstop for a cave that really carried us off: euclid distance, and it ends 2 from the middle so the dig and the
+    // walk do not trade places every other tick
+    static final double COLUMN_LEASH = 5;
+    static final double COLUMN_REJOIN = 2;
+    // each dig goal is this far below the lowest point we got to. a search to the floor 130 blocks down never finishes, so
+    // baritone hands back a partial path that drifts off the column. 8 down is one the search can actually complete
+    static final int SEGMENT_DEPTH = 8;
+    // a dig that never got this far below where it started did not dig
+    static final int STUCK_DEPTH = 8;
 
     public static boolean onColumn(double px, double pz, int columnX, int columnZ) {
         return Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5)) <= COLUMN_SLACK;
@@ -45,7 +52,49 @@ public final class RoomCoverage {
     // walking = we are already heading back to the column. true means walk (or start walking), false means dig
     public static boolean needsRewalk(boolean walking, double px, double pz, int columnX, int columnZ) {
         double d = Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5));
-        return d > (walking ? COLUMN_REJOIN : COLUMN_SLACK);
+        return d > (walking ? COLUMN_REJOIN : COLUMN_LEASH);
+    }
+
+    // where the first segment ends: SEGMENT_DEPTH under the lowest point reached, never under the floor
+    public static int firstSegmentY(int lowestY, int floorY) {
+        return Math.max(floorY, lowestY - SEGMENT_DEPTH);
+    }
+
+    // the segment steps down once we are at it (or past it) on the column. off the column it stays, the rewalk deals with that
+    public static int nextSegmentY(int segmentY, double playerY, boolean onColumn, int floorY) {
+        if (!onColumn || playerY > segmentY + 0.999) {
+            return segmentY;
+        }
+        return Math.max(floorY, (int) Math.min(segmentY, Math.floor(playerY)) - SEGMENT_DEPTH);
+    }
+
+    // a dig whose budget ran out without getting STUCK_DEPTH under its entry y, or without getting under the band the
+    // stronghold can be in at all (maxY): a spiral from up there searches the surface. a dig that dropped into the band and
+    // found no bricks is a different story and is not this
+    public static boolean stuckDig(int entryY, int lowestY, int maxY) {
+        return lowestY > entryY - STUCK_DEPTH || lowestY > maxY;
+    }
+
+    public enum DigOutcome {KEEP_DIGGING, SPIRAL, RETRY, FAIL}
+
+    // what the dig does this tick. the budget is the config's (task time seconds), not a constant here
+    public static DigOutcome digOutcome(boolean bricksSeen, double elapsed, double budget, int entryY, int lowestY, int maxY,
+                                        boolean retried) {
+        if (bricksSeen) {
+            return DigOutcome.SPIRAL;
+        }
+        if (elapsed <= budget) {
+            return DigOutcome.KEEP_DIGGING;
+        }
+        if (!stuckDig(entryY, lowestY, maxY)) {
+            return DigOutcome.SPIRAL;
+        }
+        return retried ? DigOutcome.FAIL : DigOutcome.RETRY;
+    }
+
+    // the one retry after a stuck dig: the next column over, still inside the 5 wide staircase (the dig column is its middle)
+    public static int[] retryColumn(int columnX, int columnZ) {
+        return new int[]{columnX + 2, columnZ};
     }
 
     // the work level changed, so every chunk marked at the old one was seen from the wrong height. true if it cleared

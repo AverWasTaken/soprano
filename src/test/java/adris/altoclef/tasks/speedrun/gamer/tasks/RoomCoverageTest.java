@@ -177,19 +177,72 @@ public class RoomCoverageTest {
     }
 
     @Test
-    public void theColumnIsWithinAboutABlockAndAHalf() {
+    public void theColumnIsWithinThreeOfTheMiddle() {
         assertTrue(RoomCoverage.onColumn(996.5, 1684.5, 996, 1684));
-        assertTrue(RoomCoverage.onColumn(997.5, 1684.9, 996, 1684));
+        assertTrue(RoomCoverage.onColumn(998.4, 1685.4, 996, 1684));
         assertFalse(RoomCoverage.onColumn(1004.5, 1687.5, 996, 1684));
+        assertFalse(RoomCoverage.onColumn(1000.5, 1684.5, 996, 1684));
     }
 
     @Test
-    public void rewalkStartsLateAndEndsOnTheColumn() {
-        // not walking: only past the slack. walking: until we are properly back on it
-        assertFalse(RoomCoverage.needsRewalk(false, 997.4, 1684.5, 996, 1684));
-        assertTrue(RoomCoverage.needsRewalk(false, 1004.5, 1684.5, 996, 1684));
-        assertTrue(RoomCoverage.needsRewalk(true, 997.9, 1684.5, 996, 1684));
-        assertFalse(RoomCoverage.needsRewalk(true, 996.9, 1684.5, 996, 1684));
+    public void theLeashIsALooseBackstop() {
+        // not walking: only past 5. walking: until we are within 2 of the middle
+        assertFalse(RoomCoverage.needsRewalk(false, 1000.4, 1684.5, 996, 1684));
+        assertTrue(RoomCoverage.needsRewalk(false, 1002.5, 1684.5, 996, 1684));
+        assertTrue(RoomCoverage.needsRewalk(true, 999.0, 1684.5, 996, 1684));
+        assertFalse(RoomCoverage.needsRewalk(true, 998.0, 1684.5, 996, 1684));
+    }
+
+    @Test
+    public void segmentsStepDownEightAtATimeOnTheColumn() {
+        // from the surface at 79: first goal 71, never under the floor
+        assertEquals(71, RoomCoverage.firstSegmentY(79, -54));
+        assertEquals(-54, RoomCoverage.firstSegmentY(-50, -54));
+        // not there yet, or there but off the column: the goal stays
+        assertEquals(71, RoomCoverage.nextSegmentY(71, 75.2, true, -54));
+        assertEquals(71, RoomCoverage.nextSegmentY(71, 70, false, -54));
+        // standing at it (feet y 71.0, or just under) on the column: next 8 down
+        assertEquals(63, RoomCoverage.nextSegmentY(71, 71.0, true, -54));
+        assertEquals(62, RoomCoverage.nextSegmentY(71, 70.5, true, -54));
+        // fell past it, the step counts from where we are
+        assertEquals(52, RoomCoverage.nextSegmentY(71, 60.0, true, -54));
+        // the last one clamps to the floor and stays there
+        assertEquals(-54, RoomCoverage.nextSegmentY(-50, -50.0, true, -54));
+        assertEquals(-54, RoomCoverage.nextSegmentY(-54, -54.0, true, -54));
+    }
+
+    @Test
+    public void aDigThatNeverGotDownIsStuck() {
+        assertTrue(RoomCoverage.stuckDig(79, 78, 56));
+        assertTrue(RoomCoverage.stuckDig(79, 72, 56));
+        // dropped 8 but still up where no stronghold is
+        assertTrue(RoomCoverage.stuckDig(79, 71, 56));
+        assertFalse(RoomCoverage.stuckDig(79, 50, 56));
+        assertFalse(RoomCoverage.stuckDig(79, 20, 56));
+        // a high start that dropped 8 and is still above the band
+        assertTrue(RoomCoverage.stuckDig(120, 100, 56));
+    }
+
+    @Test
+    public void theDigOutcomeFollowsTheConfigBudget() {
+        RoomCoverage.DigOutcome keep = RoomCoverage.DigOutcome.KEEP_DIGGING;
+        // within budget: keep going, whatever the budget is (source default 420, a run config 240)
+        assertEquals(keep, RoomCoverage.digOutcome(false, 300, 420, 79, 78, 56, false));
+        assertEquals(RoomCoverage.DigOutcome.RETRY, RoomCoverage.digOutcome(false, 300, 240, 79, 78, 56, false));
+        // second stuck budget ends the attempt
+        assertEquals(RoomCoverage.DigOutcome.FAIL, RoomCoverage.digOutcome(false, 421, 420, 79, 78, 56, true));
+        // bricks win over everything, even a stuck-looking dig
+        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(true, 421, 420, 79, 78, 56, true));
+        // timed out deep with no bricks keeps the old behaviour
+        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(false, 421, 420, 79, 10, 56, false));
+        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(false, 421, 420, 79, 10, 56, true));
+    }
+
+    @Test
+    public void theRetryColumnStaysInsideTheStaircase() {
+        int[] c = RoomCoverage.retryColumn(996, 1684);
+        assertTrue(Math.abs(c[0] - 996) + Math.abs(c[1] - 1684) == 2);
+        assertTrue(RoomCoverage.onColumn(c[0] + 0.5, c[1] + 0.5, 996, 1684));
     }
 
     @Test
