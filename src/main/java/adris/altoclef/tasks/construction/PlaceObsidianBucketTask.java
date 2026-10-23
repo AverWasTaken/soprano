@@ -12,6 +12,7 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.PhantomScoops;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.utils.Rotation;
@@ -95,6 +96,8 @@ public class PlaceObsidianBucketTask extends Task {
     // pours that really spent a bucket and left the cell dry, and clicks that spent nothing. a lava cell wipes the duds, the failed pours are a cap per cell
     private int _failedPours;
     private int _dudClicks;
+    // PhantomScoops' count when we last looked. a phantom bucket poured nothing, so the misses since are not the cell's
+    private int _phantomSeen = PhantomScoops.epoch();
     // the ban on this cell is out, the parent moves the frame
     private boolean _dropped;
     private Task _fetch;
@@ -270,6 +273,11 @@ public class PlaceObsidianBucketTask extends Task {
             } else {
                 _dudClicks = 0;
             }
+        }
+        if (_phantomSeen != PhantomScoops.epoch()) {
+            _phantomSeen = PhantomScoops.epoch();
+            _failedPours = 0;
+            _dudClicks = 0;
         }
         if (CastLava.spoiled(_failedPours, _dudClicks)) {
             return dropOrigin(mod, "the lava never lands in the cell");
