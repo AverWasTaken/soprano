@@ -161,6 +161,9 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
+    // what the portal gate fills to, and what a blocks trip home brings back. the nether bridges eat throwaways and hand nothing
+    // back, 32 got a lava pool crossing about halfway. portalBuildBlocks stays the small number everything else shares
+    public int netherEntryBlocks = 128;
     // the refill only starts under these marks (BuildBlocks), then runs to the target. a pillar or two, or a bridge, takes a
     // bag from 32 to 20 and that is not a reason to go mining. while a furnace cooks the base is 8: enough for a few pillars.
     // at the portal it is what the lava pool still places (the slab and the two top row pads) plus what the nether walk should

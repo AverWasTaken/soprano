@@ -20,6 +20,17 @@ public final class NetherRestock {
     private double startedAt;
     private double exhaustedSince = Double.NaN;
     private double coolUntil = Double.NEGATIVE_INFINITY;
+    // restocks in a row that ended because the dig had nothing left to go to (not the clock, not a full bag). the phase reads it to
+    // tell "short" from "short and the band is empty"
+    private int exhaustedEnds;
+
+    public int exhaustedEnds() {
+        return exhaustedEnds;
+    }
+
+    public void clearExhaustedEnds() {
+        exhaustedEnds = 0;
+    }
 
     public boolean isActive() {
         return active;
@@ -56,6 +67,7 @@ public final class NetherRestock {
             }
             boolean dry = !Double.isNaN(exhaustedSince) && now - exhaustedSince >= EXHAUSTED_SECONDS;
             if (held >= TARGET || dry || now - startedAt >= MAX_SECONDS) {
+                exhaustedEnds = held < TARGET && dry ? exhaustedEnds + 1 : 0;
                 active = false;
                 exhaustedSince = Double.NaN;
                 coolUntil = now + COOLDOWN_SECONDS;

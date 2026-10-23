@@ -44,6 +44,8 @@ public class BuildBlocksTest {
     }
 
     private static final KitNeed BASE = new KitNeed(KitNeed.BUILD_BLOCKS, 32);
+    // the portal gate fills to the entry stack, the smelt bases to portalBuildBlocks
+    private static final KitNeed GATE = new KitNeed(KitNeed.BUILD_BLOCKS, 128);
 
     private StubContext ctx;
     private OverworldConfig cfg;
@@ -155,12 +157,12 @@ public class BuildBlocksTest {
         ctx.facts.buildBlocks = cfg.portalBuildBlocksLow + 2;
         assertTrue("a bag over the low mark is a half bag, the old gate went mining", gate().isEmpty());
         ctx.facts.buildBlocks = cfg.portalBuildBlocksLow - 1;
-        assertEquals(List.of(BASE), gate());
+        assertEquals(List.of(GATE), gate());
         // the runner picks it up, and from then on the gate keeps asking until the bag is full
-        BuildBlocks.started(ctx.state, 32, false);
+        BuildBlocks.started(ctx.state, 128, false);
         ctx.facts.buildBlocks = 25;
-        assertEquals(List.of(BASE), gate());
-        ctx.facts.buildBlocks = 32;
+        assertEquals(List.of(GATE), gate());
+        ctx.facts.buildBlocks = 128;
         assertTrue(gate().isEmpty());
     }
 
@@ -195,7 +197,7 @@ public class BuildBlocksTest {
                 if (gate.isEmpty()) {
                     break;
                 }
-                assertEquals(List.of(BASE), gate);
+                assertEquals(List.of(GATE), gate);
                 if (!on) {
                     refills++;
                     on = true;
@@ -203,7 +205,7 @@ public class BuildBlocksTest {
                 runner.run(ctx, gate);
                 ctx.facts.buildBlocks += 4;
             }
-            assertTrue("a full bag, or the cap", ctx.facts.buildBlocks >= 32 || refills >= BuildBlocks.MAX_REFILLS);
+            assertTrue("a full bag, or the cap", ctx.facts.buildBlocks >= 128 || refills >= BuildBlocks.MAX_REFILLS);
             // a walk that eats the bag down to 3
             ctx.facts.buildBlocks = 3;
         }

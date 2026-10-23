@@ -96,7 +96,7 @@ public final class PortalPlanner {
         return gate(f, cfg, endBeds, food, BuildBlocks.NONE);
     }
 
-    // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under portalBuildBlocksLow and runs to portalBuildBlocks
+    // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under portalBuildBlocksLow and runs to netherEntryBlocks
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, BuildBlocks build) {
         return gate(f, cfg, endBeds, food, build, true);
     }
@@ -139,7 +139,7 @@ public final class PortalPlanner {
         if (picks > 0) {
             out.add(new KitNeed("stone_pickaxe", KitPlanner.held(f, "stone_pickaxe") + picks));
         }
-        int blocks = build.want(f.buildBlocks(), cfg.portalBuildBlocksLow, cfg.portalBuildBlocks);
+        int blocks = build.want(f.buildBlocks(), cfg.portalBuildBlocksLow, cfg.netherEntryBlocks);
         if (blocks > 0) {
             out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
         }

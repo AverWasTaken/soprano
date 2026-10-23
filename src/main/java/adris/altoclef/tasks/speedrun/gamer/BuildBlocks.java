@@ -88,6 +88,11 @@ public final class BuildBlocks {
         state.buildRefill = target;
     }
 
+    // the user can keep more than the entry stack if they like, never less
+    public static int reserveFor(int user, int entry) {
+        return Math.max(user, entry);
+    }
+
     // a phase entry starts from nothing
     public static void newEntry(RunState state) {
         state.buildRefill = 0;

@@ -170,6 +170,16 @@ public class PortalPlannerTest {
     }
 
     @Test
+    public void portalGateFillsToTheEntryStackNotTheSmallBand() {
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
+        f.foodUnits = 130;
+        f.buildBlocks = cfg.portalBuildBlocksLow - 1;
+        List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
+        assertEquals(List.of(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.netherEntryBlocks)), out);
+        assertEquals(128, cfg.netherEntryBlocks);
+    }
+
+    @Test
     public void gateIsEmptyWhenReady() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = 130;

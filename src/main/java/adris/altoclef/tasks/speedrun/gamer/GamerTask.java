@@ -170,6 +170,7 @@ public class GamerTask extends Task {
     private Boolean userBlastFurnace;
     private Boolean userThrowUnused;
     private Integer userFoodKeep;
+    private Integer userReserve;
     // the floor we last put, so a #set from the user mid-run is not stomped on the next tick
     private Integer foodKeepPut;
     private Boolean userLadderClutch;
@@ -428,6 +429,9 @@ public class GamerTask extends Task {
             userFoodKeep = s.altoFoodKeepUnits.value;
         }
         foodKeepPut = null;
+        if (!SettingsOverrides.isHeld(s.altoReservedBuildingBlockCount)) {
+            userReserve = s.altoReservedBuildingBlockCount.value;
+        }
         if (!SettingsOverrides.isHeld(s.allowLadderClutch)) {
             userLadderClutch = s.allowLadderClutch.value;
         }
@@ -447,6 +451,10 @@ public class GamerTask extends Task {
         // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
         SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
+        // junk disposal keeps this many throwaway blocks and drops the rest, so under the entry stack it would throw away the very
+        // stack the portal gate just went and got
+        int keep = userReserve != null ? userReserve : s.altoReservedBuildingBlockCount.value;
+        SettingsOverrides.put(s.altoReservedBuildingBlockCount, BuildBlocks.reserveFor(keep, GamerConfigs.get().overworld.netherEntryBlocks));
     }
 
     // a full bag throws cobble and junk before any food, and food only when the bag is over the same floor the planner refills to
@@ -505,6 +513,9 @@ public class GamerTask extends Task {
         }
         if (userThrowaway != null) {
             SettingsOverrides.put(s.altoThrowawayItems, userThrowaway);
+        }
+        if (userReserve != null) {
+            SettingsOverrides.put(s.altoReservedBuildingBlockCount, userReserve);
         }
         if (userFoodKeep != null) {
             SettingsOverrides.put(s.altoFoodKeepUnits, userFoodKeep);

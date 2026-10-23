@@ -21,6 +21,35 @@ public final class FoodTripRules {
         return !stillShort || secondsOnTrip >= MAX_SECONDS;
     }
 
+    // why a trip started. each reason has its own trip counter, so a blocks trip that came back empty handed does not eat the food
+    // budget and the other way round
+    public enum Reason {
+        FOOD, BLOCKS
+    }
+
+    // under this many throwaways the next bridge is a coin flip (NetherRestock.LOW), and a dig that found nothing twice running
+    // is not about to
+    public static final int BLOCKS_LOW = 8;
+    public static final int BLOCKS_EXHAUSTED_ENDS = 2;
+    // one need gets MAX_SECONDS, food and blocks together get this
+    public static final double TWO_NEED_SECONDS = 600;
+
+    // the restock dig ran dry (nothing left to mine in its band) twice with a cooldown between, and the bag is still empty. the
+    // dig would have been the cheap way out, so this is the lava pool case: the bridges ate the stack and the band holds nothing
+    public static boolean goHomeForBlocks(int held, int exhaustedEnds, boolean portalKnown, boolean deathTripLive, int tripsDone) {
+        return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && held < BLOCKS_LOW && exhaustedEnds >= BLOCKS_EXHAUSTED_ENDS;
+    }
+
+    // the overworld half's clock for the needs that were short when we got up there
+    public static double seconds(boolean food, boolean blocks) {
+        return food && blocks ? TWO_NEED_SECONDS : MAX_SECONDS;
+    }
+
+    // the same end check with the trip's own clock. stillShort = any need left (food under the minimum, blocks under the entry stack)
+    public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit) {
+        return !stillShort || secondsOnTrip >= limit;
+    }
+
     private FoodTripRules() {
     }
 }
