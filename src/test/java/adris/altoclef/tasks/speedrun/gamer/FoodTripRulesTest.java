@@ -8,25 +8,25 @@ import static org.junit.Assert.assertTrue;
 public class FoodTripRulesTest {
     @Test
     public void lowFoodGoesHome() {
-        assertTrue(FoodTripRules.goHome(10, 20, 20, true, true, false, 0));
-        assertFalse(FoodTripRules.goHome(40, 20, 20, true, true, false, 0));
+        assertTrue(FoodTripRules.goHome(0, true, false, 0));
+        assertTrue(FoodTripRules.goHome(FoodTripRules.GO_HOME_UNITS - 1, true, false, 0));
+        assertFalse(FoodTripRules.goHome(FoodTripRules.GO_HOME_UNITS, true, false, 0));
     }
 
     @Test
-    public void noFoodAndNoRegenGoesHome() {
-        assertTrue(FoodTripRules.goHome(0, 7.3, 17, false, true, false, 0));
+    public void noPortalStays() {
+        assertFalse(FoodTripRules.goHome(0, false, false, 0));
     }
 
     @Test
-    public void hurtButCanStillEatStays() {
-        assertFalse(FoodTripRules.goHome(40, 7, 10, true, true, false, 0));
+    public void deathTripStays() {
+        assertFalse(FoodTripRules.goHome(0, true, true, 0));
     }
 
     @Test
-    public void noPortalOrDeathTripOrSpentTripsStays() {
-        assertFalse(FoodTripRules.goHome(0, 7, 3, false, false, false, 0));
-        assertFalse(FoodTripRules.goHome(0, 7, 3, false, true, true, 0));
-        assertFalse(FoodTripRules.goHome(0, 7, 3, false, true, false, FoodTripRules.MAX_TRIPS));
+    public void spentTripsStay() {
+        assertTrue(FoodTripRules.goHome(0, true, false, FoodTripRules.MAX_TRIPS - 1));
+        assertFalse(FoodTripRules.goHome(0, true, false, FoodTripRules.MAX_TRIPS));
     }
 
     @Test
