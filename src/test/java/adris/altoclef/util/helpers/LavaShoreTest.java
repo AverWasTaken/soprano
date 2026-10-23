@@ -10,6 +10,8 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class LavaShoreTest {
@@ -214,6 +216,59 @@ public class LavaShoreTest {
         assertFalse(LavaShore.giveUp(false, 1));
         assertFalse(LavaShore.giveUp(false, LavaShore.WAIT_CAP_TICKS - 1));
         assertTrue(LavaShore.giveUp(false, LavaShore.WAIT_CAP_TICKS));
-        assertEquals(240, LavaShore.WAIT_CAP_TICKS);
+    }
+
+    @Test
+    public void rimStepPicksACellWithASafeBack() {
+        World w = new World().lava(-3, -1, 0);
+        int[] step = LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5);
+        assertNotNull(step);
+        int x = step[0];
+        int z = step[1];
+        // not the foe's own cell, and the knock from there goes somewhere fine
+        assertFalse(x == 1 && z == 0);
+        assertFalse(LavaShore.backUnsafe(w, x + 0.5, 0, z + 0.5, 1.5, 0.5));
+        assertFalse(LavaShore.lavaNear(w, x + 0.5, 0, z + 0.5, 1));
+    }
+
+    @Test
+    public void rimStepKeepsAwayFromLavaItCanSee() {
+        // lava two cells off the cells on the knock side: those lose to the ones that are not near it
+        int[] step = LavaShore.safeStep(new World().lava(-3, -1, 0), 0.5, 0, 0.5, 1.5, 0.5);
+        assertNotNull(step);
+        assertTrue(step[0] >= 0);
+    }
+
+    @Test
+    public void rimStepStaysPutWhenTheSpotIsFine() {
+        assertNull(LavaShore.safeStep(new World(), 0.5, 0, 0.5, 1.5, 0.5));
+        assertNull(LavaShore.safeStep(new World().lava(-4, -1, 0), 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    @Test
+    public void rimStepHasNowhereToGoOnABridge() {
+        // a one wide bridge: the only free neighbour is the one further down the knock line
+        World w = new World().lava(-3, -1, 0);
+        for (int x = -1; x <= 1; x++) {
+            w.pit(x, 1).pit(x, -1);
+        }
+        assertNull(LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    @Test
+    public void rimSwingDoesNotWaitForTheGround() {
+        assertTrue(LavaShore.swingReady(true, false, false, true));
+        assertFalse(LavaShore.swingReady(true, false, false, false));
+        assertTrue(LavaShore.swingReady(true, true, false, false));
+        assertTrue(LavaShore.swingReady(true, false, true, false));
+        // the other gates (eating, the bucket) still hold on a rim
+        assertFalse(LavaShore.swingReady(false, true, true, true));
+    }
+
+    @Test
+    public void shoreWaitEndsBeforeTheFightDoes() {
+        // the stall ends the fight and the cube gets picked again with its count running, so the cap has to come first
+        assertTrue(LavaShore.WAIT_CAP_TICKS < CombatCommit.STALL_TICKS);
+        assertEquals(160, LavaShore.WAIT_CAP_TICKS);
     }
 }
