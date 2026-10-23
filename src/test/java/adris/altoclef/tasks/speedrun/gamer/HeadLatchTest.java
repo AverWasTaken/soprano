@@ -302,10 +302,16 @@ public class HeadLatchTest {
         flips.left(KitNeed.FOOD, 1000);
         KitNeed more = new KitNeed(KitNeed.FOOD, 90);
         assertEquals(more, HeadLatch.pick(FOOD, 1000, HeadLatch.NEVER, 1300, List.of(more), f, flips));
+        // same name in the plan behind another head: the resize hands over to the head, it is not read as that head's return
+        assertEquals(IRON, HeadLatch.pick(FOOD, 1000, HeadLatch.NEVER, 1300, List.of(IRON, more), f, flips));
     }
 
     @Test
     public void foodGoneFromThePlanIsHeldForTheDwellWhileTheBagIsShort() {
         assertTrue(HeadLatch.keepWhileGone(FOOD, HeadLatch.NEVER, 500, f));
+        // enough in the bag (or cooking for us) and the planner dropping it is believed straight away
+        f.foodUnits = 80;
+        assertFalse(HeadLatch.keepWhileGone(FOOD, HeadLatch.NEVER, 500, f));
+        assertEquals(IRON, pick(FOOD, 0, 41, List.of(IRON), f));
     }
 }

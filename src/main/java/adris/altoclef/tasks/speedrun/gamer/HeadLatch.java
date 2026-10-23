@@ -155,8 +155,8 @@ public final class HeadLatch {
     }
 
     // a running need the plan just dropped. held: we really are done, let go now. not held: keep at it until it has been gone a
-    // whole dwell, a real change of plan stays gone and a flicker comes back first. only the plain gathers get this: their count is
-    // the bag and nothing else, so "not held" means not done. the rest drop out for reasons the bag can't see (iron cooking, a worn
+    // whole dwell, a real change of plan stays gone and a flicker comes back first. only the plain gathers and food get this: their count is
+    // the bag (food: bag plus what is cooking) and nothing else, so "not held" means not done. the rest drop out for reasons the bag can't see (iron cooking, a worn
     // pick replaced, a craft moved behind the smelt) and holding those sent the bot mining for iron already in the furnace
     static boolean keepWhileGone(KitNeed running, long missingSince, long now, GamerFacts f) {
         if (!BAG_COUNTED.contains(running.catalogueName()) || satisfied(running, f)) {
@@ -172,6 +172,10 @@ public final class HeadLatch {
 
     // the bag holds what the need asked for: a need is "hold this many in total", the same count the planner checks
     static boolean satisfied(KitNeed need, GamerFacts f) {
+        // food is not an item id: the bag's units plus what is cooking for us, the basis the planner drops the need on
+        if (KitNeed.FOOD.equals(need.catalogueName())) {
+            return f.foodUnits() + f.pendingFoodUnits() >= need.count();
+        }
         return KitPlanner.have(f, need.catalogueName()) >= need.count();
     }
 
