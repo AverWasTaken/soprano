@@ -1,13 +1,13 @@
 # Parkour Lab v5
 
-A test course for Soprano's parkour: 20 sections and 200 jumps, each section aimed at one kind of jump, ending in a finale that strings a bit of every section together.
+A test course for Soprano's parkour: 20 sections and 204 jumps, each section aimed at one kind of jump, ending in a finale that strings a bit of every section together.
 
-It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 725 blocks. Gold pads are checkpoints. Fall below y 140 and you're put back on your last one.
+It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 735 blocks. Gold pads are checkpoints. Fall below y 140 and you're put back on your last one.
 
 ## What's new in v5
 
 - **Proper triple neos (section 15).** Round the end of a wall three blocks thick, onto a block at the same height. You take off from the side block (the block beside the wall's start) after a 7-block run-up along that side. That's how they're done in game: a standing start doesn't have the speed.
-- **Stairs and walls (new section 9).** Lone stairs across 3 and 4 gaps, facing every way, with nothing past them to walk on. Also a stair one up, cobblestone walls across 3 gaps and one block up, and jumps round the corner of a pillar (a block with a wall on top of it).
+- **Stairs and walls (new section 9).** Lone stairs across 3 and 4 gaps, facing every way, with nothing past them to walk on. Also a stair one up, cobblestone walls across 3 gaps and one block up, jumps round the corner of a pillar (a block with a wall on top of it), and 2x2 platforms with a wall or fence two high on every block: the way past is round the rim outside the walls.
 - **Bottom slabs** in the odd blocks section and the finale.
 - **The finale (section 20)** replaces the chess level. It's a bit of every section in one run with no checkpoints in between: straights, diagonals, ups and downs, a neo, a 4-blocker, a head hitter, slabs, fences, a ladder, ice, a slime bounce, a triple neo, a neo chain, slime to a ladder, the ice tunnel, and a ladder neo up to the finish.
 
@@ -52,25 +52,27 @@ To test one section, teleport to its start checkpoint, then `#goto` the next one
 | 6 | Head hitters | `/function parkourlab:cp/5` | `#goto 1191 147 1014` |
 | 7 | Odd blocks | `/function parkourlab:cp/6` | `#goto 1238 147 1015` |
 | 8 | Fence run | `/function parkourlab:cp/7` | `#goto 1277 148 1016` |
-| 9 | Stairs and walls (new) | `/function parkourlab:cp/8` | `#goto 1336 149 1016` |
-| 10 | Ladders | `/function parkourlab:cp/9` | `#goto 1355 153 1016` |
-| 11 | Ladder neos | `/function parkourlab:cp/10` | `#goto 1380 155 1016` |
-| 12 | Ice palace | `/function parkourlab:cp/11` | `#goto 1417 155 1018` |
-| 13 | Sky tower | `/function parkourlab:cp/12` | `#goto 1429 161 1018` |
-| 14 | Slime factory | `/function parkourlab:cp/13` | `#goto 1460 157 1018` |
-| 15 | Triple neos | `/function parkourlab:cp/14` | `#goto 1493 157 1018` |
-| 16 | Neo chains | `/function parkourlab:cp/15` | `#goto 1518 157 1018` |
-| 17 | Combo | `/function parkourlab:cp/16` | `#goto 1539 158 1018` |
-| 18 | Slime to ladder | `/function parkourlab:cp/17` | `#goto 1566 158 1018` |
-| 19 | Ice tunnel | `/function parkourlab:cp/18` | `#goto 1606 158 1018` |
-| 20 | Finale (new) | `/function parkourlab:cp/19` | `#goto 1722 162 1016` |
+| 9 | Stairs and walls (new) | `/function parkourlab:cp/8` | `#goto 1346 149 1019` |
+| 10 | Ladders | `/function parkourlab:cp/9` | `#goto 1365 153 1019` |
+| 11 | Ladder neos | `/function parkourlab:cp/10` | `#goto 1390 155 1019` |
+| 12 | Ice palace | `/function parkourlab:cp/11` | `#goto 1427 155 1021` |
+| 13 | Sky tower | `/function parkourlab:cp/12` | `#goto 1439 161 1021` |
+| 14 | Slime factory | `/function parkourlab:cp/13` | `#goto 1470 157 1021` |
+| 15 | Triple neos | `/function parkourlab:cp/14` | `#goto 1503 157 1021` |
+| 16 | Neo chains | `/function parkourlab:cp/15` | `#goto 1528 157 1021` |
+| 17 | Combo | `/function parkourlab:cp/16` | `#goto 1549 158 1021` |
+| 18 | Slime to ladder | `/function parkourlab:cp/17` | `#goto 1576 158 1021` |
+| 19 | Ice tunnel | `/function parkourlab:cp/18` | `#goto 1616 158 1021` |
+| 20 | Finale (new) | `/function parkourlab:cp/19` | `#goto 1732 162 1019` |
 
-Full run: `/function parkourlab:start`, then `#goto 1722 162 1016`.
+Full run: `/function parkourlab:start`, then `#goto 1732 162 1019`.
 
 ## What changed in the bot
 
 - **Triple neos off the side block.** The planner knows the neo that starts from the block beside the wall, not just the one from right behind it.
 - **Round the corner of a pillar at any angle.** When a pillar or the end of a wall is right in front of the takeoff, the planner now works out a curve round its corner. It's a background search, like the other hard neos.
+- **Round walled platforms.** The "is something in the way" check only looked at the corners of the player's box, so a thin wall or fence post in the middle of the line slipped between them. Now it checks the middle too, and the way round goes along the rim outside the walls.
+- **No jumps that bump a wall before taking off.** When the bot brushes a wall, the game decides whether it keeps sprinting by where the camera points, not the way it's moving. That made the sim and the game disagree. Jumps that need a bump are left to the searched paths, which keep clear of walls.
 - **Stairs.** Coming down on the low step of a stair used to count as missing the landing, so the bot gave up and walked off. Now it walks up onto the stair and carries on.
 - **Bottom slabs** work as takeoffs and landings.
 - **Less lag:**

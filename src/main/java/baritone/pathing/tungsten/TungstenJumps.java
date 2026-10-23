@@ -73,6 +73,7 @@ public final class TungstenJumps {
     // a couple of thousand
     static final long NEO_SEARCH_BUDGET = 40_000;
     static final double NEO_COST = 1.5, COMBO_COST = 3.0;
+    static final boolean DEBUG_SIM = System.getenv("TUNGSTEN_SIM_DEBUG") != null;
 
     private TungstenJumps() {}
 
@@ -236,7 +237,7 @@ public final class TungstenJumps {
     private static final long RECHECK_MS = 1000;
 
     // a node a jump can start from: standing on something, room to jump, not in water, and a drop right next to it
-    private static boolean takeoff(CalculationContext context, int x, int y, int z) {
+    public static boolean takeoff(CalculationContext context, int x, int y, int z) {
         if (!context.canSprint || !context.isLoaded(x, z)) {
             return false;
         }
@@ -267,7 +268,7 @@ public final class TungstenJumps {
     }
 
     // is dest (src plus dx dy dz) worth a sim at all
-    private static boolean candidate(CalculationContext context, int x, int y, int z, int dx, int dy, int dz, boolean existing) {
+    public static boolean candidate(CalculationContext context, int x, int y, int z, int dx, int dy, int dz, boolean existing) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) < 2 || dy > MAX_UP || dy < -MAX_DOWN || -dy > context.maxFallHeightNoWater) {
             return false; // next door is the grid moves' business
         }
@@ -349,7 +350,7 @@ public final class TungstenJumps {
     // how the long ones (a triple neo, round a wall three thick, level) are done, with a run up along the side row.
     // null if not one, else {side x, side z (from the wall's row out to the open one), 1 if it's two in one, 1 if it goes
     // from the side block}
-    static int[] neoSide(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
+    public static int[] neoSide(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
         if (dy > 0 || dy < -2) {
             return null;
         }
@@ -444,7 +445,7 @@ public final class TungstenJumps {
     // side that's open, for the search to go by. null if it isn't one of those
     static final double CORNER_REACH = 4.6;
 
-    static double[] cornerVia(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
+    public static double[] cornerVia(CalculationContext context, int x, int y, int z, int dx, int dy, int dz) {
         if (dx == 0 || dz == 0 || dy > 1 || dy < -2) {
             return null;
         }
@@ -608,6 +609,11 @@ public final class TungstenJumps {
                 double cost = context.biasJump(Math.max(plan.ticks(), straight) * 1.5 + context.jumpPenalty);
                 return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
             }
+        }
+        if (DEBUG_SIM) {
+            System.out.println("simulate " + src + " -> " + dest + ": neo " + java.util.Arrays.toString(neo) + " behindWall " + behindWall + " rule " + (r != null)
+                    + " blocked " + JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())
+                    + " movementNeo " + (neo != null && movementNeoDoes(context, src, dest)));
         }
         if (neo != null && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())
                 && !movementNeoDoes(context, src, dest)) {

@@ -75,6 +75,8 @@ public final class JumpPilot {
     public int replans, drifts;
     // what the last parting from a plan looked like, for the debug log
     public String lastDrift;
+    // what the last tick spent its time on, for the debug log's slow ticks
+    public String lastWork = "";
     // finished on the touchdown, not standing still
     public boolean flowed;
 
@@ -93,6 +95,19 @@ public final class JumpPilot {
         this.flow = flow;
     }
 
+    // the next jump's whole rule, with the aim errors, is tens of ms: asked on the first couple of ticks down and that's it,
+    // after that we're slow enough that settling costs next to nothing anyway
+    private int flowTries;
+    private static final int MAX_FLOW_TRIES = 2;
+
+    private boolean flowCheck(PlayerSim live) {
+        if (flowTries++ >= MAX_FLOW_TRIES) {
+            return false;
+        }
+        lastWork += " flow";
+        return flow.test(live);
+    }
+
     public boolean flew() {
         return flew;
     }
@@ -107,6 +122,8 @@ public final class JumpPilot {
 
     public void fallback(TungstenSearch.Plan plan) {
         this.fallback = plan;
+        // the planner only hands one of these over when the rule had nothing: no point asking it again (dozens of ms)
+        this.ruleRefused = plan != null;
     }
 
     public boolean following() {
@@ -171,6 +188,7 @@ public final class JumpPilot {
     }
 
     public Decision tick(PlayerSim live) {
+        lastWork = "";
         if (live.onGround) {
             if (!flew) {
                 groundY = live.y;
@@ -180,7 +198,7 @@ public final class JumpPilot {
             flew = true;
         }
         if (flew && flow != null && live.onGround && live.vy <= 1.0E-3 && !land.grab() && land.holds(live.x, live.y, live.z)
-                && (memo == null || memo.phase != JumpPolicy.Phase.FAILED) && flow.test(live)) {
+                && (memo == null || memo.phase != JumpPolicy.Phase.FAILED) && flowCheck(live)) {
             flowed = true;
             return new Decision(Status.DONE, null, null);
         }
@@ -295,6 +313,9 @@ public final class JumpPilot {
             first = new JumpPolicy.Variant(-1, variant.aim(), 0F, true); // the jump tick of a hopping run is every touchdown
         }
         // with a searched plan to fall back on, once the rule has said no it isn't asked again every tick of the staging
+        if (!(fallback != null && ruleRefused)) {
+            lastWork += " robust";
+        }
         JumpPolicy.Rollout r = fallback != null && ruleRefused ? null : JumpPolicy.robust(live, land, first);
         if (r == null) {
             ruleRefused = true;
@@ -360,14 +381,20 @@ public final class JumpPilot {
         return new Decision(Status.STUCK, null, "the rule has nothing from here");
     }
 
+    private static final boolean FINE_DEBUG = System.getenv("FINE_DEBUG") != null;
     private static final double STAGE_NEAR = 0.25, STAGE_NEAR_SPEED = 0.04, FINE_STAGE = 0.4;
-    private static final int FINE_YAWS = 16, FINE_COAST = 12, FINE_GIVE_UP = 30;
+    private static final int FINE_YAWS = 16, FINE_COAST = 10, FINE_GIVE_UP = 30;
 
     private PlayerSim.Controls fineStage(PlayerSim live) {
-        List<PlayerSim.Controls> options = new ArrayList<>(FINE_YAWS + 1);
+        lastWork += " fine-stage";
+        List<PlayerSim.Controls> options = new ArrayList<>(FINE_YAWS + 1), seconds = new ArrayList<>(FINE_YAWS / 2 + 1);
         options.add(Keys.release(Keys.yaw(startX - live.x, startZ - live.z)));
+        seconds.add(options.get(0));
         for (int i = 0; i < FINE_YAWS; i++) {
             options.add(Keys.push(i * 360F / FINE_YAWS, false));
+            if (i % 2 == 0) {
+                seconds.add(options.get(options.size() - 1)); // the second tick only fixes up, half the yaws will do
+            }
         }
         PlayerSim.Controls best = options.get(0);
         double bestOff = Double.MAX_VALUE;
@@ -376,12 +403,17 @@ public final class JumpPilot {
             if (!Keys.step(one, first) || !one.onGround) {
                 continue;
             }
-            for (PlayerSim.Controls second : options) {
+            for (PlayerSim.Controls second : seconds) {
                 PlayerSim two = one.copy();
                 double rest = restOff(two, second);
+                if (FINE_DEBUG) {
+                    System.out.println("fine " + first.forward() + "@" + first.moveYaw() + " then " + second.forward() + "@" + second.moveYaw() + " -> " + rest);
+                }
                 if (rest < bestOff) {
                     bestOff = rest;
-                    best = first;
+                    // letting go first and pushing after is the same as pushing now when we're standing still, and picking
+                    // "let go" every tick is how you stand there for ever
+                    best = first.forward() == 0 && second.forward() != 0 && live.vx * live.vx + live.vz * live.vz < 1.0E-6 ? second : first;
                 }
             }
         }
@@ -405,13 +437,18 @@ public final class JumpPilot {
 
     // the plan flown from this state, tracked the way it will be for real, lands
     private boolean tracksFrom(PlayerSim live, TungstenSearch.Plan p) {
+        lastWork += " tracks-from";
         PlayerSim probe = live.copy();
+        int jumpAt = jumpIn(p, 0);
         for (int i = 0; i < p.ticks(); i++) {
             if (SimState.of(probe).distance(p.states().get(i)) >= FALLBACK_EPS) {
                 return false;
             }
             if (!Keys.step(probe, track(probe, p, i))) {
                 return false;
+            }
+            if (probe.horizontalCollision && i < jumpAt) {
+                return false; // into a wall before the jump: what the sprint does then is the camera's call (JumpPolicy.bumpsAWall)
             }
         }
         return land.reached(SimState.of(probe), JumpPolicy.STILL * 4) || land.holds(probe.x, probe.y, probe.z) && probe.onGround;

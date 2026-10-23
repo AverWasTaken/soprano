@@ -522,7 +522,9 @@ public final class JumpPolicy {
         return false;
     }
 
-    private static final double[] BODY = {0.5, 1.2}, CORNERS = {-0.29, 0.29};
+    // the corners of the box and the middle of each side too: a fence or a wall post (a quarter to half a block wide) in the
+    // middle of the line goes right between the corners
+    private static final double[] BODY = {0.5, 1.2}, CORNERS = {-0.29, 0, 0.29};
 
     // round a wall: run off to one side of the line, jump at the edge (or the wall), and steer back in once past it
     static final Variant[] NEO_VARIANTS = {
@@ -736,8 +738,8 @@ public final class JumpPolicy {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
-            if (!r.ok()) {
-                if (v == Variant.EDGE && shortOfTheMiddle(r, land)) {
+            if (!r.ok() || bumpsAWall(r)) {
+                if (!r.ok() && v == Variant.EDGE && shortOfTheMiddle(r, land)) {
                     standingShort = true; // see best
                 }
                 continue;
@@ -782,8 +784,8 @@ public final class JumpPolicy {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
-            if (!r.ok()) {
-                if (v == Variant.EDGE && shortOfTheMiddle(r, land)) {
+            if (!r.ok() || bumpsAWall(r)) {
+                if (!r.ok() && v == Variant.EDGE && shortOfTheMiddle(r, land)) {
                     standingShort = true;
                 }
                 continue;
@@ -805,6 +807,27 @@ public final class JumpPolicy {
     }
 
     private static final float[] NEO_AIM_ERRORS = {2.0F, -2.0F, 3.5F, -3.5F};
+
+    // the run up runs into the side of something before the jump. whether the game keeps the sprint after a bump depends on
+    // where the camera looks (LocalPlayer's minor collision check goes by the real yaw, and with freeLook that's wherever
+    // the player left it, not the way we're going), and a jump without the sprint has none of its push. a jump that needs
+    // a bump first isn't planned: the searches go round with room to spare instead. (a bump in the air after the last jump,
+    // a bounce up the side of a ledge, only costs a little air steering either way)
+    static boolean bumpsAWall(Rollout r) {
+        List<SimState> s = r.states();
+        List<PlayerSim.Controls> k = r.keys();
+        for (int i = 1; i < s.size(); i++) {
+            if (!s.get(i).horizontalCollision) {
+                continue;
+            }
+            for (int j = i; j < k.size(); j++) {
+                if (k.get(j).jump()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     // a rollout that failed in the air on the near side of the landing, without hitting its head on the way (a bonk is
     // short for a reason a different jump tick might not have)

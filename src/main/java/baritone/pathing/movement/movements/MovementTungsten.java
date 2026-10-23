@@ -220,7 +220,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         JumpPilot.Decision d = pilot.tick(sim);
         long took = (System.nanoTime() - t0) / 1_000_000;
         if (took >= SLOW_TICK_MS && Baritone.settings().chatDebug.value) {
-            logDebug("tungsten jump: a slow tick, " + took + " ms");
+            logDebug("tungsten jump: a slow tick, " + took + " ms:" + pilot.lastWork);
         }
         if (pilot.drifts != driftsBefore && Baritone.settings().chatDebug.value) {
             logDebug("tungsten jump: off the plan, " + pilot.lastDrift);

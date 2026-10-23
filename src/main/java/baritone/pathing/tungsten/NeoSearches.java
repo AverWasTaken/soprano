@@ -45,8 +45,11 @@ public final class NeoSearches {
     // the margins tried, in the order they most often turn up something that flies, and whether the search is told to go by
     // way of the row beside the wall: much quicker when it works, but the flight it finds is sometimes not one that flies
     // every time, and then the plain search often has one that does
-    static final double[] MARGINS = {0.01, 0.01, 0.0};
-    static final boolean[] VIA = {true, false, false};
+    // never 0, and a couple of hundredths when it can: a flight that brushes a wall in the plan is one the real game pushes
+    // off it differently (the sprint after a bump goes by the camera, see JumpPolicy.bumpsAWall), and the real player is
+    // never exactly where the plan said
+    static final double[] MARGINS = {0.02, 0.02, 0.01, 0.01};
+    static final boolean[] VIA = {true, false, true, false};
     static final int FLIGHTS = 16;
     // what the jitter flights call a wobbly aim: LookBehavior's randomLooking113 is up to a degree either side
     static final double JITTER = 2.0;

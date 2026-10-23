@@ -36,6 +36,32 @@ public class JumpDebug {
         String[] ends = jump.split(">");
         BetterBlockPos src = pos(ends[0]), dest = pos(ends[1]);
         CalculationContext ctx = new VineLogPathTest.Ctx(w, false);
+        System.out.println("neoSide " + java.util.Arrays.toString(TungstenJumps.neoSide(ctx, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z))
+                + " cornerVia " + java.util.Arrays.toString(TungstenJumps.cornerVia(ctx, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z)));
+        System.out.println("takeoff " + TungstenJumps.takeoff(ctx, src.x, src.y, src.z) + " candidate " + TungstenJumps.candidate(ctx, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z, false));
+        if (System.getenv("ROLL") != null) {
+            PlayerSim rs = new PlayerSim(PlayerSim.Params.vanilla(), new SafeCollision(w));
+            rs.x = src.x + 0.5; rs.y = src.y; rs.z = src.z + 0.5; rs.vy = -0.0784; rs.onGround = true;
+            JumpPolicy.Rollout rr = JumpPolicy.best(rs, TungstenJumps.landing(ctx, dest));
+            System.out.println("best: " + (rr == null ? "none" : rr.variant() + " ok " + rr.ok()));
+            if (rr != null) {
+                for (int i = 0; i < rr.states().size(); i++) {
+                    SimState q = rr.states().get(i);
+                    if (q.horizontalCollision) System.out.println("  bump at " + i + ": " + q + " minor " + q.minorHorizontalCollision);
+                }
+            }
+        }
+        if (System.getenv("BUCKETS") != null) {
+            ctx.tungsten().newSearch(10_000_000);
+            for (int pass = 0; pass < 3; pass++) {
+                for (int b = 0; b < TungstenJumps.BUCKETS; b++) {
+                    TungstenJumps.Jump bj = TungstenJumps.get(ctx, src.x, src.y, src.z, b);
+                    if (pass == 2) System.out.println("bucket " + b + ": " + (bj == null ? "-" : bj.dest() + " " + bj.cost()));
+                }
+                Thread.sleep(15000);
+                ctx.tungsten().newSearch(10_000_000);
+            }
+        }
         TungstenJumps.Jump j = TungstenJumps.between(ctx, src, dest);
         if (j == null && System.getenv("NEO_SIDE") != null) {
             // a searched neo: what the background search would hand the planner
@@ -54,7 +80,7 @@ public class JumpDebug {
         for (long seed = 0; seed < 12; seed++) {
             Random rnd = new Random(seed);
             PlayerSim real = new PlayerSim(PlayerSim.Params.vanilla(), world);
-            real.x = src.x + 0.5;
+            real.x = src.x + 0.5 + Double.parseDouble(System.getenv().getOrDefault("START_DX", "0"));
             real.y = src.y;
             real.z = src.z + 0.5;
             real.vy = -0.0784;

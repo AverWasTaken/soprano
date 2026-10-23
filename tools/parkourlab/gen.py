@@ -286,6 +286,31 @@ def build():
     x, y, z = c.cur
     pillar(x + 1, z, y)
     c.jump(2, 1, 1, "quartz_block", kind="round a corner, one up")
+    # 2x2 platforms with a wall (or fence) two high on every block: no way over, walk round the rim of the platform outside
+    # the walls, most of the box hanging over the edge
+    def walled(px, pz, y, wall):
+        for i in (0, 1):
+            for k in (0, 1):
+                c.put(px + i, y - 1, pz + k, "smooth_stone")
+                c.put(px + i, y, pz + k, wall)
+                c.put(px + i, y + 1, pz + k, wall)
+    x, y, z = c.cur
+    walled(x + 1, z, y, "cobblestone_wall")
+    c.put(x + 3, y - 1, z, "quartz_block")
+    c.jumps.append({"from": [x, y, z], "to": [x + 3, y, z], "kind": "round a walled platform", "block": "quartz_block"})
+    c.cur = (x + 3, y, z)
+    x, y, z = c.cur
+    walled(x + 1, z - 1, y, "oak_fence")
+    c.put(x + 3, y - 1, z, "quartz_block")
+    c.jumps.append({"from": [x, y, z], "to": [x + 3, y, z], "kind": "round a fenced platform", "block": "quartz_block"})
+    c.cur = (x + 3, y, z)
+    # round the corner: in on one side, out on the next
+    x, y, z = c.cur
+    walled(x + 1, z, y, "cobblestone_wall")
+    c.put(x + 2, y - 1, z + 3, "quartz_block")
+    c.jumps.append({"from": [x, y, z], "to": [x + 2, y, z + 3], "kind": "round a walled platform's corner", "block": "quartz_block"})
+    c.cur = (x + 2, y, z + 3)
+    c.jump(2, 0, 0, "quartz_block")
     c.end_section(3, 0, 0, "9: Stairs and walls")
 
     # 9. ladders and vines: catch one in the air, climb, step off the top
