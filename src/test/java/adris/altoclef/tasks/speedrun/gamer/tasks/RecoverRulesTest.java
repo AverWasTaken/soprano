@@ -355,4 +355,30 @@ public class RecoverRulesTest {
         assertTrue(RecoverRules.better(true, false, 1, false, 3));
         assertTrue(RecoverRules.better(true, true, 1, true, 3));
     }
+
+    @Test
+    public void theWalkStandsAndHealsWhenHurtAndNobodyShoots() {
+        assertTrue(RecoverRules.walkHold(12, false, NO_HIT, true, false, 0));
+        assertFalse(RecoverRules.walkHold(14, false, NO_HIT, true, false, 0));
+        // a shooter with a line means a standing target is a dead one
+        assertFalse(RecoverRules.walkHold(6, true, NO_HIT, true, false, 0));
+        // once standing it goes on to the heal line, not flip-flopping at the start line
+        assertTrue(RecoverRules.walkHold(15, false, NO_HIT, true, true, 100));
+        assertFalse(RecoverRules.walkHold(18, false, NO_HIT, true, true, 100));
+        // a minute in total and then it walks regardless
+        assertFalse(RecoverRules.walkHold(5, false, NO_HIT, true, true, RecoverRules.HOLD_TICKS));
+        // a zombie chewing on us is no place to stand, and no food and no hunger means no regen to wait for
+        assertFalse(RecoverRules.walkHold(10, false, 50, true, false, 0));
+        assertFalse(RecoverRules.walkHold(10, false, NO_HIT, false, false, 0));
+    }
+
+    private static final long NO_HIT = Integer.MAX_VALUE;
+
+    @Test
+    public void theWalkGivesUpLowAndUnderFire() {
+        assertTrue(RecoverRules.walkAbort(8, 100));
+        assertFalse(RecoverRules.walkAbort(9, 100));
+        assertFalse(RecoverRules.walkAbort(4, 5000));
+    }
+
 }

@@ -52,6 +52,8 @@ public class RecoverHoldTest {
 
     @Test
     public void runEndUnderTheRunLineIsAHold() {
+        // a run that ends at 15.6 holds, and the line is the one the hold lets go at
+        assertTrue(RecoverHold.wants(Mode.RUN, 15.6f));
         assertTrue(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW - 0.5f));
         assertFalse(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW));
     }

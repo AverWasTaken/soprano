@@ -315,7 +315,7 @@ public class NetherRecoverTask extends Task {
     }
 
     // anything that shoots, has a line to us and is close enough to matter. a standing target against these is a dead one
-    private boolean shooterSees(AltoClef mod) {
+    public static boolean shooterSees(AltoClef mod) {
         for (Entity entity : mod.getWorld().entitiesForRendering()) {
             if (!(entity instanceof Mob mob) || !mob.isAlive() || mob.distanceTo(mod.getPlayer()) > SHOOTER_RANGE) {
                 continue;
