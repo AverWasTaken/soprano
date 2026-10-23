@@ -34,11 +34,6 @@ public final class RoomCoverage {
     // the staircase column is the only place the dig may call a floor. the spiral is 5 wide, so 3 from the middle is
     // inside it plus a block of slack for baritone clipping corners
     static final double COLUMN_SLACK = 3;
-    // the dig now restarts from the exact column every segment, so drift is already cut off there. this leash is only the
-    // backstop for a cave that really carried us off: euclid distance, and it ends 2 from the middle so the dig and the
-    // walk do not trade places every other tick
-    static final double COLUMN_LEASH = 5;
-    static final double COLUMN_REJOIN = 2;
     // each dig goal is this far below the lowest point we got to. a search to the floor 130 blocks down never finishes, so
     // baritone hands back a partial path that drifts off the column. 8 down is one the search can actually complete
     static final int SEGMENT_DEPTH = 8;
@@ -49,18 +44,12 @@ public final class RoomCoverage {
         return Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5)) <= COLUMN_SLACK;
     }
 
-    // walking = we are already heading back to the column. true means walk (or start walking), false means dig
-    public static boolean needsRewalk(boolean walking, double px, double pz, int columnX, int columnZ) {
-        double d = Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5));
-        return d > (walking ? COLUMN_REJOIN : COLUMN_LEASH);
-    }
-
     // where the first segment ends: SEGMENT_DEPTH under the lowest point reached, never under the floor
     public static int firstSegmentY(int lowestY, int floorY) {
         return Math.max(floorY, lowestY - SEGMENT_DEPTH);
     }
 
-    // the segment steps down once we are at it (or past it) on the column. off the column it stays, the rewalk deals with that
+    // the segment steps down once we are at it (or past it) on the column. off the column it stays, so baritone replans back to the column by itself
     public static int nextSegmentY(int segmentY, double playerY, boolean onColumn, int floorY) {
         if (!onColumn || playerY > segmentY + 0.999) {
             return segmentY;
@@ -75,26 +64,70 @@ public final class RoomCoverage {
         return lowestY > entryY - STUCK_DEPTH || lowestY > maxY;
     }
 
-    public enum DigOutcome {KEEP_DIGGING, SPIRAL, RETRY, FAIL}
+    public enum DigOutcome {KEEP_DIGGING, SPIRAL, FAIL}
 
-    // what the dig does this tick. the budget is the config's (task time seconds), not a constant here
-    public static DigOutcome digOutcome(boolean bricksSeen, double elapsed, double budget, int entryY, int lowestY, int maxY,
-                                        boolean retried) {
+    // what the dig does this tick. the budget is the config's (task time seconds), not a constant here. the depth is the
+    // lowest point reached ON the column: a cave fall is not a dig, and a spiral from cave depth searches nothing
+    public static DigOutcome digOutcome(boolean bricksSeen, double elapsed, double budget, int entryY, int columnLowestY,
+                                        int maxY) {
         if (bricksSeen) {
             return DigOutcome.SPIRAL;
         }
         if (elapsed <= budget) {
             return DigOutcome.KEEP_DIGGING;
         }
-        if (!stuckDig(entryY, lowestY, maxY)) {
-            return DigOutcome.SPIRAL;
-        }
-        return retried ? DigOutcome.FAIL : DigOutcome.RETRY;
+        return stuckDig(entryY, columnLowestY, maxY) ? DigOutcome.FAIL : DigOutcome.SPIRAL;
     }
 
-    // the one retry after a stuck dig: the next column over, still inside the 5 wide staircase (the dig column is its middle)
-    public static int[] retryColumn(int columnX, int columnZ) {
-        return new int[]{columnX + 2, columnZ};
+    // the dig column can shift to these cells around the original middle, in this order. all within 3 of it, so every one
+    // is still inside the 5 wide staircase
+    static final int[][] FOOTPRINT = {{0, 0}, {2, 0}, {-2, 0}, {0, 2}, {0, -2}};
+    // this long without a new low on the current column and the column moves
+    static final double WATCHDOG_SECONDS = 60;
+    // close enough to the column that a y counts as dug on it
+    static final double DUG_RADIUS = 1.5;
+
+    // tracks the dig down the column: the lowest y reached on it, and when it last got lower
+    public static final class DigWatch {
+        private int columnLowestY;
+        private double since;
+        private int cell;
+
+        public DigWatch(int entryY, double nowSeconds) {
+            columnLowestY = entryY;
+            since = nowSeconds;
+        }
+
+        // only counts while within DUG_RADIUS of the column being dug, a fall into a cave beside it is not progress
+        public void update(double px, double py, double pz, int columnX, int columnZ, double nowSeconds) {
+            if (Math.hypot(px - (columnX + 0.5), pz - (columnZ + 0.5)) > DUG_RADIUS) {
+                return;
+            }
+            int y = (int) Math.floor(py);
+            // the clock only restarts on a new low for the whole dig, a shifted cell has to beat the old one
+            if (y < columnLowestY) {
+                columnLowestY = y;
+                since = nowSeconds;
+            }
+        }
+
+        public int columnLowestY() {
+            return columnLowestY;
+        }
+
+        public boolean stuck(double nowSeconds) {
+            return nowSeconds - since >= WATCHDOG_SECONDS;
+        }
+
+        // the next untried cell's middle, or null once all of them have had their minute
+        public int[] shift(int centreX, int centreZ, double nowSeconds) {
+            cell++;
+            if (cell >= FOOTPRINT.length) {
+                return null;
+            }
+            since = nowSeconds;
+            return new int[]{centreX + FOOTPRINT[cell][0], centreZ + FOOTPRINT[cell][1]};
+        }
     }
 
     // the work level changed, so every chunk marked at the old one was seen from the wrong height. true if it cleared

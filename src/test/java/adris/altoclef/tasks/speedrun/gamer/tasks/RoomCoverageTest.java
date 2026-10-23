@@ -14,6 +14,7 @@ import java.util.Set;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class RoomCoverageTest {
@@ -185,15 +186,6 @@ public class RoomCoverageTest {
     }
 
     @Test
-    public void theLeashIsALooseBackstop() {
-        // not walking: only past 5. walking: until we are within 2 of the middle
-        assertFalse(RoomCoverage.needsRewalk(false, 1000.4, 1684.5, 996, 1684));
-        assertTrue(RoomCoverage.needsRewalk(false, 1002.5, 1684.5, 996, 1684));
-        assertTrue(RoomCoverage.needsRewalk(true, 999.0, 1684.5, 996, 1684));
-        assertFalse(RoomCoverage.needsRewalk(true, 998.0, 1684.5, 996, 1684));
-    }
-
-    @Test
     public void segmentsStepDownEightAtATimeOnTheColumn() {
         // from the surface at 79: first goal 71, never under the floor
         assertEquals(71, RoomCoverage.firstSegmentY(79, -54));
@@ -227,24 +219,87 @@ public class RoomCoverageTest {
     public void theDigOutcomeFollowsTheConfigBudget() {
         RoomCoverage.DigOutcome keep = RoomCoverage.DigOutcome.KEEP_DIGGING;
         // within budget: keep going, whatever the budget is (source default 420, a run config 240)
-        assertEquals(keep, RoomCoverage.digOutcome(false, 300, 420, 79, 78, 56, false));
-        assertEquals(RoomCoverage.DigOutcome.RETRY, RoomCoverage.digOutcome(false, 300, 240, 79, 78, 56, false));
-        // second stuck budget ends the attempt
-        assertEquals(RoomCoverage.DigOutcome.FAIL, RoomCoverage.digOutcome(false, 421, 420, 79, 78, 56, true));
+        assertEquals(keep, RoomCoverage.digOutcome(false, 300, 420, 79, 78, 56));
+        assertEquals(RoomCoverage.DigOutcome.FAIL, RoomCoverage.digOutcome(false, 300, 240, 79, 78, 56));
         // bricks win over everything, even a stuck-looking dig
-        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(true, 421, 420, 79, 78, 56, true));
-        // timed out deep with no bricks keeps the old behaviour
-        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(false, 421, 420, 79, 10, 56, false));
-        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(false, 421, 420, 79, 10, 56, true));
+        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(true, 421, 420, 79, 78, 56));
+        // timed out deep on the column with no bricks keeps the old behaviour
+        assertEquals(RoomCoverage.DigOutcome.SPIRAL, RoomCoverage.digOutcome(false, 421, 420, 79, 10, 56));
     }
 
     @Test
-    public void theRetryColumnStaysInsideTheStaircase() {
-        int[] c = RoomCoverage.retryColumn(996, 1684);
-        assertTrue(Math.abs(c[0] - 996) + Math.abs(c[1] - 1684) == 2);
-        assertTrue(RoomCoverage.onColumn(c[0] + 0.5, c[1] + 0.5, 996, 1684));
+    public void aCaveFallNeverTurnsAStuckDigIntoASpiral() {
+        // the column only got to 70 (the fall to 41 is not passed in), so the budget ends the attempt, not the spiral
+        assertEquals(RoomCoverage.DigOutcome.FAIL, RoomCoverage.digOutcome(false, 421, 420, 77, 70, 56));
+        // 8 under entry but still above the stronghold band: also a fail
+        assertEquals(RoomCoverage.DigOutcome.FAIL, RoomCoverage.digOutcome(false, 421, 420, 120, 100, 56));
     }
 
+    @Test
+    public void onlyYsOnTheColumnCount() {
+        RoomCoverage.DigWatch w = new RoomCoverage.DigWatch(77, 0);
+        w.update(996.5, 61.2, 1684.5, 996, 1684, 15);
+        assertEquals(61, w.columnLowestY());
+        // fell into a cave 4 blocks off the column to 41
+        w.update(1000.5, 41.0, 1684.5, 996, 1684, 20);
+        assertEquals(61, w.columnLowestY());
+        // within 1.5 counts
+        w.update(997.5, 60.0, 1684.5, 996, 1684, 25);
+        assertEquals(60, w.columnLowestY());
+    }
+
+    @Test
+    public void theWatchdogWantsANewLowEveryMinute() {
+        RoomCoverage.DigWatch w = new RoomCoverage.DigWatch(77, 0);
+        assertFalse(w.stuck(59));
+        assertTrue(w.stuck(60));
+        // a new low resets the clock, standing still or falling off the column does not
+        w.update(996.5, 70, 1684.5, 996, 1684, 50);
+        assertFalse(w.stuck(109));
+        w.update(1004.5, 41, 1684.5, 996, 1684, 100);
+        assertTrue(w.stuck(110));
+        w.update(996.5, 70, 1684.5, 996, 1684, 115);
+        assertTrue(w.stuck(115));
+    }
+
+    @Test
+    public void theWatchdogTriesEachCellOnceThenGivesUp() {
+        RoomCoverage.DigWatch w = new RoomCoverage.DigWatch(77, 0);
+        assertArrayEquals(new int[]{998, 1684}, w.shift(996, 1684, 60));
+        assertArrayEquals(new int[]{994, 1684}, w.shift(996, 1684, 120));
+        assertArrayEquals(new int[]{996, 1686}, w.shift(996, 1684, 180));
+        assertArrayEquals(new int[]{996, 1682}, w.shift(996, 1684, 240));
+        assertNull(w.shift(996, 1684, 300));
+        // every cell is still inside the staircase around the original middle
+        for (int[] c : RoomCoverage.FOOTPRINT) {
+            assertTrue(RoomCoverage.onColumn(996 + c[0] + 0.5, 1684 + c[1] + 0.5, 996, 1684));
+        }
+    }
+
+    @Test
+    public void aShiftedCellHasToBeatTheOldLowToResetTheClock() {
+        RoomCoverage.DigWatch w = new RoomCoverage.DigWatch(77, 0);
+        w.update(996.5, 62, 1684.5, 996, 1684, 10);
+        w.shift(996, 1684, 60);
+        assertFalse(w.stuck(119));
+        // a higher spot on the new cell is not progress, only getting under the old low is
+        w.update(998.5, 70, 1684.5, 998, 1684, 70);
+        assertTrue(w.stuck(120));
+        w.update(998.5, 61, 1684.5, 998, 1684, 100);
+        assertFalse(w.stuck(159));
+        assertTrue(w.stuck(160));
+        assertEquals(61, w.columnLowestY());
+    }
+
+    @Test
+    public void theFloorIsJudgedAgainstTheOriginalCentre() {
+        // standing on a shifted cell (x+2) is still on the original column, so the floor verdict stands
+        assertEquals(RoomCoverage.DigVerdict.FLOOR,
+                RoomCoverage.digVerdict(false, -52, -54, RoomCoverage.onColumn(998.5, 1684.5, 996, 1684)));
+        // and a cave 8 away is not
+        assertEquals(RoomCoverage.DigVerdict.KEEP_DIGGING,
+                RoomCoverage.digVerdict(false, -52, -54, RoomCoverage.onColumn(1004.5, 1684.5, 996, 1684)));
+    }
     @Test
     public void aNewWorkLevelWipesBothSets() {
         Set<String> visited = new HashSet<>(Set.of("62,105", "63,105"));

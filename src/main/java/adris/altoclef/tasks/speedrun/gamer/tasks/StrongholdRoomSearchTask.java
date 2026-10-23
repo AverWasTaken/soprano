@@ -86,16 +86,13 @@ public class StrongholdRoomSearchTask extends Task {
     private int lastDigY = Integer.MAX_VALUE;
     // task time, like the chunk timer: a fight or a night trip in the middle of the dig is not the dig being slow
     private double digSince;
-    // the walk back onto the staircase column when the dig drifted off it
-    private Task rewalkTask;
-    // the column being dug (the start column, or the one next to it after a stuck dig) and the segment goal under way
+    // the column being dug (the start column, or a footprint cell the watchdog moved to) and the segment goal under way
     private int digX;
     private int digZ;
     private int digEntryY;
-    private int lowestY;
+    private RoomCoverage.DigWatch watch;
     private int segmentY;
     private int digTaskY;
-    private boolean digRetried;
     private boolean failed;
     private final NoPathScope.Watch noPath = new NoPathScope.Watch();
     private String step = "Searching the stronghold";
@@ -227,15 +224,13 @@ public class StrongholdRoomSearchTask extends Task {
         }
         if (next == Stage.DIG) {
             digSince = timeOnTaskSeconds();
-            rewalkTask = null;
             digTask = null;
-            digRetried = false;
             RunState.Pos start = ctx.state().strongholdStart;
             digX = start.x;
             digZ = start.z;
             digEntryY = (int) Math.floor(mod.getPlayer().getY());
-            lowestY = digEntryY;
-            segmentY = RoomCoverage.firstSegmentY(lowestY, cfg.digFloorY);
+            watch = new RoomCoverage.DigWatch(digEntryY, timeOnTaskSeconds());
+            segmentY = RoomCoverage.firstSegmentY(digEntryY, cfg.digFloorY);
         }
         stage = next;
         stageSince = seconds(mod);
@@ -429,53 +424,52 @@ public class StrongholdRoomSearchTask extends Task {
             lastDigY = y;
             ctx.progress("dug down");
         }
-        lowestY = Math.min(lowestY, y);
+        double now = timeOnTaskSeconds();
+        watch.update(mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ(), digX, digZ, now);
+        // the floor only counts on the original column (the footprint cells are inside its slack), so a shift does not
+        // turn a staircase that was fine into a floor verdict
         RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY,
-                onDigColumn(mod));
+                onStartColumn(mod));
         if (verdict == RoomCoverage.DigVerdict.FLOOR) {
             // on the column, at the bottom, nothing: the chunk is not the stronghold's
             estimateWrong();
             return null;
         }
+        // a stuck dig never reaches the spiral: columnLowestY is on the column only, a cave fall does not count
         RoomCoverage.DigOutcome outcome = RoomCoverage.digOutcome(verdict == RoomCoverage.DigVerdict.BRICKS,
-                timeOnTaskSeconds() - digSince, cfg.digDownSeconds, digEntryY, lowestY, BRICK_MAX_Y, digRetried);
-        if (outcome == RoomCoverage.DigOutcome.RETRY) {
-            // never dug anywhere useful: spiralling from up here searches the surface. one more go from the next column
-            // over, then this attempt is over. not estimateWrong, that spends the only relocate on a mechanical stall
-            digRetried = true;
-            int[] col = RoomCoverage.retryColumn(digX, digZ);
-            digX = col[0];
-            digZ = col[1];
-            digSince = timeOnTaskSeconds();
-            digEntryY = lowestY;
-            segmentY = RoomCoverage.firstSegmentY(lowestY, cfg.digFloorY);
-            digTask = null;
-            rewalkTask = null;
-            return null;
-        }
+                now - digSince, cfg.digDownSeconds, digEntryY, watch.columnLowestY(), BRICK_MAX_Y);
         if (outcome == RoomCoverage.DigOutcome.FAIL) {
+            // not estimateWrong, that spends the only relocate on a mechanical stall
             failed = true;
-            ctx.fail("the stronghold dig never got below y " + lowestY);
+            ctx.fail("the stronghold dig never got below y " + watch.columnLowestY());
             return null;
         }
         if (outcome == RoomCoverage.DigOutcome.SPIRAL) {
+            if (!bricksSeen && Double.isNaN(workY)) {
+                // the budget ran out deep on the column: search at the depth it reached, not in the cave we may be standing in
+                workY = watch.columnLowestY();
+            }
             Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
             enterSpiral(mod);
             return null;
         }
-        // GoalColumnDown only says where the dig ends, baritone is free to take a cave to get there. the staircase is
-        // the column and nothing else, so well off it we walk back before digging any deeper
-        if (RoomCoverage.needsRewalk(rewalkTask != null, mod.getPlayer().getX(), mod.getPlayer().getZ(), digX, digZ)) {
-            if (rewalkTask == null) {
-                // done on the column at the lowest height we reached or under it, so a drop into the hollow core ends it
-                // too. the player's own y here would be wherever the cave dumped us, which is how it ping-ponged before
-                rewalkTask = new GetDownColumnTask(digX, digZ, lowestY, false);
+        if (watch.stuck(now)) {
+            // a minute with no new low on this column: try the next cell around the original middle
+            RunState.Pos start = ctx.state().strongholdStart;
+            int[] cellXZ = watch.shift(start.x, start.z, now);
+            if (cellXZ == null) {
+                failed = true;
+                ctx.fail("the stronghold dig got nowhere on any column");
+                return null;
             }
-            step = "Back onto the dig column";
-            setDebugState("Walking back onto the dig column", step);
-            return rewalkTask;
+            digX = cellXZ[0];
+            digZ = cellXZ[1];
+            // from where we are, not from the column's old low
+            segmentY = RoomCoverage.firstSegmentY(y, cfg.digFloorY);
+            digTask = null;
         }
-        rewalkTask = null;
+        // GoalColumnDown is only satisfied on the exact column, so off it baritone plans back by itself and the segment
+        // goal stays put. no leash: the paths it picks are good ones even when they detour through a cave
         int nextSeg = RoomCoverage.nextSegmentY(segmentY, mod.getPlayer().getY(), onDigColumn(mod), cfg.digFloorY);
         if (digTask == null || nextSeg != digTaskY) {
             segmentY = nextSeg;
