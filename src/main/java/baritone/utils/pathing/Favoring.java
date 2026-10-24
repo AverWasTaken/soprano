@@ -45,6 +45,18 @@ public final class Favoring {
         }
     }
 
+    // these cells (BlockPos.asLong, see RouteMemory) cost coeff of what they would, unless something already favours them more
+    public void favorAll(it.unimi.dsi.fastutil.longs.LongSet cells, double coeff) {
+        it.unimi.dsi.fastutil.longs.LongIterator it = cells.iterator();
+        while (it.hasNext()) {
+            long c = it.nextLong();
+            long hash = BetterBlockPos.longHash(net.minecraft.core.BlockPos.getX(c), net.minecraft.core.BlockPos.getY(c), net.minecraft.core.BlockPos.getZ(c));
+            if (favorings.get(hash) > coeff) {
+                favorings.put(hash, coeff);
+            }
+        }
+    }
+
     public boolean isEmpty() {
         return favorings.isEmpty();
     }

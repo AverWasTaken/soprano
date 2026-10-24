@@ -17,6 +17,8 @@
 
 package baritone.process;
 
+import baritone.behavior.FallFloor;
+import baritone.behavior.RouteMemory;
 import baritone.pathing.movement.movements.PendingTables;
 import baritone.Baritone;
 import baritone.api.pathing.goals.Goal;
@@ -58,6 +60,10 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
 
     @Override
     public void setGoal(Goal goal) {
+        if (!java.util.Objects.equals(goal, this.goal)) {
+            FallFloor.markGoal();
+            RouteMemory.newGoal(); // (somewhere to go: where we've been on the way to anywhere else isn't going back)
+        }
         this.goal = goal;
         this.mostRecentGoal = goal;
         if (baritone.getElytraProcess().isActive()) {
@@ -152,6 +158,7 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 airRetries = 0; // (a plan came through: the mid air retries start over)
                 if (this.goal == null || (this.goal.isInGoal(ctx.playerFeet()) && this.goal.isInGoal(baritone.getPathingBehavior().pathStart()))) {
                     baritone.getTripBehavior().onArrived(this.goal);
+                    RouteMemory.save(); // the way here, kept now (see RouteMemory)
                     onLostControl(); // we're there xd
                     if (Baritone.settings().disconnectOnArrival.value) {
                         if (ctx.world() instanceof ClientLevel clientLevel) {

@@ -359,6 +359,62 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
     // searches from one spot that came up empty before going lower anyway, things still being worked out or not
     static final int STUCK_TIMES_TO_GO_LOWER = 3;
 
+    // the node the search got to that's furthest along the remembered way (and a few cells along at least), or null
+    private PathNode furthestAlong(baritone.behavior.RouteMemory.Guide guide) {
+        PathNode best = null;
+        int bestAt = MIN_ALONG - 1;
+        for (PathNode[] cell : cells.values()) {
+            for (PathNode n : cell) {
+                if (n == null || n.cost >= ActionCosts.COST_INF) {
+                    continue;
+                }
+                int at = guide.along(n.x, n.y, n.z);
+                if (at > bestAt || at == bestAt && best != null && n.cost < best.cost) {
+                    bestAt = at;
+                    best = n;
+                }
+            }
+        }
+        return best;
+    }
+
+    // a remembered way has to take us at least this many cells along it to be worth a part path
+    static final int MIN_ALONG = 3;
+
+    // a part path that ends where we've just been stood: on a course that goes away from its finish first (aqua's start goes
+    // east round to stop 1, the finish is west), the best part path from the far end is back where we came from, and from
+    // there it's out to the far end again, back and forth for good. the best one that ends somewhere we haven't been instead,
+    // if there is one; if there isn't, it stands (the search's answer, and the stuck handling takes it from there)
+    private void avoidGoingBack() {
+        java.util.List<PathNode> all = null;
+        for (int i = 0; i < COEFFICIENTS.length; i++) {
+            PathNode b = bestSoFar[i];
+            if (b == null || getDistFromStartSq(b) <= MIN_DIST_PATH * MIN_DIST_PATH || !baritone.behavior.FallFloor.beenNearThisGoal(b.x, b.y, b.z)) {
+                continue;
+            }
+            int band = startY - 1;
+            PathNode best = null;
+            double bestH = Double.MAX_VALUE;
+            if (all == null) {
+                all = tree();
+            }
+            for (PathNode n : all) {
+                if (n.y < partialFloorY || pocket(n, band) || getDistFromStartSq(n) <= MIN_DIST_PATH * MIN_DIST_PATH
+                        || baritone.behavior.FallFloor.beenNearThisGoal(n.x, n.y, n.z)) {
+                    continue;
+                }
+                double h = n.estimatedCostToGoal + n.cost * INVERSE_COEFFICIENTS[i];
+                if (h < bestH) {
+                    bestH = h;
+                    best = n;
+                }
+            }
+            if (best != null) {
+                bestSoFar[i] = best;
+            }
+        }
+    }
+
     // somewhere new is at least this far (across) from anywhere we've stood lately: not another spot on the same platform
     static final int EXPLORE_AWAY = 2;
 
@@ -430,6 +486,17 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         }
         if (partialFloorY != Integer.MIN_VALUE && numNodes > 0) {
             avoidPockets(); // (the search's own answer, not the peeks at it to draw the path so far)
+            avoidGoingBack();
+        }
+        if (numNodes > 0 && context.routeGuide != null) {
+            // a remembered way from here: as far along it as the search got, rather than as near the goal (RouteMemory)
+            PathNode along = furthestAlong(context.routeGuide);
+            if (along != null) {
+                if (logInfo) {
+                    logDebug("Going along the way we went before (" + context.routeGuide.along(along.x, along.y, along.z) + " of " + context.routeGuide.length() + ")");
+                }
+                return Optional.of(new Path(realStart, startNode, along, numNodes, goal, context));
+            }
         }
         double bestDist = 0;
         for (int i = 0; i < COEFFICIENTS.length; i++) {

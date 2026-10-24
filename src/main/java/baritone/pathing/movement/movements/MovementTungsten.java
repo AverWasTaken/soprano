@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement.movements;
 
+import baritone.behavior.RouteMemory;
 import baritone.Baritone;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.IMovement;
@@ -209,6 +210,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         // a ladder neo or any other jump onto a ladder ends hanging on it, everything else standing on dest
         Landing land = landing();
         if (feet.y < lowestPlanned - 1) {
+            RouteMemory.jumped(src, dest, false);
             logDebug("tungsten jump: fell");
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
@@ -248,6 +250,9 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             case PRESS:
                 return press(state, d.keys());
             case DONE:
+                if (pilot.flew()) {
+                    RouteMemory.jumped(src, dest, true);
+                }
                 return state.setStatus(MovementStatus.SUCCESS);
             case STUCK:
                 if (++stuckTicks > STUCK + SEARCH_WAIT) {
@@ -256,6 +261,9 @@ public class MovementTungsten extends Movement implements CurvedMovement {
                 }
                 return noRuleFromHere(state, player, land);
             default:
+                if (pilot.flew()) {
+                    RouteMemory.jumped(src, dest, false); // (came down off the landing, and the like)
+                }
                 logDebug("tungsten jump: " + d.why());
                 return state.setStatus(MovementStatus.UNREACHABLE);
         }

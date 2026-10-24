@@ -48,6 +48,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
     public int numNodesConsidered;
     public int numMovementsConsidered;
 
+    // this many cells along a remembered way (RouteMemory), the search has a part path worth stopping for
+    static final int ROUTE_PROGRESS = 12;
+
     public AStarPathFinder(BetterBlockPos realStart, int startX, int startY, int startZ, Goal goal, Favoring favoring, CalculationContext context) {
         super(realStart, startX, startY, startZ, goal, context);
         this.favoring = favoring;
@@ -84,6 +87,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         }
         int partialFloorY = this.partialFloorY;
         int avoidBelowY = calcContext.avoidBelowY;
+        baritone.behavior.RouteMemory.Guide guide = calcContext.routeGuide;
         MutableMoveResult res = new MutableMoveResult();
         BetterWorldBorder worldBorder = calcContext.worldBorder;
         long startTime = System.currentTimeMillis();
@@ -215,6 +219,10 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                 actionCost += calcContext.swimStalls.penalty(currentNode.x, currentNode.y, currentNode.z, res.x, res.y, res.z);
                 // or one the executor just gave up on, see FailedMoves
                 actionCost += calcContext.failedMoves.penalty(currentNode.x, currentNode.y, currentNode.z, res.x, res.y, res.z);
+                if (moves.tungsten) {
+                    // or a jump that's kept missing in the game, sessions ago or now (RouteMemory)
+                    actionCost += baritone.behavior.RouteMemory.penalty(currentNode.x, currentNode.y, currentNode.z, res.x, res.y, res.z);
+                }
                 long hashCode = BetterBlockPos.longHash(res.x, res.y, res.z);
                 PathNode neighbor = getNodeAtPosition(res.x, res.y, res.z, hashCode);
                 if (isFavoring) {
@@ -240,6 +248,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                         openSet.insert(neighbor);//dont double count, dont insert into open set if it's already there
                     }
                     boolean high = neighbor.y >= partialFloorY;
+                    if (failing && guide != null && guide.along(neighbor.x, neighbor.y, neighbor.z) >= Math.min(guide.length(), ROUTE_PROGRESS)) {
+                        failing = false; // well along a remembered way: that's a part path worth having (bestSoFar takes it)
+                    }
                     for (int i = 0; i < COEFFICIENTS.length; i++) {
                         double heuristic = neighbor.estimatedCostToGoal + neighbor.cost * INVERSE_COEFFICIENTS[i];
                         if (high && bestHeuristicSoFar[i] - heuristic > minimumImprovement) {

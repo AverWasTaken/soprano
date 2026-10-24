@@ -55,9 +55,17 @@ public final class FallFloor {
     // desert's sand) does it with no fall at all
     private static net.minecraft.world.level.block.Block standBlock;
     private static int standFeet;
+    private static long standCell = Long.MIN_VALUE;
+    private static int standTicks;
+    // a block that puts you back does it the moment you're on it: within this many ticks
+    static final int JUST_STEPPED = 20;
     // the cells we've stood in lately: being put back is going somewhere we've already been (the start, the last checkpoint),
     // where finishing a course takes you somewhere new
     private static final long[] SEEN = new long[4096];
+    // and when (counting cells): which of them were since the goal we're on was set. somewhere the last go at a course went
+    // isn't going back, this time round, it's the way
+    private static final long[] SEEN_AT = new long[SEEN.length];
+    private static long seenTotal, goalMark;
     private static int seenNext, seenCount;
     private static long seenLast = Long.MIN_VALUE;
     // goes up every time something new is learned: a path planned before it may go right back down there
@@ -90,9 +98,17 @@ public final class FallFloor {
         seenLast = Long.MIN_VALUE;
     }
 
-    // stood within r (across, a block up or down) of the cell at x y z lately, in this world
+    // a new goal: what counts as going back starts over (beenWithin, beenNearThisGoal)
+    public static synchronized void markGoal() {
+        goalMark = seenTotal;
+    }
+
+    // stood within r (across, a block up or down) of the cell at x y z since the goal was set, in this world
     public static boolean beenWithin(int bx, int by, int bz, int r) {
         for (int i = 0; i < seenCount; i++) {
+            if (SEEN_AT[i] < goalMark) {
+                continue;
+            }
             long c = SEEN[i];
             if (Math.abs(net.minecraft.core.BlockPos.getX(c) - bx) <= r && Math.abs(net.minecraft.core.BlockPos.getY(c) - by) <= 1
                     && Math.abs(net.minecraft.core.BlockPos.getZ(c) - bz) <= r) {
@@ -104,8 +120,20 @@ public final class FallFloor {
 
     // stood in (or right next to) the cell at x y z lately, in this world
     public static boolean beenNear(double x, double y, double z) {
+        return beenNear(x, y, z, Long.MIN_VALUE);
+    }
+
+    // the same, since the goal we're on was set
+    public static boolean beenNearThisGoal(double x, double y, double z) {
+        return beenNear(x, y, z, goalMark);
+    }
+
+    private static boolean beenNear(double x, double y, double z, long since) {
         int bx = (int) Math.floor(x), by = (int) Math.floor(y + 0.01), bz = (int) Math.floor(z);
         for (int i = 0; i < seenCount; i++) {
+            if (SEEN_AT[i] < since) {
+                continue;
+            }
             long c = SEEN[i];
             if (Math.abs(net.minecraft.core.BlockPos.getX(c) - bx) <= 1 && Math.abs(net.minecraft.core.BlockPos.getY(c) - by) <= 1
                     && Math.abs(net.minecraft.core.BlockPos.getZ(c) - bz) <= 1) {
@@ -161,7 +189,8 @@ public final class FallFloor {
             }
             boolean fell = !Double.isNaN(topY) && topY - lowY >= 0.5 && (y > lowY + 2.5 || across);
             // (and not far: going from one course to another, a level's start that we've stood on before, is a teleport too)
-            if (teleported && !settling && !fell && standBlock != null && across && dx * dx + dz * dz < PUT_BACK_RANGE * PUT_BACK_RANGE
+            // (and only just stepped onto it: stood there a while, it's someone starting the level over, not the block)
+            if (teleported && !settling && !fell && standBlock != null && standTicks <= JUST_STEPPED && across && dx * dx + dz * dz < PUT_BACK_RANGE * PUT_BACK_RANGE
                     && beenNear(x, y, z)) {
                 // walked onto it and got put back straight away, back to where we'd been
                 if (!deadly(standBlock, (int) Math.floor(lastX), standFeet, (int) Math.floor(lastZ))) {
@@ -201,12 +230,20 @@ public final class FallFloor {
             }
         }
         if (p.onGround()) {
-            standBlock = p.level().getBlockState(p.getOnPos()).getBlock();
+            net.minecraft.world.level.block.Block on = p.level().getBlockState(p.getOnPos()).getBlock();
+            long onCell = p.getOnPos().asLong();
+            if (onCell != standCell) {
+                standCell = onCell;
+                standTicks = 0;
+            }
+            standTicks++;
+            standBlock = on;
             standFeet = (int) Math.floor(y + 0.1251);
             long cell = net.minecraft.core.BlockPos.asLong((int) Math.floor(x), (int) Math.floor(y + 0.01), (int) Math.floor(z));
             if (cell != seenLast) {
                 seenLast = cell;
                 SEEN[seenNext] = cell;
+                SEEN_AT[seenNext] = seenTotal++;
                 seenNext = (seenNext + 1) % SEEN.length;
                 seenCount = Math.min(seenCount + 1, SEEN.length);
             }

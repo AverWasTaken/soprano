@@ -119,6 +119,8 @@ public class CalculationContext {
     // the sector (TungstenJumps.carrySector) of the jump the player is coming into the start with, when this search plans
     // ahead from the end of a path still being walked (-1: standing there, or not known)
     public int startArrival = -1;
+    // the way along a remembered trail, for this search (RouteMemory), or null
+    public baritone.behavior.RouteMemory.Guide routeGuide;
     public final int avoidBelowY;
     // a context that raises maxFallHeightNoWater because it wants the fall (the elytra walk off) doesn't want it priced as
     // damage or swapped for a ladder either, see MovementDescend.dynamicFallCost

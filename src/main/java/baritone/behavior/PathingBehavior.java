@@ -164,6 +164,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
 
         FallFloor.tick(ctx.player());
+        {
+            baritone.cache.WorldData wd = baritone.getWorldProvider().getCurrentWorld();
+            net.minecraft.client.player.LocalPlayer p = ctx.player();
+            RouteMemory.tick(p.level(), wd == null ? null : wd.directory, p.getX(), p.getY(), p.getZ(), ctx.playerFeet(),
+                    p.onGround() && !p.isInWater());
+        }
         // the background jump searches go nearest the player first, path or no path
         NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
         if (FallFloor.generation() != fallFloorSeen) {
@@ -824,6 +830,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         });
     }
 
+    // what a move onto a cell of a remembered trail costs, of what it would (Favoring)
+    static final double ROUTE_FAVOR = 0.6;
+
     // how long a search may take for a path at all, where we've been stuck already (see findPathInNewThread)
     static final long STUCK_FAILURE_MS = 12_000;
 
@@ -929,6 +938,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             // that carries that on (TungstenJumps.Jump.carry) can go from there
             BetterBlockPos a = previous.positions().get(previous.positions().size() - 2), b = previous.positions().get(previous.positions().size() - 1);
             context.startArrival = TungstenJumps.carrySector(context, a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+        // the way along a trail we've been along before, see RouteMemory
+        context.routeGuide = goal instanceof IGoalRenderPos ? RouteMemory.guide(new BetterBlockPos(start), new BetterBlockPos(((IGoalRenderPos) goal).getGoalPos())) : null;
+        if (context.routeGuide != null) {
+            favoring.favorAll(context.routeGuide.index().keySet(), ROUTE_FAVOR);
         }
         AStarPathFinder finder = new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
         finder.keepAbove(goal); // the goal as asked for: a far one keeps its height for this even when the search drops it

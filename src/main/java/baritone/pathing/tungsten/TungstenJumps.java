@@ -446,9 +446,23 @@ public final class TungstenJumps {
             if (world == null) {
                 world = new SafeCollision(context.bsi);
             }
+            // what the jump net makes of it: sure it won't work, the sim isn't asked (JumpNetStore); and whatever the sim
+            // says, the net learns from
+            int[] feat = null;
+            float guess = -1;
+            if (JumpNetStore.learning()) {
+                feat = JumpNet.features(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
+                guess = JumpNetStore.net().predict(feat);
+                if (!anyBudget && JumpNetStore.skip(guess)) {
+                    return null; // (not kept: asked again, it's asked of the net again, and now and then of the sim)
+                }
+            }
             long before = PlayerSim.ticks();
             Jump j = simulate(context, world, src, dest, !anyBudget);
             budget -= PlayerSim.ticks() - before;
+            if (feat != null && j != PENDING) {
+                JumpNetStore.learn(feat, guess, j != null);
+            }
             if (PROFILE) {
                 int dy = dest.y - src.y, k = j == null || j == PENDING ? 0 : 1;
                 PROFILE_TICKS[k][Math.max(0, Math.min(11, dy + 8))] += PlayerSim.ticks() - before;

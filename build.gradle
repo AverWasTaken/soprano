@@ -201,3 +201,10 @@ processResources {
         expand "buildId": buildId, "buildTime": buildTime, "version": project.version, "minecraftVersion": project.minecraft_version
     }
 }
+
+// -PtestHeap=2g for the tests that need more than the default (training the jump net)
+tasks.withType(Test).configureEach {
+    if (project.hasProperty('testHeap')) {
+        maxHeapSize = project.property('testHeap')
+    }
+}

@@ -859,6 +859,29 @@ public final class Settings {
     public final Setting<Boolean> learnFallFloor = new Setting<>(true);
 
     /**
+     * Remember the way through a course. Every block you stand on goes onto a trail, the bot's or yours (play a level by
+     * hand and the bot learns the way too), with loops and the bits before a fall left out, and the trails are kept with the
+     * world's other Baritone data, so they last between sessions. A path towards a goal that a trail goes past follows the
+     * trail, and when the bot can't see all the way it goes as far along the trail as it can, instead of as near the goal as
+     * the crow flies (on a course that winds away from its finish first, that's a dead end). It also remembers which jumps
+     * keep missing in the game, and goes round them if there's another way.
+     */
+    public final Setting<Boolean> useRouteMemory = new Setting<>(true);
+
+    /**
+     * Let a small net (trained on Parkour Lab, and learning more as the bot plays) leave out the Tungsten jumps it's sure
+     * won't work, instead of the sim trying each one. Planning goes quicker; now and then it's wrong and a jump is missed,
+     * which a later search usually finds anyway (it still asks the sim about a few of them, to keep learning).
+     */
+    public final Setting<Boolean> useJumpNet = new Setting<>(false);
+
+    /**
+     * Teach that net from every jump the sim works out, as the bot plays, and keep what it's learned (baritone/jumpnet.bin)
+     * for next time. Costs a little time on each jump the sim tries.
+     */
+    public final Setting<Boolean> learnJumpNet = new Setting<>(true);
+
+    /**
      * How far are you allowed to fall onto solid ground (with a water bucket)?
      * It's not that reliable, so I've set it below what would kill an unarmored player (23)
      * <p>
