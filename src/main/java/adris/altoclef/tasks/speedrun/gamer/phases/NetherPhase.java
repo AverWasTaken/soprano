@@ -1119,10 +1119,9 @@ public class NetherPhase implements PhaseHandler {
             huntWanderSince = now;
         }
         lastPearls = pearls;
-        if (s.warpedForest == null) {
-            if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
-                return fail(ctx, "no endermen and no warped forest in the Nether");
-            }
+        // runs whether or not a forest is known: a forest with no endermen in it is just as stuck
+        if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
+            return fail(ctx, "no pearl gained in the Nether hunt for too long");
         }
         hudState = hunt.step();
         return hunt;

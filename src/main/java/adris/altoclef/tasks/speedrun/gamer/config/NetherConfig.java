@@ -43,7 +43,7 @@ public class NetherConfig {
     public int waypointShiftBlocks = 12;
     // total time we are willing to spend on the barter top-up
     public double barterMinutes = 8;
-    // endermen wandering in the nether with no warped forest known: give up after this long without a pearl
+    // give up the nether pearl hunt after this long without a new pearl, forest known or not
     public double huntWanderMinutes = 10;
     // the engine budget fires at nether minutes, leave a little earlier than that when deciding "budget over"
     // so the floor rule wins the race against the timeout

@@ -74,7 +74,6 @@ public class EndGearTest {
         EndGear.Gap gap = missing(f, new RunState(), cfg.beds);
         assertEquals(8, gap.beds());
         assertTrue(gap.weapon());
-        assertTrue(gap.waterBucket());
         assertTrue(gap.pickaxe());
         assertEquals(cfg.buildBlocks, gap.buildBlocks());
         assertTrue(gap.food());
@@ -173,12 +172,10 @@ public class EndGearTest {
     public void gearLeftInTheEndCountsWhileItIsStillThere() {
         FakeFacts f = new FakeFacts().with(Items.IRON_SWORD, 1);
         RunState s = diedInEndAt(90_000);
-        s.endDrops.put("water_bucket", 1);
-        s.endDrops.put("white_bed", 3);
         s.endDrops.put("iron_pickaxe", 1);
+        s.endDrops.put("white_bed", 3);
         f.gameTime = 92_000;
         EndGear.Gap gap = missing(f, s, cfg.beds);
-        assertFalse(gap.waterBucket());
         assertFalse(gap.pickaxe());
         assertEquals(5, gap.beds());
     }
@@ -187,26 +184,26 @@ public class EndGearTest {
     public void despawnedDropsAreForgotten() {
         FakeFacts f = new FakeFacts();
         RunState s = diedInEndAt(90_000);
-        s.endDrops.put("water_bucket", 1);
+        s.endDrops.put("iron_pickaxe", 1);
         // 6000 ticks is the despawn, margin makes it 5400
         f.gameTime = 90_000 + cfg.dropLifetimeTicks;
-        assertTrue(missing(f, s, cfg.beds).waterBucket());
+        assertTrue(missing(f, s, cfg.beds).pickaxe());
         f.gameTime = 90_000 + cfg.dropLifetimeTicks - 1;
-        assertFalse(missing(f, s, cfg.beds).waterBucket());
+        assertFalse(missing(f, s, cfg.beds).pickaxe());
     }
 
     @Test
     public void dropsWithoutADeathInTheEndAreStaleCache() {
         RunState s = new RunState();
-        s.endDrops.put("water_bucket", 1);
-        assertTrue(missing(new FakeFacts(), s, cfg.beds).waterBucket());
+        s.endDrops.put("iron_pickaxe", 1);
+        assertTrue(missing(new FakeFacts(), s, cfg.beds).pickaxe());
         RunState diedElsewhere = new RunState();
         RunState.Death d = new RunState.Death();
         d.dimension = "NETHER";
         d.gameTime = 99_999;
         diedElsewhere.deaths.add(d);
-        diedElsewhere.endDrops.put("water_bucket", 1);
-        assertTrue(missing(new FakeFacts(), diedElsewhere, cfg.beds).waterBucket());
+        diedElsewhere.endDrops.put("iron_pickaxe", 1);
+        assertTrue(missing(new FakeFacts(), diedElsewhere, cfg.beds).pickaxe());
     }
 
     @Test

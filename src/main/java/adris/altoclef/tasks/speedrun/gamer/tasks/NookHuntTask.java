@@ -550,10 +550,10 @@ public class NookHuntTask extends Task {
         return best;
     }
 
-    private static int countAngry(List<Enderman> men) {
+    private int countAngry(List<Enderman> men) {
         int n = 0;
         for (Enderman man : men) {
-            if (man.isAlive() && man.isCreepy()) {
+            if (man.isAlive() && man.isCreepy() && !fightClock.givenUp(man.getId())) {
                 n++;
             }
         }
