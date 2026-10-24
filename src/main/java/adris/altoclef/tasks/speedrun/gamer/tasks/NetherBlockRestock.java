@@ -62,7 +62,7 @@ public class NetherBlockRestock {
             BlockPos origin = mod.getPlayer().blockPosition();
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
-                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p)
+                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p)
                             && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)));
         } else if (!on) {
             task = null;

@@ -68,6 +68,9 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     // our own behaviour level. the reserve goes in here and not in whatever is on top, a child task pushes its own on every
     // tick of ours and the numbers used to land in it (and count twice)
     private BotBehaviour.State _level;
+    // a throwaway dig (building blocks) must not hold its own targets back from the movements: the blocks exist to be placed,
+    // and a hold of the full count on every one of them left the pathing unable to place anything while it dug
+    private boolean _noReserve = false;
     private static final int CONTAINER_LOOKUP_TICKS = 20;
     private int _containerLookupCooldown = 0;
 
@@ -82,6 +85,17 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     public ResourceTask(Item item, int targetCount) {
         this(new ItemTarget(item, targetCount));
+    }
+
+    // construction time, like onlyWhere. skips the whole reserve call: writing zeros would still put the items in protectedItems
+    public ResourceTask noReserve() {
+        _noReserve = true;
+        return this;
+    }
+
+    // what the reserve call gets. empty means the call is skipped altogether
+    static <K> Map<K, Integer> reserveOrNone(boolean noReserve, Map<K, Integer> reserve) {
+        return noReserve ? Map.of() : reserve;
     }
 
     // a target that matches several items (any planks) saves its count for each of them, over-saving is the safe way. the
@@ -129,7 +143,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             _reserve = reserveFor(_itemTargets);
         }
         // protected, but only up to the count we're after: the walk out of the hole may build with cobble above it
-        mod.getBehaviour().reserveProtectedItems(_level, _reserve);
+        Map<Item, Integer> held = reserveOrNone(_noReserve, _reserve);
+        if (!held.isEmpty()) {
+            mod.getBehaviour().reserveProtectedItems(_level, held);
+        }
         // If we have an item in an INACCESSIBLE inventory slot
         if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {
