@@ -32,8 +32,9 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Predicate;
 
-// dig down at the start chunk until stone bricks show, then walk the chunk spiral looking for end portal frames.
-// only frames we SEE count. once three of them agree on a ring the other nine are given (the ring is rigid)
+// dig down at the start chunk until stone bricks show, then walk the corridors looking for end portal frames. frames the
+// client has loaded count from the start (checkFrames), bricks and corridors still go by what we see. once three frames
+// agree on a ring the other nine are given (the ring is rigid)
 public class StrongholdRoomSearchTask extends Task {
     private enum Stage {TO_START, DIG, SPIRAL, HINT, APPROACH}
 
@@ -170,6 +171,8 @@ public class StrongholdRoomSearchTask extends Task {
             return null;
         }
         tickCounter++;
+        // every tick, before any stage can give up: a ring the client already has loaded beats whatever the dig was about to decide
+        checkFrames(mod);
         if (tickCounter % SCAN_EVERY_TICKS == 0) {
             scan(mod);
             if (done) {
@@ -277,10 +280,17 @@ public class StrongholdRoomSearchTask extends Task {
         enter(mod, Stage.SPIRAL);
     }
 
-    // frames: centre if three agree, a hint if fewer. bricks: are we inside yet
-    private void scan(AltoClef mod) {
+    // frames the client has loaded count, line of sight or not (the user's call, a #goto end_portal_frame): the dig brings their
+    // chunks in range and then we just go. centre if three agree, straight to APPROACH from any stage, a hint if fewer
+    private void checkFrames(AltoClef mod) {
         RunState state = ctx.state();
-        List<int[]> frames = StrongholdScan.seenFrames(mod);
+        if (state.endPortalCenter != null) {
+            return;
+        }
+        RunState.Pos est = state.strongholdStart;
+        List<int[]> frames = est == null
+                ? StrongholdScan.knownFrames(mod, mod.getPlayer().getX(), mod.getPlayer().getZ())
+                : StrongholdScan.knownFrames(mod, est.x, est.z);
         if (state.endPortalCenter == null && !frames.isEmpty()) {
             Optional<int[]> centre = StrongholdScan.centre(frames);
             if (centre.isPresent()) {
@@ -297,8 +307,14 @@ public class StrongholdRoomSearchTask extends Task {
                 enter(mod, Stage.HINT);
             }
         }
+    }
+
+    // bricks: are we inside yet. frames counted here are the ones we SEE, not the loaded ones: a loaded ring counted as seen would
+    // finish the room before APPROACH walked a step, and the fill would start from wherever the dig left us
+    private void scan(AltoClef mod) {
+        RunState state = ctx.state();
         if (state.endPortalCenter != null) {
-            countSeen(mod, frames);
+            countSeen(mod, StrongholdScan.seenFrames(mod));
         }
         // bricks at our own level mean we are in the stronghold. ones seen far above or below (a ruin, a corridor through
         // a cave) are no reason to skip the dig
@@ -572,7 +588,7 @@ public class StrongholdRoomSearchTask extends Task {
         return chunkTask;
     }
 
-    // standing in a dry tunnel is not searching the chunk (the room is only found by line of sight): the chunks around
+    // standing in a dry tunnel is not searching the chunk (bricks and corridors are found by line of sight): the chunks around
     // us count once we are within ~24 blocks of their middle and near the level the stronghold is on
     private void markCovered(AltoClef mod, ChunkPos here, RunState state) {
         double px = mod.getPlayer().getX();
