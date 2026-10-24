@@ -2331,6 +2331,13 @@ public final class Settings {
     public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
 
     /**
+     * {@code #gamer} only, the Nether pearl hunt. On, the hunt digs a nook into a wall and waits for endermen to come to it. Off (the default),
+     * it goes straight for the endermen and fights each one in the open. The nook tends to end in a standoff with the enderman
+     * out of reach, so it is off until that is sorted out.
+     */
+    public final Setting<Boolean> altoPearlNook = new Setting<>(false);
+
+    /**
      * {@code #gamer} and survival schematic builds. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
      * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
      * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it

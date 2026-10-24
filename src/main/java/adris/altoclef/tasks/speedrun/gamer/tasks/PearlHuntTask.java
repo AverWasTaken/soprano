@@ -13,6 +13,7 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
@@ -208,6 +209,11 @@ public class PearlHuntTask extends Task {
     // the nook when there is an enderman near enough to use it with, null when the plain hunt below should run. a nook that
     // failed is not tried again for a bit, and after a few the plain hunt is all there is
     private Task nookStep(AltoClef mod, long gameTime) {
+        // off by default (altoPearlNook): the plain hunt below is the whole thing
+        if (!Baritone.settings().altoPearlNook.value) {
+            nook = null;
+            return null;
+        }
         if (nook != null && nook.isFinished(mod)) {
             // an idle-out counts too: a nook that sat there with nothing coming is as spent as one that broke
             nookFails++;
