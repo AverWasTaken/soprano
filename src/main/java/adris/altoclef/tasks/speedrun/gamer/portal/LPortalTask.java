@@ -505,7 +505,7 @@ public class LPortalTask extends Task {
         }
         lastKick = tick;
         scanning = true;
-        int py = mod.getPlayer().blockPosition().getY();
+        int py = LavaHunt.bandCentre(mod.getPlayer().blockPosition().getY());
         boolean deep = hunt.deepAllowed();
         IPlayerContext ctx = mod.getClientBaritone().getPlayerContext();
         Baritone.getExecutor().execute(() -> {

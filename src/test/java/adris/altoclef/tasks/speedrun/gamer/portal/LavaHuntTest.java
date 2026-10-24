@@ -21,6 +21,14 @@ public class LavaHuntTest {
     }
 
     @Test
+    public void theBandStaysAtTheSurfaceWhenWeStartInACave() {
+        assertEquals(LavaHunt.SURFACE_Y, LavaHunt.bandCentre(2));
+        assertEquals(LavaHunt.SURFACE_Y, LavaHunt.bandCentre(-30));
+        // up on a hill it follows us
+        assertEquals(90, LavaHunt.bandCentre(90));
+    }
+
+    @Test
     public void chunkCapLetsThreeThroughPerChunk() {
         LavaHunt.ChunkCap cap = new LavaHunt.ChunkCap();
         assertTrue(cap.take(0, 0));

@@ -16,6 +16,9 @@ final class LavaHunt {
     // pass A only looks this far above and below us, a lake 50 blocks down is somebody else's problem until we ran out of
     // lakes up here
     static final int BAND = 24;
+    // the band never sinks below the surface. starting the portal from a cave (an item pickup at y 2, say) would centre it
+    // on cave lava 20 blocks down, and the walk there is cliff rims over the pool. surface lava first, caves are pass B
+    static final int SURFACE_Y = 60;
     static final int PER_CHUNK = 3;
     static final int SEED_MAX = 60;
     // arriving is a 3d check: a horizontal one would call a seed 60 blocks under the surface "arrived"
@@ -49,6 +52,10 @@ final class LavaHunt {
         boolean take(int x, int z) {
             return ++counts.computeIfAbsent(key(x, z), k -> new int[1])[0] <= PER_CHUNK;
         }
+    }
+
+    static int bandCentre(int py) {
+        return Math.max(py, SURFACE_Y);
     }
 
     static double cost(P seed, int px, int py, int pz) {
