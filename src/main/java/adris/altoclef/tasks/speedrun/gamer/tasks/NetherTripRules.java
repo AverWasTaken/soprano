@@ -36,6 +36,9 @@ public final class NetherTripRules {
     // and with the hearts to survive the first volley on the other side. regen without food is slow, so the wait is capped
     public static final float HEAL_TO = 18;
     public static final int HEAL_SECONDS = 60;
+    // when the heal minute runs out, under this the trip does not go: walking into the nether at 5 hp with no food is just a
+    // second death. between this and HEAL_TO it goes anyway, the wait was only ever for comfort
+    public static final float GO_HP = 14;
     // in the nether: under this, with nobody shooting at us, the walk stands still and heals (up to HEAL_TO). the cap is for
     // the whole trip, not per hold. food at 0 means regen is not happening and a minute of standing is all it would get
     public static final float WALK_HEAL_BELOW = 12;
@@ -290,8 +293,11 @@ public final class NetherTripRules {
         if (in.dim() != Dimension.OVERWORLD) {
             return giveUp(in, "not in the overworld to heal");
         }
-        if (in.health() >= HEAL_TO || in.stageTicks() > HEAL_SECONDS * 20L) {
+        if (in.health() >= HEAL_TO) {
             return new Step(Stage.PORTAL, null, false);
+        }
+        if (in.stageTicks() > HEAL_SECONDS * 20L) {
+            return in.health() < GO_HP ? giveUp(in, "too hurt to go back") : new Step(Stage.PORTAL, null, false);
         }
         return stay(Stage.HEAL);
     }

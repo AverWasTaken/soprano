@@ -493,7 +493,17 @@ public class NetherTripRulesTest {
         assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.FOOD, 20 * 30, 40, 10)).stage());
         assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.HEAL, 20 * 30, 40, 17)).stage());
         assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 30, 40, 18)).stage());
-        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 61, 40, 5)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 61, 40, 16)).stage());
+    }
+
+    @Test
+    public void healCapWhileStillBadlyHurtGivesTheTripUp() {
+        Step hurt = NetherTripRules.next(body(Stage.HEAL, 20 * 61, 0, 12));
+        assertEquals("too hurt to go back", hurt.giveUp());
+        assertNull(hurt.stage());
+        // at the line itself it goes, and under the cap it keeps waiting either way
+        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 61, 0, 14)).stage());
+        assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.HEAL, 20 * 59, 0, 12)).stage());
     }
 
     @Test
