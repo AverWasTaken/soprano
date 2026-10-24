@@ -253,6 +253,52 @@ public class PhaseMachineTest {
     }
 
     @Test
+    public void walkingSixOutAndSixBackOnlyCountsTheWayOut() {
+        start();
+        tickAfter(100);
+        host.facts.x += 7;
+        tickAfter(100);
+        host.facts.x -= 7;
+        tickAfter(100);
+        tickAfter(30);
+        // the way out re-armed the timer, the way back did not: 130 s since the way out is over the 120 s stall limit
+        assertTrue(h(GamerPhase.GATHER).events.contains("timeout1"));
+    }
+
+    @Test
+    public void comingBackAroundAThreePointLoopDoesNotRearmTheStallTimer() {
+        host.cfg.budgets.gather = 10000;
+        start();
+        tickAfter(100);
+        host.facts.x += 7;
+        tickAfter(100);
+        host.facts.z += 7;
+        tickAfter(100);
+        // back to the first point, then it sits there past the stall limit
+        host.facts.x -= 7;
+        host.facts.z -= 7;
+        tickAfter(100);
+        tickAfter(100);
+        assertTrue(h(GamerPhase.GATHER).events.contains("timeout1"));
+    }
+
+    @Test
+    public void aRealMoveAwayAfterALoopStillCountsAsProgress() {
+        host.cfg.budgets.gather = 10000;
+        start();
+        host.facts.x += 7;
+        tickAfter(100);
+        host.facts.x -= 7;
+        tickAfter(100);
+        // the way back did not count, this fresh spot does
+        host.facts.x -= 7;
+        tickAfter(100);
+        host.facts.x -= 7;
+        tickAfter(100);
+        assertEquals(List.of("enter1"), h(GamerPhase.GATHER).events);
+    }
+
+    @Test
     public void changingDimensionCountsAsProgress() {
         start();
         tickAfter(100);

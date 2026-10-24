@@ -36,6 +36,10 @@ public final class PhaseMachine implements GamerContext {
 
     // a place we have not left by this much since the last "progress" counts as standing still (squared, in blocks)
     static final double MOVED_SQ = 36;
+    // how many past anchors a new one has to stay clear of, and by how much (squared). 6 blocks out and 6 back re-armed the
+    // timer twice for a bot that went nowhere
+    static final int OLD_ANCHORS = 3;
+    static final double LOOP_SQ = 9;
 
     // the same regress (LOCATE>NETHER) may happen this many times in one run, then it is a loop and not a recovery
     static final int MAX_REGRESS_PER_PAIR = 2;
@@ -71,6 +75,10 @@ public final class PhaseMachine implements GamerContext {
     private int anchorX;
     private int anchorY;
     private int anchorZ;
+    // the anchors we moved on from, newest overwrites oldest. a walk back to one of these is a loop, not a trip
+    private final int[][] oldAnchors = new int[OLD_ANCHORS][3];
+    private int oldCount;
+    private int oldNext;
     private Dimension lastDimension;
 
     public PhaseMachine(List<PhaseHandler> handlers, Host host) {
@@ -163,6 +171,8 @@ public final class PhaseMachine implements GamerContext {
         anchorX = f.x();
         anchorY = f.y();
         anchorZ = f.z();
+        oldCount = 0;
+        oldNext = 0;
         lastDimension = f.dimension();
     }
 
@@ -224,17 +234,36 @@ public final class PhaseMachine implements GamerContext {
         lastFingerprint = f.inventoryFingerprint();
         if (f.dimension() != lastDimension) {
             lastDimension = f.dimension();
+            oldCount = 0;
+            oldNext = 0;
             watchdog.progress(now);
         }
         double dx = f.x() - anchorX;
         double dy = f.y() - anchorY;
         double dz = f.z() - anchorZ;
-        if (dx * dx + dy * dy + dz * dz >= MOVED_SQ) {
+        if (dx * dx + dy * dy + dz * dz >= MOVED_SQ && clearOfOldAnchors(f.x(), f.y(), f.z())) {
+            oldAnchors[oldNext][0] = anchorX;
+            oldAnchors[oldNext][1] = anchorY;
+            oldAnchors[oldNext][2] = anchorZ;
+            oldNext = (oldNext + 1) % OLD_ANCHORS;
+            oldCount = Math.min(oldCount + 1, OLD_ANCHORS);
             anchorX = f.x();
             anchorY = f.y();
             anchorZ = f.z();
             watchdog.progress(now);
         }
+    }
+
+    private boolean clearOfOldAnchors(int x, int y, int z) {
+        for (int i = 0; i < oldCount; i++) {
+            double dx = x - oldAnchors[i][0];
+            double dy = y - oldAnchors[i][1];
+            double dz = z - oldAnchors[i][2];
+            if (dx * dx + dy * dy + dz * dz <= LOOP_SQ) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ---- the tick
