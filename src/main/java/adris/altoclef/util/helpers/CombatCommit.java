@@ -400,8 +400,8 @@ public final class CombatCommit {
         return trigger(health, nextHit, lowHit, foes, freshOnly, false);
     }
 
-    // onSniper: the fight target is a sniper (see shooterFight)
-    static Trigger trigger(float health, float nextHit, float lowHit, List<Foe> foes, boolean freshOnly, boolean onSniper) {
+    // onFight: there is a fight target (see shooterFight)
+    static Trigger trigger(float health, float nextHit, float lowHit, List<Foe> foes, boolean freshOnly, boolean onFight) {
         float guard = guardHealth(health, nextHit);
         Foe danger = null;
         Foe near = null;
@@ -412,7 +412,7 @@ public final class CombatCommit {
             if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
-        if (health - lowHit <= FLEE_HP && near != null && !shooterFight(foes, freshOnly, guard, onSniper)) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
+        if (health - lowHit <= FLEE_HP && near != null && !shooterFight(foes, freshOnly, guard, onFight)) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
         Foe hit = hitInContact(foes, freshOnly);
         return hit == null ? null : new Trigger(Why.HIT, hit);
     }
@@ -443,17 +443,17 @@ public final class CombatCommit {
         return shooterFight(foes, freshOnly, guard, false);
     }
 
-    // onIt: we are already fighting that sniper, so it does not have to be mid shot this very tick (it reloads, the line flickers)
-    static boolean shooterFight(List<Foe> foes, boolean freshOnly, float guard, boolean onIt) {
+    // onFight: a fight is on, so a sniper that hit us lately still counts as landing arrows when its line flickers or it reloads
+    static boolean shooterFight(List<Foe> foes, boolean freshOnly, float guard, boolean onFight) {
         int snipers = 0;
-        boolean landing = onIt;
+        boolean landing = false;
         int on = 0;
         for (Foe foe : foes) {
             if (foe.danger(guard)) return false;
             if (foe.creeper() && foe.distance() <= LOW_HP_RANGE) return false;
             if (foe.sniper()) {
                 snipers++;
-                landing |= foe.shooting();
+                landing |= foe.shooting() || (onFight && foe.hitUs() && foe.distance() <= FOE_RANGE);
             } else if (foe.ranged() && !foe.creeper() && foe.shooting()) {
                 // a witch or a blaze with a line on us is its own rule
                 return false;
@@ -470,9 +470,9 @@ public final class CombatCommit {
         return crowded(health, foes, freshOnly, false);
     }
 
-    static boolean crowded(float health, List<Foe> foes, boolean freshOnly, boolean onSniper) {
+    static boolean crowded(float health, List<Foe> foes, boolean freshOnly, boolean onFight) {
         // (a skeleton plus the one zombie on us is the shooter fight, not a hurt pair to run from)
-        boolean pairIsFine = shooterFight(foes, freshOnly, health, onSniper);
+        boolean pairIsFine = shooterFight(foes, freshOnly, guardHealth(health, 0), onFight);
         int on = 0;
         int attacking = 0;
         for (Foe foe : foes) {
@@ -572,7 +572,7 @@ public final class CombatCommit {
         String near = Double.isInfinite(nearest) ? "nothing angry in sight" : "nearest " + Math.round(nearest) + " blocks";
         boolean holding = recovering && mode == Mode.NONE;
         if (!fighting(mode, recovering, health, nearest, creeperClose, bite)) {
-            if (mode == Mode.FIGHT) return "fighting, no melee mob within " + (int) FIGHT_BITE_RANGE + ", free to eat";
+            if (mode == Mode.FIGHT) return "fighting, no melee mob within " + (int) FIGHT_BITE_RANGE;
             if (holding) return "recovering, " + near + ", free to eat";
             return mode == Mode.RUN ? "running, " + near + ", free to eat" : "calm, " + near;
         }
@@ -1021,20 +1021,25 @@ public final class CombatCommit {
     }
 
     private Why runReason(Tick t, boolean freshOnly, float lowHit) {
+        return runReason(t, freshOnly, lowHit, t.target() != null);
+    }
+
+    // onFight: a fight is on even when the target was taken out of the picture (see shooterFight)
+    private Why runReason(Tick t, boolean freshOnly, float lowHit, boolean onFight) {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
         if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
         // an angry enderman is never a reason to leave (low hp, crowd or otherwise), so the rules below do not get to see it
         List<Foe> foes = leavable(t.foes());
-        Trigger trigger = trigger(t.health(), t.nextHit(), lowHit, foes, freshOnly, target != null && target.sniper());
+        Trigger trigger = trigger(t.health(), t.nextHit(), lowHit, foes, freshOnly, onFight);
         // and with one about, nothing else is either: it teleports onto us, so a run is just free hits. only the warden and the heavy
         // hitters (the danger rules) still get us out of there
         if (endermanAbout(t) != null) return trigger != null && trigger.why() == Why.HEAVY ? Why.HEAVY : Why.NONE;
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
         if (target != null && !target.standsAndFights() && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE
-                && !shooterFight(foes, freshOnly, t.guardHealth(), target.sniper())) return Why.LOW_HP;
+                && !shooterFight(foes, freshOnly, t.guardHealth(), onFight)) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
-        if (crowded(t.health(), foes, freshOnly, target != null && target.sniper())) return Why.CROWD;
+        if (crowded(t.health(), foes, freshOnly, onFight)) return Why.CROWD;
         return Why.NONE;
     }
 
@@ -1126,11 +1131,11 @@ public final class CombatCommit {
         Why bail = !cornered ? runReason(t, false, lowHit(t)) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
         // the witch we picked over the zombies is not walked away from at 11 hp for being a witch (that is how it lobs for a
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
-        // (only the part the witch itself causes: a skeleton landing arrows on us is still the old rule's to judge)
+        // (only the part the witch itself causes: a second skeleton or a crowd still ends it, one skeleton is the shooter fight)
         // a second skeleton on us is not the one-target fight any more
         if (bail == Why.NONE && why == Why.PINNED && snipers(t, false).size() >= 2 && endermanAbout(t) == null) bail = Why.SHOT;
         if (lobberPick && endermanAbout(t) == null) {
-            if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false);
+            if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false, t.nextHit(), true);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
         }
         if (bail != Why.NONE) {

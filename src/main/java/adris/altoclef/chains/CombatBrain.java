@@ -380,7 +380,10 @@ final class CombatBrain {
             }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
             // (a creeper is not a melee foe to the rules but it is one to a bite, it walks up and goes off)
-            if (!foe.ranged()) nearestMelee = Math.min(nearestMelee, foe.distance());
+            // (the fight target counts whatever it is: a skeleton at point blank is no time to chew, and a melee target knocked back to
+            // five blocks is not a walk-up, the swap to food would eat its swing cooldown. only a shooter we are closing on is)
+            if (foe.id() == _commit.targetId() && _commit.mode() == Mode.FIGHT && foe.melee()) nearestMelee = 0;
+            if (!foe.ranged() || (foe.id() == _commit.targetId() && _commit.mode() == Mode.FIGHT)) nearestMelee = Math.min(nearestMelee, foe.distance());
             if (!foe.melee()) continue;
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;

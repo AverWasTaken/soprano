@@ -326,4 +326,14 @@ public class CombatCommitPinnedTest {
         assertEquals(Event.RUN_START, c.step(tick(NOW, 6, false, null, shooter())));
         assertEquals(Why.SHOT, c.why());
     }
+
+    @Test
+    public void aSkeletonBetweenArrowsStillCountsInAZombieFightAtEightHp() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 14, null, shooter(), zombieOnUs(10))));
+        // the line dropped and the last arrow was a few seconds ago: no 1 on 1 low hp run for the zombie with it still out there
+        Foe quiet = skeleton(12, 150, false);
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, 8, zombieOnUs(10), quiet, zombieOnUs(10))));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
 }
