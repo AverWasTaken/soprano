@@ -397,6 +397,11 @@ public final class CombatCommit {
     // lowHit is what the low hp line projects, nextHit still feeds the heavy hitter guard. they differ in a one on one fight
     // (see lowHit), where the real hp is the line and not the hp after the next swing lands
     static Trigger trigger(float health, float nextHit, float lowHit, List<Foe> foes, boolean freshOnly) {
+        return trigger(health, nextHit, lowHit, foes, freshOnly, false);
+    }
+
+    // onSniper: the fight target is a sniper (see shooterFight)
+    static Trigger trigger(float health, float nextHit, float lowHit, List<Foe> foes, boolean freshOnly, boolean onSniper) {
         float guard = guardHealth(health, nextHit);
         Foe danger = null;
         Foe near = null;
@@ -407,7 +412,7 @@ public final class CombatCommit {
             if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
-        if (health - lowHit <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
+        if (health - lowHit <= FLEE_HP && near != null && !shooterFight(foes, freshOnly, guard, onSniper)) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
         Foe hit = hitInContact(foes, freshOnly);
         return hit == null ? null : new Trigger(Why.HIT, hit);
     }
@@ -430,16 +435,51 @@ public final class CombatCommit {
         return !foe.creeper() && foe.distance() <= CONTACT;
     }
 
+    // one skeleton that is shooting us and at most one melee mob on us: kill the melee one in contact, then walk up to the skeleton and kill that. none
+    // of the hp runs (LOW_HP, SHOT, the hurt pair) apply to it: in a cave there is no outrunning arrows, every run was just
+    // more arrows in the back and the skeleton never died. this deliberately beats the old "bail at hp 8" line for this one shape.
+    // two shooters, a creeper close, a third mob on us or anything the danger rules want is not this shape, those keep their runs
+    static boolean shooterFight(List<Foe> foes, boolean freshOnly, float guard) {
+        return shooterFight(foes, freshOnly, guard, false);
+    }
+
+    // onIt: we are already fighting that sniper, so it does not have to be mid shot this very tick (it reloads, the line flickers)
+    static boolean shooterFight(List<Foe> foes, boolean freshOnly, float guard, boolean onIt) {
+        int snipers = 0;
+        boolean landing = onIt;
+        int on = 0;
+        for (Foe foe : foes) {
+            if (foe.danger(guard)) return false;
+            if (foe.creeper() && foe.distance() <= LOW_HP_RANGE) return false;
+            if (foe.sniper()) {
+                snipers++;
+                landing |= foe.shooting();
+            } else if (foe.ranged() && !foe.creeper() && foe.shooting()) {
+                // a witch or a blaze with a line on us is its own rule
+                return false;
+            }
+            // (melee only: the skeleton itself counts as engaged once it has hit us, and it is the one we are making room for)
+            if (foe.melee() && engaged(foe, freshOnly)) on++;
+        }
+        return snipers == 1 && landing && on <= 1;
+    }
+
     // too many on us to trade blows with: CROWD_SIZE of them at any hp, or two while hurt. the hurt pair has to have actually
     // hit us (a heavy hitter or a warden merely standing in contact is the danger rules' business, not a head count)
     public static boolean crowded(float health, List<Foe> foes, boolean freshOnly) {
+        return crowded(health, foes, freshOnly, false);
+    }
+
+    static boolean crowded(float health, List<Foe> foes, boolean freshOnly, boolean onSniper) {
+        // (a skeleton plus the one zombie on us is the shooter fight, not a hurt pair to run from)
+        boolean pairIsFine = shooterFight(foes, freshOnly, health, onSniper);
         int on = 0;
         int attacking = 0;
         for (Foe foe : foes) {
             if (engaged(foe, freshOnly)) on++;
             if ((freshOnly ? foe.fresh() : foe.hitUs()) && foe.distance() <= CombatRules.SWARM_RANGE) attacking++;
         }
-        return on >= CROWD_SIZE || (health <= HURT_CROWD_HP && attacking >= HURT_CROWD_SIZE);
+        return on >= CROWD_SIZE || (!pairIsFine && health <= HURT_CROWD_HP && attacking >= HURT_CROWD_SIZE);
     }
 
     // what the food chain is up to, for a run's meal: a shooter has a line on us, how far the nearest fast melee mob is (see
@@ -802,7 +842,8 @@ public final class CombatCommit {
         if (!shooters.isEmpty()) {
             Foe sniper = shooters.get(0);
             // (with an enderman about the run is off, a skeleton on us is the armed fight below or nothing)
-            if ((t.low() || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
+            boolean hurtRun = t.low() && !(t.armed() && shooterFight(candidates(t), cooling, t.guardHealth()));
+            if ((hurtRun || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
                 return startRun(t, Why.SHOT, Event.RUN_START);
             }
             // (bare hands do not go and get a skeleton)
@@ -858,6 +899,8 @@ public final class CombatCommit {
     private Why rerun(Tick t) {
         boolean near = false;
         boolean shot = false;
+        // (the shooter fight is not run from while healing either, the skeleton is the next kill. a watched blaze still counts)
+        if (t.armed() && shooterFight(candidates(t), false, t.guardHealth())) return t.watched() ? Why.SHOT : Why.NONE;
         for (Foe foe : candidates(t)) {
             if (foe.standsAndFights() || gaveUpOn(foe, t.now())) continue;
             if (foe.distance() <= RecoverHold.RERUN_RANGE) near = true;
@@ -962,14 +1005,15 @@ public final class CombatCommit {
         if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
         // an angry enderman is never a reason to leave (low hp, crowd or otherwise), so the rules below do not get to see it
         List<Foe> foes = leavable(t.foes());
-        Trigger trigger = trigger(t.health(), t.nextHit(), lowHit, foes, freshOnly);
+        Trigger trigger = trigger(t.health(), t.nextHit(), lowHit, foes, freshOnly, target != null && target.sniper());
         // and with one about, nothing else is either: it teleports onto us, so a run is just free hits. only the warden and the heavy
         // hitters (the danger rules) still get us out of there
         if (endermanAbout(t) != null) return trigger != null && trigger.why() == Why.HEAVY ? Why.HEAVY : Why.NONE;
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
-        if (target != null && !target.standsAndFights() && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
+        if (target != null && !target.standsAndFights() && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE
+                && !shooterFight(foes, freshOnly, t.guardHealth(), target.sniper())) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
-        if (crowded(t.health(), foes, freshOnly)) return Why.CROWD;
+        if (crowded(t.health(), foes, freshOnly, target != null && target.sniper())) return Why.CROWD;
         return Why.NONE;
     }
 

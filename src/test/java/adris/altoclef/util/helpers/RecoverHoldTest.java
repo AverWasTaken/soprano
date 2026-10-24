@@ -191,7 +191,8 @@ public class RecoverHoldTest {
         CombatCommit c = new CombatCommit();
         long end = runAndClear(c, 1000, 10, FED);
         Foe skeleton = new Foe(3, 14, true, false, 1, CombatCommit.Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
-        assertEquals(Event.RUN_START, c.step(tick(end + 1, 9, 30, FED, skeleton)));
+        Foe second = new Foe(4, 12, true, false, 1, CombatCommit.Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        assertEquals(Event.RUN_START, c.step(tick(end + 1, 9, 30, FED, skeleton, second)));
         assertEquals(Why.SHOT, c.why());
     }
 

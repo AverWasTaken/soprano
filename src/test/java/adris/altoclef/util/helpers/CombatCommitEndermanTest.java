@@ -223,7 +223,9 @@ public class CombatCommitEndermanTest {
     @Test
     public void aSkeletonShootingUsIsStillTheArmedFightWithAnEndermanAboutAndNeverARun() {
         Foe skeleton = new Foe(3, 10, true, false, 5, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(0, 5, List.of(skeleton), null)));
+        // (one of them alone is the pinned fight even at 5 hp, a pair is the run the enderman rule holds back)
+        Foe second = new Foe(4, 10, true, false, 5, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(0, 5, List.of(skeleton, second), null)));
         CombatCommit c = new CombatCommit();
         assertEquals(Event.FIGHT_START, c.step(tick(0, 5, List.of(skeleton, enderman(12, NEVER)), null)));
         assertEquals(Mode.FIGHT, c.mode());

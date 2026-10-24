@@ -67,11 +67,14 @@ public class CombatCommitPinnedTest {
     }
 
     @Test
-    public void hurtItIsARunNotAFight() {
+    public void hurtItIsStillAFightWithOneAndARunWithTwo() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, CombatCommit.FLEE_HP, null, shooter())));
-        assertEquals(Why.SHOT, c.why());
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, CombatCommit.FLEE_HP, null, shooter())));
+        assertEquals(Why.PINNED, c.why());
         assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, CombatCommit.FLEE_HP + 1, null, shooter())));
+        CombatCommit pair = new CombatCommit();
+        assertEquals(Event.RUN_START, pair.step(tick(NOW, CombatCommit.FLEE_HP, null, shooter(), skeleton(7, 9, 20, true))));
+        assertEquals(Why.SHOT, pair.why());
     }
 
     @Test
@@ -226,9 +229,9 @@ public class CombatCommitPinnedTest {
     @Test
     public void aShooterRunIsNotOverWhileTheyCanSeeUs() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true))));
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
         for (long t = NOW + 1; t < NOW + 200; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(30, 2, true))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(30, 2, true), skeleton(7, 30, 2, true))));
         }
         assertEquals(Mode.RUN, c.mode());
     }
@@ -236,18 +239,91 @@ public class CombatCommitPinnedTest {
     @Test
     public void itEndsOnceNoOneHasALineForAWhile() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true))));
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
         // the line drops for one tick short of the count, then flickers back and the count starts over
         long t = NOW + 1;
         for (; t < NOW + 1 + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
         }
-        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(14, 2, true))));
+        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
         long from = t;
         for (; t < from + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
         }
-        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(14, 2, false))));
+        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
         assertEquals(Mode.NONE, c.mode());
+    }
+
+    // ---- the shooter fight: one skeleton with a line and at most one melee mob on us is never run from for hp
+
+    private static Foe zombieOnUs(int id) {
+        return new Foe(id, 2, false, false, 2);
+    }
+
+    @Test
+    public void aZombieAndASkeletonAtNineHpIsStillTheFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 14, null, shooter(), zombieOnUs(10))));
+        assertEquals(10, c.targetId());
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, 9, zombieOnUs(10), shooter(), zombieOnUs(10))));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void theHurtPairIsNotACrowdWhenOneOfThemIsTheSkeleton() {
+        Foe near = skeleton(5, 3, true);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 11, null, near, zombieOnUs(10))));
+        assertEquals(Why.HIT, c.why());
+        // two melee mobs on us are the old hurt pair
+        CombatCommit pair = new CombatCommit();
+        assertEquals(Event.RUN_START, pair.step(tick(NOW, 11, null, near, zombieOnUs(10), zombieOnUs(11))));
+        assertEquals(Why.CROWD, pair.why());
+    }
+
+    @Test
+    public void theZombieDyingAtSixWithTheHoldOnIsThePinnedFightNotARerun() {
+        RecoverHold.Body fed = new RecoverHold.Body(20, false, false, false);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(new Tick(NOW, 20, 0, 0, List.of(zombieOnUs(10)), null, Way.NONE, true, false, false, fed)));
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(NOW + 1, 6, 0, 0, List.of(), null, Way.NONE, true, false, false, fed)));
+        assertTrue(c.recovering());
+        assertEquals(Event.FIGHT_START, c.step(new Tick(NOW + 2, 6, 0, 0, List.of(shooter()), null, Way.NONE, true, false, false, fed)));
+        assertEquals(Why.PINNED, c.why());
+        assertEquals(SKELETON, c.targetId());
+    }
+
+    @Test
+    public void closingOnTheSkeletonAtFiveHpStaysAFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, null, shooter())));
+        Foe close = skeleton(6, 3, true);
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, 5, close, close)));
+        // and it keeps the fight through a gap in its shooting, we are already on it
+        Foe quiet = skeleton(6, 150, false);
+        assertEquals(Event.NONE, c.step(tick(NOW + 2, 5, quiet, quiet)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aCreeperCloseKeepsTheOrdinaryRun() {
+        Foe creeper = new Foe(11, 6, true, true, NEVER);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, null, shooter(), creeper)));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void aWitchWithALineIsNotPartOfTheShooterFight() {
+        Foe witch = new Foe(5, 9, true, false, 3, Kind.LOBBER, Double.POSITIVE_INFINITY, true, NEVER);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, null, shooter(), witch)));
+    }
+
+    @Test
+    public void bareHandsStillRunFromAHurtShooterFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, false, null, shooter())));
+        assertEquals(Why.SHOT, c.why());
     }
 }

@@ -88,7 +88,9 @@ public class CombatCommitNextHitTest {
         CombatCommit c = new CombatCommit();
         c.step(tick(1000, 16, null, zombie(CombatCommit.NEVER)));
         assertEquals(Event.FIGHT_START, c.step(tick(1010, 16, null, zombie(0))));
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1020, 12, zombie(0), zombie(0), skeleton(12, 0, true, CombatCommit.NEVER))));
+        // (two on us, one of them the zombie: a zombie and the skeleton alone would be the shooter fight)
+        Foe other = new Foe(7, 3, false, false, 0);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1020, 12, zombie(0), zombie(0), other, skeleton(12, 0, true, CombatCommit.NEVER))));
     }
 
     @Test
