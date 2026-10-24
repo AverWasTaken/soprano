@@ -130,7 +130,38 @@ public final class LavaShore {
         }
         double cx = x + 0.5;
         double cz = z + 0.5;
-        return !lavaNear(cells, cx, y, cz, 1) && !spotUnsafe(cells, cx, y, cz) && !backUnsafe(cells, cx, y, cz, fx, fz);
+        return !lavaNear(cells, cx, y, cz, 1) && !spotUnsafe(cells, cx, y, cz) && !backUnsafe(cells, cx, y, cz, fx, fz)
+                && !dropBeside(cells, x, y, z);
+    }
+
+    // a knock does not only go along the line from the foe: a hit from the side can throw us off a drop beside the cell, and
+    // the line check never looked sideways. every neighbour has to be a wall (nothing gets thrown into one) or
+    // have a landing (solid or water) within 3 cells down. an unloaded cell reads solid, same as everywhere else
+    static boolean dropBeside(Cells cells, int x, int y, int z) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                int nx = x + dx;
+                int nz = z + dz;
+                if (cells.at(nx, y, nz) == Cell.SOLID || cells.at(nx, y + 1, nz) == Cell.SOLID) {
+                    continue;
+                }
+                boolean landing = false;
+                for (int d = 1; d <= 3; d++) {
+                    Cell c = cells.at(nx, y - d, nz);
+                    if (c != Cell.OPEN) {
+                        landing = c == Cell.SOLID || c == Cell.WATER;
+                        break;
+                    }
+                }
+                if (!landing) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // standable, and not the foe's own cell

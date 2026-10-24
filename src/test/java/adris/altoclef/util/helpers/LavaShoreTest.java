@@ -20,6 +20,8 @@ public class LavaShoreTest {
     private static final class World implements Cells {
         final Set<Long> lava = new HashSet<>();
         final Set<Long> voids = new HashSet<>();
+        final Set<Long> water = new HashSet<>();
+        final Set<Long> solid = new HashSet<>();
         final Map<Long, Integer> floorAt = new HashMap<>();
 
         static long key(int x, int y, int z) {
@@ -36,6 +38,16 @@ public class LavaShoreTest {
             return this;
         }
 
+        World water(int x, int y, int z) {
+            water.add(key(x, y, z));
+            return this;
+        }
+
+        World solid(int x, int y, int z) {
+            solid.add(key(x, y, z));
+            return this;
+        }
+
         World ledge(int x, int z, int floorY) {
             floorAt.put(key(x, 0, z), floorY);
             return this;
@@ -44,6 +56,8 @@ public class LavaShoreTest {
         @Override
         public Cell at(int x, int y, int z) {
             if (lava.contains(key(x, y, z))) return Cell.LAVA;
+            if (water.contains(key(x, y, z))) return Cell.WATER;
+            if (solid.contains(key(x, y, z))) return Cell.SOLID;
             if (voids.contains(key(x, 0, z))) return Cell.OPEN;
             Integer floor = floorAt.get(key(x, 0, z));
             if (floor != null) return y > floor ? Cell.OPEN : Cell.SOLID;
@@ -253,6 +267,36 @@ public class LavaShoreTest {
             w.pit(x, 1).pit(x, -1);
         }
         assertNull(LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    // foe at (-1.5, 0.5) so the knock line through cell (0, 0) runs along +x and never touches column (0, 1)
+    @Test
+    public void aDropBesideACellOffTheKnockLineMakesItNoStep() {
+        assertTrue(LavaShore.standable(new World(), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(1, 1), 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aPondBesideACellIsFine() {
+        World w = new World().pit(0, 1).water(0, -2, 1);
+        assertTrue(LavaShore.standable(w, 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aWallBesideACellIsFine() {
+        World w = new World().pit(0, 1).solid(0, 0, 1);
+        assertTrue(LavaShore.standable(w, 0, 0, 0, -1.5, 0.5));
+        // a wall only at head height still stops a knock
+        assertTrue(LavaShore.standable(new World().pit(0, 1).solid(0, 1, 1), 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aLandingThreeCellsDownCountsAndLavaDoesNot() {
+        // first non-open cell at y-3 is solid: fine. lava there is not a landing
+        assertTrue(LavaShore.standable(new World().pit(0, 1).solid(0, -3, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1).lava(0, -2, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1).solid(0, -4, 1), 0, 0, 0, -1.5, 0.5));
     }
 
     @Test
