@@ -362,6 +362,7 @@ final class CombatBrain {
         double nearest = Double.POSITIVE_INFINITY;
         boolean shotAt = shotByExcluded;
         double nearestFast = Double.POSITIVE_INFINITY;
+        double nearestMelee = Double.POSITIVE_INFINITY;
         for (int i = 0; i < foes.size(); i++) {
             Foe foe = foes.get(i);
             nearest = Math.min(nearest, foe.distance());
@@ -378,6 +379,8 @@ final class CombatBrain {
                 shotAt = true;
             }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
+            // (a creeper is not a melee foe to the rules but it is one to a bite, it walks up and goes off)
+            if (!foe.ranged()) nearestMelee = Math.min(nearestMelee, foe.distance());
             if (!foe.melee()) continue;
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
@@ -397,7 +400,8 @@ final class CombatBrain {
             biteShot = true;
         }
         _shotAt = shotAt;
-        CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat());
+        CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat(),
+                nearestMelee, mod.getPlayer().getFoodData().getFoodLevel() < 18);
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);

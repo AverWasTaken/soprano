@@ -484,8 +484,26 @@ public final class CombatCommit {
 
     // what the food chain is up to, for a run's meal: a shooter has a line on us, how far the nearest fast melee mob is (see
     // CombatRules.FAST_MOB_SPEED, infinity for none), and whether a bite is already under way
-    public record Bite(boolean shotAt, double nearestFast, boolean biting) {
+    // nearestMelee: the closest melee mob of any kind (infinity for none), hungry: the food bar is not full. both only matter to a
+    // fight, which may take a bite when nothing can reach us (see fightBite)
+    public record Bite(boolean shotAt, double nearestFast, boolean biting, double nearestMelee, boolean hungry) {
         public static final Bite NONE = new Bite(false, Double.POSITIVE_INFINITY, false);
+
+        public Bite(boolean shotAt, double nearestFast, boolean biting) {
+            this(shotAt, nearestFast, biting, 0, false);
+        }
+
+        Bite notBiting() {
+            return new Bite(shotAt, nearestFast, false, nearestMelee, hungry);
+        }
+    }
+
+    // a fight is no mealtime, except when we are hungry and no melee mob is within FIGHT_BITE_RANGE: the skeleton we are walking up
+    // to cannot stop a bite, and regen needs the food bar (hunger 17 with no saturation means no regen at all)
+    static final double FIGHT_BITE_RANGE = 4;
+
+    private static boolean fightBite(Bite bite) {
+        return bite.hungry() && bite.nearestMelee() > FIGHT_BITE_RANGE;
     }
 
     // is this foe a reason not to sit down to a meal: a shooter in SHOOTER_RANGE with a line to us right now, or one that already
@@ -520,8 +538,10 @@ public final class CombatCommit {
         // chewing a gapple counts as "biting" too, and the abort line is 5: without this the gapple that a hurt run wants at
         // 5 to 10 blocks would be dropped on the next tick and picked up on the one after, forever
         if (!fighting && gapple && mode == Mode.RUN && bite.biting() && health <= FLEE_HP) {
-            fighting = fighting(mode, recovering, health, nearest, creeperClose, new Bite(bite.shotAt(), bite.nearestFast(), false));
+            fighting = fighting(mode, recovering, health, nearest, creeperClose, bite.notBiting());
         }
+        // (at gapple hp a fight keeps the gapple stance below, that bite is the better one)
+        if (mode == Mode.FIGHT && gapple && health <= FLEE_HP) fighting = true;
         if (!fighting) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
@@ -531,7 +551,7 @@ public final class CombatCommit {
 
     private static boolean fighting(Mode mode, boolean recovering, float health, double nearest, boolean creeperClose, Bite bite) {
         return switch (mode) {
-            case FIGHT -> true;
+            case FIGHT -> !fightBite(bite);
             case RUN -> runBiteBlocked(nearest, bite);
             default -> creeperClose || (health <= FLEE_HP && nearest <= LOW_HP_RANGE) || (recovering && runBiteBlocked(nearest, bite));
         };
@@ -552,6 +572,7 @@ public final class CombatCommit {
         String near = Double.isInfinite(nearest) ? "nothing angry in sight" : "nearest " + Math.round(nearest) + " blocks";
         boolean holding = recovering && mode == Mode.NONE;
         if (!fighting(mode, recovering, health, nearest, creeperClose, bite)) {
+            if (mode == Mode.FIGHT) return "fighting, no melee mob within " + (int) FIGHT_BITE_RANGE + ", free to eat";
             if (holding) return "recovering, " + near + ", free to eat";
             return mode == Mode.RUN ? "running, " + near + ", free to eat" : "calm, " + near;
         }
