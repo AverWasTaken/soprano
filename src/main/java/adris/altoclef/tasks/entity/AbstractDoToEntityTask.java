@@ -21,6 +21,7 @@ import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StandCap;
+import adris.altoclef.util.helpers.WaitCap;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -86,6 +87,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // instead, which counts ticks since the last swing that really went out whatever the plan flickered through
     private int _waitTicks;
     private final StandCap _standCap = new StandCap();
+    // the waits StandCap does not count (an angry enderman out of reach, a swing gated in reach), see WaitCap
+    private final WaitCap _waitCap = new WaitCap();
+    private Entity _waitCapEntity;
     private Entity _waitEntity;
     private long _swingsSeen;
     // the back-off we started has to be getting somewhere, and a stuck one is not started again for a while
@@ -117,6 +121,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _rimStepTicks = 0;
         _rimLive = false;
         _standCap.reset();
+        _waitCap.reset();
+        _waitCapEntity = null;
         _waitEntity = null;
         _swingsSeen = mod.getControllerExtras().swings();
         _backOffWatch.clear();
@@ -211,10 +217,27 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     && mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting();
             ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
+            boolean comesToUs = isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
                     isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
-                    isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity));
+                    comesToUs);
+            if (isKillTask()) {
+                if (_waitCapEntity != entity) {
+                    _waitCapEntity = entity;
+                    _waitCap.reset();
+                }
+                boolean stuckWaiting = plan == ApproachRules.Plan.WAIT && ((comesToUs && !inReach) || (policy == ApproachRules.Policy.KILL_GATED && inReach));
+                if (stuckWaiting && _waitCap.approaching()) plan = ApproachRules.Plan.APPROACH;
+                WaitCap.Verdict verdict = _waitCap.tick(stuckWaiting);
+                if (verdict == WaitCap.Verdict.APPROACH) {
+                    plan = ApproachRules.Plan.APPROACH;
+                } else if (verdict == WaitCap.Verdict.BAN) {
+                    BanPolicy.noPath(mod.getBans(), entity.getId(), EntityTracker.describe(entity));
+                    _waitCapEntity = null;
+                    return null;
+                }
+            }
             if (!isKillTask()) {
                 _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
             }
