@@ -104,6 +104,30 @@ public final class EndermanNook {
         return health >= AGGRO_MIN_HP;
     }
 
+    // low hp waits only while it is actually coming back; flat for this long and we hunt anyway
+    public static final int HP_FLAT_TICKS = 600;
+
+    public enum Stance { AWAY, WAIT, HUNT }
+
+    // what the open-field hunt does before it starts one: lava or fire means move (standing still next to either is how a
+    // run ends on a watchdog), low hp means wait while hp is rising, everything else hunts
+    public static Stance stance(boolean lavaNear, boolean burning, float health, boolean hpRisingRecently) {
+        if (lavaNear || burning) {
+            return Stance.AWAY;
+        }
+        return health < AGGRO_MIN_HP && hpRisingRecently ? Stance.WAIT : Stance.HUNT;
+    }
+
+    // hp went up within the flat window
+    public static boolean hpRising(long now, long lastRiseAt) {
+        return now - lastRiseAt <= HP_FLAT_TICKS;
+    }
+
+    // lava only counts when it is open to the sky of its own cell: a solid block on top means nothing can reach us from it
+    public static boolean lavaExposed(boolean isLava, boolean solidAbove) {
+        return isLava && !solidAbove;
+    }
+
     // the combat brain keeps its hands off while the hunt is running and every foe in view is an enderman: running from a
     // teleporter is useless and the nook is the plan
     public static boolean brainStandsDown(boolean huntRunning, int foes, int endermen) {
