@@ -65,6 +65,13 @@ public final class NetherRestock {
         return dx * dx + dz * dz <= BAND_RADIUS * BAND_RADIUS;
     }
 
+    // the band is only a search cap. what we walk on is judged live: level with the feet or above is a wall, below the feet
+    // only a block with something solid under it, so a dug floor never opens onto a drop and its item lands where we can
+    // reach it (a one wide path over nothing, dug ahead and behind, was the whole floor going)
+    public static boolean keepsFooting(int feetY, BlockPos pos, boolean solidBelow) {
+        return pos.getY() >= feetY || solidBelow;
+    }
+
     // held = every placeable throwaway in the bag. exhausted = the dig has nothing left to go to. true = dig (until the
     // target) instead of walking
     public boolean update(int held, boolean gaveUp, boolean hasPick, boolean exhausted, double now) {

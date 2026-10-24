@@ -102,6 +102,28 @@ public class NetherRestockTest {
     }
 
     @Test
+    public void aWallAtFeetLevelIsFairGame() {
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 70, 100), false));
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 72, 100), false));
+    }
+
+    @Test
+    public void aFloorBlockNeedsSolidUnderIt() {
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 69, 100), true));
+        // a bridge block with air under it is the path we are walking on
+        assertFalse(NetherRestock.keepsFooting(70, new BlockPos(101, 69, 100), false));
+    }
+
+    @Test
+    public void footingFollowsTheLiveFeetNotTheStartingHeight() {
+        BlockPos row = new BlockPos(101, 70, 100);
+        // dy 0 from where the dig began was a wall, one step up it is floor
+        assertTrue(NetherRestock.keepsFooting(70, row, false));
+        assertFalse(NetherRestock.keepsFooting(71, row, false));
+        assertTrue(NetherRestock.keepsFooting(71, row, true));
+    }
+
+    @Test
     public void anEmptyBagDigsAgainWithoutWaitingOutTheCooldown() {
         // an empty bag that dug a dry spot is not parked for two minutes
         NetherRestock dry = new NetherRestock();

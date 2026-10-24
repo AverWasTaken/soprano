@@ -122,6 +122,8 @@ public final class NetherSweepPlanner {
     private static final int MAX_GAP_RESETS = 2;
     // two stuck give-ups this close together are the same dead end pocket
     static final int POCKET_BLOCKS = 24;
+    // a give-up from a bot that never left where the cell started says nothing about the cell, see pinned
+    static final int PINNED_BLOCKS = 6;
 
     private final RunState state;
     private final NetherConfig cfg;
@@ -155,6 +157,11 @@ public final class NetherSweepPlanner {
     private int pocketX;
     private int pocketZ;
     private String pocketCell;
+    // where the current cell started, and whether the bot has been PINNED_BLOCKS away from it since (a latch: walking off and
+    // getting backed up to the start is not "never moved")
+    private int cellStartX;
+    private int cellStartZ;
+    private boolean leftStart;
     // waypoints that already had their one retry after a stuck give-up
     private final Set<Long> retried = new HashSet<>();
     // a waypoint was given up on since the task last asked (the bag may be what ran dry, see FindNetherStructureTask)
@@ -328,6 +335,9 @@ public final class NetherSweepPlanner {
     public Action step(Goal goal, int px, int pz, double now) {
         playerX = px;
         playerZ = pz;
+        if (cell != null && dist2(px, pz, cellStartX, cellStartZ) >= (long) PINNED_BLOCKS * PINNED_BLOCKS) {
+            leftStart = true;
+        }
         // we were busy with something else (rods, a ghast, a barter) so the waypoint's clock did not run for real:
         // without this the first step back would time the waypoint out on the spot
         stepSeconds = Double.isNaN(lastStepAt) ? 0 : now - lastStepAt;
@@ -406,6 +416,9 @@ public final class NetherSweepPlanner {
             return new Action(Kind.FAIL, px, pz, "ran out of cells");
         }
         cell = next.get();
+        cellStartX = px;
+        cellStartZ = pz;
+        leftStart = false;
         cellsStarted[goal.ordinal()]++;
         pocketDropped = false;
         if (waiting.contains(cell.key())) {
@@ -476,6 +489,15 @@ public final class NetherSweepPlanner {
                 if (!arrived && !timedOut && !stuck && !nearBastion(to.x(), to.z())) {
                     return to;
                 }
+                if ((timedOut || stuck) && pinned(px, pz)) {
+                    // boxed in where the cell began: the walls are not the cell's fault, and burning cells from one spot
+                    // is how a sweep ends with "no fortress". keep asking, the phase watchdog ends a bot that cannot move
+                    gaveUp = true;
+                    waypointSince = now;
+                    freshWaypoint();
+                    beginLeg(px, pz);
+                    return to;
+                }
                 if (timedOut) {
                     dead.add(key(w));
                     gaveUp = true;
@@ -535,6 +557,11 @@ public final class NetherSweepPlanner {
         }
         // no progress rule off = the old flat backstop
         return cfg.waypointNoProgressSeconds <= 0 || stuckFor >= cfg.waypointNoProgressSeconds / 2;
+    }
+
+    // never got PINNED_BLOCKS away from where this cell started (step keeps leftStart current)
+    private boolean pinned(int px, int pz) {
+        return !leftStart;
     }
 
     // a stuck give-up at (px, pz). true = the second one in the same pocket, drop the cell. otherwise the waypoint is

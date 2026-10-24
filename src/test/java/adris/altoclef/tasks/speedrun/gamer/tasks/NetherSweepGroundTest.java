@@ -61,6 +61,12 @@ public class NetherSweepGroundTest {
         });
     }
 
+    // the cell starts on the mirror side of the same leg: a bot that never left the spot where its cell began is never
+    // given up on (see pinned), so the stuck walks below start somewhere else
+    private void begin(int px) {
+        planner.step(Goal.FORTRESS, -px, 0, 0);
+    }
+
     // once a second like the task does
     private Action walk(int px, int pz, int from, int to) {
         Action a = null;
@@ -135,6 +141,7 @@ public class NetherSweepGroundTest {
 
     @Test
     public void noCloserInTwentySecondsGivesTheWaypointUp() {
+        begin(-300);
         // t 0 is the first look, 20 more walking seconds without getting closer
         assertEquals(0, walk(-300, 0, 0, 19).x());
         // the first time is a retry of the same waypoint, nothing logged
@@ -173,6 +180,7 @@ public class NetherSweepGroundTest {
 
     @Test
     public void aWaypointGivenUpOnIsNeverHandedBack() {
+        begin(-300);
         walk(-300, 0, 0, 20);
         walk(-300, 0, 21, 41);
         // the pocket deferred it, take that back so the cell is fresh again and only the dead waypoint is left to check
@@ -183,6 +191,7 @@ public class NetherSweepGroundTest {
 
     @Test
     public void timeSpentOnSomethingElseDoesNotCountAsNoCloser() {
+        begin(-300);
         walk(-300, 0, 0, 10);
         // a fight, a ghast, a pick craft: the sweep is not asked for a minute
         assertEquals(0, walk(-300, 0, 70, 70).x());
@@ -204,6 +213,7 @@ public class NetherSweepGroundTest {
 
     @Test
     public void aWaypointThatKeepsGettingInterruptedIsStillGivenUpOnEventually() {
+        begin(-300);
         walk(-300, 0, 0, 15);
         walk(-300, 0, 60, 75);
         walk(-300, 0, 120, 135);
@@ -223,6 +233,7 @@ public class NetherSweepGroundTest {
     @Test
     public void switchingTheNoProgressRuleOffLeavesOnlyTheBackstop() {
         cfg.waypointNoProgressSeconds = 0;
+        begin(-225);
         assertEquals(0, walk(-225, 0, 0, 89).x());
         assertEquals(100, walk(-225, 0, 90, 90).x());
     }

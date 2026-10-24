@@ -62,11 +62,24 @@ public class NetherBlockRestock {
             BlockPos origin = mod.getPlayer().blockPosition();
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
-                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p));
+                    MiningRequirement.WOOD).onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p)
+                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)));
         } else if (!on) {
             task = null;
         }
         return on ? task : null;
+    }
+
+    // the block row the feet are in, not the block the y rounds down to: on soul sand (0.875 tall) the floor row would
+    // otherwise read as level with the feet and skip the solid under check
+    private static int feetY(AltoClef mod) {
+        return (int) Math.ceil(mod.getPlayer().getY() - 0.01);
+    }
+
+    private static boolean solidBelow(AltoClef mod, BlockPos p) {
+        BlockPos under = p.below();
+        var state = mod.getWorld().getBlockState(under);
+        return state.getFluidState().isEmpty() && state.isFaceSturdy(mod.getWorld(), under, Direction.UP);
     }
 
     // a block with lava on any side is either holding the lava back or holding us up over it (a bridge is all lava

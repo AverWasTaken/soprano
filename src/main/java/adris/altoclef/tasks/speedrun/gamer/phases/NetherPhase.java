@@ -195,8 +195,6 @@ public class NetherPhase implements PhaseHandler {
     private boolean warpedSearchOver;
     private int tickCounter;
     private int rotation;
-    private int lastFortressCells;
-    private int lastWarpedCells;
     private int lastPearls;
     private double huntWanderSince = -1;
     private double barterSpent;
@@ -345,8 +343,6 @@ public class NetherPhase implements PhaseHandler {
         huntWanderSince = -1;
         barterSpent = 0;
         barterTickAt = -1;
-        lastFortressCells = 0;
-        lastWarpedCells = 0;
         hudState = null;
         gravel.reset();
         ensureTracking(mod);
@@ -1201,15 +1197,6 @@ public class NetherPhase implements PhaseHandler {
 
     private Task findStep(GamerContext ctx, FindNetherStructureTask task, String hud) {
         boolean fortress = task == findFortress;
-        int cells = planner.cellsStarted(fortress ? Goal.FORTRESS : Goal.WARPED);
-        if (cells != (fortress ? lastFortressCells : lastWarpedCells)) {
-            ctx.progress("new search cell");
-            if (fortress) {
-                lastFortressCells = cells;
-            } else {
-                lastWarpedCells = cells;
-            }
-        }
         String failure = task.failure();
         if (failure != null && fortress) {
             return fail(ctx, "no fortress: " + failure);
