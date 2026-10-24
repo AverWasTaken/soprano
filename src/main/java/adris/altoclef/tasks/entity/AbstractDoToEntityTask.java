@@ -15,6 +15,7 @@ import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.ApproachRules;
 import adris.altoclef.util.helpers.EntityHelper;
 import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.Enemy;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
@@ -212,7 +213,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
-                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy);
+                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
+                    isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity));
             if (!isKillTask()) {
                 _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
             }

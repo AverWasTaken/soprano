@@ -32,6 +32,9 @@ public class FakeFacts implements GamerFacts {
     public boolean cookSuspended;
     // the diamond pick dig ran out of time (RunState.diamondHuntGaveUp), false like a fresh run
     public boolean diamondHuntGaveUp;
+    // the gold dig ran out of time, and a gold ore is in the loaded chunks near us
+    public boolean goldHuntGaveUp;
+    public boolean goldOreKnown;
     // the station a running cook committed to
     public String cookStation;
     public int fingerprint;
@@ -168,6 +171,16 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean cookSuspended() {
         return cookSuspended;
+    }
+
+    @Override
+    public boolean goldHuntGaveUp() {
+        return goldHuntGaveUp;
+    }
+
+    @Override
+    public boolean goldOreKnown() {
+        return goldOreKnown;
     }
 
     @Override

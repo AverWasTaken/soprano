@@ -773,16 +773,21 @@ public final class CombatCommit {
         if (t.creeperRepeat()) return startRun(t, Why.REPEAT_CREEPER, Event.RUN_START);
         // healing up: whatever comes back near is a run again, before it is a fight and whatever the cooldown says. we are
         // standing here because we are hurt, and trading blows at 10 hp is how the last run started
-        if (recover.on()) {
+        if (recover.on() && endermanAbout(t) == null) {
             Why again = rerun(t);
             if (again != Why.NONE) return runOrBox(t, again);
         }
         // the fight is only for one we have not given up on, or one that has hit us since. with nothing in hand better than a
         // fist it is a run instead: a punch is not a fight, and the cornered rules still turn us round when a run goes nowhere
+        // one that hit us from out there is the target too, not only one in contact: the fight waits for it where it teleports
+        Foe ender = endermanOnUs(t);
+        if (ender != null) return startFight(t, ender, Why.HIT, Event.FIGHT_START, false);
         Foe hit = hitInContact(candidates(t), cooling);
         if (hit != null) {
-            if (gaveUpOn(hit, t.now())) return startRun(t, Why.LOBBER, Event.RUN_START);
-            if (!t.armed() && !hit.standsAndFights()) return startRun(t, Why.UNARMED, Event.RUN_START);
+            // (no run for these while an enderman is about: it follows, so a swing at what is on us is the better trade)
+            boolean enderAbout = endermanAbout(t) != null;
+            if (gaveUpOn(hit, t.now()) && !enderAbout) return startRun(t, Why.LOBBER, Event.RUN_START);
+            if (!t.armed() && !hit.standsAndFights() && !enderAbout) return startRun(t, Why.UNARMED, Event.RUN_START);
             return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
         }
         // not in contact, but a skeleton is shooting us. one target and kill it. hurt, or more than one of them, is a run out of
@@ -790,7 +795,10 @@ public final class CombatCommit {
         List<Foe> shooters = snipers(t, cooling);
         if (!shooters.isEmpty()) {
             Foe sniper = shooters.get(0);
-            if (t.low() || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) return startRun(t, Why.SHOT, Event.RUN_START);
+            // (with an enderman about the run is off, a skeleton on us is the armed fight below or nothing)
+            if ((t.low() || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
+                return startRun(t, Why.SHOT, Event.RUN_START);
+            }
             // (bare hands do not go and get a skeleton)
             if (t.armed()) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
         }
@@ -800,7 +808,7 @@ public final class CombatCommit {
         // a heavy hitter in the path is not a fight we go and pick, at any hp: one swing is 8 to 13 and they come in threes.
         // it is a run, and the sweep keeps a zone round where we ran from (RunZones) so the path does not walk back into it.
         // one that hits us is still the HIT fight above, that is unchanged
-        if (way == null) {
+        if (way == null && endermanAbout(t) == null) {
             Foe heavy = heavyInTheWay(t);
             if (heavy != null) {
                 ranFrom.put(heavy.id(), t.now());
@@ -925,18 +933,50 @@ public final class CombatCommit {
 
     // what makes a fight in progress (or one about to start) a run instead, NONE for fit to fight. the same danger rules
     // as trigger(), plus the fight target itself (it can be outside the foe list and still be the thing to leave)
-    private static Why runReason(Tick t, boolean freshOnly) {
+    private Why runReason(Tick t, boolean freshOnly) {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
         if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
         // an angry enderman is never a reason to leave (low hp, crowd or otherwise), so the rules below do not get to see it
         List<Foe> foes = leavable(t.foes());
         Trigger trigger = trigger(t.health(), t.nextHit(), foes, freshOnly);
+        // and with one about, nothing else is either: it teleports onto us, so a run is just free hits. only the warden and the heavy
+        // hitters (the danger rules) still get us out of there
+        if (endermanAbout(t) != null) return trigger != null && trigger.why() == Why.HEAVY ? Why.HEAVY : Why.NONE;
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
         if (target != null && !target.standsAndFights() && t.low() && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
         if (crowded(t.health(), foes, freshOnly)) return Why.CROWD;
         return Why.NONE;
+    }
+
+    // the nearest angry enderman within FOE_RANGE, the fight target counted too (it can be outside the foe list). hitUsOnly: only
+    // one that has hit us lately, which is what starts or takes over a fight (a merely angry one is no reason to start swinging, it
+    // comes to us). skipIgnored: not one we wrote off after it stalled or wandered off, unless it hit us since
+    private Foe nearestEnderman(Tick t, boolean hitUsOnly, boolean skipIgnored) {
+        Foe best = null;
+        Foe target = t.target();
+        if (target != null && target.standsAndFights() && target.distance() <= FOE_RANGE && (!hitUsOnly || target.hitUs())) best = target;
+        for (Foe foe : t.foes()) {
+            if (!foe.standsAndFights() || foe.distance() > FOE_RANGE || (hitUsOnly && !foe.hitUs())) continue;
+            if (skipIgnored && stillIgnored(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
+    }
+
+    // what holds the runs back: an angry one nearby counts even after we wrote it off, it is still about
+    private Foe endermanAbout(Tick t) {
+        return nearestEnderman(t, false, false);
+    }
+
+    // what a run turns round for: one we have not written off
+    private Foe endermanToFight(Tick t) {
+        return nearestEnderman(t, false, true);
+    }
+
+    private Foe endermanOnUs(Tick t) {
+        return nearestEnderman(t, true, true);
     }
 
     // the foes a run can be about: everyone but the ones we stand and fight
@@ -1000,8 +1040,8 @@ public final class CombatCommit {
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
         // (only the part the witch itself causes: a skeleton landing arrows on us is still the old rule's to judge)
         // a second skeleton on us is not the one-target fight any more
-        if (bail == Why.NONE && why == Why.PINNED && snipers(t, false).size() >= 2) bail = Why.SHOT;
-        if (lobberPick) {
+        if (bail == Why.NONE && why == Why.PINNED && snipers(t, false).size() >= 2 && endermanAbout(t) == null) bail = Why.SHOT;
+        if (lobberPick && endermanAbout(t) == null) {
             if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
         }
@@ -1014,6 +1054,11 @@ public final class CombatCommit {
             if (why != Why.CHASED) why = Why.CORNERED;
         }
         if (target == null) return targetGone(t);
+        // an enderman that hit us is the target over whatever we are on, it is the one that cannot be walked away from
+        Foe ender = endermanOnUs(t);
+        if (ender != null && ender.id() != target.id() && (!target.standsAndFights() || !target.hitUs())) {
+            return startFight(t, ender, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
+        }
         Foe swap = takeover(t, target);
         if (swap != null) return startFight(t, swap, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
@@ -1027,7 +1072,7 @@ public final class CombatCommit {
             if (t.now() - farSince >= LOST_TICKS && target.sinceHit() > LOST_TICKS) {
                 // boxed in, the second tier picks within 8, so a lost one would be picked again every few seconds. same
                 // deal as a stall: written off until it hits us again
-                if (cornered) ignored.put(target.id(), t.now());
+                if (cornered || target.standsAndFights()) ignored.put(target.id(), t.now());
                 // a ranged foe we never reached and lost track of is the same story as one that stalled: the poison goes on
                 if (atRange && !contacted) giveUpOn(target, t.now());
                 return end(t, Event.FIGHT_LOST);
@@ -1059,6 +1104,8 @@ public final class CombatCommit {
     // once. a melee target that has been out of reach for TAKEOVER_TICKS with such a foe in reach: that foe. anything else stays,
     // the first kill matters most and two foes taking turns must not make us ping-pong
     private Foe takeover(Tick t, Foe target) {
+        // (the enderman comes to us, standing for it is the fight. swapping to whatever else is in reach would just swap back)
+        if (target.standsAndFights()) return null;
         // the witch we picked over the zombies stays picked: swapping straight back to the one biting us is the loop this pick
         // exists to end. boxed in we cannot walk to it anyway, so the swing at what is on us is the old rule's
         if (lobberPick && !t.boxed()) return null;
@@ -1215,6 +1262,10 @@ public final class CombatCommit {
     }
 
     private Event run(Tick t) {
+        // an angry enderman about turns any run into the fight: it teleports onto us, nothing outruns it. the warden still wins
+        Foe ender = endermanToFight(t);
+        // (a run from the warden or a heavy hitter is not ours to turn, it ends where it ends: that mob is still about once we are past 8)
+        if (ender != null && why != Why.HEAVY && !anyDanger(t)) return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
         double fromOrigin = Math.hypot(t.x() - originX, t.z() - originZ);
         double nearest = Double.POSITIVE_INFINITY;
         for (Foe foe : t.foes()) {

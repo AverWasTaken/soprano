@@ -55,6 +55,9 @@ public class OverworldConfig {
     // the IRON budget is nearly gone. plain scalars, an old saved config just gets these
     public boolean diamondPick = true;
     public double diamondPickMinutes = 8;
+    // raw gold for the piglin helmet, dug in IRON when an ore is already in the loaded chunks. gives up after this many minutes of
+    // digging. a plain scalar, an old saved config just gets 3
+    public double goldHuntMinutes = 3;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;

@@ -298,8 +298,18 @@ public final class KitRunner {
             case KitNeed.BUILD_BLOCKS -> new GetBuildingMaterialsTask(need.count());
             case KitNeed.EQUIP_ARMOR -> equip.isEmpty() ? null : new EquipArmorTask(equip.toArray(new Item[0]));
             case KitPlanner.DIAMOND -> diamondDig(need.count());
+            case GoldHunt.NEED -> goldDig(need.count());
             default -> TaskCatalogue.taskExists(need.catalogueName()) ? TaskCatalogue.getItemTask(need.catalogueName(), need.count()) : null;
         };
+    }
+
+    // same lava rule for the gold: deep veins hug lava pockets just like the diamonds do
+    private static Task goldDig(int count) {
+        return new MineAndCollectTask(new ItemTarget(Items.RAW_GOLD, count), new Block[]{Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE},
+                MiningRequirement.IRON).ore().onlyWhere(pos -> {
+                    ClientLevel level = Minecraft.getInstance().level;
+                    return level != null && !ResourceDetour.lavaBeside(level, pos);
+                });
     }
 
     // the catalogue's diamond with the detour's lava rule on top: the dig goes deep, where every other vein hugs a lava pocket, and
@@ -327,6 +337,7 @@ public final class KitRunner {
             case "furnace" -> "Making a furnace";
             case "flint" -> "Looking for flint";
             case KitPlanner.DIAMOND -> "Digging for diamonds";
+            case GoldHunt.NEED -> "Digging for gold";
             case "planks" -> "Making planks";
             case "log" -> "Chopping logs";
             case "cobblestone" -> "Mining stone";

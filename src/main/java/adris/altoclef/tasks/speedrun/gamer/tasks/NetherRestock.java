@@ -21,6 +21,8 @@ public final class NetherRestock {
     private double startedAt;
     private double exhaustedSince = Double.NaN;
     private double coolUntil = Double.NEGATIVE_INFINITY;
+    // the last dig ended on the clock: a whole MAX_SECONDS with nothing to show for it, so even an empty bag waits
+    private boolean clockEnd;
     // restocks in a row that ended because the dig had nothing left to go to (not the clock, not a full bag). the phase reads it to
     // tell "short" from "short and the band is empty"
     private int exhaustedEnds;
@@ -37,18 +39,24 @@ public final class NetherRestock {
         return active;
     }
 
-    // the dig stays in a box around where it started: nothing under the starting feet (that is how it ended up in a pit),
-    // nothing far off (it once went for basalt 600 blocks away). the wall at feet level is fair game
-    static final int BAND_RADIUS = 32;
+    // the dig stays in a box around where it started, a few blocks either way in height and not far off sideways. on a ledge
+    // everything level with the feet can be a cliff face a long way up or across, so the box reaches down a bit too: the
+    // netherrack below the ledge is nearer than any of it. a bridge over lava still touches lava, and that reject (touchesLava)
+    // is what keeps us from digging out the span we stand on. the one block under the feet is never fair game, it is the floor
+    static final int BAND_RADIUS = 48;
+    static final int BAND_BELOW = 6;
+    static final int BAND_ABOVE = 4;
 
     public static boolean inRestockBand(BlockPos origin, BlockPos pos) {
-        // feet level and up only. the floor layer looked like a harmless ditch until it turned out to be the 1 wide bridge over
-        // a lava lake we were standing on, dug out on both sides of us
-        if (pos.getY() < origin.getY()) {
+        int dy = pos.getY() - origin.getY();
+        if (dy < -BAND_BELOW || dy > BAND_ABOVE) {
             return false;
         }
         int dx = pos.getX() - origin.getX();
         int dz = pos.getZ() - origin.getZ();
+        if (dx == 0 && dz == 0 && dy == -1) {
+            return false;
+        }
         return dx * dx + dz * dz <= BAND_RADIUS * BAND_RADIUS;
     }
 
@@ -80,13 +88,16 @@ public final class NetherRestock {
             boolean dry = !Double.isNaN(exhaustedSince) && now - exhaustedSince >= EXHAUSTED_SECONDS;
             if (held >= activeStopAt || dry || now - startedAt >= MAX_SECONDS) {
                 exhaustedEnds = held < activeStopAt && dry ? exhaustedEnds + 1 : 0;
+                clockEnd = held < activeStopAt && !dry;
                 active = false;
                 exhaustedSince = Double.NaN;
                 coolUntil = now + COOLDOWN_SECONDS;
             }
             return active;
         }
-        if (now < coolUntil) {
+        // an empty bag digs again right away, the cooldown is for a bag that is merely getting low. a dig that ran out the clock
+        // is the exception, the same spot would just eat another MAX_SECONDS
+        if (now < coolUntil && (held >= LOW || clockEnd)) {
             return false;
         }
         if (held < startBelow) {

@@ -103,4 +103,129 @@ public class CombatCommitEndermanTest {
         assertEquals(Event.FIGHT_START, c.step(t));
         assertEquals(Event.RUN_START, new CombatCommit().step(new Tick(0, 20, 0, 0, List.of(new Foe(1, 2, false, false, 0)), null, Way.NONE, false)));
     }
+
+    private static Foe zombie(double distance) {
+        return new Foe(1, distance, false, false, NEVER);
+    }
+
+    @Test
+    public void anEndermanThatHitUsFromAfarIsTheFightEvenAtLowHpWithAZombieAbout() {
+        CombatCommit c = new CombatCommit();
+        Foe e = enderman(10, 0);
+        // a zombie this close at 6 hp is a run on its own (aZombieAtLowHpIsStillARun), the enderman about is what stops it
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 6, List.of(zombie(3), e), null)));
+        assertEquals(Mode.FIGHT, c.mode());
+        for (long t = 1; t < 30; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 6, List.of(zombie(3), e), e)));
+            assertEquals(Mode.FIGHT, c.mode());
+        }
+    }
+
+    @Test
+    public void theNextHitGuessDoesNotMakeThatFightARunEither() {
+        CombatCommit c = new CombatCommit();
+        Foe e = enderman(2, 0);
+        Foe z = zombie(4);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(z, e), null)));
+        // big hits in a row: hp - the next hit is under the line long before hp is
+        float hp = 20;
+        for (long t = 1; t < 12; t++) {
+            hp = Math.max(1, hp - 4);
+            assertEquals(Event.NONE, c.step(tick(t, hp, List.of(z, e), e)));
+            assertEquals(Mode.FIGHT, c.mode());
+        }
+    }
+
+    @Test
+    public void anAngryEndermanThatHasNotHitYetStillStopsTheLowHpRunFromOthers() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.NONE, c.step(tick(0, 5, List.of(zombie(2), enderman(10, NEVER)), null)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void anEndermanTooFarOffDoesNotStopTheRun() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(zombie(2), enderman(CombatCommit.FOE_RANGE + 4, NEVER)), null)));
+    }
+
+    @Test
+    public void aRunTurnsIntoTheFightWhenAnEndermanHitsUs() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(zombie(2)), null)));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(1, 5, List.of(zombie(2), enderman(12, 0)), null)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aFightOnSomethingElseSwapsToTheEndermanThatHitUs() {
+        CombatCommit c = new CombatCommit();
+        Foe z = new Foe(1, 2, false, false, 0);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(z), null)));
+        assertEquals(Event.FIGHT_NEXT, c.step(tick(1, 20, List.of(z, enderman(9, 0)), z)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void theWardenStillMakesItARunWithAnEndermanAbout() {
+        CombatCommit c = new CombatCommit();
+        Foe warden = new Foe(9, 4, false, false, NEVER, Kind.UNTOUCHABLE);
+        assertEquals(Event.RUN_START, c.step(tick(0, 20, List.of(warden, enderman(6, 0)), null)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aRunTurnsIntoTheFightForAnAngryEndermanThatHasNotHitYet() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(zombie(2)), null)));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(1, 5, List.of(zombie(2), enderman(12, NEVER)), null)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void bareHandsAndAZombieOnUsIsNotAnUnarmedRunWithAnEndermanAbout() {
+        Foe z = new Foe(1, 2, false, false, 0);
+        Tick lone = new Tick(0, 20, 0, 0, List.of(z), null, Way.NONE, false);
+        assertEquals(Event.RUN_START, new CombatCommit().step(lone));
+        Tick withEnderman = new Tick(0, 20, 0, 0, List.of(z, enderman(10, NEVER)), null, Way.NONE, false);
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(withEnderman));
+    }
+
+    @Test
+    public void anEndermanThatWanderedOffAndWasWrittenOffStillHoldsTheRunsBack() {
+        CombatCommit c = new CombatCommit();
+        Foe e = enderman(10, 0);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(e), null)));
+        Event end = Event.NONE;
+        long t = 1;
+        // it hangs about 10 blocks off and never hits again: the fight is written off after a few seconds
+        for (; t < 400 && end == Event.NONE; t++) {
+            end = c.step(tick(t, 20, List.of(new Foe(5, 10, false, false, 300 + t, Kind.ENDERMAN)), new Foe(5, 10, false, false, 300 + t, Kind.ENDERMAN)));
+        }
+        assertEquals(Mode.NONE, c.mode());
+        // hp is low and a zombie is on us, but the enderman is still within range: no run
+        assertEquals(Event.NONE, c.step(tick(t, 5, List.of(zombie(2), new Foe(5, 10, false, false, 300 + t, Kind.ENDERMAN)), null)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aRunFromAHeavyHitterIsNotTurnedIntoTheEndermanFight() {
+        CombatCommit c = new CombatCommit();
+        Foe brute = new Foe(7, 2, false, false, 0, Kind.HEAVY);
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(brute), null)));
+        // past the danger radius with an enderman on us: the run goes on, the brute is still about
+        Foe far = new Foe(7, 9, false, false, 0, Kind.HEAVY);
+        assertEquals(Event.NONE, c.step(tick(1, 5, List.of(far, enderman(12, 0)), null)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aSkeletonShootingUsIsStillTheArmedFightWithAnEndermanAboutAndNeverARun() {
+        Foe skeleton = new Foe(3, 10, true, false, 5, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(0, 5, List.of(skeleton), null)));
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 5, List.of(skeleton, enderman(12, NEVER)), null)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
 }

@@ -223,6 +223,9 @@ public class RunState {
     public double diamondHuntSeconds;
     // the dig ran out of time once: no more diamond pick this run, even if a later one gets lost. never cleared, like spawnBedGaveUp
     public boolean diamondHuntGaveUp;
+    // same two for the raw gold dig (GoldHunt)
+    public double goldHuntSeconds;
+    public boolean goldHuntGaveUp;
 
     // crafting tables this run placed, the only ones the pickup may take back. these three lists are what is saved of the
     // station registry (Workbenches), the rest of an entry (state, clocks, tries) is rebuilt from them after a relog
