@@ -137,6 +137,11 @@ public class MobDefenseChain extends SingleTaskChain {
         return _brain.recovering() && _mainTask instanceof HealUpTask;
     }
 
+    // game time the last combat run ended (far in the past for never)
+    public long lastCombatRunEnd() {
+        return _brain.lastRunEnd();
+    }
+
     public String combatFightName() {
         return _brain.fightName();
     }

@@ -29,6 +29,8 @@ final class BlazeFight {
     private Mode mode = Mode.CAMP;
     private Mode loggedMode = Mode.CAMP;
     private boolean running;
+    // the combat run end we already took a heal wait from, so one run arms it once
+    private long armedFromRun = Long.MIN_VALUE;
     // the run stall watch: when the idle run started (or last gained hp), what hp was last tick, and whether we gave up
     // waiting. MIN_VALUE is not watching
     private long runIdleSince = Long.MIN_VALUE;
@@ -88,6 +90,14 @@ final class BlazeFight {
         float health = player.getHealth();
         // hp going up is what the run waits for, so any rise means it is working again
         if (health > lastHealth) runGaveUp = false;
+        // a run mob defense made also leaves us hurt: wait it out here like our own run, it is the same latch
+        if (!running && mod.getMobDefenseChain() != null) {
+            long runEnd = mod.getMobDefenseChain().lastCombatRunEnd();
+            if (runEnd != armedFromRun && BlazeFightRules.healAfterRun(now, runEnd, health)) {
+                running = true;
+                armedFromRun = runEnd;
+            }
+        }
         Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null);
         running = next == Mode.RUN;
         mode = next;

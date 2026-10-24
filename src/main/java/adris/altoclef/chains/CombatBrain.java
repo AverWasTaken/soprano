@@ -102,6 +102,15 @@ final class CombatBrain {
     private final FightNames _names = new FightNames();
     private LocalPlayer _player;
     private Dimension _dimension;
+    // when the last run ended, for the rods task: it waits to heal before it walks back to whatever we ran from
+    private long _lastRunEnd = Long.MIN_VALUE / 2;
+    // a run happened and nothing has settled since: the end is stamped when the machine is back to nothing, so a run that
+    // turned into a fight counts from when the fight is over
+    private boolean _ranSince;
+
+    long lastRunEnd() {
+        return _lastRunEnd;
+    }
 
     Mode mode() {
         return _commit.mode();
@@ -176,6 +185,8 @@ final class CombatBrain {
 
     void reset() {
         _commit.reset();
+        _lastRunEnd = Long.MIN_VALUE / 2;
+        _ranSince = false;
         _foeMobs = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
@@ -300,6 +311,13 @@ final class CombatBrain {
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
+            // the heal wait starts when the run (and the fight it may have turned into) is all over
+            if (_commit.mode() == Mode.RUN) {
+                _ranSince = true;
+            } else if (_commit.mode() == Mode.NONE && _ranSince) {
+                _ranSince = false;
+                _lastRunEnd = now;
+            }
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
@@ -326,6 +344,7 @@ final class CombatBrain {
         } else if (_commit.mode() != Mode.NONE) {
             // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)
             _commit.reset();
+            _ranSince = false;
         } else {
             // only the heal-up hold: the grudges and the cooldown of an idle machine stay where they were (the night pillar
             // switches us off every tick it stands down)

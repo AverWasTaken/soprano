@@ -160,4 +160,15 @@ public class BlazeFightRulesTest {
         assertFalse(BlazeFightRules.watching(BlazeFightRules.SIGHT_RANGE + 0.1, true));
         assertFalse(BlazeFightRules.watching(5, false));
     }
+
+    @Test
+    public void aCombatRunThatEndedLatelyHasUsHealUntilSixteen() {
+        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 14.9f));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 16));
+        assertTrue(BlazeFightRules.healAfterRun(990 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
+        assertFalse(BlazeFightRules.healAfterRun(991 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
+        // never ran, or the clock went backwards: nothing to wait for
+        assertFalse(BlazeFightRules.healAfterRun(1000, Long.MIN_VALUE / 2, 10));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 2000, 10));
+    }
 }

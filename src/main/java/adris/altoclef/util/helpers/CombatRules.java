@@ -23,9 +23,10 @@ public final class CombatRules {
     // at or below this (half hearts) in a fight we leave instead of trading blows. the one hp line: the commitment, the
     // chain's checks and the kill aura's shield gate all read this and nothing else
     public static final float FLEE_HEALTH = 8;
-    // the one exception, and it is a named one: a heavy hitter (wither skeleton, hoglin, brute, vindicator...) lands 8 to 13
+    // the one exception, and it is a named one: a heavy hitter (hoglin, brute, vindicator...) lands 8 to 13
     // in one swing, so at 10 hp it is already "one hit from the respawn screen" and not a fight to start or to stay in.
-    // everything else in the world hits for less than 8, which is why the flee line is where it is
+    // nearly everything else hits for less than 8 (the wither skeleton is a plain fight with its own bail, see
+    // CombatCommit.lowHit), which is why the flee line is where it is
     public static final float HEAVY_FLEE_HEALTH = 10;
     // at or below this a bite is better than a fight we are losing, as long as nothing is on top of us
     public static final float CRITICAL_HEALTH = 4;

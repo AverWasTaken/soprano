@@ -221,7 +221,7 @@ public class FoeRulesTest {
 
     @Test
     public void theHeavyHittersAreHeavyInEveryDimension() {
-        for (String type : new String[]{"wither_skeleton", "hoglin", "zoglin", "piglin_brute", "vindicator", "ravager"}) {
+        for (String type : new String[]{"hoglin", "zoglin", "piglin_brute", "vindicator", "ravager"}) {
             for (Dimension d : Dimension.values()) {
                 Foe foe = accept(d, mob(type, 4));
                 assertNotNull(type, foe);
@@ -244,15 +244,16 @@ public class FoeRulesTest {
         // an ordinary skeleton stays a shooter
         Candidate skeleton = new Candidate("skeleton", 6, 2.5, () -> false, () -> true, () -> true, NEVER, 0, true, false);
         assertTrue(accept(Dimension.NETHER, skeleton).ranged());
-        // it hit us next to us: hurt enough that it is a run, and a fight above that
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(100, 10, null, foe)));
+        // a plain melee mob: not a heavy hitter, so it is a fight at 10 hp and a run only at the usual line
+        assertEquals(Kind.NORMAL, foe.kind());
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(100, 10, null, foe)));
         assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(100, 14, null, foe)));
     }
 
     @Test
     public void theFightTargetLookedUpOnItsOwnShootsTheSameWayAsAFoe() {
         // CombatBrain builds the fight target outside the foe list and asks the same question
-        assertFalse(FoeRules.shoots("wither_skeleton", true, Kind.HEAVY));
+        assertFalse(FoeRules.shoots("wither_skeleton", true, Kind.NORMAL));
         assertTrue(FoeRules.shoots("skeleton", true, Kind.NORMAL));
         assertTrue(FoeRules.shoots("blaze", false, Kind.FLYER));
         assertFalse(FoeRules.shoots("zombie", false, Kind.NORMAL));

@@ -243,4 +243,11 @@ public class CombatRulesTest {
         assertFalse(pile(false, new CombatCommit.Foe(1, 2, true, false, 10), zombie(2, 2, 10)));
         assertFalse(pile(false, zombie(1, 2, 10), new CombatCommit.Foe(2, 2, true, false, 10)));
     }
+
+    @Test
+    public void theHealMealCoversTheWholeBandTheRodsTaskWaitsIn() {
+        // the rods task heals to RECOVERED_HEALTH after a run, and eating has to reach that far on its own
+        assertTrue(CombatRules.healingMeal(BlazeFightRules.RECOVERED_HEALTH - 0.5f, CombatRules.REGEN_HUNGER - 1));
+        assertTrue(CombatRules.healingMeal(14.9f, 15));
+    }
 }

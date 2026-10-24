@@ -86,6 +86,12 @@ public final class BlazeFightRules {
         return alive && tracked && ticksOutOfReach < TARGET_GIVE_UP_TICKS;
     }
 
+    // a combat run (the mob defense one) ended lately and we are not back up yet: the rods task heals first instead of
+    // walking straight back at whatever we ran from. the same give up as the idle run covers it from there
+    public static boolean healAfterRun(long now, long runEnd, float health) {
+        return now >= runEnd && now - runEnd <= RUN_GIVE_UP_TICKS && health < RECOVERED_HEALTH;
+    }
+
     public static boolean runStalled(long ticksWithoutHealing) {
         return ticksWithoutHealing >= RUN_GIVE_UP_TICKS;
     }

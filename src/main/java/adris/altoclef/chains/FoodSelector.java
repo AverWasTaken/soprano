@@ -21,6 +21,14 @@ final class FoodSelector {
     private FoodSelector() {
     }
 
+    // the food a bite started with stays the food until that bite lands, is stopped or the stack is gone. the pick moves with hp (saturation first
+    // under 8), and every flip force-equips the other food, which restarts the bite and never finishes one. hits do not break
+    // the latch: damage does not stop a bite in the game either
+    static Optional<Item> latch(Optional<Item> pick, Item latched, boolean eating, int inInventory) {
+        if (eating && latched != null && inInventory > 0) return Optional.of(latched);
+        return pick;
+    }
+
     // usable says which stacks we may touch at all (protected items say no), hunger is the food level out of 20.
     // foodTotal only counts what we'd eat as normal food, last resorts stay out of it or a stack of
     // rotten flesh would stop us from ever going to find real food

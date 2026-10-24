@@ -12,8 +12,7 @@ import java.util.function.BooleanSupplier;
 public final class FoeRules {
 
     // lands 8 to 13 in one swing, a run at HEAVY_FLEE_HEALTH instead of the usual line
-    private static final Set<String> HEAVY = Set.of("wither_skeleton", "hoglin", "zoglin", "piglin_brute", "vindicator",
-            "ravager");
+    private static final Set<String> HEAVY = Set.of("hoglin", "zoglin", "piglin_brute", "vindicator", "ravager");
     // not a fight at any hp. the warden one shots a full bar, the wither is a boss we never summoned
     private static final Set<String> UNTOUCHABLE = Set.of("warden", "wither");
 

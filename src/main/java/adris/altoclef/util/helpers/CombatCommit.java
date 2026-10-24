@@ -210,7 +210,7 @@ public final class CombatCommit {
         // hovers where we cannot walk up to it (a blaze). it counts as a shooter (FoeRules.shoots), and like any shooter
         // it is only a fight once it is in contact
         FLYER,
-        // lands 8 to 13 in one swing (wither skeleton, hoglin, brute, vindicator): a run at HEAVY_FLEE_HP instead of FLEE_HP
+        // lands 8 to 13 in one swing (hoglin, brute, vindicator): a run at HEAVY_FLEE_HP instead of FLEE_HP
         HEAVY,
         // not a fight at any hp (warden, wither): whatever fires, it is a run
         UNTOUCHABLE,
@@ -391,6 +391,12 @@ public final class CombatCommit {
     }
 
     public static Trigger trigger(float health, float nextHit, List<Foe> foes, boolean freshOnly) {
+        return trigger(health, nextHit, nextHit, foes, freshOnly);
+    }
+
+    // lowHit is what the low hp line projects, nextHit still feeds the heavy hitter guard. they differ in a one on one fight
+    // (see lowHit), where the real hp is the line and not the hp after the next swing lands
+    static Trigger trigger(float health, float nextHit, float lowHit, List<Foe> foes, boolean freshOnly) {
         float guard = guardHealth(health, nextHit);
         Foe danger = null;
         Foe near = null;
@@ -401,7 +407,7 @@ public final class CombatCommit {
             if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
-        if (health - nextHit <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
+        if (health - lowHit <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
         Foe hit = hitInContact(foes, freshOnly);
         return hit == null ? null : new Trigger(Why.HIT, hit);
     }
@@ -934,17 +940,34 @@ public final class CombatCommit {
     // what makes a fight in progress (or one about to start) a run instead, NONE for fit to fight. the same danger rules
     // as trigger(), plus the fight target itself (it can be outside the foe list and still be the thing to leave)
     private Why runReason(Tick t, boolean freshOnly) {
+        return runReason(t, freshOnly, t.nextHit());
+    }
+
+    // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
+    // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
+    // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
+    private static float lowHit(Tick t) {
+        Foe target = t.target();
+        if (target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
+        for (Foe foe : t.foes()) {
+            if (foe.id() == target.id()) continue;
+            if (foe.shooting() || (foe.melee() && foe.distance() <= LOW_HP_RANGE)) return t.nextHit();
+        }
+        return 0;
+    }
+
+    private Why runReason(Tick t, boolean freshOnly, float lowHit) {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
         if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
         // an angry enderman is never a reason to leave (low hp, crowd or otherwise), so the rules below do not get to see it
         List<Foe> foes = leavable(t.foes());
-        Trigger trigger = trigger(t.health(), t.nextHit(), foes, freshOnly);
+        Trigger trigger = trigger(t.health(), t.nextHit(), lowHit, foes, freshOnly);
         // and with one about, nothing else is either: it teleports onto us, so a run is just free hits. only the warden and the heavy
         // hitters (the danger rules) still get us out of there
         if (endermanAbout(t) != null) return trigger != null && trigger.why() == Why.HEAVY ? Why.HEAVY : Why.NONE;
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
-        if (target != null && !target.standsAndFights() && t.low() && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
+        if (target != null && !target.standsAndFights() && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
         if (crowded(t.health(), foes, freshOnly)) return Why.CROWD;
         return Why.NONE;
@@ -1035,7 +1058,7 @@ public final class CombatCommit {
         // within 8 (the last thing we were hitting died, that is a won fight, not a reason to run 24 blocks). boxed in
         // there is nowhere to bail to, so a cornered fight never asks
         // a fight we turned around for is out in the open though: the warden or a heavy walking up is still a run
-        Why bail = !cornered ? runReason(t, false) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
+        Why bail = !cornered ? runReason(t, false, lowHit(t)) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
         // the witch we picked over the zombies is not walked away from at 11 hp for being a witch (that is how it lobs for a
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
         // (only the part the witch itself causes: a skeleton landing arrows on us is still the old rule's to judge)
