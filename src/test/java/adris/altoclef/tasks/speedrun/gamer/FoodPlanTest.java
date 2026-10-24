@@ -866,8 +866,8 @@ public class FoodPlanTest {
         assertEquals(bag + " (kit)", shortOfMinimum, FoodGate.index(KitPlanner.plan(f, cfg, end.beds, p), p) >= 0);
         assertEquals(bag + " (gather)", shortOfMinimum, KitPlanner.gather(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
-        // (the portal is the last stop before the nether: it fills to the trip's stop, so it is short of more than the minimum)
-        assertEquals(bag + " (portal)", p.shortOf(p.tripEnd()), PortalPlanner.gate(f, cfg, end.beds, p).stream()
+        // (the portal is the last stop before the nether: it fills to the entry line, so it is short of more than the minimum)
+        assertEquals(bag + " (portal)", p.shortOf(p.entryEnd(cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
         assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
     }
@@ -1023,6 +1023,11 @@ public class FoodPlanTest {
         return FoodGate.index(KitPlanner.plan(f, cfg, 8, p), p) >= 0;
     }
 
+    // the portal gate asks for the nether entry line, not the trip stop
+    private boolean hasEntryFood(List<KitNeed> needs) {
+        return needs.stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() == cfg.netherEntryFoodUnits);
+    }
+
     // the refill need, not the kit's target of 100 at the end of the plan
     private boolean hasFood(List<KitNeed> needs) {
         return needs.stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() == cfg.refillStopFoodUnits);
@@ -1036,8 +1041,8 @@ public class FoodPlanTest {
         assertFalse(p.wantsRefill());
         assertFalse(planHasMinimum(f, p));
         assertFalse(hasFood(KitPlanner.gather(f, cfg, 8, p)));
-        // (the portal is the exception: the last stop before the nether fills to the trip's stop)
-        assertTrue(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
+        // (the portal is the exception: the last stop before the nether fills to the entry line)
+        assertTrue(hasEntryFood(PortalPlanner.gate(f, cfg, 8, p)));
         // and the soft top-up does not start on the surface either, it only lives inside a refill
         assertFalse(p.leads(true, false, false));
         assertFalse(p.nextTopUp(false, true));
@@ -1055,7 +1060,7 @@ public class FoodPlanTest {
         assertTrue(p.nextRefilling());
         assertTrue(planHasMinimum(f, p));
         assertTrue(hasFood(KitPlanner.gather(f, cfg, 8, p)));
-        assertTrue(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
+        assertTrue(hasEntryFood(PortalPlanner.gate(f, cfg, 8, p)));
         assertTrue(p.leads(true, false, false));
         // still the soft rule down the mine: it waits for the surface
         assertFalse(p.leads(false, false, false));

@@ -109,14 +109,16 @@ public final class PortalPlanner {
         List<KitNeed> out = new ArrayList<>();
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
         // the same refill gap: 69 at the portal is not a trip
+        int entry = food.entryEnd(cfg.netherEntryFoodUnits);
         if (food.wantsRefill()) {
-            out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
-        } else if (fillUp && !food.covered() && food.shortOf(food.tripEnd())) {
+            out.add(new KitNeed(KitNeed.FOOD, Math.max(food.refillStop(), entry)));
+        } else if (fillUp && !food.coveredAt(entry) && food.shortOf(entry)) {
             // covered: the gap is raw meat that counts once the smoker is in reach. without it the count read 124 away from the
             // smoker and 132 next to it, so food and water took turns as the head every few seconds and neither finished
-            // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
-            // is the minimum on a full bag, so this cannot ask for a pile there is no room for
-            out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
+            // last stop before a nether leg that eats 8 units a minute in the fights, and the walk home from 40 is five minutes
+            // of overworld: fill up to netherEntryFoodUnits, not just to where a trip would. entryEnd is the minimum on a full
+            // bag, so this cannot ask for a pile there is no room for
+            out.add(new KitNeed(KitNeed.FOOD, entry));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {

@@ -172,7 +172,7 @@ public class PortalPlannerTest {
     @Test
     public void portalGateFillsToTheEntryStackNotTheSmallBand() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = 64;
         List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
         assertEquals(List.of(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.netherEntryBlocks)), out);
@@ -184,15 +184,50 @@ public class PortalPlannerTest {
     @Test
     public void gateIsEmptyWhenReady() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
-    public void gateFillsTheFoodToTheTripStopNotTheMinimum() {
+    public void gateFillsTheFoodToTheNetherEntryLineNotTheMinimum() {
         FakeFacts f = readyToGo();
         f.foodUnits = 90;
+        assertEquals(210, cfg.netherEntryFoodUnits);
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        // the trip stop is for every other trip, the gate does not move it
+        assertEquals(130, cfg.refillStopFoodUnits);
+        f.foodUnits = cfg.refillStopFoodUnits;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        f.foodUnits = cfg.netherEntryFoodUnits;
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    @Test
+    public void gateAsksForTheEntryLineOnATripToo() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 20;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+    }
+
+    @Test
+    public void gateEntryLineNeverGoesUnderTheTripStop() {
+        cfg.netherEntryFoodUnits = 100;
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+    }
+
+    @Test
+    public void aFullBagStillCapsTheEntryFillAtTheMinimum() {
+        FakeFacts f = readyToGo();
+        f.bagFull = true;
+        f.foodUnits = 60;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        f.foodUnits = cfg.minFoodUnits;
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+        // and under the floor, on a trip, it asks for the old stop and not a pile
+        f.foodUnits = 20;
         assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits)), PortalPlanner.gate(f, cfg, 10));
     }
 
@@ -217,7 +252,7 @@ public class PortalPlannerTest {
     @Test
     public void fireChargeIsALightToo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
@@ -225,7 +260,7 @@ public class PortalPlannerTest {
     @Test
     public void gateAsksForOneMoreEmptyBucketWhenOnlyTheWaterOneIsHeld() {
         FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg, 10));
     }
@@ -234,7 +269,7 @@ public class PortalPlannerTest {
     public void gateWantsArmorOn() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1)
                 .give(Items.IRON_BOOTS, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg, 10));
         f.worn.add(Items.IRON_BOOTS);
@@ -243,7 +278,7 @@ public class PortalPlannerTest {
 
     private FakeFacts readyToGo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         return f;
     }

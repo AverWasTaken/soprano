@@ -69,6 +69,10 @@ public class OverworldConfig {
     // and once a trip starts it runs to this, not to minFoodUnits. a cave leg eats 40-50 units, so a trip that stopped at 70 bought
     // one cave leg and the next surface visit was another hunt. 130 is about a stack of steak, one smoker load
     public int refillStopFoodUnits = 130;
+    // the portal gate fills to this before the nether (refillStopFoodUnits stays the stop for every overworld trip). the nether eats
+    // about 8 units a minute in the fights and the walk home from 40 is five minutes of overworld, so go down with a lot instead.
+    // a full bag still stops at the minimum
+    public int netherEntryFoodUnits = 210;
     // the IRON phase leaves the mine for food only below this (or on the surface, up to minFoodUnits).
     // a bot with an apple and six mutton used to climb out for a hunt in the middle of a vein
     public int minHeldFoodUnits = 24;
