@@ -1389,7 +1389,7 @@ public class GamerTask extends Task {
     // touches it, so counting it here would start a pillar that runs dry halfway up
     private int nightBlocks() {
         boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
-        return Math.max(0, facts.buildBlocks() - (kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
+        return Math.max(0, facts.buildBlocks() - NightSleep.blockReserve(state.phase, kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
     }
 
     // what may not be interrupted for a night (NightSleep.busy has the reasoning): phases that must not be cut into, a station
@@ -1402,7 +1402,9 @@ public class GamerTask extends Task {
         }
         boolean screenUp = !ownScreens && screenSince >= 0 && NightSleep.screenHolds(facts.gameTime() - screenSince);
         boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
-        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), pickup, loading, facts.earlyLoadInFlight(), screenUp);
+        PhaseHandler h = machine.current();
+        boolean phaseHolds = h != null && h.phase() == state.phase && h.nightHold();
+        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), phaseHolds, pickup, loading, facts.earlyLoadInFlight(), screenUp);
     }
 
     // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night

@@ -43,6 +43,12 @@ public interface PhaseHandler {
         return false;
     }
 
+    // true = a night must not cut into this phase right now. only matters for phases NightSleep.phaseAllowed lets through, the
+    // rest are held whatever this says
+    default boolean nightHold() {
+        return false;
+    }
+
     // pure and cheap, the engine asks every tick. true = move on to the next phase
     boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg);
 

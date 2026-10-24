@@ -13,6 +13,7 @@ import adris.altoclef.tasks.speedrun.gamer.NightSleep.Prep;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Refusal;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Stage;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Why;
+import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.util.helpers.NightSleepHook;
 import java.util.List;
 import org.junit.After;
@@ -127,11 +128,11 @@ public class NightSleepTest {
     @Test
     public void onlySomePhasesMayBeInterrupted() {
         for (GamerPhase ok : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.EYES, GamerPhase.RETURN,
-                GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN}) {
+                GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN, GamerPhase.PORTAL}) {
             assertTrue(ok.name(), NightSleep.phaseAllowed(ok));
         }
-        // lava being cast, the nether, the spawn bed by the portal, the dragon, and the ends of a run
-        for (GamerPhase no : new GamerPhase[]{GamerPhase.PORTAL, GamerPhase.NETHER, GamerPhase.END_PREP, GamerPhase.DRAGON,
+        // the nether, the spawn bed by the portal, the dragon, and the ends of a run (the portal decides for itself, nightHold)
+        for (GamerPhase no : new GamerPhase[]{GamerPhase.NETHER, GamerPhase.END_PREP, GamerPhase.DRAGON,
                 GamerPhase.DONE, GamerPhase.STUCK}) {
             assertFalse(no.name(), NightSleep.phaseAllowed(no));
         }
@@ -519,6 +520,35 @@ public class NightSleepTest {
         assertEquals(NightSleep.Busy.SCREEN, NightSleep.busy(true, false, false, false, true));
         // the phase comes first, and a batch that merely exists (not loading) is not in the list at all
         assertEquals(NightSleep.Busy.PHASE, NightSleep.busy(false, true, true, true, true));
+    }
+
+    @Test
+    public void aPhaseHoldIsBusyButNotPhase() {
+        assertEquals(NightSleep.Busy.PHASE_HOLD, NightSleep.busy(true, true, false, false, false, false));
+        assertEquals(NightSleep.Busy.NONE, NightSleep.busy(true, false, false, false, false, false));
+        // a phase that is not allowed at all is still PHASE, the hold does not soften it
+        assertEquals(NightSleep.Busy.PHASE, NightSleep.busy(false, true, false, false, false, false));
+        // and a hold comes before the smaller things
+        assertEquals(NightSleep.Busy.PHASE_HOLD, NightSleep.busy(true, true, true, true, true, true));
+    }
+
+    @Test
+    public void thePortalHoldsTheNightOnlyOnceItIsPastLookingForASpot() {
+        // gate not done: still packing, free to leave
+        assertFalse(PortalPhase.holdsNight(false, false));
+        // pool out walking for a layout
+        assertFalse(PortalPhase.holdsNight(true, true));
+        // layout chosen, cast, obsidian or a lit portal: the tick never sets the searching flag
+        assertTrue(PortalPhase.holdsNight(true, false));
+    }
+
+    @Test
+    public void thePillarLeavesThePortalItsBuildBlocks() {
+        assertEquals(NightSleep.PORTAL_BLOCK_RESERVE, NightSleep.blockReserve(GamerPhase.PORTAL, 40));
+        assertTrue(NightSleep.PORTAL_BLOCK_RESERVE >= 16);
+        assertEquals(12, NightSleep.blockReserve(GamerPhase.GATHER, 12));
+        assertEquals(12, NightSleep.blockReserve(GamerPhase.IRON, 12));
+        assertEquals(0, NightSleep.blockReserve(GamerPhase.ROOM, 12));
     }
 
     @Test

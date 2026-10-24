@@ -64,6 +64,9 @@ public class PortalPhase implements PhaseHandler {
     private DefaultGoToDimensionTask cast;
     private LPortalTask pool;
     private boolean poolFailed;
+    // the pool task was the one handed the wheel on the last tick. with no layout yet it is the only time a night may take the
+    // wheel here (read live, a layout can land between our tick and the night's question)
+    private boolean poolActive;
     // the pool was handed to the task at least once this try, so a timeout can tell "stuck building it" from "stuck in prep"
     private boolean poolStarted;
     private ConstructNetherPortalObsidianTask obsidian;
@@ -115,6 +118,7 @@ public class PortalPhase implements PhaseHandler {
         // the furnace we empty on the way out comes down with us, but never gets a batch of meat on the way
         furnaces.newExitPhase();
         gateDone = false;
+        poolActive = false;
         fillUpSince = -1;
         resetCastClock();
         // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
@@ -163,8 +167,21 @@ public class PortalPhase implements PhaseHandler {
         ctx.save();
     }
 
+    // walking open ground for a spot is safe to leave for a night. everything after it is not: the build with a layout chosen, the
+    // cast (its clocks run on game time and a trip would eat them), the obsidian way, and a lit portal about to be entered
+    @Override
+    public boolean nightHold() {
+        return holdsNight(gateDone, poolActive && pool != null && !pool.failed() && pool.searching());
+    }
+
+    public static boolean holdsNight(boolean gateDone, boolean poolSearching) {
+        return gateDone && !poolSearching;
+    }
+
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        // (cleared first so any early return below reads as "hold", only the pool branch lifts it)
+        poolActive = false;
         // asked once a tick, it walks the tracked portal cells and reads the world for each
         Optional<BlockPos> portal = usablePortal(mod);
         boolean portalExists = portal.isPresent();
@@ -238,6 +255,7 @@ public class PortalPhase implements PhaseHandler {
                 return enter;
             }
             if (!pool.failed()) {
+                poolActive = true;
                 hudState = pool.searching() ? "Looking for a spot for the portal" : "Building the portal with lava buckets";
                 poolStarted = true;
                 return pool;
