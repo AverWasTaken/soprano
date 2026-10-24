@@ -54,7 +54,8 @@ public final class SafeCollision implements CollisionProvider {
     private static final byte PLAIN = 1, SLIME = 2, CLIMB = 4;
     private final long[] keys = new long[SLOTS];
     private final double[][] shapes = new double[SLOTS][];
-    private final float[] friction = new float[SLOTS], speed = new float[SLOTS], jump = new float[SLOTS], bounce = new float[SLOTS];
+    private final float[] friction = new float[SLOTS], speed = new float[SLOTS], jump = new float[SLOTS], bounce = new float[SLOTS],
+            water = new float[SLOTS];
     private final byte[] flags = new byte[SLOTS], support = new byte[SLOTS];
     private final BoxList cell = new BoxList();
 
@@ -89,6 +90,7 @@ public final class SafeCollision implements CollisionProvider {
         speed[i] = world.speedFactor(x, y, z);
         jump[i] = world.jumpFactor(x, y, z);
         bounce[i] = world.bounce(x, y, z);
+        water[i] = world.water(x, y, z);
         support[i] = (byte) world.supportKind(x, y, z);
         flags[i] = (byte) ((plainNow(x, y, z) ? PLAIN : 0) | (world.slimeStep(x, y, z) ? SLIME : 0) | (world.climbable(x, y, z) ? CLIMB : 0));
         keys[i] = key;
@@ -147,6 +149,11 @@ public final class SafeCollision implements CollisionProvider {
         return support[slot(x, y, z)];
     }
 
+    @Override
+    public float water(int x, int y, int z) {
+        return water[slot(x, y, z)];
+    }
+
     // WorldCollision's plain is friction 0.6 and nothing else, for the movements that only know that. this one knows the
     // rest of it (PlayerSim does ice, slime, soul sand with the materials below), so what's left is the stuff the sim really
     // can't do: fluids, scaffolding, webs, powder snow, honey (it slides you down its sides), and anything that hurts
@@ -164,7 +171,7 @@ public final class SafeCollision implements CollisionProvider {
     private static boolean plainState(BlockState state) {
         Block block = state.getBlock();
         // climbables are fine now, PlayerSim does ladders and vines (LivingEntity.handleOnClimbable). scaffolding isn't
-        return state.getFluidState().isEmpty() && block != Blocks.SCAFFOLDING && block != Blocks.HONEY_BLOCK
+        return (state.getFluidState().isEmpty() || WorldCollision.isWaterState(state)) && block != Blocks.SCAFFOLDING && block != Blocks.HONEY_BLOCK
                 && block != Blocks.BUBBLE_COLUMN && !hazard(state);
     }
 

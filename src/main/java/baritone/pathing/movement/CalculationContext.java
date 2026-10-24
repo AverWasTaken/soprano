@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement;
 
+import baritone.behavior.FallFloor;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
@@ -114,6 +115,11 @@ public class CalculationContext {
     public final boolean allowDownward;
     public int minFallHeight;
     public int maxFallHeightNoWater;
+    // never stand below this (Settings.avoidBelowY, or a floor FallFloor learned from a reset)
+    // the sector (TungstenJumps.carrySector) of the jump the player is coming into the start with, when this search plans
+    // ahead from the end of a path still being walked (-1: standing there, or not known)
+    public int startArrival = -1;
+    public final int avoidBelowY;
     // a context that raises maxFallHeightNoWater because it wants the fall (the elytra walk off) doesn't want it priced as
     // damage or swapped for a ladder either, see MovementDescend.dynamicFallCost
     public boolean plainFallsAreFree;
@@ -298,6 +304,9 @@ public class CalculationContext {
         this.allowDownward = Baritone.settings().allowDownward.value;
         this.minFallHeight = 3; // Minimum fall height used by MovementFall
         this.maxFallHeightNoWater = Baritone.settings().maxFallHeightNoWater.value;
+        // (what's been learned round where we are: one world can hold many courses, each with its own floor)
+        net.minecraft.client.player.LocalPlayer me = baritone == null ? null : baritone.getPlayerContext().player();
+        this.avoidBelowY = Math.max(Baritone.settings().avoidBelowY.value, me == null ? Integer.MIN_VALUE : FallFloor.learned(me.getX(), me.getZ()));
         this.maxFallHeightBucket = Baritone.settings().maxFallHeightBucket.value;
         double waterSpeed = ActionCosts.WALK_ONE_IN_WATER_COST * (1 - waterSpeedMultiplier) + ActionCosts.WALK_ONE_BLOCK_COST * waterSpeedMultiplier;
         this.allowSwimming = ExperimentalMovement.allowSwimming() && this.canSprint;

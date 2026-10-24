@@ -25,18 +25,22 @@ import java.util.Arrays;
 // a box of the world copied out cell by cell, for a search that runs on another thread: the planner's block cache isn't for
 // sharing, and what's being searched is what the blocks were when the planner asked. outside the box it's air the sim may
 // not go into (the search keeps well inside it anyway)
+//
+// kept small: a long #goto can have a couple of hundred of these waiting in the queue. the boxes are one flat array, and
+// what each cell is like otherwise (friction, bounce, ...) is a short into a table of the few kinds there are
 public final class SnapshotCollision implements CollisionProvider {
 
     private final int x0, y0, z0, sx, sy, sz;
-    // per cell: where its boxes start in `boxes` (6 doubles each) and how many
-    private final int[] start, count;
+    // cell i's boxes are boxes[start[i] * 6 .. start[i + 1] * 6)
+    private final int[] start;
     private final double[] boxes;
-    // the same, a cell at a time (see boxArray), made the first time a cell is asked for that way
-    private final double[][] cellBoxes;
-    private static final double[] NO_BOXES = new double[0];
-    private final float[] friction, speed, jump, bounce;
+    private final short[] kind;
+    private final float[] friction, speed, jump, bounce, water;
     private final byte[] flags, support;
     private static final byte PLAIN = 1, SLIME_STEP = 2, CLIMBABLE = 4;
+    // the same boxes, a cell at a time (see boxArray), made the first time the search asks that way
+    private volatile double[][] cellBoxes;
+    private static final double[] NO_BOXES = new double[0];
     // a hash of everything copied, to tell whether the blocks have changed since
     public final long hash;
 
@@ -48,15 +52,11 @@ public final class SnapshotCollision implements CollisionProvider {
         this.sy = maxY - minY + 1;
         this.sz = maxZ - minZ + 1;
         int n = sx * sy * sz;
-        start = new int[n];
-        count = new int[n];
-        friction = new float[n];
-        speed = new float[n];
-        jump = new float[n];
-        bounce = new float[n];
-        flags = new byte[n];
-        support = new byte[n];
+        start = new int[n + 1];
+        kind = new short[n];
         BoxList all = new BoxList(), cell = new BoxList();
+        java.util.Map<Kind, Integer> kinds = new java.util.HashMap<>();
+        java.util.List<Kind> table = new java.util.ArrayList<>();
         long h = 1469598103934665603L;
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -65,27 +65,78 @@ public final class SnapshotCollision implements CollisionProvider {
                     cell.clear();
                     world.boxes(x, y, z, cell);
                     start[i] = all.size();
-                    count[i] = cell.size();
                     for (int b = 0; b < cell.size(); b++) {
                         all.add(cell.get(b, 0), cell.get(b, 1), cell.get(b, 2), cell.get(b, 3), cell.get(b, 4), cell.get(b, 5));
-                        for (int c = 0; c < 6; c++) {
-                            h = (h ^ Double.doubleToLongBits(cell.get(b, c))) * 1099511628211L;
-                        }
                     }
-                    friction[i] = world.friction(x, y, z);
-                    speed[i] = world.speedFactor(x, y, z);
-                    jump[i] = world.jumpFactor(x, y, z);
-                    bounce[i] = world.bounce(x, y, z);
-                    support[i] = (byte) world.supportKind(x, y, z);
-                    flags[i] = (byte) ((world.plain(x, y, z) ? PLAIN : 0) | (world.slimeStep(x, y, z) ? SLIME_STEP : 0)
-                            | (world.climbable(x, y, z) ? CLIMBABLE : 0));
-                    h = (h ^ (flags[i] * 31L + Float.floatToIntBits(friction[i]) + Float.floatToIntBits(bounce[i]) * 7L + support[i])) * 1099511628211L;
+                    Kind k = Kind.of(world, x, y, z);
+                    h = mix(h, cell, k);
+                    Integer id = kinds.get(k);
+                    if (id == null) {
+                        id = table.size();
+                        kinds.put(k, id);
+                        table.add(k);
+                    }
+                    kind[i] = (short) (int) id;
                 }
             }
         }
+        start[n] = all.size();
         boxes = Arrays.copyOf(all.raw(), all.size() * 6);
-        cellBoxes = new double[n][];
+        int m = table.size();
+        friction = new float[m];
+        speed = new float[m];
+        jump = new float[m];
+        bounce = new float[m];
+        water = new float[m];
+        flags = new byte[m];
+        support = new byte[m];
+        for (int k = 0; k < m; k++) {
+            Kind t = table.get(k);
+            friction[k] = t.friction;
+            speed[k] = t.speed;
+            jump[k] = t.jump;
+            bounce[k] = t.bounce;
+            water[k] = t.water;
+            flags[k] = t.flags;
+            support[k] = t.support;
+        }
         hash = h;
+    }
+
+    // the hash a snapshot of this box would have, without making one (the planner asks whether the blocks have changed a
+    // lot more often than it needs a snapshot)
+    public static long hashOf(CollisionProvider world, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        BoxList cell = new BoxList();
+        long h = 1469598103934665603L;
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    cell.clear();
+                    world.boxes(x, y, z, cell);
+                    h = mix(h, cell, Kind.of(world, x, y, z));
+                }
+            }
+        }
+        return h;
+    }
+
+    private static long mix(long h, BoxList cell, Kind k) {
+        for (int b = 0; b < cell.size(); b++) {
+            for (int c = 0; c < 6; c++) {
+                h = (h ^ Double.doubleToLongBits(cell.get(b, c))) * 1099511628211L;
+            }
+        }
+        return (h ^ (k.flags * 31L + Float.floatToIntBits(k.friction) + Float.floatToIntBits(k.bounce) * 7L + k.support
+                + Float.floatToIntBits(k.water) * 13L)) * 1099511628211L;
+    }
+
+    // everything about a cell but its boxes
+    private record Kind(float friction, float speed, float jump, float bounce, byte flags, byte support, float water) {
+        static Kind of(CollisionProvider world, int x, int y, int z) {
+            return new Kind(world.friction(x, y, z), world.speedFactor(x, y, z), world.jumpFactor(x, y, z), world.bounce(x, y, z),
+                    (byte) ((world.plain(x, y, z) ? PLAIN : 0) | (world.slimeStep(x, y, z) ? SLIME_STEP : 0) | (world.climbable(x, y, z) ? CLIMBABLE : 0)),
+                    (byte) world.supportKind(x, y, z), world.water(x, y, z));
+        }
     }
 
     private int index(int x, int y, int z) {
@@ -105,11 +156,14 @@ public final class SnapshotCollision implements CollisionProvider {
         if (i < 0) {
             return NO_BOXES;
         }
-        double[] known = cellBoxes[i];
+        double[][] cells = cellBoxes;
+        if (cells == null) {
+            cellBoxes = cells = new double[kind.length][]; // (two threads racing here each make one, either does)
+        }
+        double[] known = cells[i];
         if (known == null) {
-            // a race between two threads here only makes the same array twice
-            known = count[i] == 0 ? NO_BOXES : Arrays.copyOfRange(boxes, start[i] * 6, (start[i] + count[i]) * 6);
-            cellBoxes[i] = known;
+            known = start[i + 1] == start[i] ? NO_BOXES : Arrays.copyOfRange(boxes, start[i] * 6, start[i + 1] * 6);
+            cells[i] = known;
         }
         return known;
     }
@@ -120,7 +174,7 @@ public final class SnapshotCollision implements CollisionProvider {
         if (i < 0) {
             return;
         }
-        for (int b = start[i], e = start[i] + count[i]; b < e; b++) {
+        for (int b = start[i], e = start[i + 1]; b < e; b++) {
             int o = b * 6;
             out.add(boxes[o], boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5]);
         }
@@ -129,48 +183,54 @@ public final class SnapshotCollision implements CollisionProvider {
     @Override
     public boolean plain(int x, int y, int z) {
         int i = at(x, y, z);
-        return i >= 0 && (flags[i] & PLAIN) != 0;
+        return i >= 0 && (flags[kind[i]] & PLAIN) != 0;
     }
 
     @Override
     public float friction(int x, int y, int z) {
         int i = at(x, y, z);
-        return i < 0 ? 0.6F : friction[i];
+        return i < 0 ? 0.6F : friction[kind[i]];
     }
 
     @Override
     public float speedFactor(int x, int y, int z) {
         int i = at(x, y, z);
-        return i < 0 ? 1F : speed[i];
+        return i < 0 ? 1F : speed[kind[i]];
     }
 
     @Override
     public float jumpFactor(int x, int y, int z) {
         int i = at(x, y, z);
-        return i < 0 ? 1F : jump[i];
+        return i < 0 ? 1F : jump[kind[i]];
     }
 
     @Override
     public float bounce(int x, int y, int z) {
         int i = at(x, y, z);
-        return i < 0 ? 0F : bounce[i];
+        return i < 0 ? 0F : bounce[kind[i]];
     }
 
     @Override
     public boolean slimeStep(int x, int y, int z) {
         int i = at(x, y, z);
-        return i >= 0 && (flags[i] & SLIME_STEP) != 0;
+        return i >= 0 && (flags[kind[i]] & SLIME_STEP) != 0;
     }
 
     @Override
     public boolean climbable(int x, int y, int z) {
         int i = at(x, y, z);
-        return i >= 0 && (flags[i] & CLIMBABLE) != 0;
+        return i >= 0 && (flags[kind[i]] & CLIMBABLE) != 0;
     }
 
     @Override
     public int supportKind(int x, int y, int z) {
         int i = at(x, y, z);
-        return i < 0 ? 0 : support[i];
+        return i < 0 ? 0 : support[kind[i]];
+    }
+
+    @Override
+    public float water(int x, int y, int z) {
+        int i = at(x, y, z);
+        return i < 0 ? -1F : water[kind[i]];
     }
 }

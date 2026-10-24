@@ -113,6 +113,11 @@ public final class InflatedCollision implements CollisionProvider {
     }
 
     @Override
+    public float water(int x, int y, int z) {
+        return world.water(x, y, z);
+    }
+
+    @Override
     public int supportKind(int x, int y, int z) {
         return world.supportKind(x, y, z);
     }

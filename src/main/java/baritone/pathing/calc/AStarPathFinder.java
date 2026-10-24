@@ -26,6 +26,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.SettingsUtil;
 import baritone.pathing.calc.openset.BinaryHeapOpenSet;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.Moves;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.Favoring;
@@ -82,6 +83,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
             bestLowSoFar[i] = startNode;
         }
         int partialFloorY = this.partialFloorY;
+        int avoidBelowY = calcContext.avoidBelowY;
         MutableMoveResult res = new MutableMoveResult();
         BetterWorldBorder worldBorder = calcContext.worldBorder;
         long startTime = System.currentTimeMillis();
@@ -127,7 +129,22 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                 }
                 return Optional.of(new Path(realStart, startNode, currentNode, numNodes, goal, calcContext));
             }
+            // standing on the rim of a pillar next door (nothing under this cell): only a Tungsten jump goes from there, the
+            // grid moves think there's a floor
+            boolean rim = calcContext.allowTungstenJumps && (baritone.pathing.tungsten.TungstenJumps.rimNode(calcContext, currentNode.x, currentNode.y, currentNode.z)
+                    || baritone.pathing.tungsten.TungstenJumps.waterCell(calcContext, currentNode.x, currentNode.y, currentNode.z)
+                    && !MovementHelper.canWalkOn(calcContext, currentNode.x, currentNode.y - 1, currentNode.z));
+            if (calcContext.allowTungstenJumps) {
+                // which way the jump in came, for the jumps that carry its speed on (TungstenJumps.Jump.carry)
+                PathNode prev = currentNode.previous;
+                calcContext.tungsten().arriving(prev == null ? (numNodes == 1 ? calcContext.startArrival : -1)
+                        : baritone.pathing.tungsten.TungstenJumps.carrySector(calcContext, prev.x, prev.y, prev.z, currentNode.x, currentNode.y, currentNode.z));
+            }
+            long missesBefore = baritone.pathing.movement.movements.PendingTables.misses();
             for (Moves moves : allMoves) {
+                if (rim && !moves.tungsten) {
+                    continue;
+                }
                 int newX = currentNode.x + moves.xOffset;
                 int newZ = currentNode.z + moves.zOffset;
                 if ((newX >> 4 != currentNode.x >> 4 || newZ >> 4 != currentNode.z >> 4) && !calcContext.isLoaded(newX, newZ)) {
@@ -174,6 +191,15 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                             SettingsUtil.maybeCensor(res.z),
                             SettingsUtil.maybeCensor(newX),
                             SettingsUtil.maybeCensor(newZ)));
+                }
+                if (baritone.api.utils.IPlayerContext.smallFloor(calcContext.get(res.x, res.y, res.z).getBlock())) {
+                    // in the cell of a candle, a pot, a head: standing on it counts as the cell over it (playerFeet), so a
+                    // node in it is one the bot can never be seen to reach (a candle had it stuck on a "move down" for good)
+                    continue;
+                }
+                if (res.y < avoidBelowY && res.y < startY
+                        || baritone.behavior.FallFloor.deadly(calcContext.get(res.x, res.y - 1, res.z).getBlock(), res.x, res.y, res.z)) {
+                    continue; // down on the floor a parkour level resets you from (Settings.avoidBelowY, FallFloor)
                 }
                 if (!moves.dynamicY && res.y != currentNode.y + moves.yOffset) {
                     throw new IllegalStateException(String.format(
@@ -229,6 +255,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                         }
                     }
                 }
+            }
+            if (baritone.pathing.movement.movements.PendingTables.misses() != missesBefore) {
+                currentNode.pending = true;
             }
         }
         this.numNodesConsidered = numNodes;

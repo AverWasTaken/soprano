@@ -54,8 +54,10 @@ def load(path):
     bl = [(b[0], b[1], b[2], pal[b[3]], b[4] if len(b) > 4 else 0) for b in blocks["blocks"]]
     worlds = blocks.get("worlds") or [meta.get("dimension", "world")]
     INDEX.clear()
+    STATES.clear()
     for x, y, z, st, ww in bl:
         INDEX[ww].add((x, y, z))
+        STATES[ww][(x, y, z)] = st
     return meta, worlds, bl, trace, events
 
 
@@ -88,19 +90,36 @@ def short(state):
 
 # the blocks of each world, by position, for feet()
 INDEX = defaultdict(set)
+STATES = defaultdict(dict)
+# what you stand inside the cell of when you're on it, which Baritone counts as standing in the cell above (playerFeet):
+# bottom slabs, bottom stairs (on the low step), and the small things parkour maps put about, heads, flower pots, candles...
+HALF_FLOORS = ("_head", "_skull", "flower_pot", "potted_", "candle", "lantern", "sea_pickle", "turtle_egg", "daylight_detector", "cake")
+
+
+def half_floor(state):
+    name = state.split("[")[0]
+    if name.endswith("_slab"):
+        return "type=bottom" in state
+    if name.endswith("_stairs"):
+        return "half=bottom" in state
+    return any(k in name for k in HALF_FLOORS)
 
 
 def feet(t):
-    """the cell the player stands in, Baritone's way: over the block that holds it up (at a takeoff from the very edge, the
-    middle of the player is already over the gap), the cell above that block"""
+    """the cell the player stands in, Baritone's way (IPlayerContext.playerFeet: the floor of y + 0.1251, one up when that
+    cell is a bottom slab, a stair's low step or a head), over the block that holds it up (at a takeoff from the very edge,
+    the middle of the player is already over the gap)"""
     fy = math.floor(t["y"] + 1e-3)
+    by = math.floor(t["y"] + 0.1251)
     cx, cz = math.floor(t["x"]), math.floor(t["z"])
     index = INDEX.get(t.get("world", 0))
-    # standing in the bottom half of a cell (on a bottom slab, a stair's low step, soul sand): Baritone calls the cell
-    # above the slab the place you stand, half a block down
-    up = 1 if t["y"] - fy >= 0.3 else 0
+    states = STATES.get(t.get("world", 0), {})
+
+    def cell(x, z):
+        return (x, by + (1 if half_floor(states.get((x, by, z), "")) else 0), z)
+
     if not index or (cx, fy - 1, cz) in index or (cx, fy, cz) in index:
-        return (cx, fy + (up if index and (cx, fy, cz) in index else 0), cz)
+        return cell(cx, cz)
     # the game settles the fall onto the floor before the step sideways, so on the last tick on the ground the player can
     # be a whole tick's run (up to a third of a block) past the edge as well as half its width
     best = None
@@ -111,8 +130,8 @@ def feet(t):
                 if best is None or d < best[0]:
                     best = (d, x, z)
     if not best:
-        return (cx, fy, cz)
-    return (best[1], fy + (up if (best[1], fy, best[2]) in index else 0), best[2])
+        return (cx, by, cz)
+    return cell(best[1], best[2])
 
 
 def jumps(trace):
@@ -162,6 +181,19 @@ def jumps(trace):
         else:
             i += 1
     return out
+
+
+def flown(trace, i, j):
+    """whether the player was flying (practice mode, creative) somewhere between takeoff i and landing j: falling only ever
+    gets faster, so a tick in the air going up faster, or coming down slower, than the one before (and not just off a
+    bounce or a ladder) is someone flying"""
+    for k in range(i + 2, j):
+        a, b = trace[k - 1], trace[k]
+        if a["onGround"] or b["onGround"] or a.get("climbing") or b.get("climbing"):
+            continue
+        if b["vy"] > a["vy"] + 0.005:
+            return True
+    return False
 
 
 def teleported(trace, j):
@@ -280,6 +312,14 @@ def course(path, out, argv):
             more.extend(inside[every - 1::every][:-1] if len(inside) > every else [])
         more.append(stops[-1])
         stops = more
+    # a stretch done over (a fall that put you back at the start, another go at a jump): the checkpoints along the first go
+    # are near ones along the last, and only the last ones count (a course's checkpoints have to come in order)
+    kept = []
+    for t in stops:
+        x, y, z = feet(t)
+        kept = [k for k in kept if not (abs(feet(k)[0] - x) <= 3 and abs(feet(k)[1] - y) <= 2 and abs(feet(k)[2] - z) <= 3)] + [t]
+    if len(kept) >= 2:
+        stops = kept
     cps = []
     for k, t in enumerate(stops):
         x, y, z = feet(t)
@@ -291,6 +331,8 @@ def course(path, out, argv):
         sj = []
         for i, j, jumped in js:
             if t0 <= tr[i]["tick"] < t1:
+                if flown(tr, i, j):
+                    continue  # flew there (practice mode): not a jump to test
                 fa, fb = feet(tr[i]), feet(tr[j])
                 if not solid_below(index, *fa):
                     continue

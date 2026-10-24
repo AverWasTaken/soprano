@@ -1,10 +1,61 @@
-# Parkour Lab v6
+# Parkour Lab v7
 
-A test course for Soprano's parkour: 21 sections and 220 jumps, each section aimed at one kind of jump, ending in a finale that strings a bit of every section together.
+A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
-It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 740 blocks. Gold pads are checkpoints. Fall below y 140 and you're put back on your last one.
+The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v8 (same course)
+## What's new in v7
+
+### The course
+- **Five new sections, before the finale** (now section 26), made of the things the bot found hard on the CubeCraft levels:
+  - **21 Decorations:** flower pots and heads on fence posts, pot to pot up and down, a floating head, a head on a wall, a torch and a lantern on posts, a candle.
+  - **22 Pillars:** one block pillars over lava with a fence post two high in the middle of each. The strip of top beside the post is all there is to stand on: hop onto it, walk round the post, jump off the far side. Then up onto a head on a post, and onto a lone iron bar.
+  - **23 Ladder tops:** single ladders hanging in the air, stood on (the top edge of a ladder holds you), and two caught in mid air and climbed onto.
+  - **24 Soul sand:** soul sand slows you to under half speed and sits a little low. Onto it, a slow run up along it and across a gap, soul sand to soul sand, up onto it, off it diagonally and one down.
+  - **25 Water blocks:** single water blocks hanging in the air, like the desert level's water bit. There's no jumping out of the top of one (in water the jump key only swims up), so the way on is a block you can drop into, or one two higher that the top of you reaches into as you swim up out of this one. Into a column two high, down into another, up two and up two again, down into one more, and out of its side down onto a block.
+- **The CubeCraft levels** (see "The levels" below), built by the same `/function parkourlab:build`.
+- **Lava is a fall**, on the Lab and the levels: you get fire resistance, and touching lava puts you back on your checkpoint.
+- **No fall damage** (the pack sets the `fall_damage` game rule off when it loads): like on CubeCraft, a fall only ever puts you back. A long fall during a level used to kill the bot outright.
+- **Checkpoints count on every level.** A level's checkpoint markers could miss their numbers when the level was built, and then none of that level's checkpoints ever counted (and a fall put you back at a random one). They go by the markers' own tags now.
+- **Water and lava stay put**, like on CubeCraft. A water block hanging in the air would run down, and the Hell level's lava falls would spread over the course (they did, in the last world: lava ended up across the first jumps). Starting a level, or the Lab, or teleporting to a checkpoint now clears whatever has run out of the sources.
+
+### The bot
+- **Standing on the rim of a pillar.** A block with a fence post on it leaves a strip of its top either side of the post. The planner now knows those strips as places to stand: land on one, walk round the post to another side, jump off. The Hell level is full of them.
+- **Off-centre floors.** The top of a ladder is a thin plate along one side of its block; a head on a wall only covers half of it. The bot used to aim at the middle of the block, which is thin air. Now it aims its landings at the bit that's there, takes off from there, and settles there before the next jump.
+- **Pots and heads on posts.** The fence post under a flower pot or a head is the real floor, half a block up into the pot's block. The planner looked for the floor in the wrong place and found none, so it never planned jumps off them.
+- **Jumps that carry speed through a small floor.** On a pot, a post or a head there's no room to run up, and some of the jumps on the levels only work by jumping again the moment you land, keeping the speed of the jump before. The planner now plans those (only when the jump before comes in the right way), and the bot doesn't stop on the small floor between them.
+- **A run up on a post.** Backing off to the far edge of a post or a single block before the jump: a little more speed, a little further.
+- **Steps to the block next door.** Up onto the wall next to you, onto bars, onto a ladder's top: the plain moves won't stand on those, and the jumps used to start two blocks out. Now they do next door too, in buckets of their own so they don't crowd out the longer jumps.
+- **Heights by the real floor.** A pot on a fence two up is only a block up really, a stair's low step only half a block. The planner judged how far a jump can go by the cells, and threw out jumps it can make.
+- **Water blocks hanging in the air.** The desert level has a few, a ladder of them. The bot drops or jumps into one, swims up the middle of it, leans over towards the next one as it comes out of the top, and catches the next one with its head two blocks up, or falls into one lower down. The sim swims the way the game does: slowed by the water, and no jump out of the top (in water the jump key only swims up, which is what makes the desert's water ladder work the way it does).
+- **Learning fail blocks you walk onto.** The desert's sand puts you back the moment you step on it, with no fall at all, so the bot never learned it. It does now: put back to somewhere it's already been, straight after standing on a block, means that block (at that height or lower) is off limits round there.
+- **Jobs in the background take turns.** Near the start of the hell level there are a lot of hopeless searches (round a wall to somewhere you can't get to). Each takes seconds, and they all sat in front of the one the path needed. Now a landing that keeps coming up with nothing goes to the back of the queue.
+- **"Still being worked out" isn't a dead end.** When there's no path to the goal yet, the bot won't set off down to a spot it can't get back up from. A spot whose next jumps were still being worked out in the background used to count as one of those; it doesn't now.
+- **Exploring when stuck.** A course that goes the other way first (the hell level's start goes round a lava pit away from the finish) used to leave the bot standing at the start: nothing it could reach was any nearer the goal. Now, stuck in one spot, it searches longer, and then goes somewhere new on the edge of what the search has seen, never back to where it's been. And it only drops below where it started when the search can see a way back up, or when it has been stuck at the same spot a few times.
+- **No more frozen planner.** A search could spend minutes on one spot (the rule's round-a-wall jumps from every post on a walled map). The jumps now get at most 8 s of a search.
+- **Falls don't end the #goto.** Planning from mid air (falling off a jump, before the server puts you back) found nothing and gave up for good. Now it waits to land and tries again.
+- **Candles.** Standing on one is half a block lower than on a pot; the planner thought there was no floor there, and a "move down" into the candle's cell kept the bot stuck.
+- **Small landings with a steady aim.** A jump that only lands with the aim within a degree of right (a wall's post, a pot) used to be thrown out; the bot's aim wobbles round the right line rather than sitting off it. Those are planned now, a bit dearer than the rest.
+
+## The levels
+
+`/function parkourlab:levels` lists them; click one, or `/function parkourlab:level/<name>`. `/function parkourlab:marathon` runs the Lab and then every level, one after the other. Each level has its own checkpoints, falls and finish message, and the same rules as on the server: fall to its floor, touch its fail blocks (the desert's sand) or touch lava, and you're back at the last checkpoint.
+
+| Level | Start with | Then |
+|---|---|---|
+| Chess | `/function parkourlab:level/chess` | `#goto 1009 64 1126` |
+| Chess (harder) | `/function parkourlab:level/chessharder` | `#goto 1121 56 1228` |
+| Aqua | `/function parkourlab:level/aqua` | `#goto 1230 37 1143` |
+| Desert | `/function parkourlab:level/desert` | `#goto 1346 36 1124` |
+| Hell | `/function parkourlab:level/hell` | `#goto 1445 39 1135` |
+| Endurance | `/function parkourlab:level/endurance` | `#goto 1558 118 1124` |
+| Candy | `/function parkourlab:level/candy` | `#goto 1647 34 1212` |
+
+**Bot settings for the levels:** CubeCraft has no fall damage, so let the bot drop further: `#set maxFallHeightNoWater 8`. Leave `learnFallFloor` on: when the server puts you back after a fall, the bot learns how low is too low (and which blocks reset you) and keeps its paths above that.
+
+The levels aren't in this repo: they're CubeCraft's maps. To build them, put your recordings' course files and a levels.json in a folder and run `gen.py out --levels <folder>` (see levels.py).
+
+## What was new in bot v8 (course v6)
 
 - **No more jumping off with no way back up.** When there's no path all the way to the goal yet, the bot sets off on the best part of one. That part could be a drop onto the ground under the course, sure it would find a way back up later. On a parkour map there isn't one. Now a part-path can't end more than 2 blocks below both where it starts and the goal. It waits for the jumps it's still working out, and only goes lower if it's been stuck in the same spot twice and there's nothing left to work out. On the candy level it now stays up on the course from the start. The setting is `partialPathMaxDrop` (`-1` turns it off).
 - **Less freezing, faster planning.** Measured on the fence and wall sections in the real game, with a profiler, before and after:
@@ -51,7 +102,7 @@ It's built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x)
 Then:
 
 - `/function parkourlab:start` puts you on the start pad, starts the timer and gives you infinite saturation, so the bot can always sprint.
-- `/function parkourlab:cp/<n>` jumps straight to checkpoint n (0 to 20).
+- `/function parkourlab:cp/<n>` jumps straight to checkpoint n (0 to 25).
 - `/function parkourlab:stop` stops the timer. `/function parkourlab:clear` removes the course.
 
 Every time you reach a checkpoint, chat shows that section's time and how many times you fell.
@@ -94,10 +145,15 @@ To test one section, teleport to its start checkpoint, then `#goto` the next one
 | 17 | Combo | `/function parkourlab:cp/16` | `#goto 1549 158 1021` |
 | 18 | Slime to ladder | `/function parkourlab:cp/17` | `#goto 1576 158 1021` |
 | 19 | Ice tunnel | `/function parkourlab:cp/18` | `#goto 1616 158 1021` |
-| 20 | CubeCraft (new) | `/function parkourlab:cp/19` | `#goto 1621 159 992` |
-| 21 | Finale | `/function parkourlab:cp/20` | `#goto 1737 163 990` |
+| 20 | CubeCraft | `/function parkourlab:cp/19` | `#goto 1621 159 992` |
+| 21 | Decorations (new) | `/function parkourlab:cp/20` | `#goto 1658 160 992` |
+| 22 | Pillars (new) | `/function parkourlab:cp/21` | `#goto 1684 160 992` |
+| 23 | Ladder tops (new) | `/function parkourlab:cp/22` | `#goto 1706 162 994` |
+| 24 | Soul sand (new) | `/function parkourlab:cp/23` | `#goto 1737 162 994` |
+| 25 | Water blocks (new) | `/function parkourlab:cp/24` | `#goto 1753 159 994` |
+| 26 | Finale | `/function parkourlab:cp/25` | `#goto 1869 163 992` |
 
-Full run: `/function parkourlab:start`, then `#goto 1737 163 990`.
+Full run: `/function parkourlab:start`, then `#goto 1869 163 992`.
 
 ## What changed in the bot in v5
 
@@ -115,6 +171,24 @@ Full run: `/function parkourlab:start`, then `#goto 1737 163 990`.
   - "No path found" while planning ahead no longer pops up a notification.
 
 ## Results
+
+**In the real game, this build** (fresh 26.3 client, `maxFallHeightNoWater 8`, `#goto` the finish and nothing else):
+
+| Course | How far | Time, falls |
+|---|---|---|
+| Parkour Lab, sections 1 to 10 | all | 0 falls |
+| 11 Ladder neos | done | 100 to 150 s, 3 or 4 falls (slower than it was, to look at) |
+| 12 to 22 | all | the combo (17) 85 s with 3 falls; the rest quick, 0 falls |
+| 23 Ladder tops (new) | done, the hard way | 200 to 800 s, dozens of falls: landing on the top edge of a ladder (a strip 3/16 of a block wide) and stopping there is the hardest thing on the course |
+| 24 Soul sand, 25 Water blocks, 26 Finale | all | 9 s, 53 s (2 falls), 54 s (0 falls) |
+| Chess | finish | 145 s, 1 fall |
+| Candy | finish | 30 s, 1 fall |
+| Aqua | checkpoint 3 of 8 (4 of 8 in some runs) | |
+| Desert | checkpoint 3 of 8 | it learns the sand, then the drop onto the fence before the water bit |
+| Hell | checkpoint 2 of 8 | the start, the first jumps over the lava and back round to stop 1 and 2 all work now |
+| Chess (harder), Endurance | not past the start | see below |
+
+The CubeCraft levels that wind a long way round (Hell, Chess harder, Endurance, the back half of Aqua) are where it gets lost: given only the finish, the bot heads for it, and the way there goes off in another direction first. It now explores when it's stuck (somewhere new, on the edge of what its search has seen, never back where it's been), and won't drop into a pit it can't see a way out of, but on these levels that isn't enough yet. Section by section, from checkpoint to checkpoint (the way the scorecard does it), it gets a lot further. A solved-map cache is the proper fix: once it's found the way through a level, it keeps it.
 
 **In the real game, bot v8**: start to finish, all 21 checkpoints, 0 falls, 307 s (stairs and walls and the fence run had already been worked out that session; the rest were cold). The CubeCraft course: 0 falls, 141 s on a cold start. The candy level, start to the end of the recording: 22 s, never off the course.
 

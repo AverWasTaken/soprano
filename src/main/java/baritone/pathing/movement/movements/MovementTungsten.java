@@ -29,6 +29,7 @@ import baritone.pathing.movement.CurvedMovement;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.sim.LiveSim;
+import baritone.pathing.sim.WorldCollision;
 import baritone.pathing.sim.PlayerSim;
 import baritone.pathing.tungsten.JumpPilot;
 import baritone.pathing.tungsten.JumpPolicy;
@@ -86,9 +87,18 @@ public class MovementTungsten extends Movement implements CurvedMovement {
     private boolean searched;
     private int waitTicks, stuckTicks;
 
+    // the sector the jump into src comes from, for a jump that carries its speed on (TungstenJumps.Jump.carry), -1 otherwise
+    private final int carry;
+
     private MovementTungsten(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, JumpPolicy.Variant planned, List<SimState> trace,
                              TungstenSearch.Plan searched) {
+        this(baritone, src, dest, planned, trace, searched, -1);
+    }
+
+    private MovementTungsten(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, JumpPolicy.Variant planned, List<SimState> trace,
+                             TungstenSearch.Plan searched, int carry) {
         super(baritone, src, dest, EMPTY);
+        this.carry = carry;
         this.planned = planned;
         this.plannedSearch = searched;
         this.trace = trace;
@@ -105,7 +115,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             // dest == src never matches anything in Path.runBackwards, so this is inert
             return new MovementTungsten(context.getBaritone(), src, src, null, List.of(), null);
         }
-        return new MovementTungsten(context.getBaritone(), src, j.dest(), j.variant(), j.trace(), j.plan());
+        return new MovementTungsten(context.getBaritone(), src, j.dest(), j.variant(), j.trace(), j.plan(), j.carry());
     }
 
     public static void cost(CalculationContext context, int x, int y, int z, int bucket, MutableMoveResult res) {
@@ -124,7 +134,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         if (dest.equals(src)) {
             return COST_INF;
         }
-        TungstenJumps.Jump j = TungstenJumps.between(context, src, dest);
+        TungstenJumps.Jump j = TungstenJumps.between(context, src, dest, carry);
         return j == null ? COST_INF : j.cost();
     }
 
@@ -192,6 +202,10 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         }
         LocalPlayer player = ctx.player();
         BetterBlockPos feet = ctx.playerFeet();
+        BlockStateInterface bsi = ((Baritone) baritone).bsi;
+        if (bsi != null) {
+            liveWorld = SafeCollision.forTick(liveWorld, bsi);
+        }
         // a ladder neo or any other jump onto a ladder ends hanging on it, everything else standing on dest
         Landing land = landing();
         if (feet.y < lowestPlanned - 1) {
@@ -199,12 +213,14 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         if (pilot == null) {
-            pilot = new JumpPilot(land, src.x + 0.5, src.z + 0.5, planned);
+            // from where in src the floor is (the middle, mostly; the top of a ladder's along one side, a pillar's rim is
+            // next door)
+            double[] at = liveWorld == null ? new double[]{0.5, 0.5} : TungstenJumps.standAt(liveWorld, src.x, src.y, src.z);
+            pilot = new JumpPilot(land, src.x + at[0], src.z + at[1], planned);
             pilot.fallback(plannedSearch);
             pilot.flow(this::flowsOn);
         }
-        BlockStateInterface bsi = ((Baritone) baritone).bsi;
-        PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld = SafeCollision.forTick(liveWorld, bsi));
+        PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld);
         if (sim == null) {
             // somewhere the sim doesn't model: a potion, sneaking, using an item, water. nothing to steer with
             if (player.onGround() && feet.equals(dest) && player.getDeltaMovement().horizontalDistance() < 0.05) {
@@ -256,13 +272,25 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         if (MovementHelper.isClimbable(BlockStateInterface.get(ctx, dest).getBlock())) {
             return Landing.grab(dest.x, dest.y, dest.z);
         }
+        if (WorldCollision.isWaterState(BlockStateInterface.get(ctx, dest))) {
+            // into a water block (TungstenJumps.waterCell), the top of a column or a lone one
+            return Landing.swim(dest.x, dest.y, dest.z, WorldCollision.isWaterState(BlockStateInterface.get(ctx, dest.below())));
+        }
         // a bottom slab under dest: the feet come down half a block lower than the cell
         net.minecraft.world.level.block.state.BlockState floor = BlockStateInterface.get(ctx, dest.below());
-        if (MovementHelper.isBottomSlab(floor)) {
+        if (MovementHelper.isHalfFloor(floor)) {
             return Landing.slab(dest.x, dest.y, dest.z);
         }
         // a stair: the feet can come down on its low step, half a block into its own cell
-        return TungstenJumps.stepped(floor) ? Landing.step(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+        Landing land = TungstenJumps.stepped(floor) ? Landing.step(dest.x, dest.y, dest.z) : new Landing(dest.x, dest.y, dest.z);
+        // a floor along one side of the cell (the top of a ladder), or a pillar's rim next door: come down there
+        if (liveWorld != null && (MovementHelper.isClimbable(floor.getBlock()) || !TungstenJumps.stepped(floor) && !MovementHelper.canWalkOn(ctx, dest.below(), floor))) {
+            double[] at = TungstenJumps.standAt(liveWorld, dest.x, dest.y, dest.z);
+            if (at[0] != 0.5 || at[1] != 0.5) {
+                land = land.aimed(at[0], at[1]);
+            }
+        }
+        return land;
     }
 
     // down on dest and still moving: can the next movement go from right here, without the stop

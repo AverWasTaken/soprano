@@ -26,7 +26,8 @@ public final class SimState {
     public double x, y, z, vx, vy, vz;
     public boolean onGround, sprinting, horizontalCollision, minorHorizontalCollision, verticalCollision;
     public int noJumpDelay;
-    public boolean hasSupport, climbing;
+    public boolean hasSupport, climbing, inWater;
+    public double waterDepth;
     public int supportX, supportY, supportZ;
 
     public static SimState of(PlayerSim sim) {
@@ -48,6 +49,8 @@ public final class SimState {
         noJumpDelay = sim.noJumpDelay;
         hasSupport = sim.hasSupport;
         climbing = sim.climbing;
+        inWater = sim.inWater;
+        waterDepth = sim.waterDepth;
         supportX = sim.supportX;
         supportY = sim.supportY;
         supportZ = sim.supportZ;
@@ -69,6 +72,8 @@ public final class SimState {
         sim.noJumpDelay = noJumpDelay;
         sim.hasSupport = hasSupport;
         sim.climbing = climbing;
+        sim.inWater = inWater;
+        sim.waterDepth = waterDepth;
         sim.supportX = supportX;
         sim.supportY = supportY;
         sim.supportZ = supportZ;
@@ -90,6 +95,8 @@ public final class SimState {
         c.noJumpDelay = noJumpDelay;
         c.hasSupport = hasSupport;
         c.climbing = climbing;
+        c.inWater = inWater;
+        c.waterDepth = waterDepth;
         c.supportX = supportX;
         c.supportY = supportY;
         c.supportZ = supportZ;

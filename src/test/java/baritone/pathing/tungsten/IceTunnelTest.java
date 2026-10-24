@@ -2,6 +2,7 @@ package baritone.pathing.tungsten;
 
 import baritone.pathing.sim.ArrayWorld;
 import baritone.pathing.sim.PlayerSim;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -9,6 +10,11 @@ import static org.junit.Assert.*;
 // a packed ice runway under a ceiling at head height that stops two blocks short of the edge: hop along it (every hop's push
 // stays on ice) and out into gaps no stone run up gets anywhere near
 public class IceTunnelTest {
+
+    @BeforeClass
+    public static void boot() {
+        adris.altoclef.util.helpers.ItemFixture.boot(); // (run on its own, nothing else has started the game's registries)
+    }
 
     private static final int SX = 20, SY = 63, SZ = 20;
 

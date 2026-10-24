@@ -43,6 +43,8 @@ public class ParkourLabScorecard {
         Map<String, Object> saved = new LinkedHashMap<>();
         String[] bools = {"allowParkour", "allowParkourAscend", "allowNeos", "allowMomentumJumps", "allowClimbJumps", "allowTungstenJumps",
                 "fastMode", "allowBreak", "allowPlace", "considerPotionEffects", "chatDebug", "allowVines"};
+        saved.put("maxFallHeightNoWater", settings.maxFallHeightNoWater.value);
+        saved.put("avoidBelowY", settings.avoidBelowY.value);
         for (String b : bools) {
             saved.put(b, settings.byLowerName.get(b.toLowerCase()).value);
         }
@@ -58,6 +60,10 @@ public class ParkourLabScorecard {
             settings.allowPlace.value = false;
             settings.considerPotionEffects.value = false;
             settings.chatDebug.value = false;
+            // a parkour server with no fall damage: drops further than 3 are fine (PARKOURLAB_MAX_FALL=8, say)
+            if (System.getenv("PARKOURLAB_MAX_FALL") != null) {
+                settings.maxFallHeightNoWater.value = Integer.parseInt(System.getenv("PARKOURLAB_MAX_FALL"));
+            }
             run(json, settings);
         } finally {
             for (Map.Entry<String, Object> e : saved.entrySet()) {
@@ -70,6 +76,16 @@ public class ParkourLabScorecard {
 
     private void run(String json, Settings settings) throws Exception {
         JsonObject course = JsonParser.parseString(Files.readString(Path.of(json))).getAsJsonObject();
+        // the course's floor, where falling puts you back: never plan to stand there (what learnFallFloor works out in game)
+        if (course.has("fallY")) {
+            settings.avoidBelowY.value = course.get("fallY").getAsInt() + 1;
+        }
+        baritone.behavior.FallFloor.forget();
+        if (course.has("failBlocks")) {
+            for (JsonElement b : course.getAsJsonArray("failBlocks")) {
+                baritone.behavior.FallFloor.forbid(BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.parse("minecraft:" + b.getAsString())), 4096);
+            }
+        }
         VineLogPathTest.MapWorld w = new VineLogPathTest.MapWorld();
         for (JsonElement e : course.getAsJsonArray("blocks")) {
             JsonArray b = e.getAsJsonArray();
@@ -119,11 +135,13 @@ public class ParkourLabScorecard {
             VineLogPathTest.Result off = VineLogPathTest.path(w, from, new GoalBlock(to), false);
             settings.allowTungstenJumps.value = true;
             long t0 = System.nanoTime();
-            VineLogPathTest.Result on = VineLogPathTest.path(w, from, new GoalBlock(to), false);
+            int[] searches = new int[1];
+            VineLogPathTest.Result on = chained(w, from, new GoalBlock(to), searches);
             long ms = (System.nanoTime() - t0) / 1_000_000;
             String flown = fly(w, on);
             out.append("| ").append(sec.get("id").getAsInt()).append(" | ").append(sec.get("name").getAsString())
-                    .append(" | ").append(describe(off, -1)).append(" | ").append(describe(on, ms)).append(" | ").append(flown).append(" |\n");
+                    .append(" | ").append(describe(off, -1)).append(" | ").append(describe(on, ms))
+                    .append(searches[0] > 1 && ok(on) ? ", in " + searches[0] + " searches" : "").append(" | ").append(flown).append(" |\n");
             // and each jump on its own, so a section that fails says which jump
             for (JsonElement je : sec.getAsJsonArray("jumps")) {
                 JsonObject jo = je.getAsJsonObject();
@@ -184,6 +202,26 @@ public class ParkourLabScorecard {
         }
     }
 
+    // what the bot does: when a search only gets partway, go there and search again from the end of it (up to CHAIN times)
+    static final int CHAIN = 6;
+
+    static VineLogPathTest.Result chained(VineLogPathTest.MapWorld w, BetterBlockPos from, GoalBlock goal, int[] searches) {
+        VineLogPathTest.Result all = VineLogPathTest.path(w, from, goal, false);
+        searches[0] = 1;
+        while (all.found && !all.inGoal && searches[0] < CHAIN) {
+            BetterBlockPos end = all.positions.get(all.positions.size() - 1);
+            VineLogPathTest.Result more = VineLogPathTest.path(w, end, goal, false);
+            searches[0]++;
+            if (!more.found || more.positions.size() < 2) {
+                break;
+            }
+            all.positions.addAll(more.positions.subList(1, more.positions.size()));
+            all.moves.addAll(more.moves);
+            all.inGoal = more.inGoal;
+        }
+        return all;
+    }
+
     private static boolean ok(VineLogPathTest.Result r) {
         return r.found && r.inGoal;
     }
@@ -237,7 +275,8 @@ public class ParkourLabScorecard {
                 jumps++;
                 // what MovementTungsten flies: a grab if dest is a ladder, and the planner's full search plan if it needed one
                 Landing landing = baritone.pathing.tungsten.TungstenJumps.landing(ctx, dest);
-                JumpPilot pilot = new JumpPilot(landing, src.x + 0.5, src.z + 0.5, JumpPolicy.Variant.EDGE);
+                double[] st = baritone.pathing.tungsten.TungstenJumps.standAt(world, src.x, src.y, src.z);
+                JumpPilot pilot = new JumpPilot(landing, src.x + st[0], src.z + st[1], JumpPolicy.Variant.EDGE);
                 if (move.startsWith("TUNGSTEN_")) {
                     baritone.pathing.tungsten.TungstenJumps.Jump j = baritone.pathing.tungsten.TungstenJumps.between(ctx, src, dest);
                     if (j != null) {
@@ -309,20 +348,12 @@ public class ParkourLabScorecard {
 
     // standing still in the middle of a cell, on whatever is under it
     private static void stand(PlayerSim sim, VineLogPathTest.MapWorld w, BetterBlockPos at) {
-        baritone.pathing.sim.BoxList boxes = new baritone.pathing.sim.BoxList();
+        // where the bot stands in that cell (its middle, or along the side the floor's on, or a pillar's rim next door)
         SafeCollision c = new SafeCollision(w);
-        c.boxes(at.x, at.y - 1, at.z, boxes);
-        c.boxes(at.x, at.y, at.z, boxes);
-        double top = at.y;
-        for (int i = 0; i < boxes.size(); i++) {
-            double t = boxes.get(i, 4);
-            if (t <= at.y + 0.5 && t > at.y - 0.5) {
-                top = Math.max(i == 0 ? t : top, t);
-            }
-        }
-        sim.x = at.x + 0.5;
-        sim.y = top;
-        sim.z = at.z + 0.5;
+        double[] st = baritone.pathing.tungsten.TungstenJumps.standAt(c, at.x, at.y, at.z);
+        sim.x = at.x + st[0];
+        sim.y = Double.isNaN(st[2]) ? at.y : st[2];
+        sim.z = at.z + st[1];
         sim.vx = sim.vz = 0;
         sim.vy = -0.0784;
         sim.onGround = true;

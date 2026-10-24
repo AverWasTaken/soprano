@@ -24,7 +24,7 @@ import java.util.Arrays;
 // one player on foot, one game tick at a time, the way 26.3 does it. the method names in the comments are the vanilla ones this
 // was ported from (LocalPlayer.aiStep, LivingEntity.aiStep / travelInAir / jumpFromGround, Entity.move / collide), floats where
 // vanilla has floats since the last digit of a sprint jump decides whether a step is cleared.
-// not modelled and bailed on: fluids, climbables, ice / slime / honey / soul sand / webs / powder snow, potions that touch
+// not modelled and bailed on: lava (water is swum through, travelInWater), climbables, ice / slime / honey / soul sand / webs / powder snow, potions that touch
 // jump or gravity, sneaking, passengers, elytra. blocks only: other entities (boats, minecarts, shulkers) and the world border
 // are walked straight through. a tick() that returns false because it ended somewhere odd has still moved the player
 public final class PlayerSim {
@@ -81,6 +81,10 @@ public final class PlayerSim {
     public boolean bounced;
     // standing in a ladder or vine at the end of the last tick
     public boolean climbing;
+    // in water at the start of the last tick (Entity.wasTouchingWater), and how deep: the water's surface over the feet
+    // (Entity.getFluidHeight). the next tick works these out again from where we are
+    public boolean inWater;
+    public double waterDepth;
     // set by the last tick(): did it leave the ground, and why it gave up if it did
     public boolean jumped;
     private String failure;
@@ -151,6 +155,8 @@ public final class PlayerSim {
         c.noJumpDelay = noJumpDelay;
         c.hasSupport = hasSupport;
         c.climbing = climbing;
+        c.inWater = inWater;
+        c.waterDepth = waterDepth;
         c.supportX = supportX;
         c.supportY = supportY;
         c.supportZ = supportZ;
@@ -195,9 +201,15 @@ public final class PlayerSim {
         }
         boolean hasForwardImpulse = mvz > 1.0E-5F;
 
-        // LocalPlayer.aiStep. canStartSprinting, then shouldStopRunSprinting off last tick's collision flags
-        if (!sprinting && hasForwardImpulse && params.sprintAllowed() && c.sprint()) {
+        // Entity.updateInWaterStateAndDoFluidPushing (baseTick, before any of the rest)
+        updateWater();
+        // LocalPlayer.aiStep. canStartSprinting, then shouldStopRunSprinting off last tick's collision flags. in water a
+        // sprint is a swim, which the sim doesn't do: no sprinting in water (a jump out of it goes without)
+        if (!sprinting && hasForwardImpulse && params.sprintAllowed() && c.sprint() && !inWater) {
             sprinting = true;
+        }
+        if (inWater) {
+            sprinting = false;
         }
         if (sprinting && (!params.sprintAllowed() || !hasForwardImpulse || horizontalCollision && !minorHorizontalCollision)) {
             sprinting = false;
@@ -235,8 +247,14 @@ public final class PlayerSim {
             }
         }
 
-        // the jump block: onGround and no delay, or the delay resets the moment the key is up
-        if (c.jump()) {
+        // the jump block: onGround and no delay, or the delay resets the moment the key is up.
+        // LivingEntity.aiStep: in water at all, space swims up (jumpInLiquid), and only standing on the bottom in water
+        // shallower than getFluidJumpThreshold is it a jump. so out of the top of a water block hanging in the air there's
+        // no jump, just the swim carrying on up a little way past the surface
+        boolean swimUp = inWater && waterDepth > 0 && !(onGround && waterDepth <= FLUID_JUMP_THRESHOLD);
+        if (c.jump() && swimUp) {
+            dy += 0.04F;
+        } else if (c.jump()) {
             if (onGround && noJumpDelay == 0) {
                 float power = (float) params.jumpStrength() * 1.0F * jumpFactor() + 0.0F; // LivingEntity.getJumpPower, no potion
                 if (!(power <= 1.0E-5F)) {
@@ -254,6 +272,9 @@ public final class PlayerSim {
             noJumpDelay = 0;
         }
 
+        if (inWater) {
+            return travelInWater(c, dx, dy, dz);
+        }
         // LivingEntity.travelInAir
         float blockFriction = onGround ? modifiedFriction(frictionBelow()) : 1.0F;
         float accel;
@@ -324,6 +345,109 @@ public final class PlayerSim {
         if (ended != null) {
             failure = ended;
             return false;
+        }
+        return true;
+    }
+
+    // in water right where we are now (and how deep, into waterDepth): what the next tick will go by
+    public boolean waterNow() {
+        bindScratch();
+        updateWater();
+        return inWater;
+    }
+
+    // Entity.getFluidJumpThreshold: the eyes under 0.4 up, or 0.4
+    public static final double FLUID_JUMP_THRESHOLD = 0.4;
+
+    // Entity.updateFluidHeightAndDoFluidPushing for water: the box (a hair smaller) against the water's surface in every cell it
+    // touches. still water doesn't push
+    private void updateWater() {
+        double minX = x - halfWidth + 0.001, maxX = x + halfWidth - 0.001, minY = y + 0.001, maxY = y + params.height() - 0.001;
+        double minZ = z - halfWidth + 0.001, maxZ = z + halfWidth - 0.001;
+        inWater = false;
+        waterDepth = 0.0;
+        for (int bx = Mth.floor(minX); bx <= Mth.floor(maxX); bx++) {
+            for (int by = Mth.floor(minY); by <= Mth.floor(maxY); by++) {
+                for (int bz = Mth.floor(minZ); bz <= Mth.floor(maxZ); bz++) {
+                    float h = world.water(bx, by, bz);
+                    if (h < 0) {
+                        continue;
+                    }
+                    double surface = by + h;
+                    if (surface >= minY) {
+                        inWater = true;
+                        waterDepth = Math.max(waterDepth, surface - minY);
+                    }
+                }
+            }
+        }
+    }
+
+    // LivingEntity.travelInWater, for a player (water slowdown 0.8, no depth strider, no dolphin's grace)
+    private boolean travelInWater(Controls c, double dx, double dy, double dz) {
+        boolean falling = dy <= 0.0;
+        double oldY = y;
+        float slowDown = 0.8F, accel = 0.02F;
+        double inLen = (double) xxa * xxa + (double) zza * zza;
+        if (!(inLen < 1.0E-7)) {
+            double ix = xxa, iz = zza;
+            if (inLen > 1.0) {
+                double norm = Math.sqrt(inLen);
+                ix /= norm;
+                iz /= norm;
+            }
+            ix *= accel;
+            iz *= accel;
+            float rad = c.moveYaw() * DEG_TO_RAD;
+            float sin = Mth.sin(rad), cos = Mth.cos(rad);
+            dx += ix * cos - iz * sin;
+            dz += iz * cos + ix * sin;
+        }
+        vx = dx;
+        vy = dy;
+        vz = dz;
+        move(c.viewYaw());
+        climbing = onClimbable();
+        if (horizontalCollision && climbing) {
+            vy = 0.2;
+        }
+        vx *= slowDown;
+        vy *= 0.8F;
+        vz *= slowDown;
+        // getFluidFallingAdjustedMovement: gravity at a sixteenth (the "falling" special case can't happen at 0.08)
+        vy -= params.gravity() / 16.0;
+        // jumpOutOfFluid: swimming into a wall with the top of it in reach, out we go
+        if (horizontalCollision && free(vx, vy + 0.6 - y + oldY, vz)) {
+            vy = 0.3F;
+        }
+        String ended = endedSomewhereOdd();
+        if (ended != null) {
+            failure = ended;
+            return false;
+        }
+        return true;
+    }
+
+    // Entity.isFree(dx, dy, dz): the box moved by that hits nothing and touches no fluid
+    private boolean free(double ox, double oy, double oz) {
+        double minX = x - halfWidth + ox, maxX = x + halfWidth + ox, minY = y + oy, maxY = y + params.height() + oy;
+        double minZ = z - halfWidth + oz, maxZ = z + halfWidth + oz;
+        for (int bx = Mth.floor(minX); bx <= Mth.floor(maxX); bx++) {
+            for (int by = Mth.floor(minY) - 1; by <= Mth.floor(maxY); by++) {
+                for (int bz = Mth.floor(minZ); bz <= Mth.floor(maxZ); bz++) {
+                    if (by >= Mth.floor(minY) && world.water(bx, by, bz) >= 0) {
+                        return false;
+                    }
+                    cell.clear();
+                    world.boxes(bx, by, bz, cell);
+                    for (int i = 0; i < cell.size(); i++) {
+                        if (cell.get(i, 0) < maxX && cell.get(i, 3) > minX && cell.get(i, 1) < maxY && cell.get(i, 4) > minY
+                                && cell.get(i, 2) < maxZ && cell.get(i, 5) > minZ) {
+                            return false;
+                        }
+                    }
+                }
+            }
         }
         return true;
     }
@@ -447,7 +571,8 @@ public final class PlayerSim {
         int z0 = Mth.floor(z - w - 1.0E-3), z1 = Mth.floor(z + w + 1.0E-3);
         // the block friction comes from getOnPos(0.500001F), speed and jump factors from the cell we are in, and
         // Entity.checkInsideBlocks from every cell the box touches
-        int y0 = Math.min(Mth.floor(y - 0.500001), Mth.floor(y));
+        // (in the air nothing's read off the block under us, only what the box is in: a flight half a block over lava is fine)
+        int y0 = onGround ? Math.min(Mth.floor(y - 0.500001), Mth.floor(y)) : Mth.floor(y - 1.0E-3);
         int y1 = Mth.floor(y + params.height() + 1.0E-3);
         for (int bx = x0; bx <= x1; bx++) {
             for (int by = y0; by <= y1; by++) {
@@ -466,7 +591,7 @@ public final class PlayerSim {
     // that lands on the edge of soul sand is caught by the next tick's unsupported() instead
     private String endedSomewhereOdd() {
         int bx = Mth.floor(x), bz = Mth.floor(z);
-        if (!world.plain(bx, Mth.floor(y), bz) || !world.plain(bx, Mth.floor(y - 0.500001), bz)) {
+        if (!world.plain(bx, Mth.floor(y), bz) || onGround && !world.plain(bx, Mth.floor(y - 0.500001), bz)) {
             return "ended on something not plain";
         }
         return null;

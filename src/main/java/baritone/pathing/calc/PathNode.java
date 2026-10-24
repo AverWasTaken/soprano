@@ -70,6 +70,15 @@ public final class PathNode {
      */
     public double favor;
 
+    // the highest y anywhere further down the search tree from here (AbstractNodeCostSearch.climbsBack), worked out when
+    // a part path is picked
+    public int treeTop = Integer.MIN_VALUE;
+    // and whether anything down there is still waiting to be looked at (the search hasn't finished with it)
+    public boolean treeOpen;
+    // some of the jumps on from here were "don't know yet" (worked out in the background, PendingTables) when it was expanded:
+    // not a dead end, however closed it looks
+    public boolean pending;
+
     public PathNode(int x, int y, int z, Goal goal) {
         this.previous = null;
         this.cost = ActionCosts.COST_INF;

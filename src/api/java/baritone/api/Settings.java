@@ -847,6 +847,18 @@ public final class Settings {
     public final Setting<Integer> partialPathMaxDrop = new Setting<>(2);
 
     /**
+     * Never plan to stand below this height (a parkour level's floor, where the server puts you back to the start or the last
+     * checkpoint). Off at its default. See {@link #learnFallFloor} for working it out by itself.
+     */
+    public final Setting<Integer> avoidBelowY = new Setting<>(-2048);
+
+    /**
+     * When the server teleports you back up after a fall (a parkour server resetting you to a checkpoint), remember how low
+     * that fall went and don't plan to stand that low again in this world, as if {@link #avoidBelowY} were set to it.
+     */
+    public final Setting<Boolean> learnFallFloor = new Setting<>(true);
+
+    /**
      * How far are you allowed to fall onto solid ground (with a water bucket)?
      * It's not that reliable, so I've set it below what would kill an unarmored player (23)
      * <p>

@@ -77,6 +77,10 @@ public final class JumpPilot {
     public String lastDrift;
     // what the last tick spent its time on, for the debug log's slow ticks
     public String lastWork = "";
+
+    public String variantNow() {
+        return (onFallback ? "fallback " : "") + variant;
+    }
     // finished on the touchdown, not standing still
     public boolean flowed;
 
@@ -316,7 +320,8 @@ public final class JumpPilot {
         if (!(fallback != null && ruleRefused)) {
             lastWork += " robust";
         }
-        JumpPolicy.Rollout r = fallback != null && ruleRefused ? null : JumpPolicy.robust(live, land, first);
+        JumpPolicy.Rollout r = fallback != null && ruleRefused ? null
+                : JumpPolicy.robust(live, land, first, fallback != null ? JumpPolicy.AIM_ERRORS.length : 0);
         if (r == null) {
             ruleRefused = true;
             return stage(live);

@@ -163,7 +163,7 @@ public final class TungstenSearch {
                     continue;
                 }
                 double peak = s.onGround ? s.y : n.s.onGround ? Math.max(n.s.y, s.y) : Math.max(n.peakY, s.y);
-                if (s.onGround && !n.s.onGround && n.peakY - s.y > JumpPolicy.SAFE_FALL) {
+                if (s.onGround && !n.s.onGround && n.peakY - s.y > JumpPolicy.safeFall()) {
                     continue; // that one hurts
                 }
                 if (land.grab() ? land.gripping(s) : s.onGround && JumpPolicy.onTheBlock(s, land)) {

@@ -128,10 +128,29 @@ public final class WorldCollision implements CollisionProvider {
         return state.is(BlockTags.FENCES) ? 1 : 0;
     }
 
-    // what Entity / LivingEntity read off a block that makes movement more than friction 0.6 and a flat floor
+    @Override
+    public float water(int x, int y, int z) {
+        net.minecraft.world.level.material.FluidState fluid = bsi.get0(x, y, z).getFluidState();
+        if (!isWater(fluid)) {
+            return -1F;
+        }
+        // FlowingFluid.getHeight: a full block when there's water over it
+        return isWater(bsi.get0(x, y + 1, z).getFluidState()) ? 1F : fluid.getOwnHeight();
+    }
+
+    public static boolean isWaterState(BlockState state) {
+        return isWater(state.getFluidState());
+    }
+
+    static boolean isWater(net.minecraft.world.level.material.FluidState fluid) {
+        return !fluid.isEmpty() && fluid.getType().isSame(net.minecraft.world.level.material.Fluids.WATER);
+    }
+
+    // what Entity / LivingEntity read off a block that makes movement more than friction 0.6 and a flat floor. water is
+    // fine now, PlayerSim swims (LivingEntity.travelInWater); lava isn't
     private static boolean isPlain(BlockState state) {
         Block block = state.getBlock();
-        return state.getFluidState().isEmpty()
+        return (state.getFluidState().isEmpty() || isWater(state.getFluidState()))
                 && block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && block.getJumpFactor() == 1.0F
                 && !state.is(BlockTags.CLIMBABLE)
                 && !state.is(Blocks.COBWEB) && !state.is(Blocks.SWEET_BERRY_BUSH) && !state.is(Blocks.POWDER_SNOW)

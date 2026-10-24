@@ -31,9 +31,11 @@ public final class LiveSim {
     // why the last of() came back null, for the debug line
     public static volatile String lastRefusal = "";
 
-    // null when the player is in some state the sim does not model (a boat, water, a potion that touches jumping)
+    // null when the player is in some state the sim does not model (a boat, lava, a potion that touches jumping)
     public static PlayerSim of(LocalPlayer player, CollisionProvider world) {
-        String why = player.isPassenger() ? "riding something" : player.isInWater() ? "in water" : player.isInLava() ? "in lava"
+        // (water is fine: the sim swims, LivingEntity.travelInWater, as long as nothing changes how fast)
+        String why = player.isPassenger() ? "riding something" : player.isInLava() ? "in lava"
+                : player.isInWater() && player.getAttributeValue(Attributes.WATER_MOVEMENT_EFFICIENCY) != 0.0 ? "depth strider"
                 : player.isFallFlying() ? "gliding" : player.isSwimming() ? "swimming" : player.getAbilities().flying ? "flying"
                 : player.isCrouching() ? "crouching" : player.isUsingItem() ? "using an item" : player.noPhysics ? "no physics"
                 : player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION) ? "a potion effect"

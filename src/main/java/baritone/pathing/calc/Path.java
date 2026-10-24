@@ -17,6 +17,7 @@
 
 package baritone.pathing.calc;
 
+import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.movement.IMovement;
@@ -116,6 +117,10 @@ class Path extends PathBase {
         }
         for (int i = 0; i < path.size() - 1; i++) {
             double cost = nodes.get(i + 1).cost - nodes.get(i).cost;
+            if (context.allowTungstenJumps) {
+                // the way into this node, as A* had it when it found the move out of it (TungstenJumps.Jump.carry)
+                context.tungsten().arriving(i == 0 ? context.startArrival : baritone.pathing.tungsten.TungstenJumps.carrySector(context, path.get(i - 1).x, path.get(i - 1).y, path.get(i - 1).z, path.get(i).x, path.get(i).y, path.get(i).z));
+            }
             Movement move = runBackwards(path.get(i), path.get(i + 1), cost);
             if (move == null) {
                 return true;
@@ -127,15 +132,29 @@ class Path extends PathBase {
     }
 
     private Movement runBackwards(BetterBlockPos src, BetterBlockPos dest, double cost) {
+        Movement first = null;
         for (Moves moves : Moves.values()) {
             Movement move = moves.apply0(context, src);
             if (move.getDest().equals(dest)) {
                 // have to calculate the cost at calculation time so we can accurately judge whether a cost increase happened between cached calculation and real execution
                 // however, taking into account possible favoring that could skew the node cost, we really want the stricter limit of the two
                 // so we take the minimum of the path node cost difference, and the calculated cost
-                move.override(Math.min(move.calculateCost(context), cost));
-                return move;
+                // (and the one that can actually do it: a grid move can end on the same cell as the jump A* took, a step up onto
+                // the rim of a pillar say, and can't get there. picked, it costs nothing here and everything when the
+                // executor checks it, and the path's thrown away before it starts)
+                double c = move.calculateCost(context);
+                if (c < ActionCosts.COST_INF) {
+                    move.override(Math.min(c, cost));
+                    return move;
+                }
+                if (first == null) {
+                    first = move;
+                }
             }
+        }
+        if (first != null) {
+            first.override(cost);
+            return first;
         }
         // this is no longer called from bestPathSoFar, now it's in postprocessing
         Helper.HELPER.logDebug("Movement became impossible during calculation " + src + " " + dest + " " + dest.subtract(src));

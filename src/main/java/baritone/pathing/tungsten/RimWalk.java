@@ -70,7 +70,7 @@ public final class RimWalk {
     // keyed by the blocks round it too, so it can be kept a while: the same corner comes up search after search
     private static final long MEMO_MS = 60_000;
     // a walk is steered all the way, a wobble gets put right as it goes: fewer flights than a jump needs
-    static final int FLIGHTS = 6;
+    static final int FLIGHTS = 3;
 
     public static TungstenSearch.Plan plan(CollisionProvider world, BetterBlockPos src, double floorY, Landing land) {
         if (land.grab() || Math.abs(land.y() - src.y) > 1) {
@@ -88,7 +88,8 @@ public final class RimWalk {
         TungstenSearch.Plan plan = null;
         for (int i = 0; i < MARGINS.length && plan == null; i++) {
             Grid grid = new Grid(area, MARGINS[i], FOOTING[i]);
-            int start = grid.at(src.x + 0.5, src.z + 0.5);
+            double[] at = TungstenJumps.standAt(world, src.x, src.y, src.z);
+            int start = grid.at(src.x + at[0], src.z + at[1]);
             if (start < 0 || !grid.ok[start]) {
                 if (DEBUG) {
                     System.out.println("[rim walk] margin " + MARGINS[i] + ": the start doesn't fit");
@@ -123,8 +124,15 @@ public final class RimWalk {
                                              Landing jumpTo) {
         for (boolean sprint : new boolean[]{true, false}) {
             for (double ahead : LOOK_AHEADS) {
+                long w0 = baritone.pathing.sim.PlayerSim.ticks();
                 TungstenSearch.Plan p = walk(world, src, floorY, land, path, sprint, ahead, jumpTo);
+                long w1 = baritone.pathing.sim.PlayerSim.ticks();
                 boolean flies = p != null && NeoSearches.fliesEveryTime(world, src, floorY, jumpTo != null ? jumpTo : land, p, FLIGHTS);
+                if (TungstenJumps.PROFILE) {
+                    PROFILE[0] += w1 - w0;
+                    PROFILE[1] += baritone.pathing.sim.PlayerSim.ticks() - w1;
+                    PROFILE[jumpTo != null ? 2 : 3]++;
+                }
                 if (DEBUG) {
                     System.out.println("[rim walk]   " + (sprint ? "sprint" : "walk") + " ahead " + ahead + (jumpTo != null ? " then jump" : "") + ": "
                             + (p == null ? "sim fails: " + lastWhy : p.ticks() + " ticks, flights " + flies));
@@ -138,7 +146,9 @@ public final class RimWalk {
     }
 
     // how many places along the rim to try jumping from
-    static final int TAKEOFFS = 4;
+    static final int TAKEOFFS = 2;
+    // walk ticks, flight ticks, walk-then-jump drives, walk-only drives (TUNGSTEN_PROFILE)
+    public static final long[] PROFILE = new long[4];
 
     private static TungstenSearch.Plan walkThenJump(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, Grid grid, int start) {
         // everywhere reachable on foot from the start

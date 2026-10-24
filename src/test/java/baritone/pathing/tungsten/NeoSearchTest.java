@@ -4,12 +4,18 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.pathing.sim.ArrayWorld;
 import baritone.pathing.sim.BoxList;
 import baritone.pathing.sim.PlayerSim;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
 // the neos only the full search does (NeoSearches): found, and then flown with the aim wobbling, every time
 public class NeoSearchTest {
+
+    @BeforeClass
+    public static void boot() {
+        adris.altoclef.util.helpers.ItemFixture.boot(); // (run on its own, nothing else has started the game's registries)
+    }
 
     private static final int SX = 8, SY = 63, SZ = 8;
 

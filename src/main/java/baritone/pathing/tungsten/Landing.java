@@ -27,7 +27,29 @@ import net.minecraft.util.Mth;
 // a stair is low too, on its lower step: the feet can come down there, half a block into the stair's own cell, and settling
 // walks them up onto the middle of it (on the high step, where the cell is right again). half: the whole top is the low
 // one (a slab), so that's the height to aim for
-public record Landing(int x, int y, int z, boolean grab, boolean low, boolean half) {
+// ax az: where in the cell to come down, when that isn't its middle: the floor is only along one side of it (the top of a
+// ladder, a head on a wall), so the middle is thin air
+// water: a water block to come down into (and swim out of the top of, the next jump), not a floor
+public record Landing(int x, int y, int z, boolean grab, boolean low, boolean half, double ax, double az, boolean water) {
+
+    public Landing(int x, int y, int z, boolean grab, boolean low, boolean half, double ax, double az) {
+        this(x, y, z, grab, low, half, ax, az, false);
+    }
+
+    public Landing(int x, int y, int z, boolean grab, boolean low, boolean half) {
+        this(x, y, z, grab, low, half, 0.5, 0.5);
+    }
+
+    // into the water in this cell (the top of a column of it, or a lone block of it)
+    public static Landing swim(int x, int y, int z) {
+        return swim(x, y, z, false);
+    }
+
+    // deep: the top of a column of water at least two high (low says so, for a water landing): getting the top of us into
+    // its lower block is enough, it holds us. a lone block has to be got into properly, or we sink out of its bottom
+    public static Landing swim(int x, int y, int z, boolean deep) {
+        return new Landing(x, y, z, false, deep, false, 0.5, 0.5, true);
+    }
 
     public Landing(int x, int y, int z) {
         this(x, y, z, false, false, false);
@@ -35,6 +57,11 @@ public record Landing(int x, int y, int z, boolean grab, boolean low, boolean ha
 
     public Landing(int x, int y, int z, boolean grab) {
         this(x, y, z, grab, false, false);
+    }
+
+    // the same landing, coming down at x + ax, z + az instead of the middle
+    public Landing aimed(double ax, double az) {
+        return new Landing(x, y, z, grab, low, half, ax, az, water);
     }
 
     // a landing on a bottom slab
@@ -78,6 +105,12 @@ public record Landing(int x, int y, int z, boolean grab, boolean low, boolean ha
 
     // where a jump at this landing is finished: standing still on it, or hanging on the ladder in its cell
     public boolean reached(SimState s, double still) {
+        if (water) {
+            // in the water in its column: the top of us in it is enough (it holds us, and the swim up out of it is the next
+            // jump's), from the feet two blocks under the cell, coming up into a column from the side, to in the cell itself
+            int fy = feetY(s.y);
+            return s.inWater && Mth.floor(s.x) == x && Mth.floor(s.z) == z && fy <= y && fy >= y - (low ? 2 : 1);
+        }
         if (grab) {
             return s.climbing && Mth.floor(s.x) == x && Mth.floor(s.z) == z && feetY(s.y) == y;
         }
@@ -89,11 +122,11 @@ public record Landing(int x, int y, int z, boolean grab, boolean low, boolean ha
     public static final double MARGIN = 0.06;
 
     public double centerX() {
-        return x + 0.5;
+        return x + ax;
     }
 
     public double centerZ() {
-        return z + 0.5;
+        return z + az;
     }
 
     public static int feetY(double y) {
@@ -110,8 +143,15 @@ public record Landing(int x, int y, int z, boolean grab, boolean low, boolean ha
             return false;
         }
         double fx = px - x, fz = pz - z;
+        if (ax != 0.5 || az != 0.5) {
+            // a floor along one side of the cell, or a rim: there, not just anywhere in the cell (the next jump goes from there)
+            return Math.abs(fx - ax) <= AIM_NEAR && Math.abs(fz - az) <= AIM_NEAR;
+        }
         return fx >= MARGIN && fx <= 1 - MARGIN && fz >= MARGIN && fz <= 1 - MARGIN;
     }
+
+    // how near the aim point an aimed landing has to settle
+    public static final double AIM_NEAR = 0.15;
 
     public double horizontalDistance(double px, double pz) {
         double dx = centerX() - px, dz = centerZ() - pz;

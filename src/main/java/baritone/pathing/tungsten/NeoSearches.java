@@ -61,6 +61,7 @@ public final class NeoSearches {
     static final int NEO = 0, COMBO = 1, LEDGES = 2;
 
     static final boolean LOG = System.getenv("SOPRANO_NEO_LOG") != null;
+    static final boolean FLY_DEBUG = System.getenv("SOPRANO_FLY_DEBUG") != null;
 
     private static final Object PENDING = new Object(), NONE = new Object();
     private static final Map<Key, Object> RESULTS = new ConcurrentHashMap<>();
@@ -85,12 +86,37 @@ public final class NeoSearches {
         }
     }
 
+    // how long the searches to each landing (its long hash) have spent coming up with nothing lately: a landing no way to
+    // has been found to from one spot is usually one there's no way to from the spots next to it either, and each of those
+    // is seconds of search. so the more time gone on it the further back its jobs go, and the others (a jump further on
+    // that the path is waiting for) get a turn
+    private static final Map<Long, Long> FAILED_MS = new ConcurrentHashMap<>();
+    // ms of fruitless search that count as a block further from the player (squared, the way pick measures)
+    private static final double FAILED_MS_PER_SQ_BLOCK = 10;
+
     private NeoSearches() {}
 
     public static void focus(double x, double y, double z) {
+        double dx = x - focusX, dz = z - focusZ;
+        boolean moved = Double.isNaN(dx + dz) || dx * dx + dz * dz > MAX_JOB_DISTANCE * MAX_JOB_DISTANCE;
         focusX = x;
         focusY = y;
         focusZ = z;
+        if (moved) {
+            FAILED_MS.clear();
+            // somewhere else altogether (a teleport, a new level): what was waiting round the old place would hold up the
+            // queue for minutes. dropped, and asked again if a path ever comes back there
+            synchronized (QUEUE) {
+                QUEUE.removeIf(job -> {
+                    double jx = job.src().x + 0.5 - x, jz = job.src().z + 0.5 - z;
+                    boolean far = jx * jx + jz * jz > MAX_JOB_DISTANCE * MAX_JOB_DISTANCE;
+                    if (far) {
+                        RESULTS.remove(job.key());
+                    }
+                    return far;
+                });
+            }
+        }
     }
 
     // the searched plan from src to land, standing still at src's middle with the feet at floorY. null when there's none,
@@ -112,8 +138,8 @@ public final class NeoSearches {
         Hashed hashed = HASHES.get(pair);
         SnapshotCollision snap = null;
         if (hashed == null || now - hashed.at() > HASH_MS) {
-            snap = snapshot(world, src, land, region);
-            hashed = new Hashed(snap.hash, now);
+            // (just the hash: a whole snapshot each time only to hash it was most of what A* threw away)
+            hashed = new Hashed(snapshotHash(world, src, land, region), now);
             if (HASHES.size() > 20_000) {
                 HASHES.clear();
             }
@@ -139,6 +165,12 @@ public final class NeoSearches {
             }
             synchronized (QUEUE) {
                 QUEUE.add(new Job(key, snap, src, floorY, land, region, via, kind));
+                if (QUEUE.size() > MAX_QUEUE) {
+                    // too many waiting (a long #goto asks about every wall along the way, and each holds a copy of the blocks
+                    // round it): the one that would go last goes now, and gets asked again when a path comes near it
+                    int worst = pick(false);
+                    RESULTS.remove(QUEUE.remove(worst).key());
+                }
                 if (workers < MAX_WORKERS) {
                     workers++;
                     Thread t = new Thread(NeoSearches::work, "Soprano neo search");
@@ -157,6 +189,15 @@ public final class NeoSearches {
                 Mth.floor(region.maxX()) + 2, maxY, Mth.floor(region.maxZ()) + 2);
     }
 
+    private static long snapshotHash(CollisionProvider world, BetterBlockPos src, Landing land, TungstenSearch.Region region) {
+        int minY = Math.min(src.y, land.y()) - 5, maxY = Math.max(src.y, land.y()) + 4;
+        return SnapshotCollision.hashOf(world, Mth.floor(region.minX()) - 2, minY, Mth.floor(region.minZ()) - 2,
+                Mth.floor(region.maxX()) + 2, maxY, Mth.floor(region.maxZ()) + 2);
+    }
+
+    // at most this many jobs waiting
+    private static final int MAX_QUEUE = 200;
+
     // what lookup says for "being worked out"
     static final TungstenSearch.Plan WAIT = new TungstenSearch.Plan(List.of(), List.of(), 0, 0);
 
@@ -169,6 +210,34 @@ public final class NeoSearches {
         return TungstenSearch.Region.around(src.x + 0.5, src.z + 0.5, land.centerX(), land.centerZ(), Math.min(src.y, land.y()) - 4, 3);
     }
 
+    // the job to do next (first true), or the one to do last (false). QUEUE held
+    private static int pick(boolean first) {
+        int best = 0;
+        double bestD = first ? Double.MAX_VALUE : -Double.MAX_VALUE;
+        for (int i = 0; i < QUEUE.size(); i++) {
+            BetterBlockPos s = QUEUE.get(i).src();
+            double dx = s.x + 0.5 - focusX, dy = s.y - focusY, dz = s.z + 0.5 - focusZ;
+            // a combo (two neos in one flight) only matters when the second one can't go from standing on the pad,
+            // so it waits until the single ones are done, and then it may not be needed at all
+            // and the ones going away from the player (onwards) before the ones coming back towards it: a path
+            // forwards needs the first kind, the second kind is A* looking behind itself
+            Landing l = QUEUE.get(i).land();
+            double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
+            boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
+            // near the player first, a ledge chain as if it were ten blocks further off (they're the way when nothing
+            // else is, and a lot more of them get asked about), going back as if thirty
+            boolean far = Double.isNaN(dx + dy + dz);
+            Long failed = FAILED_MS.get(BetterBlockPos.longHash(l.x(), l.y(), l.z()));
+            double d = (failed == null ? 0 : failed / FAILED_MS_PER_SQ_BLOCK) + (QUEUE.get(i).combo() ? 1.0E9 : 0) + (far ? i + (QUEUE.get(i).kind() == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
+                    : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
+            if (first ? d < bestD : d >= bestD) {
+                bestD = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
     private static void work() {
         while (true) {
             Job job;
@@ -177,28 +246,7 @@ public final class NeoSearches {
                     workers--;
                     return;
                 }
-                int best = 0;
-                double bestD = Double.MAX_VALUE;
-                for (int i = 0; i < QUEUE.size(); i++) {
-                    BetterBlockPos s = QUEUE.get(i).src();
-                    double dx = s.x + 0.5 - focusX, dy = s.y - focusY, dz = s.z + 0.5 - focusZ;
-                    // a combo (two neos in one flight) only matters when the second one can't go from standing on the pad,
-                    // so it waits until the single ones are done, and then it may not be needed at all
-                    // and the ones going away from the player (onwards) before the ones coming back towards it: a path
-                    // forwards needs the first kind, the second kind is A* looking behind itself
-                    Landing l = QUEUE.get(i).land();
-                    double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
-                    boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
-                    // near the player first, a ledge chain as if it were ten blocks further off (they're the way when nothing
-                    // else is, and a lot more of them get asked about), going back as if thirty
-                    boolean far = Double.isNaN(dx + dy + dz);
-                    double d = (QUEUE.get(i).combo() ? 1.0E9 : 0) + (far ? i + (QUEUE.get(i).kind() == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
-                            : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
-                    if (d < bestD) {
-                        bestD = d;
-                        best = i;
-                    }
-                }
+                int best = pick(true);
                 job = QUEUE.remove(best);
             }
             double fx = job.src().x + 0.5 - focusX, fz = job.src().z + 0.5 - focusZ;
@@ -218,6 +266,9 @@ public final class NeoSearches {
             if (LOG) {
                 System.out.println("[neo search] " + (job.kind() == LEDGES ? "(ledges) " : "") + job.src() + " -> " + job.land() + ": " + (plan == null ? "none" : plan.ticks() + " ticks")
                         + " in " + (System.currentTimeMillis() - t0) + " ms, " + QUEUE.size() + " queued");
+            }
+            if (plan == null) {
+                FAILED_MS.merge(BetterBlockPos.longHash(job.land().x(), job.land().y(), job.land().z()), System.currentTimeMillis() - t0, Long::sum);
             }
             RESULTS.put(job.key(), plan == null ? NONE : plan);
         }
@@ -245,15 +296,17 @@ public final class NeoSearches {
             }
             int landed = 0;
             for (long seed = 0; seed < FLIGHTS; seed++) {
-                if (fly(standing(world, src, floorY), land, plan, src.x + 0.5, src.z + 0.5, seed, JITTER) == null) {
+                if (flyFrom(world, src, floorY, land, plan, seed, JITTER) == null) {
                     landed++;
                 } else {
                     break;
                 }
             }
             if (LOG) {
+                PlayerSim a = standing(fat, src, floorY), b = standing(world, src, floorY);
+                System.out.println("[neo search]   start fat " + a.x + " " + a.z + " real " + b.x + " " + b.z + " floorY " + floorY);
                 System.out.println("[neo search]   margin " + m + (VIA[attempt] && via != null ? " via" : "") + ": " + plan.ticks() + " ticks, " + landed + "/" + FLIGHTS + " flights"
-                        + (landed < FLIGHTS ? " (" + fly(standing(world, src, floorY), land, plan, src.x + 0.5, src.z + 0.5, landed, JITTER) + ")" : ""));
+                        + (landed < FLIGHTS ? " (" + flyFrom(world, src, floorY, land, plan, landed, JITTER) + ")" : ""));
             }
             if (landed == FLIGHTS) {
                 return plan;
@@ -272,7 +325,7 @@ public final class NeoSearches {
             return null;
         }
         for (long seed = 0; seed < FLIGHTS; seed++) {
-            if (fly(standing(world, src, floorY), land, plan, src.x + 0.5, src.z + 0.5, seed, JITTER) != null) {
+            if (flyFrom(world, src, floorY, land, plan, seed, JITTER) != null) {
                 return null;
             }
         }
@@ -285,18 +338,26 @@ public final class NeoSearches {
 
     static boolean fliesEveryTime(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Plan plan, int flights) {
         for (long seed = 0; seed < flights; seed++) {
-            if (fly(standing(world, src, floorY), land, plan, src.x + 0.5, src.z + 0.5, seed, JITTER) != null) {
+            if (flyFrom(world, src, floorY, land, plan, seed, JITTER) != null) {
                 return false;
             }
         }
         return true;
     }
 
+    // fly from standing still at src
+    static String flyFrom(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Plan plan, long seed, double jitter) {
+        PlayerSim sim = standing(world, src, floorY);
+        return fly(sim, land, plan, sim.x, sim.z, seed, jitter);
+    }
+
+    // standing still at src: in its middle, or wherever in it the floor is (TungstenJumps.standAt)
     static PlayerSim standing(CollisionProvider world, BetterBlockPos src, double floorY) {
         PlayerSim sim = new PlayerSim(PlayerSim.Params.vanilla(), world);
-        sim.x = src.x + 0.5;
+        double[] at = TungstenJumps.standAt(world, src.x, src.y, src.z);
+        sim.x = src.x + at[0];
         sim.y = floorY;
-        sim.z = src.z + 0.5;
+        sim.z = src.z + at[1];
         sim.vy = -0.0784;
         sim.onGround = true;
         return sim;
@@ -318,6 +379,9 @@ public final class NeoSearches {
                 return d.status() + " " + d.why() + " at " + SimState.of(real);
             }
             PlayerSim.Controls k = d.keys();
+            if (FLY_DEBUG) {
+                System.out.println("[fly] " + t + " " + SimState.of(real) + " " + k + " |" + pilot.lastWork + " variant " + pilot.variantNow());
+            }
             double r = rnd.nextDouble() - 0.5;
             if (Math.abs(r) < 0.1) {
                 r *= 4;

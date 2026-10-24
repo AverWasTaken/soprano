@@ -589,7 +589,147 @@ def build():
         c.jump(0, 0, -3)
     c.end_section(3, 0, 0, "20: CubeCraft")
 
-    # 21. the finale: a bit of every section, one after the other, no checkpoints between. straights, diagonals, ups and
+    # 21. decorations: the bits of the CubeCraft levels that aren't blocks at all, stood on like blocks. flower pots and
+    # heads on fence posts (the fence is the floor, half a block up into the pot's cell), a head floating on its own, a head
+    # on a wall, torches and lanterns on posts, a candle
+    c.start_section("Decorations", "Flower pots and heads on fence posts, pot to pot up and down, a floating head, a head "
+                    "on a wall, a torch and a lantern on posts and a candle: things that aren't blocks, stood on like blocks.",
+                    "TUNGSTEN")
+    def post(dx, dy, dz, top, under="spruce_fence", kind="decoration"):
+        # top in the cell under the feet, a fence post under that: you stand on the post's top, half a block into top's cell
+        x, y, z = c.cur
+        c.jump(dx, dy, dz, top, kind=kind)
+        c.put(x + dx, y + dy - 2, z + dz, under)
+    post(2, 1, 0, "potted_cactus", kind="up onto a pot on a post")
+    post(3, 0, -1, "potted_cactus", kind="pot to pot")
+    post(2, 1, -2, "potted_fern", kind="pot to pot, one up")
+    post(3, -1, 1, "potted_dead_bush", kind="pot to pot, one down")
+    post(4, -1, 2, "potted_cactus", kind="pot to pot, far and one down")
+    post(2, 1, -2, "player_head", kind="onto a head on a post")
+    c.jump(3, 0, 0, "player_head", kind="onto a floating head")
+    c.jump(2, 0, 2, "player_wall_head[facing=east]", kind="onto a head on a wall")
+    x, y, z = c.cur
+    c.put(x - 1, y - 1, z, "sandstone")
+    c.jump(3, 0, -1, "dark_oak_fence", kind="onto a torch on a fence")
+    x, y, z = c.cur
+    c.put(x, y, z, "torch")
+    post(3, 0, 0, "lantern", under="dark_oak_fence", kind="onto a lantern on a fence")
+    post(2, 0, 1, "white_candle", under="quartz_block", kind="onto a candle")
+    c.jump(3, 0, 0, "quartz_block", kind="off a candle")
+    c.end_section(3, 0, 0, "21: Decorations")
+
+    # 22. pillars over lava: one block pillars with a fence post two high on top, the way the hell level has them. the
+    # post leaves a strip of the top either side of it, and that strip is all there is to stand on: hop onto the strip, walk
+    # round the post, off the far side onto the next one. one has a head on its post to stand up on, and there's a lone iron
+    # bar. the lava's a fall like falling off is
+    c.start_section("Pillars", "One block pillars over lava, each with a fence post two high in the middle of it: land on "
+                    "the strip of top beside the post, walk round it, jump on. Then up onto a head on a post, down onto bars.",
+                    "TUNGSTEN (rims)")
+    x0, y, z0 = c.cur
+    def pillar_post(px, pz, top_y, post=("nether_brick_fence", "nether_brick_fence")):
+        for py in range(top_y - 4, top_y):
+            c.put(px, py, pz, "obsidian")
+        for i, b in enumerate(post):
+            c.put(px, top_y + i, pz, b)
+    def rim_jump(to, kind):
+        x, yy, z = c.cur
+        c.jumps.append({"from": [x, yy, z], "to": list(to), "kind": kind, "block": "obsidian"})
+        c.cur = tuple(to)
+    # a lava pool under the lot, in a basin so it stays put
+    lx0, lx1, lz0, lz1 = x0 + 1, x0 + 22, z0 - 4, z0 + 4
+    for lx in range(lx0 - 1, lx1 + 2):
+        for lz in range(lz0 - 1, lz1 + 2):
+            c.put(lx, y - 6, lz, "netherrack", overwrite=False)
+            edge = lx in (lx0 - 1, lx1 + 1) or lz in (lz0 - 1, lz1 + 1)
+            c.put(lx, y - 5, lz, "netherrack" if edge else "lava", overwrite=False)
+    # A: from the pad onto its west rim, round the post to its east rim
+    pillar_post(x0 + 3, z0, y)
+    rim_jump((x0 + 2, y, z0), "onto a pillar's rim")
+    rim_jump((x0 + 4, y, z0), "round the post")
+    # B: across onto its west rim, round its corner to the north rim
+    pillar_post(x0 + 8, z0 + 1, y)
+    rim_jump((x0 + 7, y, z0 + 1), "rim to rim")
+    rim_jump((x0 + 8, y, z0), "round the post's corner")
+    # C: a block lower, a fence and a head on it: stand up on the head, half a block up from the rim
+    pillar_post(x0 + 11, z0 - 2, y - 1, post=("nether_brick_fence", "player_head"))
+    rim_jump((x0 + 11, y + 1, z0 - 2), "up onto a head on a post")
+    # D: down onto its rim, two down, round to the far side
+    pillar_post(x0 + 14, z0 + 1, y - 1)
+    rim_jump((x0 + 14, y - 1, z0), "down onto a rim")
+    rim_jump((x0 + 15, y - 1, z0 + 1), "round the post's corner")
+    # a lone iron bar on a block, then off onto quartz
+    for py in range(y - 5, y - 1):
+        c.put(x0 + 18, py, z0 + 2, "obsidian")
+    c.put(x0 + 18, y - 1, z0 + 2, "iron_bars")
+    rim_jump((x0 + 18, y + 0, z0 + 2), "onto a lone iron bar")
+    c.cur = (x0 + 18, y, z0 + 2)
+    c.jump(3, 0, -2, "quartz_block", kind="off the bar")
+    c.end_section(3, 0, 0, "22: Pillars")
+
+    # 23. ladder tops: single ladders hanging in the air, stood on (a ladder's a thin plate along one side of its cell, and
+    # its top edge holds you), and one caught in mid air and climbed onto, the desert level's ladder bit
+    c.start_section("Ladder tops", "Single ladders hanging in the air: land on the top edge of one, hop to the next, catch "
+                    "one in mid air and climb up onto its top, then off onto a slab.", "TUNGSTEN (ladders)")
+    def ladder_top(dx, dy, dz, facing, kind):
+        x, yy, z = c.cur
+        nx, ny, nz = x + dx, yy + dy, z + dz
+        c.put(nx, ny - 1, nz, f"ladder[facing={facing}]")
+        c.jumps.append({"from": [x, yy, z], "to": [nx, ny, nz], "kind": kind, "block": "ladder"})
+        c.cur = (nx, ny, nz)
+    ladder_top(3, 0, 0, "west", "onto a ladder's top")
+    ladder_top(2, 1, 2, "north", "ladder top to ladder top, one up")
+    ladder_top(3, 0, -1, "east", "ladder top to ladder top")
+    # two ladders one over the other, caught at the bottom one and climbed onto the top
+    x, yy, z = c.cur
+    gx, gz = x + 3, z + 1
+    c.put(gx, yy, gz, "ladder[facing=south]")
+    c.put(gx, yy + 1, gz, "ladder[facing=south]")
+    c.jumps.append({"from": [x, yy, z], "to": [gx, yy, gz], "kind": "catch a ladder", "block": "ladder"})
+    c.jumps.append({"from": [gx, yy, gz], "to": [gx, yy + 2, gz], "kind": "climb onto its top", "block": "ladder"})
+    c.cur = (gx, yy + 2, gz)
+    c.jump(3, -1, 0, "birch_slab", kind="off a ladder top onto a slab")
+    c.jump(3, 0, 0, "quartz_block", kind="slab to block")
+    c.end_section(3, 0, 0, "23: Ladder tops")
+
+    # 24. soul sand: it slows you down to under half speed, so a run up on it gets you nowhere, and it's a little lower than a
+    # block (an eighth). jumps onto it, along it, and off it across gaps that need the run up to count
+    c.start_section("Soul sand", "Soul sand slows you to under half speed: onto it, a slow run up along it and across a gap, "
+                    "soul sand to soul sand, up onto it and off it.", "TUNGSTEN")
+    c.jump(2, 0, 0, "soul_sand", kind="onto soul sand")
+    c.walk(2, "soul_sand")
+    c.jump(3, 0, 0, "soul_sand", kind="soul sand to soul sand, off a slow run up")
+    c.jump(3, 0, 1, "quartz_block", kind="off soul sand")
+    c.walk(1, "quartz_block")
+    c.walk(3, "soul_sand")
+    c.jump(4, 0, 0, "quartz_block", kind="3 gap off a soul sand run up")
+    c.jump(2, 1, 0, "soul_sand", kind="up onto soul sand")
+    c.jump(3, 0, -1, "soul_sand", kind="soul sand to soul sand, diagonal")
+    c.jump(3, -1, 0, "quartz_block", kind="off soul sand, one down")
+    c.end_section(3, 0, 0, "24: Soul sand")
+
+    # 25. water blocks: single water sources hanging in the air, the desert level's water bit. there's no jumping out of the
+    # top of one (in water, space only swims up), so the way on is a block you can fall into, or one a block or two higher
+    # that the top of you reaches into as you come up out of this one, and swim up that
+    c.start_section("Water blocks", "Water blocks hanging in the air, like the desert level's: into a column of it, down into "
+                    "another, then up a ladder of them two at a time (swim up, lean over into the next), and out at the bottom "
+                    "onto a block.", "TUNGSTEN (water)")
+    def water(dx, dy, dz, kind, deep=False):
+        x, yy, z = c.cur
+        nx, ny, nz = x + dx, yy + dy, z + dz
+        c.put(nx, ny, nz, "water")
+        if deep:
+            c.put(nx, ny - 1, nz, "water")
+        c.jumps.append({"from": [x, yy, z], "to": [nx, ny, nz], "kind": kind, "block": "water"})
+        c.cur = (nx, ny, nz)
+    water(3, 1, 0, "into a column of water two high, on the level", deep=True)
+    water(2, -2, 1, "down into another")
+    water(1, 2, 1, "up into the one over it, two up")
+    water(1, 2, -1, "and two up again")
+    water(2, -3, 0, "down into one more")
+    c.jump(2, -3, -1, "quartz_block", kind="out of the side and down onto a block")
+    c.end_section(3, 0, 0, "25: Water blocks")
+
+    # 26. the finale: a bit of every section, one after the other, no checkpoints between. straights, diagonals, ups and
     # downs, a neo, a four blocker, a head hitter, fences, a ladder, ice, a slime bounce, a triple neo, a neo chain, slime
     # onto a ladder, the ice tunnel, a ladder neo up a wall, and the finish on top
     c.start_section("Finale", "Every section in one run: straights, diagonals, ups and downs, a neo, a four blocker, a "
@@ -737,7 +877,25 @@ def chunk_ranges(lo, hi, step):
         a += step
 
 
-def datapack(c, outdir):
+def still(box, fluids):
+    """fills that take out the water or lava that has run from the sources (CubeCraft has fluids turned off: a lone water
+    block or a lava fall stays put there). strict, so the sources aren't told and don't run again"""
+    x0, y0, z0, x1, y1, z1 = box
+    lines = []
+    for fluid in fluids:
+        for lvl in range(1, 16):
+            for a, b in chunk_ranges(x0, x1, 16):
+                for d, e in chunk_ranges(z0, z1, 16):
+                    for ya, yb in chunk_ranges(y0, y1, 120):
+                        lines.append(f"fill {a} {ya} {d} {b} {yb} {e} air replace minecraft:{fluid}[level={lvl}] strict")
+    return lines
+
+
+def fluids_in(blocks):
+    return [f for f in ("water", "lava") if any(st.startswith(f) for st in blocks.values())]
+
+
+def datapack(c, outdir, levels=()):
     x0, y0, z0, x1, y1, z1 = bbox(c)
     fn = {}
 
@@ -745,6 +903,8 @@ def datapack(c, outdir):
         return 'tellraw @s ' + json.dumps({"text": text, "color": color})
 
     fn["load"] = [
+        # like CubeCraft: no fall damage (a fall in the Lab or a level only puts you back, it never kills you)
+        "gamerule fall_damage false",
         "scoreboard objectives add pl_cp dummy",
         "scoreboard objectives add pl_t dummy",
         "scoreboard objectives add pl_split dummy",
@@ -788,19 +948,26 @@ def datapack(c, outdir):
     for a, b in chunk_ranges(x0, x1, 16):
         for d, e in chunk_ranges(z0, z1, 16):
             lines.append(f"fill {a} {y0} {d} {b} {y1} {e} air")
-    for (xa, y, z, xb, s) in sorted(runs(c.blocks), key=lambda r: (r[1], r[2], r[0])):
+    # things that hang in the air (a water block, a ladder) go in last and with no block updates: water would run, and a
+    # ladder with nothing behind it would drop off when something next to it got placed
+    def fragile(st):
+        return st.startswith(("water", "ladder"))
+    for (xa, y, z, xb, s) in sorted(runs(c.blocks), key=lambda r: (fragile(r[4]), r[1], r[2], r[0])):
+        mode = " strict" if fragile(s) else ""
         if xa == xb:
-            lines.append(f"setblock {xa} {y} {z} {s}")
+            lines.append(f"setblock {xa} {y} {z} {s}{mode}")
         else:
-            lines.append(f"fill {xa} {y} {z} {xb} {y} {z} {s}")
+            lines.append(f"fill {xa} {y} {z} {xb} {y} {z} {s}{mode}")
     for cp in c.checkpoints:
         lines.append(f'summon marker {cp["x"] + 0.5} {cp["y"]} {cp["z"] + 0.5} '
-                     f'{{Tags:["{PACK}","pl_cp","pl_cp{cp["id"]}"],Rotation:[-90f,0f]}}')
+                     f'{{Tags:["{PACK}","pl_labcp","pl_cp{cp["id"]}"],Rotation:[-90f,0f]}}')
         lines.append(f'scoreboard players set @e[type=marker,tag=pl_cp{cp["id"]},limit=1] pl_id {cp["id"]}')
     for (lx, ly, lz, text) in c.labels:
         lines.append(f'summon text_display {lx} {ly} {lz} {{Tags:["{PACK}"],billboard:"center",'
                      f'text:{json.dumps(text)},background:1073741824,see_through:1b}}')
     lines.append(f"forceload remove {x0} {z0} {x1} {z1}")
+    if levels:
+        lines.append(f"schedule function {PACK}:lvb/0 2t")
     lines.append('tellraw @a ' + json.dumps([{"text": "[Parkour Lab] ", "color": "gold"},
                                              {"text": f"Built: {len(c.blocks)} blocks, {len(c.sections)} sections. ", "color": "white"},
                                              {"text": "[Start]", "color": "green",
@@ -823,36 +990,50 @@ def datapack(c, outdir):
     clear_now += [f"forceload remove {x0} {z0} {x1} {z1}", 'tellraw @a {"text":"[Parkour Lab] Cleared.","color":"gold"}']
     fn["clear_now"] = clear_now
 
+    # the Lab's own hanging water (section 25): what runs from it taken out, at the start and every checkpoint teleport
+    wet = [p for p, st in c.blocks.items() if st.startswith("water")]
+    fn["still"] = still((min(p[0] for p in wet) - 8, y0, min(p[2] for p in wet) - 8, max(p[0] for p in wet) + 8,
+                         max(p[1] for p in wet), max(p[2] for p in wet) + 8), ["water"]) if wet else []
     s = c.checkpoints[0]
     fn["start"] = [
+        f"function {PACK}:still",
+        f"schedule function {PACK}:still 200t",
+        f"function {PACK}:leave",
         f"tag @s add pl_run",
         "scoreboard players set @s pl_cp 0",
         "scoreboard players set @s pl_t 0",
         "scoreboard players set @s pl_split 0",
         "scoreboard players set @s pl_falls 0",
         "scoreboard players set @s pl_sfalls 0",
-        "effect give @s saturation infinite 0 true",
+        "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
         f"tp @s {s['x'] + 0.5} {s['y']} {s['z'] + 0.5} -90 0",
         tellraw("[Parkour Lab] Go! Timer's running. Fall and you're back at the last checkpoint. /function parkourlab:stop to stop."),
     ]
-    fn["stop"] = ["tag @s remove pl_run", "effect clear @s saturation", tellraw("[Parkour Lab] Stopped.")]
+    fn["stop"] = [f"function {PACK}:leave", "tag @s remove pl_marathon", "effect clear @s saturation", tellraw("[Parkour Lab] Stopped.")]
+    # out of whatever course this is on (the Lab or a level)
+    fn["leave"] = ["tag @s remove pl_run", "tag @s remove pl_lvrun"] + [f"tag @s remove pl_on_{lv.name}" for lv in levels]
 
     # checkpoints you can teleport straight to (the run carries on from there, timer and all)
     for cp in c.checkpoints:
         fn[f"cp/{cp['id']}"] = [
+            f"function {PACK}:still",
+            f"function {PACK}:leave",
             "tag @s add pl_run",
             f"scoreboard players set @s pl_cp {cp['id']}",
             "scoreboard players operation @s pl_split = @s pl_t",
             "scoreboard players set @s pl_sfalls 0",
-            "effect give @s saturation infinite 0 true",
+            "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
             f"tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5} -90 0",
             tellraw(f"[Parkour Lab] At checkpoint {cp['id']}: {cp['name']}"),
         ]
 
     fn["tick"] = [
         "scoreboard players add @a[tag=pl_run] pl_t 1",
-        f"execute as @e[type=marker,tag=pl_cp] at @s as @a[tag=pl_run,distance=..2.3] run function {PACK}:at_cp",
+        "scoreboard players add @a[tag=pl_lvrun] pl_t 1",
+        f"execute as @a[tag=pl_lvrun] run function {PACK}:hud",
+        f"execute as @e[type=marker,tag=pl_labcp] at @s as @a[tag=pl_run,distance=..2.3] run function {PACK}:at_cp",
         f"execute as @a[tag=pl_run] at @s if entity @s[y=-64,dy={FALL_Y + 64}] run function {PACK}:fell",
+        f"execute as @a[tag=pl_run] at @s if block ~ ~ ~ minecraft:lava run function {PACK}:fell",
         f"execute as @a[tag=pl_run] run function {PACK}:hud",
     ]
     fn["hud"] = [
@@ -862,8 +1043,10 @@ def datapack(c, outdir):
                                             {"text": "   Time ", "color": "gray"}, {"score": {"name": "#s", "objective": "pl_tmp"}, "color": "white"},
                                             {"text": "s   Falls ", "color": "gray"}, {"score": {"name": "@s", "objective": "pl_falls"}, "color": "white"}]),
     ]
-    fn["at_cp"] = [
-        "scoreboard players operation #id pl_tmp = @e[type=marker,tag=pl_cp,limit=1,sort=nearest] pl_id",
+    # (which checkpoint by the marker's own tag, not its pl_id score: see the levels' at_cp)
+    fn["at_cp"] = ["scoreboard players set #id pl_tmp -1"] + [
+        f"execute if entity @e[type=marker,tag=pl_cp{cp['id']},distance=..0.1] run scoreboard players set #id pl_tmp {cp['id']}"
+        for cp in c.checkpoints] + [
         f"execute if score #id pl_tmp > @s pl_cp run function {PACK}:new_cp",
     ]
     names = {cp["id"]: cp["name"] for cp in c.checkpoints}
@@ -902,14 +1085,13 @@ def datapack(c, outdir):
                                     {"text": "s with ", "color": "white"}, {"score": {"name": "@s", "objective": "pl_falls"}, "color": "red"},
                                     {"text": " falls.", "color": "white"}]),
         "tag @s remove pl_run",
-    ]
+    ] + ([f"execute if entity @s[tag=pl_marathon] run function {PACK}:level/{levels[0].name}"] if levels else [])
     fn["fell"] = [
         "scoreboard players add @s pl_falls 1",
         "scoreboard players add @s pl_sfalls 1",
-        "tag @s add pl_falling",
-        "execute as @e[type=marker,tag=pl_cp] if score @s pl_id = @p[tag=pl_falling] pl_cp at @s run tp @p[tag=pl_falling] ~ ~ ~ -90 0",
-        "tag @s remove pl_falling",
-    ]
+    ] + [f"execute if score @s pl_cp matches {cp['id']} run tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5} -90 0" for cp in c.checkpoints]
+
+    level_functions(fn, levels, tellraw)
 
     root = os.path.join(outdir, PACK)
     if os.path.exists(root):
@@ -937,6 +1119,152 @@ def datapack(c, outdir):
     return zpath, fn
 
 
+def level_functions(fn, levels, tellraw):
+    """each CubeCraft level: building it (in parts, a lot of blocks), starting it, its checkpoints, falls and finish"""
+    if not levels:
+        fn["build_levels"] = [tellraw("[Parkour Lab] No CubeCraft levels in this build.")]
+        return
+    # building, one level after another, each in parts a tick apart (a function stops at 65536 commands a tick)
+    part_size = 20000
+    for i, lv in enumerate(levels):
+        x0, y0, z0, x1, y1, z1 = lv_bbox(lv)
+        corners = [(x0, y0, z0), (x1, y0, z0), (x0, y0, z1), (x1, y0, z1), ((x0 + x1) // 2, y0, (z0 + z1) // 2)]
+        loaded = " ".join(f"if loaded {cx} {cy} {cz}" for cx, cy, cz in corners)
+        nxt = f"schedule function {PACK}:lvb/{i + 1} 1t" if i + 1 < len(levels) else 'tellraw @a ' + json.dumps(
+            [{"text": "[Parkour Lab] ", "color": "gold"}, {"text": "The CubeCraft levels are built. ", "color": "white"},
+             {"text": "[Levels]", "color": "green", "click_event": {"action": "run_command", "command": f"/function {PACK}:levels"}}])
+        fn[f"lvb/{i}"] = [
+            'tellraw @a ' + json.dumps({"text": f"[Parkour Lab] Building {lv.title} ({len(lv.blocks)} blocks)...", "color": "gold"}),
+            f"forceload add {x0} {z0} {x1} {z1}",
+            "scoreboard players set #wait pl_tmp 0",
+            f"schedule function {PACK}:lvb/{i}_wait 10t",
+        ]
+        fn[f"lvb/{i}_wait"] = [
+            "scoreboard players add #wait pl_tmp 1",
+            f"execute {loaded} run return run function {PACK}:lvb/{i}_p0",
+            'execute if score #wait pl_tmp matches 120.. run return run tellraw @a ' + json.dumps({"text": f"[Parkour Lab] {lv.title}: the area never loaded.", "color": "red"}),
+            f"schedule function {PACK}:lvb/{i}_wait 10t",
+        ]
+        lines = [f"kill @e[tag=pl_lv_{lv.name}]"]
+        for a, b in chunk_ranges(x0, x1, 16):
+            for d, e in chunk_ranges(z0, z1, 16):
+                for ya, yb in chunk_ranges(y0, y1, 120):
+                    lines.append(f"fill {a} {ya} {d} {b} {yb} {e} air")
+        for (xa, y, z, xb, st) in sorted(runs(lv.blocks), key=lambda r: (r[1], r[2], r[0])):
+            # strict: no block updates, so a ladder or a head with nothing to hang on (CubeCraft's are like that) stays put
+            lines.append(f"setblock {xa} {y} {z} {st} strict" if xa == xb else f"fill {xa} {y} {z} {xb} {y} {z} {st} strict")
+        for cp in lv.checkpoints:
+            lines.append(f'summon marker {cp["x"] + 0.5} {cp["y"]} {cp["z"] + 0.5} '
+                         f'{{Tags:["{PACK}","pl_lv_{lv.name}","pl_lv_{lv.name}_{cp["id"]}"]}}')
+            lines.append(f'scoreboard players set @e[type=marker,tag=pl_lv_{lv.name}_{cp["id"]},limit=1] pl_id {cp["id"]}')
+        start, finish = lv.checkpoints[0], lv.checkpoints[-1]
+        for (lx, ly, lz, text) in ((start["x"] + 0.5, start["y"] + 2.2, start["z"] + 0.5, f"{lv.title}: start"),
+                                   (finish["x"] + 0.5, finish["y"] + 2.2, finish["z"] + 0.5, f"{lv.title}: finish")):
+            lines.append(f'summon text_display {lx} {ly} {lz} {{Tags:["{PACK}","pl_lv_{lv.name}"],billboard:"center",'
+                         f'text:{json.dumps(text)},background:1073741824,see_through:1b}}')
+        lines.append(f"forceload remove {x0} {z0} {x1} {z1}")
+        lines.append(nxt)
+        parts = [lines[k:k + part_size] for k in range(0, len(lines), part_size)]
+        for k, part in enumerate(parts):
+            if k + 1 < len(parts):
+                part = part + [f"schedule function {PACK}:lvb/{i}_p{k + 1} 1t"]
+            fn[f"lvb/{i}_p{k}"] = part
+    fn["build_levels"] = [f"function {PACK}:lvb/0"]
+
+    # the menu
+    menu = [{"text": "[Parkour Lab] CubeCraft levels: ", "color": "gold"}]
+    for lv in levels:
+        menu.append({"text": f"[{lv.title}] ", "color": "green", "hover_event": {"action": "show_text", "value": lv.notes or lv.title},
+                     "click_event": {"action": "run_command", "command": f"/function {PACK}:level/{lv.name}"}})
+    menu.append({"text": "[Marathon: the Lab, then every level]", "color": "aqua",
+                 "click_event": {"action": "run_command", "command": f"/function {PACK}:marathon"}})
+    fn["levels"] = ['tellraw @s ' + json.dumps(menu)]
+    fn["marathon"] = [f"function {PACK}:start", "tag @s add pl_marathon",
+                      tellraw("[Parkour Lab] Marathon: the Lab, then every CubeCraft level, one after the other. /function parkourlab:stop to stop.")]
+
+    for i, lv in enumerate(levels):
+        tag, mk = f"pl_on_{lv.name}", f"pl_lv_{lv.name}"
+        s = lv.checkpoints[0]
+        f_ = lv.checkpoints[-1]
+        last = f_["id"]
+        lfl = fluids_in(lv.blocks)
+        fn[f"still/{lv.name}"] = still(lv_bbox(lv), lfl)
+        fn[f"level/{lv.name}"] = ([f"function {PACK}:still/{lv.name}", f"schedule function {PACK}:still/{lv.name} 200t"] if lfl else []) + [
+            f"function {PACK}:leave",
+            "tag @s add pl_lvrun",
+            f"tag @s add {tag}",
+            "scoreboard players set @s pl_cp 0",
+            "scoreboard players set @s pl_t 0",
+            "scoreboard players set @s pl_split 0",
+            "scoreboard players set @s pl_falls 0",
+            "scoreboard players set @s pl_sfalls 0",
+            "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
+            f"tp @s {s['x'] + 0.5} {s['y']} {s['z'] + 0.5}",
+            tellraw(f"[Parkour Lab] {lv.title}: go! The finish is at {f_['x']} {f_['y']} {f_['z']}." + (f" {lv.notes}" if lv.notes else "")),
+        ]
+        for cp in lv.checkpoints:
+            fn[f"level/{lv.name}/cp/{cp['id']}"] = [
+                f"function {PACK}:leave", "tag @s add pl_lvrun", f"tag @s add {tag}",
+                f"scoreboard players set @s pl_cp {cp['id']}", "scoreboard players operation @s pl_split = @s pl_t",
+                "scoreboard players set @s pl_sfalls 0", "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
+                f"tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5}",
+                tellraw(f"[Parkour Lab] {lv.title}: at checkpoint {cp['id']} ({cp['name']})"),
+            ]
+        fn["tick"] += [
+            f"execute as @e[type=marker,tag={mk}] at @s as @a[tag={tag},distance=..1.5] run function {PACK}:level/{lv.name}/at_cp",
+            f"execute as @a[tag={tag}] at @s if entity @s[y=-64,dy={lv.fall_y + 64}] run function {PACK}:level/{lv.name}/fell",
+            # in lava is a fall too (with fire resistance on, so it only puts you back)
+            f"execute as @a[tag={tag}] at @s if block ~ ~ ~ minecraft:lava run function {PACK}:level/{lv.name}/fell",
+        ] + [f"execute as @a[tag={tag}] at @s if entity @s[nbt={{OnGround:1b}}] if block ~ ~-0.2 ~ minecraft:{b} run function {PACK}:level/{lv.name}/fell"
+             for b in lv.fail_blocks]
+        # which checkpoint, by the marker's own tag (run at the marker): its pl_id score, set when it was summoned, isn't
+        # always there (a marker summoned into a chunk that's only just been force loaded can miss the scoreboard command
+        # right after, and then no checkpoint of that level ever counted)
+        fn[f"level/{lv.name}/at_cp"] = ["scoreboard players set #id pl_tmp -1"] + [
+            f"execute if entity @e[type=marker,tag={mk}_{cp['id']},distance=..0.1] run scoreboard players set #id pl_tmp {cp['id']}"
+            for cp in lv.checkpoints] + [
+            f"execute if score #id pl_tmp > @s pl_cp run function {PACK}:level/{lv.name}/new_cp",
+        ]
+        fn[f"level/{lv.name}/new_cp"] = [
+            "scoreboard players operation @s pl_cp = #id pl_tmp",
+            "scoreboard players operation @s pl_split = @s pl_t",
+            "scoreboard players operation #secs pl_tmp = @s pl_t",
+            "scoreboard players operation #secs pl_tmp /= #20 pl_tmp",
+            'tellraw @s ' + json.dumps([{"text": f"[Parkour Lab] {lv.title}: ", "color": "gold"}, {"text": "checkpoint ", "color": "white"},
+                                        {"score": {"name": "@s", "objective": "pl_cp"}, "color": "aqua"}, {"text": f" of {last} at ", "color": "white"},
+                                        {"score": {"name": "#secs", "objective": "pl_tmp"}, "color": "aqua"}, {"text": "s, falls so far ", "color": "white"},
+                                        {"score": {"name": "@s", "objective": "pl_falls"}, "color": "red"}]),
+            "scoreboard players set @s pl_sfalls 0",
+            f"execute if score @s pl_cp matches {last} run function {PACK}:level/{lv.name}/finished",
+        ]
+        then = f"function {PACK}:level/{levels[i + 1].name}" if i + 1 < len(levels) else "tag @s remove pl_marathon"
+        fn[f"level/{lv.name}/finished"] = [
+            "scoreboard players operation #secs pl_tmp = @s pl_t",
+            "scoreboard players operation #secs pl_tmp /= #20 pl_tmp",
+            'tellraw @s ' + json.dumps([{"text": f"[Parkour Lab] {lv.title} done! ", "color": "green", "bold": True},
+                                        {"text": "In ", "color": "white"}, {"score": {"name": "#secs", "objective": "pl_tmp"}, "color": "aqua"},
+                                        {"text": "s with ", "color": "white"}, {"score": {"name": "@s", "objective": "pl_falls"}, "color": "red"},
+                                        {"text": " falls.", "color": "white"}]),
+            f"function {PACK}:leave",
+            f"execute if entity @s[tag=pl_marathon] run {then}",
+        ]
+        fn[f"level/{lv.name}/fell"] = [
+            "scoreboard players add @s pl_falls 1",
+            "scoreboard players add @s pl_sfalls 1",
+        ] + [
+            # back to the last checkpoint, by its coordinates (not the marker's pl_id, see at_cp)
+            f"execute if score @s pl_cp matches {cp['id']} run tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5}"
+            for cp in lv.checkpoints
+        ]
+
+
+def lv_bbox(lv):
+    xs = [p[0] for p in lv.blocks]
+    ys = [p[1] for p in lv.blocks]
+    zs = [p[2] for p in lv.blocks]
+    return min(xs) - 1, max(min(ys) - 1, -64), min(zs) - 1, max(xs) + 1, min(max(ys) + 2, 319), max(zs) + 1
+
+
 def course_json(c, outdir):
     data = {
         "base": BASE, "fallY": FALL_Y,
@@ -949,10 +1277,28 @@ def course_json(c, outdir):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
+    # gen.py [out dir] [--levels folder]: the CubeCraft levels come from a folder of their own (see levels.py)
+    args = sys.argv[1:]
+    lv_dir = None
+    if "--levels" in args:
+        k = args.index("--levels")
+        lv_dir = args[k + 1]
+        del args[k:k + 2]
+    out = args[0] if args else os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import levels as levels_mod
+    lvs = levels_mod.place(levels_mod.load(lv_dir))
     c = build()
-    z, fn = datapack(c, out)
+    z, fn = datapack(c, out, lvs)
     course_json(c, out)
+    if lvs:
+        os.makedirs(os.path.join(out, "levels"), exist_ok=True)
+        for lv in lvs:
+            with open(os.path.join(out, "levels", lv.name + ".json"), "w") as f:
+                json.dump(lv.course_json(), f)
+            s0, s1 = lv.checkpoints[0], lv.checkpoints[-1]
+            print("level", lv.name, len(lv.blocks), "blocks,", len(lv.checkpoints), "checkpoints, start", s0["x"], s0["y"], s0["z"],
+                  "finish", s1["x"], s1["y"], s1["z"], "fall at or below", lv.fall_y, "moved", lv.dx, lv.dz)
     print("blocks", len(c.blocks), "commands", sum(len(v) for v in fn.values()), "->", z)
     for s in c.sections:
         print(s["id"], s["name"], len(s["jumps"]), "jumps, cp", s["from"], "->", s["to"])

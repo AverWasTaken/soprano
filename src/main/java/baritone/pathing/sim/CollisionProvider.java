@@ -63,6 +63,13 @@ public interface CollisionProvider {
         return false;
     }
 
+    // water in the cell: how high its surface is in the cell (FluidState.getHeight: a source is 8/9, water with water over it
+    // a whole block), or -1 for none. a provider that answers this can call water plain (PlayerSim swims), one that doesn't
+    // must not
+    default float water(int x, int y, int z) {
+        return -1F;
+    }
+
     // Entity.getOnPos counts the supporting block itself (not the cell under the feet) for walls and fence gates, and for
     // fences too when the offset is half a block or less: 0 for a plain block, 1 fence, 2 wall or fence gate
     default int supportKind(int x, int y, int z) {

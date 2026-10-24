@@ -1,12 +1,18 @@
 package baritone.pathing.tungsten;
 
 import baritone.pathing.sim.ArrayWorld;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
 // four block gaps under a ceiling: hopping along the runway, every hop bonking the ceiling, is what gets there
 public class HeadHitterTest {
+
+    @BeforeClass
+    public static void boot() {
+        adris.altoclef.util.helpers.ItemFixture.boot(); // (run on its own, nothing else has started the game's registries)
+    }
 
     private static final int SX = 8, SY = 63, SZ = 8;
 

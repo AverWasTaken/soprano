@@ -63,6 +63,13 @@ public interface IPlayerContext {
 
     HitResult objectMouseOver();
 
+    static boolean smallFloor(net.minecraft.world.level.block.Block block) {
+        return block instanceof net.minecraft.world.level.block.AbstractSkullBlock || block instanceof net.minecraft.world.level.block.FlowerPotBlock
+                || block instanceof net.minecraft.world.level.block.CandleBlock || block instanceof net.minecraft.world.level.block.LanternBlock
+                || block instanceof net.minecraft.world.level.block.SeaPickleBlock || block instanceof net.minecraft.world.level.block.TurtleEggBlock
+                || block instanceof net.minecraft.world.level.block.DaylightDetectorBlock || block instanceof net.minecraft.world.level.block.CakeBlock;
+    }
+
     default BetterBlockPos playerFeet() {
         // TODO find a better way to deal with soul sand!!!!!
         BetterBlockPos feet = new BetterBlockPos(player().position().x, player().position().y + 0.1251, player().position().z);
@@ -78,6 +85,12 @@ public interface IPlayerContext {
         try {
             BlockState inFeet = world().getBlockState(feet);
             if (inFeet.getBlock() instanceof SlabBlock) {
+                return feet.above();
+            }
+            // and the small things parkour maps use as little round blocks to jump on (a head, a flower pot, a candle, a
+            // lantern...): their tops are a third to three quarters of a block up, you stand in their cell, and the planner
+            // calls that the cell above (see MovementHelper.isHalfFloor)
+            if (smallFloor(inFeet.getBlock())) {
                 return feet.above();
             }
             // same deal as the slab: the only way to be inside a bottom stair's cell is standing on its low step, and the

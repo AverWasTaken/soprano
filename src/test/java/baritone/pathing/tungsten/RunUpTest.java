@@ -2,12 +2,18 @@ package baritone.pathing.tungsten;
 
 import baritone.pathing.sim.ArrayWorld;
 import baritone.pathing.sim.PlayerSim;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
 // run ups: the four block gap, and the jumps a standing start doesn't have in it
 public class RunUpTest {
+
+    @BeforeClass
+    public static void boot() {
+        adris.altoclef.util.helpers.ItemFixture.boot(); // (run on its own, nothing else has started the game's registries)
+    }
 
     private static final int SX = 8, SY = 63, SZ = 8;
 
@@ -52,9 +58,10 @@ public class RunUpTest {
             }
         }
         System.out.println(fails);
-        // and no runway, no four block gap
-        ArrayWorld w = world(0, ArrayWorld.STONE, 5, 0, 0, ArrayWorld.STONE);
-        assertNull(JumpPolicy.best(ReachTableTest.standing(w), land(5, 0, 0)));
+        // and no runway, no five block gap. (a four off a single block does go now: a step back to its far edge first and
+        // the run across it, the parkour players' "1bm 4b")
+        ArrayWorld w = world(0, ArrayWorld.STONE, 6, 0, 0, ArrayWorld.STONE);
+        assertNull(JumpPolicy.best(ReachTableTest.standing(w), land(6, 0, 0)));
     }
 
     // down onto slime and bounced across to a ledge too far for any jump

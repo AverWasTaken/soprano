@@ -25,6 +25,8 @@ import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.process.PathingCommand;
 import baritone.api.utils.BetterBlockPos;
+import baritone.pathing.tungsten.NeoSearches;
+import baritone.pathing.tungsten.TungstenJumps;
 import baritone.api.utils.Helper;
 import baritone.api.utils.input.Input;
 import baritone.api.utils.PathCalculationResult;
@@ -161,6 +163,17 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             return;
         }
 
+        FallFloor.tick(ctx.player());
+        // the background jump searches go nearest the player first, path or no path
+        NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
+        if (FallFloor.generation() != fallFloorSeen) {
+            // just put back after a fall, and now we know where that was: the path we're on may well go straight back there
+            fallFloorSeen = FallFloor.generation();
+            if (Baritone.settings().learnFallFloor.value) {
+                // (whatever we were doing when it happened is over: we've been teleported off it)
+                secretInternalSegmentCancel();
+            }
+        }
         expectedSegmentStart = pathStart();
         boolean telemetry = ExperimentalMovement.sprintTelemetry();
         if (telemetry) {
@@ -683,6 +696,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
      *
      * @return The starting {@link BlockPos} for a new path
      */
+    private int fallFloorSeen;
+
     public BetterBlockPos pathStart() { // TODO move to a helper or util class
         BetterBlockPos feet = ctx.playerFeet();
         if (!MovementHelper.canWalkOn(ctx, feet.below())) {
@@ -778,6 +793,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             primaryTimeout = Baritone.settings().planAheadPrimaryTimeoutMS.value;
             failureTimeout = Baritone.settings().planAheadFailureTimeoutMS.value;
         }
+        if (current == null && context.allowTungstenJumps && TungstenJumps.stuckAround(start.getX(), start.getY(), start.getZ())) {
+            // stuck round here already, standing still waiting on this: a parkour course that winds a long way round to its
+            // finish only shows up to a longer search, and there's nothing else for the time to go on
+            failureTimeout = Math.max(failureTimeout, STUCK_FAILURE_MS);
+        }
+        long failureTimeoutFinal = failureTimeout;
         AbstractNodeCostSearch pathfinder = createPathfinder(start, goal, current == null ? null : current.getPath(), context);
         if (current != null) {
             pathfinder.planningAhead();
@@ -789,7 +810,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         hold.started(new SearchKey(new BetterBlockPos(start), goal), tickCount);
         Baritone.getExecutor().execute(() -> {
             try {
-                runSearch(pathfinder, start, goal, talkAboutIt, primaryTimeout, failureTimeout);
+                runSearch(pathfinder, start, goal, talkAboutIt, primaryTimeout, failureTimeoutFinal);
             } finally {
                 // only clear our own slot: a forceCancel plus a fresh search can have replaced us while we were still running
                 // (and the finally means a throwing calc can't leave inProgress stuck either)
@@ -802,6 +823,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             }
         });
     }
+
+    // how long a search may take for a path at all, where we've been stuck already (see findPathInNewThread)
+    static final long STUCK_FAILURE_MS = 12_000;
 
     private void runSearch(AbstractNodeCostSearch pathfinder, BlockPos start, Goal goal, boolean talkAboutIt, long primaryTimeout, long failureTimeout) {
         if (talkAboutIt) {
@@ -898,6 +922,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         var sub = feet.subtract(realStart);
         if (feet.getY() == realStart.getY() && Math.abs(sub.getX()) <= 1 && Math.abs(sub.getZ()) <= 1) {
             realStart = feet;
+        }
+        context.startArrival = -1;
+        if (previous != null && previous.positions().size() >= 2 && previous.getDest().equals(start)) {
+            // planning ahead from the end of the path we're on: the last jump of it comes into the start at speed, and a jump
+            // that carries that on (TungstenJumps.Jump.carry) can go from there
+            BetterBlockPos a = previous.positions().get(previous.positions().size() - 2), b = previous.positions().get(previous.positions().size() - 1);
+            context.startArrival = TungstenJumps.carrySector(context, a.x, a.y, a.z, b.x, b.y, b.z);
         }
         AStarPathFinder finder = new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
         finder.keepAbove(goal); // the goal as asked for: a far one keeps its height for this even when the search drops it

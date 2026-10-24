@@ -266,7 +266,8 @@ public final class Ledges {
         if (land.grab() || Math.abs(land.centerX() - src.x - 0.5) > REACH - SPREAD || Math.abs(land.centerZ() - src.z - 0.5) > REACH - SPREAD) {
             return null;
         }
-        double ax = src.x + 0.5, az = src.z + 0.5;
+        double[] stand = TungstenJumps.standAt(world, src.x, src.y, src.z);
+        double ax = src.x + stand[0], az = src.z + stand[1];
         double landFloor = landFloor(world, land);
         if (Double.isNaN(landFloor)) {
             return null;
@@ -444,6 +445,8 @@ public final class Ledges {
     // the floor height in the landing's cell (the top of whatever's under the middle of it)
     private static double landFloor(CollisionProvider world, Landing land) {
         BoxList boxes = BoxList.temp();
+        // (two cells down too: a fence or a wall stands half a block into the cell over it, with a pot or a head on it)
+        world.boxes(land.x(), land.y() - 2, land.z(), boxes);
         world.boxes(land.x(), land.y() - 1, land.z(), boxes);
         world.boxes(land.x(), land.y(), land.z(), boxes);
         double top = Double.NaN;

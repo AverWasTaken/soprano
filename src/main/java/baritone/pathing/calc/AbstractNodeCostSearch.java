@@ -17,6 +17,7 @@
 
 package baritone.pathing.calc;
 
+import baritone.api.pathing.movement.ActionCosts;
 import baritone.Baritone;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.calc.IPathFinder;
@@ -268,11 +269,167 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
             return;
         }
         partialFloorY = Math.min(startY, ((IGoalRenderPos) goal).getGoalPos().getY()) - drop;
+        // a course that goes down more than that is fine as long as it stays off the floor under it: what partialPathMaxDrop
+        // is there to stop is a path down onto the ground under a parkour map, with no way back up. so with ground under us
+        // (the lowest floor round the start, not far down), anything a couple of blocks over it will do
+        int ground = groundUnder(context, startX, startY, startZ);
+        if (ground != Integer.MIN_VALUE) {
+            // (anywhere above the ground itself: the dead ends a bit above it, a chess piece, a course's lower floor with no
+            // way back up, are what avoidPockets is for)
+            partialFloorY = Math.min(partialFloorY, ground + 1);
+        }
+    }
+
+    private static boolean something(CalculationContext context, int x, int y, int z) {
+        net.minecraft.world.level.block.state.BlockState state = context.get(x, y, z);
+        return !state.isAir() && (!state.getFluidState().isEmpty()
+                || !state.getCollisionShape(context.bsi.access, net.minecraft.core.BlockPos.ZERO).isEmpty());
+    }
+
+    // a part path down off the course onto something with no way back up from it (a chess piece under a parkour level, the
+    // floor of one that doesn't reset you) is a dead end the bot would sit in for good. a part path that ends more than a
+    // block under the start has to end somewhere the search found a way on from that gets back up near the start's height;
+    // if the best one doesn't, the best one that does (or one that doesn't go down at all) instead
+    private void avoidPockets() {
+        int band = startY - 1;
+        boolean any = false;
+        for (PathNode b : bestSoFar) {
+            any |= b != null && b.y < band; // (only worth the walk over the tree if one of them went down)
+        }
+        if (!any) {
+            return;
+        }
+        java.util.List<PathNode> all = tree();
+        for (int i = 0; i < COEFFICIENTS.length; i++) {
+            PathNode b = bestSoFar[i];
+            if (b == null || !pocket(b, band)) {
+                continue;
+            }
+            PathNode best = null;
+            double bestH = Double.MAX_VALUE;
+            for (PathNode n : all) {
+                if (n.y < partialFloorY || pocket(n, band) || getDistFromStartSq(n) <= MIN_DIST_PATH * MIN_DIST_PATH) {
+                    continue;
+                }
+                double h = n.estimatedCostToGoal + n.cost * INVERSE_COEFFICIENTS[i];
+                if (h < bestH) {
+                    bestH = h;
+                    best = n;
+                }
+            }
+            bestSoFar[i] = best;
+        }
+    }
+
+    // every node the search reached, each knowing the highest y anywhere on from it in the search tree (treeTop) and whether
+    // anything on from it is still open or still being worked out (treeOpen)
+    private java.util.List<PathNode> tree() {
+        java.util.List<PathNode> all = new java.util.ArrayList<>();
+        for (PathNode[] cell : cells.values()) {
+            for (PathNode n : cell) {
+                if (n != null && n.cost < ActionCosts.COST_INF) {
+                    n.treeTop = Integer.MIN_VALUE;
+                    n.treeOpen = false;
+                    all.add(n);
+                }
+            }
+        }
+        for (PathNode n : all) {
+            int depth = 0;
+            for (PathNode p = n; p != null && depth < 256; p = p.previous, depth++) {
+                if (p.treeTop >= n.y) {
+                    break; // (everything further up already knows something at least this high)
+                }
+                p.treeTop = n.y;
+            }
+            if (n.isOpen() || n.pending) {
+                depth = 0;
+                for (PathNode p = n; p != null && !p.treeOpen && depth < 256; p = p.previous, depth++) {
+                    p.treeOpen = true;
+                }
+            }
+        }
+        return all;
+    }
+
+    // nowhere nearer the goal than here, and stuck here before: a parkour course often winds away from its finish before it
+    // comes back (the hell level's start goes the other way round a lava pit). somewhere new the search can get to, the
+    // nearest the goal of those, so the next search starts from further along. never somewhere we've stood lately (that's
+    // where we came from), nor a dead end down below
+    // searches from one spot that came up empty before going lower anyway, things still being worked out or not
+    static final int STUCK_TIMES_TO_GO_LOWER = 3;
+
+    // somewhere new is at least this far (across) from anywhere we've stood lately: not another spot on the same platform
+    static final int EXPLORE_AWAY = 2;
+
+    private PathNode explore() {
+        int band = startY - 1;
+        PathNode best = null;
+        double bestH = Double.MAX_VALUE;
+        for (PathNode n : tree()) {
+            // (and only on the search's frontier: something on from it still open, or still being worked out. a spot the
+            // search went right round already is a dead end, however near the goal: a pit under the finish)
+            if (!n.treeOpen || n.y < partialFloorY || pocket(n, band) || getDistFromStartSq(n) <= MIN_DIST_PATH * MIN_DIST_PATH
+                    || baritone.behavior.FallFloor.beenWithin(n.x, n.y, n.z, EXPLORE_AWAY)) {
+                continue;
+            }
+            double h = n.estimatedCostToGoal + n.cost * 0.1;
+            if (h < bestH) {
+                bestH = h;
+                best = n;
+            }
+        }
+        return best;
+    }
+
+    // down below the start, and nothing the search has seen on from there gets back up near the start's height: a dead end,
+    // as far as anyone knows yet
+    private static boolean pocket(PathNode n, int band) {
+        // (still open, or still being worked out, isn't enough: the pit under a level's finish has plenty of both, and a
+        // part path down into it was where the bot ended up for good. a way back up has to be in what the search has seen;
+        // a course that really does go on lower is what "going lower" in bestSoFar is for, once we've been stuck)
+        return n.y < band && n.treeTop < band;
+    }
+
+    // how far round, and down, to look for the floor under the start
+    static final int GROUND_AROUND = 6, GROUND_DOWN = 24;
+
+    // the feet height on the lowest floor in the columns round x z, under y (Integer.MIN_VALUE if none of them has one within
+    // GROUND_DOWN: a course over the void, where the drop rule stands as it is)
+    static int groundUnder(CalculationContext context, int x, int y, int z) {
+        if (context == null || context.bsi == null) {
+            return Integer.MIN_VALUE;
+        }
+        int lowest = Integer.MAX_VALUE;
+        for (int dx = -GROUND_AROUND; dx <= GROUND_AROUND; dx += 3) {
+            for (int dz = -GROUND_AROUND; dz <= GROUND_AROUND; dz += 3) {
+                if (!context.isLoaded(x + dx, z + dz)) {
+                    return Integer.MIN_VALUE;
+                }
+                // the lowest surface (something solid, or water, with room over it) in the column
+                int found = Integer.MIN_VALUE;
+                boolean above = !something(context, x + dx, y, z + dz);
+                for (int cy = y - 1; cy >= y - GROUND_DOWN; cy--) {
+                    boolean here = something(context, x + dx, cy, z + dz);
+                    if (here && above) {
+                        found = cy + 1;
+                    }
+                    above = !here;
+                }
+                if (found != Integer.MIN_VALUE) {
+                    lowest = Math.min(lowest, found); // (a column of solid all the way, or open all the way, says nothing)
+                }
+            }
+        }
+        return lowest == Integer.MAX_VALUE ? Integer.MIN_VALUE : lowest;
     }
 
     protected Optional<IPath> bestSoFar(boolean logInfo, int numNodes) {
         if (startNode == null) {
             return Optional.empty();
+        }
+        if (partialFloorY != Integer.MIN_VALUE && numNodes > 0) {
+            avoidPockets(); // (the search's own answer, not the peeks at it to draw the path so far)
         }
         double bestDist = 0;
         for (int i = 0; i < COEFFICIENTS.length; i++) {
@@ -302,7 +459,11 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         boolean stuckHereBefore = baritone.pathing.tungsten.TungstenJumps.wantLedges(startX, startY, startZ);
         // nowhere to go at this height. going lower is a last resort: only once we've already been stuck right here, and nothing
         // (a neo, a ledge chain) is still being worked out that might show a way on up here
-        if (partialFloorY != Integer.MIN_VALUE && stuckHereBefore && !baritone.pathing.movement.movements.PendingTables.waiting()) {
+        // (or stuck right here a few times over: the background is never done on a big map, there's always something
+        // queued, and waiting on all of it was waiting for good)
+        int timesStuck = numNodes > 0 ? baritone.pathing.tungsten.TungstenJumps.stuckHere(startX, startY, startZ) : 0;
+        if (partialFloorY != Integer.MIN_VALUE && stuckHereBefore
+                && (!baritone.pathing.movement.movements.PendingTables.waiting() || timesStuck >= STUCK_TIMES_TO_GO_LOWER)) {
             for (int i = 0; i < COEFFICIENTS.length; i++) {
                 if (bestLowSoFar[i] != null && getDistFromStartSq(bestLowSoFar[i]) > MIN_DIST_PATH * MIN_DIST_PATH) {
                     if (logInfo) {
@@ -310,6 +471,15 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
                     }
                     return Optional.of(new Path(realStart, startNode, bestLowSoFar[i], numNodes, goal, context));
                 }
+            }
+        }
+        if (partialFloorY != Integer.MIN_VALUE && stuckHereBefore && numNodes > 0) {
+            PathNode somewhereNew = explore();
+            if (somewhereNew != null) {
+                if (logInfo) {
+                    logDebug("Nothing nearer the goal from here, going on somewhere new");
+                }
+                return Optional.of(new Path(realStart, startNode, somewhereNew, numNodes, goal, context));
             }
         }
         if (logInfo) {

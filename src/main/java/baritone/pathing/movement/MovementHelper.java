@@ -903,6 +903,13 @@ public interface MovementHelper extends ActionCosts, Helper {
         return 0; // we won't actually mine it, so don't check fallings above
     }
 
+    // something to stand on whose top is half a block (or so) up its cell, which the planner counts the way it counts a bottom
+    // slab: you stand in the cell above it, half a block down. a bottom slab, or one of the small things parkour maps put
+    // about to jump on, a head, a flower pot, a candle (see IPlayerContext.playerFeet)
+    static boolean isHalfFloor(BlockState state) {
+        return isBottomSlab(state) || baritone.api.utils.IPlayerContext.smallFloor(state.getBlock());
+    }
+
     static boolean isBottomSlab(BlockState state) {
         return state.getBlock() instanceof SlabBlock
                 && state.getValue(SlabBlock.TYPE) == SlabType.BOTTOM;
