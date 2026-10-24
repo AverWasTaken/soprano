@@ -79,6 +79,13 @@ public final class FoodTripRules {
         return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && held < BLOCKS_LOW && exhaustedEnds >= BLOCKS_EXHAUSTED_ENDS;
     }
 
+    // the phase restock stays out of the blaze spawner: a dig swapped in there drops the rods task's mob defense and starts
+    // fights with whatever is shooting. same condition the camp pinger uses. the walks to the fortress and the spawner are what
+    // spend the blocks, and they are not this
+    public static boolean restockAllowed(boolean campingSpawner, boolean spawnerKnown, boolean busyWithBlazes) {
+        return !(campingSpawner || spawnerKnown && busyWithBlazes);
+    }
+
     // the overworld half's clock for the needs that were short when we got up there
     public static double seconds(boolean food, boolean blocks) {
         return food && blocks ? TWO_NEED_SECONDS : MAX_SECONDS;

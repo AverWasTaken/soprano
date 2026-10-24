@@ -14,7 +14,7 @@ import net.minecraft.world.item.Item;
 
 import java.util.List;
 
-// the netherrack dig that keeps a bag of throwaways topped up, one home for the sweep and the death trip. NetherRestock
+// the netherrack dig that keeps a bag of throwaways topped up, one home for the whole Nether phase and the death trip. NetherRestock
 // decides when, this owns the task that does it
 public class NetherBlockRestock {
     private final NetherRestock restock = new NetherRestock();

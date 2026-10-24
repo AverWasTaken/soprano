@@ -111,7 +111,12 @@ public class NetherPhase implements PhaseHandler {
     private RunState.Pos fortressWalkGivenUp;
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
+    // the one block dig for the whole phase (walks to the fortress and the spawner spend the bag, not just the sweep)
+    private NetherBlockRestock restock = new NetherBlockRestock();
     private CollectBlazeRodsTask rodsTask;
+    // the game time rodsTask was last the task we returned. its camping and fight flags only update while it ticks, so a
+    // reading older than a few ticks says nothing about now
+    private long rodsTaskRanAt = Long.MIN_VALUE / 2;
     private int rodsTaskTarget;
     // the last-rod walk away from blazes that are still shooting, and whether it already ran for this batch of rods
     private BlazeDisengageTask disengage;
@@ -272,6 +277,7 @@ public class NetherPhase implements PhaseHandler {
         fortressWalkGivenUp = null;
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+        restock = new NetherBlockRestock();
         homeWalk.reset();
         foodFloor.reset();
         goHome = null;
@@ -521,7 +527,7 @@ public class NetherPhase implements PhaseHandler {
                     why = FoodTripRules.Reason.FOOD;
                 }
             } else if (FoodTripRules.goHomeForBlocks(FindNetherStructureTask.heldThrowaways(mod),
-                    Math.max(findFortress.exhaustedEnds(), findWarped.exhaustedEnds()), portalKnown, deathTrip, blockTrips)
+                    restock.exhaustedEnds(), portalKnown, deathTrip, blockTrips)
                     && FoodTripRules.mayStart(false, tick, lastUnsafeTick)) {
                 why = FoodTripRules.Reason.BLOCKS;
             }
@@ -534,8 +540,7 @@ public class NetherPhase implements PhaseHandler {
             if (tripBlocks) {
                 // a new bag: the dry digs counted so far say nothing about what the next dig finds. a food trip that brings no
                 // blocks keeps the count, the band is just as empty when we come back
-                findFortress.clearExhaustedEnds();
-                findWarped.clearExhaustedEnds();
+                restock.clearExhaustedEnds();
             }
             foodTripUp = false;
             lastTripUnits = -1;
@@ -596,8 +601,7 @@ public class NetherPhase implements PhaseHandler {
             foodTrip = false;
             foodTripUp = false;
             foodFloor.reset();
-            findFortress.clearExhaustedEnds();
-            findWarped.clearExhaustedEnds();
+            restock.clearExhaustedEnds();
         }
     }
 
@@ -961,6 +965,18 @@ public class NetherPhase implements PhaseHandler {
         int goal = EyeMath.targetGoal(cfg, s.framesFilled);
         int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
+        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
+        // the dig runs on the game clock like RodsWatch and FORTRESS_WALK_SECONDS do, so it eats into those too, accepted
+        boolean atSpawner = rodsTask != null && ctx.facts().gameTime() - rodsTaskRanAt <= 5
+                && !FoodTripRules.restockAllowed(rodsTask.isCampingSpawner(), rodsTask.currentSpawner() != null,
+                        rodsTask.isBusyWithBlazes());
+        if (!atSpawner) {
+            Task dig = restock.tick(mod, false, ctx.secondsInPhase());
+            if (dig != null) {
+                hudState = "Restocking building blocks";
+                return dig;
+            }
+        }
         if (rods < rodsNeed && !s.netherRodsGaveUp) {
             return rodsStep(mod, ctx, now, rods, rodsNeed);
         }
@@ -1059,6 +1075,7 @@ public class NetherPhase implements PhaseHandler {
         // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
         // and "waiting to spawn" with six blazes in view reads like a bug, so say which kind of waiting it is
         hudState = rodsHud(camping, rodsTask.blazesAround()) + " (" + rods + "/" + rodsNeed + ")";
+        rodsTaskRanAt = ctx.facts().gameTime();
         return rodsTask;
     }
 

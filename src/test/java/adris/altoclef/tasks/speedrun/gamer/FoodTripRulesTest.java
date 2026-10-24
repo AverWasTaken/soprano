@@ -249,4 +249,20 @@ public class FoodTripRulesTest {
         assertFalse(FoodTripRules.gained(10, 8));
         assertTrue(FoodTripRules.gained(10, 12));
     }
+
+    @Test
+    public void theRestockWaitsOutCampingAndBlazeFights() {
+        assertTrue(FoodTripRules.restockAllowed(false, false, false));
+        assertTrue(FoodTripRules.restockAllowed(false, false, true));
+        assertTrue(FoodTripRules.restockAllowed(false, true, false));
+        assertFalse(FoodTripRules.restockAllowed(true, false, false));
+        assertFalse(FoodTripRules.restockAllowed(false, true, true));
+    }
+
+    @Test
+    public void aFreshRestockHasNoDryEndsSoNoTripHome() {
+        assertFalse(FoodTripRules.goHomeForBlocks(0, new adris.altoclef.tasks.speedrun.gamer.tasks.NetherBlockRestock().exhaustedEnds(),
+                true, false, 0));
+        assertTrue(FoodTripRules.goHomeForBlocks(0, FoodTripRules.BLOCKS_EXHAUSTED_ENDS, true, false, 0));
+    }
 }

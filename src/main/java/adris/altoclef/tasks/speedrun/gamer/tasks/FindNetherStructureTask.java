@@ -17,8 +17,6 @@ public class FindNetherStructureTask extends Task {
     private final Goal goal;
     private final DoubleSupplier clock;
 
-    private final NetherBlockRestock restock = new NetherBlockRestock();
-    private Task restockTask;
     private GetToXZTask walk;
     private int walkX;
     private int walkZ;
@@ -65,18 +63,9 @@ public class FindNetherStructureTask extends Task {
         noteZoneInputs(mod);
         int px = mod.getPlayer().blockPosition().getX();
         int pz = mod.getPlayer().blockPosition().getZ();
-        // mid restock the planner is not asked: the idle gap is handled there like any other fight or meal
-        if (restock.isActive() && restocking(mod)) {
-            setDebugState("Restocking building blocks", step);
-            return restockTask;
-        }
         Action action = planner.step(goal, px, pz, clock.getAsDouble());
         switch (action.kind()) {
             case GOTO -> {
-                if (restocking(mod)) {
-                    setDebugState("Restocking building blocks", step);
-                    return restockTask;
-                }
                 setDebugState("Sweeping " + action.why() + " towards " + action.x() + "," + action.z(), step);
                 return walkTo(action.x(), action.z());
             }
@@ -101,19 +90,6 @@ public class FindNetherStructureTask extends Task {
     // the count the restock goes by, for the phase that decides on a trip home when the dig keeps coming up empty
     public static int heldThrowaways(AltoClef mod) {
         return NetherBlockRestock.heldThrowaways(mod);
-    }
-
-    public int exhaustedEnds() {
-        return restock.exhaustedEnds();
-    }
-
-    public void clearExhaustedEnds() {
-        restock.clearExhaustedEnds();
-    }
-
-    private boolean restocking(AltoClef mod) {
-        restockTask = restock.tick(mod, planner.takeGiveUp(), clock.getAsDouble());
-        return restockTask != null;
     }
 
     // a new GetToXZTask object only when the waypoint changes, a new one per tick would restart its pathing every tick
