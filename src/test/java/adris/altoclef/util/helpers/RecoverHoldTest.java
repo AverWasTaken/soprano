@@ -33,7 +33,7 @@ public class RecoverHoldTest {
     }
 
     private static Tick fighting(long now, float health, double x, Body body, Foe target, Foe... foes) {
-        return new Tick(now, health, x, 0, List.of(foes), target, Way.NONE, true, false, false, false, body);
+        return new Tick(now, health, x, 0, List.of(foes), target, Way.NONE, true, false, false, body);
     }
 
     // a low hp run from a zombie at 5, then 30 blocks out with nothing about until it calls clear. returns the tick it ended on
@@ -288,7 +288,7 @@ public class RecoverHoldTest {
         CombatCommit c = new CombatCommit();
         long end = runAndClear(c, 1000, 10, FED);
         // no foe at all (an uncharged blaze at range is not in the hostile list), only the watched flag
-        Tick watched = new Tick(end + 1, 12, 30, 0, List.of(), null, Way.NONE, true, false, false, false, FED, false, 0, true);
+        Tick watched = new Tick(end + 1, 12, 30, 0, List.of(), null, Way.NONE, true, false, false, FED, false, 0, true);
         assertEquals(Event.RUN_START, c.step(watched));
         assertEquals(Why.SHOT, c.why());
 

@@ -10,7 +10,6 @@ import adris.altoclef.util.helpers.PearlHuntHook;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
-import adris.altoclef.util.helpers.AnchorWatch;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
@@ -79,8 +78,6 @@ final class CombatBrain {
     private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
 
     private final CombatCommit _commit = new CombatCommit();
-    // standing about is a different fight from walking about (see AnchorWatch)
-    private final AnchorWatch _anchor = new AnchorWatch();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
@@ -179,7 +176,6 @@ final class CombatBrain {
 
     void reset() {
         _commit.reset();
-        _anchor.reset();
         _foeMobs = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
@@ -274,7 +270,6 @@ final class CombatBrain {
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
 
-        boolean anchored = _anchor.update(now, player.getX(), player.getY(), player.getZ());
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
@@ -303,7 +298,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension),
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
@@ -496,8 +491,8 @@ final class CombatBrain {
     private boolean armed(AltoClef mod, List<Foe> foes) {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
-            // (a sniper that is pinning us down is a fight we would start, so it wants to know too)
-            if (foe.distance() <= CombatCommit.CONTACT || foe.pinning(false)) asked = true;
+            // (a sniper that is shooting us is a fight we would start, so it wants to know too)
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = new ArrayList<>();

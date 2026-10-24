@@ -127,14 +127,4 @@ public class CombatCommitNextHitTest {
         assertFalse(stance.mayEat());
     }
 
-    @Test
-    public void pinningWantsTheTwoHitsRecentAndSoCloseTogether() {
-        // 150 and 159 ticks ago: nine apart, both inside the window
-        assertTrue(skeleton(10, 150, true, 159).pinning(false));
-        // the older one is just outside
-        assertFalse(skeleton(10, 10, true, CombatCommit.PIN_WINDOW + 1).pinning(false));
-        assertTrue(skeleton(10, 10, true, CombatCommit.PIN_WINDOW).pinning(false));
-        // two hits a window apart are not "close together", the first one is already out
-        assertFalse(skeleton(10, CombatCommit.PIN_WINDOW, true, 2 * CombatCommit.PIN_WINDOW).pinning(false));
-    }
 }

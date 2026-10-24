@@ -285,10 +285,10 @@ public class PortalPhase implements PhaseHandler {
             trackCastProgress(mod, ctx, f.gameTime());
         }
         double sinceProgressSeconds = lastProgressTick < 0 ? castSeconds : (f.gameTime() - lastProgressTick) / 20.0;
-        boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA);
+        boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA)
+                && !cast.bucketPortalTask().lavaDrought();
         boolean diamondPick = f.count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
-        Method now = PortalPlanner.decide(before, castSeconds, sinceProgressSeconds, ctx.cfg().overworld, sawLava, diamondPick,
-                cast.bucketPortalTask().castLooped());
+        Method now = PortalPlanner.decide(before, castSeconds, sinceProgressSeconds, ctx.cfg().overworld, sawLava, diamondPick);
         if (now != before) {
             ctx.state().portalMethod = now.name();
             ctx.log("giving up on casting, going the obsidian way");

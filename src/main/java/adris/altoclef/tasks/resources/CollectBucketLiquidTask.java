@@ -79,9 +79,14 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private static final int CLIMB_GAP_TICKS = 60;
     private static final double CLIMB_SEARCH_RANGE = 24;
     private static final int CLIMB_MAX_MOVES = 16;
+    private static final float WANDER_LEG = 64;
+    private static final int NO_SOURCE_TICKS = 40;
     private int _scanWaitStart = -1;
     private int _lastClimbTick = -1000;
     private boolean _loggedWander = false;
+    // the last tick the wander fallback ran with nothing at all passing the source filter. the portal phase reads it as "no lava
+    // here", the same as a tracker that has never seen any, so the no lava escape can fire instead of a wander with no end
+    private int _noSourceAt = -1000;
     // made when a fill has no slot to land in. a finished one is stuck (nothing to throw), and _noRoom remembers that
     // until the bag stops needing room
     private EnsureFreeInventorySlotTask _roomTask = null;
@@ -284,6 +289,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
             }
             if (nearestSource.isPresent()) {
                 _loggedWander = false;
+                _noSourceAt = -1000;
                 Block nearestSourceBlock = mod.getWorld().getBlockState(nearestSource.get()).getBlock();
                 // We want to MINIMIZE this distance to liquid.
                 setDebugState("Trying to collect...");
@@ -359,15 +365,23 @@ public class CollectBucketLiquidTask extends ResourceTask {
         }
 
         // Oof, no liquid found.
+        List<BlockPos> tracked = mod.getBlockTracker().getKnownLocations(_toCollect);
+        long passing = tracked.stream().filter(isSourceLiquid).count();
+        if (passing == 0) _noSourceAt = now;
         if (!_loggedWander) {
             _loggedWander = true;
-            List<BlockPos> tracked = mod.getBlockTracker().getKnownLocations(_toCollect);
-            long passing = tracked.stream().filter(isSourceLiquid).count();
             Debug.logMessage("No " + _liquidName + " to collect: tracker knows " + tracked.size() + " positions, " + passing + " passed, wandering");
         }
         setDebugState("Searching for liquid by wandering around aimlessly");
 
-        return new TimeoutWanderTask();
+        // a leg at a time: each one ends 64 blocks out and the next starts with a fresh look at what the tracker knows, instead of
+        // one wander that never comes back to ask
+        if (subTask() instanceof TimeoutWanderTask leg && leg.isFinished(mod)) dropChild(mod);
+        return new TimeoutWanderTask(WANDER_LEG);
+    }
+
+    public boolean noSource() {
+        return WorldHelper.getTicks() - _noSourceAt <= NO_SOURCE_TICKS;
     }
 
     // true once we have spent LID_GIVE_UP_SECONDS working on the lid over this source and it is still there

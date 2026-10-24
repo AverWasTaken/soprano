@@ -41,16 +41,10 @@ public final class PortalPlanner {
     // wanders, so the clock is the only thing that ends a cast. sinceProgressSeconds = how long since a frame cell last
     // turned obsidian, castSeconds when none has: a cast still landing cells is not walked away from on the clock alone
     // (that mined a half done frame to build a new one), only once it has stalled too
+    // sawLava is false for a tracker that has never seen any and for a fetch that finds no source it can use (a lake 60 blocks
+    // down, every pool banned): both are "no lava", and the no lava line below is the way out
     public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
                                 boolean sawLava, boolean hasDiamondPickaxe) {
-        return decide(current, castSeconds, sinceProgressSeconds, cfg, sawLava, hasDiamondPickaxe, false);
-    }
-
-    // looped = the cast's pour and lava fetch kept undoing each other (CastLava.collectLoop). that is a cast going nowhere
-    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go (and the frame to have
-    // stood still for a minute, a half built one is not worth mining for the obsidian)
-    public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
-                                boolean sawLava, boolean hasDiamondPickaxe, boolean looped) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
@@ -58,10 +52,6 @@ public final class PortalPlanner {
         // wandering for a lake and the phase budget is what ends it
         if (!hasDiamondPickaxe) {
             return Method.CAST;
-        }
-        // a minute dry as well: a cast that still lands cells is slow, not looping
-        if (looped && sinceProgressSeconds >= 60) {
-            return Method.OBSIDIAN;
         }
         if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {
             return Method.OBSIDIAN;

@@ -97,13 +97,10 @@ public class ConstructNetherPortalBucketTask extends Task {
     private final TimeoutWanderTask wanderTask = new TimeoutWanderTask(5);
     // Stored here to cache lava blacklist
     // the cast's own cells are off the menu, the pour we just made is not a lake
-    private final Task _collectLavaTask = new CollectBucketLiquidTask.CollectLavaBucketTask(1)
+    private final CollectBucketLiquidTask _collectLavaTask = new CollectBucketLiquidTask.CollectLavaBucketTask(1)
             .leaveAlone(cell -> this._cast != null && this._cast.scoopOff(cell));
-    // when each lava fetch started since the frame last grew, and whether that added up to a loop (see CastLava.collectLoop)
-    private final List<Integer> _fetchStarts = new ArrayList<>();
-    private boolean _fetching;
-    private int _fetchObsidian;
-    private boolean _looped;
+    // no lake in reach (the search came back empty), for the portal phase's no lava clock
+    private boolean _noLake;
     private final TimerGame _refreshTimer = new TimerGame(11);
     private BlockPos _portalOrigin = null;
     // the cast for the frame cell we're on, handed back every tick so it's the one that's actually running
@@ -116,6 +113,8 @@ public class ConstructNetherPortalBucketTask extends Task {
     private int _noReachTicks;
     private int _reachSwitches;
     private boolean _firstSearch = false;
+    private static final int LAKE_Y_BAND = 16;
+    private static final float WANDER_LEG = 64;
 
     // where the frame is going, null while we're still looking for a spot. PortalPhase reads this with castCellsDone to
     // tell a slow cast from a stuck one
@@ -123,9 +122,9 @@ public class ConstructNetherPortalBucketTask extends Task {
         return _portalOrigin;
     }
 
-    // the pour and the fetch kept undoing each other, PortalPhase takes the obsidian way. stays set for this try
-    public boolean castLooped() {
-        return _looped;
+    // nothing to fetch lava from: no lake in reach, or the fetch finds no source it can use. PortalPhase counts that as no lava
+    public boolean lavaDrought() {
+        return _noLake || _collectLavaTask.noSource();
     }
 
     public int castCellsDone(AltoClef mod) {
@@ -285,6 +284,7 @@ public class ConstructNetherPortalBucketTask extends Task {
                 _lavaSearchTimer.reset();
                 Debug.logMessage("(Searching for lava lake with portalable spot nearby...)");
                 List<BlockPos> lakes = findLavaLakes(mod, mod.getPlayer().blockPosition());
+                _noLake = lakes.isEmpty();
                 if (!lakes.isEmpty()) {
                     // nearest lake first, but a lake whose every site is wet, too slow to clear or banned by a ruined cast
                     // used to mean sitting out the whole give up timer next to it. the next lake over is right there
@@ -306,7 +306,9 @@ public class ConstructNetherPortalBucketTask extends Task {
 
             if (!foundSpot) {
                 setDebugState("(timeout: Looking for lava lake)");
-                return new TimeoutWanderTask();
+                // same leg at a time as the fetch: a finished one is dropped so the next starts from where we stand
+                if (subTask() instanceof TimeoutWanderTask leg && leg.isFinished(mod)) dropChild(mod);
+                return new TimeoutWanderTask(WANDER_LEG);
             }
         }
 
@@ -346,10 +348,8 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA && !_cast.ownsTheLava(mod)) {
                 setDebugState("Collecting lava");
                 _progressChecker.reset();
-                noteFetch(mod);
                 return _collectLavaTask;
             }
-            _fetching = false;
             return _cast;
         }
 
@@ -371,25 +371,8 @@ public class ConstructNetherPortalBucketTask extends Task {
         return new InteractWithBlockTask(new ItemTarget(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}, 1), Direction.UP, _portalOrigin.below(), true);
     }
 
-    // counts fetch starts (not ticks), and a frame cell turning obsidian wipes the count: that's the cast getting somewhere
-    private void noteFetch(AltoClef mod) {
-        int done = castCellsDone(mod);
-        if (done != _fetchObsidian) {
-            _fetchObsidian = done;
-            _fetchStarts.clear();
-        }
-        if (!_fetching) {
-            _fetching = true;
-            _fetchStarts.add(WorldHelper.getTicks());
-            if (CastLava.collectLoop(_fetchStarts, WorldHelper.getTicks())) {
-                _looped = true;
-            }
-        }
-    }
-
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        _fetching = false;
         mod.getBlockTracker().stopTracking(Blocks.LAVA);
         mod.getBehaviour().pop();
     }
@@ -530,6 +513,8 @@ public class ConstructNetherPortalBucketTask extends Task {
         lavas.sort(Comparator.comparingDouble(playerPos::distSqr));
         for (BlockPos pos : lavas) {
             if (alreadyExplored.contains(pos)) continue;
+            // a lake 60 blocks down is a lake we would dig to, not one we cast at
+            if (!inYBand(pos.getY(), playerPos.getY())) continue;
             int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
             // every lone source gets flooded now, only the real lakes are worth a chat line
             if (depth >= 12) {
@@ -538,6 +523,10 @@ public class ConstructNetherPortalBucketTask extends Task {
             }
         }
         return lakes;
+    }
+
+    static boolean inYBand(int lakeY, int playerY) {
+        return Math.abs(lakeY - playerY) <= LAKE_Y_BAND;
     }
 
     // Used to flood-scan for blocks of lava.

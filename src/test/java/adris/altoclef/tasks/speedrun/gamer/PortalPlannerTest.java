@@ -420,11 +420,9 @@ public class PortalPlannerTest {
         assertEquals(new RunState.Pos(10, 70, -4), state.netherPortal);
     }
 
+    // a cast whose fetches loop is slow, not over: the clock and the no lava line are the way out, not a guess at a loop
     @Test
-    public void aLoopingCastGoesObsidianAtOnceWithAPick() {
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 30, 90, cfg, true, true, true));
-        assertEquals("still landing cells", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 10, cfg, true, true, true));
-        assertEquals("no pick, nowhere to go", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, false, true));
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, false));
+    public void aCastThatKeepsFetchingIsNotSwitchedOnThatAlone() {
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 90, cfg, true, true));
     }
 }

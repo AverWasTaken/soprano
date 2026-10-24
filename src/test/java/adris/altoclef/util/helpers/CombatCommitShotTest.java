@@ -13,7 +13,7 @@ import baritone.api.utils.Dimension;
 import java.util.List;
 import org.junit.Test;
 
-// hurt, and a shooter with a line to us is landing arrows: at hp 5 an arrow is an emergency whether we stand or walk, and
+// hurt, and a shooter with a line to us is landing arrows: at hp 6 an arrow is an emergency whether we stand or walk, and
 // whether it is 6 blocks off or 14. the low hp run used to need the foe within 8
 public class CombatCommitShotTest {
 
@@ -24,12 +24,12 @@ public class CombatCommitShotTest {
         return new Foe(SKELETON, distance, true, false, sinceHit, Kind.NORMAL, Double.POSITIVE_INFINITY, sight, CombatCommit.NEVER);
     }
 
-    private static Tick tick(long now, float hp, double x, boolean anchored, Foe... foes) {
-        return new Tick(now, hp, x, 0, List.of(foes), null, Way.NONE, true, false, anchored);
+    private static Tick tick(long now, float hp, double x, Foe... foes) {
+        return new Tick(now, hp, x, 0, List.of(foes), null, Way.NONE, true, false);
     }
 
     private static Tick tick(float hp, Foe... foes) {
-        return tick(NOW, hp, 0, false, foes);
+        return tick(NOW, hp, 0, foes);
     }
 
     @Test
@@ -42,11 +42,6 @@ public class CombatCommitShotTest {
                 CombatLog.line(Dimension.OVERWORLD, Event.RUN_START, c.why(), false, "skeleton", "it", "1 skeleton", 6, 0));
     }
 
-    @Test
-    public void thatIsTrueWalkingOrStandingStill() {
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 5, 0, true, skeleton(12, 40, true))));
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 5, 0, false, skeleton(12, 40, true))));
-    }
 
     @Test
     public void anArrowThatLandedTwoHundredTicksAgoIsNotShooting() {
@@ -67,9 +62,9 @@ public class CombatCommitShotTest {
     }
 
     @Test
-    public void aboveTheBailLineThisRuleHasNothingToSay() {
+    public void aboveTheBailLineItIsTheFightInstead() {
         assertEquals(Event.RUN_START, new CombatCommit().step(tick(CombatCommit.FLEE_HP, skeleton(12, 40, true))));
-        assertEquals(Event.NONE, new CombatCommit().step(tick(CombatCommit.FLEE_HP + 1, skeleton(12, 40, true))));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(CombatCommit.FLEE_HP + 1, skeleton(12, 40, true))));
     }
 
     // only things that shoot: a zombie that hit us a while ago and stands at twelve blocks is the old rule, scenery
@@ -93,32 +88,32 @@ public class CombatCommitShotTest {
     @Test
     public void inTheCooldownOnlyAFreshArrowCounts() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, 0, false, skeleton(12, 2, true))));
-        // the run ends (nothing within 12 and 24 blocks from the start)
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, 0, skeleton(12, 2, true))));
+        // the run ends once its line is gone for a moment
         long t = NOW + 1;
         Event ended = Event.NONE;
         for (; t < NOW + CombatCommit.RUN_CAP + 10 && ended == Event.NONE; t++) {
-            ended = c.step(tick(t, 6, (t - NOW) * 0.5, false, skeleton(14, 60, true)));
+            ended = c.step(tick(t, 6, (t - NOW) * 0.5, skeleton(14, 60, false)));
         }
         assertNotEquals(Event.NONE, ended);
         assertEquals(Mode.NONE, c.mode());
         // still shooting a while ago: the cooldown does not start another run for old news
-        assertEquals(Event.NONE, c.step(tick(t + 1, 6, 100, false, skeleton(12, 30, true))));
+        assertEquals(Event.NONE, c.step(tick(t + 1, 6, 100, skeleton(12, 30, true))));
         // a new arrow is news
-        assertEquals(Event.RUN_START, c.step(tick(t + 2, 6, 100, false, skeleton(12, 1, true))));
+        assertEquals(Event.RUN_START, c.step(tick(t + 2, 6, 100, skeleton(12, 1, true))));
     }
 
-    // the shooter follows and keeps a line the whole way. the run cannot get 12 clear, so it ends at the cap, and the next arrow
+    // the shooter follows and keeps a line the whole way. the run never loses its line, so it ends at the cap, and the next arrow
     // starts a new run from wherever we are by then (not from the old origin, where it would be over on the first tick)
     @Test
     public void aShooterThatFollowsEndsTheRunAtTheCapAndTheNextRunStartsFromHere() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, 0, false, skeleton(10, 2, true))));
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 6, 0, skeleton(10, 2, true))));
         assertEquals(0, c.originX(), 0);
         Event event = Event.NONE;
         long t = NOW + 1;
         for (; t < NOW + 2 * CombatCommit.RUN_CAP && event == Event.NONE; t++) {
-            event = c.step(tick(t, 6, (t - NOW) * 0.25, false, skeleton(10, (t - NOW) % 50, true)));
+            event = c.step(tick(t, 6, (t - NOW) * 0.25, skeleton(10, (t - NOW) % 50, true)));
         }
         long at = t - 1;
         // the cap, and on the very same step the next arrow (it is fresh) starts the next run

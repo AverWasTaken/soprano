@@ -108,6 +108,13 @@ public final class CombatCommit {
     // (player i-frames are about 10 ticks and a zombie swings about every 20, so this is a swing or two each)
     public static final long RUN_HIT_GRACE = 30;
 
+    // a sniper we could not get to (a cliff skeleton, one across water) is left alone this long, a lobber for LOBBER_GIVE_UP_TICKS.
+    // the run out of its sight is cheap, the fight that stalls is not, so the sniper gets three times the patience
+    public static final long SNIPER_GIVE_UP_TICKS = 1800;
+
+    // a run from shooters is over once none of them has had a line to us this long (a leaf flickering in the way is not cover)
+    public static final long LOS_CLEAR_TICKS = 20;
+
     // how far a lobber that hit us is still worth a fight (FoeRules.WITCH_HIT_RANGE is the same number from the other side:
     // how far a witch can be and still be what the poison is blamed on)
     public static final double LOBBER_RANGE = FoeRules.WITCH_HIT_RANGE;
@@ -123,9 +130,6 @@ public final class CombatCommit {
 
     // the tracker only lists hostiles closer than this, and it is how far a sniper can be and still pin us down
     public static final double FOE_RANGE = 16;
-    // standing still while a shooter lands two arrows this close together is "really needed": the aim is never spoiled, so
-    // walking on (the answer for a bot on the move) is not an answer any more
-    public static final long PIN_WINDOW = 160;
     // a shooter with a line to us that hit us this lately counts as near for the low hp rule, whatever the distance
     public static final long SHOT_MEMORY = 100;
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
@@ -177,11 +181,9 @@ public final class CombatCommit {
         UNARMED,
         // a lobber we already failed to get to hit us again: not another fight, a run out of its range
         LOBBER,
-        // the same story for a sniper that pinned us down: we could not get to it, so the next hits are a run
-        UNREACHABLE,
         // hurt, and a shooter with a line to us hit us lately: near enough to leave, whatever the distance
         SHOT,
-        // we stood still and a shooter landed two arrows on us: not a mob to walk past, a fight
+        // a skeleton that is shooting us and we are fit to fight it: one target, till it is dead
         PINNED,
         // a creeper we already stepped from lit up beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
         // loop, leaving is not
@@ -224,7 +226,7 @@ public final class CombatCommit {
     // reachGap: eye to the nearest point of its box, the three block reach (ReachRules). infinite when nobody measured
     // it, which is every foe that does not come from the world: the no room rule only believes a gap somebody really took
     // sight: it has a line to us (only asked for shooters that hit us lately, so false is the default and the cheap answer).
-    // sinceHitBefore: ticks since the hit before the last one (NEVER for fewer than two), for "shot us twice"
+    // sinceHitBefore: ticks since the hit before the last one (NEVER for fewer than two), a shooter that keeps hitting us (nothing reads it since the pin window went, it is just carried)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                       boolean sight, long sinceHitBefore) {
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -272,13 +274,6 @@ public final class CombatCommit {
             return ranged && !creeper && kind == Kind.NORMAL;
         }
 
-        // it landed two hits on us close together, from where it stands, and still has a line. fresh only in the cooldown.
-        // sinceHitBefore counts from now, so "the older of the two is inside PIN_WINDOW" is also "the two are less than
-        // PIN_WINDOW apart": the newer one is never older than that. no separate gap check needed
-        public boolean pinning(boolean freshOnly) {
-            return sniper() && sight && distance <= FOE_RANGE && sinceHitBefore <= PIN_WINDOW && (!freshOnly || fresh());
-        }
-
         // it shot us lately and still has a line: at low hp that is as good as standing next to us
         public boolean shooting() {
             return ranged && !creeper && sight && distance <= FOE_RANGE && sinceHit <= SHOT_MEMORY;
@@ -304,8 +299,6 @@ public final class CombatCommit {
     // than a fist in the bag (a sword, an axe, or a tool that hits harder than a hand)
     // trying: the run is really trying to get somewhere this tick, see noRoomFight. false by default, so nothing that does not say
     // so can flip a run into a fight with it
-    // anchored: we have not been anywhere else for a while (AnchorWatch). false by default, so the walking premise holds for
-    // everything that does not say so
     // creeperRepeat: CreeperStep just started a step on a creeper that came back (CreeperStep.escalate), idle makes it a run
     // body: hunger, food and whether a heal-up hold is allowed at all (RecoverHold). NONE by default, which never holds
     // boxed: every side of us is a wall or a mob (BoxRules), so a run has nowhere to go. false by default
@@ -314,30 +307,25 @@ public final class CombatCommit {
     // watched: a shooter that is not a foe (an uncharged blaze at range is not in the hostile list) has a line to us right now. only the
     // heal-up hold's re-run reads it, so it breaks the line before the meal and not after. false by default
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched) {
+                       boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched) {
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
-            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, nextHit, false);
+                    boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, false);
         }
 
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
-            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, 0);
+                    boolean creeperRepeat, RecoverHold.Body body, boolean boxed) {
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, 0);
         }
 
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                    boolean anchored, boolean creeperRepeat, RecoverHold.Body body) {
-            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, false);
+                    boolean creeperRepeat, RecoverHold.Body body) {
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, false);
         }
 
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                    boolean anchored, boolean creeperRepeat) {
-            this(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, RecoverHold.Body.NONE);
-        }
-
-        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                    boolean anchored) {
-            this(now, health, x, z, foes, target, way, armed, trying, anchored, false);
+                    boolean creeperRepeat) {
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, RecoverHold.Body.NONE);
         }
 
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying) {
@@ -369,7 +357,7 @@ public final class CombatCommit {
         }
 
         Tick withNextHit(float hit) {
-            return new Tick(now, health, x, z, foes, target, way, armed, trying, anchored, creeperRepeat, body, boxed, hit, watched);
+            return new Tick(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, hit, watched);
         }
     }
 
@@ -557,6 +545,10 @@ public final class CombatCommit {
 
     // run bookkeeping
     private long clearSince = -1;
+    // this run is from shooters: it is over when none has a line to us (LOS_CLEAR_TICKS), not when we are 12 blocks off, and
+    // noSightSince is the clock on that
+    private boolean losRun;
+    private long noSightSince = -1;
     // the cap counts from here, and a run gets one extension (startTick stays where the run really started)
     private long capFrom;
     private boolean extended;
@@ -597,7 +589,7 @@ public final class CombatCommit {
     // the same for a sniper we went after because it pinned us down. its own clock: a witch we could not reach says nothing
     // about a skeleton
     private long sniperGaveUpAt = Long.MIN_VALUE / 2;
-    // this fight is with a ranged foe we chose to go and get (a lobber, or a pinning sniper): a stall or a lost track means we
+    // this fight is with a ranged foe we chose to go and get (a lobber, or a sniper that is shooting us): a stall or a lost track means we
     // could not get to it, and that is remembered
     private boolean atRange;
     // this fight is on a lobber we picked because it was landing hits when the last target died (lobberNext): only the hard floor
@@ -680,6 +672,8 @@ public final class CombatCommit {
         endedFirst = Event.NONE;
         extended = false;
         farSince = -1;
+        losRun = false;
+        noSightSince = -1;
         clearSince = -1;
         bittenSince = -1;
         clearRunHits();
@@ -705,7 +699,8 @@ public final class CombatCommit {
     private boolean gaveUpOn(Foe foe, long now) {
         long at = foe.kind() == Kind.LOBBER ? lobberGaveUpAt : sniperGaveUpAt;
         boolean ranged = foe.kind() == Kind.LOBBER || foe.sniper();
-        return ranged && foe.distance() > CONTACT && now >= at && now - at <= LOBBER_GIVE_UP_TICKS;
+        long patience = foe.kind() == Kind.LOBBER ? LOBBER_GIVE_UP_TICKS : SNIPER_GIVE_UP_TICKS;
+        return ranged && foe.distance() > CONTACT && now >= at && now - at <= patience;
     }
 
     private void giveUpOn(Foe target, long now) {
@@ -760,7 +755,7 @@ public final class CombatCommit {
     private static Tick afterEnd(Tick t, int oldTarget) {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.creeperRepeat(),
                 t.body(), t.boxed(), t.nextHit(), t.watched());
     }
 
@@ -790,12 +785,14 @@ public final class CombatCommit {
             if (!t.armed() && !hit.standsAndFights()) return startRun(t, Why.UNARMED, Event.RUN_START);
             return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
         }
-        // not in contact, but we are standing still and something keeps landing arrows on us
-        Foe pinned = pinnedBy(t, cooling);
-        if (pinned != null) {
-            if (gaveUpOn(pinned, t.now())) return startRun(t, Why.UNREACHABLE, Event.RUN_START);
-            // (bare hands do not go and get a skeleton. the low hp rule still has its say)
-            if (t.armed()) return startFight(t, pinned, Why.PINNED, Event.FIGHT_START, false);
+        // not in contact, but a skeleton is shooting us. one target and kill it. hurt, or more than one of them, is a run out of
+        // their sight instead (the low hp run above already took the hurt case when it was close enough to count)
+        List<Foe> shooters = snipers(t, cooling);
+        if (!shooters.isEmpty()) {
+            Foe sniper = shooters.get(0);
+            if (t.low() || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) return startRun(t, Why.SHOT, Event.RUN_START);
+            // (bare hands do not go and get a skeleton)
+            if (t.armed()) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
         }
         // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
         // with what is around us, and this one is a path that cannot go on until it is gone
@@ -857,16 +854,12 @@ public final class CombatCommit {
         return shot || t.watched() ? Why.SHOT : Why.NONE;
     }
 
-    // the walking premise is why a shooter past contact is scenery: a moving target is a bad target and the task is on its way
-    // anyway. standing still (at a furnace, a table, an ore face) breaks it, and a sniper with a line that has landed two hits
-    // on us close together is not scenery. above the bail line only: below it the low hp rule is the one that decides
-    private Foe pinnedBy(Tick t, boolean freshOnly) {
-        if (!t.anchored() || t.low()) return null;
-        Foe best = null;
-        for (Foe foe : candidates(t)) {
-            if (foe.pinning(freshOnly) && (best == null || foe.distance() < best.distance())) best = foe;
-        }
-        return best;
+    // skeletons with a line to us that hit us lately, nearest first. in the cooldown only a fresh hit counts
+    private List<Foe> snipers(Tick t, boolean freshOnly) {
+        return candidates(t).stream()
+                .filter(foe -> foe.sniper() && foe.shooting() && (!freshOnly || foe.fresh()))
+                .sorted(java.util.Comparator.comparingDouble(Foe::distance))
+                .toList();
     }
 
     // the closest one in contact that is in the path, or any in contact when the path has gone nowhere for 1.5 s. never a
@@ -957,7 +950,7 @@ public final class CombatCommit {
     // the same tick with one foe gone from the list and no fight target, for asking what the rest of them would say
     private static Tick withoutFoe(Tick t, int id) {
         List<Foe> foes = t.foes().stream().filter(foe -> foe.id() != id).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.anchored(), t.creeperRepeat(),
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.creeperRepeat(),
                 t.body(), t.boxed(), t.nextHit(), t.watched());
     }
 
@@ -1006,6 +999,8 @@ public final class CombatCommit {
         // the witch we picked over the zombies is not walked away from at 11 hp for being a witch (that is how it lobs for a
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
         // (only the part the witch itself causes: a skeleton landing arrows on us is still the old rule's to judge)
+        // a second skeleton on us is not the one-target fight any more
+        if (bail == Why.NONE && why == Why.PINNED && snipers(t, false).size() >= 2) bail = Why.SHOT;
         if (lobberPick) {
             if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
@@ -1180,6 +1175,9 @@ public final class CombatCommit {
         capFrom = t.now();
         extended = false;
         clearSince = -1;
+        noSightSince = -1;
+        losRun = (reason == Why.SHOT || reason == Why.LOW_HP) && t.foes().stream().anyMatch(foe -> foe.sniper() && foe.shooting())
+                && t.foes().stream().noneMatch(foe -> foe.distance() <= LOW_HP_RANGE && (!foe.ranged() || foe.creeper()));
         bittenSince = -1;
         clearRunHits();
         cornerSince = -1;
@@ -1230,7 +1228,17 @@ public final class CombatCommit {
             clearSince = t.now();
         }
         if (t.now() - capFrom >= RUN_CAP) return capped(t);
-        if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS) return end(t, Event.RUN_CLEAR);
+        if (losRun) {
+            // the line is the whole point: out of sight is out of range, however few blocks that took
+            boolean seen = t.foes().stream().anyMatch(foe -> foe.ranged() && !foe.creeper() && foe.sight());
+            if (seen) {
+                noSightSince = -1;
+            } else if (noSightSince < 0) {
+                noSightSince = t.now();
+            } else if (t.now() - noSightSince >= LOS_CLEAR_TICKS) {
+                return end(t, Event.RUN_CLEAR);
+            }
+        } else if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS) return end(t, Event.RUN_CLEAR);
 
         // running is not shaking it: something in contact keeps hitting us while we move. armed, that is a fight (the same
         // boxed in fight as the cap's, so it finishes this target and cannot flip back to a run on the next tick). unarmed, a
@@ -1412,6 +1420,7 @@ public final class CombatCommit {
         cornerSince = -1;
         stuckSince = -1;
         extended = false;
+        losRun = false;
         cooldownUntil = t.now() + COOLDOWN;
         return event;
     }

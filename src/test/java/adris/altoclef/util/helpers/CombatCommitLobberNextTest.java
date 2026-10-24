@@ -35,7 +35,7 @@ public class CombatCommitLobberNextTest {
     }
 
     private static Tick tick(long now, float hp, boolean boxed, Foe target, Foe... foes) {
-        return new Tick(now, hp, 0, 0, List.of(foes), target, Way.NONE, true, false, false, false, RecoverHold.Body.NONE, boxed);
+        return new Tick(now, hp, 0, 0, List.of(foes), target, Way.NONE, true, false, false, RecoverHold.Body.NONE, boxed);
     }
 
     // three on us and a run that goes nowhere: the cornered fight, open air around us (nothing boxes us in), on one of them

@@ -268,26 +268,6 @@ public class CastLavaTest {
     }
 
     @Test
-    public void fiveFetchesInAMinuteIsALoop() {
-        List<Integer> starts = new java.util.ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            starts.add(i * 200);
-            assertFalse(CastLava.collectLoop(starts, i * 200));
-        }
-        starts.add(800);
-        assertTrue(CastLava.collectLoop(starts, 800));
-    }
-
-    @Test
-    public void slowFetchesAreNotALoop() {
-        List<Integer> starts = new java.util.ArrayList<>();
-        for (int i = 0; i < 6; i++) {
-            starts.add(i * 400);
-            assertFalse(CastLava.collectLoop(starts, i * 400));
-        }
-    }
-
-    @Test
     public void aRebuiltCastIsADifferentTask() {
         List<BlockPos> a = CastLava.footprint(P, List.of(P.offset(5, 0, 0)));
         List<BlockPos> same = CastLava.footprint(P, List.of(P.offset(5, 0, 0)));
