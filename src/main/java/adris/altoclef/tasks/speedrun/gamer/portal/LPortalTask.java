@@ -30,6 +30,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -55,11 +56,14 @@ public class LPortalTask extends Task {
     private static final int SCAN_GAP = 20 * 3;
     private static final int WANDER_LEG = 64;
     // the finder's source cap, a big lake is a lot of cells and each is 16 layouts
-    private static final int FINDER_SOURCES = 80;
+    private static final int FINDER_SOURCES = 160;
     // the lake around the seed we walked to, read live, because the scan only keeps a few cells of each chunk
     private static final int NEAR_SEED = 6;
     private static final int FINDER_REACH = 90;
-    private static final int BUILD_TICKS = 20 * 85;
+    // cells of lake taken per seed, a lake is a lot of layouts
+    private static final int LAKE_GROW = 40;
+    // only the cheapest seeds grow, the rest are on the far side of the map
+    private static final int GROWN_SEEDS = 8;
     private static final int CLEANUP_TICKS = 20 * 8;
     private static final int SCOOP_MISSES = 12;
     // one step that does not change the world for this long is stuck
@@ -74,7 +78,14 @@ public class LPortalTask extends Task {
 
     private int tick;
     private int searchStart = -1;
-    private int buildStart = -1;
+    // the build clock and the clearing clock (BuildClock), and whether the last step was clearing
+    private BuildClock clock = new BuildClock();
+    private boolean prepping;
+    // the base is set, the lava cells under it are obsidian and nobody has to keep blocks out of them anymore
+    private boolean baseSet;
+    // the cheapest site that needs work, from this pass of the finder
+    private Layout roughest;
+    private int roughestCost;
     private Layout layout;
     private List<Layout> pending = new ArrayList<>();
     private int pendingAt;
@@ -132,9 +143,10 @@ public class LPortalTask extends Task {
         mod.getBehaviour().push();
         mod.getBehaviour().addProtectedItems(Items.WATER_BUCKET, Items.LAVA_BUCKET, Items.BUCKET, Items.FLINT_AND_STEEL, Items.FIRE_CHARGE);
         // the walls and the cast frame are the whole point, nothing gets to path through them
-        mod.getBehaviour().avoidBlockBreaking(p -> layout != null && (isWall(p) || isCastMade(mod, p)));
+        // while clearing the spot nothing in front of the shore row gets dug, that is where the lava is
+        mod.getBehaviour().avoidBlockBreaking(p -> layout != null && (prepping ? isFront(p) : (isWall(p) || isCastMade(mod, p))));
         // the cells the water and the frame need empty: no scaffolding in them
-        mod.getBehaviour().avoidBlockPlacing(p -> layout != null && isReserved(p));
+        mod.getBehaviour().avoidBlockPlacing(p -> layout != null && (isReserved(p) || (!baseSet && isLavaCell(p))));
     }
 
     @Override
@@ -181,6 +193,33 @@ public class LPortalTask extends Task {
         return layout.cell(LPortalPlan.BASE_WATER).equals(q);
     }
 
+    private boolean isFront(BlockPos p) {
+        P q = toP(p);
+        for (int[] c : LPortalPlan.keepClear()) {
+            if (c[2] <= 0 && layout.cell(c).equals(q)) {
+                return true;
+            }
+        }
+        // and the shore the site stands on: the top, what is under it, the backing
+        for (int u = 0; u <= 3; u++) {
+            if (layout.cell(u, 0, 1).equals(q) || layout.cell(u, -1, 1).equals(q) || layout.cell(u, 0, 2).equals(q)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the row and the platform lane in front of it: a bridging block dropped into one of those before the base would cook
+    private boolean isLavaCell(BlockPos p) {
+        P q = toP(p);
+        for (int u = 0; u <= 3; u++) {
+            if (layout.cell(u, 0, 0).equals(q) || (u >= 1 && u <= 2 && layout.cell(u, 0, -1).equals(q))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Direction faceOf(int dx, int dy, int dz) {
         for (Direction d : Direction.values()) {
             if (d.getUnitVec3i().getX() == dx && d.getUnitVec3i().getY() == dy && d.getUnitVec3i().getZ() == dz) {
@@ -218,8 +257,12 @@ public class LPortalTask extends Task {
         if (layout == null) {
             return search(mod);
         }
-        if (tick - buildStart > BUILD_TICKS) {
+        BuildClock.Verdict verdict = clock.tick(prepping);
+        if (verdict == BuildClock.Verdict.BUILD_OUT) {
             return giveUp("ran out of time");
+        }
+        if (verdict == BuildClock.Verdict.PREP_OUT) {
+            return dropSite();
         }
         LiveTerrain terrain = new LiveTerrain(mod.getWorld());
         List<P> lava = lavaCells(mod);
@@ -228,10 +271,12 @@ public class LPortalTask extends Task {
         int empty = mod.getItemStorage().getItemCount(Items.BUCKET);
         Inv inv = new Inv(mod.getItemStorage().getItemCount(Items.LAVA_BUCKET), mod.getItemStorage().hasItem(Items.WATER_BUCKET), empty,
                 blocksInBag(mod), spot != null);
+        baseSet = LPortalPlan.baseDone(layout, terrain);
         Step step = LPortalPlan.next(layout, terrain, inv);
+        prepping = LPortalPlan.PREP_CLEAR.equals(step.why()) || LPortalPlan.PREP_FILL.equals(step.why());
         lastDebug = step.toString();
         watchdog(step, spot);
-        if (failing != null) {
+        if (failing != null || layout == null) {
             return null;
         }
         setDebugState(step.toString());
@@ -309,10 +354,16 @@ public class LPortalTask extends Task {
             }
             // seeds near us only, a row that fits 60 blocks down or 300 away would start the build clock a long walk from the
             // site. the lake we walked to gets its own grid above once we are standing at it
+            // every seed goes in before any lake grows, so one big lake can't eat the whole source cap
+            List<P> near = new ArrayList<>();
             for (P p : usable) {
                 if (Math.abs(p.y() - me.getY()) <= LavaHunt.BAND && sq(p.x() - me.getX()) + sq(p.z() - me.getZ()) <= FINDER_REACH * FINDER_REACH) {
                     found.add(p);
+                    near.add(p);
                 }
+            }
+            for (int i = 0; i < Math.min(near.size(), GROWN_SEEDS); i++) {
+                growLake(terrain, near.get(i), found);
             }
             List<P> sources = new ArrayList<>();
             for (P p : found) {
@@ -325,15 +376,34 @@ public class LPortalTask extends Task {
             }
             pending = LPortalPlan.candidates(terrain, sources, me.getX(), me.getZ());
             pendingAt = 0;
+            roughest = null;
         }
-        // a few a tick, each full check is a couple hundred reads
+        // a few a tick, each full check is a couple hundred reads. a perfect site is taken at once, a rough one is remembered
+        // and the cheapest of them is taken when the pass is over with nothing perfect in it
+        int blocks = blocksInBag(mod);
         for (int i = 0; i < 6 && pendingAt < pending.size(); i++) {
             Layout l = pending.get(pendingAt++);
-            if (LPortalPlan.fits(l, terrain)) {
-                layout = l;
-                buildStart = tick;
-                return null;
+            // unloaded reads as rock, so a half loaded box would look fine and be nothing of the sort
+            if (!boxLoaded(mod, l)) {
+                continue;
             }
+            LPortalPlan.Survey s = LPortalPlan.survey(l, terrain);
+            if (!s.ok() || blocks < 8 + s.fills()) {
+                continue;
+            }
+            int cost = s.mines() + 2 * s.fills();
+            if (cost == 0) {
+                return choose(l);
+            }
+            if (roughest == null || cost < roughestCost) {
+                roughest = l;
+                roughestCost = cost;
+            }
+        }
+        if (roughest != null && pendingAt >= pending.size()) {
+            Layout l = roughest;
+            roughest = null;
+            return choose(l);
         }
         if (finderOpen > 0 && pendingAt >= pending.size()) {
             hunt.passDone(finderOpen);
@@ -364,6 +434,65 @@ public class LPortalTask extends Task {
                 }
                 setDebugState("no lava in sight, wandering");
                 return wander;
+            }
+        }
+    }
+
+    private Task choose(Layout l) {
+        layout = l;
+        lavaScan = null;
+        clock = new BuildClock();
+        prepping = false;
+        baseSet = false;
+        strikes.clear();
+        return null;
+    }
+
+    // the corners of the box the survey reads are in loaded chunks
+    private static boolean boxLoaded(AltoClef mod, Layout l) {
+        for (int u = -2; u <= 5; u += 7) {
+            for (int d = -3; d <= 3; d += 6) {
+                if (!mod.getWorld().isLoaded(toPos(l.cell(u, 0, d)))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // the site we were clearing is no good after all (lava showed up, the clock ran out, a block won't break). back to
+    // looking, and not at this lake again
+    private Task dropSite() {
+        hunt.siteFailed(layout.cell(1, 0, 0));
+        layout = null;
+        // a dropped site doesn't get a fresh search clock, but it gets a little time to look again
+        searchStart = Math.max(searchStart, tick - SEARCH_TICKS + 20 * 90);
+        pending = new ArrayList<>();
+        pendingAt = 0;
+        roughest = null;
+        prepping = false;
+        baseSet = false;
+        strikes.clear();
+        lastDebug = "";
+        return null;
+    }
+
+    // the scan keeps a few cells per chunk, and a row needs four in a line, so a seed alone mostly makes no layout. the rest of
+    // its lake in the same layer comes along, a bounded walk over the sources next to it
+    private static void growLake(LiveTerrain terrain, P seed, Set<P> found) {
+        java.util.ArrayDeque<P> queue = new java.util.ArrayDeque<>();
+        int taken = 0;
+        queue.add(seed);
+        while (!queue.isEmpty() && taken < LAKE_GROW) {
+            P at = queue.poll();
+            taken++;
+            int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int[] d : dirs) {
+                P next = new P(at.x() + d[0], at.y(), at.z() + d[1]);
+                if (!found.contains(next) && terrain.at(next.x(), next.y(), next.z()) == Mat.LAVA) {
+                    found.add(next);
+                    queue.add(next);
+                }
             }
         }
     }
@@ -430,6 +559,9 @@ public class LPortalTask extends Task {
             case STUCK -> {
                 return giveUp(step.why());
             }
+            case ABANDON -> {
+                return dropSite();
+            }
             case SCOOP -> {
                 return scoopLava(mod, step, spot);
             }
@@ -444,7 +576,7 @@ public class LPortalTask extends Task {
                 }
                 BlockPos junk = toPos(step.cell());
                 if (WorldHelper.tooSlowToBreak(mod, junk)) {
-                    return giveUp("something too hard to break at " + junk.toShortString());
+                    return prepping ? dropSite() : giveUp("something too hard to break at " + junk.toShortString());
                 }
                 mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.NONE);
                 return new DestroyBlockTask(junk);
@@ -554,7 +686,7 @@ public class LPortalTask extends Task {
     private Task strike(String key, String why) {
         int n = strikes.merge(key, 1, Integer::sum);
         if (n >= CELL_STRIKES) {
-            return giveUp(why + " " + key);
+            return prepping ? dropSite() : giveUp(why + " " + key);
         }
         unstick = new TimeoutWanderTask(3);
         return null;
@@ -640,6 +772,9 @@ public class LPortalTask extends Task {
 
     @Override
     protected String toHudString() {
+        if (prepping && !searching()) {
+            return "Clearing the portal spot";
+        }
         return searching() ? (huntHud.isEmpty() ? "Looking for a lava row" : huntHud) : "Building a lava bucket portal";
     }
 
@@ -684,6 +819,13 @@ public class LPortalTask extends Task {
             }
             if (s.getCollisionShape(level, pos).isEmpty()) {
                 return Mat.AIR;
+            }
+            // bedrock and friends: solid, and nobody is mining it
+            if (s.getDestroySpeed(level, pos) < 0) {
+                return Mat.OBSIDIAN;
+            }
+            if (s.getBlock() instanceof FallingBlock) {
+                return Mat.FALLS;
             }
             return Mat.SOLID;
         }

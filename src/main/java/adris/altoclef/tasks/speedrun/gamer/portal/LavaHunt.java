@@ -25,6 +25,8 @@ final class LavaHunt {
     static final int LEGS_FOR_DEEP = 2;
     // nobody walks 75 s to a lake. it's not reachable
     static final int WALK_TICKS = 20 * 75;
+    // except one in a pass B (deep) lake, that is a dig down staircase and those are slow
+    static final int WALK_TICKS_DEEP = 20 * 180;
     // going up or down costs more than going sideways, so a lake at our level wins over one under our feet
     static final int DY_COST = 4;
 
@@ -72,6 +74,7 @@ final class LavaHunt {
     private final List<P> rejected = new ArrayList<>();
     private P target;
     private int walkStart;
+    private int walkLimit = WALK_TICKS;
     // the finder pass that has to start before it counts as a look at the target. -1 = not waiting on one
     private int needPass = -1;
     private int passNo;
@@ -131,6 +134,12 @@ final class LavaHunt {
         return passNo;
     }
 
+    // a site we picked turned out bad (lava showed up while clearing it, the clearing ran out of time). same as a pass
+    // that found nothing there
+    void siteFailed(P around) {
+        markNoSite(around);
+    }
+
     private void markNoSite(P around) {
         for (P p : seen) {
             if (dist(p, around) <= SITE_RADIUS) {
@@ -171,6 +180,7 @@ final class LavaHunt {
         if (target == null || noSite.contains(target)) {
             target = usable.get(0);
             walkStart = tick;
+            walkLimit = Math.abs(target.y() - py) > BAND ? WALK_TICKS_DEEP : WALK_TICKS;
             needPass = -1;
         }
         if (arrived(target, px, py, pz)) {
@@ -180,7 +190,7 @@ final class LavaHunt {
             return Move.WAIT;
         }
         needPass = -1;
-        if (tick - walkStart > WALK_TICKS) {
+        if (tick - walkStart > walkLimit) {
             markNoSite(target);
             return Move.WAIT;
         }

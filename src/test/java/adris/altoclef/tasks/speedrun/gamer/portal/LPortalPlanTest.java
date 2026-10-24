@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.portal;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -585,19 +586,237 @@ public class LPortalPlanTest {
     }
 
     @Test
-    public void aBumpyOrWetSiteDoesNotFit() {
-        World w = pool();
-        w.set(L, 2, 1, 1, Mat.SOLID);
-        assertFalse("a block where a wall goes", LPortalPlan.fits(L, w));
-        World wet = pool();
-        wet.set(L, 5, 1, 2, Mat.WATER);
-        assertFalse(LPortalPlan.fits(L, wet));
+    public void aBumpyOrWetSiteDoesNotFitButMostOfItIsFixable() {
+        World bump = pool();
+        bump.set(L, 2, 1, 1, Mat.SOLID);
+        assertFalse("a block where a wall goes", LPortalPlan.fits(L, bump));
+        LPortalPlan.Survey b = LPortalPlan.survey(L, bump);
+        assertTrue(b.ok());
+        assertEquals(1, b.mines());
+        assertEquals("behind the frame, so it is cleared before the base", 1, b.prepMines());
+        assertEquals(0, b.fills());
         World tree = pool();
         tree.set(L, 3, 4, 0, Mat.SOLID);
         assertFalse("the frame cells must be clear", LPortalPlan.fits(L, tree));
+        LPortalPlan.Survey t = LPortalPlan.survey(L, tree);
+        assertTrue(t.ok());
+        assertEquals(1, t.mines());
+        assertEquals("in the frame plane, left for after the base", 0, t.prepMines());
         World hole = pool();
         hole.set(L, 2, 0, 2, Mat.AIR);
         assertFalse("no ground to stand on at the shore", LPortalPlan.fits(L, hole));
+        LPortalPlan.Survey h = LPortalPlan.survey(L, hole);
+        assertTrue(h.ok());
+        assertEquals(1, h.fills());
+        assertEquals(0, h.mines());
+        World wet = pool();
+        wet.set(L, 5, 1, 2, Mat.WATER);
+        assertFalse(LPortalPlan.fits(L, wet));
+        assertFalse(LPortalPlan.survey(L, wet).ok());
+    }
+
+    @Test
+    public void aPerfectSiteSurveysClean() {
+        LPortalPlan.Survey s = LPortalPlan.survey(L, pool());
+        assertTrue(s.ok());
+        assertEquals(0, s.mines());
+        assertEquals(0, s.fills());
+    }
+
+    @Test
+    public void aBlockOnASourceIsNotFixable() {
+        World row = pool();
+        row.set(L, 1, 1, 0, Mat.SOLID);
+        assertFalse(LPortalPlan.survey(L, row).ok());
+        World lane = pool();
+        lane.set(L, 2, 1, -1, Mat.SOLID);
+        assertFalse(LPortalPlan.survey(L, lane).ok());
+    }
+
+    @Test
+    public void lavaWhereTheBuildNeedsAirOrBehindARockWeWouldOpenIsNotFixable() {
+        World above = pool();
+        above.set(L, 2, 4, 1, Mat.SOLID);
+        assertTrue("the ceiling alone is a job", LPortalPlan.survey(L, above).ok());
+        above.set(L, 2, 5, 1, Mat.LAVA);
+        assertFalse("lava over the ceiling comes down when it goes", LPortalPlan.survey(L, above).ok());
+        World inside = pool();
+        inside.set(L, 2, 3, 1, Mat.LAVA);
+        assertFalse(LPortalPlan.survey(L, inside).ok());
+        World flowing = pool();
+        flowing.set(L, 2, 3, 1, Mat.LAVA_FLOW);
+        assertFalse(LPortalPlan.survey(L, flowing).ok());
+        World side = pool();
+        side.set(L, 3, 2, 1, Mat.SOLID);
+        side.set(L, 4, 2, 1, Mat.LAVA);
+        assertFalse("lava beside a rock we would mine", LPortalPlan.survey(L, side).ok());
+        World back = pool();
+        back.set(L, 1, 2, 2, Mat.SOLID);
+        back.set(L, 1, 2, 3, Mat.LAVA_FLOW);
+        assertFalse(LPortalPlan.survey(L, back).ok());
+    }
+
+    @Test
+    public void gravelInOrOverARockWeWouldMineIsNotFixable() {
+        World over = pool();
+        over.set(L, 1, 3, 0, Mat.SOLID);
+        over.set(L, 1, 6, 0, Mat.FALLS);
+        assertFalse("gravel over the frame plane", LPortalPlan.survey(L, over).ok());
+        World in = pool();
+        in.set(L, 2, 2, 1, Mat.FALLS);
+        assertFalse(LPortalPlan.survey(L, in).ok());
+        World high = pool();
+        high.set(L, 2, 2, 1, Mat.SOLID);
+        high.set(L, 2, 9, 1, Mat.FALLS);
+        assertTrue("past the top it can't reach", LPortalPlan.survey(L, high).ok());
+        assertTrue(Mat.FALLS.solid());
+    }
+
+    @Test
+    public void caveUnderTheShoreAndUnbreakableRockAreNotFixable() {
+        World under = pool();
+        under.set(L, 1, -1, 1, Mat.AIR);
+        assertFalse("air under the shore is a reject, never a fill", LPortalPlan.survey(L, under).ok());
+        World bedrock = pool();
+        bedrock.set(L, 2, 2, 1, Mat.OBSIDIAN);
+        assertFalse(LPortalPlan.survey(L, bedrock).ok());
+    }
+
+    @Test
+    public void tooMuchWorkIsNotASite() {
+        World w = pool();
+        for (int u = 0; u <= 3; u++) {
+            for (int y = 1; y <= 3; y++) {
+                w.set(L, u, y, 1, Mat.SOLID);
+                w.set(L, u, y, 2, Mat.SOLID);
+            }
+        }
+        assertEquals("24 is the most", 24, LPortalPlan.survey(L, w).mines());
+        w.set(L, 0, 4, 1, Mat.SOLID);
+        assertFalse(LPortalPlan.survey(L, w).ok());
+    }
+
+    // ---- clearing the spot ----
+
+    private static Step stepOn(World w) {
+        return LPortalPlan.next(L, w, bag(0, true, 2, 64));
+    }
+
+    @Test
+    public void aRoughSiteIsClearedTopDownAndPluggedBeforeThePlaceholder() {
+        World w = pool();
+        w.set(L, 2, 1, 1, Mat.SOLID);
+        w.set(L, 1, 3, 2, Mat.SOLID);
+        w.set(L, 0, 0, 2, Mat.AIR);
+        Step first = stepOn(w);
+        assertEquals(Kind.BREAK, first.kind());
+        assertEquals("top first", L.cell(1, 3, 2), first.cell());
+        assertEquals(LPortalPlan.PREP_CLEAR, first.why());
+        w.set(L, 1, 3, 2, Mat.AIR);
+        Step second = stepOn(w);
+        assertEquals(Kind.BREAK, second.kind());
+        assertEquals(L.cell(2, 1, 1), second.cell());
+        w.set(L, 2, 1, 1, Mat.AIR);
+        Step plug = stepOn(w);
+        assertEquals(Kind.PLACE_BLOCK, plug.kind());
+        assertEquals(L.cell(0, 0, 2), plug.cell());
+        assertEquals(LPortalPlan.PREP_FILL, plug.why());
+        w.set(L, 0, 0, 2, Mat.SOLID);
+        Step base = stepOn(w);
+        assertEquals("the base starts", Kind.PLACE_STACK, base.kind());
+        assertEquals(L.cell(LPortalPlan.PLACEHOLDER), base.cell());
+    }
+
+    @Test
+    public void nothingBehindTheFrameIsClearedAfterTheBaseHasStarted() {
+        World w = pool();
+        w.set(L, 1, 0, 0, Mat.SOLID);
+        w.set(L, 2, 1, 1, Mat.SOLID);
+        Step s = stepOn(w);
+        assertFalse(LPortalPlan.PREP_CLEAR.equals(s.why()));
+        assertNotEquals("not a bad spot, the base is under way", Kind.ABANDON, s.kind());
+        World done = built();
+        done.set(L, 2, 1, 1, Mat.SOLID);
+        done.set(L, 0, 0, 2, Mat.AIR);
+        Step after = stepOn(done);
+        assertFalse(LPortalPlan.PREP_CLEAR.equals(after.why()) || LPortalPlan.PREP_FILL.equals(after.why()));
+    }
+
+    @Test
+    public void aSiteThatGoesBadWhileClearingIsAbandonedNotDugOn() {
+        World w = pool();
+        w.set(L, 2, 1, 1, Mat.SOLID);
+        w.set(L, 2, 2, 1, Mat.LAVA);
+        assertEquals(Kind.ABANDON, stepOn(w).kind());
+        World nothingMore = pool();
+        nothingMore.set(L, 1, 1, 0, Mat.SOLID);
+        assertEquals(Kind.ABANDON, stepOn(nothingMore).kind());
+    }
+
+    @Test
+    public void clearingLeavesTheFramePlaneAloneAndStopsAtTheRowTheSurveyChecked() {
+        World w = pool();
+        w.set(L, 1, 3, 0, Mat.SOLID);
+        w.set(L, 2, 1, 1, Mat.SOLID);
+        w.set(L, 1, 4, 2, Mat.SOLID);
+        w.set(L, 1, 4, 1, Mat.SOLID);
+        Step first = stepOn(w);
+        assertEquals(L.cell(1, 4, 1), first.cell());
+        w.set(L, 1, 4, 1, Mat.AIR);
+        Step second = stepOn(w);
+        assertEquals(L.cell(2, 1, 1), second.cell());
+        w.set(L, 2, 1, 1, Mat.AIR);
+        Step base = stepOn(w);
+        assertEquals("the stone at y=4 of the far row and the frame plane are not prep", Kind.PLACE_STACK, base.kind());
+    }
+
+    @Test
+    public void sandOnTheShoreIsStillAShore() {
+        World w = pool();
+        for (int u = 0; u <= 3; u++) {
+            w.set(L, u, 0, 1, Mat.FALLS);
+        }
+        assertTrue(LPortalPlan.fits(L, w));
+    }
+
+    @Test
+    public void junkInTheFrameGoesBeforeTheArm() {
+        World w = built();
+        w.set(L, LPortalPlan.ARM, Mat.AIR);
+        w.set(L, 1, 2, -1, Mat.SOLID);
+        Step s = stepOn(w);
+        assertEquals(Kind.BREAK, s.kind());
+        assertEquals(L.cell(1, 2, -1), s.cell());
+        w.set(L, 1, 2, -1, Mat.AIR);
+        Step arm = stepOn(w);
+        assertEquals(Kind.PLACE_STACK, arm.kind());
+        assertEquals(L.cell(LPortalPlan.ARM), arm.cell());
+    }
+
+    @Test
+    public void theRowBehindTheWallsIsKeptClear() {
+        boolean found = false;
+        for (int[] c : LPortalPlan.keepClear()) {
+            found |= c[0] == 2 && c[1] == 3 && c[2] == 2;
+        }
+        assertTrue(found);
+    }
+
+    @Test
+    public void clearingHasItsOwnClock() {
+        BuildClock c = new BuildClock();
+        for (int i = 0; i < BuildClock.PREP_TICKS; i++) {
+            assertEquals(BuildClock.Verdict.OK, c.tick(true));
+        }
+        assertEquals(BuildClock.Verdict.PREP_OUT, c.tick(true));
+        BuildClock fresh = new BuildClock();
+        for (int i = 0; i < BuildClock.PREP_TICKS; i++) {
+            fresh.tick(true);
+        }
+        for (int i = 0; i < BuildClock.BUILD_TICKS; i++) {
+            assertEquals("the build still has all of its time", BuildClock.Verdict.OK, fresh.tick(false));
+        }
+        assertEquals(BuildClock.Verdict.BUILD_OUT, fresh.tick(false));
     }
 
     @Test

@@ -108,6 +108,18 @@ public class LavaHuntTest {
     }
 
     @Test
+    public void aDeepSeedGetsALongerWalkThanOneInTheBand() {
+        LavaHunt h = new LavaHunt();
+        P deep = new P(30, 64 - LavaHunt.BAND - 10, 0);
+        assertEquals(Move.WALK, h.decide(List.of(deep), 0, 64, 0, 0));
+        assertEquals(Move.WALK, h.decide(List.of(deep), 0, 64, 0, LavaHunt.WALK_TICKS + 1));
+        assertFalse(h.noSite().contains(deep));
+        assertEquals(Move.WALK, h.decide(List.of(deep), 0, 64, 0, LavaHunt.WALK_TICKS_DEEP));
+        h.decide(List.of(deep), 0, 64, 0, LavaHunt.WALK_TICKS_DEEP + 1);
+        assertTrue(h.noSite().contains(deep));
+    }
+
+    @Test
     public void deepScanNeedsTwoEmptyLegsAfterABandPass() {
         LavaHunt h = new LavaHunt();
         assertFalse(h.deepAllowed());
