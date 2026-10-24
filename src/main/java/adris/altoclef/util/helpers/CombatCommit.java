@@ -185,7 +185,7 @@ public final class CombatCommit {
         SHOT,
         // a skeleton that is shooting us and we are fit to fight it: one target, till it is dead
         PINNED,
-        // a creeper we already stepped from lit up beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
+        // a creeper we already stepped from back beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
         // loop, leaving is not
         REPEAT_CREEPER
     }

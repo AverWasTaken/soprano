@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// the lit creeper preempt. not a commitment: the fight and run clocks keep going, and the wheel goes straight back the moment
-// the fuse is over. an unlit creeper is scenery, same as every other mob (entry 73), this only fires for one that is
-// actually hissing at us. the one thing CombatCommit does hear: the same creeper coming back for a second go (REPEAT_WINDOW)
+// the creeper preempt. not a commitment: the fight and run clocks keep going, and the wheel goes straight back the moment
+// the fuse is over. a creeper within TRIGGER gets stepped away from lit or not (one two blocks off lights with the whole fuse
+// still ahead and nowhere to be), a lit one further out only when the path is walking into it. the one thing CombatCommit
+// does hear: the same creeper coming back for a second go (REPEAT_WINDOW)
 //
 // two ways to step. the bait: back off to just past the blast and stand there. a swelling creeper stands still, and between 6
 // and 7 the blast does nothing to us while the fuse keeps going, so it pops and that is the end of it. the defuse: walk out
@@ -16,7 +17,7 @@ import java.util.Set;
 // and the task took turns at the wheel about once a second. so the defuse is only for the ones we cannot let pop
 public final class CreeperStep {
 
-    // a lit creeper this close gets stepped away from. the fuse starts at 3, so this fires on the tick it lights
+    // a creeper this close gets stepped away from, lit or not. the fuse starts at 3, so this fires before it even lights
     public static final double TRIGGER = 4;
     // where the step walks to. the blast reaches about 6 (power 3, twice that is the falloff radius), past it is a scratch,
     // and a creeper that gets more than 7 away stops swelling, so 8 clears both with a block to spare for the search's
@@ -53,7 +54,7 @@ public final class CreeperStep {
     public static final long BAIT_CAP = 80;
     // a creeper we stepped from that lights up beside us again this soon did not go away: the bait did not take, or it was one
     // we had to defuse. that is the run's job now (CombatCommit, REPEAT_CREEPER), not another lap of the step
-    public static final long REPEAT_WINDOW = 600;
+    public static final long REPEAT_WINDOW = 200;
 
     // the hand sprint at the start of a defuse. a standing start covers about 2 blocks in 10 ticks and 7 in 30, and the fuse is 30,
     // so it keeps going straight away until we are at SAFE or the fuse is spent. (waiting on the path for the rest of it is how
@@ -61,8 +62,12 @@ public final class CreeperStep {
     // a creeper this far or further stops swelling
     public static final double SWELL_STOP = 7;
     public static final long RAW_MAX_TICKS = 30;
+    // a lit one inside this keeps the hand sprint going, no handoff to a path that starts from a standstill. the
+    // blast reaches about 6
+    public static final double RAW_HOLD = 6;
 
-    public static boolean rawGoing(long ticks, double distance) {
+    public static boolean rawGoing(long ticks, double distance, double litDistance) {
+        if (litDistance < RAW_HOLD) return true;
         return ticks < RAW_MAX_TICKS && distance < SAFE;
     }
 
@@ -213,7 +218,8 @@ public final class CreeperStep {
             // a run is already taking us away from everything, creepers included. stopping it to step is the step and the run
             // trading the wheel, so only when the run's own path is about to walk into a lit one
             if (mode == CombatCommit.Mode.RUN && !s.pathNear()) continue;
-            if (pick == null || s.distance() < pick.distance()) pick = s;
+            // the lit one first, it is the one with a clock on it
+            if (pick == null || (s.lit() && !pick.lit()) || (s.lit() == pick.lit() && s.distance() < pick.distance())) pick = s;
         }
         if (pick == null) return Event.NONE;
         // a second go is the run's, when there is a run to hand it to. that step is the defuse: the bait already did not take
@@ -222,7 +228,7 @@ public final class CreeperStep {
         _escalate = cameBack(pick.id(), now) && idle && commitOn;
         // nowhere to go beats every plan that walks: no bait ring (a path up the shaft at the thing), no defuse
         boolean boxed = noHeading && shieldReady && pick.lit() && pick.distance() <= TRIGGER;
-        _bait = mayBait && !_escalate && pick.baitable() && !boxed;
+        _bait = mayBait && !_escalate && pick.lit() && pick.baitable() && !boxed;
         _id = pick.id();
         _since = now;
         _litSince = now;
@@ -245,7 +251,9 @@ public final class CreeperStep {
         if (held.lit()) return false;
         if (_bait) return !held.fusing();
         if (mode == CombatCommit.Mode.RUN) return !held.fusing() && held.distance() > SWELL_STOP;
-        return !(held.fusing() && held.distance() <= HOLD_RADIUS);
+        // unlit and past HOLD_RADIUS is the whole rule. inside it we keep walking out, or the user's path walks us straight
+        // back into one that is still deflating
+        return held.distance() > HOLD_RADIUS;
     }
 
     private boolean cameBack(int id, long now) {
@@ -263,9 +271,9 @@ public final class CreeperStep {
         return distance >= BAIT_RING_MIN && distance <= BAIT_RING_MAX;
     }
 
-    // lit and close, or lit and the path is about to walk into it. unlit is nothing at any distance
+    // close, lit or not, or lit and the path is about to walk into it
     public static boolean triggers(Seen s) {
-        return s.lit() && (s.distance() <= TRIGGER || s.pathNear());
+        return s.distance() <= TRIGGER || (s.lit() && s.pathNear());
     }
 
     // nodes as {x, y, z} block corners. the node's middle is what the player walks through

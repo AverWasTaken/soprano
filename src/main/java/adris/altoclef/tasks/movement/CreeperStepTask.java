@@ -12,6 +12,9 @@ import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.utils.input.Input;
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
@@ -108,8 +111,10 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
         // before the baritone bit, so the first tick already moves us
         if (_bait) {
             if (bait(mod)) return null;
-        } else {
-            sprintAway(mod);
+        } else if (sprintAway(mod)) {
+            // the hand sprint owns the tick. no goal goes out meanwhile: a path starting from a standstill let go of the
+            // forward key while it thought, and that is where the distance went
+            return null;
         }
         return super.onTick(mod);
     }
@@ -155,22 +160,24 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
         return false;
     }
 
-    // the keys are ours until the path takes over (it brings its own inputs) or the ticks run out. every tick looks at the
-    // ground again, so a ledge or a wall that shows up mid sprint turns us or stops us
-    private void sprintAway(AltoClef mod) {
-        if (!_raw) return;
-        // a path running before the goal went out is the user's old one that was not safe to cancel, not ours to wait for
-        if (_issued && mod.getClientBaritone().getPathingBehavior().isPathing()) {
-            endRaw(mod);
-            return;
-        }
+    // the keys are ours until the ticks run out or we are clear. every tick looks at the ground again, so a ledge or a wall
+    // that shows up mid sprint turns us or stops us. true = this tick was ours
+    private boolean sprintAway(AltoClef mod) {
+        if (!_raw) return false;
         Entity creeper = mod.getWorld().getEntity(_creeperId);
-        if (creeper == null || !CreeperStep.rawGoing(mod.getWorld().getGameTime() - _startTick, mod.getPlayer().distanceTo(creeper))) {
+        if (creeper == null) {
             endRaw(mod);
-            return;
+            return false;
+        }
+        double litDistance = nearestLit(mod, mod.getPlayer());
+        if (!CreeperStep.rawGoing(mod.getWorld().getGameTime() - _startTick, mod.getPlayer().distanceTo(creeper), litDistance)) {
+            endRaw(mod);
+            return false;
         }
         // no safe heading: let go, standing still and waiting on the path is better than the wrong way
-        steer(mod, creeper);
+        if (steer(mod, creeper)) return true;
+        endRaw(mod);
+        return false;
     }
 
     // one tick of sprinting away by hand. false = no heading is safe (the keys are let go)
@@ -181,8 +188,8 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
             mod.getInputControls().release(Input.JUMP);
             return true;
         }
-        CreeperEscape.Heading heading = CreeperEscape.choose(player.getX(), player.getY(), player.getZ(),
-                creeper.getX(), creeper.getZ(), cells(mod.getWorld()));
+        CreeperEscape.Heading heading = CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), threats(mod, creeper),
+                cells(mod.getWorld()));
         if (!_rawLogged) {
             _rawLogged = true;
             Debug.logInternal(heading == null
@@ -202,6 +209,41 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
             mod.getInputControls().release(Input.JUMP);
         }
         return true;
+    }
+
+    private static boolean lit(Creeper creeper) {
+        return creeper.getSwellDir() > 0 || creeper.isIgnited();
+    }
+
+    // distance to the nearest lit creeper, infinity when none
+    static double nearestLit(AltoClef mod, LocalPlayer player) {
+        double best = Double.POSITIVE_INFINITY;
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (creeper.isAlive() && lit(creeper)) best = Math.min(best, creeper.distanceTo(player));
+            }
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
+            // same weirdness as the chain's scan, a tick of not knowing just falls back to the held one
+        }
+        return best;
+    }
+
+    // every creeper the heading has to stay away from: the held one, the lit ones and the ones inside the step's trigger
+    public static List<CreeperEscape.At> threats(AltoClef mod, Entity held) {
+        LocalPlayer player = mod.getPlayer();
+        List<CreeperEscape.At> out = new ArrayList<>();
+        out.add(new CreeperEscape.At(held.getX(), held.getZ()));
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive() || creeper == held) continue;
+                if (lit(creeper) || creeper.distanceTo(player) <= CreeperStep.TRIGGER) {
+                    out.add(new CreeperEscape.At(creeper.getX(), creeper.getZ()));
+                }
+            }
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
+            // see nearestLit
+        }
+        return out;
     }
 
     private void endRaw(AltoClef mod) {

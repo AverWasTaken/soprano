@@ -44,10 +44,69 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void unlitAtTwoIsNothing() {
+    public void anUnlitOneInsideFourSteps() {
         CreeperStep step = new CreeperStep();
-        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 2, true)), true));
+        assertEquals(Event.START, step.step(0, List.of(new Seen(7, false, 3, false)), true));
+        assertTrue(step.active());
+        assertEquals(7, step.creeperId());
+    }
+
+    @Test
+    public void anUnlitOneAtSixIsNothing() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 6, false)), true));
         assertFalse(step.active());
+    }
+
+    // lit first, it is the one with a clock on it
+    @Test
+    public void aLitOneBeatsACloserUnlitOne() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(1, false, 1, false), new Seen(2, true, 3.5, false)), false);
+        assertEquals(2, step.creeperId());
+    }
+
+    // one rule to let go: unlit and past HOLD_RADIUS
+    @Test
+    public void anUnlitOneIsHeldUntilItIsPastFive() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, false, 3, false)), false);
+        assertEquals(Event.NONE, step.step(5, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS, false, false)), false));
+        assertTrue(step.active());
+        assertEquals(Event.END_UNLIT, step.step(6, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS + 0.1, false, false)), false));
+        assertFalse(step.active());
+    }
+
+    // the user's path walks back into one we let go of: the second step is the run's job, not another lap
+    @Test
+    public void anUnlitOneWeWalkBackIntoIsARun() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.NONE, true);
+        assertFalse(step.escalate());
+        assertEquals(Event.END_UNLIT, step.step(20, List.of(new Seen(7, false, 5.5, false, false)), false, Mode.NONE, true));
+        assertEquals(Event.START, step.step(100, List.of(new Seen(7, false, 3.5, false)), false, Mode.NONE, true));
+        assertTrue(step.escalate());
+        // and not within the window of the end any more than REPEAT_WINDOW
+        CreeperStep late = new CreeperStep();
+        late.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.NONE, true);
+        late.step(20, List.of(new Seen(7, false, 5.5, false, false)), false, Mode.NONE, true);
+        assertEquals(Event.START, late.step(21 + CreeperStep.REPEAT_WINDOW, List.of(new Seen(7, false, 3.5, false)), false, Mode.NONE, true));
+        assertFalse(late.escalate());
+    }
+
+    // an unlit one has nothing to pop: no bait for it, just walk off
+    @Test
+    public void anUnlitOneNeverGetsTheBait() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.NONE, true);
+        assertFalse(step.baiting());
+    }
+
+    // a run is already taking us away, an unlit one beside it is not worth stopping for
+    @Test
+    public void aRunIgnoresAnUnlitOne() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.RUN, true));
     }
 
     @Test
@@ -102,10 +161,11 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void aDrainedFuseEndsTheHoldAtOnce() {
+    public void aDrainedFuseCloseByStillHoldsUntilWeAreOut() {
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false);
-        assertEquals(Event.END_UNLIT, step.step(10, List.of(new Seen(7, false, 3, false, false)), false));
+        assertEquals(Event.NONE, step.step(10, List.of(new Seen(7, false, 3, false, false)), false));
+        assertEquals(Event.END_UNLIT, step.step(11, List.of(new Seen(7, false, 5.5, false, false)), false));
         assertFalse(step.active());
     }
 
@@ -340,7 +400,7 @@ public class CreeperStepTest {
         double dist = 3;
         double v = 0;
         long t = 0;
-        while (CreeperStep.rawGoing(t, dist)) {
+        while (CreeperStep.rawGoing(t, dist, dist)) {
             // ground sprint: 0.28 a tick at the top, friction 0.546
             v = v * 0.546 + 0.28 * (1 - 0.546);
             dist += v;
@@ -563,5 +623,17 @@ public class CreeperStepTest {
         step.step(0, lit(7, 3), true);
         assertEquals(Event.NONE, step.step(CreeperStep.CORNER_TICKS, lit(7, 3.8), true));
         assertFalse(step.cornered());
+    }
+
+    // the sprint is not handed to a path while a lit one is inside the blast, however long it has been going
+    @Test
+    public void theHandSprintHoldsWhileALitOneIsInsideSix() {
+        assertTrue(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS + 20, 7, 5.9));
+        assertTrue(CreeperStep.rawGoing(0, 2, 2));
+        // past six it is the old rule: 30 ticks and short of SAFE
+        assertTrue(CreeperStep.rawGoing(10, 6.5, 6.5));
+        assertFalse(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS, 6.5, 6.5));
+        // an unlit one gets no hold
+        assertFalse(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS, 3, Double.POSITIVE_INFINITY));
     }
 }

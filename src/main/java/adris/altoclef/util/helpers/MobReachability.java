@@ -86,7 +86,7 @@ public class MobReachability {
         Cached cached = _verdicts.get(mob.getId());
         // (a stalled verdict from when it was further out does not outlive it walking up to us)
         if (cached != null && now >= cached.tick && now - cached.tick < HOLD_TICKS
-                && MobReachRules.verdictHolds(cached.verdict, mob.distanceTo(player), _fleeing)) {
+                && MobReachRules.verdictHolds(cached.verdict, mob.distanceTo(player), _fleeing, mob instanceof Creeper)) {
             return cached.verdict.reachable();
         }
         Verdict verdict = evaluate(mod, mob, now);
@@ -122,7 +122,7 @@ public class MobReachability {
         if (!(mob instanceof Spider) && MobReachRules.isVerticallyOut(mob.getX() - player.getX(), mob.getY() - player.getY(), mob.getZ() - player.getZ())) {
             return Verdict.VERTICAL_GAP;
         }
-        if (_stall.update(mob.getId(), mob.distanceTo(player), now, _fleeing)) return Verdict.STALLED;
+        if (_stall.update(mob.getId(), mob.distanceTo(player), now, _fleeing, mob instanceof Creeper)) return Verdict.STALLED;
         return Verdict.REACHABLE;
     }
 

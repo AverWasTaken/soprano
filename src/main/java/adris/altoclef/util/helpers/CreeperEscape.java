@@ -1,5 +1,7 @@
 package adris.altoclef.util.helpers;
 
+import java.util.List;
+
 // which way to sprint for the first few ticks of a creeper step, before baritone has a path. no world in here: the
 // caller hands in a lookup for what a cell is, so every case can be tested with a map of fake blocks
 public final class CreeperEscape {
@@ -43,25 +45,56 @@ public final class CreeperEscape {
         }
     }
 
-    // null when no heading is safe (or the creeper is on top of us and "away" means nothing), and then the path has it
+    // one creeper's spot, x/z only
+    public record At(double x, double z) {
+    }
+
     public static Heading choose(double px, double py, double pz, double cx, double cz, Cells cells) {
-        double ax = px - cx;
-        double az = pz - cz;
-        double away = Math.hypot(ax, az);
-        if (away < 1e-3) return null;
-        ax /= away;
-        az /= away;
+        return choose(px, py, pz, List.of(new At(cx, cz)), cells);
+    }
+
+    // null when no heading is safe (or the nearest creeper is on top of us and "away" means nothing), and then the path has it.
+    // "away" is from the nearest one and the fan goes round from there, but a heading is only as good as the closest creeper it
+    // leaves us beside: two on opposite sides score the sidestep best, and a second one behind the first is never run into
+    public static Heading choose(double px, double py, double pz, List<At> creepers, Cells cells) {
+        At nearest = null;
+        double away = Double.POSITIVE_INFINITY;
+        for (At c : creepers) {
+            double d = Math.hypot(px - c.x(), pz - c.z());
+            if (d < away) {
+                away = d;
+                nearest = c;
+            }
+        }
+        if (nearest == null || away < 1e-3) return null;
+        double ax = (px - nearest.x()) / away;
+        double az = (pz - nearest.z()) / away;
+        double closest = closest(px, pz, creepers);
+        Heading best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
         for (int degrees : FAN) {
             double rad = Math.toRadians(degrees);
             double dx = ax * Math.cos(rad) - az * Math.sin(rad);
             double dz = ax * Math.sin(rad) + az * Math.cos(rad);
             // sideways is only worth it if it still gains a little. nothing in the fan goes backwards, but the check is
             // what keeps it that way if somebody widens the fan
-            if (Math.hypot(px + dx * AHEAD - cx, pz + dz * AHEAD - cz) <= away + 0.01) continue;
+            double score = closest(px + dx * AHEAD, pz + dz * AHEAD, creepers);
+            if (score <= closest + 0.01) continue;
+            // (strictly better only, so straight on wins a tie and the fan order stays the tiebreak)
+            if (score <= bestScore + 1e-6) continue;
             int jump = runway(px, py, pz, dx, dz, cells);
-            if (jump >= 0) return new Heading(degrees, dx, dz, jump == 1);
+            if (jump >= 0) {
+                best = new Heading(degrees, dx, dz, jump == 1);
+                bestScore = score;
+            }
         }
-        return null;
+        return best;
+    }
+
+    private static double closest(double x, double z, List<At> creepers) {
+        double min = Double.POSITIVE_INFINITY;
+        for (At c : creepers) min = Math.min(min, Math.hypot(x - c.x(), z - c.z()));
+        return min;
     }
 
     // -1 = not safe to run, 0 = run, 1 = run and jump

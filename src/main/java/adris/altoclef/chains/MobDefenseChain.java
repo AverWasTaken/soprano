@@ -83,8 +83,8 @@ import static java.lang.Math.abs;
 
 // the mob defense chain. mobs are scenery until the commitment machine (CombatBrain, CombatCommit) says one really needs
 // dealing with, in every dimension, and then the chain holds the wheel with a fight or a run until the machine lets go.
-// nothing else here takes the wheel for a mob except a lit creeper within a few blocks (CreeperStep, a couple of steps and
-// straight back). an unlit one is walked past like everything else. fire, falls and the arrow shield were never about the wheel
+// nothing else here takes the wheel for a mob except a creeper within a few blocks, lit or not (CreeperStep, a few steps and
+// straight back). fire, falls and the arrow shield were never about the wheel
 public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
@@ -307,8 +307,8 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     // the wheel. mobs are scenery until the commitment says otherwise, so what takes it is whatever the machine is holding,
-    // and a lit creeper close enough to hurt. the old step away fired for any lit creeper within 7 and the bot spent half its
-    // life backing off from creepers it could have walked past, this one is 4 and lit only. fire, lava and falls were
+    // and a creeper close enough to hurt. the old step away fired for any lit creeper within 7 and the bot spent half its
+    // life backing off from creepers it could have walked past, this one is 4 and a creeper that close is not walked past. fire, lava and falls were
     // settled before we got here
     private float commitPriority(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
@@ -636,6 +636,10 @@ public class MobDefenseChain extends SingleTaskChain {
     public boolean projectileDodging(AltoClef mod) {
         return Baritone.settings().altoMobDefense.value && BiteRules.dodgeHolds(mod.getWorld().getGameTime(), _dodgeTick);
     }
+    // a creeper step is running: the crit module keeps its hands off the jump and the sprint until it is over
+    public boolean creeperStepActive() {
+        return Baritone.settings().altoMobDefense.value && _creeperStep.active();
+    }
 
     // boxed in by a lit creeper: the shield is up or going up, or a block is going over our head. the food chain keeps its hands
     // off the use key for this (its release on the way out drops a raised shield, and a bite is no answer to a blast)
@@ -785,8 +789,8 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     // the same question CreeperStepTask asks before it sprints: is there anywhere to run. asked about the creeper the step
-    // holds, or the nearest lit one in TRIGGER when there is no step yet. airborne is nobody's answer (the task keeps what it
-    // was doing there too)
+    // holds, or the nearest one inside TRIGGER when there is no step yet, with every other lit or close one counted in the
+    // heading. airborne is nobody's answer (the task keeps what it was doing there too)
     private boolean noWayOut(AltoClef mod, List<CreeperStep.Seen> seen) {
         LocalPlayer player = mod.getPlayer();
         if (!player.onGround() && !player.isInWater()) return false;
@@ -794,7 +798,7 @@ public class MobDefenseChain extends SingleTaskChain {
         double best = Double.POSITIVE_INFINITY;
         for (CreeperStep.Seen s : seen) {
             boolean ask = _creeperStep.active() ? s.id() == _creeperStep.creeperId()
-                    : s.lit() && s.distance() <= CreeperStep.TRIGGER && s.distance() < best;
+                    : s.distance() <= CreeperStep.TRIGGER && s.distance() < best;
             if (ask) {
                 id = s.id();
                 best = s.distance();
@@ -803,7 +807,7 @@ public class MobDefenseChain extends SingleTaskChain {
         if (id < 0) return false;
         Entity creeper = mod.getWorld().getEntity(id);
         if (creeper == null) return false;
-        return CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), creeper.getX(), creeper.getZ(),
+        return CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), CreeperStepTask.threats(mod, creeper),
                 CreeperStepTask.cells(mod.getWorld())) == null;
     }
 

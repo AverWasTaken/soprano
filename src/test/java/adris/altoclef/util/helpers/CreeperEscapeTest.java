@@ -10,6 +10,7 @@ import adris.altoclef.util.helpers.CreeperEscape.Cells;
 import adris.altoclef.util.helpers.CreeperEscape.Heading;
 import adris.altoclef.util.helpers.CreeperEscape.Kind;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
@@ -259,7 +260,7 @@ public class CreeperEscapeTest {
         double px = 0.5;
         double cx = -2.5;
         double v = 0;
-        for (long t = 0; CreeperStep.rawGoing(t, Math.abs(px - cx)); t++) {
+        for (long t = 0; CreeperStep.rawGoing(t, Math.abs(px - cx), Math.abs(px - cx)); t++) {
             Heading h = CreeperEscape.choose(px, 64, 0.5, cx, 0.5, world);
             if (h == null) break;
             v = v * 0.546 + 0.28 * (1 - 0.546);
@@ -281,5 +282,46 @@ public class CreeperEscapeTest {
             tunnel.column(x, 0, 66, 66, Kind.SOLID);
         }
         assertTrue(sprintAwayFrom3(tunnel) > 5);
+    }
+
+    // ---- more than one creeper
+
+    // one on each side: running along the line between them goes at one of them, so the heading is off to the side
+    @Test
+    public void twoCreepersOnOppositeSidesPushSideways() {
+        List<CreeperEscape.At> both = List.of(new CreeperEscape.At(-2.5, 0.5), new CreeperEscape.At(3.5, 0.5));
+        Heading h = CreeperEscape.choose(0.5, 64, 0.5, both, new FakeWorld());
+        assertNotNull(h);
+        assertEquals(90, Math.abs(h.degrees()));
+        assertEquals(0, h.dx(), 1e-9);
+        assertEquals(1, Math.abs(h.dz()), 1e-9);
+    }
+
+    // the one behind the nearest is still a creeper: straight away is blocked off by it, so the heading bends around it
+    @Test
+    public void aSecondCreeperAheadBendsTheHeading() {
+        List<CreeperEscape.At> two = List.of(new CreeperEscape.At(-2.5, 0.5), new CreeperEscape.At(3.5, 0.5));
+        // (the same two, but the east one is a little north: the heading goes south of the line, away from both)
+        List<CreeperEscape.At> skew = List.of(new CreeperEscape.At(-2.5, 0.5), new CreeperEscape.At(3.5, 2.5));
+        Heading h = CreeperEscape.choose(0.5, 64, 0.5, skew, new FakeWorld());
+        assertNotNull(h);
+        assertTrue(h.dz() < 0);
+        assertNotNull(CreeperEscape.choose(0.5, 64, 0.5, two, new FakeWorld()));
+    }
+
+    @Test
+    public void oneCreeperIsTheSameAsBefore() {
+        Heading h = CreeperEscape.choose(0.5, 64, 0.5, List.of(new CreeperEscape.At(-2.5, 0.5)), new FakeWorld());
+        assertEquals(0, h.degrees());
+    }
+
+    @Test
+    public void walledSideMeansNoHeadingWithTwoCreepers() {
+        FakeWorld world = new FakeWorld();
+        for (int x = -2; x <= 2; x++) {
+            world.column(x, 2, 64, 66, Kind.WALL).column(x, -2, 64, 66, Kind.WALL);
+        }
+        List<CreeperEscape.At> both = List.of(new CreeperEscape.At(-2.5, 0.5), new CreeperEscape.At(3.5, 0.5));
+        assertNull(CreeperEscape.choose(0.5, 64, 0.5, both, world));
     }
 }
