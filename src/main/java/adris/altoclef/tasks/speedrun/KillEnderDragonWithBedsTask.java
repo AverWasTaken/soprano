@@ -6,6 +6,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.speedrun.gamer.end.BedPlaceGate;
 import adris.altoclef.tasks.speedrun.gamer.end.BedSafety;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
 import adris.altoclef.tasks.speedrun.gamer.end.HealStall;
@@ -14,6 +15,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.input.Input;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -22,6 +24,7 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public class KillEnderDragonWithBedsTask extends Task {
@@ -164,11 +167,17 @@ public class KillEnderDragonWithBedsTask extends Task {
             EnderDragon dragonEntity = (EnderDragon) dragon.get();
             DragonPhaseInstance dragonPhase = dragonEntity.getPhaseManager().getCurrentPhase();
 
-            boolean perching = dragonPhase.getPhase() == EnderDragonPhase.LANDING || dragonPhase.isSitting() || dragonPhase.getPhase() == EnderDragonPhase.LANDING_APPROACH;
-            if (dragonEntity.getY() < _endPortalTop.getY() + 2) {
-                // Dragon is already perched.
-                perching = false;
-            }
+            EnderDragonPhase<?> phase = dragonPhase.getPhase();
+            // isSitting() is also true for the hover phase, which is up in the air and nothing to perch on
+            boolean sitting = isSitting(dragonEntity);
+            boolean landingPhase = phase == EnderDragonPhase.LANDING || phase == EnderDragonPhase.LANDING_APPROACH;
+            BlockPos bedSpot = _endPortalTop.above();
+            boolean bedDown = mod.getBlockTracker().blockIsValid(bedSpot, ItemHelper.itemsToBlocks(ItemHelper.BED));
+            // the stand is on the -x side of the pillar so the head half goes to +x (bedCycle asks again with the real yaw)
+            boolean cellsClear = cellsClear(dragonEntity, bedSpot, BedPlaceGate.headCell(bedSpot, Direction.EAST), sitting);
+            // the y check is the old "bed only on the way down" rule, a sitting dragon is down already and that is the whole point
+            boolean perching = BedPlaceGate.perch(landingPhase, sitting, phase == EnderDragonPhase.SITTING_FLAMING,
+                    dragonEntity.getY() < _endPortalTop.getY() + 2, bedDown, cellsClear);
             _perching = perching;
             ((IDragonWaiter) _whenNotPerchingTask).setPerchState(perching);
             // When the dragon is not perching...
@@ -177,7 +186,9 @@ public class KillEnderDragonWithBedsTask extends Task {
                 return _whenNotPerchingTask;
             }
             if (perching) {
-                mod.getFoodChain().shouldStop(true);
+                // a sit is long and the dragon not always in range: food steps aside once a bed is down (bedCycle also holds it for the place)
+                // the descent is short and the place window is a tick, so no meals through it. a sit is long: food only steps aside for a bed
+                mod.getFoodChain().shouldStop(landingPhase || BedPlaceGate.holdFood(bedDown, false));
                 BlockPos targetStandPosition = _endPortalTop.offset(-1, -1, 0);
                 // If we're not positioned (above is OK), go there and make sure we're at the right height.
                 if (_positionTask != null && _positionTask.isActive() && !_positionTask.isFinished(mod)) {
@@ -201,54 +212,43 @@ public class KillEnderDragonWithBedsTask extends Task {
         return _whenNotPerchingTask;
     }
 
-    // TMP-BEDLOG: temporary, user ok'd it to find why the bed never lands. remove with the fix
-    private long _tmpBedLogAt = Long.MIN_VALUE;
-    private boolean _tmpBedWasPlaced;
+    private static boolean isSitting(EnderDragon dragon) {
+        EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
+        return phase == EnderDragonPhase.SITTING_SCANNING || phase == EnderDragonPhase.SITTING_ATTACKING || phase == EnderDragonPhase.SITTING_FLAMING;
+    }
 
-    private void tmpBedLog(AltoClef mod, EnderDragon dragon, BlockPos target, boolean placed) {
-        long now = mod.getWorld().getGameTime();
-        if (placed != _tmpBedWasPlaced) {
-            _tmpBedWasPlaced = placed;
-            Debug.logMessage("[tmp-bed] placed=" + placed + " at " + target.toShortString());
-        }
-        if (placed || now - _tmpBedLogAt < 10) {
-            return;
-        }
-        _tmpBedLogAt = now;
-        Direction facing = mod.getPlayer().getDirection();
-        BlockPos head = target.relative(facing);
-        net.minecraft.world.phys.AABB footBox = new net.minecraft.world.phys.AABB(target);
-        net.minecraft.world.phys.AABB headBox = new net.minecraft.world.phys.AABB(head);
-        boolean onFoot = dragon.getBoundingBox().intersects(footBox);
-        boolean onHead = dragon.getBoundingBox().intersects(headBox);
-        for (Entity part : dragon.getSubEntities()) {
-            onFoot |= part.getBoundingBox().intersects(footBox);
-            onHead |= part.getBoundingBox().intersects(headBox);
-        }
-        Debug.logMessage("[tmp-bed] try eye=" + String.format("%.2f", LookHelper.getCameraPos(mod).y)
-                + " feet=" + mod.getPlayer().blockPosition().toShortString() + " ground=" + mod.getPlayer().onGround()
-                + " facing=" + facing + " held=" + mod.getPlayer().getMainHandItem().getItem()
-                + " foot=" + mod.getWorld().getBlockState(target).getBlock() + " head=" + mod.getWorld().getBlockState(head).getBlock()
-                + " dragonOnFoot=" + onFoot + " dragonOnHead=" + onHead
-                + " headDist=" + String.format("%.1f", dragon.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(target)))
-                + " phase=" + dragon.getPhaseManager().getCurrentPhase().getPhase());
+    // the bed cells against the head, neck and body boxes: the three the server's checkWalls eats blocks with
+    private static boolean cellsClear(EnderDragon dragon, BlockPos foot, BlockPos head, boolean sitting) {
+        // getSubEntities is head, neck, body, then the tail and wings (which checkWalls leaves alone)
+        net.minecraft.world.entity.boss.enderdragon.EnderDragonPart[] all = dragon.getSubEntities();
+        List<AABB> parts = List.of(all[0].getBoundingBox(), all[1].getBoundingBox(), all[2].getBoundingBox());
+        return BedPlaceGate.clear(parts, foot, head, sitting);
     }
 
     private Task bedCycle(AltoClef mod, EnderDragon dragonEntity) {
         BlockPos bedTargetPosition = _endPortalTop.above();
         boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
-        tmpBedLog(mod, dragonEntity, bedTargetPosition, bedPlaced);
         if (!bedPlaced) {
             setDebugState("Placing bed", "Placing a bed");
             // If no bed, place bed.
             // Fire messes up our "reach" so we just assume we're good when we're above a height.
             boolean canPlace = LookHelper.getCameraPos(mod).y > bedTargetPosition.getY();
+            // no bed until the head is close: one set down early gets eaten before the dragon is even here
+            if (!BedPlaceGate.headNear(dragonEntity.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(bedTargetPosition)))) {
+                return null;
+            }
             if (canPlace) {
                 // Look at and place!
                 if (mod.getSlotHandler().forceEquipItem(ItemHelper.BED, true)) {
                     LookHelper.lookAt(mod, bedTargetPosition.below(), Direction.UP, true);
-                    // There could be fire so eh place right away
-                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+                    // the look has landed, so the yaw now says where the head half goes. checked on the tick of the press, the
+                    // boxes move too fast for a check before the jump to mean anything
+                    BlockPos headCell = BedPlaceGate.headCell(bedTargetPosition, Direction.fromYRot(mod.getPlayer().getYRot()));
+                    if (cellsClear(dragonEntity, bedTargetPosition, headCell, isSitting(dragonEntity))) {
+                        mod.getFoodChain().shouldStop(BedPlaceGate.holdFood(false, true));
+                        // There could be fire so eh place right away
+                        mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+                    }
                 }
             } else if (mod.getPlayer().onGround()) {
                 // Jump

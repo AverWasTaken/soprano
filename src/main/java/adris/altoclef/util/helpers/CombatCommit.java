@@ -214,7 +214,10 @@ public final class CombatCommit {
         UNTOUCHABLE,
         // throws things from where it stands (the witch). a poison that keeps ticking is the hit, so one that hit us is a fight
         // from LOBBER_RANGE and not only in contact: it never walks up to us, and waiting for it is how a minute of poison happens
-        LOBBER
+        LOBBER,
+        // angry at us and not worth leaving: it teleports and chases, so a run is just free hits. fought to the end at any hp
+        // (the water floor is the chain's, see EndermanWater). a calm one is never a foe at all
+        ENDERMAN
     }
 
     // an angry hostile that can hurt us, as plain numbers. sinceHit: ticks since it hit us (NEVER for not yet)
@@ -245,6 +248,11 @@ public final class CombatCommit {
         // close enough that a swing of ours lands, by the three block number
         public boolean inReach() {
             return reachGap <= ReachRules.MELEE_REACH;
+        }
+
+        // never a reason to run, whatever the hp or the headcount
+        public boolean standsAndFights() {
+            return kind == Kind.ENDERMAN;
         }
 
         public boolean melee() {
@@ -779,7 +787,7 @@ public final class CombatCommit {
         Foe hit = hitInContact(candidates(t), cooling);
         if (hit != null) {
             if (gaveUpOn(hit, t.now())) return startRun(t, Why.LOBBER, Event.RUN_START);
-            if (!t.armed()) return startRun(t, Why.UNARMED, Event.RUN_START);
+            if (!t.armed() && !hit.standsAndFights()) return startRun(t, Why.UNARMED, Event.RUN_START);
             return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
         }
         // not in contact, but we are standing still and something keeps landing arrows on us
@@ -840,7 +848,7 @@ public final class CombatCommit {
         boolean near = false;
         boolean shot = false;
         for (Foe foe : candidates(t)) {
-            if (gaveUpOn(foe, t.now())) continue;
+            if (foe.standsAndFights() || gaveUpOn(foe, t.now())) continue;
             if (foe.distance() <= RecoverHold.RERUN_RANGE) near = true;
             if (foe.shooting() && foe.fresh()) shot = true;
         }
@@ -928,12 +936,22 @@ public final class CombatCommit {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
         if (target != null && target.danger(t.guardHealth())) return Why.HEAVY;
-        Trigger trigger = trigger(t.health(), t.nextHit(), t.foes(), freshOnly);
+        // an angry enderman is never a reason to leave (low hp, crowd or otherwise), so the rules below do not get to see it
+        List<Foe> foes = leavable(t.foes());
+        Trigger trigger = trigger(t.health(), t.nextHit(), foes, freshOnly);
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
-        if (target != null && t.low() && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
+        if (target != null && !target.standsAndFights() && t.low() && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
-        if (crowded(t.health(), t.foes(), freshOnly)) return Why.CROWD;
+        if (crowded(t.health(), foes, freshOnly)) return Why.CROWD;
         return Why.NONE;
+    }
+
+    // the foes a run can be about: everyone but the ones we stand and fight
+    static List<Foe> leavable(List<Foe> foes) {
+        for (Foe foe : foes) {
+            if (foe.standsAndFights()) return foes.stream().filter(f -> !f.standsAndFights()).toList();
+        }
+        return foes;
     }
 
     // the same tick with one foe gone from the list and no fight target, for asking what the rest of them would say

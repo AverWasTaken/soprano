@@ -123,6 +123,8 @@ public final class FoeRules {
         if (UNTOUCHABLE.contains(type)) return Kind.UNTOUCHABLE;
         if (HEAVY.contains(type)) return Kind.HEAVY;
         if (type.equals("witch")) return Kind.LOBBER;
+        // angry ones only get here (a calm one is never a foe): never a run, see CombatCommit.runReason
+        if (type.equals("enderman")) return Kind.ENDERMAN;
         // blazes only live in the nether, and there they hover over lava where nothing walks up to them
         if (dimension == Dimension.NETHER && type.equals("blaze")) return Kind.FLYER;
         return Kind.NORMAL;

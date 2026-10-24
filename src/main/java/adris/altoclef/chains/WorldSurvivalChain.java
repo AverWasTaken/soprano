@@ -15,6 +15,8 @@ import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.DunkRules;
+import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.EndermanWater;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
@@ -25,6 +27,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -84,24 +87,39 @@ public class WorldSurvivalChain extends SingleTaskChain {
             return 100;
         }
 
+        // an angry enderman at the bottom of the health bar: water at our feet (see EndermanWater)
+        double angryEnderman = nearestAngryEnderman(mod);
+        boolean endermanDunk = EndermanWater.dunkNow(mod.getPlayer().getHealth(), angryEnderman,
+                mod.getItemStorage().hasItem(Items.WATER_BUCKET), WorldHelper.waterEvaporates(mod.getWorld()), mod.getPlayer().isInWater());
+
         // Extinguish with water
-        if (!mod.getPlayer().isOnFire()) {
+        // (endBurn would hand the dunk a fresh aim budget every tick, and it is the budget that stops a look that never lands)
+        if (!mod.getPlayer().isOnFire() && !endermanDunk) {
             endBurn(mod);
         }
         if (Baritone.settings().altoExtinguishSelfWithWater.value) {
             if (!(_mainTask instanceof EscapeFromLavaTask && isCurrentlyRunning(mod)) && mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE) && !WorldHelper.waterEvaporates(mod.getWorld())) {
                 // Extinguish ourselves
                 trackWaterWhileBurning(mod);
-                float dunk = dunkOrWalk(mod);
+                float dunk = dunkOrWalk(mod, true);
                 if (dunk != Float.NEGATIVE_INFINITY) {
                     return dunk;
                 }
+            } else if (EndermanWater.keepWater(angryEnderman) && _extinguishWaterPosition != null) {
+                // the water stays up while an angry enderman is about, it is the thing it is afraid of
             } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockTracker().blockIsValid(_extinguishWaterPosition, Blocks.WATER)) {
                 // Pick up the water
                 setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), _extinguishFace, _extinguishHit, true));
                 return 60;
             } else {
                 _extinguishWaterPosition = null;
+            }
+        }
+
+        if (endermanDunk) {
+            float dunk = dunkOrWalk(mod, false);
+            if (dunk != Float.NEGATIVE_INFINITY) {
+                return dunk;
             }
         }
 
@@ -122,6 +140,21 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         return Float.NEGATIVE_INFINITY;
+    }
+
+    // distance to the closest enderman that is angry at us, infinity for none
+    private static double nearestAngryEnderman(AltoClef mod) {
+        double nearest = Double.POSITIVE_INFINITY;
+        try {
+            for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+                if (man.isAlive() && EntityHelper.isAngryAtPlayer(mod, man)) {
+                    nearest = Math.min(nearest, mod.getPlayer().distanceTo(man));
+                }
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // one tick of stale endermen is fine
+        }
+        return nearest;
     }
 
     // the burn is over (or never was): next one gets a fresh aim budget
@@ -145,7 +178,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     // dunk where we stand if a face puts the water in our cell, and hold still until the look lands (a walk's pathing
     // rewrites the camera every tick, so the old fall-through to a pond never got to click). only when there is no face,
     // or the aim gave up, do we walk, and then only to water that is close. NEGATIVE_INFINITY means nothing to do here
-    private float dunkOrWalk(AltoClef mod) {
+    private float dunkOrWalk(AltoClef mod, boolean walk) {
         BlockPos feet = mod.getPlayer().blockPosition();
         // a click mid jump lands in the cell we were in, not the one we are in by the time it goes through
         boolean airborne = !mod.getPlayer().onGround() && !mod.getPlayer().onClimbable() && !mod.getPlayer().isInWater();
@@ -177,7 +210,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         Optional<BlockPos> water = mod.getBlockTracker().getNearestTracking(Blocks.WATER);
         // below the mob defense run (80) and fight (65) so a pond walk never keeps them off the wheel
-        if (water.isPresent() && DunkRules.walkWorthIt(mod.getPlayer().position().distanceTo(WorldHelper.toVec3d(water.get())))) {
+        if (walk && water.isPresent() && DunkRules.walkWorthIt(mod.getPlayer().position().distanceTo(WorldHelper.toVec3d(water.get())))) {
             // the exact block we measured, not whichever one the closest-block task likes better
             setTask(new GetToBlockTask(water.get()));
             return 60;

@@ -385,7 +385,7 @@ public class FoeRulesTest {
         Candidate loose = new Candidate("enderman", 5, 2, () -> false, () -> true, () -> true, 3, 0, false, false);
         Foe foe = accept(Dimension.END, loose);
         assertNotNull(foe);
-        assertEquals(Kind.NORMAL, foe.kind());
+        assertEquals(Kind.ENDERMAN, foe.kind());
     }
 
     @Test
