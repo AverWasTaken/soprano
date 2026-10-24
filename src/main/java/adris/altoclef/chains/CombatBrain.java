@@ -10,7 +10,7 @@ import adris.altoclef.util.helpers.PearlHuntHook;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
-import adris.altoclef.util.helpers.AnchorWatch;
+import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -26,6 +26,7 @@ import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.RecoverHold;
+import adris.altoclef.util.helpers.RunZones;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -52,6 +53,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
@@ -76,8 +78,6 @@ final class CombatBrain {
     private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
 
     private final CombatCommit _commit = new CombatCommit();
-    // standing about is a different fight from walking about (see AnchorWatch)
-    private final AnchorWatch _anchor = new AnchorWatch();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
@@ -102,6 +102,15 @@ final class CombatBrain {
     private final FightNames _names = new FightNames();
     private LocalPlayer _player;
     private Dimension _dimension;
+    // when the last run ended, for the rods task: it waits to heal before it walks back to whatever we ran from
+    private long _lastRunEnd = Long.MIN_VALUE / 2;
+    // a run happened and nothing has settled since: the end is stamped when the machine is back to nothing, so a run that
+    // turned into a fight counts from when the fight is over
+    private boolean _ranSince;
+
+    long lastRunEnd() {
+        return _lastRunEnd;
+    }
 
     Mode mode() {
         return _commit.mode();
@@ -176,7 +185,8 @@ final class CombatBrain {
 
     void reset() {
         _commit.reset();
-        _anchor.reset();
+        _lastRunEnd = Long.MIN_VALUE / 2;
+        _ranSince = false;
         _foeMobs = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
@@ -271,7 +281,6 @@ final class CombatBrain {
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
 
-        boolean anchored = _anchor.update(now, player.getX(), player.getY(), player.getZ());
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
@@ -300,8 +309,15 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored, creeperRepeat, body(mod, dimension),
-                    boxedIn(mod, player, mobs, foes)));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
+                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
+            // the heal wait starts when the run (and the fight it may have turned into) is all over
+            if (_commit.mode() == Mode.RUN) {
+                _ranSince = true;
+            } else if (_commit.mode() == Mode.NONE && _ranSince) {
+                _ranSince = false;
+                _lastRunEnd = now;
+            }
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
             if (_commit.mode() == Mode.FIGHT) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
@@ -314,6 +330,12 @@ final class CombatBrain {
                 // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
                 // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
                 if (event != Event.RUN_EXTENDED) _run = null;
+                // the nether sweep keeps off the spot we were chased out of by a heavy hitter (nether coordinates only, the
+                // zones mean nothing in another dimension)
+                if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
+                        && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
+                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now);
+                }
                 // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
                 if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
                     mod.getClientBaritone().getPathingBehavior().cancelEverything();
@@ -322,6 +344,7 @@ final class CombatBrain {
         } else if (_commit.mode() != Mode.NONE) {
             // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)
             _commit.reset();
+            _ranSince = false;
         } else {
             // only the heal-up hold: the grudges and the cooldown of an idle machine stay where they were (the night pillar
             // switches us off every tick it stands down)
@@ -339,6 +362,7 @@ final class CombatBrain {
         double nearest = Double.POSITIVE_INFINITY;
         boolean shotAt = shotByExcluded;
         double nearestFast = Double.POSITIVE_INFINITY;
+        double nearestMelee = Double.POSITIVE_INFINITY;
         for (int i = 0; i < foes.size(); i++) {
             Foe foe = foes.get(i);
             nearest = Math.min(nearest, foe.distance());
@@ -355,6 +379,11 @@ final class CombatBrain {
                 shotAt = true;
             }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
+            // (a creeper is not a melee foe to the rules but it is one to a bite, it walks up and goes off)
+            // (the fight target counts whatever it is: a skeleton at point blank is no time to chew, and a melee target knocked back to
+            // five blocks is not a walk-up, the swap to food would eat its swing cooldown. only a shooter we are closing on is)
+            if (foe.id() == _commit.targetId() && _commit.mode() == Mode.FIGHT && foe.melee()) nearestMelee = 0;
+            if (!foe.ranged() || (foe.id() == _commit.targetId() && _commit.mode() == Mode.FIGHT)) nearestMelee = Math.min(nearestMelee, foe.distance());
             if (!foe.melee()) continue;
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
@@ -374,7 +403,8 @@ final class CombatBrain {
             biteShot = true;
         }
         _shotAt = shotAt;
-        CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat());
+        CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat(),
+                nearestMelee, mod.getPlayer().getFoodData().getFoodLevel() < 18);
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
@@ -487,8 +517,8 @@ final class CombatBrain {
     private boolean armed(AltoClef mod, List<Foe> foes) {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
-            // (a sniper that is pinning us down is a fight we would start, so it wants to know too)
-            if (foe.distance() <= CombatCommit.CONTACT || foe.pinning(false)) asked = true;
+            // (a sniper that is shooting us is a fight we would start, so it wants to know too)
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = new ArrayList<>();
@@ -558,6 +588,21 @@ final class CombatBrain {
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
                 food != null && food.isTryingToEat());
+    }
+
+    // a blaze with a line on us that the hostile list does not carry (it only lists the charged ones and the ones in melee). asked
+    // only while the heal-up hold is on: the hold re-runs on it, so the meal is not eaten in front of a blaze that has not hit us yet
+    private static boolean blazeWatching(AltoClef mod, LocalPlayer player) {
+        try {
+            for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {
+                double distance = player.distanceTo(blaze);
+                // the ray only for the ones close enough to matter
+                if (blaze.isAlive() && distance <= BlazeFightRules.SIGHT_RANGE && BlazeFightRules.watching(distance, blaze.hasLineOfSight(player))) return true;
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // one tick of stale blazes is fine
+        }
+        return false;
     }
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the

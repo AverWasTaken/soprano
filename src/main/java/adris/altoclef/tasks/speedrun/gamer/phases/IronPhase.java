@@ -15,6 +15,7 @@ import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.GoldHunt;
 import adris.altoclef.tasks.speedrun.gamer.IronActivity;
 import adris.altoclef.tasks.speedrun.gamer.IronActivity.Kind;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
@@ -98,6 +99,9 @@ public class IronPhase implements PhaseHandler {
     private List<KitNeed> tickNeeds;
     private boolean dug;
     private double huntAge = -1;
+    // the same two for the raw gold dig (GoldHunt)
+    private boolean goldDug;
+    private double goldAge = -1;
 
     @Override
     public GamerPhase phase() {
@@ -180,6 +184,8 @@ public class IronPhase implements PhaseHandler {
         tickNeeds = null;
         dug = false;
         huntAge = -1;
+        goldDug = false;
+        goldAge = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -222,6 +228,7 @@ public class IronPhase implements PhaseHandler {
         }
         tickNeeds = null;
         dug = false;
+        goldDug = false;
         Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
         huntClock(ctx);
         return task;
@@ -236,6 +243,11 @@ public class IronPhase implements PhaseHandler {
             ctx.log("no diamonds in time, going with the iron pick");
             ctx.save();
         }
+        DiamondHunt.Step gold = GoldHunt.tick(ctx.state(), goldAge, goldDug, ctx.secondsInPhase(), ctx.cfg().overworld.goldHuntMinutes);
+        goldAge = gold.lastAge();
+        if (gold.gaveUp()) {
+            ctx.save();
+        }
     }
 
     // the tick's list without the stock-ups SmeltFiller tacks on the end: an optional log or wool top-up behind the dig is not a
@@ -248,6 +260,7 @@ public class IronPhase implements PhaseHandler {
     private Task runKit(GamerContext ctx, List<KitNeed> needs) {
         Task task = runner.run(ctx, needs);
         dug = task != null && DiamondHunt.digging(runner.current());
+        goldDug = task != null && GoldHunt.digging(runner.current());
         return task;
     }
 

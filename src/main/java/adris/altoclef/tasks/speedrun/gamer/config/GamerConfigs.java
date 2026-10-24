@@ -41,6 +41,10 @@ public final class GamerConfigs {
     static GamerConfig migrate(GamerConfig c) {
         int from = c.version;
         resetKitLists(c, new GamerConfig());
+        // 9 was the default until the 2x2 sweep, a file that still says 9 never chose it
+        if (from < 6 && c.nether != null && c.nether.sweepSpacingChunks == 9) {
+            c.nether.sweepSpacingChunks = new GamerConfig().nether.sweepSpacingChunks;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

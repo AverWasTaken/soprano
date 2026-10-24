@@ -22,7 +22,7 @@ public class GetBuildingMaterialsTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         Item[] throwaways = StorageHelper.getBuildingMaterials(mod);
-        return new MineAndCollectTask(new ItemTarget[]{new ItemTarget(throwaways, _count)}, MiningRequirement.WOOD);
+        return new MineAndCollectTask(new ItemTarget[]{new ItemTarget(throwaways, _count)}, MiningRequirement.WOOD).noReserve();
     }
 
     @Override

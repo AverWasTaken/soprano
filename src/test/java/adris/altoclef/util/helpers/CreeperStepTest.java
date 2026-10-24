@@ -10,20 +10,20 @@ import adris.altoclef.util.helpers.CreeperStep.Seen;
 import java.util.List;
 import org.junit.Test;
 
-// the lit creeper preempt: lit and within 4 is a step, anything else is scenery, and the hold always ends
+// the creeper preempt: within 4 is a step, lit or not, and the hold always ends
 public class CreeperStepTest {
 
     private static List<Seen> lit(int id, double distance) {
         return List.of(new Seen(id, true, distance, false));
     }
 
-    // a charged one never gets the bait, so these are the defuse's rules
-    private static List<Seen> charged(int id, boolean lit, double distance, boolean fusing) {
-        return List.of(new Seen(id, lit, distance, false, fusing, true, false));
+    // a creeper whose fuse is already going (lit or deflating)
+    private static List<Seen> fused(int id, boolean lit, double distance, boolean fusing) {
+        return List.of(new Seen(id, lit, distance, false, fusing));
     }
 
-    private static List<Seen> charged(int id, double distance) {
-        return charged(id, true, distance, true);
+    private static List<Seen> fused(int id, double distance) {
+        return fused(id, true, distance, true);
     }
 
     @Test
@@ -44,10 +44,61 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void unlitAtTwoIsNothing() {
+    public void anUnlitOneInsideFourSteps() {
         CreeperStep step = new CreeperStep();
-        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 2, true)), true));
+        assertEquals(Event.START, step.step(0, List.of(new Seen(7, false, 3, false)), true));
+        assertTrue(step.active());
+        assertEquals(7, step.creeperId());
+    }
+
+    @Test
+    public void anUnlitOneAtSixIsNothing() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 6, false)), true));
         assertFalse(step.active());
+    }
+
+    // lit first, it is the one with a clock on it
+    @Test
+    public void aLitOneBeatsACloserUnlitOne() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(1, false, 1, false), new Seen(2, true, 3.5, false)), false);
+        assertEquals(2, step.creeperId());
+    }
+
+    // one rule to let go: unlit and past HOLD_RADIUS
+    @Test
+    public void anUnlitOneIsHeldUntilItIsPastFive() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, false, 3, false)), false);
+        assertEquals(Event.NONE, step.step(5, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS, false, false)), false));
+        assertTrue(step.active());
+        assertEquals(Event.END_UNLIT, step.step(6, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS + 0.1, false, false)), false));
+        assertFalse(step.active());
+    }
+
+    // the user's path walks back into one we let go of: the second step is the run's job, not another lap
+    @Test
+    public void anUnlitOneWeWalkBackIntoIsARun() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.NONE, true);
+        assertFalse(step.escalate());
+        assertEquals(Event.END_UNLIT, step.step(20, List.of(new Seen(7, false, 5.5, false, false)), false, Mode.NONE, true));
+        assertEquals(Event.START, step.step(100, List.of(new Seen(7, false, 3.5, false)), false, Mode.NONE, true));
+        assertTrue(step.escalate());
+        // and not within the window of the end any more than REPEAT_WINDOW
+        CreeperStep late = new CreeperStep();
+        late.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.NONE, true);
+        late.step(20, List.of(new Seen(7, false, 5.5, false, false)), false, Mode.NONE, true);
+        assertEquals(Event.START, late.step(21 + CreeperStep.REPEAT_WINDOW, List.of(new Seen(7, false, 3.5, false)), false, Mode.NONE, true));
+        assertFalse(late.escalate());
+    }
+
+    // a run is already taking us away, an unlit one beside it is not worth stopping for
+    @Test
+    public void aRunIgnoresAnUnlitOne() {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.NONE, step.step(0, List.of(new Seen(7, false, 3, false)), false, Mode.RUN, true));
     }
 
     @Test
@@ -93,165 +144,75 @@ public class CreeperStepTest {
     @Test
     public void aDeflatingFuseCloseByKeepsTheHold() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        assertFalse(step.baiting());
+        step.step(0, fused(7, 3), false);
         for (int t = 1; t < CreeperStep.HOLD_CAP; t++) {
-            assertEquals("tick " + t, Event.NONE, step.step(t, charged(7, false, CreeperStep.HOLD_RADIUS, true), false));
+            assertEquals("tick " + t, Event.NONE, step.step(t, fused(7, false, CreeperStep.HOLD_RADIUS, true), false));
             assertTrue(step.active());
         }
     }
 
     @Test
-    public void aDrainedFuseEndsTheHoldAtOnce() {
+    public void aDrainedFuseCloseByStillHoldsUntilWeAreOut() {
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false);
-        assertEquals(Event.END_UNLIT, step.step(10, List.of(new Seen(7, false, 3, false, false)), false));
+        assertEquals(Event.NONE, step.step(10, List.of(new Seen(7, false, 3, false, false)), false));
+        assertEquals(Event.END_UNLIT, step.step(11, List.of(new Seen(7, false, 5.5, false, false)), false));
         assertFalse(step.active());
     }
 
     @Test
     public void aDeflatingFuseFarAwayEndsTheHold() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        assertEquals(Event.END_UNLIT, step.step(10, charged(7, false, CreeperStep.HOLD_RADIUS + 0.1, true), false));
+        step.step(0, fused(7, 3), false);
+        assertEquals(Event.END_UNLIT, step.step(10, fused(7, false, CreeperStep.HOLD_RADIUS + 0.1, true), false));
     }
 
     @Test
     public void aFuseThatNeverDrainsStillHitsTheCap() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
+        step.step(0, fused(7, 3), false);
         // lit for a while, then deflating and never draining: the cap ends the hold
-        assertEquals(Event.NONE, step.step(10, charged(7, false, 2, true), false));
-        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, charged(7, false, 2, true), false));
+        assertEquals(Event.NONE, step.step(10, fused(7, false, 2, true), false));
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, fused(7, false, 2, true), false));
         assertFalse(step.active());
     }
 
     @Test
     public void aHoldThatOnlyRanLongBecauseItRelitIsNotBlacklisted() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        for (int t = 1; t < 20; t++) step.step(t, charged(7, 3), false);
-        for (int t = 20; t < 35; t++) step.step(t, charged(7, false, 3, true), false);
-        for (int t = 35; t < CreeperStep.HOLD_CAP; t++) step.step(t, charged(7, 3), false);
+        step.step(0, fused(7, 3), false);
+        for (int t = 1; t < 20; t++) step.step(t, fused(7, 3), false);
+        for (int t = 20; t < 35; t++) step.step(t, fused(7, false, 3, true), false);
+        for (int t = 35; t < CreeperStep.HOLD_CAP; t++) step.step(t, fused(7, 3), false);
         // the cap lands, but it has only been lit again for fifteen ticks
-        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, charged(7, 3), false));
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, fused(7, 3), false));
         // so its next relight beside us is stepped from again
-        assertEquals(Event.START, step.step(CreeperStep.HOLD_CAP + 1, charged(7, 3), false));
+        assertEquals(Event.START, step.step(CreeperStep.HOLD_CAP + 1, fused(7, 3), false));
     }
 
     @Test
     public void aCreeperThatSatLitThroughTheWholeCapIsNotHeldAgain() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, charged(7, 3), false));
-        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, charged(7, 3), false));
+        step.step(0, fused(7, 3), false);
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, fused(7, 3), false));
+        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, fused(7, 3), false));
     }
 
     @Test
     public void twoAndAHalfSecondsIsTheCapAndTheSameOneIsNotHeldAgain() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP - 1, charged(7, 3), false));
-        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, charged(7, 3), false));
-        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, charged(7, 3), false));
+        step.step(0, fused(7, 3), false);
+        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP - 1, fused(7, 3), false));
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, fused(7, 3), false));
+        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, fused(7, 3), false));
         assertFalse(step.active());
         assertEquals(50, CreeperStep.HOLD_CAP);
-    }
-
-    // ---- the bait
-
-    @Test
-    public void aPlainCreeperGetsTheBait() {
-        CreeperStep step = new CreeperStep();
-        assertEquals(Event.START, step.step(0, lit(7, 3), false));
-        assertTrue(step.baiting());
-        assertFalse(step.escalate());
-    }
-
-    // healing up (RecoverHold) is nothing committed, but a hurt bot standing still for a pop is not the plan: the defuse
-    @Test
-    public void noBaitWhileHealingUp() {
-        CreeperStep step = new CreeperStep();
-        assertEquals(Event.START, step.step(0, lit(7, 3), false, CombatCommit.Mode.NONE, true, true));
-        assertFalse(step.baiting());
-        // and one that started baiting drops it once the hold comes on
-        CreeperStep other = new CreeperStep();
-        other.step(0, lit(7, 3), false, CombatCommit.Mode.NONE, true, false);
-        assertTrue(other.baiting());
-        other.step(1, lit(7, 3), false, CombatCommit.Mode.NONE, true, true);
-        assertFalse(other.baiting());
-    }
-
-    // standing at 6.5 while it swells, it loses its line for a moment (unlit, still charged), lights again, then pops
-    @Test
-    public void theBaitHoldsThroughLitUnlitAndLitAgainUntilItPops() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, lit(7, 3), false);
-        for (int t = 1; t < 15; t++) assertEquals(Event.NONE, step.step(t, lit(7, 6.5), false));
-        // past HOLD_RADIUS and deflating: the defuse would let go here, the bait does not
-        for (int t = 15; t < 20; t++) {
-            assertEquals(Event.NONE, step.step(t, List.of(new Seen(7, false, 6.5, false, true)), false));
-            assertTrue(step.active());
-        }
-        for (int t = 20; t < 40; t++) assertEquals(Event.NONE, step.step(t, lit(7, 6.5), false));
-        assertEquals(Event.END_GONE, step.step(40, List.of(), false));
-        assertFalse(step.active());
-    }
-
-    // a long bait (it went out and relit) that turns into the defuse is already past the defuse's cap: it ends, and since it
-    // never sat lit through the whole thing it is not blacklisted
-    @Test
-    public void aLongBaitFlippedToTheDefuseEndsWithoutTheBlacklist() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, lit(7, 3), false, Mode.NONE, true);
-        for (int t = 1; t < 20; t++) step.step(t, lit(7, 6.5), false, Mode.NONE, true);
-        for (int t = 20; t < 30; t++) step.step(t, List.of(new Seen(7, false, 6.5, false, true)), false, Mode.NONE, true);
-        for (int t = 30; t < 60; t++) step.step(t, lit(7, 3), false, Mode.NONE, true);
-        assertEquals(Event.END_CAP, step.step(60, lit(7, 3), false, Mode.FIGHT, true));
-        assertEquals(Event.START, step.step(61, lit(7, 3), false, Mode.FIGHT, true));
-    }
-
-    @Test
-    public void aBaitThatDrainedIsOver() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, lit(7, 3), false);
-        assertEquals(Event.END_UNLIT, step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false));
-    }
-
-    @Test
-    public void theBaitHasItsOwnCap() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, lit(7, 3), false);
-        for (int t = 1; t < CreeperStep.BAIT_CAP; t++) {
-            assertEquals("tick " + t, Event.NONE, step.step(t, List.of(new Seen(7, false, 6.5, false, true)), false));
-        }
-        assertEquals(Event.END_CAP, step.step(CreeperStep.BAIT_CAP, List.of(new Seen(7, false, 6.5, false, true)), false));
-        // never sat lit through it, so it is not blacklisted
-        assertEquals(Event.START, step.step(CreeperStep.BAIT_CAP + 1, lit(7, 3), false));
-    }
-
-    @Test
-    public void aChargedOneIsDefused() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false);
-        assertTrue(step.active());
-        assertFalse(step.baiting());
-    }
-
-    @Test
-    public void ourStuffCloseToItMeansDefuse() {
-        CreeperStep step = new CreeperStep();
-        step.step(0, List.of(new Seen(7, true, 3, false, true, false, true)), false);
-        assertTrue(step.active());
-        assertFalse(step.baiting());
-        // the defuse lets go of a far deflating one, same as it always did
-        assertEquals(Event.END_UNLIT, step.step(10, List.of(new Seen(7, false, 6.5, false, true, false, true)), false));
     }
 
     // ---- coming back
 
     @Test
-    public void aBaitThatDidNotTakeAndRelitIsARun() {
+    public void aCreeperThatRelitAfterTheStepIsARun() {
         CreeperStep step = new CreeperStep();
         assertEquals(Event.START, step.step(0, lit(7, 3), false, Mode.NONE, true));
         assertFalse(step.escalate());
@@ -259,8 +220,6 @@ public class CreeperStepTest {
         // it walked back in and lit again
         assertEquals(Event.START, step.step(120, lit(7, 2.8), false, Mode.NONE, true));
         assertTrue(step.escalate());
-        // the defuse carries us out of the blast while the run gets going
-        assertFalse(step.baiting());
         // the hand-off is that one tick
         assertEquals(Event.NONE, step.step(121, lit(7, 3.5), false, Mode.NONE, true));
         assertFalse(step.escalate());
@@ -269,53 +228,48 @@ public class CreeperStepTest {
     @Test
     public void aDefusedOneThatCameBackIsARunToo() {
         CreeperStep step = new CreeperStep();
-        step.step(0, charged(7, 3), false, Mode.NONE, true);
+        step.step(0, fused(7, 3), false, Mode.NONE, true);
         assertEquals(Event.END_GONE, step.step(20, List.of(), false, Mode.NONE, true));
-        assertEquals(Event.START, step.step(200, charged(7, 3), false, Mode.NONE, true));
+        assertEquals(Event.START, step.step(200, fused(7, 3), false, Mode.NONE, true));
         assertTrue(step.escalate());
     }
 
     @Test
-    public void withTheCommitmentOffARepeatIsTheBaitAgain() {
-        // nobody to hand a run to, and the defuse is the loop, so the bait gets another go
+    public void withTheCommitmentOffARepeatIsJustTheStepAgain() {
+        // nobody to hand a run to, so it is the plain step again
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false, Mode.NONE, false);
         step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false, Mode.NONE, false);
         assertEquals(Event.START, step.step(120, lit(7, 2.8), false, Mode.NONE, false));
         assertFalse(step.escalate());
-        assertTrue(step.baiting());
     }
 
     @Test
-    public void midFightARepeatIsJustTheDefuse() {
-        // the fight is till dead, so no run, and no standing still with something chewing on us either
+    public void midFightARepeatIsJustTheStep() {
+        // the fight is till dead, so no run
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false, Mode.NONE, true);
         step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false, Mode.FIGHT, true);
         assertEquals(Event.START, step.step(120, lit(7, 2.8), false, Mode.FIGHT, true));
         assertFalse(step.escalate());
-        assertFalse(step.baiting());
     }
 
     @Test
-    public void aCommitmentNeverGetsTheBait() {
+    public void aCommitmentStillSteps() {
         assertEquals(Event.START, new CreeperStep().step(0, lit(7, 2.5), false, Mode.FIGHT, true));
         CreeperStep step = new CreeperStep();
         step.step(0, List.of(new Seen(7, true, 2.5, true)), false, Mode.RUN, true);
         assertTrue(step.active());
-        assertFalse(step.baiting());
     }
 
-    // a crowd or low hp turns into a run while we stand there waiting for the pop: the run gets the defuse, not a statue
+    // a run that starts mid step holds the step to the stricter let-go rule
     @Test
-    public void aRunThatStartsMidBaitTurnsItIntoTheDefuse() {
+    public void aStepThatMeetsARunFollowsTheRunsRules() {
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false, Mode.NONE, true);
-        assertTrue(step.baiting());
         assertEquals(Event.NONE, step.step(10, lit(7, 6.5), false, Mode.NONE, true));
         assertEquals(Event.NONE, step.step(11, lit(7, 6.5), false, Mode.RUN, true));
         assertTrue(step.active());
-        assertFalse(step.baiting());
         // and the run's rules from here: a deflating fuse is held through until it is drained and we are past 7
         assertEquals(Event.NONE, step.step(12, List.of(new Seen(7, false, 6.5, false, true)), false, Mode.RUN, true));
         assertEquals(Event.NONE, step.step(13, List.of(new Seen(7, false, CreeperStep.SAFE + 1, false, true)), false, Mode.RUN, true));
@@ -340,7 +294,7 @@ public class CreeperStepTest {
         double dist = 3;
         double v = 0;
         long t = 0;
-        while (CreeperStep.rawGoing(t, dist)) {
+        while (CreeperStep.rawGoing(t, dist, dist)) {
             // ground sprint: 0.28 a tick at the top, friction 0.546
             v = v * 0.546 + 0.28 * (1 - 0.546);
             dist += v;
@@ -364,7 +318,6 @@ public class CreeperStepTest {
         step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false, Mode.NONE, true);
         assertEquals(Event.START, step.step(31 + CreeperStep.REPEAT_WINDOW, lit(7, 3), false, Mode.NONE, true));
         assertFalse(step.escalate());
-        assertTrue(step.baiting());
     }
 
     @Test
@@ -389,37 +342,6 @@ public class CreeperStepTest {
     @Test
     public void noRunNoChange() {
         assertEquals(Event.START, new CreeperStep().step(0, lit(7, 2.5), false, Mode.NONE, true));
-    }
-
-    // ---- the numbers
-
-    @Test
-    public void theBaitStopsPastTheBlastAndShortOfTheDefuse() {
-        // nothing past 6 is hurt, past 7 it stops swelling. the stop plus the slide lands in between
-        assertTrue(CreeperStep.BAIT_STOP > 6);
-        assertTrue(CreeperStep.BAIT_STOP + 0.35 < 7);
-        assertTrue(CreeperStep.BAIT_RESUME >= 6);
-        assertTrue(CreeperStep.BAIT_RING_MIN > 6 && CreeperStep.BAIT_RING_MAX < 7);
-        assertTrue(CreeperStep.BAIT_RING_MIN >= CreeperStep.BAIT_STOP);
-    }
-
-    @Test
-    public void standingHasALittleSlack() {
-        assertFalse(CreeperStep.baitStands(6.19, false));
-        assertTrue(CreeperStep.baitStands(6.2, false));
-        assertTrue(CreeperStep.baitStands(6.1, true));
-        assertFalse(CreeperStep.baitStands(5.99, true));
-        // past 7 is a miss, but walking back at it is not the answer either
-        assertTrue(CreeperStep.baitStands(7.5, false));
-    }
-
-    @Test
-    public void theRingIsSixThreeToSixNine() {
-        assertFalse(CreeperStep.inBaitRing(6.29));
-        assertTrue(CreeperStep.inBaitRing(6.3));
-        assertTrue(CreeperStep.inBaitRing(6.6));
-        assertTrue(CreeperStep.inBaitRing(6.9));
-        assertFalse(CreeperStep.inBaitRing(6.91));
     }
 
     @Test
@@ -449,7 +371,7 @@ public class CreeperStepTest {
     }
 
     private static Event stepNoHeading(CreeperStep step, long now, List<Seen> seen, boolean shield, boolean noHeading) {
-        return step.step(now, seen, shield, Mode.NONE, false, false, noHeading);
+        return step.step(now, seen, shield, Mode.NONE, false, noHeading);
     }
 
     @Test
@@ -462,15 +384,13 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void noWayOutBeatsTheBaitRing() {
-        // a plain creeper with nothing near it is bait material: a heading means the bait, no heading means the shield
-        CreeperStep bait = new CreeperStep();
-        assertEquals(Event.START, stepNoHeading(bait, 0, lit(7, 3.5), true, false));
-        assertTrue(bait.baiting());
-        assertFalse(bait.cornered());
+    public void noWayOutBeatsTheWalk() {
+        // a heading means the ordinary step, no heading means the shield
+        CreeperStep walk = new CreeperStep();
+        assertEquals(Event.START, stepNoHeading(walk, 0, lit(7, 3.5), true, false));
+        assertFalse(walk.cornered());
         CreeperStep boxed = new CreeperStep();
         assertEquals(Event.CORNERED, stepNoHeading(boxed, 0, lit(7, 3.5), true, true));
-        assertFalse(boxed.baiting());
     }
 
     @Test
@@ -563,5 +483,41 @@ public class CreeperStepTest {
         step.step(0, lit(7, 3), true);
         assertEquals(Event.NONE, step.step(CreeperStep.CORNER_TICKS, lit(7, 3.8), true));
         assertFalse(step.cornered());
+    }
+
+    // the sprint is not handed to a path while a lit one is inside the blast, however long it has been going
+    @Test
+    public void theHandSprintHoldsWhileALitOneIsInsideSix() {
+        assertTrue(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS + 20, 7, 5.9));
+        assertTrue(CreeperStep.rawGoing(0, 2, 2));
+        // past six it is the old rule: 30 ticks and short of SAFE
+        assertTrue(CreeperStep.rawGoing(10, 6.5, 6.5));
+        assertFalse(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS, 6.5, 6.5));
+        // an unlit one gets no hold
+        assertFalse(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS, 3, Double.POSITIVE_INFINITY));
+    }
+
+    private static Seen unlit(double distance, boolean inView) {
+        return new Seen(7, false, distance, false, false, inView);
+    }
+
+    @Test
+    public void anUnlitOneBehindAWallIsNothing() {
+        assertEquals(Event.NONE, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(0, false))), true));
+    }
+
+    @Test
+    public void anUnlitOneFourBlocksBelowIsNothing() {
+        assertEquals(Event.NONE, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(-4, true))), true));
+    }
+
+    @Test
+    public void anUnlitOneInPlainViewSteps() {
+        assertEquals(Event.START, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(1, true))), true));
+    }
+
+    @Test
+    public void aLitOneStepsWithoutSight() {
+        assertEquals(Event.START, new CreeperStep().step(0, List.of(new Seen(7, true, 3, false, true, false)), true));
     }
 }

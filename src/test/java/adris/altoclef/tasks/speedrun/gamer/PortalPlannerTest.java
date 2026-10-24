@@ -172,7 +172,7 @@ public class PortalPlannerTest {
     @Test
     public void portalGateFillsToTheEntryStackNotTheSmallBand() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = 64;
         List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
         assertEquals(List.of(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.netherEntryBlocks)), out);
@@ -184,15 +184,50 @@ public class PortalPlannerTest {
     @Test
     public void gateIsEmptyWhenReady() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
-    public void gateFillsTheFoodToTheTripStopNotTheMinimum() {
+    public void gateFillsTheFoodToTheNetherEntryLineNotTheMinimum() {
         FakeFacts f = readyToGo();
         f.foodUnits = 90;
+        assertEquals(210, cfg.netherEntryFoodUnits);
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        // the trip stop is for every other trip, the gate does not move it
+        assertEquals(130, cfg.refillStopFoodUnits);
+        f.foodUnits = cfg.refillStopFoodUnits;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        f.foodUnits = cfg.netherEntryFoodUnits;
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    @Test
+    public void gateAsksForTheEntryLineOnATripToo() {
+        FakeFacts f = readyToGo();
+        f.foodUnits = 20;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+    }
+
+    @Test
+    public void gateEntryLineNeverGoesUnderTheTripStop() {
+        cfg.netherEntryFoodUnits = 100;
+        FakeFacts f = readyToGo();
+        f.foodUnits = 90;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+    }
+
+    @Test
+    public void aFullBagStillCapsTheEntryFillAtTheMinimum() {
+        FakeFacts f = readyToGo();
+        f.bagFull = true;
+        f.foodUnits = 60;
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits)), PortalPlanner.gate(f, cfg, 10));
+        f.foodUnits = cfg.minFoodUnits;
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+        // and under the floor, on a trip, it asks for the old stop and not a pile
+        f.foodUnits = 20;
         assertEquals(List.of(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits)), PortalPlanner.gate(f, cfg, 10));
     }
 
@@ -217,7 +252,7 @@ public class PortalPlannerTest {
     @Test
     public void fireChargeIsALightToo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
@@ -225,7 +260,7 @@ public class PortalPlannerTest {
     @Test
     public void gateAsksForOneMoreEmptyBucketWhenOnlyTheWaterOneIsHeld() {
         FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg, 10));
     }
@@ -234,7 +269,7 @@ public class PortalPlannerTest {
     public void gateWantsArmorOn() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1)
                 .give(Items.IRON_BOOTS, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg, 10));
         f.worn.add(Items.IRON_BOOTS);
@@ -243,7 +278,7 @@ public class PortalPlannerTest {
 
     private FakeFacts readyToGo() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
-        f.foodUnits = 130;
+        f.foodUnits = cfg.netherEntryFoodUnits;
         f.buildBlocks = cfg.netherEntryBlocks;
         return f;
     }
@@ -271,6 +306,51 @@ public class PortalPlannerTest {
         FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 9).give(Items.GOLDEN_BOOTS, 1);
         f.worn.add(Items.GOLDEN_BOOTS);
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    // ---- the cook before the nether
+
+    // while iron is owed the furnace is the iron's and meat only goes in a smoker (CookGateTest sets up the same way)
+    private void freeTheFurnace() {
+        cfg.ironKit.clear();
+        cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
+    }
+
+    @Test
+    public void gateEndsWithTheCookWhenRawMeatCanBeCooked() {
+        FakeFacts f = readyToGo().give(Items.PORKCHOP, 6).give(Items.COAL, 4);
+        // plenty over the line so the food need stays out of the way of what is under test
+        f.foodUnits = 300;
+        f.furnacePlaced = true;
+        freeTheFurnace();
+        List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
+        assertEquals(List.of(new KitNeed(KitNeed.COOK_FURNACE, CookGate.MIN_RAW)), out);
+        // last, after the build blocks it would otherwise have asked for
+        f.buildBlocks = 0;
+        List<KitNeed> names = PortalPlanner.gate(f, cfg, 10);
+        assertEquals(KitNeed.BUILD_BLOCKS, names.get(0).catalogueName());
+        assertTrue(KitNeed.isCookName(names.get(names.size() - 1).catalogueName()));
+    }
+
+    @Test
+    public void gateHasNoCookWithoutAStationOrOnceTheBatchIsCooking() {
+        // no station and nothing to build one from: meat is eaten raw, nothing to ask for
+        FakeFacts raw = readyToGo().give(Items.PORKCHOP, 6);
+        raw.foodUnits = 300;
+        assertTrue(PortalPlanner.gate(raw, cfg, 10).isEmpty());
+        // loaded: the meat left the bag and a job exists, so the gate goes empty and the leave visit holds the phase
+        FakeFacts f = readyToGo().give(Items.PORKCHOP, 3).give(Items.COAL, 4).cookingFood("cooked_porkchop", 3, 8, 15);
+        f.foodUnits = 300;
+        f.furnacePlaced = true;
+        freeTheFurnace();
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+        // and mid load the cook keeps its place, the meat in the slot is not in the bag any more
+        FakeFacts loading = readyToGo().give(Items.COAL, 4);
+        loading.foodUnits = 300;
+        loading.furnacePlaced = true;
+        freeTheFurnace();
+        loading.cookStation = "furnace";
+        assertEquals(1, PortalPlanner.gate(loading, cfg, 10).size());
     }
 
     // ---- the spare picks for the nether
@@ -375,11 +455,9 @@ public class PortalPlannerTest {
         assertEquals(new RunState.Pos(10, 70, -4), state.netherPortal);
     }
 
+    // a cast whose fetches loop is slow, not over: the clock and the no lava line are the way out, not a guess at a loop
     @Test
-    public void aLoopingCastGoesObsidianAtOnceWithAPick() {
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 30, 90, cfg, true, true, true));
-        assertEquals("still landing cells", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 10, cfg, true, true, true));
-        assertEquals("no pick, nowhere to go", Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, false, true));
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 30, cfg, true, true, false));
+    public void aCastThatKeepsFetchingIsNotSwitchedOnThatAlone() {
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 30, 90, cfg, true, true));
     }
 }

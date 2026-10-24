@@ -56,9 +56,13 @@ public class HomePortalWalk {
                 mod.getBlockTracker().trackBlock(Blocks.NETHER_PORTAL);
                 tracking = true;
             }
-            if (!portalNear(mod)) {
+            if (portalNear(mod)) {
+                homeArrivedMs = 0;
+            } else {
                 BlockPos at = new BlockPos(home.x, home.y, home.z);
                 if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {
+                    // left the spot: the next arrival gets its own grace
+                    homeArrivedMs = 0;
                     if (!home.equals(walkingTo)) {
                         walkingTo = home;
                         walkToPortal = new GetToBlockTask(at);
@@ -73,8 +77,10 @@ public class HomePortalWalk {
                 if (homeArrivedMs == 0) {
                     homeArrivedMs = System.currentTimeMillis();
                 }
-                if (mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)
-                        && System.currentTimeMillis() - homeArrivedMs > HOME_SCAN_MS) {
+                // an unloaded chunk reads as "no portal" too, so it has to be loaded before the spot can be called empty
+                if (mod.getChunkTracker().isChunkLoaded(at)
+                        && mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)
+                        && graceOver(homeArrivedMs, System.currentTimeMillis())) {
                     gone = true;
                     // forget it too, or every later trip and relog walks to the same empty spot again
                     state.overworldPortal = null;
@@ -91,6 +97,11 @@ public class HomePortalWalk {
             goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
         }
         return goNether;
+    }
+
+    // arrivedMs 0 = not standing at the spot yet
+    static boolean graceOver(long arrivedMs, long nowMs) {
+        return arrivedMs != 0 && nowMs - arrivedMs > HOME_SCAN_MS;
     }
 
     // a portal really within reach, not just "we used one once": the tracker remembers the last used portal for good, which

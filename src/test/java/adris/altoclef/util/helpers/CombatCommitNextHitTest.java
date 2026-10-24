@@ -12,7 +12,8 @@ import adris.altoclef.util.helpers.CombatCommit.Tick;
 import java.util.List;
 import org.junit.Test;
 
-// the bail line is "the next hit would put us at or under 8", not "we are at 8": hits of 3 to 5 skip right over 8
+// the bail line is "the next hit would put us at or under 8", not "we are at 8": hits of 3 to 5 skip right over 8. that is for
+// crowds, shooters and everything not yet fighting; one on one in a fight the real hp is the line
 public class CombatCommitNextHitTest {
 
     private static final int ZOMBIE = 1;
@@ -38,9 +39,38 @@ public class CombatCommitNextHitTest {
         assertEquals(Event.FIGHT_START, c.step(tick(1020, 13, null, zombie(0))));
         assertEquals(Mode.FIGHT, c.mode());
         // 13 -> 10 with another 3 on the way: that is the line, not 6
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1030, 10, zombie(0), zombie(0))));
+        // (a second zombie on us: the one on one fight has its own line, see aLoneMeleeFoeIsFoughtDownToEight)
+        Foe other = new Foe(7, 3, false, false, 0);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1030, 10, zombie(0), zombie(0), other)));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(CombatCommit.Why.LOW_HP, c.why());
+    }
+
+    private static Foe wither(int id) {
+        return new Foe(id, 2, false, false, 0);
+    }
+
+    @Test
+    public void aLoneMeleeFoeIsFoughtDownToEight() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(1000, 16, null));
+        // one wither skeleton, 3.9 a hit: hp 12.1 and the fight is on
+        assertEquals(Event.FIGHT_START, c.step(tick(1001, 12.1f, null, wither(20))));
+        // 11 minus the next hit is under 8, but it is one mob and a fight we are in: no run
+        assertEquals(Event.NONE, c.step(tick(1010, 11, wither(20), wither(20))));
+        assertEquals(Mode.FIGHT, c.mode());
+        // the real hp is the line
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1020, 8, wither(20), wither(20))));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void twoWitherSkeletonsOnUsStillRunAtEleven() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(1000, 16, null));
+        assertEquals(Event.FIGHT_START, c.step(tick(1001, 12.1f, null, wither(20))));
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1010, 11, wither(20), wither(20), wither(21))));
+        assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
@@ -58,7 +88,9 @@ public class CombatCommitNextHitTest {
         CombatCommit c = new CombatCommit();
         c.step(tick(1000, 16, null, zombie(CombatCommit.NEVER)));
         assertEquals(Event.FIGHT_START, c.step(tick(1010, 16, null, zombie(0))));
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1020, 12, zombie(0), zombie(0), skeleton(12, 0, true, CombatCommit.NEVER))));
+        // (two on us, one of them the zombie: a zombie and the skeleton alone would be the shooter fight)
+        Foe other = new Foe(7, 3, false, false, 0);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(1020, 12, zombie(0), zombie(0), other, skeleton(12, 0, true, CombatCommit.NEVER))));
     }
 
     @Test
@@ -127,14 +159,4 @@ public class CombatCommitNextHitTest {
         assertFalse(stance.mayEat());
     }
 
-    @Test
-    public void pinningWantsTheTwoHitsRecentAndSoCloseTogether() {
-        // 150 and 159 ticks ago: nine apart, both inside the window
-        assertTrue(skeleton(10, 150, true, 159).pinning(false));
-        // the older one is just outside
-        assertFalse(skeleton(10, 10, true, CombatCommit.PIN_WINDOW + 1).pinning(false));
-        assertTrue(skeleton(10, 10, true, CombatCommit.PIN_WINDOW).pinning(false));
-        // two hits a window apart are not "close together", the first one is already out
-        assertFalse(skeleton(10, CombatCommit.PIN_WINDOW, true, 2 * CombatCommit.PIN_WINDOW).pinning(false));
-    }
 }

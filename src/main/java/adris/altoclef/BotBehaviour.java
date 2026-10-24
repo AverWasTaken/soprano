@@ -385,6 +385,20 @@ public class BotBehaviour {
         current().applyState();
     }
 
+    // fast mode caps the placement cost at this one (min of the two), so a level that wants placing to cost more has to
+    // raise both or the cap quietly wins
+    public void setExperimentalBlockPlacePenalty(double penalty) {
+        current().experimentalBlockPlacePenalty = penalty;
+        current().applyState();
+    }
+
+    // both at once, for the levels that mean "placing is expensive" and do not care which setting says so
+    public void setBlockPlacePenalties(double penalty) {
+        current().blockPlacePenalty = penalty;
+        current().experimentalBlockPlacePenalty = penalty;
+        current().applyState();
+    }
+
     public void setBlockBreakAdditionalPenalty(double penalty) {
         current().blockBreakAdditionalPenalty = penalty;
         current().applyState();
@@ -448,6 +462,19 @@ public class BotBehaviour {
 
     public void push(State customState) {
         _states.push(customState);
+    }
+
+    public boolean contains(State level) {
+        return _states.contains(level);
+    }
+
+    // takes a level out from under whatever sits above it, for an owner that can't pop because somebody pushed after it. the
+    // ones above copied its numbers already and pop on their own. never the bottom, that one is the user's
+    public void remove(State level) {
+        if (_states.peekLast() == level || !_states.removeIf(s -> s == level)) {
+            return;
+        }
+        current().applyState();
     }
 
     // for a task that wants to pop only its own level and never somebody's above it (SchematicBuildTask)
@@ -558,6 +585,7 @@ public class BotBehaviour {
         public boolean allowDiagonalAscend;
         //public boolean preferredStairs;
         public double blockPlacePenalty;
+        public double experimentalBlockPlacePenalty;
         public double blockBreakAdditionalPenalty;
 
         // Alto Clef params
@@ -626,6 +654,7 @@ public class BotBehaviour {
             mineScanDroppedItems = s.mineScanDroppedItems.value;
             allowDiagonalAscend = s.allowDiagonalAscend.value;
             blockPlacePenalty = s.blockPlacementPenalty.value;
+            experimentalBlockPlacePenalty = s.experimentalBlockPlacementPenalty.value;
             blockBreakAdditionalPenalty = s.blockBreakAdditionalPenalty.value;
             //preferredStairs = s.allowDownward.value;
         }
@@ -672,6 +701,7 @@ public class BotBehaviour {
                 SettingsOverrides.put(s.mineScanDroppedItems, mineScanDroppedItems);
                 SettingsOverrides.put(s.allowDiagonalAscend, allowDiagonalAscend);
                 SettingsOverrides.put(s.blockPlacementPenalty, blockPlacePenalty);
+                SettingsOverrides.put(s.experimentalBlockPlacementPenalty, experimentalBlockPlacePenalty);
                 SettingsOverrides.put(s.blockBreakAdditionalPenalty, blockBreakAdditionalPenalty);
             }
 

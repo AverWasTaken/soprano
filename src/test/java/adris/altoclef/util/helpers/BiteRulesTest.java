@@ -347,4 +347,14 @@ public class BiteRulesTest {
         assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withHitAge(1)));
         assertEquals(5, Verdict.values().length);
     }
+
+    @Test
+    public void shieldCalledForThisTickOrLastBlocksTheBite() {
+        assertTrue(BiteRules.dodgeHolds(100, 100));
+        assertTrue(BiteRules.dodgeHolds(101, 100));
+        assertFalse(BiteRules.dodgeHolds(102, 100));
+        // never dodged, and a clock that went backwards
+        assertFalse(BiteRules.dodgeHolds(100, Long.MIN_VALUE));
+        assertFalse(BiteRules.dodgeHolds(50, 100));
+    }
 }

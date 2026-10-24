@@ -155,4 +155,13 @@ public class LocateLegPlannerTest {
         double[] t = LocateLegPlanner.relocateTarget(0, 0, 150);
         assertEquals(150, Math.hypot(t[0], t[1]), 1e-9);
     }
+
+    // the task feeds its own clock (seconds of time spent running), so a gap in game time between two ticks is invisible
+    @Test
+    public void legOnTaskSecondsIgnoresTimeSpentAway() {
+        LocateLegPlanner.Leg leg = new LocateLegPlanner.Leg(10, 100);
+        leg.update(40, 100);
+        assertFalse(leg.expired(40));
+        assertTrue(leg.expired(10 + LocateLegPlanner.STALL_SECONDS));
+    }
 }

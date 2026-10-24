@@ -41,7 +41,7 @@ public final class PiglinGold {
 
     // a gold piece in the bag (not on us), the gate has nothing left to craft then and the equip step puts it on
     public static boolean holdsPiece(GamerFacts f) {
-        return f.count(GOLD) > 0;
+        return piecesHeld(f) > 0;
     }
 
     // gold ingots we could end up with without leaving the spot: ingots, blocks (9), nuggets (9 a piece) and raw gold
@@ -71,19 +71,22 @@ public final class PiglinGold {
         for (int pass = 0; pass < 2; pass++) {
             for (int i = 0; i < SLOTS.length; i++) {
                 boolean has = pass == 0 ? f.armorEquipped(GOLD[i]) : f.has(GOLD[i]);
+                if (GOLD[i] == Items.GOLDEN_BOOTS && diamondBootsWorn(f)) {
+                    continue;
+                }
                 if (has && names.contains("iron_" + SLOTS[i])) {
                     return SLOTS[i];
                 }
             }
         }
-        if (f.count(GOLD) > 0) {
+        if (piecesHeld(f) > 0) {
             return null;
         }
         int gold = available(f);
         if (gold >= HELMET_INGOTS && names.contains("iron_helmet") && !(bootsInstead(f) && names.contains("iron_boots"))) {
             return "helmet";
         }
-        if (gold >= BOOTS_INGOTS && names.contains("iron_boots")) {
+        if (gold >= BOOTS_INGOTS && names.contains("iron_boots") && !diamondBootsWorn(f)) {
             return "boots";
         }
         return null;
@@ -93,7 +96,7 @@ public final class PiglinGold {
     // 4 ingots and the cheapest to dig. 36 nuggets is a lot of ore as it is
     public static String netherSlot(GamerFacts f, List<String> names) {
         String slot = slot(f, names);
-        return slot == null ? "boots" : slot;
+        return slot != null ? slot : diamondBootsWorn(f) ? "helmet" : "boots";
     }
 
     // the gold piece for a slot
@@ -125,6 +128,9 @@ public final class PiglinGold {
         }
         for (Item piece : GOLD) {
             if (f.has(piece)) {
+                if (piece == Items.GOLDEN_BOOTS && diamondBootsWorn(f)) {
+                    continue;
+                }
                 if (!equip.contains(piece)) {
                     equip.add(piece);
                 }
@@ -136,13 +142,26 @@ public final class PiglinGold {
     // last chance before the portal: nothing gold on, nothing gold in the bag, but the gold for a helmet (or boots) is
     // there. the catalogue crafts it, the equip step that follows puts it on. empty when there is nothing to do
     public static List<KitNeed> gate(GamerFacts f) {
-        if (worn(f) || f.count(GOLD) > 0) {
+        if (worn(f) || piecesHeld(f) > 0) {
             return List.of();
         }
         int gold = available(f);
         if (gold >= HELMET_INGOTS && !bootsInstead(f)) {
             return List.of(new KitNeed("golden_helmet", 1));
         }
-        return gold >= BOOTS_INGOTS ? List.of(new KitNeed("golden_boots", 1)) : List.of();
+        // boots over worn diamond boots would throw the diamonds away for a piglin pass
+        return gold >= BOOTS_INGOTS && !diamondBootsWorn(f) ? List.of(new KitNeed("golden_boots", 1)) : List.of();
+    }
+
+    // gold pieces in the bag that are worth wearing. golden boots next to diamond ones are dead weight, they would never go on, so
+    // they must not stop the helmet from being planned
+    private static int piecesHeld(GamerFacts f) {
+        int n = f.count(GOLD);
+        return diamondBootsWorn(f) ? n - f.count(Items.GOLDEN_BOOTS) : n;
+    }
+
+    // diamond or netherite boots on our feet, the one slot gold must never take over
+    static boolean diamondBootsWorn(GamerFacts f) {
+        return f.armorEquipped(Items.DIAMOND_BOOTS) || f.armorEquipped(Items.NETHERITE_BOOTS);
     }
 }

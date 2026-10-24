@@ -321,4 +321,26 @@ public class MobReachRulesTest {
         assertTrue(MobReachRules.verdictHolds(MobReachRules.Verdict.ENCLOSED, 2, true));
         assertTrue(MobReachRules.verdictHolds(MobReachRules.Verdict.VERTICAL_GAP, 2, true));
     }
+
+    // the one that lit at two blocks was written off as stuck a block earlier
+    @Test
+    public void aCreeperInsideTheStepTriggerIsNeverStalled() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        for (long tick = 0; tick < 200; tick++) {
+            assertFalse(t.update(1, CreeperStep.TRIGGER, tick, false, true));
+        }
+        // a zombie at the same spot is stuck as ever, and a creeper past the trigger is still the stall check's
+        MobReachRules.StallTracker other = new MobReachRules.StallTracker();
+        boolean zombie = false;
+        boolean far = false;
+        MobReachRules.StallTracker farTracker = new MobReachRules.StallTracker();
+        for (long tick = 0; tick < 200; tick++) {
+            zombie = other.update(2, CreeperStep.TRIGGER, tick, false, false);
+            far = farTracker.update(3, CreeperStep.TRIGGER + 1, tick, false, true);
+        }
+        assertTrue(zombie);
+        assertTrue(far);
+        assertFalse(MobReachRules.verdictHolds(MobReachRules.Verdict.STALLED, CreeperStep.TRIGGER, false, true));
+        assertTrue(MobReachRules.verdictHolds(MobReachRules.Verdict.STALLED, CreeperStep.TRIGGER, false, false));
+    }
 }

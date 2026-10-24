@@ -162,6 +162,17 @@ public interface GamerFacts {
         return false;
     }
 
+    // the gold dig ran out of time this run (RunState.goldHuntGaveUp), same deal as diamondHuntGaveUp
+    default boolean goldHuntGaveUp() {
+        return false;
+    }
+
+    // a gold ore sits in the loaded chunks near us (GoldHunt.RADIUS). the plan only asks for raw gold when this is true, because
+    // with no ore known the mining task would just wander
+    default boolean goldOreKnown() {
+        return false;
+    }
+
     // altoEarlyIronPick: make the pick, chestplate, shield and shears from the first ore (EarlyIronPick). a setting, so the real
     // facts read it
     default boolean earlyIronPick() {

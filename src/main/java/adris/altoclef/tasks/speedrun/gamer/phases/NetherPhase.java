@@ -1,14 +1,17 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
+import adris.altoclef.tasks.resources.BlazeDisengageTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
+import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
@@ -27,6 +30,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.NetherConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.CampPinger;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherBlockRestock;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
@@ -41,12 +45,13 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
@@ -96,14 +101,30 @@ public class NetherPhase implements PhaseHandler {
     private CampPinger campPinger;
     private GhastWatch ghastWatch;
     private HoldLatch endermanLatch;
+    // the latch above as of this tick, read by everything that asks "is an enderman about" (updated once at the top of tick)
+    private boolean endermanHere;
+    // game time as of the last tick, for the hunt's freshness check (stallSeconds gets no context)
+    private long lastGameTime;
     private GetToXZTask walkToFortress;
     private RunState.Pos fortressWalkTo;
     private double fortressWalkSince;
     private RunState.Pos fortressWalkGivenUp;
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
+    // the one block dig for the whole phase (walks to the fortress and the spawner spend the bag, not just the sweep)
+    private NetherBlockRestock restock = new NetherBlockRestock();
     private CollectBlazeRodsTask rodsTask;
+    // the game time rodsTask was last the task we returned. its camping and fight flags only update while it ticks, so a
+    // reading older than a few ticks says nothing about now
+    private long rodsTaskRanAt = Long.MIN_VALUE / 2;
     private int rodsTaskTarget;
+    // the last-rod walk away from blazes that are still shooting, and whether it already ran for this batch of rods
+    private BlazeDisengageTask disengage;
+    private boolean disengageDone;
+    // game time of the first tick the rods were in, MIN_VALUE while they are not
+    private long disengageSince = Long.MIN_VALUE;
+    // how long after the last rod a looking blaze still starts the walk away. the pick up lands mid volley, not on a calm tick
+    private static final int DISENGAGE_WINDOW_TICKS = 40;
     private PearlHuntTask hunt;
     private int huntTarget;
     private final HomePortalWalk homeWalk = new HomePortalWalk();
@@ -117,6 +138,13 @@ public class NetherPhase implements PhaseHandler {
     private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
     private int blockTrips;
+    // the walk home: progress mark, last tick it ran, and its own dig for blocks (fresh per trip so an old cooldown does not carry)
+    private FoodTripRules.Mark homeMark;
+    private long homeLastTick;
+    private NetherBlockRestock homeRestock = new NetherBlockRestock();
+    // last game tick a blaze could see us, we were burning or hurt (FoodTripRules.unsafe). a food trip waits for it to be 3 s old.
+    // read off the blazes directly: the rods task is not always the one ticking, so BlazeFight's mode can be stale or absent
+    private long lastUnsafeTick = -1;
     // the overworld half's clock, set by what was short when we got up there
     private double tripSeconds = FoodTripRules.MAX_SECONDS;
     // the overworld half also brings blocks: a blocks trip always, a food trip when the bag was empty of them on the way out (or it
@@ -124,6 +152,12 @@ public class NetherPhase implements PhaseHandler {
     private boolean tripBlocks;
     private double foodTripStart;
     private boolean foodTripUp;
+    // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
+    private long tripEndedTick = -1;
+    // food units at the last look up top, so a gain pings the watchdog (-1 = no look yet)
+    private int lastTripUnits = -1;
+    // the live trip already came back from a watchdog retry once
+    private boolean tripResumed;
     private int foodDeathsSeen;
     // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
     private final ResourceDetour gravel = ResourceDetour.gravel();
@@ -150,6 +184,8 @@ public class NetherPhase implements PhaseHandler {
     private double goldStartedAt;
     private boolean goldOver;
     private boolean guarding;
+    private static final double PLACE_PENALTY = 20;
+    private BotBehaviour.State placingLevel;
     private int guardHold;
     private BlockPos goldAnchor;
     private boolean oreLeft;
@@ -164,8 +200,6 @@ public class NetherPhase implements PhaseHandler {
     private boolean warpedSearchOver;
     private int tickCounter;
     private int rotation;
-    private int lastFortressCells;
-    private int lastWarpedCells;
     private int lastPearls;
     private double huntWanderSince = -1;
     private double barterSpent;
@@ -237,22 +271,54 @@ public class NetherPhase implements PhaseHandler {
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
         endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+        endermanHere = false;
         walkToFortress = null;
         fortressWalkTo = null;
         fortressWalkGivenUp = null;
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+        restock = new NetherBlockRestock();
         homeWalk.reset();
         foodFloor.reset();
         goHome = null;
+        // a retry that lands in the overworld with the hunt half of a trip in flight: that trip is not over, so it is kept
+        // (below) instead of cleared and walked straight back down with an empty bag
+        boolean upTop = ctx.facts().dimension() != Dimension.NETHER;
+        boolean tripWasUp = foodTrip && foodTripUp && !FoodTripRules.countersReset(ctx.attempt());
+        FoodTripRules.Reason keptReason = tripReason;
+        boolean keptBlocks = tripBlocks;
         foodTrip = false;
         tripReason = FoodTripRules.Reason.FOOD;
         tripBlocks = false;
-        foodTrips = 0;
-        blockTrips = 0;
+        // the trip budget is per visit: a watchdog retry is the same visit and keeps it, only a fresh entry refills it. the
+        // overworld half of a trip runs inside this phase, so coming back down never lands here
+        if (FoodTripRules.countersReset(ctx.attempt())) {
+            foodTrips = 0;
+            blockTrips = 0;
+            tripEndedTick = -1;
+            tripResumed = false;
+        }
+        lastUnsafeTick = -1;
         foodTripUp = false;
+        lastTripUnits = -1;
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, ctx.food().shortOfMinimum() || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+            // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
+            // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
+            tripResumed = true;
+            goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
+            homeMark = null;
+            foodTrip = true;
+            tripReason = keptReason;
+            tripBlocks = keptBlocks;
+            foodTripUp = true;
+            foodTripStart = ctx.secondsInPhase();
+            tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
+        }
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
+        disengage = null;
+        disengageDone = false;
+        disengageSince = Long.MIN_VALUE;
         hunt = null;
         trade = null;
         boots = null;
@@ -272,6 +338,7 @@ public class NetherPhase implements PhaseHandler {
         oreLeft = false;
         lastNuggets = 0;
         unguard(mod);
+        placingOff(mod);
         flee = null;
         fleeUntil = 0;
         lastHurt = 0;
@@ -282,8 +349,6 @@ public class NetherPhase implements PhaseHandler {
         huntWanderSince = -1;
         barterSpent = 0;
         barterTickAt = -1;
-        lastFortressCells = 0;
-        lastWarpedCells = 0;
         hudState = null;
         gravel.reset();
         ensureTracking(mod);
@@ -292,6 +357,7 @@ public class NetherPhase implements PhaseHandler {
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         unguard(mod);
+        placingOff(mod);
         homeWalk.stopTracking(mod);
         gravel.reset();
         if (tracking) {
@@ -300,15 +366,24 @@ public class NetherPhase implements PhaseHandler {
         }
     }
 
+    // a pearl hunt from the nook stands in one hole waiting for endermen, which is not standing still for nothing. kills ping
+    // the watchdog (see PearlHuntTask), stares do not
+    @Override
+    public double stallSeconds() {
+        return EndermanNook.stallSeconds(hunt != null && hunt.inNook(lastGameTime), PhaseHandler.super.stallSeconds());
+    }
+
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
         if (planner == null) {
             onEnter(mod, ctx);
         }
         noteRespawn(ctx);
+        lastGameTime = ctx.facts().gameTime();
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
+            placingOff(mod);
             if (foodTrip) {
                 // the hunt's clock starts when we are up here, not when we left the fortress
                 if (!foodTripUp) {
@@ -317,6 +392,12 @@ public class NetherPhase implements PhaseHandler {
                     tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
                 }
                 // over when nothing is short any more: food at the overworld minimum and, on a blocks trip, the entry stack held
+                // a kill or a pickup raises the count, and the hunt is the one thing up here that should keep the watchdog quiet
+                int units = FoodTripRules.units(ctx.food());
+                if (FoodTripRules.gained(lastTripUnits, units)) {
+                    ctx.progress("food");
+                }
+                lastTripUnits = units;
                 Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
                     hudState = foodFloor.hud();
@@ -329,13 +410,17 @@ public class NetherPhase implements PhaseHandler {
             }
             return toTheNether(mod, ctx);
         }
+        placingOn(mod);
         homeWalk.stopTracking(mod);
         ensureTracking(mod);
         ReturnPhase.recordPortal(mod, ctx.state());
         rememberOverworldPortal(mod, ctx);
         double now = ctx.secondsInPhase();
+        // once per tick before anything reads it: the pick and gravel detours ask too, off the raw ray they flipped every tick
+        endermanHere = endermanLatch.update(PearlHuntTask.endermanNear(mod), now);
         // before the cover, whatever path that one walks must not break gold either
         boolean piglins = guardGold(mod);
+        noteUnsafe(mod, ctx);
         Task cover = ghastCover(mod, now);
         if (cover != null) {
             gravel.preempted(ctx.facts().gameTime());
@@ -347,6 +432,10 @@ public class NetherPhase implements PhaseHandler {
         }
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
+        }
+        Task away = disengageStep(mod, ctx);
+        if (away != null) {
+            return away;
         }
         Task flint = gravelSide(mod, ctx, now);
         if (flint != null) {
@@ -363,6 +452,55 @@ public class NetherPhase implements PhaseHandler {
         return nextStep(mod, ctx, now);
     }
 
+    // flat blocks to the way home, 0 when it is not known (the trip does not start then anyway)
+    private static double portalDistance(AltoClef mod, GamerContext ctx) {
+        Player p = mod.getPlayer();
+        RunState.Pos known = ctx.state().netherPortal;
+        double px;
+        double pz;
+        if (known != null) {
+            px = known.x;
+            pz = known.z;
+        } else {
+            Optional<BlockPos> used = mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER);
+            if (used.isEmpty()) {
+                return 0;
+            }
+            px = used.get().getX();
+            pz = used.get().getZ();
+        }
+        return Math.hypot(p.getX() - px, p.getZ() - pz);
+    }
+
+    // runs every tick off the trip so the "3 s calm" has something to measure. only the line crossed matters, but the blaze that
+    // saw us a second before it was crossed counts. same call and range as BlazeFight's scan
+    private void noteUnsafe(AltoClef mod, GamerContext ctx) {
+        if (foodTrip || foodTrips >= FoodTripRules.MAX_TRIPS) {
+            return;
+        }
+        Player p = mod.getPlayer();
+        if (FoodTripRules.unsafe(blazeSeesUs(mod, p), p.isOnFire(), p.getHealth())) {
+            lastUnsafeTick = ctx.facts().gameTime();
+        }
+    }
+
+    private static boolean blazeSeesUs(AltoClef mod, Player p) {
+        List<Blaze> blazes;
+        try {
+            blazes = new ArrayList<>(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+        } catch (java.util.ConcurrentModificationException e) {
+            // the tracker rebuilds on another thread sometimes, one tick of stale blazes is fine
+            return false;
+        }
+        for (Blaze blaze : blazes) {
+            if (blaze.isAlive() && p.distanceTo(blaze) <= BlazeFightRules.SIGHT_RANGE
+                    && LookHelper.seesPlayer(blaze, p, BlazeFightRules.SIGHT_RANGE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
@@ -373,10 +511,24 @@ public class NetherPhase implements PhaseHandler {
                     || mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER).isPresent();
             boolean deathTrip = ctx.state().netherTrip != null;
             FoodTripRules.Reason why = null;
-            if (FoodTripRules.goHome(ctx.facts().foodUnits(), portalKnown, deathTrip, foodTrips)) {
-                why = FoodTripRules.Reason.FOOD;
+            double portalDistance = portalDistance(mod, ctx);
+            int units = FoodTripRules.units(ctx.food());
+            // due is not the same as go: walking out of cover mid fight is how the last trip died, so it waits for a calm spell
+            // unless the bag is nearly empty. waiting touches nothing (no trip, no budget, no clock), it just falls through. a
+            // blocks trip is the same walk home (and tops the food up on the way), so it waits too and a food trip that is
+            // waiting does not hand over to it
+            long tick = ctx.facts().gameTime();
+            // the last walk home stalled: the next try waits out the cooldown instead of walking the same wall again
+            if (FoodTripRules.coolingDown(tick, tripEndedTick) && !FoodTripRules.underFloor(units, portalDistance)) {
+                return null;
+            }
+            if (FoodTripRules.goHome(units, portalDistance, portalKnown, deathTrip, foodTrips)) {
+                if (FoodTripRules.mayStart(FoodTripRules.underFloor(units, portalDistance), tick, lastUnsafeTick)) {
+                    why = FoodTripRules.Reason.FOOD;
+                }
             } else if (FoodTripRules.goHomeForBlocks(FindNetherStructureTask.heldThrowaways(mod),
-                    Math.max(findFortress.exhaustedEnds(), findWarped.exhaustedEnds()), portalKnown, deathTrip, blockTrips)) {
+                    restock.exhaustedEnds(), portalKnown, deathTrip, blockTrips)
+                    && FoodTripRules.mayStart(false, tick, lastUnsafeTick)) {
                 why = FoodTripRules.Reason.BLOCKS;
             }
             if (why == null) {
@@ -388,12 +540,16 @@ public class NetherPhase implements PhaseHandler {
             if (tripBlocks) {
                 // a new bag: the dry digs counted so far say nothing about what the next dig finds. a food trip that brings no
                 // blocks keeps the count, the band is just as empty when we come back
-                findFortress.clearExhaustedEnds();
-                findWarped.clearExhaustedEnds();
+                restock.clearExhaustedEnds();
             }
             foodTripUp = false;
+            lastTripUnits = -1;
+            tripResumed = false;
             foodTripStart = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
+            homeMark = null;
+            homeLastTick = tick;
+            homeRestock = new NetherBlockRestock();
             if (why == FoodTripRules.Reason.FOOD) {
                 foodTrips++;
                 ctx.log("nether: out of food, going home for more");
@@ -404,16 +560,29 @@ public class NetherPhase implements PhaseHandler {
                 ctx.progress("blocks trip");
             }
         }
-        if (FoodTripRules.tripOver(true, now - foodTripStart, FoodTripRules.MAX_SECONDS)) {
-            // the walk home ate its whole clock: this portal is not getting us there (the walk crosses the same lava with the
-            // same empty bag, so a blocks trip can end up here), no second try for this kind of trip
+        // the walk ends when it stops getting closer to the portal (or at the hard cap), not on a flat clock: a long honest walk
+        // used to get killed right after it broke free of a pocket. a fight or a cover that had the wheel shows up as a gap in
+        // lastTick and restarts the mark (same as NetherRecoverTask), the restock dig pushes it forward instead
+        long tick = ctx.facts().gameTime();
+        homeMark = FoodTripRules.advance(homeMark, portalDistance(mod, ctx), homeLastTick, tick, homeRestock.isActive());
+        homeLastTick = tick;
+        if (FoodTripRules.walkOver(FoodTripRules.stalled(homeMark, tick), now - foodTripStart)) {
+            // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
+            // taken from the budget, and the next try has to earn its own start
             foodTrip = false;
-            if (blocksTrip()) {
-                blockTrips = FoodTripRules.MAX_TRIPS;
-            } else {
-                foodTrips = FoodTripRules.MAX_TRIPS;
-            }
+            tripEndedTick = tick;
             return null;
+        }
+        // stuck for a bit with the bag nearly empty: the bridges ate the blocks and the path home needs them. one top up per
+        // stall, shorter when the food is what is nearly gone
+        if (homeRestock.isActive() || FoodTripRules.restockDue(homeMark, tick, FindNetherStructureTask.heldThrowaways(mod))) {
+            int stopAt = FoodTripRules.restockStopAt(FoodTripRules.underFloor(FoodTripRules.units(ctx.food()), portalDistance(mod, ctx)));
+            Task dig = homeRestock.tick(mod, FoodTripRules.RESTOCK_BELOW, stopAt, tick / 20.0);
+            homeMark = new FoodTripRules.Mark(homeMark.dist(), homeMark.tick(), true);
+            if (dig != null) {
+                hudState = "Digging blocks for the walk home";
+                return dig;
+            }
         }
         hudState = tripBlocks ? "Going home for blocks" : "Going home for food";
         return goHome;
@@ -432,8 +601,7 @@ public class NetherPhase implements PhaseHandler {
             foodTrip = false;
             foodTripUp = false;
             foodFloor.reset();
-            findFortress.clearExhaustedEnds();
-            findWarped.clearExhaustedEnds();
+            restock.clearExhaustedEnds();
         }
     }
 
@@ -461,6 +629,32 @@ public class NetherPhase implements PhaseHandler {
             unguard(mod);
         }
         return guarding;
+    }
+
+    // placing a block in the nether costs 20 instead of 10 (fast mode caps it at 5 otherwise, which is about one block of
+    // walking, so bridging and pillaring looked free). our own level so it comes off whole, and anything above it (the lava
+    // escape sets 0) still wins
+    private void placingOff(AltoClef mod) {
+        if (placingLevel == null) {
+            return;
+        }
+        if (mod.getBehaviour().isTop(placingLevel)) {
+            mod.getBehaviour().pop();
+        } else if (mod.getBehaviour().contains(placingLevel)) {
+            // somebody's level is on top of ours and popping would take theirs. the ones above copied the 20 already and
+            // pop on their own, ours comes out from under them
+            mod.getBehaviour().remove(placingLevel);
+        }
+        placingLevel = null;
+    }
+
+    private void placingOn(AltoClef mod) {
+        // (a child that pushed before us and pops blind can take our level, then it is not on the stack and we push again)
+        if (placingLevel != null && mod.getBehaviour().contains(placingLevel)) {
+            return;
+        }
+        placingLevel = mod.getBehaviour().push();
+        mod.getBehaviour().setBlockPlacePenalties(PLACE_PENALTY);
     }
 
     private void unguard(AltoClef mod) {
@@ -663,7 +857,7 @@ public class NetherPhase implements PhaseHandler {
     private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
         boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
-        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(Enderman.class);
+        boolean hunting = pearlsNext(ctx) && endermanHere;
         return atSpawner || trading || hunting || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
     }
 
@@ -674,9 +868,9 @@ public class NetherPhase implements PhaseHandler {
         // trade is "going" only while it was ticked a moment ago, or one finished barter would keep gravel off for the phase
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
         // the pearl hunt like a picked spawner: pearls are what nextStep is on and an enderman is in sight (angry or not, it is
-        // what we walk at). asked fresh every tick and not off a hunt tick, so one that shows up halfway through a detour ends it.
+        // what we walk at). asked every tick off the phase latch and not off a hunt tick, so one that shows up halfway through a detour ends it (it holds a few seconds after the ray loses it).
         // the wander with no enderman around is a walk, gravel on the way is fair there
-        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(Enderman.class);
+        boolean hunting = pearlsNext(ctx) && endermanHere;
         if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading, hunting)) {
             gravel.preempted(ctx.facts().gameTime());
             return null;
@@ -771,6 +965,18 @@ public class NetherPhase implements PhaseHandler {
         int goal = EyeMath.targetGoal(cfg, s.framesFilled);
         int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
+        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
+        // the dig runs on the game clock like RodsWatch and FORTRESS_WALK_SECONDS do, so it eats into those too, accepted
+        boolean atSpawner = rodsTask != null && ctx.facts().gameTime() - rodsTaskRanAt <= 5
+                && !FoodTripRules.restockAllowed(rodsTask.isCampingSpawner(), rodsTask.currentSpawner() != null,
+                        rodsTask.isBusyWithBlazes());
+        if (!atSpawner) {
+            Task dig = restock.tick(mod, false, ctx.secondsInPhase());
+            if (dig != null) {
+                hudState = "Restocking building blocks";
+                return dig;
+            }
+        }
         if (rods < rodsNeed && !s.netherRodsGaveUp) {
             return rodsStep(mod, ctx, now, rods, rodsNeed);
         }
@@ -784,6 +990,44 @@ public class NetherPhase implements PhaseHandler {
         }
         hudState = null;
         return null;
+    }
+
+    // the rods task finishes the instant the count is met, mid fight, and the blazes it was keeping mob defense off of go back to
+    // being ordinary shooters (a run, then a heal-up stand in the open). so the fight is left properly first: back away until
+    // nothing has seen us for a few seconds, capped, then the rest of the phase. decided in the first moments after the last rod
+    // only, a blaze that spots us an hour later out by the portal is not this fight. ahead of the detours: a pick or a gold walk
+    // taking the wheel with three blazes still shooting is the same death
+    private Task disengageStep(AltoClef mod, GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled);
+        int rodsNeed = EyeMath.rodsNeeded(goal, EyeMath.eyes(f), f.count(Items.BLAZE_POWDER));
+        if (f.count(Items.BLAZE_ROD) < rodsNeed) {
+            // short of rods again (or still collecting): the next batch gets its own walk away
+            disengage = null;
+            disengageDone = false;
+            disengageSince = Long.MIN_VALUE;
+            return null;
+        }
+        long now = mod.getWorld().getGameTime();
+        if (disengageSince == Long.MIN_VALUE) {
+            disengageSince = now;
+        }
+        if (disengage == null) {
+            // the window shut with nobody looking: that counts as done, whatever shows up later is the combat chain's
+            boolean windowOpen = now >= disengageSince && now - disengageSince <= DISENGAGE_WINDOW_TICKS;
+            if (!BlazeFightRules.disengageWanted(true, windowOpen && blazeSeesUs(mod, mod.getPlayer()), disengageDone)) {
+                return null;
+            }
+            // no spawner on purpose: cover near the spawner is a walk back into the fight we are leaving, and blazes keep spawning
+            // there. wherever we stand is where the cover search looks
+            disengage = new BlazeDisengageTask();
+            disengageDone = true;
+        }
+        if (disengage.isFinished(mod)) {
+            return null;
+        }
+        hudState = "Backing away from the blazes";
+        return disengage;
     }
 
     // ---- rods
@@ -818,7 +1062,7 @@ public class NetherPhase implements PhaseHandler {
         if (verdict == RodsWatch.Verdict.GIVE_UP_SPAWNER) {
             return giveUpSpawner(mod, ctx, now);
         }
-        // hiding from or walking out to blazes at our spawner can stand still for a while too, and the rods watch has its
+        // fighting or running from blazes at our spawner can stand still for a while too, and the rods watch has its
         // own clocks for a spawner that goes nowhere, so that is not a stall either. a stuck walk to the spawner still is
         if (campPinger.ping(now, camping || (camped != null && rodsTask.isBusyWithBlazes()))) {
             ctx.progress("waiting at the blaze spawner");
@@ -831,6 +1075,7 @@ public class NetherPhase implements PhaseHandler {
         // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
         // and "waiting to spawn" with six blazes in view reads like a bug, so say which kind of waiting it is
         hudState = rodsHud(camping, rodsTask.blazesAround()) + " (" + rods + "/" + rodsNeed + ")";
+        rodsTaskRanAt = ctx.facts().gameTime();
         return rodsTask;
     }
 
@@ -897,7 +1142,6 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(Enderman.class), now);
         if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
@@ -912,7 +1156,8 @@ public class NetherPhase implements PhaseHandler {
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
-            hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest);
+            hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
+                    () -> ctx.progress("enderman down"));
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
@@ -920,10 +1165,9 @@ public class NetherPhase implements PhaseHandler {
             huntWanderSince = now;
         }
         lastPearls = pearls;
-        if (s.warpedForest == null) {
-            if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
-                return fail(ctx, "no endermen and no warped forest in the Nether");
-            }
+        // runs whether or not a forest is known: a forest with no endermen in it is just as stuck
+        if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
+            return fail(ctx, "no pearl gained in the Nether hunt for too long");
         }
         hudState = hunt.step();
         return hunt;
@@ -970,15 +1214,6 @@ public class NetherPhase implements PhaseHandler {
 
     private Task findStep(GamerContext ctx, FindNetherStructureTask task, String hud) {
         boolean fortress = task == findFortress;
-        int cells = planner.cellsStarted(fortress ? Goal.FORTRESS : Goal.WARPED);
-        if (cells != (fortress ? lastFortressCells : lastWarpedCells)) {
-            ctx.progress("new search cell");
-            if (fortress) {
-                lastFortressCells = cells;
-            } else {
-                lastWarpedCells = cells;
-            }
-        }
         String failure = task.failure();
         if (failure != null && fortress) {
             return fail(ctx, "no fortress: " + failure);

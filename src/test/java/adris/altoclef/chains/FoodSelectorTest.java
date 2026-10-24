@@ -178,4 +178,28 @@ public class FoodSelectorTest {
         assertEquals(Optional.of(Items.CHICKEN), result.best());
         assertEquals(2 * Items.CHICKEN.components().get(net.minecraft.core.component.DataComponents.FOOD).nutrition(), result.foodTotal());
     }
+
+    @Test
+    public void aMealKeepsItsFoodWhileEatingEvenWhenThePickMoves() {
+        Optional<Item> pick = Optional.of(Items.COOKED_BEEF);
+        assertEquals(Optional.of(Items.BREAD), FoodSelector.latch(pick, Items.BREAD, true, 3));
+        // not eating, no latch
+        assertEquals(pick, FoodSelector.latch(pick, Items.BREAD, false, 3));
+        // nothing latched yet
+        assertEquals(pick, FoodSelector.latch(pick, null, true, 3));
+        // the stack ran out
+        assertEquals(pick, FoodSelector.latch(pick, Items.BREAD, true, 0));
+    }
+
+    @Test
+    public void healthCrossingEightMidMealDoesNotChangeTheLatchedFood() {
+        List<ItemStack> stacks = inv(Items.COOKED_MUTTON, 4, Items.COOKED_PORKCHOP, 4);
+        Optional<Item> high = FoodSelector.select(stacks, s -> true, 9, 10, 2, CONFIG).best();
+        Optional<Item> low = FoodSelector.select(stacks, s -> true, 7.9f, 10, 2, CONFIG).best();
+        assertTrue(high.isPresent() && low.isPresent());
+        // whatever the raw pick does at the line, a latched meal ignores it
+        Item latched = high.get();
+        assertEquals(Optional.of(latched), FoodSelector.latch(low, latched, true, 4));
+        assertEquals(Optional.of(latched), FoodSelector.latch(high, latched, true, 4));
+    }
 }

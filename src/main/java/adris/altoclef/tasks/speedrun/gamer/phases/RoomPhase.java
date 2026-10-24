@@ -81,7 +81,7 @@ public class RoomPhase implements PhaseHandler {
     // the budget is one window: a spiral that reached new chunks in it is a long legit search, not a stuck one
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        if (task != null && StrongholdRules.roomStillMoving(task.chunksReached(), task.exhausted(), reason)) {
+        if (task != null && StrongholdRules.mayRetryMoving(movingRetries) && StrongholdRules.roomStillMoving(task.chunksReached(), task.exhausted(), reason)) {
             keepTask = true;
             movingRetries++;
             return Timeout.RETRY;

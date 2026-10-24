@@ -114,17 +114,6 @@ public final class CastLava {
         return failedPours >= MAX_FAILED_POURS || dudClicks >= MAX_DUD_CLICKS;
     }
 
-    // lava fetches that start inside this window with no new frame obsidian between them mean the cast is going round in
-    // circles (pour, fetch, pour), and the phase takes the obsidian way instead
-    public static final int LOOP_STARTS = 5;
-    public static final int LOOP_WINDOW_TICKS = 20 * 60;
-
-    // starts holds the ticks the fetch started on, newest last. old ones fall off, and true means the window is full
-    public static boolean collectLoop(List<Integer> starts, int now) {
-        starts.removeIf(t -> now - t > LOOP_WINDOW_TICKS);
-        return starts.size() >= LOOP_STARTS;
-    }
-
     // two casts are the same running task when they're for the same cell with the same surroundings
     public static boolean sameCast(BlockPos a, List<BlockPos> aFootprint, BlockPos b, List<BlockPos> bFootprint) {
         return a.equals(b) && aFootprint.equals(bFootprint);

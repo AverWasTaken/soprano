@@ -241,4 +241,29 @@ public class CombatCommitStanceTest {
         assertEquals(Stance.FIGHT, CombatCommit.stance(Mode.NONE, 20, NOBODY, true, false));
         assertFalse(CombatCommit.stance(Mode.NONE, 20, NOBODY, true, false).mayEat());
     }
+
+    // a fight is no mealtime unless we are hungry and nothing that melees is within 4: the skeleton we are walking up to cannot
+    // stop a bite, and a bar under 18 with no saturation is no regen at all
+    @Test
+    public void aFightWithNoMeleeMobNearAndAnEmptyishBarMayTakeABite() {
+        CombatCommit.Bite far = new CombatCommit.Bite(true, NOBODY, false, 6, true);
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.FIGHT, 9, 12, false, false, far));
+        assertTrue(CombatCommit.stance(Mode.FIGHT, 9, 12, false, false, far).mayEat());
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.FIGHT, 20, 12, false, false, new CombatCommit.Bite(true, NOBODY, false, NOBODY, true)));
+        assertEquals("fighting, no melee mob within 4", CombatCommit.stanceWhy(Mode.FIGHT, 9, 12, false, far));
+    }
+
+    @Test
+    public void aFightKeepsTheFistsUpForAMeleeMobWithinFourOrAFullBar() {
+        assertEquals(Stance.FIGHT, CombatCommit.stance(Mode.FIGHT, 15, 4, false, false, new CombatCommit.Bite(false, NOBODY, false, 4, true)));
+        assertEquals(Stance.FIGHT, CombatCommit.stance(Mode.FIGHT, 15, 12, false, false, new CombatCommit.Bite(true, NOBODY, false, 6, false)));
+        // and a bite already under way gives way to the same line when the zombie walks up
+        assertEquals(Stance.FIGHT, CombatCommit.stance(Mode.FIGHT, 15, 3, false, false, new CombatCommit.Bite(false, NOBODY, true, 3, true)));
+    }
+
+    @Test
+    public void aFightAtGappleHpStillWantsTheGappleBite() {
+        CombatCommit.Bite far = new CombatCommit.Bite(true, NOBODY, false, 6, true);
+        assertEquals(Stance.EAT_GAPPLE, CombatCommit.stance(Mode.FIGHT, 8, 12, false, true, far));
+    }
 }

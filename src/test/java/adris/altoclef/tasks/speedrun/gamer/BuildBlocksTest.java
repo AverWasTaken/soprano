@@ -71,7 +71,7 @@ public class BuildBlocksTest {
     private List<KitNeed> gate() {
         ctx.facts.give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1)
                 .give(Items.CRAFTING_TABLE, 1);
-        ctx.facts.foodUnits = 130;
+        ctx.facts.foodUnits = cfg.netherEntryFoodUnits;
         return PortalPlanner.gate(ctx.facts, cfg, 10, FoodPlan.ofBeds(ctx.facts, cfg, 10), band());
     }
 

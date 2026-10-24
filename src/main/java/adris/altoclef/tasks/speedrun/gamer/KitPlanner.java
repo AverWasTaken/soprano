@@ -368,9 +368,19 @@ public final class KitPlanner {
         if (worn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, worn));
         }
+        addGold(out, f, cfg);
         addDiamondPick(out, f, cfg);
         addWool(out, f, endBeds);
         return out;
+    }
+
+    // raw gold for the piglin helmet, only while an ore is already known (GoldHunt). behind the essentials like the diamond dig: the
+    // ore needs the iron pick, and a dig before the buckets are made would go before everything the portal needs
+    private static void addGold(List<KitNeed> out, GamerFacts f, OverworldConfig cfg) {
+        KitNeed need = GoldHunt.need(f);
+        if (need != null && essentialsMet(f, cfg)) {
+            out.add(need);
+        }
     }
 
     // the name of the dig for the diamond pick (DiamondHunt clocks it while it is the head)

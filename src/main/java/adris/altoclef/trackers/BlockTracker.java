@@ -47,7 +47,7 @@ public class BlockTracker extends Tracker {
     // seconds. the first scan after a task tracks something new is the one it will wander off without, so it can't wait 7
     private static final double FIRST_LOOK_GAP = 0.5;
     // same reach as MineProcess.searchWorld's scan
-    private static final int FLUID_SCAN_CHUNK_RADIUS = 32;
+    public static final int FLUID_SCAN_CHUNK_RADIUS = 32;
     private static BlockTrackerConfig _config = new BlockTrackerConfig();
 
     static {

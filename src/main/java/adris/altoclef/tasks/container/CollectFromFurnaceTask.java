@@ -180,7 +180,8 @@ public class CollectFromFurnaceTask extends Task {
             case TAKE_OUTPUT:
                 return takeOut(mod, FurnaceSlot.OUTPUT_SLOT, output, "Taking what is done");
             case WAIT:
-                return waitHere(mod, mode == Mode.WAIT_ALL);
+                // (a food leave waits out the whole cook, that is minutes and not the few seconds the open screen is meant for)
+                return waitHere(mod, mode == Mode.WAIT_ALL || waitTicks >= FurnacePlan.FOOD_LEAVE_TICKS);
             case LEAVE_CAPPED:
                 inputLeft = input.getCount();
                 leftTicks = FurnacePlan.leftTicks(act, look);

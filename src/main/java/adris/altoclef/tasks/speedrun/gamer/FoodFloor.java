@@ -11,6 +11,10 @@ import java.util.List;
 // same floor and same top-up the IRON phase uses (the floor starts it, the overworld minimum ends it, FoodPlan.floorNext),
 // overworld only: there is nothing to hunt in the nether or the End. the instance only holds the latch and the runner
 public final class FoodFloor {
+    // the blocks a nether trip tops the bag up to. the portal gate wants the full entry stack (netherEntryBlocks), a trip home is
+    // a short hop for a stack that the nether digs back for itself, so it is not worth a 128 block mining session
+    public static final int TRIP_BLOCKS = 64;
+
     private final KitRunner runner = new KitRunner();
     private boolean active;
 
@@ -35,7 +39,7 @@ public final class FoodFloor {
 
     // the same hunt for a nether trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
     // to the minimum and not only under the floor. one runner over whichever needs are short: food to the minimum, and on a blocks
-    // trip the entry stack (emitted straight, no BuildBlocks band; KitRunner still notes a refill, which the next phase entry wipes). null = none short
+    // trip the TRIP_BLOCKS stack (emitted straight, no BuildBlocks band; KitRunner still notes a refill, which the next phase entry wipes). null = none short
     public Task tickTrip(GamerContext ctx, boolean wantBlocks) {
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
         FoodPlan food = overworld ? ctx.food() : null;
@@ -44,7 +48,7 @@ public final class FoodFloor {
             needs.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
         }
         if (overworld && wantBlocks && blocksShort(ctx)) {
-            needs.add(new KitNeed(KitNeed.BUILD_BLOCKS, ctx.cfg().overworld.netherEntryBlocks));
+            needs.add(new KitNeed(KitNeed.BUILD_BLOCKS, TRIP_BLOCKS));
         }
         boolean was = active;
         active = !needs.isEmpty();
@@ -58,7 +62,7 @@ public final class FoodFloor {
     }
 
     public static boolean blocksShort(GamerContext ctx) {
-        return ctx.facts().buildBlocks() < ctx.cfg().overworld.netherEntryBlocks;
+        return ctx.facts().buildBlocks() < TRIP_BLOCKS;
     }
 
     public boolean active() {

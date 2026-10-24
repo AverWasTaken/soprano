@@ -326,6 +326,12 @@ public final class FoodPlan {
         return bagFull ? minimum : refillStop;
     }
 
+    // where the last stop before the nether ends: `entry` (never under the trip's stop), or the minimum on a full bag, same reason
+    // as tripEnd
+    public int entryEnd(int entry) {
+        return bagFull ? minimum : Math.max(entry, refillStop);
+    }
+
     // up top and short of the minimum: the trip costs a walk here, and the same trip from a mine later is a climb out and back.
     // so on the surface a trip starts under the minimum, in a mine only under refillStart. a small hole the raw meat in the bag
     // covers once cooked is not one (coveredAt, the smoker coming and going swings held by a chicken right at this line). a big
@@ -376,7 +382,7 @@ public final class FoodPlan {
     }
 
     // the same rule against any line
-    private boolean coveredAt(int line) {
+    boolean coveredAt(int line) {
         int held = held();
         return held >= floor && held < line && line - held <= SMALL_GAP && held + rawLeftOut >= line;
     }

@@ -21,7 +21,11 @@ import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.BlockRange;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.LeavesBlock;
 
 // the few altoclef settings that are more than a field read. the plain ones are read straight off
 // Baritone.settings().alto*.value at the call site, live, so a #set applies on the next read. the lists in there are
@@ -47,6 +51,14 @@ public final class AltoSettings {
 
     public static boolean isThrowaway(Item item) {
         return Baritone.settings().altoThrowawayItems.value.contains(item);
+    }
+
+    // the one answer to "can this be built with". leaves, magma and soul sand sit in the alto list as junk to dump, not as
+    // something to bridge with, and anything that falls over is no floor. the gate's count, the restock's count, the pillar's
+    // spare count and the collect target all ask this, or they disagree on how full the bag is
+    public static boolean isBuildBlock(Item item) {
+        return item instanceof BlockItem b && !(b.getBlock() instanceof LeavesBlock)
+                && !(b.getBlock() instanceof FallingBlock) && item != Items.MAGMA_BLOCK && item != Items.SOUL_SAND;
     }
 
     public static boolean isImportant(Item item) {

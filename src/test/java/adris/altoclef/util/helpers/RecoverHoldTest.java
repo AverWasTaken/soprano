@@ -33,7 +33,7 @@ public class RecoverHoldTest {
     }
 
     private static Tick fighting(long now, float health, double x, Body body, Foe target, Foe... foes) {
-        return new Tick(now, health, x, 0, List.of(foes), target, Way.NONE, true, false, false, false, body);
+        return new Tick(now, health, x, 0, List.of(foes), target, Way.NONE, true, false, false, body);
     }
 
     // a low hp run from a zombie at 5, then 30 blocks out with nothing about until it calls clear. returns the tick it ended on
@@ -52,6 +52,8 @@ public class RecoverHoldTest {
 
     @Test
     public void runEndUnderTheRunLineIsAHold() {
+        // a run that ends at 15.6 holds, and the line is the one the hold lets go at
+        assertTrue(RecoverHold.wants(Mode.RUN, 15.6f));
         assertTrue(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW - 0.5f));
         assertFalse(RecoverHold.wants(Mode.RUN, RecoverHold.RUN_BELOW));
     }
@@ -189,7 +191,8 @@ public class RecoverHoldTest {
         CombatCommit c = new CombatCommit();
         long end = runAndClear(c, 1000, 10, FED);
         Foe skeleton = new Foe(3, 14, true, false, 1, CombatCommit.Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
-        assertEquals(Event.RUN_START, c.step(tick(end + 1, 9, 30, FED, skeleton)));
+        Foe second = new Foe(4, 12, true, false, 1, CombatCommit.Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        assertEquals(Event.RUN_START, c.step(tick(end + 1, 9, 30, FED, skeleton, second)));
         assertEquals(Why.SHOT, c.why());
     }
 
@@ -279,5 +282,20 @@ public class RecoverHoldTest {
         assertFalse(CombatCommit.stance(Mode.NONE, 10, 14, false, false, new CombatCommit.Bite(true, Double.POSITIVE_INFINITY, false), true)
                 .mayEat());
         assertTrue(CombatCommit.stanceWhy(Mode.NONE, 10, 11, false, quiet, true).startsWith("recovering"));
+    }
+
+    @Test
+    public void aWatchingBlazeWithNoHitIsARunAgain() {
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        // no foe at all (an uncharged blaze at range is not in the hostile list), only the watched flag
+        Tick watched = new Tick(end + 1, 12, 30, 0, List.of(), null, Way.NONE, true, false, false, FED, false, 0, true);
+        assertEquals(Event.RUN_START, c.step(watched));
+        assertEquals(Why.SHOT, c.why());
+
+        // the same tick unwatched is a quiet hold
+        CombatCommit d = new CombatCommit();
+        long end2 = runAndClear(d, 1000, 10, FED);
+        assertEquals(Event.NONE, d.step(tick(end2 + 1, 12, 30, FED)));
     }
 }

@@ -1,57 +1,83 @@
 package adris.altoclef.util.helpers;
 
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.CAMP;
-import static adris.altoclef.util.helpers.BlazeFightRules.Mode.COVER;
-import static adris.altoclef.util.helpers.BlazeFightRules.Mode.HUNT;
 import static adris.altoclef.util.helpers.BlazeFightRules.Mode.KILL;
-import static adris.altoclef.util.helpers.BlazeFightRules.Mode.RETREAT;
+import static adris.altoclef.util.helpers.BlazeFightRules.Mode.RUN;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-// the fortress run that nearly killed the bot: blazes over the lava, fireballs in the face, bot standing there camping
+// three moods: camp, kill the one we picked, run. the old version had cover and hunts and flipped between them every second
 public class BlazeFightRulesTest {
 
     @Test
-    public void quietRoomMeansWaitForTheSpawner() {
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0));
+    public void noTargetMeansCampWhateverIsLooking() {
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, false, false, false));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, false, true, false));
     }
 
     @Test
-    public void blazesWeCannotHitButCanSeeUsMeanCoverNotCamping() {
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 3, 0));
+    public void aTargetMeansKillWithOrWithoutAThreat() {
+        assertEquals(KILL, BlazeFightRules.decide(20, false, false, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, false, true, true));
     }
 
     @Test
-    public void aReachableBlazeGetsHit() {
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1));
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 2, 1));
+    public void tenHpWithABlazeLookingMeansRun() {
+        assertEquals(RUN, BlazeFightRules.decide(10, false, false, true, true));
+        assertEquals(RUN, BlazeFightRules.decide(10, false, false, true, false));
+        assertEquals(KILL, BlazeFightRules.decide(11, false, false, true, true));
     }
 
     @Test
-    public void lowHealthWithSomethingShootingMeansLeave() {
-        assertEquals(RETREAT, BlazeFightRules.decide(12, false, 1, 0));
-        assertEquals(RETREAT, BlazeFightRules.decide(12, false, 1, 1));
-        assertEquals(KILL, BlazeFightRules.decide(13, false, 1, 1));
-        assertEquals(COVER, BlazeFightRules.decide(13, false, 1, 0));
+    public void tenHpWithNothingLookingKeepsWorking() {
+        assertEquals(KILL, BlazeFightRules.decide(10, false, false, false, true));
+        assertEquals(CAMP, BlazeFightRules.decide(10, false, false, false, false));
     }
 
     @Test
-    public void lowHealthWithNothingLookingIsStillNotGoodEnough() {
-        assertEquals(CAMP, BlazeFightRules.decide(12, false, 0, 0));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 0));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 2));
+    public void sixHpRunsWhetherOrNotAnythingIsLooking() {
+        assertEquals(RUN, BlazeFightRules.decide(6, false, false, false, false));
+        assertEquals(RUN, BlazeFightRules.decide(6, false, false, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(7, false, false, false, true));
     }
 
     @Test
-    public void onceLeftWeStayLeftUntilHealed() {
-        assertEquals(RETREAT, BlazeFightRules.decide(13, true, 2, 1));
-        assertEquals(RETREAT, BlazeFightRules.decide(13.9f, true, 0, 0));
-        assertEquals(KILL, BlazeFightRules.decide(14, true, 0, 1));
-        assertEquals(COVER, BlazeFightRules.decide(20, true, 2, 0));
-        assertEquals(CAMP, BlazeFightRules.decide(20, true, 0, 0));
+    public void onceRunningWeRunUntilSixteen() {
+        assertEquals(RUN, BlazeFightRules.decide(11, true, false, true, true));
+        assertEquals(RUN, BlazeFightRules.decide(15.9f, true, false, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(16, true, false, false, true));
+        assertEquals(CAMP, BlazeFightRules.decide(20, true, false, true, false));
+    }
+
+    @Test
+    public void theGapBetweenLeavingAndComingBackIsWideEnoughNotToFlap() {
+        assertTrue(BlazeFightRules.RECOVERED_HEALTH - BlazeFightRules.RUN_HEALTH >= 4);
+        // at 12 hp it depends only on which side we came from
+        assertEquals(KILL, BlazeFightRules.decide(12, false, false, true, true));
+        assertEquals(RUN, BlazeFightRules.decide(12, true, false, true, true));
+    }
+
+    @Test
+    public void aRunThatStoppedHealingFallsBackToTheFreshHpRules() {
+        // 12 hp, run given up: not 10 or under, so back to work
+        assertEquals(KILL, BlazeFightRules.decide(12, true, true, false, true));
+        // but 6 hp still runs
+        assertEquals(RUN, BlazeFightRules.decide(6, true, true, false, true));
+    }
+
+    @Test
+    public void aRunThatStoppedHealingGivesUp() {
+        assertFalse(BlazeFightRules.runStalled(BlazeFightRules.RUN_GIVE_UP_TICKS - 1));
+        assertTrue(BlazeFightRules.runStalled(BlazeFightRules.RUN_GIVE_UP_TICKS));
+        // stalled while running: gives up, and keeps it while it stays that way
+        assertTrue(BlazeFightRules.runGaveUpNext(false, true, false, true));
+        assertTrue(BlazeFightRules.runGaveUpNext(true, true, false, false));
+        // hp rising or not running any more clears it
+        assertFalse(BlazeFightRules.runGaveUpNext(true, true, true, true));
+        assertFalse(BlazeFightRules.runGaveUpNext(true, false, false, true));
     }
 
     @Test
@@ -71,215 +97,78 @@ public class BlazeFightRulesTest {
 
     @Test
     public void reachabilityIsAboutHeightLavaAndDistance() {
-        assertTrue(BlazeFightRules.isReachable(1, false, 5, true));
-        assertTrue(BlazeFightRules.isReachable(3.5, false, 5, true));
-        assertFalse(BlazeFightRules.isReachable(3.6, false, 5, true));
-        assertFalse(BlazeFightRules.isReachable(Double.POSITIVE_INFINITY, false, 5, true));
-        assertFalse(BlazeFightRules.isReachable(1, true, 5, true));
-        assertFalse(BlazeFightRules.isReachable(1, false, 33, true));
-    }
-
-    // the nether brick fence: low, dry, close, and the swing hits the fence
-    @Test
-    public void aBlazeBehindAFenceIsNotReachableAndSoNotKill() {
-        boolean reachable = BlazeFightRules.isReachable(1, false, 3, false);
-        assertFalse(reachable);
-        int reachableCount = reachable ? 1 : 0;
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, reachableCount));
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, reachableCount));
+        double range = BlazeFightRules.PICK_RANGE;
+        assertTrue(BlazeFightRules.isReachable(1, false, 5, range, false));
+        assertTrue(BlazeFightRules.isReachable(3.5, false, 5, range, false));
+        assertFalse(BlazeFightRules.isReachable(3.6, false, 5, range, false));
+        // the one we are already after is kept a bit higher
+        assertTrue(BlazeFightRules.isReachable(4.5, false, 5, range, true));
+        assertFalse(BlazeFightRules.isReachable(4.6, false, 5, range, true));
+        assertFalse(BlazeFightRules.isReachable(Double.POSITIVE_INFINITY, false, 5, range, false));
+        assertFalse(BlazeFightRules.isReachable(1, true, 5, range, false));
+        assertTrue(BlazeFightRules.isReachable(1, false, 24, range, false));
+        assertFalse(BlazeFightRules.isReachable(1, false, 24.1, range, false));
     }
 
     @Test
-    public void killAndCoverHoldForTheDwellBeforeFlipping() {
-        int dwell = BlazeFightRules.MIN_DWELL_TICKS;
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, KILL, 0));
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, KILL, dwell - 1));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, KILL, dwell));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, COVER, 0));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 1, COVER, dwell - 1));
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 1, COVER, dwell));
+    public void disengageOnlyLooksInsideSixteen() {
+        assertTrue(BlazeFightRules.isReachable(1, false, 16, BlazeFightRules.DISENGAGE_RANGE, false));
+        assertFalse(BlazeFightRules.isReachable(1, false, 16.1, BlazeFightRules.DISENGAGE_RANGE, false));
     }
 
     @Test
-    public void theDwellNeverHoldsBackRetreatOrCamp() {
-        assertEquals(RETREAT, BlazeFightRules.decide(12, false, 1, 1, KILL, 0));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 0, COVER, 0));
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, KILL, 0));
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, COVER, 0));
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, CAMP, 0));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 2, 0, CAMP, 0));
-        // coming back from a retreat is the heal logic's call too, no timer on top
-        assertEquals(KILL, BlazeFightRules.decide(14, true, 0, 1, RETREAT, 0));
-        assertEquals(COVER, BlazeFightRules.decide(20, true, 2, 0, RETREAT, 0));
-    }
-
-    // hiding works too well: none of them can see us, so none of them come. go let one see us
-    @Test
-    public void hiddenBlazesGetVisitedOnceTheHoldIsUp() {
-        int hold = BlazeFightRules.HIDE_HOLD_TICKS;
-        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 3, hold));
-        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 1, Long.MAX_VALUE));
-        // just hid, give them a few seconds to come round the corner first
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 3, hold - 1));
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 3, 0));
-        // nobody worth the walk
-        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, 0, Long.MAX_VALUE));
+    public void theTargetIsKeptWhileAliveTrackedAndNotOutOfReachForLong() {
+        assertTrue(BlazeFightRules.keepTarget(true, true, 0));
+        assertTrue(BlazeFightRules.keepTarget(true, true, BlazeFightRules.TARGET_GIVE_UP_TICKS - 1));
     }
 
     @Test
-    public void everythingElseBeatsHunting() {
-        long quiet = Long.MAX_VALUE;
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, 3, quiet));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, 3, quiet));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 0, 3, quiet));
-        assertEquals(RETREAT, BlazeFightRules.decide(13, true, 0, 0, 3, quiet));
+    public void theTargetIsDroppedWhenDeadUntrackedOrOutOfReachTooLong() {
+        assertFalse(BlazeFightRules.keepTarget(false, true, 0));
+        assertFalse(BlazeFightRules.keepTarget(true, false, 0));
+        assertFalse(BlazeFightRules.keepTarget(true, true, BlazeFightRules.TARGET_GIVE_UP_TICKS));
     }
 
     @Test
-    public void theDwellNeverHoldsBackHunting() {
-        long quiet = Long.MAX_VALUE;
-        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 2, quiet, COVER, 0));
-        assertEquals(HUNT, BlazeFightRules.decide(20, false, 0, 0, 2, quiet, KILL, 0));
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, 2, quiet, HUNT, 0));
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, 2, quiet, HUNT, 0));
-        // the old KILL and COVER hold still applies with hunting in the mix
-        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, 2, quiet, KILL, 0));
+    public void disengageStartsOnceForRodsDoneAndALookingBlaze() {
+        assertTrue(BlazeFightRules.disengageWanted(true, true, false));
+        assertFalse(BlazeFightRules.disengageWanted(false, true, false));
+        assertFalse(BlazeFightRules.disengageWanted(true, false, false));
+        // already ran for this batch: a blaze that follows us out does not start it again
+        assertFalse(BlazeFightRules.disengageWanted(true, true, true));
     }
 
     @Test
-    public void huntableNeedsAFloorDryLandAndToStayNearTheSpawner() {
-        double noSpawner = Double.NaN;
-        assertTrue(BlazeFightRules.isHuntable(true, false, 25, false, noSpawner));
-        assertTrue(BlazeFightRules.isHuntable(true, false, 25, false, BlazeFightRules.HUNT_SPAWNER_RADIUS));
-        assertFalse(BlazeFightRules.isHuntable(true, false, 25, false, BlazeFightRules.HUNT_SPAWNER_RADIUS + 0.5));
-        assertFalse(BlazeFightRules.isHuntable(false, false, 10, false, noSpawner));
-        assertFalse(BlazeFightRules.isHuntable(false, true, 10, false, noSpawner));
-        assertFalse(BlazeFightRules.isHuntable(true, false, 10, true, noSpawner));
-        assertFalse(BlazeFightRules.isHuntable(true, false, BlazeFightRules.MAX_CHASE_DISTANCE + 1, false, noSpawner));
+    public void disengageEndsOnCalmOrOnTheCap() {
+        assertFalse(BlazeFightRules.disengageOver(0, 10));
+        assertFalse(BlazeFightRules.disengageOver(BlazeFightRules.DISENGAGE_CALM_TICKS - 1, 100));
+        assertTrue(BlazeFightRules.disengageOver(BlazeFightRules.DISENGAGE_CALM_TICKS, 100));
+        // still being looked at, but we have tried long enough
+        assertFalse(BlazeFightRules.disengageOver(0, BlazeFightRules.DISENGAGE_CAP_TICKS - 1));
+        assertTrue(BlazeFightRules.disengageOver(0, BlazeFightRules.DISENGAGE_CAP_TICKS));
     }
 
     @Test
-    public void theHuntGoalOnlyMovesForANewBlazeOrABigDrift() {
-        assertFalse(BlazeFightRules.needsNewHuntGoal(false, 0));
-        assertFalse(BlazeFightRules.needsNewHuntGoal(false, BlazeFightRules.HUNT_REGOAL_DRIFT));
-        assertTrue(BlazeFightRules.needsNewHuntGoal(false, BlazeFightRules.HUNT_REGOAL_DRIFT + 0.5));
-        assertTrue(BlazeFightRules.needsNewHuntGoal(true, 0));
-    }
-
-    // a blaze bobbing across 3.5 used to flip KILL and COVER about once a second
-    @Test
-    public void gettingInReachNeedsTheStrictRule() {
-        assertTrue(BlazeFightRules.reachableNow(false, 3.5, false, 5, true, 0));
-        assertFalse(BlazeFightRules.reachableNow(false, 3.6, false, 5, true, 0));
-        assertFalse(BlazeFightRules.reachableNow(false, 1, false, 5, false, 1));
+    public void disengageCalmIsThreeSecondsAndTheCapIsFortyFive() {
+        assertEquals(60, BlazeFightRules.DISENGAGE_CALM_TICKS);
+        assertEquals(900, BlazeFightRules.DISENGAGE_CAP_TICKS);
     }
 
     @Test
-    public void onceInReachABobbingBlazeStaysInReach() {
-        assertTrue(BlazeFightRules.reachableNow(true, 4, false, 5, true, 0));
-        assertTrue(BlazeFightRules.reachableNow(true, BlazeFightRules.STAY_REACHABLE_HEIGHT, false, 5, true, 0));
-        assertFalse(BlazeFightRules.reachableNow(true, BlazeFightRules.STAY_REACHABLE_HEIGHT + 0.1, false, 5, true, 0));
+    public void aBlazeWithALineInRangeIsWatchingWithoutHavingHitUs() {
+        assertTrue(BlazeFightRules.watching(BlazeFightRules.SIGHT_RANGE, true));
+        assertFalse(BlazeFightRules.watching(BlazeFightRules.SIGHT_RANGE + 0.1, true));
+        assertFalse(BlazeFightRules.watching(5, false));
     }
 
     @Test
-    public void oneBlockedRayIsAFencePostTwoIsAFence() {
-        assertTrue(BlazeFightRules.reachableNow(true, 2, false, 5, false, 1));
-        assertFalse(BlazeFightRules.reachableNow(true, 2, false, 5, false, BlazeFightRules.BLOCKED_CHECKS_TO_DROP));
-        // and back in once the line clears, the streak resets with it
-        assertTrue(BlazeFightRules.reachableNow(false, 2, false, 5, true, 0));
-    }
-
-    @Test
-    public void lavaAndDistanceAreNeverSticky() {
-        assertFalse(BlazeFightRules.reachableNow(true, 1, true, 5, true, 0));
-        assertFalse(BlazeFightRules.reachableNow(true, 1, false, BlazeFightRules.MAX_CHASE_DISTANCE + 0.1, true, 0));
-    }
-
-    // what KILL goes after and what counts as reachable are the same question now
-    @Test
-    public void fightableIsReachableNotBannedAndNearTheSpawner() {
-        double noSpawner = Double.NaN;
-        assertTrue(BlazeFightRules.isFightable(true, false, noSpawner));
-        assertTrue(BlazeFightRules.isFightable(true, false, BlazeFightRules.HUNT_SPAWNER_RADIUS));
-        assertFalse(BlazeFightRules.isFightable(true, false, BlazeFightRules.HUNT_SPAWNER_RADIUS + 0.5));
-        assertFalse(BlazeFightRules.isFightable(true, true, noSpawner));
-        assertFalse(BlazeFightRules.isFightable(false, false, noSpawner));
-        // a banned blaze in reach is not a reason to KILL with nothing to hit
-        int reachable = BlazeFightRules.isFightable(true, true, 3) ? 1 : 0;
-        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, reachable));
-    }
-
-    // HUNT, it sees us, COVER for the hide hold, HUNT again: that lap must not restart the give up clock
-    @Test
-    public void aCoverBreakIsNotAFreshHunt() {
-        assertFalse(BlazeFightRules.huntBreakIsFreshStart(BlazeFightRules.HIDE_HOLD_TICKS + 1));
-        assertFalse(BlazeFightRules.huntBreakIsFreshStart(BlazeFightRules.HUNT_GIVE_UP_TICKS));
-        assertTrue(BlazeFightRules.huntBreakIsFreshStart(BlazeFightRules.HUNT_GIVE_UP_TICKS + 1));
-    }
-
-    @Test
-    public void aRetreatThatStoppedHealingGivesUp() {
-        assertFalse(BlazeFightRules.retreatStalled(BlazeFightRules.RETREAT_GIVE_UP_TICKS - 1));
-        assertTrue(BlazeFightRules.retreatStalled(BlazeFightRules.RETREAT_GIVE_UP_TICKS));
-        long quiet = Long.MAX_VALUE;
-        // still waiting for 14 without the give up
-        assertEquals(RETREAT, BlazeFightRules.decide(13, true, false, 0, 0, 0, quiet));
-        // with it, 13 hp and nothing looking is back to work
-        assertEquals(CAMP, BlazeFightRules.decide(13, true, true, 0, 0, 0, quiet));
-        assertEquals(KILL, BlazeFightRules.decide(13, true, true, 0, 1, 0, quiet));
-        assertEquals(HUNT, BlazeFightRules.decide(13, true, true, 0, 0, 2, quiet));
-        // the fresh hp rules still send us back
-        assertEquals(RETREAT, BlazeFightRules.decide(12, true, true, 1, 0, 0, quiet));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, true, true, 0, 0, 0, quiet));
-        assertEquals(RETREAT, BlazeFightRules.decide(8, true, true, 0, 0, 0, quiet, CAMP, 0));
-        assertEquals(CAMP, BlazeFightRules.decide(13, true, true, 0, 0, 0, quiet, RETREAT, 0));
-    }
-
-    @Test
-    public void theRetreatGiveUpLastsOnlyUntilWeAreOut() {
-        assertTrue(BlazeFightRules.retreatGaveUpNext(false, true, false, true));
-        assertTrue(BlazeFightRules.retreatGaveUpNext(true, true, false, false));
-        assertFalse(BlazeFightRules.retreatGaveUpNext(false, true, false, false));
-        // healing again or out of the retreat, the next one gets the normal wait
-        assertFalse(BlazeFightRules.retreatGaveUpNext(true, true, true, false));
-        assertFalse(BlazeFightRules.retreatGaveUpNext(true, false, false, false));
-    }
-
-    @Test
-    public void aHuntThatGoesNowhereGetsDropped() {
-        assertFalse(BlazeFightRules.huntTakingTooLong(0));
-        assertFalse(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS - 1));
-        assertTrue(BlazeFightRules.huntTakingTooLong(BlazeFightRules.HUNT_GIVE_UP_TICKS));
-    }
-
-    @Test
-    public void coverWithNoSpotOutHereWalksBackToTheSpawner() {
-        // the spots are all by the spawner, so a healthy bot out past it goes back there instead of shielding in place
-        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, 20));
-        assertEquals(BlazeFightRules.NoCover.BACK_TO_SPAWNER,
-                BlazeFightRules.noCoverSpot(true, false, BlazeFightRules.RETREAT_HEALTH + 0.5f));
-    }
-
-    @Test
-    public void coverWithNoSpotOutHereAndLowHpRetreats() {
-        assertEquals(BlazeFightRules.NoCover.RETREAT, BlazeFightRules.noCoverSpot(true, false, BlazeFightRules.RETREAT_HEALTH));
-    }
-
-    @Test
-    public void coverWithNoSpotByTheSpawnerOrNoSpawnerShieldsInPlace() {
-        // by the spawner the walk is already done, standing there with no shield is worse. no spawner is nowhere to walk to,
-        // and running off at full hp is not what the rods want
-        assertEquals(BlazeFightRules.NoCover.SHIELD_HERE, BlazeFightRules.noCoverSpot(true, true, 20));
-        assertEquals(BlazeFightRules.NoCover.SHIELD_HERE, BlazeFightRules.noCoverSpot(false, false, 20));
-    }
-
-    @Test
-    public void coverOnlyHappensAboveTheNoCoverRetreatLine() {
-        // decide never says COVER at a health noCoverSpot would retreat at, so out past the spawner the fallback is the walk
-        for (float hp = 1; hp <= 20; hp += 0.5f) {
-            if (BlazeFightRules.decide(hp, false, 2, 0) == COVER) {
-                assertEquals("hp " + hp, BlazeFightRules.NoCover.BACK_TO_SPAWNER, BlazeFightRules.noCoverSpot(true, false, hp));
-            }
-        }
+    public void aCombatRunThatEndedLatelyHasUsHealUntilSixteen() {
+        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 14.9f));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 16));
+        assertTrue(BlazeFightRules.healAfterRun(990 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
+        assertFalse(BlazeFightRules.healAfterRun(991 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
+        // never ran, or the clock went backwards: nothing to wait for
+        assertFalse(BlazeFightRules.healAfterRun(1000, Long.MIN_VALUE / 2, 10));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 2000, 10));
     }
 }

@@ -30,7 +30,7 @@ public class CombatCommitTakeoverTest {
     }
 
     private static Tick tick(long now, float health, Foe target, boolean boxed, Foe... foes) {
-        return new Tick(now, health, 0, 0, List.of(foes), target, Way.NONE, true, false, false, false, CAN_HEAL, boxed);
+        return new Tick(now, health, 0, 0, List.of(foes), target, Way.NONE, true, false, false, CAN_HEAL, boxed);
     }
 
     private static CombatCommit fightingSkeleton() {

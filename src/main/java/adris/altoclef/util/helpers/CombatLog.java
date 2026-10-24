@@ -83,14 +83,13 @@ public final class CombatLog {
     private static String fightWhy(Why why) {
         return switch (why) {
             case IN_WAY -> "in our way";
-            case PINNED -> "shot us twice while we stood still";
+            case PINNED -> "shooting us";
             default -> "hit us";
         };
     }
 
     public static String runWhy(Why why, int hp) {
         return switch (why) {
-            case UNREACHABLE -> "can't reach it, hp " + hp;
             case SHOT -> "hp " + hp + ", it is shooting";
             case HEAVY -> "something nasty close, hp " + hp;
             case CROWD -> "a crowd on us, hp " + hp;

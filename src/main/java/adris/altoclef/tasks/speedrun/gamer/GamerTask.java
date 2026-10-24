@@ -24,6 +24,8 @@ import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
+import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
@@ -134,6 +136,12 @@ public class GamerTask extends Task {
     private RecoverItemsTask recover;
     // the pile's age clock (starts when it can be loaded, not at the death) and what the bag held the last tick we were alive
     private RecoverRules.Allowance allowance;
+    // the walk to the pile stands still to heal (RecoverRules.walkHold), same idea as the nether walk. recover is not ticked
+    // while we stand (it survives an interrupt anyway), so its own clock does not pay for the standing either
+    private final HealUpTask healUp = new HealUpTask();
+    private boolean recoverHolding;
+    private long recoverHeldTicks;
+    private long recoverHoldTick;
     // which pile the recovery is for, deathPos is already the next death's by the time we need it
     private BlockPos recoverPos;
     private Dimension recoverDimension;
@@ -856,6 +864,10 @@ public class GamerTask extends Task {
             setDebugState("Recovering items after a death.", "Getting our stuff back");
             updateRecoveryHud(HudRules.recoveryWords(blocksTo(recoverPos)));
             autosave(now);
+            if (recoverHeals()) {
+                setDebugState("Healing up before the walk to our stuff.", "Healing up");
+                return healUp;
+            }
             return recover;
         }
         Task night = nightSleepTick(mod);
@@ -962,6 +974,11 @@ public class GamerTask extends Task {
         winShown = true;
         double total = HudRules.runSeconds(state.startedGameTime, facts.gameTime(), state.runTicks);
         mod.getGamerHudOverlay().win(GamerHud.won(hudSnapshot, cfg, total));
+    }
+
+    // the phase the run is in, null before it has begun. a plain read for the chains that behave differently per phase
+    public GamerPhase phase() {
+        return begun && state != null ? state.phase : null;
     }
 
     // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card
@@ -1105,6 +1122,8 @@ public class GamerTask extends Task {
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));
+            recoverHolding = false;
+            recoverHeldTicks = 0;
             recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
                     () -> KitPlanner.toEquip(facts, cfg.overworld));
             recoverPos = deathPos;
@@ -1149,8 +1168,32 @@ public class GamerTask extends Task {
         return Math.sqrt(dx * dx + dz * dz);
     }
 
+    // the walk is the part before the pile's neighbourhood. past that the task is chasing drops that are despawning, and it
+    // does not stand for anyone
+    private boolean recoverWalking() {
+        return recoverPos != null && flatBlocksTo(recoverPos) > RecoverRules.DROP_RADIUS;
+    }
+
+    // hurt on the way to the pile, nobody shooting: stand and heal instead of dropping into the cave at half a bar. the pile
+    // keeps aging while we stand (it is loaded in range), so the allowance is not credited, the minute cap is the price
+    private boolean recoverHeals() {
+        long t = facts.gameTime();
+        boolean hold = recoverWalking() && RecoverRules.walkHold(mod.getPlayer().getHealth(), NetherRecoverTask.shooterSees(mod),
+                mod.getFoodChain().ticksSinceBodyHit(mod), mod.getPlayer().getFoodData().getFoodLevel() >= CombatRules.REGEN_HUNGER
+                        || mod.getFoodChain().hasHealFood(), recoverHolding, recoverHeldTicks);
+        if (hold) {
+            long gap = recoverHolding ? Math.max(0, Math.min(t - recoverHoldTick, 2)) : 0;
+            recoverHeldTicks += gap;
+            recoverHoldTick = t;
+        }
+        recoverHolding = hold;
+        return hold;
+    }
+
     private boolean recoverStillWanted(double now) {
         if (recover == null) {
+            recoverHolding = false;
+            recoverHeldTicks = 0;
             return false;
         }
         // every way out says so once. a task that finished itself already said why (most of its ways out log, the no way and no pickaxe ones just say so on the hud), so that one
@@ -1161,6 +1204,8 @@ public class GamerTask extends Task {
             return false;
         } else if (facts.dimension() != recoverDimension) {
             over = "we left the dimension";
+        } else if (recoverWalking() && RecoverRules.walkAbort(mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod))) {
+            over = "hurt and under fire on the way";
         } else if (allowance == null || allowance.expired(now, flatBlocksTo(recoverPos))) {
             over = "it has been lying there too long";
         }
@@ -1344,7 +1389,7 @@ public class GamerTask extends Task {
     // touches it, so counting it here would start a pillar that runs dry halfway up
     private int nightBlocks() {
         boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
-        return Math.max(0, facts.buildBlocks() - (kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
+        return Math.max(0, facts.buildBlocks() - NightSleep.blockReserve(state.phase, kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
     }
 
     // what may not be interrupted for a night (NightSleep.busy has the reasoning): phases that must not be cut into, a station
@@ -1357,7 +1402,9 @@ public class GamerTask extends Task {
         }
         boolean screenUp = !ownScreens && screenSince >= 0 && NightSleep.screenHolds(facts.gameTime() - screenSince);
         boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
-        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), pickup, loading, facts.earlyLoadInFlight(), screenUp);
+        PhaseHandler h = machine.current();
+        boolean phaseHolds = h != null && h.phase() == state.phase && h.nightHold();
+        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), phaseHolds, pickup, loading, facts.earlyLoadInFlight(), screenUp);
     }
 
     // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night

@@ -62,6 +62,24 @@ public final class LavaShore {
                 || lineHitsLava(cells, ux, uy, uz, tx, ty, tz);
     }
 
+    // how long a foe by the lava gets to walk up to us before we stop waiting on it: 8 s. a wait with no end
+    // is a bot standing still at a pool until something else gives
+    // (was 240 once. CombatCommit.STALL_TICKS is 200 and ends the fight first, so the ban never landed and the same cube got
+    // picked again with its count still running. it has to be under the stall to ever matter)
+    public static final int WAIT_CAP_TICKS = 160;
+
+    // approachBlocked with the kind of target in it. a cow does not knock us in and baritone paths around lava on its own,
+    // so the only thing that matters for a passive one is the drop burning when it dies by the pool. a hostile still gets the
+    // whole check (our spot, the line)
+    public static boolean blockedFor(boolean passive, Cells cells, double ux, double uy, double uz, double tx, double ty, double tz) {
+        return passive ? lavaNear(cells, tx, ty, tz, NEAR) : approachBlocked(cells, ux, uy, uz, tx, ty, tz);
+    }
+
+    // should this foe be let go of right now: passive ones by the pool never get a wait, hostiles get WAIT_CAP_TICKS of it
+    public static boolean giveUp(boolean passive, int waitedTicks) {
+        return passive || waitedTicks >= WAIT_CAP_TICKS;
+    }
+
     // is a spot a bad place to land: lava in it, or open air over lava or over nothing for CliffAvoidance.DEPTH blocks.
     // the box is the player's width, so a knock that clips a corner counts
     public static boolean spotUnsafe(Cells cells, double x, double y, double z) {
@@ -96,6 +114,56 @@ public final class LavaShore {
             }
         }
         return false;
+    }
+
+    // on a rim a landed hit is worth more than a crit, and waiting for the ground after the first knock is how the second
+    // one comes. the attack cooldown still applies downstream
+    public static boolean swingReady(boolean gatesOpen, boolean onGround, boolean critInFlight, boolean backUnsafe) {
+        return gatesOpen && (onGround || critInFlight || backUnsafe);
+    }
+
+    // is a cell fit to stand on while a foe is on us: floor under it, room for the body, no lava next to it, and nothing
+    // bad behind it relative to the foe
+    static boolean standable(Cells cells, int x, int y, int z, double fx, double fz) {
+        if (cells.at(x, y - 1, z) != Cell.SOLID || cells.at(x, y, z) != Cell.OPEN || cells.at(x, y + 1, z) != Cell.OPEN) {
+            return false;
+        }
+        double cx = x + 0.5;
+        double cz = z + 0.5;
+        return !lavaNear(cells, cx, y, cz, 1) && !spotUnsafe(cells, cx, y, cz) && !backUnsafe(cells, cx, y, cz, fx, fz);
+    }
+
+    // standable, and not the foe's own cell
+    public static boolean stepFit(Cells cells, int x, int y, int z, double fx, double fz) {
+        return standable(cells, x, y, z, fx, fz) && Math.hypot(x + 0.5 - fx, z + 0.5 - fz) >= 1.0;
+    }
+
+    // the one-block step off a rim: null when our spot is fine (or nothing around is better), else {dx, dz} to a neighbour
+    // cell that is standable. no lava within 2 wins over a cell that is merely not-on-fire, then the one nearest the foe, so
+    // the step also closes the gap instead of backing off. a cell the foe is standing in is no step
+    public static int[] safeStep(Cells cells, double ux, double uy, double uz, double fx, double fz) {
+        if (!backUnsafe(cells, ux, uy, uz, fx, fz)) {
+            return null;
+        }
+        int cx = (int) Math.floor(ux);
+        int cy = (int) Math.floor(uy);
+        int cz = (int) Math.floor(uz);
+        int[] best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if ((dx == 0 && dz == 0) || !stepFit(cells, cx + dx, cy, cz + dz, fx, fz)) {
+                    continue;
+                }
+                double foeGap = Math.hypot(cx + dx + 0.5 - fx, cz + dz + 0.5 - fz);
+                double score = foeGap + (lavaNear(cells, cx + dx + 0.5, cy, cz + dz + 0.5, NEAR) ? 100 : 0);
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = new int[]{dx, dz};
+                }
+            }
+        }
+        return best;
     }
 
     // the keys to press to lean toward the foe, from where the head points. no look added: whatever the yaw is, the keys

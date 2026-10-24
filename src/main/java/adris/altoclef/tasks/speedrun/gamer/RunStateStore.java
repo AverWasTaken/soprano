@@ -112,6 +112,9 @@ public final class RunStateStore {
         if (s.deaths == null) {
             s.deaths = new ArrayList<>();
         }
+        if (s.deferredCells == null) {
+            s.deferredCells = new HashMap<>();
+        }
         if (s.visitedCells == null) {
             s.visitedCells = new LinkedHashSet<>();
         }

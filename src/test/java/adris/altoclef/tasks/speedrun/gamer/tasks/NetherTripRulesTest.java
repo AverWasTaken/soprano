@@ -394,4 +394,168 @@ public class NetherTripRulesTest {
         Step home = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 0, 100, 0, false, 300, false, 0, true, 0, LIMITS, false, 99999));
         assertEquals(Stage.HOME, home.stage());
     }
+
+    // ---- the nether walk's stall clock
+
+    private static Inputs netherWalk(double distance, long tripTicks, long stuckTicks) {
+        return new Inputs(Stage.WALK, Dimension.NETHER, tripTicks, 100, 24, false, distance, false, 0, true, 0, LIMITS, true,
+                stuckTicks);
+    }
+
+    @Test
+    public void theNetherWalkGivesUpAfterTwoMinutesWithoutGettingCloser() {
+        long twoMinutes = NetherTripRules.WALK_PROGRESS_SECONDS * 20L;
+        assertEquals(Stage.WALK, NetherTripRules.next(netherWalk(300, 100, twoMinutes)).stage());
+        Step stuck = NetherTripRules.next(netherWalk(300, 100, twoMinutes + 1));
+        assertEquals("no closer to the pile", stuck.giveUp());
+        // kit gone and still down here: same exit as the budget running out
+        assertEquals(Stage.HOME, stuck.stage());
+    }
+
+    @Test
+    public void theNetherWalkBarIsLongerThanThePortalOne() {
+        assertTrue(NetherTripRules.WALK_PROGRESS_SECONDS > NetherTripRules.PORTAL_PROGRESS_SECONDS);
+        // a minute and a half stuck is fine on the nether walk and not on the portal walk
+        long minuteAndHalf = 90 * 20L;
+        assertNull(NetherTripRules.next(netherWalk(300, 100, minuteAndHalf)).giveUp());
+        assertNotNull(NetherTripRules.next(walking(2000, minuteAndHalf)).giveUp());
+    }
+
+    @Test
+    public void arrivingBeatsTheStallClock() {
+        long stuck = NetherTripRules.WALK_PROGRESS_SECONDS * 20L + 500;
+        assertEquals(Stage.RECOVER, NetherTripRules.next(netherWalk(NetherTripRules.ARRIVE_BLOCKS, 100, stuck)).stage());
+    }
+
+    @Test
+    public void restockTimeIsPaidBackToTheTripBudget() {
+        // dig ticks that follow each other add up, a first tick or a gap (fight, meal) adds nothing
+        assertEquals(1, NetherTripRules.restockCredit(99, 100));
+        assertEquals(0, NetherTripRules.restockCredit(Long.MIN_VALUE, 100));
+        assertEquals(0, NetherTripRules.restockCredit(100, 100));
+        assertEquals(0, NetherTripRules.restockCredit(0, 1000));
+        // a 75 s dig moves the arrival back by the full 75 s, so the budget sees the same time as without it
+        long arrived = 1000;
+        long credit = 0;
+        for (long t = 5000; t < 5000 + 75 * 20; t++) {
+            credit += NetherTripRules.restockCredit(t - 1, t);
+        }
+        long now = 5000 + 75 * 20;
+        assertEquals(now - arrived - credit, NetherTripRules.netherTicks(arrived + credit, now));
+        assertTrue(NetherTripRules.netherTicks(arrived + credit, now) < NetherTripRules.netherTicks(arrived, now));
+    }
+
+    // ---- the overworld side: food and hearts before the portal
+
+    private static Inputs body(Stage stage, long stageTicks, int food, float hp) {
+        return new Inputs(stage, Dimension.OVERWORLD, 0, stageTicks, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, food, hp,
+                Long.MAX_VALUE);
+    }
+
+    @Test
+    public void aFedFullBodyGoesStraightToThePortalAfterTheBlocks() {
+        Step step = NetherTripRules.next(body(Stage.BLOCKS, 20 * 100, 25, 20));
+        assertEquals(Stage.PORTAL, step.stage());
+    }
+
+    @Test
+    public void shortOnFoodTheBlocksAndThePickLeadToTheFoodStage() {
+        assertEquals(Stage.FOOD, NetherTripRules.next(body(Stage.BLOCKS, 20 * 100, 0, 20)).stage());
+        assertEquals(Stage.FOOD, NetherTripRules.next(body(Stage.BLOCKS, 20 * 100, 19, 20)).stage());
+    }
+
+    @Test
+    public void thePickStageAlsoGoesThroughTheFoodCheckOnceThePickIsThere() {
+        Inputs got = new Inputs(Stage.PICK, Dimension.OVERWORLD, 0, 20, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 3, 20,
+                Long.MAX_VALUE);
+        assertEquals(Stage.FOOD, NetherTripRules.next(got).stage());
+    }
+
+    @Test
+    public void foodKeepsGoingUntilThirtyOrTheClock() {
+        assertEquals(Stage.FOOD, NetherTripRules.next(body(Stage.FOOD, 20 * 30, 12, 20)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.FOOD, 20 * 30, 30, 20)).stage());
+    }
+
+    @Test
+    public void outOfFoodTimeWithSomethingToEatGoesAndWithNothingDoesNot() {
+        Step some = NetherTripRules.next(body(Stage.FOOD, 20 * 121, 4, 20));
+        assertEquals(Stage.PORTAL, some.stage());
+        assertNull(some.giveUp());
+        Step none = NetherTripRules.next(body(Stage.FOOD, 20 * 121, 0, 20));
+        assertEquals("no food for the trip", none.giveUp());
+        // overworld kit short or not: the trip ends here and the phase machine rebuilds, it does not walk home from the nether
+        assertNull(none.stage());
+    }
+
+    @Test
+    public void hurtAfterTheMealWaitsForTheHeartsUpToAMinute() {
+        assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.FOOD, 20 * 30, 40, 10)).stage());
+        assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.HEAL, 20 * 30, 40, 17)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 30, 40, 18)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(body(Stage.HEAL, 20 * 61, 40, 5)).stage());
+    }
+
+    @Test
+    public void theOverworldStagesDoNotSpendTheNetherBudget() {
+        assertEquals(Stage.HEAL, NetherTripRules.next(body(Stage.HEAL, 20 * 59, 0, 3)).stage());
+        assertNull(NetherTripRules.next(body(Stage.HEAL, 20 * 59, 0, 3)).giveUp());
+    }
+
+    @Test
+    public void foodAndHealGiveUpIfWeAreNotInTheOverworld() {
+        Inputs lost = new Inputs(Stage.FOOD, Dimension.NETHER, 0, 20, 24, false, 500, false, 0, false, 0, LIMITS, true, 0, 0, 20,
+                Long.MAX_VALUE);
+        assertEquals("not in the overworld to get food", NetherTripRules.next(lost).giveUp());
+    }
+
+    // ---- the nether walk: hold to heal, abort when it is going badly
+
+    @Test
+    public void theWalkHoldsToHealWhenHurtAndNobodyShoots() {
+        assertTrue(NetherTripRules.walkHold(11, false, false, 0));
+        assertFalse(NetherTripRules.walkHold(12, false, false, 0));
+    }
+
+    @Test
+    public void aShooterWithALineIsNoPlaceToStandStill() {
+        assertFalse(NetherTripRules.walkHold(4, true, false, 0));
+        assertFalse(NetherTripRules.walkHold(4, true, true, 100));
+    }
+
+    @Test
+    public void aHoldKeepsGoingToEighteenInsteadOfFlickingAtTwelve() {
+        assertTrue(NetherTripRules.walkHold(15, false, true, 100));
+        assertFalse(NetherTripRules.walkHold(18, false, true, 100));
+    }
+
+    @Test
+    public void theWalkHoldIsCappedAtAMinuteForTheWholeTrip() {
+        assertTrue(NetherTripRules.walkHold(3, false, true, 20 * 60 - 1));
+        assertFalse(NetherTripRules.walkHold(3, false, true, 20 * 60));
+    }
+
+    @Test
+    public void lowAndRecentlyHitByAMobAbortsTheWalkHome() {
+        Inputs hurt = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, true, 0, LIMITS, true, 0, 0, 8,
+                100);
+        Step step = NetherTripRules.next(hurt);
+        assertEquals(Stage.HOME, step.stage());
+        assertEquals("too hurt to keep walking", step.giveUp());
+    }
+
+    @Test
+    public void lowWithNobodyHittingUsLatelyKeepsWalking() {
+        Inputs quiet = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, true, 0, LIMITS, true, 0, 0, 8,
+                NetherTripRules.ABORT_HIT_TICKS + 1);
+        assertEquals(Stage.WALK, NetherTripRules.next(quiet).stage());
+        assertFalse(NetherTripRules.walkAbort(9, 10));
+        assertTrue(NetherTripRules.walkAbort(8, NetherTripRules.ABORT_HIT_TICKS));
+    }
+
+    @Test
+    public void arrivingBeatsAbortingSoThePileTaskTakesItsOwnStandoff() {
+        Inputs there = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 10, false, 0, true, 0, LIMITS, true, 0, 0, 5, 20);
+        assertEquals(Stage.RECOVER, NetherTripRules.next(there).stage());
+    }
 }

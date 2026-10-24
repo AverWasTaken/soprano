@@ -58,9 +58,17 @@ public final class MobReachRules {
         return t.wall(x, y, z) || t.solid(x, y + 1, z);
     }
 
+    // a creeper inside the defuse step's trigger is never "stuck": it is the one mob that kills from standing still
+    public static final double CREEPER_EXEMPT_RANGE = CreeperStep.TRIGGER;
+
     // how close a mob has to be to never count as stuck. running widens it, outside it the old forty ticks stand
     public static double stallExemptRange(boolean fleeing) {
-        return fleeing ? Math.max(STALL_EXEMPT_RANGE, FLEEING_STALL_RANGE) : STALL_EXEMPT_RANGE;
+        return stallExemptRange(fleeing, false);
+    }
+
+    public static double stallExemptRange(boolean fleeing, boolean creeper) {
+        double range = fleeing ? Math.max(STALL_EXEMPT_RANGE, FLEEING_STALL_RANGE) : STALL_EXEMPT_RANGE;
+        return creeper ? Math.max(range, CREEPER_EXEMPT_RANGE) : range;
     }
 
     // a verdict that was cached while the mob was further out stops holding once it is in the exempt range. only the
@@ -70,7 +78,11 @@ public final class MobReachRules {
     }
 
     public static boolean verdictHolds(Verdict cached, double distance, boolean fleeing) {
-        return cached != Verdict.STALLED || distance > stallExemptRange(fleeing);
+        return verdictHolds(cached, distance, fleeing, false);
+    }
+
+    public static boolean verdictHolds(Verdict cached, double distance, boolean fleeing, boolean creeper) {
+        return cached != Verdict.STALLED || distance > stallExemptRange(fleeing, creeper);
     }
 
     // directly above or below us, further than a mob can climb or safely drop. spiders skip this one, they climb
@@ -100,6 +112,10 @@ public final class MobReachRules {
 
         // fleeing: we are running from something, see FLEEING_STALL_RANGE
         public boolean update(int id, double distance, long now, boolean fleeing) {
+            return update(id, distance, now, fleeing, false);
+        }
+
+        public boolean update(int id, double distance, long now, boolean fleeing, boolean creeper) {
             Entry e = entries.get(id);
             if (e == null || now - e.lastSeen > FORGET_AFTER) {
                 e = new Entry();
@@ -108,7 +124,7 @@ public final class MobReachRules {
                 entries.put(id, e);
             }
             e.lastSeen = now;
-            if (distance <= stallExemptRange(fleeing)) {
+            if (distance <= stallExemptRange(fleeing, creeper)) {
                 // on top of us (or on our heels while we run), so the clock starts over from here: backing off from a zombie
                 // that follows is not it being stuck
                 e.best = distance;

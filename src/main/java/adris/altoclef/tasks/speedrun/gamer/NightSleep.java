@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.util.helpers.CombatRules;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 // sleeping through the night instead of fighting through it. every decision lives here and nothing here knows there is a game:
 // when the trip applies, where the bed has to be to be out of the monsters' reach, the budget of a night, when mob defense
@@ -85,11 +86,12 @@ public final class NightSleep {
         return in.bed() == BedSource.NONE ? Why.NO_BED : Why.GO;
     }
 
-    // the phases a night may cut into. the portal has lava being cast, the nether has no beds that work, the end prep sets the
+    // the phases a night may cut into. the portal is let through and decides for itself (PhaseHandler.nightHold: lava being cast
+    // must not be stretched, but looking for a spot is just walking), the nether has no beds that work, the end prep sets the
     // spawn bed by the portal and a night bed would move it, and the dragon is in the end
     public static boolean phaseAllowed(GamerPhase phase) {
         return switch (phase) {
-            case GATHER, IRON, EYES, RETURN, LOCATE, ROOM, OPEN -> true;
+            case GATHER, IRON, PORTAL, EYES, RETURN, LOCATE, ROOM, OPEN -> true;
             default -> false;
         };
     }
@@ -219,7 +221,7 @@ public final class NightSleep {
     // ---- what may not be interrupted
 
     public enum Busy {
-        NONE, PHASE, PICKUP, LOAD, EARLY_LOAD, SCREEN
+        NONE, PHASE, PHASE_HOLD, PICKUP, LOAD, EARLY_LOAD, SCREEN
     }
 
     // the things a night trip waits for, in the order they are asked. each is a thing that is physically happening right now
@@ -228,8 +230,17 @@ public final class NightSleep {
     // recorded, a screen that is up. a smelt batch merely existing is not one of them: between loads the bot is only walking
     // or fetching fuel, and a load that gets interrupted is finished by a fresh task
     public static Busy busy(boolean phaseOk, boolean pickupInFlight, boolean smeltLoading, boolean earlyLoad, boolean screenUp) {
+        return busy(phaseOk, false, pickupInFlight, smeltLoading, earlyLoad, screenUp);
+    }
+
+    // `phaseHolds` is an allowed phase asking to finish what it is doing first. not PHASE on purpose: PHASE turns the evening's bed
+    // prep off, a hold only stops the trip and the prep keeps getting the bed ready
+    public static Busy busy(boolean phaseOk, boolean phaseHolds, boolean pickupInFlight, boolean smeltLoading, boolean earlyLoad, boolean screenUp) {
         if (!phaseOk) {
             return Busy.PHASE;
+        }
+        if (phaseHolds) {
+            return Busy.PHASE_HOLD;
         }
         if (pickupInFlight) {
             return Busy.PICKUP;
@@ -314,6 +325,34 @@ public final class NightSleep {
 
         public void reset() {
             seen = false;
+        }
+    }
+
+    // "is there a sheep to hunt" with two memories, because the answer sits on the edge of the search radius and flips with every
+    // step of the sheep. a hunt that is running is not asked again (every flip cancelled the hunt and wiped its colour, so
+    // nothing ever got far enough to finish), and a no is kept for SHEEP_HOLD_TICKS game ticks before anybody looks again
+    public static final long SHEEP_HOLD_TICKS = 600;
+
+    public static final class SheepHold {
+        private long noUntil = Long.MIN_VALUE;
+
+        // raw is only asked when neither memory has the answer
+        public boolean see(boolean hunting, BooleanSupplier raw, long tick) {
+            if (hunting) {
+                return true;
+            }
+            if (tick < noUntil) {
+                return false;
+            }
+            boolean yes = raw.getAsBoolean();
+            if (!yes) {
+                noUntil = tick + SHEEP_HOLD_TICKS;
+            }
+            return yes;
+        }
+
+        public void reset() {
+            noUntil = Long.MIN_VALUE;
         }
     }
 
@@ -558,6 +597,18 @@ public final class NightSleep {
     // real night it stays a failed try
     public static boolean nightIsOver(Refusal refusal, boolean bright, long nightThen, long nightNow) {
         return refusal == Refusal.NOT_NOW && (bright || nightNow > nightThen);
+    }
+
+    // build blocks the night pillar must leave alone. GATHER and IRON keep the stone kit's cobble. the portal pool build needs
+    // 8 plus its fills to pick a layout and the gate never re-gathers once it is done, so the pillar cannot spend those
+    public static final int PORTAL_BLOCK_RESERVE = 16;
+
+    public static int blockReserve(GamerPhase phase, int stoneFloor) {
+        return switch (phase) {
+            case GATHER, IRON -> stoneFloor;
+            case PORTAL -> PORTAL_BLOCK_RESERVE;
+            default -> 0;
+        };
     }
 
     // ---- clocks

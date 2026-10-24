@@ -5,15 +5,23 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.CritTiming;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.ApproachRules;
+import adris.altoclef.util.helpers.EntityHelper;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.Enemy;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StandCap;
+import adris.altoclef.util.helpers.WaitCap;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -79,6 +87,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // instead, which counts ticks since the last swing that really went out whatever the plan flickered through
     private int _waitTicks;
     private final StandCap _standCap = new StandCap();
+    // the waits StandCap does not count (an angry enderman out of reach, a swing gated in reach), see WaitCap
+    private final WaitCap _waitCap = new WaitCap();
+    private Entity _waitCapEntity;
     private Entity _waitEntity;
     private long _swingsSeen;
     // the back-off we started has to be getting somewhere, and a stuck one is not started again for a while
@@ -106,7 +117,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _approachLive = false;
         _wanderLive = false;
         _waitTicks = 0;
+        _rimCell = null;
+        _rimStepTicks = 0;
+        _rimLive = false;
         _standCap.reset();
+        _waitCap.reset();
+        _waitCapEntity = null;
         _waitEntity = null;
         _swingsSeen = mod.getControllerExtras().swings();
         _backOffWatch.clear();
@@ -185,10 +201,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
             }
 
-            boolean ready = !mod.getFoodChain().needsToEat() &&
+            boolean rim = isKillTask() && rimBack(mod, entity);
+            boolean ready = LavaShore.swingReady(!mod.getFoodChain().needsToEat() &&
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
-                    !mod.getMLGBucketChain().isChorusFruiting() &&
-                    (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
+                    !mod.getMLGBucketChain().isChorusFruiting(),
+                    mod.getPlayer().onGround(), mod.getControllerExtras().critInFlight(), rim);
             // a child that was walking to some other mob is not the one to keep
             boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
@@ -200,23 +217,63 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     && mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting();
             ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
+            boolean comesToUs = isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
-                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy);
+                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
+                    comesToUs);
+            if (isKillTask()) {
+                if (_waitCapEntity != entity) {
+                    _waitCapEntity = entity;
+                    _waitCap.reset();
+                }
+                boolean stuckWaiting = plan == ApproachRules.Plan.WAIT && ((comesToUs && !inReach) || (policy == ApproachRules.Policy.KILL_GATED && inReach));
+                if (stuckWaiting && _waitCap.approaching()) plan = ApproachRules.Plan.APPROACH;
+                WaitCap.Verdict verdict = _waitCap.tick(stuckWaiting);
+                if (verdict == WaitCap.Verdict.APPROACH) {
+                    plan = ApproachRules.Plan.APPROACH;
+                } else if (verdict == WaitCap.Verdict.BAN) {
+                    BanPolicy.noPath(mod.getBans(), entity.getId(), EntityTracker.describe(entity));
+                    _waitCapEntity = null;
+                    return null;
+                }
+            }
             if (!isKillTask()) {
                 _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
+            }
+            // a rim step already walking is finished, not cut by the plan flipping to a swing the next tick: a step restarted
+            // every few ticks never lands
+            boolean stepWalking = _rimLive;
+            _rimLive = false;
+            if (isKillTask() && stepWalking && plan != ApproachRules.Plan.SWING_NOW
+                    && !mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                Task off = rimStep(mod, entity);
+                if (off != null) {
+                    return off;
+                }
             }
             switch (plan) {
                 case INTERACT:
                     _progress.reset();
                     _blocker = null;
+                    // on a rim the cooldown ticks between swings are for getting off it, the swing itself still comes first
+                    if (rim && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
+                        Task off = rimStep(mod, entity);
+                        if (off != null) {
+                            return off;
+                        }
+                    }
                     return onEntityInteract(mod, entity);
                 case APPROACH:
-                    // lava on the foe, under us or between us: it comes to us. the walk in is what put us in the lava, and a
+                    // lava on the foe, under us or between us (just the foe, for an animal): it comes to us. the walk in is what put us in the lava, and a
                     // foe that never comes just stalls out. returning null also lets go of an approach already walking
-                    if (isKillTask() && lavaInTheWay(mod, entity)) {
+                    if (isKillTask() && lavaHold(mod, entity)) {
                         _progress.reset();
                         _blocker = null;
+                        Task off = rimStep(mod, entity);
+                        if (off != null) {
+                            return off;
+                        }
                         setDebugState("Lava by the foe, letting it come");
                         return null;
                     }
@@ -250,11 +307,17 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                         _wanderLive = true;
                         return new TimeoutWanderTask();
                     }
+                    if (isKillTask()) {
+                        Task off = rimStep(mod, entity);
+                        if (off != null) {
+                            return off;
+                        }
+                    }
                     setDebugState("In reach, waiting for the swing");
                     return null;
                 default:
                     // the shuffle is a walk too
-                    if (plan == ApproachRules.Plan.WANDER && isKillTask() && lavaInTheWay(mod, entity)) {
+                    if (plan == ApproachRules.Plan.WANDER && isKillTask() && lavaHold(mod, entity)) {
                         setDebugState("Lava by the foe, not shuffling");
                         return null;
                     }
@@ -270,13 +333,103 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return new TimeoutWanderTask();
     }
 
+    // waiting on one foe by the lava. an animal is let go of at once (the picker takes the next one), anything that can bite
+    // gets LavaShore.WAIT_CAP_TICKS to come to us. a ban takes it out of getClosestEntity, so the next tick has another target.
+    // the count is per mob id and static: callers rebuild this task whenever their pick changes, and two foes swapping places
+    // as the closest would restart a count that lives in the task forever
+    private static final java.util.Map<Integer, int[]> LAVA_WAITS = new java.util.HashMap<>();
+    // a gap this long between two holds on one mob is a different wait
+    private static final int LAVA_WAIT_GAP = 100;
+
+    private boolean lavaHold(AltoClef mod, Entity entity) {
+        if (!lavaInTheWay(mod, entity)) {
+            return false;
+        }
+        int now = mod.getPlayer().tickCount;
+        if (LAVA_WAITS.size() > 64) {
+            LAVA_WAITS.clear();
+        }
+        int[] wait = LAVA_WAITS.computeIfAbsent(entity.getId(), k -> new int[]{0, now});
+        if (now < wait[1] || now - wait[1] > LAVA_WAIT_GAP) {
+            wait[0] = 0;
+        }
+        wait[0]++;
+        wait[1] = now;
+        if (LavaShore.giveUp(isAnimal(mod, entity), wait[0])) {
+            BanPolicy.lavaShore(mod.getBans(), entity.getId(), EntityTracker.describe(entity));
+            LAVA_WAITS.remove(entity.getId());
+        }
+        return true;
+    }
+
+    // standing on a rim with a melee foe close: the knock lands on whatever is behind us. same range the lava guard leans at
+    private static final double RIM_FOE_RANGE = 3.5;
+    // a step that has not gotten us anywhere by now is not going to, and the old stand-and-hit is better than shuffling
+    private static final int RIM_STEP_TICKS = 40;
+    private BlockPos _rimCell;
+    private int _rimStepTicks;
+    private boolean _rimLive;
+
+    private boolean rimFoe(AltoClef mod, Entity entity) {
+        if (entity instanceof Blaze || entity instanceof Ghast || !(entity instanceof Mob mob) || MobReachability.isRanged(mob)
+                || isAnimal(mod, entity)) {
+            return false;
+        }
+        return entity.isAlive() && entity.distanceTo(mod.getPlayer()) <= RIM_FOE_RANGE;
+    }
+
+    private boolean rimBack(AltoClef mod, Entity entity) {
+        if (!rimFoe(mod, entity)) {
+            return false;
+        }
+        var us = mod.getPlayer();
+        return LavaShore.backUnsafe(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getZ());
+    }
+
+    // one block to a safer cell before the next hit comes, null when there is nothing to do or nowhere better to go
+    private Task rimStep(AltoClef mod, Entity entity) {
+        if (!rimFoe(mod, entity)) {
+            _rimCell = null;
+            _rimStepTicks = 0;
+            return null;
+        }
+        var us = mod.getPlayer();
+        int[] step = LavaShore.safeStep(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getZ());
+        if (step == null) {
+            _rimCell = null;
+            _rimStepTicks = 0;
+            return null;
+        }
+        if (++_rimStepTicks > RIM_STEP_TICKS) {
+            return null;
+        }
+        // the cell we picked stays picked while it is still a step away: the foe shuffling about would otherwise flip it every tick
+        BlockPos here = us.blockPosition();
+        BlockPos pick = here.offset(step[0], 0, step[1]);
+        Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        if (_rimCell == null || _rimCell.equals(here) || _rimCell.distSqr(here) > 2
+                || !LavaShore.stepFit(cells, _rimCell.getX(), _rimCell.getY(), _rimCell.getZ(), entity.getX(), entity.getZ())) {
+            _rimCell = pick;
+            _rimStepTicks = 0;
+        }
+        _rimLive = true;
+        setDebugState("Stepping off the rim");
+        return new GetToBlockTask(_rimCell);
+    }
+
+    // by type, not by mood: an enderman nobody has angered yet or a day spider reads as not hostile until the first hit, and
+    // that hit is what throws us into the pool
+    private static boolean isAnimal(AltoClef mod, Entity entity) {
+        return !(entity instanceof Enemy) && !(entity instanceof NeutralMob) && !EntityHelper.isGenerallyHostileToPlayer(mod, entity);
+    }
+
     // the approach walk near lava, see LavaShore. every dimension: a cave lava pool behind a spider is the overworld's version
     private static boolean lavaInTheWay(AltoClef mod, Entity entity) {
         // only the ones that walk up and hit. a blaze hovers over the lava on purpose, and waiting for it to come is no rods
         if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         var us = mod.getPlayer();
-        return LavaShore.approachBlocked(cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
+        return LavaShore.blockedFor(isAnimal(mod, entity), cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
     }
 
     // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks go by the eye to box

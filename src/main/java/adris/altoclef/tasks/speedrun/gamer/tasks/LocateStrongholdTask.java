@@ -59,6 +59,7 @@ public class LocateStrongholdTask extends Task {
     private boolean legIsArrive;
     private boolean legIsRelocate;
     private boolean forceThrow;
+    private final EyeThrowObserver.Streak interruptStreak = new EyeThrowObserver.Streak();
     // after a throw we got nothing from, throw somewhere else (the same spot would give the same nothing)
     private boolean forceWalk;
     private boolean started;
@@ -137,6 +138,11 @@ public class LocateStrongholdTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // an eye thrown right before a stop is gone by the time we are back, that is not a dud throw. interrupt or a real
+        // stop of this same instance (the night trip, the food hunt), it keeps running afterwards either way
+        if (stage == Stage.OBSERVE && observer != null) {
+            observer.markInterrupted();
+        }
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL_FRAME);
     }
 
@@ -166,8 +172,10 @@ public class LocateStrongholdTask extends Task {
         stillTicks = 0;
     }
 
+    // the task's own clock, not game time: it only ticks while we are the running task, so a night trip or a fight
+    // in the middle of a leg (or of THROW) does not eat the leg budget. restarts keep it, see timeOnTaskSeconds
     private double seconds(AltoClef mod) {
-        return mod.getWorld().getGameTime() / 20.0;
+        return timeOnTaskSeconds();
     }
 
     private long ticks(AltoClef mod) {
@@ -395,8 +403,16 @@ public class LocateStrongholdTask extends Task {
         EyeThrowObserver.Result r = eye.isPresent()
                 ? observer.observe(ticks(mod), true, eye.get().getX(), eye.get().getY(), eye.get().getZ())
                 : observer.observe(ticks(mod), false, 0, 0, 0);
-        switch (r.outcome()) {
+        switch (interruptStreak.book(r.outcome())) {
             case PENDING -> {
+            }
+            case INTERRUPTED -> {
+                // no dud on the ledger, the throw just never got watched. the baseline stays, and decide() runs collectPending
+                // first so a stray eye gets picked up before the next throw overwrites it. forceThrow skips the estimator advice and
+                // throws again from here, and it stays set across a collect detour so the throw still happens after it)
+                observer = null;
+                forceThrow = true;
+                enter(mod, Stage.DECIDE);
             }
             case EMPTY -> {
                 ledger.empty();

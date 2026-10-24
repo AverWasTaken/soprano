@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.chains.MLGBucketFallChain;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
@@ -21,6 +22,7 @@ import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.tasks.speedrun.gamer.end.EndRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.WaterUpkeep;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
@@ -49,6 +51,13 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _toPortal;
     private BlockPos _toPortalAt;
     private String _hudState;
+    // the water bucket errand, per attempt: ticks the step ran, the pond it is on, and whether it gave up (see EndGear.wantsWater).
+    // onEnter resets it, and so does a new death (the overworld death does not re-enter the phase)
+    private int _bucketTicks;
+    private boolean _bucketGaveUp;
+    private int _bucketDeaths;
+    private BlockPos _bucketPond;
+    private Task _bucketTask;
 
     @Override
     public GamerPhase phase() {
@@ -78,6 +87,7 @@ public class EndPrepPhase implements PhaseHandler {
         _setSpawn.resetSleep();
         _spawnNoted = false;
         _hudState = null;
+        resetBucket(ctx.state().deaths.size());
     }
 
     // END_PORTAL is in the engine's tracked set (GamerTask.TRACKED), a handler level trackBlock leaked its ref count when
@@ -109,7 +119,10 @@ public class EndPrepPhase implements PhaseHandler {
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
         int required = relaxed(ctx) ? 0 : cfg.beds;
-        EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food());
+        if (state.deaths.size() != _bucketDeaths) {
+            resetBucket(state.deaths.size());
+        }
+        EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
@@ -222,8 +235,10 @@ public class EndPrepPhase implements PhaseHandler {
             return catalogueItem(Items.IRON_AXE);
         }
         if (gap.waterBucket()) {
-            _hudState = "Getting a water bucket";
-            return catalogueItem(Items.WATER_BUCKET);
+            Task water = waterStep(mod);
+            if (water != null) {
+                return water;
+            }
         }
         if (gap.pickaxe()) {
             _hudState = "Getting a pickaxe";
@@ -251,6 +266,39 @@ public class EndPrepPhase implements PhaseHandler {
             return _food;
         }
         return null;
+    }
+
+    private void resetBucket(int deaths) {
+        _bucketTicks = 0;
+        _bucketGaveUp = false;
+        _bucketDeaths = deaths;
+        _bucketPond = null;
+        _bucketTask = null;
+    }
+
+    // fill the empty bucket from a pond we already know of, never the wandering collector. no pond within reach, or the
+    // clock ran out, and the attempt goes in without (the gap stops asking next tick). null = nothing to do here
+    private Task waterStep(AltoClef mod) {
+        // a full bag and a stack of empties drops the filled bucket on the floor (see fillHasRoom), so that is a no
+        if (EndGear.bucketTimedOut(_bucketTicks) || !MLGBucketFallChain.fillHasRoom(mod)) {
+            _bucketGaveUp = true;
+            return null;
+        }
+        if (_bucketPond == null || !WaterUpkeep.pondSource(mod, _bucketPond) || mod.getBlockTracker().unreachable(_bucketPond)) {
+            // 32 and not the 16 the upkeep uses: a trip is fine here, there is a clock on it
+            _bucketPond = WaterUpkeep.nearestPond(mod, 32, p -> false);
+            _bucketTask = null;
+            if (_bucketPond == null) {
+                _bucketGaveUp = true;
+                return null;
+            }
+        }
+        if (_bucketTask == null) {
+            _bucketTask = new MLGBucketFallChain.WaterUpkeepTask(_bucketPond);
+        }
+        _bucketTicks++;
+        _hudState = "Filling the water bucket";
+        return _bucketTask;
     }
 
     // collects up to cfg.buildBlocks once it starts, not just up to the gate (the bridge off the arrival platform eats ~30)

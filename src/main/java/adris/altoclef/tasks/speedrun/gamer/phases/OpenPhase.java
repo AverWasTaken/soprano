@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -12,6 +13,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.FillPortalFramesTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.world.FrameGeometry;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 
 import java.util.List;
@@ -22,6 +24,8 @@ public class OpenPhase implements PhaseHandler {
     private FillPortalFramesTask fillTask;
     private Task craftTask;
     private int craftTarget = -1;
+    private boolean readAll;
+    private Task toRing;
     private String hudState = "Opening the End portal";
 
     @Override
@@ -56,6 +60,10 @@ public class OpenPhase implements PhaseHandler {
         fillTask = null;
         craftTask = null;
         craftTarget = -1;
+        readAll = false;
+        toRing = null;
+        // a stamp from the last visit would read as eyes missing for ages
+        ctx.state().openNoEyesSince = 0;
     }
 
     @Override
@@ -66,17 +74,28 @@ public class OpenPhase implements PhaseHandler {
             return null;
         }
         int[] centre = {state.endPortalCenter.x, state.endPortalCenter.y, state.endPortalCenter.z};
-        refresh(mod, ctx, centre);
+        boolean loaded = refresh(mod, ctx, centre);
+        readAll |= loaded;
         hudState = "Putting in Eyes of Ender (" + state.framesFilled + " of " + FrameGeometry.FRAME_COUNT + ")";
         if (state.endPortalOpened) {
             StrongholdScan.swordAfterEye(mod);
             return null;
         }
         GamerFacts facts = ctx.facts();
-        trackShortage(facts, state);
-        if (StrongholdRules.starvedForGood(facts, state)) {
+        // framesFilled starts at 0, so until one full read of the ring "short of eyes" is a guess
+        if (readAll) {
+            trackShortage(facts, state);
+        }
+        if (readAll && StrongholdRules.starvedForGood(facts, state)) {
             ctx.fail("not enough Eyes of Ender for the empty frames and no way to make more");
             return null;
+        }
+        if (!loaded) {
+            // frames only read as frames once their chunk is loaded, so go stand by the ring before judging anything
+            if (toRing == null) {
+                toRing = new GetWithinRangeOfBlockTask(new BlockPos(centre[0], centre[1], centre[2]), 4);
+            }
+            return toRing;
         }
         int eyes = facts.count(Items.ENDER_EYE);
         int need = FrameGeometry.FRAME_COUNT - state.framesFilled;
@@ -94,7 +113,7 @@ public class OpenPhase implements PhaseHandler {
     }
 
     // frames filled and portal state straight from the blocks, only when all 12 are loaded (else the count would dip)
-    private void refresh(AltoClef mod, GamerContext ctx, int[] centre) {
+    private boolean refresh(AltoClef mod, GamerContext ctx, int[] centre) {
         RunState state = ctx.state();
         List<int[]> ring = FrameGeometry.positions(centre);
         for (int[] p : ring) {
@@ -105,7 +124,7 @@ public class OpenPhase implements PhaseHandler {
                     state.framesFilled = FrameGeometry.FRAME_COUNT;
                     ctx.save();
                 }
-                return;
+                return false;
             }
         }
         int filled = FrameGeometry.filledCount(centre, p -> StrongholdScan.frameHasEye(mod, p));
@@ -118,6 +137,7 @@ public class OpenPhase implements PhaseHandler {
             ctx.log("the End portal is open");
             ctx.save();
         }
+        return true;
     }
 
     // pure rule needs a start time for the shortage, this keeps it (0 = no shortage)

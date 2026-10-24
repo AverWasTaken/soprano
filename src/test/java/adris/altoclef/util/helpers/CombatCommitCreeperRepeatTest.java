@@ -25,7 +25,7 @@ public class CombatCommitCreeperRepeatTest {
     }
 
     private static Tick tick(long now, Foe target, boolean repeat, Foe... foes) {
-        return new Tick(now, 20, 0, 0, List.of(foes), target, Way.NONE, true, false, false, repeat);
+        return new Tick(now, 20, 0, 0, List.of(foes), target, Way.NONE, true, false, repeat);
     }
 
     @Test

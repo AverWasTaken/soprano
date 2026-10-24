@@ -49,13 +49,33 @@ public final class EndGear {
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
     // (weapon is a sword or an axe, whichever the bot made). food is the same count every other gate goes by (FoodPlan: raw meat
     // nobody can cook is worth its raw value, a smoker's pending batch counts), against the End's own floor
+    // the water bucket is in the gate again: the fall bucket (mlg) protects every fling and the void edge, and the dragon flings.
+    // bounded though, see wantsWater. the old collector wandered the whole budget away
     public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food) {
+        return missing(facts, state, cfg, bedsRequired, food, false);
+    }
+
+    // bucketGivenUp = this END_PREP attempt already spent its clock (or found no pond) on the water bucket
+    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food, boolean bucketGivenUp) {
         int bedGap = bedShortfall(facts, state, cfg, bedsRequired, false);
         boolean weapon = !ownedOrDropped(facts, state, cfg, WEAPONS);
-        boolean bucket = !ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET);
+        boolean water = wantsWater(ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET), facts.has(Items.BUCKET), bucketGivenUp);
         boolean pickaxe = !ownedOrDropped(facts, state, cfg, PICKAXES);
         int blocks = facts.buildBlocks() < cfg.minBuildBlocks ? cfg.buildBlocks : 0;
-        return new Gap(Math.max(0, bedGap), weapon, bucket, pickaxe, blocks, food.shortOfEndFloor(), armorToWear(facts));
+        return new Gap(Math.max(0, bedGap), weapon, water, pickaxe, blocks, food.shortOfEndFloor(), armorToWear(facts));
+    }
+
+    // 90 s of walking and scooping, then the attempt goes in without. counted in ticks the step actually ran
+    public static final int BUCKET_BUDGET_TICKS = 1800;
+
+    // the bucket gap: only when there is an empty bucket to fill (we do not craft one for this) and no water one held or
+    // lying in the End, and only until the attempt gives up on it
+    public static boolean wantsWater(boolean haveOrDropped, boolean emptyBucket, boolean givenUp) {
+        return !haveOrDropped && emptyBucket && !givenUp;
+    }
+
+    public static boolean bucketTimedOut(int ticksSpent) {
+        return ticksSpent >= BUCKET_BUDGET_TICKS;
     }
 
     // beds still to get: required (+1 for the spawn bed) minus what we hold and what lies in the End. <= 0 means a spare

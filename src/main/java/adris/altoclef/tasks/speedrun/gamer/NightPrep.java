@@ -29,6 +29,7 @@ public final class NightPrep {
     private final NightSleep.DayClock craftClock = new NightSleep.DayClock();
     private final BedCraft bedCraft = new BedCraft();
     private final NightSleep.ReadyLatch readyLatch = new NightSleep.ReadyLatch();
+    private final NightSleep.SheepHold sheepHold = new NightSleep.SheepHold();
 
     private Prep running;
     private Prep last = Prep.TOO_EARLY;
@@ -55,6 +56,7 @@ public final class NightPrep {
         woolTask = null;
         colour = -1;
         readyLatch.reset();
+        sheepHold.reset();
     }
 
     // the task to run instead of the phase this tick, or null
@@ -81,7 +83,8 @@ public final class NightPrep {
         boolean ready = readyLatch.see(bedReady.getAsBoolean(), gameTime, dayId);
         boolean sheep = false;
         if (!ready && wool < 3 && timeOfDay >= NightSleep.EARLIEST_WINDOW - woolLead) {
-            sheep = pickColour(mod, c) >= 0;
+            // (a hunt in progress stays a hunt, see wool(); it ends on 3 wool, the clock or the task, not on a sheep drifting out)
+            sheep = sheepHold.see(running == Prep.WOOL && woolTask != null, () -> pickColour(mod, c) >= 0, gameTime);
         }
         NightSleep.PrepInputs in = new NightSleep.PrepInputs(true, true, gate.phaseOk(), gate.busy(), gate.fighting(), gate.lowHealth(),
                 gate.nightSpent(), false, timeOfDay, ready, wool, BedCraft.wood(mod), ready ? 3 : BedCraft.woodNeeded(mod),
@@ -139,7 +142,8 @@ public final class NightPrep {
     }
 
     private Task wool(AltoClef mod, OverworldConfig c) {
-        int pick = pickColour(mod, c);
+        // (the colour of a hunt that is running is not picked again either: the sheep it was started for may be past the radius now)
+        int pick = running == Prep.WOOL && woolTask != null && colour >= 0 ? colour : pickColour(mod, c);
         if (pick < 0) {
             return null;
         }

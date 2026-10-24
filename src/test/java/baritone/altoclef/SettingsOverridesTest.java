@@ -214,4 +214,18 @@ public class SettingsOverridesTest {
         assertFalse(s.allowParkour.value);
         assertTrue(s.allowInventory.value);
     }
+
+    // the nether phase raises both placement penalties on its own behaviour level (fast mode takes the min of the two),
+    // and popping that level has to hand the user's fast mode cap back
+    @Test
+    public void bothPlacementPenaltiesComeBackTogether() {
+        s.blockPlacementPenalty.value = 10.0;
+        s.experimentalBlockPlacementPenalty.value = 5.0;
+        SettingsOverrides.put(s.blockPlacementPenalty, 20.0);
+        SettingsOverrides.put(s.experimentalBlockPlacementPenalty, 20.0);
+        assertEquals(20.0, s.experimentalBlockPlacementPenalty.value, 0);
+        SettingsOverrides.restoreAll();
+        assertEquals(10.0, s.blockPlacementPenalty.value, 0);
+        assertEquals(5.0, s.experimentalBlockPlacementPenalty.value, 0);
+    }
 }

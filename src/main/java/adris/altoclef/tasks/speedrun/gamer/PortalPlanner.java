@@ -30,7 +30,7 @@ public final class PortalPlanner {
         return Method.CAST;
     }
 
-    // the lava pool mold goes first when it is switched on and has not already given up. OBSIDIAN is the sticky "no lava
+    // the lava pool build goes first when it is switched on and has not already given up. OBSIDIAN is the sticky "no lava
     // way works" answer, so it never tries the pool again, and a failed pool hands over to the cast for the rest of the phase
     public static boolean usePool(boolean enabled, boolean poolFailed, Method current) {
         return enabled && !poolFailed && current != Method.OBSIDIAN;
@@ -41,16 +41,10 @@ public final class PortalPlanner {
     // wanders, so the clock is the only thing that ends a cast. sinceProgressSeconds = how long since a frame cell last
     // turned obsidian, castSeconds when none has: a cast still landing cells is not walked away from on the clock alone
     // (that mined a half done frame to build a new one), only once it has stalled too
+    // sawLava is false for a tracker that has never seen any and for a fetch that finds no source it can use (a lake 60 blocks
+    // down, every pool banned): both are "no lava", and the no lava line below is the way out
     public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
                                 boolean sawLava, boolean hasDiamondPickaxe) {
-        return decide(current, castSeconds, sinceProgressSeconds, cfg, sawLava, hasDiamondPickaxe, false);
-    }
-
-    // looped = the cast's pour and lava fetch kept undoing each other (CastLava.collectLoop). that is a cast going nowhere
-    // fast, so it doesn't wait out the clock, it just needs the pickaxe to have somewhere to go (and the frame to have
-    // stood still for a minute, a half built one is not worth mining for the obsidian)
-    public static Method decide(Method current, double castSeconds, double sinceProgressSeconds, OverworldConfig cfg,
-                                boolean sawLava, boolean hasDiamondPickaxe, boolean looped) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
@@ -58,10 +52,6 @@ public final class PortalPlanner {
         // wandering for a lake and the phase budget is what ends it
         if (!hasDiamondPickaxe) {
             return Method.CAST;
-        }
-        // a minute dry as well: a cast that still lands cells is slow, not looping
-        if (looped && sinceProgressSeconds >= 60) {
-            return Method.OBSIDIAN;
         }
         if (castSeconds >= cfg.castGiveUpMinutes * 60 && sinceProgressSeconds >= cfg.castStallSeconds) {
             return Method.OBSIDIAN;
@@ -119,14 +109,16 @@ public final class PortalPlanner {
         List<KitNeed> out = new ArrayList<>();
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
         // the same refill gap: 69 at the portal is not a trip
+        int entry = food.entryEnd(cfg.netherEntryFoodUnits);
         if (food.wantsRefill()) {
-            out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
-        } else if (fillUp && !food.covered() && food.shortOf(food.tripEnd())) {
+            out.add(new KitNeed(KitNeed.FOOD, Math.max(food.refillStop(), entry)));
+        } else if (fillUp && !food.coveredAt(entry) && food.shortOf(entry)) {
             // covered: the gap is raw meat that counts once the smoker is in reach. without it the count read 124 away from the
             // smoker and 132 next to it, so food and water took turns as the head every few seconds and neither finished
-            // last stop before a nether leg that eats 40-50 units: fill up to where a trip would, not just to the minimum. tripEnd
-            // is the minimum on a full bag, so this cannot ask for a pile there is no room for
-            out.add(new KitNeed(KitNeed.FOOD, food.tripEnd()));
+            // last stop before a nether leg that eats 8 units a minute in the fights, and the walk home from 40 is five minutes
+            // of overworld: fill up to netherEntryFoodUnits, not just to where a trip would. entryEnd is the minimum on a full
+            // bag, so this cannot ask for a pile there is no room for
+            out.add(new KitNeed(KitNeed.FOOD, entry));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {
@@ -156,6 +148,12 @@ public final class PortalPlanner {
         int blocks = build.want(f.buildBlocks(), cfg.netherEntryBlocksLow, cfg.netherEntryBlocks);
         if (blocks > 0) {
             out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
+        }
+        // raw meat does not cook in the nether, so it is the last thing done here, same spot as KitPlanner.plan. null when no
+        // station is feasible or a batch is already cooking (PortalPhase's leave visit waits that one out)
+        KitNeed cook = CookGate.need(f, cfg, endBeds);
+        if (cook != null) {
+            out.add(cook);
         }
         return out;
     }

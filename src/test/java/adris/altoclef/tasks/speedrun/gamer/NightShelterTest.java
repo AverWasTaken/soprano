@@ -274,6 +274,24 @@ public class NightShelterTest {
         assertFalse(NightSleepHook.standsDown(2, 100));
     }
 
+    @Test
+    public void aSwingFromTheGroundOnTheClimbIsAFight() {
+        NightSleepHook.clear();
+        NightSleepHook.clearSheltered();
+        NightSleepHook.set(NightSleep.Stage.LIFT, 100);
+        assertTrue(NightSleepHook.standsDown(20, 100));
+        NightSleepHook.noteMeleeHit(100);
+        assertFalse(NightSleepHook.standsDown(20, 150));
+        // past the window it stands down again, we climbed out of reach or it gave up
+        NightSleepHook.set(NightSleep.Stage.LIFT, 201);
+        assertTrue(NightSleepHook.standsDown(20, 201));
+        // up on top a hit does not end the stand down (an arrow, or the build reach), only low health does
+        NightSleepHook.set(NightSleep.Stage.BUILD, 210);
+        NightSleepHook.noteMeleeHit(210);
+        assertTrue(NightSleepHook.standsDown(20, 210));
+        NightSleepHook.clear();
+    }
+
     // ---- dark: the shared night rule
 
     @Test

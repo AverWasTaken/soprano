@@ -34,7 +34,7 @@ public record KitNeed(String catalogueName, int count) {
             // cobblestone is the one trip's worth of stone the gather mines before the stone crafts, it is mined not crafted
             // cooking stands at a smoker, not a table, so it never holds the table either
             // the diamond pick's dig is a mine like the iron, it never holds a table
-            case "iron_ingot", "diamond", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal", "cobblestone", COOK_SMOKER, COOK_FURNACE -> true;
+            case "iron_ingot", "diamond", "raw_gold", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal", "cobblestone", COOK_SMOKER, COOK_FURNACE -> true;
             default -> false;
         };
     }

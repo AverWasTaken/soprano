@@ -50,6 +50,16 @@ public final class ApproachRules {
 
     public static Plan plan(boolean childLive, boolean inRange, boolean shot, boolean ready, boolean safeToCancel, boolean tooClose,
                             boolean waitedLong, Policy policy) {
+        return plan(childLive, inRange, shot, ready, safeToCancel, tooClose, waitedLong, policy, false);
+    }
+
+    // comesToUs: the mob teleports onto us (an enderman), so out of reach we stand and let it, a walk after it is a path to
+    // wherever it just was. in reach with no clear shot is still the old rules' (a new angle)
+    public static Plan plan(boolean childLive, boolean inRange, boolean shot, boolean ready, boolean safeToCancel, boolean tooClose,
+                            boolean waitedLong, Policy policy, boolean comesToUs) {
+        if (comesToUs && !inRange) {
+            return Plan.WAIT;
+        }
         if (inRange && shot) {
             // (first, before the swing is even considered: a kill task that was told to swing for this long and has not is
             // stuck in the swing's own gates too, a hop waiting on a fall that never comes, and no path is what blocks it)

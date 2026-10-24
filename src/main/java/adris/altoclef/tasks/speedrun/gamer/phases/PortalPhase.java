@@ -23,7 +23,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
-import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
+import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.Optional;
 
 // gets us into the nether. first everything we want to hold when we leave (flint and steel, the buckets, water, armor
-// on, blocks, food), then the portal: the lava pool mold first (altoLavaPoolPortal), and when that gives up the old
+// on, blocks, food), then the portal: the lava bucket build first (altoLavaPoolPortal), and when that gives up the old
 // CAST (lava lake, no diamonds), and after that OBSIDIAN. the cast never finishes on its own when there is no lake, it
 // wanders, so a clock decides when to give up on it
 public class PortalPhase implements PhaseHandler {
@@ -62,8 +62,11 @@ public class PortalPhase implements PhaseHandler {
     private int bestCount;
     private long lastProgressTick = -1;
     private DefaultGoToDimensionTask cast;
-    private LavaPoolPortalTask pool;
+    private LPortalTask pool;
     private boolean poolFailed;
+    // the pool task was the one handed the wheel on the last tick. with no layout yet it is the only time a night may take the
+    // wheel here (read live, a layout can land between our tick and the night's question)
+    private boolean poolActive;
     // the pool was handed to the task at least once this try, so a timeout can tell "stuck building it" from "stuck in prep"
     private boolean poolStarted;
     private ConstructNetherPortalObsidianTask obsidian;
@@ -115,6 +118,7 @@ public class PortalPhase implements PhaseHandler {
         // the furnace we empty on the way out comes down with us, but never gets a batch of meat on the way
         furnaces.newExitPhase();
         gateDone = false;
+        poolActive = false;
         fillUpSince = -1;
         resetCastClock();
         // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
@@ -123,7 +127,7 @@ public class PortalPhase implements PhaseHandler {
         userAsync = async.value;
         SettingsOverrides.put(async, false);
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
-        pool = new LavaPoolPortalTask(ctx::log);
+        pool = new LPortalTask();
         poolStarted = false;
         if (ctx.attempt() <= 1) {
             ctx.state().portalPoolTimedOut = false;
@@ -163,8 +167,21 @@ public class PortalPhase implements PhaseHandler {
         ctx.save();
     }
 
+    // walking open ground for a spot is safe to leave for a night. everything after it is not: the build with a layout chosen, the
+    // cast (its clocks run on game time and a trip would eat them), the obsidian way, and a lit portal about to be entered
+    @Override
+    public boolean nightHold() {
+        return holdsNight(gateDone, poolActive && pool != null && !pool.failed() && pool.searching());
+    }
+
+    public static boolean holdsNight(boolean gateDone, boolean poolSearching) {
+        return gateDone && !poolSearching;
+    }
+
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        // (cleared first so any early return below reads as "hold", only the pool branch lifts it)
+        poolActive = false;
         // asked once a tick, it walks the tracked portal cells and reads the world for each
         Optional<BlockPos> portal = usablePortal(mod);
         boolean portalExists = portal.isPresent();
@@ -230,7 +247,7 @@ public class PortalPhase implements PhaseHandler {
             }
             ctx.progress("ready for the portal");
         }
-        // the mold goes first. when it gives up the cast clock starts from now, not from when the phase did
+        // the lava pool build goes first. when it gives up the cast clock starts from now, not from when the phase did
         if (f.dimension() == Dimension.OVERWORLD
                 && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
             if (portalExists) {
@@ -238,7 +255,8 @@ public class PortalPhase implements PhaseHandler {
                 return enter;
             }
             if (!pool.failed()) {
-                hudState = pool.searching() ? "Scanning for lava lakes" : "Building the portal on a lava pool";
+                poolActive = true;
+                hudState = pool.searching() ? "Looking for a spot for the portal" : "Building the portal with lava buckets";
                 poolStarted = true;
                 return pool;
             }
@@ -285,10 +303,10 @@ public class PortalPhase implements PhaseHandler {
             trackCastProgress(mod, ctx, f.gameTime());
         }
         double sinceProgressSeconds = lastProgressTick < 0 ? castSeconds : (f.gameTime() - lastProgressTick) / 20.0;
-        boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA);
+        boolean sawLava = mod.getBlockTracker().isTracking(Blocks.LAVA) && mod.getBlockTracker().anyFound(Blocks.LAVA)
+                && !cast.bucketPortalTask().lavaDrought();
         boolean diamondPick = f.count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
-        Method now = PortalPlanner.decide(before, castSeconds, sinceProgressSeconds, ctx.cfg().overworld, sawLava, diamondPick,
-                cast.bucketPortalTask().castLooped());
+        Method now = PortalPlanner.decide(before, castSeconds, sinceProgressSeconds, ctx.cfg().overworld, sawLava, diamondPick);
         if (now != before) {
             ctx.state().portalMethod = now.name();
             ctx.log("giving up on casting, going the obsidian way");

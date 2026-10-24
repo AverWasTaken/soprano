@@ -26,6 +26,22 @@ public final class NightSleepHook {
 
     public static void clear() {
         stamp = null;
+        meleeAt = Long.MIN_VALUE;
+    }
+
+    // a mob's own swing landing on us, not an arrow. the lift starts at the foot of the pillar and the first blocks are still in
+    // a zombie's reach: being hit there means we are not up yet, so the stand down waits this long after the last one. 5 s, a
+    // zombie swings every second while it can reach us
+    public static final long MELEE_LIFT_TICKS = 100;
+    private static volatile long meleeAt = Long.MIN_VALUE;
+
+    public static void noteMeleeHit(long gameTime) {
+        meleeAt = gameTime;
+    }
+
+    static boolean meleeHitLately(long gameTime) {
+        long at = meleeAt;
+        return at != Long.MIN_VALUE && gameTime >= at && gameTime - at <= MELEE_LIFT_TICKS;
     }
 
     public static NightSleep.Stage stage(long gameTime) {
@@ -43,6 +59,11 @@ public final class NightSleepHook {
             return true;
         }
         NightSleep.Stage now = stage(gameTime);
+        // (still on the climb and something is hitting us from the ground: that zombie is a fight, not the reason we are up here.
+        // twenty to five with no swing back was the alternative)
+        if (now == NightSleep.Stage.LIFT && meleeHitLately(gameTime)) {
+            return false;
+        }
         return now != null && NightSleep.standsDown(now, health);
     }
 

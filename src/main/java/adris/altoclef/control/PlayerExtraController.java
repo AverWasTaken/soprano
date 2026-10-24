@@ -226,7 +226,8 @@ public class PlayerExtraController {
     // (see CritTiming.LEAD_TICKS) and has to be steered all the way down, so those ticks are worth a call. false whenever
     // baritone is walking, then nobody jumps and the old "wait for full" rules are the whole story
     public boolean wantsCritTick() {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()
+                || _mod.getMobDefenseChain().creeperStepActive()) {
             return false;
         }
         // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
@@ -246,9 +247,11 @@ public class PlayerExtraController {
     // cooldown is full and we are on the ground, falling, in water, or rising with no crit hop in flight
     public boolean melee(Entity entity) {
         LocalPlayer player = _mod.getPlayer();
+        // a creeper step owns the keys: no hop, no sprint cancel, no walking up. a plain swing is all that is left of the module
+        boolean stepping = _mod.getMobDefenseChain().creeperStepActive();
         // pre 1.9 the scale is faked full, so CritTiming would see a charged swing every tick and hop at everything. plain
         // clicking it is
-        if (LegacyCombat.active() || !(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
+        if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
             _crit.reset();
             return plainSwing(player, entity);
         }
@@ -384,7 +387,7 @@ public class PlayerExtraController {
     // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
     // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getMobDefenseChain().creeperStepActive()) {
             return false;
         }
         if (critInFlight()) {

@@ -12,28 +12,29 @@ public class NetherRestockTest {
     public void aFullBagDoesNotRestock() {
         NetherRestock r = new NetherRestock();
         assertFalse(r.update(64, false, true, false, 0));
-        assertFalse(r.update(30, false, true, false, 1));
+        assertFalse(r.update(40, false, true, false, 1));
     }
 
     @Test
     public void lowBagStartsAndHoldsUntilTheTarget() {
         NetherRestock r = new NetherRestock();
         assertTrue(r.update(7, false, true, false, 0));
-        // 30 is above the low bar but the dig is not over until the target
-        assertTrue(r.update(30, false, true, false, 10));
+        // 40 is above the low bar but the dig is not over until the target
+        assertTrue(r.update(40, false, true, false, 10));
         assertTrue(r.update(63, false, true, false, 20));
         assertFalse(r.update(64, false, true, false, 30));
         assertFalse(r.isActive());
     }
 
     @Test
-    public void giveUpRestocksOnAHigherBar() {
+    public void giveUpNeverRestocksOnALowerBarThanWalking() {
+        assertTrue(NetherRestock.GIVE_UP_LOW >= NetherRestock.LOW);
         NetherRestock r = new NetherRestock();
-        // 20 is fine while walking, but a give-up with that little left is suspicious
-        assertFalse(r.update(20, false, true, false, 0));
-        assertTrue(r.update(20, true, true, false, 1));
+        assertTrue(r.update(NetherRestock.LOW - 1, false, true, false, 0));
+        NetherRestock giveUp = new NetherRestock();
+        assertTrue(giveUp.update(NetherRestock.GIVE_UP_LOW - 1, true, true, false, 0));
         NetherRestock plenty = new NetherRestock();
-        assertFalse(plenty.update(40, true, true, false, 0));
+        assertFalse(plenty.update(NetherRestock.GIVE_UP_LOW, true, true, false, 0));
     }
 
     @Test
@@ -49,46 +50,132 @@ public class NetherRestockTest {
     @Test
     public void aNormalFinishCoolsDownToo() {
         NetherRestock r = new NetherRestock();
-        assertTrue(r.update(2, false, true, false, 0));
+        assertTrue(r.update(10, true, true, false, 0));
         assertFalse(r.update(64, false, true, false, 10));
         // the bag drops straight back under the bar (a bridge ate it), still no new restock
-        assertFalse(r.update(2, false, true, false, 11));
-        assertTrue(r.update(2, false, true, false, 10 + NetherRestock.COOLDOWN_SECONDS));
+        assertFalse(r.update(10, true, true, false, 11));
+        assertTrue(r.update(10, true, true, false, 10 + NetherRestock.COOLDOWN_SECONDS));
     }
 
     @Test
     public void exhaustedEndsItWithACooldown() {
         NetherRestock r = new NetherRestock();
-        assertTrue(r.update(2, false, true, false, 0));
-        assertTrue(r.update(2, false, true, true, 5));
+        assertTrue(r.update(10, true, true, false, 0));
+        assertTrue(r.update(10, true, true, true, 5));
         // a blip that clears is forgiven
-        assertTrue(r.update(2, false, true, false, 6));
-        assertTrue(r.update(2, false, true, true, 7));
-        assertFalse(r.update(2, false, true, true, 7 + NetherRestock.EXHAUSTED_SECONDS));
-        assertFalse(r.update(2, false, true, false, 8 + NetherRestock.EXHAUSTED_SECONDS));
-        assertTrue(r.update(2, false, true, false, 7 + NetherRestock.EXHAUSTED_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+        assertTrue(r.update(10, true, true, false, 6));
+        assertTrue(r.update(10, true, true, true, 7));
+        assertFalse(r.update(10, true, true, true, 7 + NetherRestock.EXHAUSTED_SECONDS));
+        assertFalse(r.update(10, true, true, false, 8 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(r.update(10, true, true, false, 7 + NetherRestock.EXHAUSTED_SECONDS + NetherRestock.COOLDOWN_SECONDS));
     }
 
     @Test
-    public void bandKeepsToTheStartingHeightAndRadius() {
+    public void bandKeepsToAWindowAroundTheStartingHeightAndRadius() {
+        BlockPos o = new BlockPos(100, 70, 100);
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(101, 70, 100)));
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(100, 74, 100)));
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(100, 64, 101)));
+        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(100, 75, 100)));
+        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(100, 63, 100)));
+        // radius 48 flat
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(148, 70, 100)));
+        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(149, 70, 100)));
+    }
+
+    @Test
+    public void aLedgeSeesTheRockBelowItAndNotTheCliffsFarAbove() {
+        BlockPos ledge = new BlockPos(0, 70, 0);
+        assertTrue(NetherRestock.inRestockBand(ledge, new BlockPos(3, 66, 2)));
+        assertFalse(NetherRestock.inRestockBand(ledge, new BlockPos(3, 107, 2)));
+        assertFalse(NetherRestock.inRestockBand(ledge, new BlockPos(3, 113, 2)));
+    }
+
+    @Test
+    public void onlyTheBlockUnderTheFeetIsOutOfTheBandBelowUs() {
         BlockPos o = new BlockPos(100, 70, 100);
         assertFalse(NetherRestock.inRestockBand(o, new BlockPos(100, 69, 100)));
-        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(133, 70, 100)));
-        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(101, 70, 100)));
-        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(132, 90, 100)));
-        // the floor layer is out even away from where we stood: it can be the bridge we walk on
-        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(102, 69, 100)));
-        assertFalse(NetherRestock.inRestockBand(o, new BlockPos(105, 68, 100)));
+        // the rest of the floor around is in, a bridge over lava is kept safe by the lava reject and not by the band
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(101, 69, 100)));
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(100, 69, 99)));
+        assertTrue(NetherRestock.inRestockBand(o, new BlockPos(100, 68, 100)));
+    }
+
+    @Test
+    public void aWallAtFeetLevelIsFairGame() {
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 70, 100), false));
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 72, 100), false));
+    }
+
+    @Test
+    public void aFloorBlockNeedsSolidUnderIt() {
+        assertTrue(NetherRestock.keepsFooting(70, new BlockPos(101, 69, 100), true));
+        // a bridge block with air under it is the path we are walking on
+        assertFalse(NetherRestock.keepsFooting(70, new BlockPos(101, 69, 100), false));
+    }
+
+    @Test
+    public void footingFollowsTheLiveFeetNotTheStartingHeight() {
+        BlockPos row = new BlockPos(101, 70, 100);
+        // dy 0 from where the dig began was a wall, one step up it is floor
+        assertTrue(NetherRestock.keepsFooting(70, row, false));
+        assertFalse(NetherRestock.keepsFooting(71, row, false));
+        assertTrue(NetherRestock.keepsFooting(71, row, true));
+    }
+
+    @Test
+    public void anEmptyBagDigsAgainWithoutWaitingOutTheCooldown() {
+        // an empty bag that dug a dry spot is not parked for two minutes
+        NetherRestock dry = new NetherRestock();
+        assertTrue(dry.update(0, false, true, true, 0));
+        assertTrue(dry.update(0, false, true, true, 1));
+        assertFalse(dry.update(0, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(dry.update(0, false, true, true, 2 + NetherRestock.EXHAUSTED_SECONDS));
+    }
+
+    @Test
+    public void anEmptyBagThatRanOutTheClockStillWaitsOutTheCooldown() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(2, false, true, false, 0));
+        assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS));
+        assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + 1));
+        assertTrue(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+    }
+
+    // the empty bag line: at EMPTY the cooldown holds, one under it a dry end digs again right away
+    @Test
+    public void theCooldownSkipStopsAtTheEmptyBagLine() {
+        NetherRestock atLine = new NetherRestock();
+        assertTrue(atLine.update(NetherRestock.EMPTY, false, true, true, 0));
+        assertTrue(atLine.update(NetherRestock.EMPTY, false, true, true, 1));
+        assertFalse(atLine.update(NetherRestock.EMPTY, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertFalse(atLine.update(NetherRestock.EMPTY, false, true, false, 2 + NetherRestock.EXHAUSTED_SECONDS));
+        NetherRestock under = new NetherRestock();
+        assertTrue(under.update(NetherRestock.EMPTY - 1, false, true, true, 0));
+        assertTrue(under.update(NetherRestock.EMPTY - 1, false, true, true, 1));
+        assertFalse(under.update(NetherRestock.EMPTY - 1, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(under.update(NetherRestock.EMPTY - 1, false, true, false, 2 + NetherRestock.EXHAUSTED_SECONDS));
+    }
+
+    // LOW is 32 now, so a bag of 10 is low but not empty: a dry end there must not turn into a dig every few seconds
+    @Test
+    public void aLowButNotEmptyBagThatEndedDryWaitsOutTheCooldown() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(NetherRestock.LOW - 1, false, true, true, 0));
+        assertTrue(r.update(NetherRestock.LOW - 1, false, true, true, 1));
+        assertFalse(r.update(NetherRestock.LOW - 1, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertFalse(r.update(NetherRestock.LOW - 1, false, true, false, 2 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(r.update(NetherRestock.LOW - 1, false, true, false, 1 + NetherRestock.EXHAUSTED_SECONDS + NetherRestock.COOLDOWN_SECONDS));
     }
 
     @Test
     public void aDigThatGoesNowhereStopsAndCoolsDown() {
         NetherRestock r = new NetherRestock();
-        assertTrue(r.update(2, false, true, false, 0));
-        assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS));
-        // still empty, but we just tried
-        assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + 10));
-        assertTrue(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+        assertTrue(r.update(10, true, true, false, 0));
+        assertFalse(r.update(10, true, true, false, NetherRestock.MAX_SECONDS));
+        // still short, but we just tried
+        assertFalse(r.update(10, true, true, false, NetherRestock.MAX_SECONDS + 10));
+        assertTrue(r.update(10, true, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
     }
 
     @Test
@@ -102,26 +189,36 @@ public class NetherRestockTest {
         assertEquals(2, r.exhaustedEnds());
         // one that ends on the clock breaks the run
         t += NetherRestock.COOLDOWN_SECONDS;
-        assertTrue(r.update(2, false, true, false, t));
-        assertFalse(r.update(2, false, true, false, t + NetherRestock.MAX_SECONDS));
+        assertTrue(r.update(10, true, true, false, t));
+        assertFalse(r.update(10, true, true, false, t + NetherRestock.MAX_SECONDS));
         assertEquals(0, r.exhaustedEnds());
     }
 
     // starts a restock at t and feeds it "nothing left to dig" until it gives up, returns when it did
     private static double dryRestock(NetherRestock r, double t) {
-        assertTrue(r.update(2, false, true, true, t));
+        assertTrue(r.update(10, true, true, true, t));
         // the first exhausted tick starts the grace, the end comes EXHAUSTED_SECONDS after it
-        assertTrue(r.update(2, false, true, true, t + 1));
-        assertFalse(r.update(2, false, true, true, t + 1 + NetherRestock.EXHAUSTED_SECONDS));
+        assertTrue(r.update(10, true, true, true, t + 1));
+        assertFalse(r.update(10, true, true, true, t + 1 + NetherRestock.EXHAUSTED_SECONDS));
         return t + 1 + NetherRestock.EXHAUSTED_SECONDS;
     }
 
     @Test
     public void aFullBagEndIsNotADryEnd() {
         NetherRestock r = new NetherRestock();
-        assertTrue(r.update(2, false, true, true, 0));
-        assertTrue(r.update(2, false, true, true, 1));
+        assertTrue(r.update(10, true, true, true, 0));
+        assertTrue(r.update(10, true, true, true, 1));
         assertFalse(r.update(NetherRestock.TARGET, false, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
         assertEquals(0, r.exhaustedEnds());
+    }
+
+    @Test
+    public void aTopUpAskStartsOnAnyBagUnderTheTarget() {
+        NetherRestock r = new NetherRestock();
+        // 40 would never start on the sweep's bars
+        assertTrue(r.update(40, NetherRestock.TARGET, true, false, 0));
+        assertFalse(r.update(NetherRestock.TARGET, NetherRestock.TARGET, true, false, 10));
+        NetherRestock full = new NetherRestock();
+        assertFalse(full.update(NetherRestock.TARGET, NetherRestock.TARGET, true, false, 0));
     }
 }

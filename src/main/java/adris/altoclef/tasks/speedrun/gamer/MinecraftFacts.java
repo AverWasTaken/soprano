@@ -6,6 +6,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.DoStuffInContainerTask;
 import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.resources.CollectFoodTask;
+import adris.altoclef.trackers.SimpleChunkTracker;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StationHook;
@@ -26,13 +27,16 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.chunk.EmptyLevelChunk;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 // GamerFacts for the real game. refresh() is called once per tick by the engine and walks the inventory once, everything
@@ -73,6 +77,10 @@ public final class MinecraftFacts implements GamerFacts {
     private RunState.Pos stationAt;
     private int buildBlocks;
     private boolean nearSurface;
+    // a gold ore in the loaded chunks near us, looked at every few seconds and only while the plan could use it (GoldHunt)
+    private boolean goldOreKnown;
+    private long goldLookAt = Long.MIN_VALUE;
+    private static final int GOLD_LOOK_TICKS = 40;
     private boolean bagFull;
     private int fingerprint;
     private int x;
@@ -94,6 +102,44 @@ public final class MinecraftFacts implements GamerFacts {
         }
     }
 
+    // the section palettes say "no gold here" for nearly every section, so this is a handful of cheap checks per look
+    private void lookForGold(Player player) {
+        if (dimension != Dimension.OVERWORLD || !GoldHunt.owed(this)) {
+            goldOreKnown = false;
+            goldLookAt = Long.MIN_VALUE;
+            return;
+        }
+        if (gameTime < goldLookAt + GOLD_LOOK_TICKS && gameTime >= goldLookAt) {
+            return;
+        }
+        goldLookAt = gameTime;
+        goldOreKnown = false;
+        int r = GoldHunt.RADIUS;
+        int cx0 = (x - r) >> 4;
+        int cx1 = (x + r) >> 4;
+        int cz0 = (z - r) >> 4;
+        int cz1 = (z + r) >> 4;
+        for (int cx = cx0; cx <= cx1 && !goldOreKnown; cx++) {
+            for (int cz = cz0; cz <= cz1 && !goldOreKnown; cz++) {
+                LevelChunk chunk = mod.getWorld().getChunk(cx, cz);
+                if (chunk instanceof EmptyLevelChunk) {
+                    continue;
+                }
+                // only the sections inside the height box: the finder goes bottom up, so a chunk with deepslate gold at the
+                // bottom would hide the vein at our own height. sections[i] covers world y minY + i * 16
+                LevelChunkSection[] sections = chunk.getSections();
+                int minY = chunk.getMinY();
+                int lo = Math.max(0, Math.floorDiv(y - r - minY, 16));
+                int hi = Math.min(sections.length - 1, Math.floorDiv(y + r - minY, 16));
+                if (lo > hi) {
+                    continue;
+                }
+                goldOreKnown = SimpleChunkTracker.findInSections(Arrays.copyOfRange(sections, lo, hi + 1), minY + lo * 16,
+                        cx << 4, cz << 4, s -> s.is(Blocks.GOLD_ORE) || s.is(Blocks.DEEPSLATE_GOLD_ORE)) != null;
+            }
+        }
+    }
+
     // false when there is no player to read (loading screen), the old numbers stay
     public boolean refresh() {
         Player player = mod.getPlayer();
@@ -112,6 +158,7 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
+        lookForGold(player);
         // the junk scan only runs with every slot taken, which is rare
         bagFull = !mod.getItemStorage().hasEmptyInventorySlot() && StorageHelper.getJunkSlot(mod).isEmpty();
         if (state != null) {
@@ -360,8 +407,8 @@ public final class MinecraftFacts implements GamerFacts {
             } else if (kind != FoodHelper.Kind.NOT_FOOD) {
                 junk += item.components().get(DataComponents.FOOD).nutrition() * n;
             }
-            // same rule as StorageHelper.getBuildingMaterialCount: throwaway blocks, minus the ones that fall over
-            if (item instanceof BlockItem && item != Items.GRAVEL && item != Items.SAND && AltoSettings.isThrowaway(item)) {
+            // same rule as StorageHelper.getBuildingMaterialCount and the nether restock: AltoSettings.isBuildBlock
+            if (AltoSettings.isBuildBlock(item) && AltoSettings.isThrowaway(item)) {
                 build += n;
             }
         }
@@ -490,6 +537,16 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean earlyIronPick() {
         return baritone.Baritone.settings().altoEarlyIronPick.value;
+    }
+
+    @Override
+    public boolean goldHuntGaveUp() {
+        return state != null && state.goldHuntGaveUp;
+    }
+
+    @Override
+    public boolean goldOreKnown() {
+        return goldOreKnown;
     }
 
     @Override

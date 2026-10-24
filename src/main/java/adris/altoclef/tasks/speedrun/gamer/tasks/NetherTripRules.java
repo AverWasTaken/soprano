@@ -25,8 +25,41 @@ public final class NetherTripRules {
     // long or it is not getting there
     public static final int PORTAL_PROGRESS_BLOCKS = 8;
     public static final int PORTAL_PROGRESS_SECONDS = 60;
+    // the nether walk gets longer: going round a lava ocean is legit, a bridge that went nowhere is not
+    public static final int WALK_PROGRESS_SECONDS = 120;
+
+    // the trip goes into the nether with something to eat: under FOOD_MIN we stop for a meal first, the food task works up to
+    // FOOD_WANTED, and after FOOD_SECONDS of it the trip goes with whatever it found (any food at all) or does not go
+    public static final int FOOD_MIN = 20;
+    public static final int FOOD_WANTED = 30;
+    public static final int FOOD_SECONDS = 120;
+    // and with the hearts to survive the first volley on the other side. regen without food is slow, so the wait is capped
+    public static final float HEAL_TO = 18;
+    public static final int HEAL_SECONDS = 60;
+    // in the nether: under this, with nobody shooting at us, the walk stands still and heals (up to HEAL_TO). the cap is for
+    // the whole trip, not per hold. food at 0 means regen is not happening and a minute of standing is all it would get
+    public static final float WALK_HEAL_BELOW = 12;
+    public static final int WALK_HEAL_SECONDS = 60;
+    // and at this hp, with a mob having hit us this lately, the walk is over: heading for the pile at 8 hp under fire is the death
+    public static final float ABORT_HP = 8;
+    public static final long ABORT_HIT_TICKS = 200;
 
     private NetherTripRules() {
+    }
+
+    // the nether walk stands still to heal: hurt, no shooter has a line on us (a standing target is a dead one), and the
+    // minute is not used up. holding = we are already standing for it, which keeps going to HEAL_TO instead of flip-flopping
+    // at the line every time a heart comes back
+    public static boolean walkHold(float health, boolean shooterSees, boolean holding, long heldTicks) {
+        if (shooterSees || heldTicks >= WALK_HEAL_SECONDS * 20L) {
+            return false;
+        }
+        return health < (holding ? HEAL_TO : WALK_HEAL_BELOW);
+    }
+
+    // the walk is over: low and a mob hit us a moment ago. ticksSinceHit is how long since the last hit from a mob or an arrow
+    public static boolean walkAbort(float health, long ticksSinceHit) {
+        return health <= ABORT_HP && ticksSinceHit <= ABORT_HIT_TICKS;
     }
 
     // why we died, as far as the pile cares: lava eats item entities and the void takes them
@@ -48,6 +81,10 @@ public final class NetherTripRules {
         BLOCKS,
         // no stone pick on us: get one, the way down to the portal and the netherrack on the far side both want it
         PICK,
+        // under FOOD_MIN food on us: a meal first, in the overworld
+        FOOD,
+        // hurt: wait for the hearts, in the overworld
+        HEAL,
         // to the home portal and through it
         PORTAL,
         // across the nether to the pile
@@ -127,6 +164,13 @@ public final class NetherTripRules {
         return now - lastSeenTick > 40;
     }
 
+    // a restock dig is not time the trip spent walking: ticks to push the nether arrival back by, 0 when the dig was not
+    // running last tick either (first tick of a dig, or a fight in between)
+    public static long restockCredit(long lastDigTick, long now) {
+        long gap = now - lastDigTick;
+        return gap > 0 && gap <= 40 ? gap : 0;
+    }
+
     // the portal walk got far enough in since the mark to count as moving
     public static boolean closedIn(double markDistance, double distance) {
         return markDistance - distance >= PORTAL_PROGRESS_BLOCKS;
@@ -144,15 +188,23 @@ public final class NetherTripRules {
     }
 
     // everything one decision looks at. tripTicks is game time since we reached the nether (netherTicks, 0 before that),
-    // stageTicks since this stage began, stuckTicks since the portal walk last closed PORTAL_PROGRESS_BLOCKS
+    // stageTicks since this stage began, stuckTicks since the portal walk (or the nether walk, with its own bar) last closed PORTAL_PROGRESS_BLOCKS
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                          double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
-                         boolean hasPick, long stuckTicks) {
+                         boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit) {
         // the common shape: a pick in the bag and a walk that is going fine
         public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                       double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits) {
             this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
                     toWear, limits, true, 0);
+        }
+
+        // and a body that needs nothing: fed, full, nobody has hit us
+        public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
+                      double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
+                      boolean hasPick, long stuckTicks) {
+            this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
+                    toWear, limits, hasPick, stuckTicks, 100, 20, Long.MAX_VALUE);
         }
     }
 
@@ -174,6 +226,8 @@ public final class NetherTripRules {
         return switch (st) {
             case BLOCKS -> blocks(in);
             case PICK -> pick(in);
+            case FOOD -> food(in);
+            case HEAL -> heal(in);
             case PORTAL -> portal(in);
             case WALK -> walk(in);
             case RECOVER -> recover(in);
@@ -188,7 +242,7 @@ public final class NetherTripRules {
         }
         // short of the count after a minute is still worth going with: the blocks only make the walk safer
         if (in.buildBlocks() >= in.limits().blocksWanted() || in.stageTicks() > in.limits().blocksTicks()) {
-            return new Step(in.hasPick() ? Stage.PORTAL : Stage.PICK, null, false);
+            return new Step(in.hasPick() ? afterGear(in) : Stage.PICK, null, false);
         }
         return stay(Stage.BLOCKS);
     }
@@ -200,12 +254,46 @@ public final class NetherTripRules {
             return giveUp(in, "not in the overworld to get a pickaxe");
         }
         if (in.hasPick()) {
-            return new Step(Stage.PORTAL, null, false);
+            return new Step(afterGear(in), null, false);
         }
         if (in.stageTicks() > in.limits().pickTicks()) {
             return giveUp(in, "no pickaxe in time");
         }
         return stay(Stage.PICK);
+    }
+
+    // the overworld gear stages are done: a meal if the bag is short, hearts if we are hurt, then the portal
+    private static Stage afterGear(Inputs in) {
+        return in.foodUnits() < FOOD_MIN ? Stage.FOOD : afterFood(in);
+    }
+
+    private static Stage afterFood(Inputs in) {
+        return in.health() < HEAL_TO ? Stage.HEAL : Stage.PORTAL;
+    }
+
+    // the food task works up to FOOD_WANTED. out of time with something to eat is a go (a short bag beats none: the bite chain
+    // and the heal hold both need it), out of time with nothing is a trip into the nether to starve, so it does not go
+    private static Step food(Inputs in) {
+        if (in.dim() != Dimension.OVERWORLD) {
+            return giveUp(in, "not in the overworld to get food");
+        }
+        if (in.foodUnits() >= FOOD_WANTED) {
+            return new Step(afterFood(in), null, false);
+        }
+        if (in.stageTicks() > FOOD_SECONDS * 20L) {
+            return in.foodUnits() > 0 ? new Step(afterFood(in), null, false) : giveUp(in, "no food for the trip");
+        }
+        return stay(Stage.FOOD);
+    }
+
+    private static Step heal(Inputs in) {
+        if (in.dim() != Dimension.OVERWORLD) {
+            return giveUp(in, "not in the overworld to heal");
+        }
+        if (in.health() >= HEAL_TO || in.stageTicks() > HEAL_SECONDS * 20L) {
+            return new Step(Stage.PORTAL, null, false);
+        }
+        return stay(Stage.HEAL);
     }
 
     private static Step portal(Inputs in) {
@@ -233,6 +321,12 @@ public final class NetherTripRules {
         }
         if (in.pileDistance() <= ARRIVE_BLOCKS) {
             return new Step(Stage.RECOVER, null, false);
+        }
+        if (walkAbort(in.health(), in.ticksSinceHit())) {
+            return new Step(Stage.HOME, "too hurt to keep walking", false);
+        }
+        if (in.stuckTicks() > WALK_PROGRESS_SECONDS * 20L) {
+            return giveUp(in, "no closer to the pile");
         }
         return stay(Stage.WALK);
     }

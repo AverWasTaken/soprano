@@ -298,4 +298,11 @@ public class StrongholdPhasesTest {
         assertEquals(GamerPhase.ROOM.hud(), room.hud());
         assertEquals(GamerPhase.OPEN.hud(), open.hud());
     }
+
+    @Test
+    public void movingRetriesAreCapped() {
+        assertTrue(StrongholdRules.mayRetryMoving(0));
+        assertTrue(StrongholdRules.mayRetryMoving(1));
+        assertFalse(StrongholdRules.mayRetryMoving(2));
+    }
 }

@@ -218,4 +218,28 @@ public class ApproachRulesTest {
         assertTrue(ApproachRules.wanderWhenNoTarget(true, false));
         assertTrue(ApproachRules.wanderWhenNoTarget(true, true));
     }
+
+    // an enderman teleports onto us, so the walk after it is a path to wherever it just was
+    @Test
+    public void anEndermanOutOfReachIsWaitedForNotApproached() {
+        for (ApproachRules.Policy policy : ApproachRules.Policy.values()) {
+            // out of reach, no shot: the old rules walk in
+            assertEquals(Plan.APPROACH, ApproachRules.plan(false, false, false, true, true, false, false, policy, false));
+            assertEquals(Plan.WAIT, ApproachRules.plan(false, false, false, true, true, false, false, policy, true));
+            // a walk that is already going is let go of too
+            assertEquals(Plan.WAIT, ApproachRules.plan(true, false, false, true, true, false, false, policy, true));
+            // and the same standing when baritone is mid step
+            assertEquals(Plan.WAIT, ApproachRules.plan(false, false, false, true, false, false, false, policy, true));
+            // in reach with no clear shot it is the old rules' business, a new angle
+            assertEquals(ApproachRules.plan(false, true, false, true, true, false, false, policy),
+                    ApproachRules.plan(false, true, false, true, true, false, false, policy, true));
+        }
+    }
+
+    @Test
+    public void anEndermanInReachIsStillSwungAt() {
+        assertEquals(Plan.INTERACT, ApproachRules.plan(false, true, true, true, true, false, false, ApproachRules.Policy.KILL, true));
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, true, false, true, ApproachRules.Policy.KILL, true));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, false, true, false, false, ApproachRules.Policy.KILL, true));
+    }
 }

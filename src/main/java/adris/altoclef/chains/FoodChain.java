@@ -51,6 +51,8 @@ public class FoodChain extends SingleTaskChain {
     private int _fillTo = 20;
     // what we are chewing and how things stood when the bite started, so the log line can say what a meal was for
     private Item _bite;
+    // the food the current meal picked, see FoodSelector.latch
+    private Item _mealFood;
     private int _biteCount = -1;
     private int _biteHunger;
     private float _biteSaturation;
@@ -171,6 +173,11 @@ public class FoodChain extends SingleTaskChain {
         }
     }
 
+    // ticks since a mob or an arrow last hit us, Integer.MAX_VALUE for never. the nether death trip's walk reads it
+    public int ticksSinceBodyHit(AltoClef mod) {
+        return hitAge(mod);
+    }
+
     private int hitAge(AltoClef mod) {
         if (_hitAt == Long.MIN_VALUE) return BiteRules.NO_HIT;
         return (int) Math.max(Math.min(mod.getWorld().getGameTime() - _hitAt, BiteRules.NO_HIT - 1L), Integer.MIN_VALUE);
@@ -195,6 +202,8 @@ public class FoodChain extends SingleTaskChain {
         //Debug.logInternal("EATING " + toUse.getTranslationKey() + " : " + test);
         _isTryingToEat = true;
         _requestFillup = true;
+        // (the gapple meal is not a pick, it never gets latched)
+        if (_mealFood == null && _cachedPerfectFood.isPresent() && _cachedPerfectFood.get() == food) _mealFood = food;
         if (food != _bite) {
             snapshotBite(mod, food);
         }
@@ -309,8 +318,9 @@ public class FoodChain extends SingleTaskChain {
         if (count < _biteCount) {
             Debug.logInternal(String.format("food: ate %s at hunger %d (saturation %.1f, hp %.1f)",
                     BuiltInRegistries.ITEM.getKey(_bite).getPath(), _biteHunger, _biteSaturation, _biteHealth));
-            // the next one in a fillup starts from here
+            // the next one in a fillup starts from here, and picks its food fresh
             snapshotBite(mod, _bite);
+            _mealFood = null;
         } else if (count > _biteCount) {
             // picked one up mid bite, or the stack would have to drop twice to show the bite
             _biteCount = count;
@@ -318,6 +328,7 @@ public class FoodChain extends SingleTaskChain {
         if (!_isTryingToEat) {
             _bite = null;
             _biteCount = -1;
+            _mealFood = null;
         }
     }
 
@@ -333,8 +344,8 @@ public class FoodChain extends SingleTaskChain {
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
         // before, "needs to eat" stayed true through a fall or a lava dip and no watchdog could fire
         _eatBlocked = eatingBlocked(mod);
-        // blocking is NOT in the shared list: mob defense drops the shield when needsToEat() is true, so counting it
-        // there would make a shielding bot unable to ever get hungry enough to put the shield down
+        // blocking is NOT in the shared list (the creeper and projectile shields are, they ask this chain to stay off the key): counting it
+        // would make a shielding bot unable to ever get hungry enough to put the shield down
         if (_eatBlocked) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
@@ -350,7 +361,8 @@ public class FoodChain extends SingleTaskChain {
         if (shouldRecalculateFood(mod)) {
             Pair<Integer, Optional<Item>> calculation = calculateFood(mod);
             _cachedFoodScore = calculation.first();
-            _cachedPerfectFood = calculation.second();
+            _cachedPerfectFood = FoodSelector.latch(calculation.second(), _mealFood, _isTryingToEat,
+                    _mealFood == null ? 0 : mod.getItemStorage().getItemCount(_mealFood));
             // a last resort food (rotten flesh while starving) counts as having food but adds no score
             _hasFood = _cachedPerfectFood.isPresent();
             _foodCalcAge = 0;
@@ -438,6 +450,9 @@ public class FoodChain extends SingleTaskChain {
         if (!Baritone.settings().altoAutoEat.value) return true;
         // a lit creeper with nowhere to run: the shield or the cap has the hands
         if (mod.getMobDefenseChain().creeperBoxedIn()) return true;
+        // a fireball or an arrow is on its way and the shield is up for it: a bite swaps the food into the hand and lets go of the use
+        // key, and that is the shield gone
+        if (mod.getMobDefenseChain().projectileDodging(mod)) return true;
         // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
         if (mod.getPlayer().isInLava()) return true;
         // We're in danger, don't eat now!!

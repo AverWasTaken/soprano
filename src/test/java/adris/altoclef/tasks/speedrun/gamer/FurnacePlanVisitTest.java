@@ -141,6 +141,17 @@ public class FurnacePlanVisitTest {
         assertFalse("already tried this visit", FurnacePlan.mayFeed(true, Mode.NORMAL, true));
     }
 
+
+    @Test
+    public void aFoodLeaveStandsByForTheWholeCookAndStillGivesUpAtTheCap() {
+        long all = FurnacePlan.FOOD_LEAVE_TICKS;
+        Look big = remaining(look(), 6000);
+        assertEquals(Act.WAIT, FurnacePlan.atStation(big, Mode.TAKE_ALL, all, CAP, false, false, () -> true));
+        assertEquals("a normal leave takes the raw meat back", Act.TAKE_BACK, FurnacePlan.atStation(big, Mode.TAKE_ALL, NEARLY, CAP, false, false, () -> true));
+        // stuck or past the cap is the stalled give up, which backs the cook off so it is not loaded again at once
+        assertEquals(Act.TAKE_BACK_STALLED, FurnacePlan.atStation(cold(big), Mode.TAKE_ALL, all, CAP, false, false, () -> true));
+        assertEquals(Act.TAKE_BACK_STALLED, FurnacePlan.atStation(waited(big, CAP + 1), Mode.TAKE_ALL, all, CAP, false, false, () -> true));
+    }
     @Test
     public void takeAllNeverLightsWhatItIsAboutToEmpty() {
         assertFalse(FurnacePlan.mayFeed(true, Mode.TAKE_ALL, false));

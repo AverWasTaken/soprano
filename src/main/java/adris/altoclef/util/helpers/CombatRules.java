@@ -23,9 +23,10 @@ public final class CombatRules {
     // at or below this (half hearts) in a fight we leave instead of trading blows. the one hp line: the commitment, the
     // chain's checks and the kill aura's shield gate all read this and nothing else
     public static final float FLEE_HEALTH = 8;
-    // the one exception, and it is a named one: a heavy hitter (wither skeleton, hoglin, brute, vindicator...) lands 8 to 13
+    // the one exception, and it is a named one: a heavy hitter (hoglin, brute, vindicator...) lands 8 to 13
     // in one swing, so at 10 hp it is already "one hit from the respawn screen" and not a fight to start or to stay in.
-    // everything else in the world hits for less than 8, which is why the flee line is where it is
+    // nearly everything else hits for less than 8 (the wither skeleton is a plain fight with its own bail, see
+    // CombatCommit.lowHit), which is why the flee line is where it is
     public static final float HEAVY_FLEE_HEALTH = 10;
     // at or below this a bite is better than a fight we are losing, as long as nothing is on top of us
     public static final float CRITICAL_HEALTH = 4;
@@ -57,7 +58,9 @@ public final class CombatRules {
     // the older rules (hp under BRUISED_HEALTH, or hunger at HUNGRY_AT or less) leave a band where a bot neither regenerates
     // nor eats, and this closes it
     public static final int REGEN_HUNGER = 18;
-    public static final float HURT_HEALTH = 18;
+    // any missing hp counts. at 18.6 with the bar on 17 nothing regenerates and nothing eats, and the next fight starts
+    // from there. a steak into a bar of 17 wastes a few points, the bag carries plenty
+    public static final float HURT_HEALTH = 20;
     // at or below this health any hunger under 20 is a meal
     public static final float DESPERATE_HEALTH = 10;
     // the older rules (the food chain config defaults): hungry at or below HUNGRY_AT, or below BRUISED_HEALTH with a

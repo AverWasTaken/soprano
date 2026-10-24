@@ -261,6 +261,12 @@ public class MineAndCollectTask extends ResourceTask {
         return this;
     }
 
+    @Override
+    public MineAndCollectTask noReserve() {
+        super.noReserve();
+        return this;
+    }
+
     public static Block[] itemTargetToBlockList(ItemTarget[] targets) {
         List<Block> result = new ArrayList<>(targets.length);
         for (ItemTarget target : targets) {

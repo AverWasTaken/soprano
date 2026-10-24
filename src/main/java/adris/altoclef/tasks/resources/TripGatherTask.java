@@ -57,10 +57,10 @@ public class TripGatherTask extends Task {
             _wide = wide(_wide, StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD), _hand.length > 0, handGone(mod));
             if (!_wide) {
                 // the target still counts every item, dirt included. we just don't go make a pickaxe to get them
-                return new MineAndCollectTask(new ItemTarget(_items, _target), _hand, MiningRequirement.HAND);
+                return new MineAndCollectTask(new ItemTarget(_items, _target), _hand, MiningRequirement.HAND).noReserve();
             }
             // wood is enough for stone and netherrack, MineAndCollectTask goes and makes one itself if it has to
-            return new MineAndCollectTask(new ItemTarget(_items, _target), _sources, MiningRequirement.WOOD);
+            return new MineAndCollectTask(new ItemTarget(_items, _target), _sources, MiningRequirement.WOOD).noReserve();
         }
         return null;
     }

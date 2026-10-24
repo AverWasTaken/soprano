@@ -215,7 +215,7 @@ public class ShelterTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         // an interrupt (a meal) is not the end of the night, the stand down must outlive it
-        if (interruptTask == null) {
+        if (!isInterrupting()) {
             NightSleepHook.clearSheltered();
         }
         mod.getInputControls().releaseOwnedBy(keys);

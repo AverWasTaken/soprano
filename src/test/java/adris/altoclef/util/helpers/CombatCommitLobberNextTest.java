@@ -35,7 +35,7 @@ public class CombatCommitLobberNextTest {
     }
 
     private static Tick tick(long now, float hp, boolean boxed, Foe target, Foe... foes) {
-        return new Tick(now, hp, 0, 0, List.of(foes), target, Way.NONE, true, false, false, false, RecoverHold.Body.NONE, boxed);
+        return new Tick(now, hp, 0, 0, List.of(foes), target, Way.NONE, true, false, false, RecoverHold.Body.NONE, boxed);
     }
 
     // three on us and a run that goes nowhere: the cornered fight, open air around us (nothing boxes us in), on one of them
@@ -165,12 +165,24 @@ public class CombatCommitLobberNextTest {
     }
 
     @Test
-    public void anotherShooterStillEndsTheWitchFightAtTheOldLine() {
+    public void aSkeletonLandingArrowsDoesNotEndTheWitchFightAboveTheHardLine() {
         CombatCommit c = plainFightThenWitch();
         Foe w = witch(10, 5, true);
         c.step(tick(NOW + 2, 14, false, w, w, skeleton(10, 20)));
-        // the same 11 hp, but a skeleton with a line is landing arrows too: that part of the low hp rule is not the witch's
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 3, 11, false, w, w, skeleton(10, 20))));
+        // the same 11 hp with a skeleton landing arrows too: one skeleton is the shooter fight, no run for it above the hard line
+        assertEquals(Event.NONE, c.step(tick(NOW + 3, 11, false, w, w, skeleton(10, 20))));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 4, 8, false, w, w, skeleton(10, 20))));
         assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aQuietSkeletonThatHitUsLatelyStillHoldsTheWitchFightAboveTheHardLine() {
+        CombatCommit c = plainFightThenWitch();
+        Foe w = witch(10, 5, true);
+        Foe quiet = new Foe(5, 7, true, false, 150, Kind.NORMAL, Double.POSITIVE_INFINITY, false, NEVER);
+        c.step(tick(NOW + 2, 14, false, w, w, quiet));
+        assertEquals(Event.NONE, c.step(tick(NOW + 3, 10, false, w, w, quiet)));
+        assertEquals(Mode.FIGHT, c.mode());
     }
 }

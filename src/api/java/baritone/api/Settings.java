@@ -2280,7 +2280,7 @@ public final class Settings {
 
     /**
      * Run away from hostile mobs when health is low, from creepers that are about to blow up and from very dangerous
-     * mobs like wither skeletons, and use the force field ({@link #altoForceFieldStrategy}) to push mobs away.
+     * mobs like the warden, and use the force field ({@link #altoForceFieldStrategy}) to push mobs away.
      */
     public final Setting<Boolean> altoMobDefense = new Setting<>(true);
 
@@ -2310,7 +2310,7 @@ public final class Settings {
      * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a crowd of zombies, a lit
      * creeper, or a skeleton shooting at it from across the field (walking spoils the aim). It only does something about
      * a mob that hit it while in contact (a fight), or real danger: 8 hp or less with an angry mob within 8 blocks, 10 hp
-     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator that hit it or is in contact (one just
+     * or less with a heavy hitter like a hoglin or vindicator that hit it or is in contact (one just
      * standing around is walked past), or the warden or the wither within 8 (or a sonic boom from up to 15) (a run). A fight
      * holds until its target is dead or has been more than 6 blocks away and quiet for three seconds, and turns into a
      * run on the danger rules. A run holds until the bot is 24 blocks from where it started with nothing hostile within
@@ -2329,6 +2329,13 @@ public final class Settings {
      * fixed order back for comparison. Every change of activity goes to the log as an {@code activity:} line.
      */
     public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
+
+    /**
+     * {@code #gamer} only, the Nether pearl hunt. On, the hunt digs a nook into a wall and waits for endermen to come to it. Off (the default),
+     * it goes straight for the endermen and fights each one in the open. The nook tends to end in a standoff with the enderman
+     * out of reach, so it is off until that is sorted out.
+     */
+    public final Setting<Boolean> altoPearlNook = new Setting<>(false);
 
     /**
      * {@code #gamer} and survival schematic builds. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
@@ -2546,10 +2553,10 @@ public final class Settings {
     public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
 
     /**
-     * Build the #gamer nether portal on a lava pool with a throwaway mold instead of casting obsidian one block at a
-     * time. Needs a lava row at least four wide with a shore along it and room to scoop from. When it cannot find one,
-     * or anything goes wrong with it, the gamer falls back to the old per block cast, so this only ever makes the portal
-     * faster. Turn it off to always cast.
+     * Build the #gamer nether portal in a one deep lava pool the way the speedrun does it, with water and a few cobble
+     * blocks, instead of casting obsidian one block at a time. Needs a four long lava row with shore right behind it and
+     * more lava to scoop from. When it cannot find one, or anything goes wrong with it, the gamer falls back to the old
+     * per block cast, so this only ever makes the portal faster. Turn it off to always cast.
      */
     public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
 

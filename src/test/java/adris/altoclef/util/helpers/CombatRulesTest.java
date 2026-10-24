@@ -155,15 +155,17 @@ public class CombatRulesTest {
         // 18 is where the bar regenerates by itself
         assertFalse(CombatRules.healingMeal(14, CombatRules.REGEN_HUNGER));
         assertFalse(CombatRules.healingMeal(14, 20));
-        // and 18 hp is not hurt enough to bother
+        // and full hp is not hurt at all
         assertFalse(CombatRules.healingMeal(CombatRules.HURT_HEALTH, 10));
         assertFalse(CombatRules.healingMeal(20, 5));
+        // but a nick under full with the bar under the regen line is a meal, or it never heals
+        assertTrue(CombatRules.healingMeal(18.6f, 17));
     }
 
     @Test
     public void theOlderMealLinesKeepTheirNumbers() {
         assertEquals(18, CombatRules.REGEN_HUNGER);
-        assertEquals(18, CombatRules.HURT_HEALTH, 0);
+        assertEquals(20, CombatRules.HURT_HEALTH, 0);
         assertEquals(10, CombatRules.DESPERATE_HEALTH, 0);
         assertEquals(10, CombatRules.HUNGRY_AT);
         assertEquals(14, CombatRules.BRUISED_HEALTH);
@@ -242,5 +244,12 @@ public class CombatRulesTest {
         // a skeleton target is not a shield fight, and a skeleton plinking us is not the second mob on us
         assertFalse(pile(false, new CombatCommit.Foe(1, 2, true, false, 10), zombie(2, 2, 10)));
         assertFalse(pile(false, zombie(1, 2, 10), new CombatCommit.Foe(2, 2, true, false, 10)));
+    }
+
+    @Test
+    public void theHealMealCoversTheWholeBandTheRodsTaskWaitsIn() {
+        // the rods task heals to RECOVERED_HEALTH after a run, and eating has to reach that far on its own
+        assertTrue(CombatRules.healingMeal(BlazeFightRules.RECOVERED_HEALTH - 0.5f, CombatRules.REGEN_HUNGER - 1));
+        assertTrue(CombatRules.healingMeal(14.9f, 15));
     }
 }

@@ -12,8 +12,7 @@ import java.util.function.BooleanSupplier;
 public final class FoeRules {
 
     // lands 8 to 13 in one swing, a run at HEAVY_FLEE_HEALTH instead of the usual line
-    private static final Set<String> HEAVY = Set.of("wither_skeleton", "hoglin", "zoglin", "piglin_brute", "vindicator",
-            "ravager");
+    private static final Set<String> HEAVY = Set.of("hoglin", "zoglin", "piglin_brute", "vindicator", "ravager");
     // not a fight at any hp. the warden one shots a full bar, the wither is a boss we never summoned
     private static final Set<String> UNTOUCHABLE = Set.of("warden", "wither");
 
@@ -123,6 +122,8 @@ public final class FoeRules {
         if (UNTOUCHABLE.contains(type)) return Kind.UNTOUCHABLE;
         if (HEAVY.contains(type)) return Kind.HEAVY;
         if (type.equals("witch")) return Kind.LOBBER;
+        // angry ones only get here (a calm one is never a foe): never a run, see CombatCommit.runReason
+        if (type.equals("enderman")) return Kind.ENDERMAN;
         // blazes only live in the nether, and there they hover over lava where nothing walks up to them
         if (dimension == Dimension.NETHER && type.equals("blaze")) return Kind.FLYER;
         return Kind.NORMAL;

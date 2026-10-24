@@ -195,6 +195,25 @@ public final class RecoverRules {
         }
     }
 
+    // the walk to the pile heals first: under HOLD_BELOW with no shooter on us we stand until HEAL_TO, a minute at most in total.
+    // same shape as NetherTripRules.walkHold, a higher line because the overworld cave is where the skeletons live
+    public static final float HOLD_BELOW = 14;
+    public static final float HEAL_TO = 18;
+    public static final long HOLD_TICKS = 60 * 20L;
+
+    // a mob that hit us lately is not a quiet spot either, and with nothing to regen on standing is just standing
+    public static boolean walkHold(float health, boolean shooterSees, long ticksSinceHit, boolean canRegen, boolean holding, long heldTicks) {
+        if (shooterSees || !canRegen || ticksSinceHit <= NetherTripRules.ABORT_HIT_TICKS || heldTicks >= HOLD_TICKS) {
+            return false;
+        }
+        return health < (holding ? HEAL_TO : HOLD_BELOW);
+    }
+
+    // low and hit lately: the walk is over, same line as the nether one
+    public static boolean walkAbort(float health, long ticksSinceHit) {
+        return NetherTripRules.walkAbort(health, ticksSinceHit);
+    }
+
     // the despawn timer only runs while the pile's chunk is ticking, and a pile we respawned far from is not: it keeps its age
     // until we are back in range. items tick out to the simulation distance (12 chunks by default), a bit generous on purpose:
     // starting the allowance early only costs a few seconds of the walk, starting it late is chasing a pile that is gone

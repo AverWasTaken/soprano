@@ -146,4 +146,45 @@ public class EndermanNookTest {
         assertFalse(EndermanNook.brainStandsDown(false, 1, 1));
         assertFalse(EndermanNook.brainStandsDown(true, 0, 0));
     }
+
+    @Test
+    public void theNookHuntGetsALongerStallWindow() {
+        assertEquals(120, EndermanNook.stallSeconds(false, 120), 0);
+        assertTrue(EndermanNook.stallSeconds(true, 120) > EndermanNook.stallSeconds(false, 120));
+        // a phase that already waits longer than the nook does is not shortened by being in one
+        assertEquals(500, EndermanNook.stallSeconds(true, 500), 0);
+    }
+
+    @Test
+    public void lavaOrFireStepsAway() {
+        assertEquals(EndermanNook.Stance.AWAY, EndermanNook.stance(true, false, 20, false));
+        assertEquals(EndermanNook.Stance.AWAY, EndermanNook.stance(false, true, 20, false));
+        // even hurt: standing in it is worse than walking
+        assertEquals(EndermanNook.Stance.AWAY, EndermanNook.stance(true, true, 4, true));
+    }
+
+    @Test
+    public void lowHpWaitsOnlyWhileItIsRising() {
+        assertEquals(EndermanNook.Stance.WAIT, EndermanNook.stance(false, false, 10, true));
+        assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, 10, false));
+    }
+
+    @Test
+    public void fineHuntsWhateverTheClockSays() {
+        assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, 20, true));
+        assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, EndermanNook.AGGRO_MIN_HP, false));
+    }
+
+    @Test
+    public void hpClockRunsOutAfterThirtySeconds() {
+        assertTrue(EndermanNook.hpRising(1000 + EndermanNook.HP_FLAT_TICKS, 1000));
+        assertFalse(EndermanNook.hpRising(1001 + EndermanNook.HP_FLAT_TICKS, 1000));
+    }
+
+    @Test
+    public void lavaUnderAFloorDoesNotCount() {
+        assertTrue(EndermanNook.lavaExposed(true, false));
+        assertFalse(EndermanNook.lavaExposed(true, true));
+        assertFalse(EndermanNook.lavaExposed(false, false));
+    }
 }
