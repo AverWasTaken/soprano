@@ -496,4 +496,28 @@ public class CreeperStepTest {
         // an unlit one gets no hold
         assertFalse(CreeperStep.rawGoing(CreeperStep.RAW_MAX_TICKS, 3, Double.POSITIVE_INFINITY));
     }
+
+    private static Seen unlit(double distance, boolean inView) {
+        return new Seen(7, false, distance, false, false, inView);
+    }
+
+    @Test
+    public void anUnlitOneBehindAWallIsNothing() {
+        assertEquals(Event.NONE, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(0, false))), true));
+    }
+
+    @Test
+    public void anUnlitOneFourBlocksBelowIsNothing() {
+        assertEquals(Event.NONE, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(-4, true))), true));
+    }
+
+    @Test
+    public void anUnlitOneInPlainViewSteps() {
+        assertEquals(Event.START, new CreeperStep().step(0, List.of(unlit(3, CreeperStep.inView(1, true))), true));
+    }
+
+    @Test
+    public void aLitOneStepsWithoutSight() {
+        assertEquals(Event.START, new CreeperStep().step(0, List.of(new Seen(7, true, 3, false, true, false)), true));
+    }
 }

@@ -86,7 +86,7 @@ public class MobReachability {
         Cached cached = _verdicts.get(mob.getId());
         // (a stalled verdict from when it was further out does not outlive it walking up to us)
         if (cached != null && now >= cached.tick && now - cached.tick < HOLD_TICKS
-                && MobReachRules.verdictHolds(cached.verdict, mob.distanceTo(player), _fleeing, mob instanceof Creeper)) {
+                && MobReachRules.verdictHolds(cached.verdict, mob.distanceTo(player), _fleeing, stepsFor(mob, player))) {
             return cached.verdict.reachable();
         }
         Verdict verdict = evaluate(mod, mob, now);
@@ -122,7 +122,7 @@ public class MobReachability {
         if (!(mob instanceof Spider) && MobReachRules.isVerticallyOut(mob.getX() - player.getX(), mob.getY() - player.getY(), mob.getZ() - player.getZ())) {
             return Verdict.VERTICAL_GAP;
         }
-        if (_stall.update(mob.getId(), mob.distanceTo(player), now, _fleeing, mob instanceof Creeper)) return Verdict.STALLED;
+        if (_stall.update(mob.getId(), mob.distanceTo(player), now, _fleeing, stepsFor(mob, player))) return Verdict.STALLED;
         return Verdict.REACHABLE;
     }
 
@@ -169,6 +169,14 @@ public class MobReachability {
         _stall.prune(now);
         // the log set has no timestamps, so it just goes when it gets silly
         if (_logged.size() > 512) _logged.clear();
+    }
+
+    // the creeper the stall rule leaves alone: the ones CreeperStep would step from, so the two rules agree. an unlit one needs
+    // the same height and a clear line, one behind a wall can be ignored like any other stuck mob
+    private static boolean stepsFor(Mob mob, LocalPlayer player) {
+        if (!(mob instanceof Creeper creeper)) return false;
+        boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
+        return lit || CreeperStep.inView(creeper.getY() - player.getY(), creeper.hasLineOfSight(player));
     }
 
     // things that fly, teleport, burrow or are already on our face. the gate would only ever be wrong about them

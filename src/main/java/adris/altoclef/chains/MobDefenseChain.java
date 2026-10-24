@@ -743,7 +743,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
                 }
                 // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
-                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f));
+                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f,
+                        CreeperStep.inView(creeper.getY() - player.getY(), creeper.hasLineOfSight(player))));
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
@@ -788,7 +789,7 @@ public class MobDefenseChain extends SingleTaskChain {
         double best = Double.POSITIVE_INFINITY;
         for (CreeperStep.Seen s : seen) {
             boolean ask = _creeperStep.active() ? s.id() == _creeperStep.creeperId()
-                    : s.distance() <= CreeperStep.TRIGGER && s.distance() < best;
+                    : s.distance() <= CreeperStep.TRIGGER && CreeperStep.triggers(s) && s.distance() < best;
             if (ask) {
                 id = s.id();
                 best = s.distance();

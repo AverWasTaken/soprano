@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 // the creeper preempt. not a commitment: the fight and run clocks keep going, and the wheel goes straight back the moment
-// the fuse is over. a creeper within TRIGGER gets stepped away from lit or not (one two blocks off lights with the whole fuse
+// the fuse is over. a creeper within TRIGGER gets stepped away from, lit or unlit-and-in-view (one two blocks off lights with the whole fuse
 // still ahead and nowhere to be), a lit one further out only when the path is walking into it. the one thing CombatCommit
 // does hear: the same creeper coming back for a second go (REPEAT_WINDOW)
 //
@@ -15,7 +15,7 @@ import java.util.Set;
 // was a second mode with its own caps and its own way of being wrong, and the bot dithered between the two
 public final class CreeperStep {
 
-    // a creeper this close gets stepped away from, lit or not. the fuse starts at 3, so this fires before it even lights
+    // a creeper this close gets stepped away from, lit or unlit and in view (see inView). the fuse starts at 3, so this fires before it even lights
     public static final double TRIGGER = 4;
     // where the step walks to. the blast reaches about 6 (power 3, twice that is the falloff radius), past it is a scratch,
     // and a creeper that gets more than 7 away stops swelling, so 8 clears both with a block to spare for the search's
@@ -61,8 +61,12 @@ public final class CreeperStep {
 
     // one creeper as the world sees it this tick. lit = swelling up or flint-and-steeled, pathNear = the path walks into it
     // fusing = the fuse still has charge in it, lit or deflating (a creeper that lost its line to us goes unlit with the swell
-    // still up and relights the moment we walk back in)
-    public record Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing) {
+    // still up and relights the moment we walk back in). inView = about our height with a clear line, only an unlit one needs it
+    public record Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing, boolean inView) {
+        public Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing) {
+            this(id, lit, distance, pathNear, fusing, true);
+        }
+
         public Seen(int id, boolean lit, double distance, boolean pathNear) {
             this(id, lit, distance, pathNear, lit);
         }
@@ -211,9 +215,17 @@ public final class CreeperStep {
         return at != null && now >= at && now - at <= REPEAT_WINDOW;
     }
 
-    // close, lit or not, or lit and the path is about to walk into it
+    // an unlit creeper is only a threat while it can actually see us coming: about the same height and a clear line. a distance check
+    // alone fired through cave walls and floors while mining. lit ones keep the plain distance, the fuse is already running
+    public static final double VIEW_DY = 2;
+
+    public static boolean inView(double dy, boolean lineOfSight) {
+        return Math.abs(dy) <= VIEW_DY && lineOfSight;
+    }
+
+    // close (lit, or unlit and in view), or lit and the path is about to walk into it
     public static boolean triggers(Seen s) {
-        return s.distance() <= TRIGGER || (s.lit() && s.pathNear());
+        return (s.distance() <= TRIGGER && (s.lit() || s.inView())) || (s.lit() && s.pathNear());
     }
 
     // nodes as {x, y, z} block corners. the node's middle is what the player walks through
