@@ -201,9 +201,43 @@ public class KillEnderDragonWithBedsTask extends Task {
         return _whenNotPerchingTask;
     }
 
+    // TMP-BEDLOG: temporary, user ok'd it to find why the bed never lands. remove with the fix
+    private long _tmpBedLogAt = Long.MIN_VALUE;
+    private boolean _tmpBedWasPlaced;
+
+    private void tmpBedLog(AltoClef mod, EnderDragon dragon, BlockPos target, boolean placed) {
+        long now = mod.getWorld().getGameTime();
+        if (placed != _tmpBedWasPlaced) {
+            _tmpBedWasPlaced = placed;
+            Debug.logMessage("[tmp-bed] placed=" + placed + " at " + target.toShortString());
+        }
+        if (placed || now - _tmpBedLogAt < 10) {
+            return;
+        }
+        _tmpBedLogAt = now;
+        Direction facing = mod.getPlayer().getDirection();
+        BlockPos head = target.relative(facing);
+        net.minecraft.world.phys.AABB footBox = new net.minecraft.world.phys.AABB(target);
+        net.minecraft.world.phys.AABB headBox = new net.minecraft.world.phys.AABB(head);
+        boolean onFoot = dragon.getBoundingBox().intersects(footBox);
+        boolean onHead = dragon.getBoundingBox().intersects(headBox);
+        for (Entity part : dragon.getSubEntities()) {
+            onFoot |= part.getBoundingBox().intersects(footBox);
+            onHead |= part.getBoundingBox().intersects(headBox);
+        }
+        Debug.logMessage("[tmp-bed] try eye=" + String.format("%.2f", LookHelper.getCameraPos(mod).y)
+                + " feet=" + mod.getPlayer().blockPosition().toShortString() + " ground=" + mod.getPlayer().onGround()
+                + " facing=" + facing + " held=" + mod.getPlayer().getMainHandItem().getItem()
+                + " foot=" + mod.getWorld().getBlockState(target).getBlock() + " head=" + mod.getWorld().getBlockState(head).getBlock()
+                + " dragonOnFoot=" + onFoot + " dragonOnHead=" + onHead
+                + " headDist=" + String.format("%.1f", dragon.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(target)))
+                + " phase=" + dragon.getPhaseManager().getCurrentPhase().getPhase());
+    }
+
     private Task bedCycle(AltoClef mod, EnderDragon dragonEntity) {
         BlockPos bedTargetPosition = _endPortalTop.above();
         boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
+        tmpBedLog(mod, dragonEntity, bedTargetPosition, bedPlaced);
         if (!bedPlaced) {
             setDebugState("Placing bed", "Placing a bed");
             // If no bed, place bed.
