@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -178,6 +179,8 @@ public class NetherPhase implements PhaseHandler {
     private double goldStartedAt;
     private boolean goldOver;
     private boolean guarding;
+    private static final double PLACE_PENALTY = 20;
+    private BotBehaviour.State placingLevel;
     private int guardHold;
     private BlockPos goldAnchor;
     private boolean oreLeft;
@@ -331,6 +334,7 @@ public class NetherPhase implements PhaseHandler {
         oreLeft = false;
         lastNuggets = 0;
         unguard(mod);
+        placingOff(mod);
         flee = null;
         fleeUntil = 0;
         lastHurt = 0;
@@ -351,6 +355,7 @@ public class NetherPhase implements PhaseHandler {
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         unguard(mod);
+        placingOff(mod);
         homeWalk.stopTracking(mod);
         gravel.reset();
         if (tracking) {
@@ -376,6 +381,7 @@ public class NetherPhase implements PhaseHandler {
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
+            placingOff(mod);
             if (foodTrip) {
                 // the hunt's clock starts when we are up here, not when we left the fortress
                 if (!foodTripUp) {
@@ -402,6 +408,7 @@ public class NetherPhase implements PhaseHandler {
             }
             return toTheNether(mod, ctx);
         }
+        placingOn(mod);
         homeWalk.stopTracking(mod);
         ensureTracking(mod);
         ReturnPhase.recordPortal(mod, ctx.state());
@@ -622,6 +629,32 @@ public class NetherPhase implements PhaseHandler {
             unguard(mod);
         }
         return guarding;
+    }
+
+    // placing a block in the nether costs 20 instead of 10 (fast mode caps it at 5 otherwise, which is about one block of
+    // walking, so bridging and pillaring looked free). our own level so it comes off whole, and anything above it (the lava
+    // escape sets 0) still wins
+    private void placingOff(AltoClef mod) {
+        if (placingLevel == null) {
+            return;
+        }
+        if (mod.getBehaviour().isTop(placingLevel)) {
+            mod.getBehaviour().pop();
+        } else if (mod.getBehaviour().contains(placingLevel)) {
+            // somebody's level is on top of ours and popping would take theirs. the ones above copied the 20 already and
+            // pop on their own, ours comes out from under them
+            mod.getBehaviour().remove(placingLevel);
+        }
+        placingLevel = null;
+    }
+
+    private void placingOn(AltoClef mod) {
+        // (a child that pushed before us and pops blind can take our level, then it is not on the stack and we push again)
+        if (placingLevel != null && mod.getBehaviour().contains(placingLevel)) {
+            return;
+        }
+        placingLevel = mod.getBehaviour().push();
+        mod.getBehaviour().setBlockPlacePenalties(PLACE_PENALTY);
     }
 
     private void unguard(AltoClef mod) {

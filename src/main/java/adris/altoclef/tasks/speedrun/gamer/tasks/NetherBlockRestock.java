@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
@@ -9,9 +10,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.LeavesBlock;
 
 import java.util.List;
 
@@ -82,10 +81,10 @@ public class NetherBlockRestock {
     }
 
     // baritone's list has items it counts but can never place (nether brick the item, leaves), and the merge can list an
-    // item twice. distinct and block items only
+    // item twice. distinct and the shared build block rule only
     static Item[] placeableOnly(List<Item> items) {
         return items.stream().distinct()
-                .filter(i -> i instanceof BlockItem b && !(b.getBlock() instanceof LeavesBlock))
+                .filter(AltoSettings::isBuildBlock)
                 .toArray(Item[]::new);
     }
 }

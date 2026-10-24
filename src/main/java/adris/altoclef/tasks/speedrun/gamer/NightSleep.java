@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.util.helpers.CombatRules;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 // sleeping through the night instead of fighting through it. every decision lives here and nothing here knows there is a game:
 // when the trip applies, where the bed has to be to be out of the monsters' reach, the budget of a night, when mob defense
@@ -314,6 +315,34 @@ public final class NightSleep {
 
         public void reset() {
             seen = false;
+        }
+    }
+
+    // "is there a sheep to hunt" with two memories, because the answer sits on the edge of the search radius and flips with every
+    // step of the sheep. a hunt that is running is not asked again (every flip cancelled the hunt and wiped its colour, so
+    // nothing ever got far enough to finish), and a no is kept for SHEEP_HOLD_TICKS game ticks before anybody looks again
+    public static final long SHEEP_HOLD_TICKS = 600;
+
+    public static final class SheepHold {
+        private long noUntil = Long.MIN_VALUE;
+
+        // raw is only asked when neither memory has the answer
+        public boolean see(boolean hunting, BooleanSupplier raw, long tick) {
+            if (hunting) {
+                return true;
+            }
+            if (tick < noUntil) {
+                return false;
+            }
+            boolean yes = raw.getAsBoolean();
+            if (!yes) {
+                noUntil = tick + SHEEP_HOLD_TICKS;
+            }
+            return yes;
+        }
+
+        public void reset() {
+            noUntil = Long.MIN_VALUE;
         }
     }
 

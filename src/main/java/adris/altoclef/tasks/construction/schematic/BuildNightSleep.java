@@ -23,10 +23,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -319,7 +317,7 @@ public final class BuildNightSleep {
         Map<Item, Integer> held = new HashMap<>();
         for (ItemStack stack : mod.getPlayer().getInventory().getNonEquipmentItems()) {
             Item item = stack.getItem();
-            if (!stack.isEmpty() && item instanceof BlockItem && item != Items.GRAVEL && item != Items.SAND && AltoSettings.isThrowaway(item)) {
+            if (!stack.isEmpty() && AltoSettings.isBuildBlock(item) && AltoSettings.isThrowaway(item)) {
                 held.merge(item, stack.getCount(), Integer::sum);
             }
         }

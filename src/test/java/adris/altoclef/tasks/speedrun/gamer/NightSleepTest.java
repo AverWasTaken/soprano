@@ -659,4 +659,41 @@ public class NightSleepTest {
         assertFalse(NightSleep.nightIsOver(Refusal.OTHER, true, 7, 8));
         assertEquals(Next.GIVE_UP, NightSleep.afterRefusal(Refusal.NOT_NOW, 0, 0));
     }
+
+    // ---- the sheep question on the edge of the radius
+
+    @Test
+    public void aHuntInProgressIsNotAskedAgain() {
+        NightSleep.SheepHold hold = new NightSleep.SheepHold();
+        for (long t = 0; t < 2000; t++) {
+            assertTrue("tick " + t, hold.see(true, () -> {
+                throw new AssertionError("asked while hunting");
+            }, t));
+        }
+    }
+
+    @Test
+    public void aNoIsKeptForThirtySeconds() {
+        NightSleep.SheepHold hold = new NightSleep.SheepHold();
+        assertFalse(hold.see(false, () -> false, 1000));
+        // a sheep wandering into range does not start a hunt until the hold is over
+        assertFalse(hold.see(false, () -> true, 1000 + NightSleep.SHEEP_HOLD_TICKS - 1));
+        assertTrue(hold.see(false, () -> true, 1000 + NightSleep.SHEEP_HOLD_TICKS));
+        assertEquals(600, NightSleep.SHEEP_HOLD_TICKS);
+    }
+
+    @Test
+    public void aYesIsNotHeldWhenNothingIsHunting() {
+        NightSleep.SheepHold hold = new NightSleep.SheepHold();
+        assertTrue(hold.see(false, () -> true, 10));
+        assertFalse(hold.see(false, () -> false, 11));
+    }
+
+    @Test
+    public void droppingThePrepForgetsTheNo() {
+        NightSleep.SheepHold hold = new NightSleep.SheepHold();
+        assertFalse(hold.see(false, () -> false, 100));
+        hold.reset();
+        assertTrue(hold.see(false, () -> true, 101));
+    }
 }

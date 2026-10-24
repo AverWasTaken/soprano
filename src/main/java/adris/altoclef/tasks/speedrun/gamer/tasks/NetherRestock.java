@@ -5,10 +5,15 @@ import net.minecraft.core.BlockPos;
 // pure: when does the sweep stop walking to dig itself some blocks? the bridges over lava eat throwaways and nothing in the
 // nether hands them back, so a bag that ran dry mid-walk turns every path after it into "0 blocks closer"
 public final class NetherRestock {
-    // under this many the next bridge is a coin flip
-    static final int LOW = 8;
-    // after a waypoint was given up on the bag is the first suspect, so the bar is higher
-    static final int GIVE_UP_LOW = 24;
+    // under this many it is time to dig. the bar is high on purpose: with no spare block a pocket sealed by lava has nothing
+    // to bridge out with (breaking next to lava is off and placing costs infinity), so the dig has to start while there is
+    // still something to path with
+    static final int LOW = 32;
+    // after a waypoint was given up on the bag is the first suspect, so the bar is at least the walking one
+    static final int GIVE_UP_LOW = 32;
+    // a bag this thin digs again right away after a dry end, whatever the cooldown says (the cooldown is for a bag that is
+    // merely getting low, and LOW is far too big a number to mean "empty")
+    static final int EMPTY = 8;
     public static final int TARGET = 64;
     // netherrack is everywhere but the digging can still go nowhere (lava all around): stop trying after this
     static final double MAX_SECONDS = 75;
@@ -97,7 +102,7 @@ public final class NetherRestock {
         }
         // an empty bag digs again right away, the cooldown is for a bag that is merely getting low. a dig that ran out the clock
         // is the exception, the same spot would just eat another MAX_SECONDS
-        if (now < coolUntil && (held >= LOW || clockEnd)) {
+        if (now < coolUntil && (held >= EMPTY || clockEnd)) {
             return false;
         }
         if (held < startBelow) {

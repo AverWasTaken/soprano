@@ -27,7 +27,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -408,8 +407,8 @@ public final class MinecraftFacts implements GamerFacts {
             } else if (kind != FoodHelper.Kind.NOT_FOOD) {
                 junk += item.components().get(DataComponents.FOOD).nutrition() * n;
             }
-            // same rule as StorageHelper.getBuildingMaterialCount: throwaway blocks, minus the ones that fall over
-            if (item instanceof BlockItem && item != Items.GRAVEL && item != Items.SAND && AltoSettings.isThrowaway(item)) {
+            // same rule as StorageHelper.getBuildingMaterialCount and the nether restock: AltoSettings.isBuildBlock
+            if (AltoSettings.isBuildBlock(item) && AltoSettings.isThrowaway(item)) {
                 build += n;
             }
         }

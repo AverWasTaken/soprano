@@ -66,7 +66,7 @@ public final class FoodTripRules {
         FOOD, BLOCKS
     }
 
-    // under this many throwaways the next bridge is a coin flip (NetherRestock.LOW), and a dig that found nothing twice running
+    // under this many throwaways the next bridge is a coin flip (the restock digs earlier, NetherRestock.LOW), and a dig that found nothing twice running
     // is not about to
     public static final int BLOCKS_LOW = 8;
     public static final int BLOCKS_EXHAUSTED_ENDS = 2;
