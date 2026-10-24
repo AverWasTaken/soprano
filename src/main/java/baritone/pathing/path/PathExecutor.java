@@ -964,7 +964,12 @@ public class PathExecutor implements IPathExecutor, Helper {
             if (pathPosition < path.length() - 2) {
                 IMovement next = path.movements().get(pathPosition + 1);
                 if (next instanceof MovementAscend && current.getDirection().above().equals(next.getDirection().below())) {
-                    // a descend then an ascend in the same direction
+                    // a descend then an ascend in the same direction. the skip is an overshoot into the wall, so it gets the same
+                    // carefulSprint as the other shortcuts. refused is a flat no: skipToAscend forces safeMode on and the check above
+                    // lets it through on purpose, so falling out of here would reach the sprint rules below with nothing guarding them
+                    if (carefulSprint()) {
+                        return no("descend to ascend skip, careful");
+                    }
                     pathPosition++;
                     onChangeInPathPosition();
                     // okay to skip clearKeys and / or onChangeInPathPosition here since this isn't possible to repeat, since it's asymmetric
