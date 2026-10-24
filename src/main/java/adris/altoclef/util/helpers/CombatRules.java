@@ -58,7 +58,9 @@ public final class CombatRules {
     // the older rules (hp under BRUISED_HEALTH, or hunger at HUNGRY_AT or less) leave a band where a bot neither regenerates
     // nor eats, and this closes it
     public static final int REGEN_HUNGER = 18;
-    public static final float HURT_HEALTH = 18;
+    // any missing hp counts. at 18.6 with the bar on 17 nothing regenerates and nothing eats, and the next fight starts
+    // from there. a steak into a bar of 17 wastes a few points, the bag carries plenty
+    public static final float HURT_HEALTH = 20;
     // at or below this health any hunger under 20 is a meal
     public static final float DESPERATE_HEALTH = 10;
     // the older rules (the food chain config defaults): hungry at or below HUNGRY_AT, or below BRUISED_HEALTH with a
