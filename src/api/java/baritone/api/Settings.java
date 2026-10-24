@@ -2546,10 +2546,10 @@ public final class Settings {
     public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
 
     /**
-     * Build the #gamer nether portal on a lava pool with a throwaway mold instead of casting obsidian one block at a
-     * time. Needs a lava row at least four wide with a shore along it and room to scoop from. When it cannot find one,
-     * or anything goes wrong with it, the gamer falls back to the old per block cast, so this only ever makes the portal
-     * faster. Turn it off to always cast.
+     * Build the #gamer nether portal in a one deep lava pool the way the speedrun does it, with water and a few cobble
+     * blocks, instead of casting obsidian one block at a time. Needs a four long lava row with shore right behind it and
+     * more lava to scoop from. When it cannot find one, or anything goes wrong with it, the gamer falls back to the old
+     * per block cast, so this only ever makes the portal faster. Turn it off to always cast.
      */
     public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
 

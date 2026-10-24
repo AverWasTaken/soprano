@@ -23,7 +23,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
-import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
+import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.Optional;
 
 // gets us into the nether. first everything we want to hold when we leave (flint and steel, the buckets, water, armor
-// on, blocks, food), then the portal: the lava pool mold first (altoLavaPoolPortal), and when that gives up the old
+// on, blocks, food), then the portal: the lava bucket build first (altoLavaPoolPortal), and when that gives up the old
 // CAST (lava lake, no diamonds), and after that OBSIDIAN. the cast never finishes on its own when there is no lake, it
 // wanders, so a clock decides when to give up on it
 public class PortalPhase implements PhaseHandler {
@@ -62,7 +62,7 @@ public class PortalPhase implements PhaseHandler {
     private int bestCount;
     private long lastProgressTick = -1;
     private DefaultGoToDimensionTask cast;
-    private LavaPoolPortalTask pool;
+    private LPortalTask pool;
     private boolean poolFailed;
     // the pool was handed to the task at least once this try, so a timeout can tell "stuck building it" from "stuck in prep"
     private boolean poolStarted;
@@ -123,7 +123,7 @@ public class PortalPhase implements PhaseHandler {
         userAsync = async.value;
         SettingsOverrides.put(async, false);
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
-        pool = new LavaPoolPortalTask(ctx::log);
+        pool = new LPortalTask();
         poolStarted = false;
         if (ctx.attempt() <= 1) {
             ctx.state().portalPoolTimedOut = false;
@@ -230,7 +230,7 @@ public class PortalPhase implements PhaseHandler {
             }
             ctx.progress("ready for the portal");
         }
-        // the mold goes first. when it gives up the cast clock starts from now, not from when the phase did
+        // the lava pool build goes first. when it gives up the cast clock starts from now, not from when the phase did
         if (f.dimension() == Dimension.OVERWORLD
                 && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
             if (portalExists) {
@@ -238,7 +238,7 @@ public class PortalPhase implements PhaseHandler {
                 return enter;
             }
             if (!pool.failed()) {
-                hudState = pool.searching() ? "Scanning for lava lakes" : "Building the portal on a lava pool";
+                hudState = pool.searching() ? "Looking for a spot for the portal" : "Building the portal with lava buckets";
                 poolStarted = true;
                 return pool;
             }
