@@ -359,7 +359,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     }
 
     // the full bucket needs a slot of its own when we carry a stack of empties and the bag is full (see BucketFillRules)
-    private static boolean fillHasRoom(AltoClef mod) {
+    public static boolean fillHasRoom(AltoClef mod) {
         NonNullList<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
         int[] bucketStacks = new int[slots.size()];
         boolean freeSlot = false;
@@ -374,46 +374,21 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         return !BucketFillRules.needsFreeSlot(bucketStacks, freeSlot);
     }
 
-    // water we can scoop from above: a source with open air over it
     private static boolean pondSource(AltoClef mod, BlockPos p) {
-        return BucketPour.isWaterSource(mod.getWorld(), p)
-                && FluidSources.exposedSource(mod.getWorld().getFluidState(p), mod.getWorld().getFluidState(p.above()))
-                && mod.getWorld().getBlockState(p.above()).getCollisionShape(mod.getWorld(), p.above()).isEmpty();
+        return WaterUpkeep.pondSource(mod, p);
     }
 
-    // nearest pond source within WaterUpkeep.RANGE (and 8 up or down), straight line. a cube walk, which is why the caller
-    // only asks every LOOK_TICKS
     private BlockPos nearestPond(AltoClef mod) {
-        BlockPos me = mod.getPlayer().blockPosition();
-        int r = (int) WaterUpkeep.RANGE;
-        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
-        BlockPos best = null;
-        double bestDist = WaterUpkeep.RANGE * WaterUpkeep.RANGE;
-        for (int dx = -r; dx <= r; dx++) {
-            for (int dz = -r; dz <= r; dz++) {
-                for (int dy = -8; dy <= 8; dy++) {
-                    double d = dx * dx + dy * dy + dz * dz;
-                    if (d > bestDist) {
-                        continue;
-                    }
-                    p.set(me.getX() + dx, me.getY() + dy, me.getZ() + dz);
-                    if (pondSource(mod, p) && !mod.getBlockTracker().unreachable(p) && !_upkeepFailedPonds.contains(p)) {
-                        best = p.immutable();
-                        bestDist = d;
-                    }
-                }
-            }
-        }
-        return best;
+        return WaterUpkeep.nearestPond(mod, (int) WaterUpkeep.RANGE, p -> _upkeepFailedPonds.contains(p));
     }
 
     // the walk and the scoop are the interact task's. this wrapper is only here so the source-only ray (a bucket ray sees
     // through water otherwise) is on while we run and off again when somebody interrupts us, same as the collector does it
-    private static final class WaterUpkeepTask extends Task {
+    public static final class WaterUpkeepTask extends Task {
         private final BlockPos source;
         private final InteractWithBlockTask scoop;
 
-        WaterUpkeepTask(BlockPos source) {
+        public WaterUpkeepTask(BlockPos source) {
             this.source = source;
             this.scoop = InteractWithBlockTask.scoop(new ItemTarget(Items.BUCKET, 1), source, true);
         }

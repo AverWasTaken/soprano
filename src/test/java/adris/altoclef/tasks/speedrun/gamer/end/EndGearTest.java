@@ -62,18 +62,59 @@ public class EndGearTest {
     }
 
     @Test
+    public void waterBucketGapOnlyWithAnEmptyBucketToFill() {
+        // nothing in hand: no bucket to fill and we do not craft one for this
+        assertFalse(EndGear.wantsWater(false, false, false));
+        assertTrue(EndGear.wantsWater(false, true, false));
+        // held (or lying in the End) water is not a gap
+        assertFalse(EndGear.wantsWater(true, true, false));
+    }
+
+    @Test
+    public void waterBucketGapEndsWhenTheAttemptGivesUp() {
+        assertFalse(EndGear.wantsWater(false, true, true));
+        assertFalse(EndGear.bucketTimedOut(0));
+        assertFalse(EndGear.bucketTimedOut(EndGear.BUCKET_BUDGET_TICKS - 1));
+        assertTrue(EndGear.bucketTimedOut(EndGear.BUCKET_BUDGET_TICKS));
+    }
+
+    @Test
+    public void gapFollowsTheBucketFacts() {
+        GamerConfig all = new GamerConfig();
+        all.end = cfg;
+        FakeFacts noWater = new FakeFacts().with(Items.BED.white(), 8).with(Items.IRON_SWORD, 1).with(Items.IRON_PICKAXE, 1)
+                .with(Items.BUCKET, 1);
+        noWater.wear(Items.IRON_HELMET).wear(Items.IRON_CHESTPLATE).wear(Items.IRON_LEGGINGS).wear(Items.IRON_BOOTS);
+        noWater.armorPoints = 15;
+        // an empty bucket and no water one: the gate wants it, and drops it once the attempt gave up (a reset is a fresh false)
+        assertTrue(EndGear.missing(noWater, new RunState(), cfg, cfg.beds, FoodPlan.of(noWater, all, GamerPhase.END_PREP, false)).waterBucket());
+        assertFalse(EndGear.missing(noWater, new RunState(), cfg, cfg.beds, FoodPlan.of(noWater, all, GamerPhase.END_PREP, false), true).waterBucket());
+        // the water bucket in the bag
+        FakeFacts held = ready().with(Items.BUCKET, 1);
+        assertFalse(missing(held, new RunState(), cfg.beds).waterBucket());
+        // water lying in the End counts as owned until it despawns
+        RunState died = diedInEndAt(90_000);
+        died.endDrops.put("water_bucket", 1);
+        noWater.gameTime = 90_000 + 10;
+        assertFalse(missing(noWater, died, cfg.beds).waterBucket());
+        noWater.gameTime = 90_000 + cfg.dropLifetimeTicks;
+        assertTrue(missing(noWater, died, cfg.beds).waterBucket());
+    }
+
+    @Test
     public void fullKitMissesNothing() {
         assertTrue(missing(ready(), new RunState(), cfg.beds).none());
     }
 
     @Test
     public void emptyHandsMissEverything() {
-        FakeFacts f = new FakeFacts();
+        FakeFacts f = new FakeFacts().with(Items.BUCKET, 1);
         f.blocks = 0;
         f.food = 0;
         EndGear.Gap gap = missing(f, new RunState(), cfg.beds);
         assertEquals(8, gap.beds());
         assertTrue(gap.weapon());
+        assertTrue(gap.waterBucket());
         assertTrue(gap.pickaxe());
         assertEquals(cfg.buildBlocks, gap.buildBlocks());
         assertTrue(gap.food());

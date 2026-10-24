@@ -1,15 +1,19 @@
 package adris.altoclef.util.helpers;
 
+import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import net.minecraft.core.BlockPos;
 
-// topping the water bucket back up when there is a pond right there. the mlg clutch spends it, and the next time it is
-// needed (lava, a fall) is usually twenty minutes later and nowhere near water. pure, the chain hands in what it sees
+import java.util.function.Predicate;
+
+// topping the water bucket back up when there is a pond right there (and the end prep gate, which looks further). the mlg clutch spends it, and the next time it is
+// needed (lava, a fall) is usually twenty minutes later and nowhere near water. the rules are pure, the chain hands in what it sees
 public final class WaterUpkeep {
 
     private WaterUpkeep() {
     }
 
-    // a pond further than this is a trip, and trips belong to the kit planner
+    // a pond further than this is a trip, and trips belong to the kit planner (the end prep gate takes a longer one on a clock)
     public static final double RANGE = 16;
     // one go at it, then the pond gets a rest. 15 s is a walk of 16 blocks plus the scoop with room to spare
     public static final int TIMEOUT_TICKS = 300;
@@ -47,5 +51,37 @@ public final class WaterUpkeep {
 
     public static boolean timedOut(int now, int startedAt) {
         return now < startedAt || now - startedAt >= TIMEOUT_TICKS;
+    }
+
+    // water we can scoop from above: a source with open air over it
+    public static boolean pondSource(AltoClef mod, BlockPos p) {
+        return BucketPour.isWaterSource(mod.getWorld(), p)
+                && FluidSources.exposedSource(mod.getWorld().getFluidState(p), mod.getWorld().getFluidState(p.above()))
+                && mod.getWorld().getBlockState(p.above()).getCollisionShape(mod.getWorld(), p.above()).isEmpty();
+    }
+
+    // nearest pond source within range (and 8 up or down), straight line. a cube walk, which is why callers only ask
+    // once in a while. skip = ponds that already ate their clock
+    public static BlockPos nearestPond(AltoClef mod, int range, Predicate<BlockPos> skip) {
+        BlockPos me = mod.getPlayer().blockPosition();
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        BlockPos best = null;
+        double bestDist = (double) range * range;
+        for (int dx = -range; dx <= range; dx++) {
+            for (int dz = -range; dz <= range; dz++) {
+                for (int dy = -8; dy <= 8; dy++) {
+                    double d = dx * dx + dy * dy + dz * dz;
+                    if (d > bestDist) {
+                        continue;
+                    }
+                    p.set(me.getX() + dx, me.getY() + dy, me.getZ() + dz);
+                    if (pondSource(mod, p) && !mod.getBlockTracker().unreachable(p) && !skip.test(p)) {
+                        best = p.immutable();
+                        bestDist = d;
+                    }
+                }
+            }
+        }
+        return best;
     }
 }
