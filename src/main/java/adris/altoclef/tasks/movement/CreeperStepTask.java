@@ -7,10 +7,8 @@ import adris.altoclef.util.baritone.GoalRunAwayFromEntities;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CreeperEscape;
 import adris.altoclef.util.helpers.CreeperStep;
-import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.pathing.goals.Goal;
-import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.utils.input.Input;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
@@ -29,9 +27,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-// out of one lit creeper's blast, then stand there. two flavours (see CreeperStep): the bait backs off to just past the
-// blast and waits for the pop, the defuse goes eight blocks through baritone's own planner (so no walking off ledges or into
-// lava) so it stops swelling. never finishes by itself: CreeperStep says when the fuse is over and the chain lets go.
+// out of a creeper's blast: the hand sprint first, then eight blocks through baritone's own planner (so no walking off ledges
+// or into lava) so it stops swelling. never finishes by itself: CreeperStep says when the step is over and the chain lets go.
 // the fuse is 30 ticks and the first path can take a third of that to show up, so we sprint away ourselves first
 public class CreeperStepTask extends CustomBaritoneGoalTask {
 
@@ -39,47 +36,30 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     // for nothing. same idea as CommittedRunTask.REISSUE_GAP_TICKS, just shorter, the whole step is 2.5 s
     static final long REISSUE_GAP_TICKS = 10;
 
-    // the defuse steers itself until the path takes over, see CreeperStep.rawGoing. a path that shows up first ends it, it brings
-    // its own inputs
-    // the bait steers itself the whole way out unless the ground says no. 3 to 6.2 is a dozen and a bit ticks of sprinting from
-    // a standstill (the defuse's hand sprint gets about 5.5 in 10 ticks with the slide, short of the line), and baritone is only asked once this runs out,
-    // so an orphaned search from a hand sprint is not a thing here. still well inside the fuse
-    static final long BAIT_RAW_TICKS = 25;
-
     // blocks that hurt to stand on or in, or hold you there, and that have no collision to tell us so
     private static final Set<Block> DANGEROUS = Set.of(
             Blocks.FIRE, Blocks.SOUL_FIRE, Blocks.CACTUS, Blocks.SWEET_BERRY_BUSH, Blocks.POWDER_SNOW,
             Blocks.MAGMA_BLOCK, Blocks.CAMPFIRE, Blocks.SOUL_CAMPFIRE, Blocks.COBWEB, Blocks.WITHER_ROSE);
 
     private final int _creeperId;
-    private final boolean _bait;
-    // the bait is past the line and has let go of everything
-    private boolean _standing;
     private long _lastIssue = Long.MIN_VALUE / 2;
     private long _startTick;
-    // the raw phase is over for good once the path runs or the ticks are up, it never comes back mid step
+    // the raw phase is over for good once we are clear or the ticks are up, it never comes back mid step
     private boolean _raw;
     private boolean _rawLogged;
     private boolean _issued;
     private boolean _failLogged;
 
     public CreeperStepTask(int creeperId) {
-        this(creeperId, false);
-    }
-
-    public CreeperStepTask(int creeperId, boolean bait) {
         // no wander: standing at the goal is the point
         super(false);
         _creeperId = creeperId;
-        _bait = bait;
     }
 
     @Override
     protected Goal newGoal(AltoClef mod) {
         // step NOW, not after the user's path finishes its segment
         cancelPath(mod);
-        Entity creeper = mod.getWorld().getEntity(_creeperId);
-        if (_bait && creeper instanceof Creeper) return new GoalBaitRing(creeper.getX(), creeper.getY(), creeper.getZ());
         return new GoalAwayFromCreeper(mod, _creeperId);
     }
 
@@ -103,61 +83,17 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
         _rawLogged = false;
         _issued = false;
         _failLogged = false;
-        _standing = false;
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
         // before the baritone bit, so the first tick already moves us
-        if (_bait) {
-            if (bait(mod)) return null;
-        } else if (sprintAway(mod)) {
+        if (sprintAway(mod)) {
             // the hand sprint owns the tick. no goal goes out meanwhile: a path starting from a standstill let go of the
             // forward key while it thought, and that is where the distance went
             return null;
         }
         return super.onTick(mod);
-    }
-
-    // true = this tick is ours (sprinting out, or standing still for the pop), false = baritone walks us to the ring.
-    // live distance every tick and not a block goal: the line is a fraction of a block wide and the slide is part of the plan
-    private boolean bait(AltoClef mod) {
-        Entity creeper = mod.getWorld().getEntity(_creeperId);
-        if (creeper == null) {
-            // popped or gone, the chain lets go next tick
-            releaseRaw(mod);
-            return true;
-        }
-        long now = mod.getWorld().getGameTime();
-        if (CreeperStep.baitStands(mod.getPlayer().distanceTo(creeper), _standing)) {
-            if (!_standing) {
-                _standing = true;
-                _raw = false;
-                releaseRaw(mod);
-            }
-            // any path (ours to the ring, or the user's that was not safe to drop at the start) walks us on, so it goes.
-            // past 7 counts too: walking back at a lit creeper is not the move, it deflates and the step ends
-            if (mod.getClientBaritone().getPathingBehavior().isPathing() || mod.getClientBaritone().getCustomGoalProcess().isActive()) {
-                cancelPath(mod);
-            }
-            LookHelper.lookAt(mod, creeper.getEyePosition());
-            return true;
-        }
-        if (_standing) {
-            // it deflated, walked in and lit again inside the same step: out again, sprint first like at the start, and the
-            // ring gets drawn around where it stands now
-            _standing = false;
-            _raw = true;
-            _startTick = now;
-            _cachedGoal = null;
-            cancelPath(mod);
-        }
-        if (_raw && now - _startTick >= BAIT_RAW_TICKS) endRaw(mod);
-        if (!_raw) return false;
-        if (steer(mod, creeper)) return true;
-        // nowhere safe to sprint: the ring path has it from here
-        endRaw(mod);
-        return false;
     }
 
     // the keys are ours until the ticks run out or we are clear. every tick looks at the ground again, so a ledge or a wall
@@ -306,55 +242,17 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof CreeperStepTask task && task._creeperId == _creeperId && task._bait == _bait;
+        return other instanceof CreeperStepTask task && task._creeperId == _creeperId;
     }
 
     @Override
     protected String toHudString() {
-        return _bait ? "Letting a creeper pop out of reach" : "Stepping out of a creeper blast";
+        return "Stepping out of a creeper blast";
     }
 
     @Override
     protected String toDebugString() {
-        return _bait ? "Wait just past the blast of creeper " + _creeperId
-                : "Step " + (int) CreeperStep.SAFE + " blocks from creeper " + _creeperId;
-    }
-
-    // a cell whose middle is in CreeperStep's bait ring around the creeper. it stands still while it swells, so where it stood
-    // when the goal was drawn is where it is
-    private static final class GoalBaitRing implements Goal {
-        private final double _x;
-        private final double _y;
-        private final double _z;
-
-        GoalBaitRing(double x, double y, double z) {
-            _x = x;
-            _y = y;
-            _z = z;
-        }
-
-        private double distance(int x, int y, int z) {
-            double dx = x + 0.5 - _x, dy = y - _y, dz = z + 0.5 - _z;
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
-        }
-
-        @Override
-        public boolean isInGoal(int x, int y, int z) {
-            return CreeperStep.inBaitRing(distance(x, y, z));
-        }
-
-        @Override
-        public double heuristic(int x, int y, int z) {
-            double d = distance(x, y, z);
-            if (CreeperStep.inBaitRing(d)) return 0;
-            double gap = d < CreeperStep.BAIT_RING_MIN ? CreeperStep.BAIT_RING_MIN - d : d - CreeperStep.BAIT_RING_MAX;
-            return gap * ActionCosts.WALK_ONE_BLOCK_COST;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("GoalBaitRing{x=%.1f,y=%.1f,z=%.1f}", _x, _y, _z);
-        }
+        return "Step " + (int) CreeperStep.SAFE + " blocks from creeper " + _creeperId;
     }
 
     private static class GoalAwayFromCreeper extends GoalRunAwayFromEntities {

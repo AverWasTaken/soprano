@@ -62,14 +62,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.AbstractFurnaceBlock;
-import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.BaseFireBlock;
-import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.FallingBlock;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -316,7 +311,7 @@ public class MobDefenseChain extends SingleTaskChain {
         float hold = _brain.holdPriority();
         Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
 
-        // a lit creeper right next to us: a couple of steps out of the blast, or the shield when boxed in. not a commitment,
+        // a creeper right next to us, lit or not: a few steps out of the blast, or the shield when boxed in. not a commitment,
         // the machine only hears of one that keeps coming back, and whatever it was holding (a fight, a run) gets the wheel
         // back after the bang
         boolean creeperShield = false;
@@ -333,7 +328,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 return Math.max(CREEPER_STEP_PRIORITY, hold);
             }
             dropCapSneak(mod);
-            // capped: the wheel stays ours and goes nowhere. the step's own task would walk the bait ring or the defuse
+            // capped: the wheel stays ours and goes nowhere. the step's own task would walk
             // straight through the block we just put up
             boolean capped = _capPlaced;
             if (_creeperStep.cornered()) {
@@ -358,7 +353,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 mod.getClientBaritone().getPathingBehavior().requestPause();
                 stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
             } else {
-                setTask(new CreeperStepTask(_creeperStep.creeperId(), _creeperStep.baiting()));
+                setTask(new CreeperStepTask(_creeperStep.creeperId()));
                 stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
             }
         }
@@ -747,13 +742,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (ahead == null) ahead = pathAhead(mod, running);
                     pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
                 }
-                // the block scan is only for one that is about to get the bait, not every creeper every tick (the bait is for an
-                // idle commitment only, see CreeperStep.step, and never while healing up)
-                boolean nearStuff = lit && mode == CombatCommit.Mode.NONE && !_brain.recovering() && !_creeperStep.active()
-                        && (distance <= CreeperStep.TRIGGER || pathNear) && nearStuff(mod.getWorld(), creeper.blockPosition());
                 // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
-                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f,
-                        creeper.isPowered(), nearStuff));
+                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f));
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
@@ -762,7 +752,7 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
         boolean noHeading = noWayOut(mod, seen);
-        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, _brain.recovering(), noHeading);
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, noHeading);
         // (a step that starts boxed in comes back as CORNERED, it is still the start of the step)
         if ((event == CreeperStep.Event.START || event == CreeperStep.Event.CORNERED) && _creeperStep.shouldLog()) {
             Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
@@ -809,30 +799,6 @@ public class MobDefenseChain extends SingleTaskChain {
         if (creeper == null) return false;
         return CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), CreeperStepTask.threats(mod, creeper),
                 CreeperStepTask.cells(mod.getWorld())) == null;
-    }
-
-    // stuff a creeper popping beside would cost us: a portal frame on its way (obsidian, or the portal itself), a bed, storage,
-    // a furnace of any kind, a table. within NEAR_STUFF of its feet, the blast's own reach for this sort of block more or less
-    private static final int NEAR_STUFF = 5;
-
-    private static boolean nearStuff(Level level, BlockPos center) {
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dx = -NEAR_STUFF; dx <= NEAR_STUFF; dx++) {
-            for (int dy = -NEAR_STUFF; dy <= NEAR_STUFF; dy++) {
-                for (int dz = -NEAR_STUFF; dz <= NEAR_STUFF; dz++) {
-                    if (dx * dx + dy * dy + dz * dz > NEAR_STUFF * NEAR_STUFF) continue;
-                    pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
-                    if (isStuff(level.getBlockState(pos).getBlock())) return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean isStuff(Block block) {
-        return block == Blocks.NETHER_PORTAL || block == Blocks.OBSIDIAN || block == Blocks.CRAFTING_TABLE
-                || block instanceof BedBlock || block instanceof ChestBlock || block instanceof BarrelBlock
-                || block instanceof AbstractFurnaceBlock;
     }
 
     // the next few nodes of the path we are walking, as block corners. empty when nothing is pathing. skipCurrent leaves out
