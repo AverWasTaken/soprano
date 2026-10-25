@@ -58,7 +58,7 @@ public final class NeoSearches {
     record Key(long src, long dest, long hash, int kind) {}
 
     // what a job is: a neo (the full search), two neos in one flight, or a chain of walks and jumps by way of ledges
-    static final int NEO = 0, COMBO = 1, LEDGES = 2;
+    static final int NEO = 0, COMBO = 1, LEDGES = 2, LEAP = 3;
 
     static final boolean LOG = System.getenv("SOPRANO_NEO_LOG") != null;
     static final boolean FLY_DEBUG = System.getenv("SOPRANO_FLY_DEBUG") != null;
@@ -258,6 +258,7 @@ public final class NeoSearches {
             long t0 = System.currentTimeMillis();
             try {
                 plan = job.kind() == COMBO ? solveCombo(job.world(), job.src(), job.floorY(), job.land(), job.region())
+                        : job.kind() == LEAP ? solveLeap(job.world(), job.src(), job.floorY(), job.land(), job.region())
                         : job.kind() == LEDGES ? Ledges.plan(job.world(), job.src(), job.floorY(), job.land())
                         : solve(job.world(), job.src(), job.floorY(), job.land(), job.region(), job.via());
             } catch (Throwable t) {
@@ -313,6 +314,33 @@ public final class NeoSearches {
             }
         }
         return null;
+    }
+
+    // a leap along the remembered way (TungstenJumps.trailLeap): the plain search, no margin (a start on the rim of a block
+    // round a post is right up against it, and a margin has it stuck in the post), a bigger budget (a run, a touchdown on
+    // the way and a second jump are a long plan), and it has to stand most of the wobbly flights, not all: somebody's made
+    // this one, and a miss is a put back
+    static final long LEAP_BUDGET = 3_000_000;
+    static final int LEAP_LANDED = 12;
+
+    public static TungstenSearch.Plan solveLeap(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region) {
+        TungstenSearch.Plan plan = TungstenSearch.search(standing(world, src, floorY), land, region, LEAP_BUDGET, null);
+        if (plan == null || plan.ticks() == 0) {
+            if (LOG) {
+                System.out.println("[neo search]   leap: nothing");
+            }
+            return null;
+        }
+        int landed = 0;
+        for (long seed = 0; seed < FLIGHTS; seed++) {
+            if (flyFrom(world, src, floorY, land, plan, seed, JITTER) == null) {
+                landed++;
+            }
+        }
+        if (LOG) {
+            System.out.println("[neo search]   leap: " + plan.ticks() + " ticks, " + landed + "/" + FLIGHTS + " flights");
+        }
+        return landed >= LEAP_LANDED ? plan : null;
     }
 
     // two neos in one flight: only ever turned up by the plain search with no margin (and then flies fine, the pad in the middle

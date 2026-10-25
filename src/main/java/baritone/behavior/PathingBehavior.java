@@ -168,7 +168,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             baritone.cache.WorldData wd = baritone.getWorldProvider().getCurrentWorld();
             net.minecraft.client.player.LocalPlayer p = ctx.player();
             RouteMemory.tick(p.level(), wd == null ? null : wd.directory, p.getX(), p.getY(), p.getZ(), ctx.playerFeet(),
-                    p.onGround() && !p.isInWater());
+                    p.onGround() && !p.isInWater(), p.isInWater() || p.onClimbable());
         }
         // the background jump searches go nearest the player first, path or no path
         NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
@@ -190,6 +190,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         baritone.getPathingControlManager().preTick();
         PathExecutor ticked = current;
         tickPath();
+        treadWater();
         if (telemetry) {
             // an executor that finished or cancelled this tick is gone from `current`, its last word on sprint still counts
             sprintTelemetry.end(current != null ? current : ticked, pausedThisTick);
@@ -203,6 +204,24 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         if (isPathing()) {
             event.setState(current.isSprinting());
         }
+    }
+
+    // in water with somewhere to go but no path to follow yet (a search still running, a pause while the jumps out are
+    // worked out): hold jump, the way a player treads water. a hanging water block on a parkour map is only a block deep,
+    // and just floating there you sink out of the bottom of it onto whatever's under, often a floor there's no way back up
+    // from
+    private boolean treading;
+
+    private void treadWater() {
+        net.minecraft.client.player.LocalPlayer p = ctx.player();
+        boolean tread = p != null && current == null && goal != null && p.isInWater() && !p.onGround()
+                && !goal.isInGoal(ctx.playerFeet());
+        if (tread) {
+            baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+        } else if (treading) {
+            baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, false);
+        }
+        treading = tread;
     }
 
     private void tickPath() {
@@ -706,6 +725,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public BetterBlockPos pathStart() { // TODO move to a helper or util class
         BetterBlockPos feet = ctx.playerFeet();
+        if (!ctx.player().onGround() && ctx.world().getFluidState(feet).isEmpty() && !ctx.world().getFluidState(feet.below()).isEmpty()
+                && ctx.player().getY() - feet.y < 0.8) {
+            // treading water at the top of a water block, the feet bob in and out of the cell over it: the water's the start,
+            // or every bob starts the search over and it never gets to the end of one (see treadWater)
+            return feet.below();
+        }
         if (!MovementHelper.canWalkOn(ctx, feet.below())) {
             // the lip search runs whether or not onGround says so. onGround blinks on a lip, and every blink used to flip the
             // start between the lip and the block under us, a block lower, which plans a whole different path from a spot

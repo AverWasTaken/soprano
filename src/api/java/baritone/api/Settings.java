@@ -869,6 +869,14 @@ public final class Settings {
     public final Setting<Boolean> useRouteMemory = new Setting<>(true);
 
     /**
+     * How many more times a #goto asks again when no path is found from where it's standing, a couple of seconds apart,
+     * before it gives up. Each time it's stuck in the same place it looks wider (exploring, going lower, the jumps still
+     * being worked out in the background), so on a parkour course the next ask often finds a way where the last didn't.
+     * 0 gives up the first time, as Baritone always has.
+     */
+    public final Setting<Integer> noPathRetries = new Setting<>(10);
+
+    /**
      * Let a small net (trained on Parkour Lab, and learning more as the bot plays) leave out the Tungsten jumps it's sure
      * won't work, instead of the sim trying each one. Planning goes quicker; now and then it's wrong and a jump is missed,
      * which a later search usually finds anyway (it still asks the sim about a few of them, to keep learning).

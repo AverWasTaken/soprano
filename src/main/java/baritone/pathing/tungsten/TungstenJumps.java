@@ -174,6 +174,55 @@ public final class TungstenJumps {
         return context.tungsten().jump(context, src, dest, true);
     }
 
+    // a leap along the remembered way (RouteMemory): from a cell on the guide to one a few cells on, further than any jump
+    // A* asks about, in one go by the full search (a run along a block and straight off its far edge into the next jump,
+    // the speed carried, the way the player went: Hell's 1443 -> 1447 -> 1453). the furthest along one that works. null for
+    // none (or none yet: worked out in the background, PendingTables says so)
+    public static Jump trailLeap(CalculationContext context, int x, int y, int z) {
+        baritone.behavior.RouteMemory.Guide g = context.routeGuide;
+        if (g == null || !context.allowTungstenJumps) {
+            return null;
+        }
+        int a = g.alongNear(x, y, z);
+        if (a < 0) {
+            return null;
+        }
+        if (NeoSearches.LOG) {
+            System.out.println("[trail leap] from " + x + " " + y + " " + z + " (" + a + " of " + g.length() + ")");
+        }
+        BetterBlockPos src = new BetterBlockPos(x, y, z);
+        for (int k = Math.min(g.length(), a + TRAIL_LEAP); k >= a + 2; k--) {
+            long c = g.cell(k);
+            if (c == Long.MIN_VALUE) {
+                continue;
+            }
+            int tx = net.minecraft.core.BlockPos.getX(c), ty = net.minecraft.core.BlockPos.getY(c), tz = net.minecraft.core.BlockPos.getZ(c);
+            int dx = tx - x, dz = tz - z;
+            if (dx * dx + dz * dz <= TRAIL_LEAP_MIN * TRAIL_LEAP_MIN || dx * dx + dz * dz > TRAIL_LEAP_MAX * TRAIL_LEAP_MAX
+                    || ty - y > 1 || y - ty > context.maxFallHeightNoWater || !destOk(context, tx, ty, tz)) {
+                continue; // (near enough for the jumps A* asks about anyway, or more than a leap)
+            }
+            Jump j = context.tungsten().leap(context, src, new BetterBlockPos(tx, ty, tz));
+            if (j != null) {
+                return j;
+            }
+        }
+        return null;
+    }
+
+    // the same leap from src to dest, if there is one (MovementTungsten.calculateCost, for a movement that's one)
+    public static Jump leapBetween(CalculationContext context, BetterBlockPos src, BetterBlockPos dest) {
+        if (context.routeGuide == null || context.routeGuide.alongNear(src.x, src.y, src.z) < 0 || context.routeGuide.along(dest.x, dest.y, dest.z) < 0) {
+            return null;
+        }
+        return context.tungsten().leap(context, src, dest);
+    }
+
+    // how many cells on along the way a leap may go, and how far (across) it has to be to be one
+    static final int TRAIL_LEAP = 6;
+    static final double TRAIL_LEAP_MIN = 4.5, TRAIL_LEAP_MAX = 12;
+    static final double LEAP_COST = 1.3;
+
     // the sector of CARRY_SECTORS a jump from (fx, fz) to (x, z) heads in, or -1 if that's no jump (next door, or nothing)
     public static int carrySector(int fx, int fz, int x, int z) {
         int dx = x - fx, dz = z - fz;
@@ -423,6 +472,29 @@ public final class TungstenJumps {
         // anyBudget is the executor rechecking a movement it already has (calculateCost, every tick): never refused for the
         // budget, and never answered from more than RECHECK_MS ago, because a block placed in the way since is exactly what
         // that recheck is for
+        // a leap along the trail (trailLeap): the full search, in the background, standing in src
+        synchronized Jump leap(CalculationContext context, BetterBlockPos src, BetterBlockPos dest) {
+            if (world == null) {
+                world = new SafeCollision(context.bsi);
+            }
+            double[] at = standAt(world, src.x, src.y, src.z);
+            if (Double.isNaN(at[2]) || !rimNode(context, src.x, src.y, src.z) && !destOk(context, src.x, src.y, src.z)) {
+                return null; // (on a floor, or on the rim of a block with a post on it: the full search starts wherever standAt says)
+            }
+            Landing land = landing(context, dest);
+            if (land.grab() || land.water()) {
+                return null;
+            }
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, at[2], land, null, NeoSearches.LEAP, true);
+            if (plan == null || plan == NeoSearches.WAIT || plan.ticks() == 0) {
+                return null;
+            }
+            double dx = dest.x - src.x, dz = dest.z - src.z;
+            double straight = Math.sqrt(dx * dx + dz * dz) * ActionCosts.SPRINT_ONE_BLOCK_COST;
+            double cost = context.biasJump(Math.max(plan.ticks(), straight) * LEAP_COST + context.jumpPenalty);
+            return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+        }
+
         synchronized Jump jump(CalculationContext context, BetterBlockPos src, BetterBlockPos dest, boolean anyBudget) {
             Map<Long, Known> from = pairs.get(BetterBlockPos.longHash(src));
             Known known = from == null ? null : from.get(BetterBlockPos.longHash(dest));
@@ -1146,7 +1218,10 @@ public final class TungstenJumps {
         boolean ruleOnly = at[3] != 0 || land.ax() != 0.5 || land.az() != 0.5;
         // (behind a wall, not even then: the rule's neos look ahead every tick, a hundred times the work of a jump, and
         // a walled map has rims round every post. a search spent minutes in them)
-        JumpPolicy.Rollout r = behindWall ? null : JumpPolicy.forgiving(sim, land);
+        // (unless somebody's made this one: a jump on a remembered trail is worth the rule's look, wall or no wall, and the
+        // rule's last resort too, a jump that only just lands: the player made it)
+        boolean onTrail = baritone.behavior.RouteMemory.trailJump(src.x, src.y, src.z, dest.x, dest.y, dest.z);
+        JumpPolicy.Rollout r = behindWall && !onTrail ? null : onTrail ? JumpPolicy.forgivingOrRisky(sim, land) : JumpPolicy.forgiving(sim, land);
         if (PROFILE) {
             boolean neoV = JumpPolicy.variants(sim, land) == JumpPolicy.NEO_VARIANTS;
             int part = (r != null ? 1 : 2) + (neoV ? 2 : 0);
@@ -1156,7 +1231,8 @@ public final class TungstenJumps {
         if (r != null) {
             // a neo of the rule's (aimed off the line round a wall) is the last resort, behind MovementNeo's tables when it
             // has one: it's the touchiest thing the rule does
-            double aimed = (r.variant().aim() != 0F ? NEO_COST : 1) * (JumpPolicy.TIGHT.equals(r.why()) ? TIGHT_COST : 1);
+            double aimed = (r.variant().aim() != 0F ? NEO_COST : 1) * (JumpPolicy.TIGHT.equals(r.why()) ? TIGHT_COST : 1)
+                    * (JumpPolicy.RISKY.equals(r.why()) ? RISKY_COST : 1);
             double cost = context.biasJump(Math.max(r.ticks(), straight) * aimed + context.jumpPenalty);
             return new Jump(src, dest, cost, r.variant(), List.copyOf(r.states()), null);
         }
@@ -1215,6 +1291,9 @@ public final class TungstenJumps {
     }
 
     static final double LEDGE_COST = 1.2;
+    // a jump that only lands on the edge, or only with the aim spot on (JumpPolicy.forgivingOrRisky): the way when there's
+    // no other
+    static final double RISKY_COST = 3;
 
     // by way of ledges (Ledges), worked out in the background, when there are posts round src to make rims
     private static Jump ledges(CalculationContext context, SafeCollision world, BetterBlockPos src, BetterBlockPos dest, double floor, Landing land,

@@ -28,6 +28,33 @@ public class CubeDebug {
             w.set(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt(),
                     BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, "minecraft:" + b.get(3).getAsString(), false).blockState());
         }
+        if (System.getenv("CUBE_SOLVE_AT") != null) {
+            // the full search from exactly here: CUBE_SOLVE_AT="x y z tx ty tz" (a start where the player stood, to a landing)
+            baritone.api.BaritoneAPI.getSettings().allowTungstenJumps.value = true;
+            baritone.api.BaritoneAPI.getSettings().considerPotionEffects.value = false;
+            String[] q = System.getenv("CUBE_SOLVE_AT").trim().split("\\s+");
+            SafeCollision sw = new SafeCollision(w);
+            VineLogPathTest.Ctx ctx = new VineLogPathTest.Ctx(w);
+            baritone.pathing.sim.PlayerSim sim = new baritone.pathing.sim.PlayerSim(baritone.pathing.sim.PlayerSim.Params.vanilla(), sw);
+            sim.x = Double.parseDouble(q[0]);
+            sim.y = Double.parseDouble(q[1]);
+            sim.z = Double.parseDouble(q[2]);
+            sim.vy = -0.0784;
+            sim.onGround = true;
+            BetterBlockPos t = new BetterBlockPos(Integer.parseInt(q[3]), Integer.parseInt(q[4]), Integer.parseInt(q[5]));
+            Landing l = TungstenJumps.landing(ctx, t);
+            BetterBlockPos src = new BetterBlockPos((int) Math.floor(sim.x), (int) Math.floor(sim.y), (int) Math.floor(sim.z));
+            for (long budget : new long[]{1_000_000, 3_000_000, 10_000_000}) {
+                long t0 = System.currentTimeMillis();
+                baritone.pathing.tungsten.TungstenSearch.Plan plan = baritone.pathing.tungsten.TungstenSearch.search(sim.copy(), l,
+                        baritone.pathing.tungsten.NeoSearches.region(src, l), budget, null);
+                System.out.println("CUBE solve at " + sim.x + " " + sim.z + " budget " + budget + ": " + (plan == null ? "none" : plan.ticks() + " ticks") + " in " + (System.currentTimeMillis() - t0) + " ms");
+                if (plan != null && plan.ticks() > 0) {
+                    break;
+                }
+            }
+            return;
+        }
         if (System.getenv("CUBE_PAIRS") != null) {
             // several pairs, ';' between: what the planner makes of each (CUBE_PAIR for one)
             baritone.api.BaritoneAPI.getSettings().allowTungstenJumps.value = true;
@@ -52,6 +79,13 @@ public class CubeDebug {
                         + " takeoff " + TungstenJumps.takeoff(ctx, a.x, a.y, a.z) + " destOk " + TungstenJumps.destOk(ctx, b.x, b.y, b.z));
                 TungstenJumps.Jump j = TungstenJumps.between(ctx, a, b);
                 System.out.println(head + " between " + (j == null ? "none" : j.cost() + " " + j.variant() + (j.plan() != null ? " (plan)" : "")));
+                if (System.getenv("CUBE_SOLVE") != null && !Double.isNaN(st[2])) {
+                    // the full search, the way the background does it (standing in src)
+                    long t0 = System.currentTimeMillis();
+                    baritone.pathing.tungsten.TungstenSearch.Plan plan = baritone.pathing.tungsten.NeoSearches.solve(sw, a, st[2], l,
+                            baritone.pathing.tungsten.NeoSearches.region(a, l));
+                    System.out.println(head + " full search " + (plan == null ? "none" : plan.ticks() + " ticks") + " in " + (System.currentTimeMillis() - t0) + " ms");
+                }
                 if (q.length >= 8) {
                     // coming in from fx fz: the jump carrying that one's speed on
                     int sector = TungstenJumps.carrySector(Integer.parseInt(q[6]), Integer.parseInt(q[7]), a.x, a.z);

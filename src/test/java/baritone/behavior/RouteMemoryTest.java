@@ -91,6 +91,62 @@ public class RouteMemoryTest {
     }
 
     @Test
+    public void launchedBackUpAfterAFallKeepsTheClimb() throws Exception {
+        Path dir = Files.createTempDirectory("routes");
+        Object level = new Object();
+        for (int i = 0; i < 70; i++) {
+            stand(level, dir, 0, 64, 0);
+        }
+        for (int x = 1; x <= 20; x++) {
+            stand(level, dir, x, 64 + x / 2, 0); // a climb
+        }
+        // off the side, put back on the start, and flown up (no teleport) to where we were
+        RouteMemory.tick(level, dir, 20.5, 50, 4.5, new BetterBlockPos(20, 50, 4), false);
+        RouteMemory.tick(level, dir, 0.5, 64, 0.5, new BetterBlockPos(0, 64, 0), false);
+        for (int k = 1; k <= 10; k++) {
+            RouteMemory.tick(level, dir, 2 * k + 0.5, 64 + 0.98 * k, 0.5, new BetterBlockPos(2 * k, 64, 0), false);
+        }
+        stand(level, dir, 20, 74, 0);
+        for (int x = 21; x <= 25; x++) {
+            stand(level, dir, x, 74, 0);
+        }
+        RouteMemory.Guide g = RouteMemory.guide(new BetterBlockPos(0, 64, 0), new BetterBlockPos(25, 74, 0));
+        assertNotNull(g);
+        assertTrue(g.reachesGoal());
+        assertTrue(g.along(10, 69, 0) > 0); // the climb's still on it
+    }
+
+    @Test
+    public void flyingBackAfterAMissLeavesNothingBehind() throws Exception {
+        Path dir = Files.createTempDirectory("routes");
+        Object level = new Object();
+        for (int i = 0; i < 70; i++) {
+            stand(level, dir, 0, 64, 0);
+        }
+        for (int x = 1; x <= 5; x++) {
+            stand(level, dir, x, 64, 0);
+        }
+        // a miss: down onto the floor, a walk about, and flown back up to the block it went from (one over)
+        for (int y = 63; y > 55; y--) {
+            RouteMemory.tick(level, dir, 6.5, y, 0.5, new BetterBlockPos(6, y, 0), false);
+        }
+        stand(level, dir, 6, 55, 0);
+        stand(level, dir, 6, 55, 1);
+        stand(level, dir, 6, 55, 2);
+        for (int y = 56; y <= 66; y++) {
+            RouteMemory.tick(level, dir, 5.5, y, 0.5, new BetterBlockPos(5, y, 0), false);
+        }
+        stand(level, dir, 5, 64, 1);
+        for (int x = 6; x <= 12; x++) {
+            stand(level, dir, x, 64, 1);
+        }
+        RouteMemory.Guide g = RouteMemory.guide(new BetterBlockPos(0, 64, 0), new BetterBlockPos(12, 64, 1));
+        assertNotNull(g);
+        assertTrue(g.reachesGoal());
+        assertEquals(-1, g.along(6, 55, 1)); // the floor isn't the way
+    }
+
+    @Test
     public void restartingTheLevelKeepsTheWay() throws Exception {
         Path dir = Files.createTempDirectory("routes");
         Object level = new Object();
@@ -105,6 +161,21 @@ public class RouteMemoryTest {
         }
         stand(level, dir, 0, 64, 0); // and the level started over: not a fall
         RouteMemory.Guide g = RouteMemory.guide(new BetterBlockPos(0, 64, 0), new BetterBlockPos(12, 64, 0));
+        assertNotNull(g);
+        assertTrue(g.reachesGoal());
+    }
+
+    @Test
+    public void aRecordingTeachesTheWayMoved() throws Exception {
+        Path dir = Files.createTempDirectory("routes");
+        stand(new Object(), dir, 500, 64, 500);
+        // a recorded run (a few ticks a cell) somewhere else, rebuilt 100 east of where it was played
+        String trace = "tick,world,x,y,z,onGround\n" + java.util.stream.IntStream.range(0, 60)
+                .mapToObj(i -> i + ",0," + (i / 3 + 0.5) + ",64.0,0.5,1").collect(java.util.stream.Collectors.joining("\n"));
+        java.util.List<double[]> ticks = baritone.command.defaults.RoutesCommand.parse(trace);
+        assertEquals(60, ticks.size());
+        assertTrue(RouteMemory.learn(ticks, 100, 0, 0) >= 15);
+        RouteMemory.Guide g = RouteMemory.guide(new BetterBlockPos(100, 64, 0), new BetterBlockPos(119, 64, 0));
         assertNotNull(g);
         assertTrue(g.reachesGoal());
     }

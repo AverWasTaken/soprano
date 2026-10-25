@@ -119,6 +119,26 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         return new MovementTungsten(context.getBaritone(), src, j.dest(), j.variant(), j.trace(), j.plan(), j.carry());
     }
 
+    // a leap along the remembered way (TungstenJumps.trailLeap)
+    public static MovementTungsten leap(CalculationContext context, BetterBlockPos src) {
+        TungstenJumps.Jump j = TungstenJumps.trailLeap(context, src.x, src.y, src.z);
+        if (j == null) {
+            return new MovementTungsten(context.getBaritone(), src, src, null, List.of(), null);
+        }
+        return new MovementTungsten(context.getBaritone(), src, j.dest(), j.variant(), j.trace(), j.plan(), -1);
+    }
+
+    public static void leap(CalculationContext context, int x, int y, int z, MutableMoveResult res) {
+        TungstenJumps.Jump j = TungstenJumps.trailLeap(context, x, y, z);
+        if (j == null) {
+            return;
+        }
+        res.x = j.dest().x;
+        res.y = j.dest().y;
+        res.z = j.dest().z;
+        res.cost = j.cost();
+    }
+
     public static void cost(CalculationContext context, int x, int y, int z, int bucket, MutableMoveResult res) {
         TungstenJumps.Jump j = TungstenJumps.get(context, x, y, z, bucket);
         if (j == null) {
@@ -136,6 +156,9 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             return COST_INF;
         }
         TungstenJumps.Jump j = TungstenJumps.between(context, src, dest, carry);
+        if (j == null && carry < 0) {
+            j = TungstenJumps.leapBetween(context, src, dest); // (a leap along the remembered way)
+        }
         return j == null ? COST_INF : j.cost();
     }
 

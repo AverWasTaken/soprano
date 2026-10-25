@@ -378,8 +378,9 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         return best;
     }
 
-    // a remembered way has to take us at least this many cells along it to be worth a part path
-    static final int MIN_ALONG = 3;
+    // a remembered way has to take us at least this many cells along it to be worth a part path (one: the next post the
+    // player jumped to is progress, even when nothing past it can be seen yet and it is lower than here)
+    static final int MIN_ALONG = 1;
 
     // a part path that ends where we've just been stood: on a course that goes away from its finish first (aqua's start goes
     // east round to stop 1, the finish is west), the best part path from the far end is back where we came from, and from

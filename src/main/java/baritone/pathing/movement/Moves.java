@@ -569,6 +569,20 @@ public enum Moves {
         }
     },
 
+    // a leap along the remembered way, further than any of the buckets (TungstenJumps.trailLeap). the offset's nothing: it
+    // goes wherever the way does
+    TUNGSTEN_TRAIL(0, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementTungsten.leap(context, src);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementTungsten.leap(context, x, y, z, result);
+        }
+    },
+
     // any angle jumps, one bucket of directions and distances each, see TungstenJumps. the offset is a cell in the middle of the
     // bucket, for the loaded chunk check
     TUNGSTEN_NEAR_EAST(+2, 0, +0, true, true) {

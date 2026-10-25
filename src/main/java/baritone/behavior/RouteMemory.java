@@ -70,89 +70,217 @@ public final class RouteMemory {
     public static synchronized void newGoal() {
         ASKED_FROM.clear();
     }
-    private static Trail current;
     private static Object world;
     private static Path file;
     private static boolean dirty;
-    private static long lastCell = Long.MIN_VALUE;
-    private static double lastX, lastY, lastZ = Double.NaN;
-    private static int ticks, sinceTeleport, cellTicks;
-    private static boolean lastGrounded;
+    private static int ticks;
     // a teleport within this many ticks of stepping onto a block is that block putting us back (FallFloor.JUST_STEPPED)
     static final int PUT_BACK_TICKS = 20;
+    // higher than this over where a flight left the ground is more than any jump: flown (or launched)
+    static final double FLY_RISE = 1.8;
+    // and lower than this under it, a fall (not a jump down a block or two onto the next one)
+    static final double FALL_DROP = 3;
+    // the player, laying down trails as they go
+    private static Layer live = new Layer();
 
     private RouteMemory() {}
+
+    // lays trails down from one run, tick by tick: the player's (live) or a recording's (learn)
+    private static final class Layer {
+        Trail current;
+        long lastCell = Long.MIN_VALUE;
+        double lastX, lastY, lastZ = Double.NaN;
+        int sinceTeleport, cellTicks;
+        // put back onto this cell of the trail: what's after it goes, once we see where we end up
+        int pendingCut = -1;
+        boolean lastGrounded;
+
+        // airborne since leaving the trail, and how far up it got: a rise more than a jump's (flying, a fly back up after a
+        // fall) that comes down on or by somewhere already on the trail is a way back there, like walking back
+        boolean airborne;
+        double takeoffY, peakY, standY;
+
+        // grounded: standing on something; floating: in water or on a ladder (swimming up a hanging water block, climbing):
+        // both are cells of the way
+        void step(double x, double y, double z, int fx, int fy, int fz, boolean grounded, boolean floating) {
+            sinceTeleport++;
+            if (!Double.isNaN(lastZ)) {
+                double dx = x - lastX, dz = z - lastZ;
+                if (dx * dx + dz * dz > 16 || y - lastY > 2.5) {
+                    // put back on a checkpoint after a fall (somewhere on the trail: what came after it was the way that
+                    // didn't work), or somewhere new (a level's start, a /tp): a new trail
+                    // (a put back comes after falling, off the ground or down below, or the moment we stepped onto
+                    // something that does it; standing somewhere a while and then a teleport is a restart, or a /tp: the
+                    // trail so far stays as it is, it's still the way)
+                    boolean settling = sinceTeleport < SETTLE_TICKS;
+                    boolean putBack = !lastGrounded || lastY < y - 1 || cellTicks <= PUT_BACK_TICKS;
+                    sinceTeleport = 0;
+                    int at = current == null || settling || !putBack ? -1 : indexNear(current.cells, new BetterBlockPos(fx, fy, fz), 1);
+                    if (at >= 0) {
+                        // (not cut yet: some servers put you back and then send you flying back up to where you got to,
+                        // see the first cell stood on after)
+                        pendingCut = at;
+                    } else {
+                        pendingCut = -1;
+                        newTrail();
+                    }
+                    lastCell = Long.MIN_VALUE;
+                }
+            }
+            lastX = x;
+            lastY = y;
+            lastZ = z;
+            lastGrounded = grounded || floating;
+            cellTicks++;
+            boolean flew = false, fell = false;
+            if (!grounded && !floating) {
+                if (!airborne) {
+                    airborne = true;
+                    takeoffY = peakY = standY;
+                }
+                peakY = Math.max(peakY, y);
+            } else if (airborne) {
+                airborne = false;
+                flew = peakY - takeoffY > FLY_RISE;
+                fell = y < takeoffY - FALL_DROP;
+            }
+            if (grounded || floating) {
+                standY = y;
+            }
+            if (grounded || floating) {
+                long cell = net.minecraft.core.BlockPos.asLong(fx, fy, fz);
+                if (cell != lastCell) {
+                    lastCell = cell;
+                    cellTicks = 0;
+                    if (current == null) {
+                        newTrail();
+                    }
+                    if (pendingCut >= 0 && near(current.cells.getLong(pendingCut), fx, fy, fz, 1)) {
+                        // still on the checkpoint we were put back on (a level's start pad, before it launches you): where
+                        // we go from here says what to keep
+                        return;
+                    }
+                    if (pendingCut >= 0) {
+                        // the first cell after a put back: further on along the trail (launched back up to the last
+                        // checkpoint, the way CubeCraft's Endurance does it) keeps the trail up to there; anywhere else, what
+                        // came after the checkpoint we were put back on goes
+                        int on = -1;
+                        long back = current.cells.getLong(pendingCut);
+                        boolean away = Math.abs(net.minecraft.core.BlockPos.getX(back) - fx) > 3 || Math.abs(net.minecraft.core.BlockPos.getY(back) - fy) > 3
+                                || Math.abs(net.minecraft.core.BlockPos.getZ(back) - fz) > 3;
+                        for (int i = current.cells.size() - 1; away && i > pendingCut; i--) {
+                            long c = current.cells.getLong(i);
+                            if (Math.abs(net.minecraft.core.BlockPos.getX(c) - fx) <= 1 && Math.abs(net.minecraft.core.BlockPos.getY(c) - fy) <= 1
+                                    && Math.abs(net.minecraft.core.BlockPos.getZ(c) - fz) <= 1) {
+                                on = i;
+                                break;
+                            }
+                        }
+                        current.cells.size((on >= 0 ? on : pendingCut) + 1);
+                        pendingCut = -1;
+                        dirty = true;
+                    }
+                    if ((flew || fell) && pendingCut < 0) {
+                        // came down by somewhere earlier on the trail after a flight or a fall (flown back up after a miss,
+                        // fallen down to a lower part of the course): like a put back, where we go from here says what to
+                        // keep (flown back up to where we fell from keeps the way between; on from here, it goes)
+                        for (int i = current.cells.size() - 1; i >= 0; i--) {
+                            if (near(current.cells.getLong(i), fx, fy, fz, 1)) {
+                                if (i < current.cells.size() - 2) {
+                                    pendingCut = i;
+                                    return;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    int seen = current.cells.indexOf(cell);
+                    if (seen >= 0) {
+                        current.cells.size(seen + 1); // back where we were: the loop since then goes
+                    } else if (current.cells.size() < MAX_CELLS) {
+                        current.cells.add(cell);
+                        dirty = true;
+                    }
+                }
+            }
+        }
+
+        void newTrail() {
+            if (current != null && current.cells.size() < MIN_CELLS) {
+                TRAILS.remove(current);
+            }
+            current = new Trail();
+            TRAILS.add(current);
+            while (TRAILS.size() > MAX_TRAILS) {
+                TRAILS.remove(0);
+            }
+        }
+
+        void done() {
+            if (current != null && current.cells.size() < MIN_CELLS) {
+                TRAILS.remove(current);
+            }
+            current = null;
+        }
+    }
 
     // every tick, with the player, where the cells are (playerFeet: a slab or a head counts as the cell over it), whether
     // they're on the ground, and the world's Baritone folder (null: none, nothing kept)
     public static synchronized void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded) {
+        tick(level, worldDir, x, y, z, feet, grounded, false);
+    }
+
+    public static synchronized void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded, boolean floating) {
         if (level != world) {
             save();
             world = level;
             load(worldDir == null ? null : worldDir.resolve("routes.json"));
-            current = null;
-            lastCell = Long.MIN_VALUE;
-            lastZ = Double.NaN;
-            sinceTeleport = 0;
+            live = new Layer();
             ASKED_FROM.clear();
         }
-        sinceTeleport++;
-        if (!Double.isNaN(lastZ)) {
-            double dx = x - lastX, dz = z - lastZ;
-            if (dx * dx + dz * dz > 16 || y - lastY > 2.5) {
-                // put back on a checkpoint after a fall (somewhere on the trail: what came after it was the way that
-                // didn't work), or somewhere new (a level's start, a /tp): a new trail
-                // (a put back comes after falling, off the ground or down below, or the moment we stepped onto something
-                // that does it; standing somewhere a while and then a teleport is a restart, or a /tp: the trail so far stays
-                // as it is, it's still the way)
-                boolean settling = sinceTeleport < SETTLE_TICKS;
-                boolean putBack = !lastGrounded || lastY < y - 1 || cellTicks <= PUT_BACK_TICKS;
-                sinceTeleport = 0;
-                int at = current == null || settling || !putBack ? -1 : indexNear(current.cells, feet, 1);
-                if (at >= 0) {
-                    current.cells.size(at + 1);
-                } else {
-                    newTrail();
-                }
-                lastCell = Long.MIN_VALUE;
-            }
-        }
-        lastX = x;
-        lastY = y;
-        lastZ = z;
-        lastGrounded = grounded;
-        cellTicks++;
-        if (grounded) {
-            long cell = net.minecraft.core.BlockPos.asLong(feet.x, feet.y, feet.z);
-            if (cell != lastCell) {
-                lastCell = cell;
-                cellTicks = 0;
-                if (current == null) {
-                    newTrail();
-                }
-                int seen = current.cells.indexOf(cell);
-                if (seen >= 0) {
-                    current.cells.size(seen + 1); // back where we were: the loop since then goes
-                } else if (current.cells.size() < MAX_CELLS) {
-                    current.cells.add(cell);
-                    dirty = true;
-                }
-            }
-        }
+        live.step(x, y, z, feet.x, feet.y, feet.z, grounded, floating);
         if (++ticks % SAVE_TICKS == 0) {
             save();
         }
     }
 
-    private static void newTrail() {
-        if (current != null && current.cells.size() < MIN_CELLS) {
-            TRAILS.remove(current);
+    // a run played before (a #record recording's trace: x y z, and 1 on the ground, 2 in water or on a ladder, 0 in the air, a tick at a time), laid down as trails in
+    // this world, moved by dx dy dz (a map rebuilt somewhere else). how many cells it came to
+    public static synchronized int learn(List<double[]> ticks, int dx, int dy, int dz) {
+        Layer l = new Layer();
+        int before = cellCount();
+        for (double[] t : ticks) {
+            double x = t[0] + dx, y = t[1] + dy, z = t[2] + dz;
+            // (the cell the feet are in, the way playerFeet has it: a slab's top or a head is the cell over it)
+            l.step(x, y, z, (int) Math.floor(x), (int) Math.floor(y + 0.1251), (int) Math.floor(z), t[3] == 1, t[3] == 2);
         }
-        current = new Trail();
-        TRAILS.add(current);
-        while (TRAILS.size() > MAX_TRAILS) {
-            TRAILS.remove(0);
+        l.done();
+        dirty = true;
+        trailVersion++;
+        return cellCount() - before;
+    }
+
+    // a trail as it is, cell by cell (tests and tools: a routes.json's trail checked offline)
+    public static synchronized void remember(List<BetterBlockPos> cells) {
+        Trail t = new Trail();
+        for (BetterBlockPos p : cells) {
+            t.cells.add(net.minecraft.core.BlockPos.asLong(p.x, p.y, p.z));
         }
+        TRAILS.add(t);
+        trailVersion++;
+    }
+
+    private static int cellCount() {
+        int n = 0;
+        for (Trail t : TRAILS) {
+            n += t.cells.size();
+        }
+        return n;
+    }
+
+    private static boolean near(long c, int x, int y, int z, int reach) {
+        return Math.abs(net.minecraft.core.BlockPos.getX(c) - x) <= reach && Math.abs(net.minecraft.core.BlockPos.getY(c) - y) <= 1
+                && Math.abs(net.minecraft.core.BlockPos.getZ(c) - z) <= reach;
     }
 
     private static int indexNear(LongArrayList cells, BetterBlockPos p, int reach) {
@@ -242,7 +370,7 @@ public final class RouteMemory {
             if (!reaches) {
                 // one that stops short is only any use if it went further than here: not the one being laid down now (it
                 // ends where we are), and not one that ends round the corner
-                if (t == current) {
+                if (t == live.current) {
                     continue;
                 }
                 end = cells.size() - 1;
@@ -267,10 +395,12 @@ public final class RouteMemory {
         }
         Long2IntOpenHashMap index = new Long2IntOpenHashMap();
         index.defaultReturnValue(-1);
+        long[] order = new long[bestEnd - bestS + 1];
         for (int i = bestS; i <= bestEnd; i++) {
             index.putIfAbsent(bestCells.getLong(i), i - bestS);
+            order[i - bestS] = bestCells.getLong(i);
         }
-        return new Guide(index, bestEnd - bestS, bestReaches);
+        return new Guide(index, bestEnd - bestS, bestReaches, order);
     }
 
     private static long dist2(long c, BetterBlockPos p) {
@@ -281,10 +411,83 @@ public final class RouteMemory {
     // a trail has to go on at least this far from the start to be any guide
     static final int MIN_GUIDE = 3;
 
+    // the jumps along the trails (a cell to one of the next few on, either end give or take a block across: a trail cell
+    // can be the one over an edge you jumped from): the planner tries harder at these, somebody's made them
+    private static volatile it.unimi.dsi.fastutil.longs.LongOpenHashSet PAIRS = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+    private static int pairsFor = -1;
+
+    public static boolean trailJump(int x, int y, int z, int tx, int ty, int tz) {
+        if (!Baritone.settings().useRouteMemory.value) {
+            return false;
+        }
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet p = PAIRS;
+        int now = trailVersion;
+        if (pairsFor != now) {
+            synchronized (RouteMemory.class) {
+                if (pairsFor != trailVersion) {
+                    PAIRS = p = pairs();
+                    pairsFor = trailVersion;
+                } else {
+                    p = PAIRS;
+                }
+            }
+        }
+        return p.contains(jumpKey(x, y, z, tx, ty, tz));
+    }
+
+    private static volatile int trailVersion;
+
+    private static it.unimi.dsi.fastutil.longs.LongOpenHashSet pairs() {
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet out = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+        int[][] near = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (Trail t : TRAILS) {
+            LongArrayList c = t.cells;
+            for (int i = 0; i < c.size(); i++) {
+                long a = c.getLong(i);
+                int ax = net.minecraft.core.BlockPos.getX(a), ay = net.minecraft.core.BlockPos.getY(a), az = net.minecraft.core.BlockPos.getZ(a);
+                for (int j = i + 1; j < Math.min(c.size(), i + 5); j++) {
+                    long b = c.getLong(j);
+                    int bx = net.minecraft.core.BlockPos.getX(b), by = net.minecraft.core.BlockPos.getY(b), bz = net.minecraft.core.BlockPos.getZ(b);
+                    if (Math.abs(bx - ax) <= 1 && Math.abs(bz - az) <= 1 && by == ay) {
+                        continue; // (a step)
+                    }
+                    for (int[] u : near) {
+                        for (int[] v : near) {
+                            out.add(jumpKey(ax + u[0], ay, az + u[1], bx + v[0], by, bz + v[1]));
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     // how far along the way a cell is (-1: not on it), how long the way is, whether it goes all the way to the goal
-    public record Guide(Long2IntOpenHashMap index, int length, boolean reachesGoal) {
+    public record Guide(Long2IntOpenHashMap index, int length, boolean reachesGoal, long[] cells) {
         public int along(int x, int y, int z) {
             return index.get(net.minecraft.core.BlockPos.asLong(x, y, z));
+        }
+
+        // the same, or the furthest along of the cells next to it (a block either side of where the player went, on the
+        // same level): -1 if none is on the way
+        public int alongNear(int x, int y, int z) {
+            int best = along(x, y, z);
+            if (best >= 0) {
+                return best;
+            }
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx != 0 || dz != 0) {
+                        best = Math.max(best, along(x + dx, y, z + dz));
+                    }
+                }
+            }
+            return best;
+        }
+
+        // the k-th cell of the way (BlockPos.asLong), or Long.MIN_VALUE past the end
+        public long cell(int k) {
+            return k >= 0 && k < cells.length ? cells[k] : Long.MIN_VALUE;
         }
     }
 
@@ -292,8 +495,9 @@ public final class RouteMemory {
         TRAILS.clear();
         JUMPS.clear();
         JUMP_NAMES.clear();
-        current = null;
+        live = new Layer();
         dirty = true;
+        trailVersion++;
     }
 
     public static synchronized int trailCount() {
@@ -301,6 +505,7 @@ public final class RouteMemory {
     }
 
     private static void load(Path f) {
+        trailVersion++;
         TRAILS.clear();
         JUMPS.clear();
         JUMP_NAMES.clear();
@@ -344,6 +549,7 @@ public final class RouteMemory {
         if (!dirty || file == null) {
             return;
         }
+        trailVersion++; // (the live trail's grown: the jumps along it, worked out again when next asked)
         dirty = false;
         List<int[]> trails = new ArrayList<>();
         for (Trail t : TRAILS) {

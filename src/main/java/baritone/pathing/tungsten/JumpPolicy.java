@@ -892,8 +892,24 @@ public final class JumpPolicy {
 
     // the same, trying `first` before the rest
     public static Rollout forgiving(PlayerSim start, Landing land, Variant first) {
+        return forgiving(start, land, first, false);
+    }
+
+    // forgiving, or failing that the last resort: a jump that lands, but on the edge, or only with the aim spot on. the
+    // kind a player makes on a parkour map because there's no other way on (a post two blocks out and up, at an angle):
+    // the planner takes one only when nothing else gets there (RISKY_COST), and how it goes in the game is remembered
+    // (RouteMemory), so one that keeps missing costs more again
+    public static Rollout forgivingOrRisky(PlayerSim start, Landing land) {
+        return forgiving(start, land, null, true);
+    }
+
+    public static final String RISKY = "risky";
+
+    private static Rollout forgiving(PlayerSim start, Landing land, Variant first, boolean risky) {
         boolean standingShort = false;
         Rollout tight = null;
+        Rollout lastResort = null;
+        boolean lastResortSteady = false;
         List<Variant> order = new ArrayList<>();
         if (first != null) {
             order.add(first);
@@ -911,6 +927,13 @@ public final class JumpPolicy {
             if (!r.ok() || bumpsAWall(r) || onTheEdge(r, land)) {
                 if (!r.ok() && v == Variant.EDGE && shortOfTheMiddle(r, land)) {
                     standingShort = true;
+                }
+                if (risky && r.ok() && !bumpsAWall(r) && !lastResortSteady) {
+                    boolean steady = steady(start, land, v);
+                    if (lastResort == null || steady) {
+                        lastResort = new Rollout(true, r.variant(), r.keys(), r.states(), RISKY);
+                        lastResortSteady = steady;
+                    }
                 }
                 continue;
             }
@@ -942,8 +965,25 @@ public final class JumpPolicy {
                     tight = new Rollout(true, r.variant(), r.keys(), r.states(), TIGHT);
                 }
             }
+            if (risky && tight == null && !lastResortSteady) {
+                boolean steady = steady(start, land, v);
+                if (lastResort == null || steady) {
+                    lastResort = new Rollout(true, r.variant(), r.keys(), r.states(), RISKY);
+                    lastResortSteady = steady;
+                }
+            }
         }
-        return tight;
+        return tight != null ? tight : lastResort;
+    }
+
+    // still lands with the aim a degree off either way
+    private static boolean steady(PlayerSim start, Landing land, Variant v) {
+        for (float e : TIGHT_AIM_ERRORS) {
+            if (!rollout(start.copy(), land, v, new Memo(), e).ok()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static final float[] TIGHT_AIM_ERRORS = {1.0F, -1.0F};

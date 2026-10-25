@@ -1,8 +1,49 @@
-# Parkour Lab v7 (bot v10)
+# Parkour Lab v7 (bot v11)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
+
+## What's new in bot v11 (same course, v7)
+
+- **It learns the way from your recordings.** `#routes learn <recording>` reads a `#record` recording from `.minecraft/baritone/recordings` and lays down the way you went as trails, just as if the bot had watched you play. Play a level once with `#record`, learn it, and the next `#goto` follows your way. Add `dx dy dz` to move it (for a map rebuilt somewhere else, like Parkour Lab's levels: see below).
+  - Falls you were put back from are cut out. So are misses you flew back up from (landing on or next to where you'd been is a way back there), and anything you flew up to by accident and came back down from. A fall down to a lower part of the course that you then flew back up from keeps the way between.
+  - Swimming and climbing are on the trail too (your recording's own blocks say where the water and the ladders were), so a swim up hanging water or a ladder climb isn't a gap.
+- **Leaps along the way.** From a block on a trail to one up to 6 cells on along it, further than any single jump the planner asks about, in one go by the full search, in the background. That covers a chain like running off the edge of one block into the next jump with the speed carried.
+- **Touchy jumps as a last resort.** A jump that only lands on the very edge, or only with the aim spot on, was left out; now it's taken (at three times the cost) when nothing else gets there. Jumps on a trail that the planner skipped behind a wall (bars, posts in between) get tried too.
+- **It treads water.** In water with somewhere to go and no plan yet, it holds jump instead of sinking out of a hanging water block onto the floor under it, and the bob doesn't restart its search every tick.
+- **It doesn't give up.** A `#goto` that finds nothing looks again, up to `noPathRetries` times (10) a couple of seconds apart, instead of stopping.
+- **Restarting a level, a fall that sends you flying back up** (Endurance): the trail keeps the climb.
+
+**How v11 did** (`#goto` the finish, 10 minutes a go, trails learned from the seven recordings):
+
+| | v10 | v11 |
+|---|---|---|
+| Chess | done, 145 s (v9) | done, 46 s, 0 falls (78 s with no trails) |
+| Aqua | done with a trail, 78 s | done, 38–39 s, 0 falls |
+| Candy | done, 30 s | done, 24 s, 0 falls |
+| Endurance | not past the start (v9) | checkpoint 18–27 of 43 |
+| Desert | checkpoint 3 | checkpoint 3 (in 25 s), through the swim to the last water block |
+| Hell | checkpoint 2 | checkpoint 3–4 |
+| Chess (harder) | checkpoint 1 | checkpoint 1, some runs |
+
+Still to do: Hell after 4 (a run round a fence post on a one block pillar, a jump to the next and off its far edge with the speed carried, five blocks down: the full search doesn't find the run round the post yet), Desert after the swim (post to post, four and a bit across), the rest of Endurance, and Chess (harder)'s stair (you flew that one, so there's no way to copy) and its fence and wall jumps.
+
+Levels: checkpoints on a fence or wall post put you back on top of the post now (they put you inside it, where nothing can plan), and one recorded standing on the edge of a block (Hell's 4) puts you on the block, not over the lava next to it.
+
+To teach the Lab's levels from the recordings (the levels are moved from where CubeCraft has them):
+
+```
+#routes learn chess -4970 0 1166
+#routes learn chessharder -4852 0 -811
+#routes learn aqua 246 0 1195
+#routes learn desert -654 0 1119
+#routes learn hell -1554 0 1186
+#routes learn endurance -3465 0 1115
+#routes learn candy -14344 0 1183
+```
+
+(the recordings go in `.minecraft/baritone/recordings`, as .zip or folders). On CubeCraft itself there's nothing to move: `#routes learn <name>` as it is.
 
 ## What's new in bot v10 (same course, v7)
 

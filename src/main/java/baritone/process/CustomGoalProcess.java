@@ -147,15 +147,28 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                     this.state = State.WAITING_FOR_TABLES;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
                 }
+                if (calcFailed && groundRetries < Baritone.settings().noPathRetries.value) {
+                    // nothing from here, this time: stood still a moment, ask again (Settings.noPathRetries)
+                    groundRetries++;
+                    logDebug("No way on from here yet, looking again (" + groundRetries + " of " + Baritone.settings().noPathRetries.value + ")");
+                    airWaitTicks = GROUND_WAIT_TICKS;
+                    tableWaitTicks = TABLE_WAIT_TICKS;
+                    this.state = State.WAITING_FOR_TABLES;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
                 if (calcFailed) {
                     tableRetries = 0;
                     airRetries = 0;
+                    groundRetries = 0;
                     // a user trip keeps its own copy of the goal, so dropping it here is fine. see TripBehavior
                     baritone.getTripBehavior().onCalcFailed(this.goal);
                     onLostControl();
                     return new PathingCommand(this.goal, PathingCommandType.CANCEL_AND_SET_GOAL);
                 }
-                airRetries = 0; // (a plan came through: the mid air retries start over)
+                if (baritone.getPathingBehavior().getCurrent() != null) {
+                    airRetries = 0; // (a plan came through: the retries start over)
+                    groundRetries = 0;
+                }
                 if (this.goal == null || (this.goal.isInGoal(ctx.playerFeet()) && this.goal.isInGoal(baritone.getPathingBehavior().pathStart()))) {
                     baritone.getTripBehavior().onArrived(this.goal);
                     RouteMemory.save(); // the way here, kept now (see RouteMemory)
@@ -176,14 +189,15 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         }
     }
 
-    private static final int TABLE_RETRIES = 8, TABLE_WAIT_TICKS = 600, AIR_RETRIES = 20, AIR_WAIT_TICKS = 20;
-    private int tableRetries, tableWaitTicks, airRetries, airWaitTicks;
+    private static final int TABLE_RETRIES = 8, TABLE_WAIT_TICKS = 600, AIR_RETRIES = 20, AIR_WAIT_TICKS = 20, GROUND_WAIT_TICKS = 40;
+    private int tableRetries, tableWaitTicks, airRetries, airWaitTicks, groundRetries;
     private long tableMisses;
 
     @Override
     public void onLostControl() {
         this.tableRetries = 0;
         this.airRetries = 0;
+        this.groundRetries = 0;
         this.state = State.NONE;
         this.goal = null;
     }

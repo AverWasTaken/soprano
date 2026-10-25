@@ -1199,7 +1199,7 @@ def level_functions(fn, levels, tellraw):
             "scoreboard players set @s pl_falls 0",
             "scoreboard players set @s pl_sfalls 0",
             "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
-            f"tp @s {s['x'] + 0.5} {s['y']} {s['z'] + 0.5}",
+            f"tp @s {cp_xz(lv, s)[0]} {cp_y(lv, s)} {cp_xz(lv, s)[1]}",
             tellraw(f"[Parkour Lab] {lv.title}: go! The finish is at {f_['x']} {f_['y']} {f_['z']}." + (f" {lv.notes}" if lv.notes else "")),
         ]
         for cp in lv.checkpoints:
@@ -1207,7 +1207,7 @@ def level_functions(fn, levels, tellraw):
                 f"function {PACK}:leave", "tag @s add pl_lvrun", f"tag @s add {tag}",
                 f"scoreboard players set @s pl_cp {cp['id']}", "scoreboard players operation @s pl_split = @s pl_t",
                 "scoreboard players set @s pl_sfalls 0", "effect give @s saturation infinite 0 true", "effect give @s fire_resistance infinite 0 true",
-                f"tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5}",
+                f"tp @s {cp_xz(lv, cp)[0]} {cp_y(lv, cp)} {cp_xz(lv, cp)[1]}",
                 tellraw(f"[Parkour Lab] {lv.title}: at checkpoint {cp['id']} ({cp['name']})"),
             ]
         fn["tick"] += [
@@ -1253,10 +1253,42 @@ def level_functions(fn, levels, tellraw):
             "scoreboard players add @s pl_sfalls 1",
         ] + [
             # back to the last checkpoint, by its coordinates (not the marker's pl_id, see at_cp)
-            f"execute if score @s pl_cp matches {cp['id']} run tp @s {cp['x'] + 0.5} {cp['y']} {cp['z'] + 0.5}"
+            f"execute if score @s pl_cp matches {cp['id']} run tp @s {cp_xz(lv, cp)[0]} {cp_y(lv, cp)} {cp_xz(lv, cp)[1]}"
             for cp in lv.checkpoints
         ]
 
+
+
+def cp_xz(lv, cp):
+    """where across to put the player at a checkpoint: the middle of its cell, or if there's nothing under that (it was
+    recorded standing on the edge of the block next door, the middle of you over the gap), at that edge, on the block"""
+    x, y, z = cp["x"], cp["y"], cp["z"]
+    def solid(st):
+        return st and not st.split("[")[0] in ("water", "lava", "air") and "pressure_plate" not in st and "torch" not in st
+    if solid(lv.blocks.get((x, y - 1, z), "")) or solid(lv.blocks.get((x, y, z), "")):
+        return x + 0.5, z + 0.5
+    for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+        if solid(lv.blocks.get((x + dx, y - 1, z + dz), "")):
+            return x + 0.5 + dx * 0.32, z + 0.5 + dz * 0.32
+    return x + 0.5, z + 0.5
+
+
+def cp_y(lv, cp):
+    """where the player stands at a checkpoint: on top of what's there (a level's checkpoint y is the cell the feet were
+    in, and a fence post under it stands half a block up into that cell: a teleport to the cell's floor is inside the post,
+    and you drop through to the post under it)"""
+    x, y, z = cp["x"], cp["y"], cp["z"]
+    below = lv.blocks.get((x, y - 1, z), "")
+    here = lv.blocks.get((x, y, z), "")
+    def name(st):
+        return st.split("[")[0]
+    if name(below).endswith("_fence") or name(below).endswith("_wall"):
+        return y + 0.5
+    if name(here).endswith("_slab") and "type=bottom" in here:
+        return y + 0.5
+    if name(here).endswith("_carpet"):
+        return y + 0.0625
+    return y
 
 def lv_bbox(lv):
     xs = [p[0] for p in lv.blocks]
