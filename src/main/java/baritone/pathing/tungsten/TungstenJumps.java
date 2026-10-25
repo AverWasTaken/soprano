@@ -197,9 +197,22 @@ public final class TungstenJumps {
                 continue;
             }
             int tx = net.minecraft.core.BlockPos.getX(c), ty = net.minecraft.core.BlockPos.getY(c), tz = net.minecraft.core.BlockPos.getZ(c);
+            if (!destOk(context, tx, ty, tz)) {
+                // (a cell of the trail over the edge of the block it stood on: that block, next door)
+                search:
+                for (int ox = -1; ox <= 1; ox++) {
+                    for (int oz = -1; oz <= 1; oz++) {
+                        if ((ox != 0 || oz != 0) && destOk(context, tx + ox, ty, tz + oz)) {
+                            tx += ox;
+                            tz += oz;
+                            break search;
+                        }
+                    }
+                }
+            }
             int dx = tx - x, dz = tz - z;
             if (dx * dx + dz * dz <= TRAIL_LEAP_MIN * TRAIL_LEAP_MIN || dx * dx + dz * dz > TRAIL_LEAP_MAX * TRAIL_LEAP_MAX
-                    || ty - y > 1 || y - ty > context.maxFallHeightNoWater || !destOk(context, tx, ty, tz)) {
+                    || ty - y > 1 || y - ty > context.maxFallHeightNoWater || !destOk(context, tx, ty, tz) || offTrailFloor(context, tx, ty, tz)) {
                 continue; // (near enough for the jumps A* asks about anyway, or more than a leap)
             }
             Jump j = context.tungsten().leap(context, src, new BetterBlockPos(tx, ty, tz));
@@ -369,7 +382,7 @@ public final class TungstenJumps {
             Known known = carried.get(key);
             long now = System.currentTimeMillis();
             if (known != null && (!anyBudget || now - known.at() < RECHECK_MS)) {
-                return known.jump() == NONE ? null : known.jump();
+                return known.jump() == NONE || touchesBadFloor(context, known.jump()) ? null : known.jump();
             }
             if (budget <= 0 && !anyBudget) {
                 return null;
@@ -420,7 +433,13 @@ public final class TungstenJumps {
                 for (int dx = -RANGE; dx <= RANGE; dx++) {
                     for (int dz = -RANGE; dz <= RANGE; dz++) {
                         if (!belowTheFloor(context, x, y, z, dx, dy, dz) && candidate(context, x, y, z, dx, dy, dz, false)) {
-                            todo.add(new int[]{dx, dy, dz, order(dx, dy, dz)});
+                            // (and after every landing on something the trail stood on, one on something it never did:
+                            // the oak post nearer across mustn't fill the bucket the ladder past it is in)
+                            boolean off = offTrailFloor(context, x + dx, y + dy, z + dz);
+                            if (off && (context.routeGuide == null || context.routeGuide.along(x + dx, y + dy, z + dz) < 0)) {
+                                continue; // (A* won't have it anyway)
+                            }
+                            todo.add(new int[]{dx, dy, dz, order(dx, dy, dz) + (off ? OFF_TRAIL_ORDER : 0)});
                         }
                     }
                 }
@@ -498,7 +517,8 @@ public final class TungstenJumps {
             double dx = dest.x - src.x, dz = dest.z - src.z;
             double straight = Math.sqrt(dx * dx + dz * dz) * ActionCosts.SPRINT_ONE_BLOCK_COST;
             double cost = context.biasJump(Math.max(plan.ticks(), straight) * LEAP_COST + context.jumpPenalty);
-            return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+            Jump j = new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+            return touchesBadFloor(context, j) ? null : j;
         }
 
         synchronized Jump jump(CalculationContext context, BetterBlockPos src, BetterBlockPos dest, boolean anyBudget) {
@@ -506,7 +526,7 @@ public final class TungstenJumps {
             Known known = from == null ? null : from.get(BetterBlockPos.longHash(dest));
             long now = System.currentTimeMillis();
             if (known != null && (!anyBudget || now - known.at() < RECHECK_MS)) {
-                return known.jump() == NONE ? null : known.jump();
+                return known.jump() == NONE || touchesBadFloor(context, known.jump()) ? null : known.jump();
             }
             // (a ledge chain is only ever looked up here, worked out in the background: no budget of the planner's to spend)
             // and whatever the sim ticks say, never more than SEARCH_MS of a search's time on these: one node's jumps (dozens
@@ -556,7 +576,7 @@ public final class TungstenJumps {
             }
             pairs.computeIfAbsent(BetterBlockPos.longHash(src), k -> new HashMap<>()).put(BetterBlockPos.longHash(dest), new Known(j == null ? NONE : j, now));
             pairCount++;
-            return j;
+            return j != null && touchesBadFloor(context, j) ? null : j;
         }
     }
 
@@ -611,6 +631,54 @@ public final class TungstenJumps {
     // often nearer across than the next block of the course a few down, and it mustn't be what fills the bucket)
     static int order(int dx, int dy, int dz) {
         return dx * dx + dz * dz + (dy < -1 ? -dy * 40 : 0);
+    }
+
+    // landing in x y z is on something the remembered trail never stood on (CalculationContext.trailFloors), away from it:
+    // on a course where most blocks put you back, likely one of those
+    public static boolean offTrailFloor(CalculationContext context, int x, int y, int z) {
+        java.util.Set<net.minecraft.world.level.block.Block> floors = context.trailFloors;
+        // (on the trail itself too: a recording made in a practice mode, where nothing puts you back, has the odd cell down
+        // on the glass. what it went over three times or more is the course)
+        if (floors == null) {
+            return false;
+        }
+        net.minecraft.world.level.block.Block under = context.get(x, y - 1, z).getBlock();
+        return under != net.minecraft.world.level.block.Blocks.AIR && !floors.contains(under) && !floors.contains(context.get(x, y, z).getBlock());
+    }
+
+    static final int OFF_TRAIL_ORDER = 1 << 20;
+
+    // the jump's flight comes down on something on the way (a hop off the dam's glass floor up onto the ladder) that puts
+    // us back: what FallFloor's learned does, or what the trail we're on never stood on. (the takeoff and the landing are
+    // A*'s to judge, not this)
+    static boolean touchesBadFloor(CalculationContext context, Jump j) {
+        if (j == null || j.trace() == null) {
+            return false;
+        }
+        java.util.Set<net.minecraft.world.level.block.Block> floors = context.trailFloors;
+        for (SimState st : j.trace()) {
+            if (!st.onGround || !st.hasSupport) {
+                continue;
+            }
+            int sx = st.supportX, sy = st.supportY, sz = st.supportZ;
+            if (sx == j.src().x && sz == j.src().z && sy >= j.src().y - 2 && sy <= j.src().y
+                    || sx == j.dest().x && sz == j.dest().z && sy >= j.dest().y - 2 && sy <= j.dest().y) {
+                continue;
+            }
+            BlockState bs = context.get(sx, sy, sz);
+            if (bouncy(bs)) {
+                continue; // (the slime the flight bounces off on the way: that's what it's for)
+            }
+            net.minecraft.world.level.block.Block b = bs.getBlock();
+            int feet = Mth.floor(st.y + 0.1251);
+            if (baritone.behavior.FallFloor.deadly(b, sx, feet, sz)) {
+                return true;
+            }
+            if (floors != null && !floors.contains(b) && (context.routeGuide == null || context.routeGuide.alongNear(sx, sy + 1, sz) < 0)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // down where the planner won't go anyway (Settings.avoidBelowY, FallFloor): no use taking up a bucket
@@ -795,6 +863,12 @@ public final class TungstenJumps {
             // next door is the grid moves' business, but for a step up onto (or off) something they won't stand on
             if ((fromWater || intoWater) && (dx != 0 || dz != 0) && dy >= -2 && (dy <= MAX_UP || waterUp) && context.isLoaded(x + dx, z + dz)) {
                 return intoWater || destOk(context, x + dx, y + dy, z + dz);
+            }
+            if (Math.abs(dx) == 1 && Math.abs(dz) == 1 && dy == 1 && context.isLoaded(x + dx, z + dz) && destOk(context, x + dx, y + dy, z + dz)
+                    && baritone.behavior.RouteMemory.trailJump(x, y, z, x + dx, y + dy, z + dz)) {
+                // a hop up onto the block diagonally next door, somebody's made: no grid move goes diagonally up (Endurance's
+                // single blocks near the top). only on a trail, every node has eight of these
+                return true;
             }
             return !NO_STEPS && (dx != 0 || dz != 0) && dy >= -1 && !upTooFar(context, x, y, z, dx, dy, dz) && oddStep(context, x, y, z, x + dx, y + dy, z + dz)
                     && context.isLoaded(x + dx, z + dz) && destOk(context, x + dx, y + dy, z + dz);
@@ -1110,9 +1184,15 @@ public final class TungstenJumps {
         }
         Cache cache = context.tungsten();
         double ux = dx / dist, uz = dz / dist;
-        for (double t = 1.0; t <= dist - 1.0; t += 0.5) {
-            if (cache.bounceBelow(context, Mth.floor(x + 0.5 + ux * t), y, Mth.floor(z + 0.5 + uz * t))) {
-                return true;
+        // (on the line, or a block to one side of it: a dam's slime is beside the way from pillar to pillar, and the jump
+        // goes out at it and comes off it straight on)
+        for (double side = 0; side <= 1.0; side += 1.0) {
+            for (double t = 1.0; t <= dist - 1.0; t += 0.5) {
+                for (int sgn = side == 0 ? 1 : -1; sgn <= 1; sgn += 2) {
+                    if (cache.bounceBelow(context, Mth.floor(x + 0.5 + ux * t - uz * side * sgn), y, Mth.floor(z + 0.5 + uz * t + ux * side * sgn))) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -1293,7 +1373,60 @@ public final class TungstenJumps {
             double cost = context.biasJump(Math.max(plan.ticks(), straight) * NEO_COST + context.jumpPenalty);
             return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
         }
+        if (onTrail && !land.water()) {
+            // a jump somebody's made (a remembered trail's) that the rule can't: the full search, in the background. it
+            // finds the odd one the rule's straight runs never do (a hop up onto a wall top from a stair, a few blocks on)
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, null, NeoSearches.NEO, schedule);
+            if (plan == NeoSearches.WAIT) {
+                return PENDING;
+            }
+            if (plan != null) {
+                double cost = context.biasJump(Math.max(plan.ticks(), straight) * NEO_COST + context.jumpPenalty);
+                return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+            }
+        }
+        double[] bounce = land.grab() ? null : bounceBeside(context, src.x, src.y, src.z, dest.x - src.x, dest.z - src.z);
+        if (bounce != null) {
+            // by way of slime a block beside the line (a dam's, between two pillars): the rule steers straight at the
+            // landing and goes past it, the background search goes out over it first
+            TungstenSearch.Plan plan = NeoSearches.lookup(world, src, floor, land, bounce, NeoSearches.BOUNCE, schedule);
+            if (plan == NeoSearches.WAIT) {
+                return PENDING;
+            }
+            if (plan != null) {
+                double cost = context.biasJump(Math.max(plan.ticks(), straight) * NEO_COST + context.jumpPenalty);
+                return new Jump(src, dest, cost, JumpPolicy.Variant.EDGE, List.copyOf(plan.states()), plan);
+            }
+        }
         return ledges(context, world, src, dest, floor, land, schedule);
+    }
+
+    // the middle of the bouncy column (slime under it) a block to one side of the straight line from x z out dx dz, nearest
+    // halfway along, or null if there's none (or there's one on the line itself, which the rule already comes down on)
+    static double[] bounceBeside(CalculationContext context, int x, int y, int z, int dx, int dz) {
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 3 || !context.isLoaded(x + dx, z + dz)) {
+            return null;
+        }
+        Cache cache = context.tungsten();
+        double ux = dx / dist, uz = dz / dist;
+        double[] best = null;
+        double bestOff = Double.MAX_VALUE;
+        for (double t = 1.0; t <= dist - 1.0; t += 0.5) {
+            int lx = Mth.floor(x + 0.5 + ux * t), lz = Mth.floor(z + 0.5 + uz * t);
+            if (cache.bounceBelow(context, lx, y, lz)) {
+                return null;
+            }
+            for (int sgn = -1; sgn <= 1; sgn += 2) {
+                int bx = Mth.floor(x + 0.5 + ux * t - uz * sgn), bz = Mth.floor(z + 0.5 + uz * t + ux * sgn);
+                if ((bx != lx || bz != lz) && cache.bounceBelow(context, bx, y, bz) && Math.abs(t - dist / 2) < bestOff) {
+                    bestOff = Math.abs(t - dist / 2);
+                    // (the near side of it, towards the line: just over the edge is enough to come down on it)
+                    best = new double[]{bx + 0.5 + uz * sgn * 0.3, bz + 0.5 - ux * sgn * 0.3};
+                }
+            }
+        }
+        return best;
     }
 
     static final double LEDGE_COST = 1.2;

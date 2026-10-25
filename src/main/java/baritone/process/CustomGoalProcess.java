@@ -25,6 +25,8 @@ import baritone.api.pathing.goals.Goal;
 import baritone.api.process.ICustomGoalProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
+import baritone.api.utils.Rotation;
+import baritone.api.utils.input.Input;
 import baritone.utils.BaritoneProcessHelper;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -120,6 +122,19 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                     this.state = State.PATH_REQUESTED;
                 }
                 return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+            case DROPPING: {
+                net.minecraft.client.player.LocalPlayer p = ctx.player();
+                Float yaw = p == null ? null : dropDirection();
+                boolean gone = p == null || p.position().distanceToSqr(dropFrom) > 16 || p.getY() < dropFrom.y - 3;
+                if (gone || yaw == null || ++dropTicks > DROP_TICKS) {
+                    baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, false);
+                    this.state = State.PATH_REQUESTED;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
+                baritone.getLookBehavior().updateTarget(new Rotation(yaw, 30F), true);
+                baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
+                return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+            }
             case PATH_REQUESTED:
                 // return FORCE_REVALIDATE_GOAL_AND_PATH just once
                 tableMisses = PendingTables.misses();
@@ -150,16 +165,29 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 if (calcFailed && groundRetries < Baritone.settings().noPathRetries.value) {
                     // nothing from here, this time: stood still a moment, ask again (Settings.noPathRetries)
                     groundRetries++;
+                    RouteMemory.failedFrom(ctx.playerFeet());
                     logDebug("No way on from here yet, looking again (" + groundRetries + " of " + Baritone.settings().noPathRetries.value + ")");
                     airWaitTicks = GROUND_WAIT_TICKS;
                     tableWaitTicks = TABLE_WAIT_TICKS;
                     this.state = State.WAITING_FOR_TABLES;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
                 }
+                if (calcFailed && dropRetries < DROP_RETRIES && dropDirection() != null) {
+                    // stuck somewhere there's no way on from (the top of a ladder, a block the last jump came down short
+                    // of) on a parkour course: step off, the way a player would, and get put back on the last checkpoint
+                    dropRetries++;
+                    groundRetries = 0;
+                    dropTicks = 0;
+                    dropFrom = ctx.player().position();
+                    logDirect("No way on from here: stepping off to be put back on the course (" + dropRetries + " of " + DROP_RETRIES + ")");
+                    this.state = State.DROPPING;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
                 if (calcFailed) {
                     tableRetries = 0;
                     airRetries = 0;
                     groundRetries = 0;
+                    dropRetries = 0;
                     // a user trip keeps its own copy of the goal, so dropping it here is fine. see TripBehavior
                     baritone.getTripBehavior().onCalcFailed(this.goal);
                     onLostControl();
@@ -168,6 +196,9 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 if (baritone.getPathingBehavior().getCurrent() != null) {
                     airRetries = 0; // (a plan came through: the retries start over)
                     groundRetries = 0;
+                    if (baritone.getPathingBehavior().getCurrent().getPosition() > 2) {
+                        dropRetries = 0; // (and it's getting somewhere)
+                    }
                 }
                 if (this.goal == null || (this.goal.isInGoal(ctx.playerFeet()) && this.goal.isInGoal(baritone.getPathingBehavior().pathStart()))) {
                     baritone.getTripBehavior().onArrived(this.goal);
@@ -190,14 +221,49 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
     }
 
     private static final int TABLE_RETRIES = 8, TABLE_WAIT_TICKS = 600, AIR_RETRIES = 20, AIR_WAIT_TICKS = 20, GROUND_WAIT_TICKS = 40;
-    private int tableRetries, tableWaitTicks, airRetries, airWaitTicks, groundRetries;
+    // how many times a goal may step off to be put back, and how long one goes on for
+    private static final int DROP_RETRIES = 3, DROP_TICKS = 60;
+    private int tableRetries, tableWaitTicks, airRetries, airWaitTicks, groundRetries, dropRetries, dropTicks;
+    private net.minecraft.world.phys.Vec3 dropFrom = net.minecraft.world.phys.Vec3.ZERO;
     private long tableMisses;
+
+    // which way to walk to step off into a drop, on a course that puts you back when you fall (FallFloor learned something
+    // round here, or there's a remembered trail): the nearest side with nothing under it for a few blocks. null for none, or
+    // not on such a course
+    private Float dropDirection() {
+        net.minecraft.client.player.LocalPlayer p = ctx.player();
+        if (p == null || !Baritone.settings().learnFallFloor.value || !FallFloor.parkourHere(p.getX(), p.getZ())) {
+            return null;
+        }
+        net.minecraft.core.BlockPos feet = p.blockPosition();
+        for (int r = 1; r <= 2; r++) {
+            for (int d = 0; d < 8; d++) {
+                int dx = new int[]{1, -1, 0, 0, 1, 1, -1, -1}[d] * r, dz = new int[]{0, 0, 1, -1, 1, -1, 1, -1}[d] * r;
+                boolean open = true;
+                for (int dy = -1; dy >= -3 && open; dy--) {
+                    open = ctx.world().getBlockState(feet.offset(dx, dy, dz)).getCollisionShape(ctx.world(), feet.offset(dx, dy, dz)).isEmpty();
+                }
+                for (int dy = 0; dy <= 1 && open; dy++) {
+                    open = ctx.world().getBlockState(feet.offset(dx, dy, dz)).getCollisionShape(ctx.world(), feet.offset(dx, dy, dz)).isEmpty();
+                }
+                if (open) {
+                    double wx = feet.getX() + dx + 0.5 - p.getX(), wz = feet.getZ() + dz + 0.5 - p.getZ();
+                    return net.minecraft.util.Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(wz, wx)) - 90F);
+                }
+            }
+        }
+        return null;
+    }
 
     @Override
     public void onLostControl() {
         this.tableRetries = 0;
         this.airRetries = 0;
         this.groundRetries = 0;
+        this.dropRetries = 0;
+        if (this.state == State.DROPPING) {
+            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, false);
+        }
         this.state = State.NONE;
         this.goal = null;
     }
@@ -213,6 +279,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         PATH_REQUESTED,
         EXECUTING,
         // a search came back empty after the neo / momentum / climb tables told it "don't know yet": waiting for them
-        WAITING_FOR_TABLES
+        WAITING_FOR_TABLES,
+        // stepping off the course to be put back on it (dropDirection)
+        DROPPING
     }
 }

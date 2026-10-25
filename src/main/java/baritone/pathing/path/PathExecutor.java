@@ -1631,6 +1631,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     // before the cancel, so the replan it triggers already sees it and a fast fail loop climbs the ladder. only the movement
     // itself failing counts, a process pulling the path out from under us says nothing about the edge
     private void rememberFailure(Movement movement, boolean timedOut) {
+        baritone.behavior.RouteMemory.failedFrom(movement.getSrc());
         if (FailedMoves.forgives(timedOut, timedOut && climbEdge(movement))) {
             return;
         }

@@ -58,7 +58,8 @@ public final class NeoSearches {
     record Key(long src, long dest, long hash, int kind) {}
 
     // what a job is: a neo (the full search), two neos in one flight, or a chain of walks and jumps by way of ledges
-    static final int NEO = 0, COMBO = 1, LEDGES = 2, LEAP = 3;
+    // (or one by way of slime beside the line, the full search too: BOUNCE)
+    static final int NEO = 0, COMBO = 1, LEDGES = 2, LEAP = 3, BOUNCE = 4;
 
     static final boolean LOG = System.getenv("SOPRANO_NEO_LOG") != null;
     static final boolean FLY_DEBUG = System.getenv("SOPRANO_FLY_DEBUG") != null;
@@ -233,6 +234,12 @@ public final class NeoSearches {
             Long failed = FAILED_MS.get(BetterBlockPos.longHash(l.x(), l.y(), l.z()));
             double d = (failed == null ? 0 : failed / FAILED_MS_PER_SQ_BLOCK) + (QUEUE.get(i).combo() ? 1.0E9 : 0) + (far ? i + (QUEUE.get(i).kind() == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
                     : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
+            if (QUEUE.get(i).kind() == LEAP && !far && !back) {
+                // a leap along the remembered way (somebody went that way) near us: before the rest, it's the way on.
+                // (and it's the last to go when the queue's too long). not one coming back towards us: that's A* looking
+                // behind itself along the trail, and a chess level's dozens of those held up the jump on for minutes
+                d -= 1.0E5;
+            }
             if (first ? d < bestD : d >= bestD) {
                 bestD = d;
                 best = i;
@@ -332,6 +339,23 @@ public final class NeoSearches {
     static final int LEAP_LANDED = 12;
 
     public static TungstenSearch.Plan solveLeap(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region) {
+        // a run at it hopping off whatever's on the way (HopChain) first: a few thousand ticks of sim, where the search is
+        // millions, and the search doesn't find those
+        TungstenSearch.Plan hop = HopChain.plan(world, src, floorY, land);
+        if (hop != null) {
+            int landed = 0;
+            for (long seed = 0; seed < FLIGHTS; seed++) {
+                if (flyFrom(world, src, floorY, land, hop, seed, JITTER) == null) {
+                    landed++;
+                }
+            }
+            if (LOG) {
+                System.out.println("[neo search]   leap by hops: " + hop.ticks() + " ticks, " + landed + "/" + FLIGHTS + " flights");
+            }
+            if (landed >= LEAP_LANDED) {
+                return hop;
+            }
+        }
         TungstenSearch.Plan plan = TungstenSearch.search(standing(world, src, floorY), land, region, LEAP_BUDGET, null);
         if (plan == null || plan.ticks() == 0) {
             if (LOG) {

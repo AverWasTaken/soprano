@@ -121,6 +121,8 @@ public class CalculationContext {
     public int startArrival = -1;
     // the way along a remembered trail, for this search (RouteMemory), or null
     public baritone.behavior.RouteMemory.Guide routeGuide;
+    // and what that way stands on (RouteMemory.floors): landing on anything else costs more, or null
+    public java.util.Set<net.minecraft.world.level.block.Block> trailFloors;
     public final int avoidBelowY;
     // a context that raises maxFallHeightNoWater because it wants the fall (the elytra walk off) doesn't want it priced as
     // damage or swapped for a ladder either, see MovementDescend.dynamicFallCost

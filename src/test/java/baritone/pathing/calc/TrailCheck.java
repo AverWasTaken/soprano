@@ -42,6 +42,7 @@ public class TrailCheck {
     static VineLogPathTest.Result guided(VineLogPathTest.MapWorld w, BetterBlockPos a, BetterBlockPos b) {
         baritone.pathing.movement.CalculationContext ctx = new VineLogPathTest.Ctx(w, false);
         ctx.routeGuide = baritone.behavior.RouteMemory.guide(a, b);
+        ctx.trailFloors = ctx.routeGuide == null ? baritone.behavior.RouteMemory.floorsNear(a.x, a.z) : baritone.behavior.RouteMemory.floors(ctx.routeGuide, ctx);
         baritone.api.pathing.goals.Goal goal = new baritone.api.pathing.goals.GoalBlock(b);
         AStarPathFinder pf = new AStarPathFinder(a, a.x, a.y, a.z, goal, new baritone.utils.pathing.Favoring(null, ctx), ctx);
         java.util.Optional<baritone.api.pathing.calc.IPath> p;
@@ -108,6 +109,13 @@ public class TrailCheck {
                 stands.add(p);
             }
         }
+        {
+            // (what the trail stands on, the way the game has it from the searches before: RouteMemory.floorsNear)
+            baritone.behavior.RouteMemory.Guide g0 = baritone.behavior.RouteMemory.guide(trail.get(0), trail.get(trail.size() - 1));
+            if (g0 != null) {
+                System.out.println("TRAIL floors " + baritone.behavior.RouteMemory.floors(g0, new VineLogPathTest.Ctx(w, false)));
+            }
+        }
         if (System.getenv("TRAIL_PAIR") != null) {
             // just this one, guided (TRAIL_PAIR=x y z x y z)
             String[] q = System.getenv("TRAIL_PAIR").trim().split("\\s+");
@@ -115,7 +123,8 @@ public class TrailCheck {
             BetterBlockPos b = new BetterBlockPos(Integer.parseInt(q[3]), Integer.parseInt(q[4]), Integer.parseInt(q[5]));
             for (int attempt = 0; attempt < 5; attempt++) {
                 VineLogPathTest.Result r = guided(w, a, b);
-                System.out.println("TRAIL guide " + baritone.behavior.RouteMemory.guide(a, b));
+                baritone.behavior.RouteMemory.Guide gg = baritone.behavior.RouteMemory.guide(a, b);
+                System.out.println("TRAIL guide " + gg + (gg == null ? "" : " floors " + baritone.behavior.RouteMemory.floors(gg, new VineLogPathTest.Ctx(w, false))));
                 System.out.println("TRAIL pair " + a + " -> " + b + " attempt " + attempt + ": " + (r.inGoal ? "made it: " + r.positions : "no" + (r.found ? " (part: " + r.positions + ")" : "")));
                 if (r.inGoal) {
                     break;

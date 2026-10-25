@@ -44,12 +44,15 @@ public class CubeDebug {
             sim.sprinting = true;
             double tx = Double.parseDouble(q[5]), tz = Double.parseDouble(q[6]);
             int run = Integer.parseInt(q[7]);
-            for (int t = 0; t < 40; t++) {
+            // (CUBE_HOPS: how many times it comes down before it stops, hopping again each time; CUBE_MINY: how low)
+            int hops = Integer.parseInt(System.getenv().getOrDefault("CUBE_HOPS", "1")), landings = 0;
+            double minY = Double.parseDouble(System.getenv().getOrDefault("CUBE_MINY", "90"));
+            for (int t = 0; t < 60; t++) {
                 float yaw = baritone.pathing.tungsten.Keys.yaw(tx - sim.x, tz - sim.z);
                 boolean hop = t >= run && sim.onGround;
                 baritone.pathing.tungsten.Keys.step(sim, baritone.pathing.tungsten.Keys.run(yaw, hop));
                 System.out.printf("CUBE t%d %.3f %.3f %.3f v(%.3f %.3f %.3f) %s%n", t, sim.x, sim.y, sim.z, sim.vx, sim.vy, sim.vz, sim.onGround ? "ground" : "");
-                if (sim.onGround && t > run + 2 || sim.y < 90) {
+                if (sim.onGround && t > run + 2 && ++landings >= hops || sim.y < minY) {
                     break;
                 }
             }
@@ -106,11 +109,17 @@ public class CubeDebug {
                         + " takeoff " + TungstenJumps.takeoff(ctx, a.x, a.y, a.z) + " destOk " + TungstenJumps.destOk(ctx, b.x, b.y, b.z));
                 TungstenJumps.Jump j = TungstenJumps.between(ctx, a, b);
                 System.out.println(head + " between " + (j == null ? "none" : j.cost() + " " + j.variant() + (j.plan() != null ? " (plan)" : "")));
+                if (System.getenv("CUBE_HOP") != null && !Double.isNaN(st[2])) {
+                    baritone.pathing.tungsten.TungstenSearch.Plan hp = baritone.pathing.tungsten.HopChain.plan(sw, a, st[2], l);
+                    System.out.println(head + " hop chain " + (hp == null ? "none" : hp.ticks() + " ticks, ends " + hp.states().get(hp.states().size() - 1).x + " " + hp.states().get(hp.states().size() - 1).y + " " + hp.states().get(hp.states().size() - 1).z));
+                }
                 if (System.getenv("CUBE_SOLVE") != null && !Double.isNaN(st[2])) {
                     // the full search, the way the background does it (standing in src)
                     long t0 = System.currentTimeMillis();
+                    double[] via = System.getenv("CUBE_VIA") == null ? null
+                            : java.util.Arrays.stream(System.getenv("CUBE_VIA").trim().split("\\s+")).mapToDouble(Double::parseDouble).toArray();
                     baritone.pathing.tungsten.TungstenSearch.Plan plan = baritone.pathing.tungsten.NeoSearches.solve(sw, a, st[2], l,
-                            baritone.pathing.tungsten.NeoSearches.region(a, l));
+                            baritone.pathing.tungsten.NeoSearches.region(a, l), via);
                     System.out.println(head + " full search " + (plan == null ? "none" : plan.ticks() + " ticks") + " in " + (System.currentTimeMillis() - t0) + " ms");
                 }
                 if (q.length >= 8) {

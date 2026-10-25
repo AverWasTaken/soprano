@@ -1,10 +1,35 @@
-# Parkour Lab v7 (bot v12)
+# Parkour Lab v7 (bot v13)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v12 (same course, v7)
+## What's new in bot v13 (same course, v7, plus Chess (hard) and Dam)
+
+- **The course is what your recording stood on.** On a level where everything but the course puts you back (Dam's glass, the wooden pillar on Chess (hard), Desert's sand), the blocks a learned recording went over are the course. The planner won't land anywhere else. A block the recording only touched once or twice, with hundreds more of it all round (the glass under the odd cell of a practice mode recording), doesn't count. Trails from `#routes learn` are marked as learned in `routes.json` (`"learned"`), and those are the ones it goes by.
+- **No jump plan that touches down on the wrong thing on the way.** A searched plan that came down on the glass floor and hopped up onto the ladder from there was a reset in the game. Those are thrown out now, along with anything that comes down on a block FallFloor learned. Slime is fine.
+- **Slime beside the line.** A bounce off slime a block to the side of the straight line (Dam's pillar to pillar) is a background search aimed over the slime.
+- **Hop chains.** A run at a landing that hops again the moment it touches down on the way (Dam's pillar top, four down and seven across) goes further than any jump from standing. Also a run all the way to the edge with a back up first. Tried before the full search for trail leaps.
+- **Trail jumps the rule can't do get the full search**, in the background (a hop up onto a wall top from a stair on Chess (hard)).
+- **Stepping off to be put back.** When there's no way on at all, on a course that puts you back, the bot walks off the nearest edge and starts again from the checkpoint (up to 3 times a goal), instead of standing there.
+- **The way we went before is dropped after it fails 3 times from a spot**, not after it's been asked 3 times. Planning ahead asks a dozen times a jump, and on Chess (harder) the trail was gone after the first two jumps.
+- Smaller: leaps coming back towards us no longer jump the queue (the chess stall after stop 1), the slime under a bounce isn't learned as a reset block, the block a put back puts us on is only unlearned on the first landing, a learned floor never goes above the lowest point of the trail, trail jumps count a ladder a block under the cell.
+
+**How v13 did** (`#goto` the finish from the start, 15 minutes each):
+
+| | runs | result |
+|---|---|---|
+| Chess | 3 | done all, 119–139 s, 0 falls |
+| Aqua | 4 | done all, 40–46 s, 0 falls |
+| Candy | 4 | done all, 24 s, 0 falls |
+| Hell | 4 | done 3 (183 s, 209 s, 434 s); the other stuck at 4 (the drop jump at 1447 37 1162) |
+| Endurance | 1 | checkpoint 29 of 43 in the 15 minutes, still going |
+| Desert | 2 | checkpoint 3 in 15 s, then the last water block |
+| Chess (harder) | 1 | checkpoint 2 in 54 s (v12: 1) |
+| Chess (hard) | 3 | checkpoint 4 in 48 s (v12: 3); the corner jump to the black wool after it is next |
+| Dam | 2 | checkpoint 6 in 132 s (v12: 3). Next is the ladder under the fence and round the pillar, the one you flew |
+
+## What was new in bot v12 (same course, v7)
 
 - **Trail leaps run.** The executor's check of a path rejected every leap (it has no route guide); a leap's worked out plan is looked up without one now.
 - **No pause in the middle of a jump.** Baritone pauses the keys while the next stretch is planned if that plan goes back over where we stand; in a jump's run up (a step back first) that threw the jump off its plan every time, over and over (Chess after stop 7, Hell after 4).

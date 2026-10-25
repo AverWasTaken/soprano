@@ -49,6 +49,7 @@ public final class FallFloor {
     private static double lastX, lastY, lastZ = Double.NaN;
     private static double topY = Double.NaN, lowY = Double.NaN;
     private static int groundTicks, sinceTeleport = SETTLE_TICKS;
+    private static boolean landedSincePut = true;
     // what we last came down on below the top of the fall, if we did
     private static net.minecraft.world.level.block.Block lowBlock;
     // what we stood on last tick, if we were on the ground: a server that puts you back the moment you step onto its floor (a
@@ -57,8 +58,8 @@ public final class FallFloor {
     private static int standFeet;
     private static long standCell = Long.MIN_VALUE;
     private static int standTicks;
-    // a block that puts you back does it the moment you're on it: within this many ticks
-    static final int JUST_STEPPED = 20;
+    // a block that puts you back does it the moment you're on it, or near enough (a server can take a second): within this many ticks
+    static final int JUST_STEPPED = 40;
     // the cells we've stood in lately: being put back is going somewhere we've already been (the start, the last checkpoint),
     // where finishing a course takes you somewhere new
     private static final long[] SEEN = new long[4096];
@@ -89,6 +90,26 @@ public final class FallFloor {
             }
         }
         return best;
+    }
+
+    // a course that puts you back when you fall, round x z: something's been learned about it, or we've a trail on it
+    public static boolean parkourHere(double x, double z) {
+        for (Learned l : FLOORS) {
+            if (Math.abs(l.x() - x) <= AROUND && Math.abs(l.z() - z) <= AROUND) {
+                return true;
+            }
+        }
+        for (Deadly d : DEADLY) {
+            if (d.x() != Integer.MIN_VALUE && Math.abs(d.x() - x) <= AROUND && Math.abs(d.z() - z) <= AROUND) {
+                return true;
+            }
+        }
+        return RouteMemory.floorsNear(x, z) != null;
+    }
+
+    // bouncing off slime isn't standing on it: what put us back is what came after
+    private static boolean bouncy(net.minecraft.world.level.block.Block b) {
+        return b != null && b.getBounceRestitution() > 0;
     }
 
     public static void forget() {
@@ -186,6 +207,7 @@ public final class FallFloor {
             boolean settling = sinceTeleport < SETTLE_TICKS;
             if (teleported) {
                 sinceTeleport = 0;
+                landedSincePut = false;
             }
             boolean fell = !Double.isNaN(topY) && topY - lowY >= 0.5 && (y > lowY + 2.5 || across);
             // (and not far: going from one course to another, a level's start that we've stood on before, is a teleport too)
@@ -193,7 +215,7 @@ public final class FallFloor {
             if (teleported && !settling && !fell && standBlock != null && standTicks <= JUST_STEPPED && across && dx * dx + dz * dz < PUT_BACK_RANGE * PUT_BACK_RANGE
                     && beenNear(x, y, z)) {
                 // walked onto it and got put back straight away, back to where we'd been
-                if (!deadly(standBlock, (int) Math.floor(lastX), standFeet, (int) Math.floor(lastZ))) {
+                if (!deadly(standBlock, (int) Math.floor(lastX), standFeet, (int) Math.floor(lastZ)) && !RouteMemory.trailFloor(standBlock, lastX, lastZ)) {
                     DEADLY.add(new Deadly(standBlock, (int) Math.floor(lastX), (int) Math.floor(lastZ), standFeet));
                     generation++;
                     if (Baritone.settings().learnFallFloor.value) {
@@ -205,7 +227,9 @@ public final class FallFloor {
                 if (lowBlock != null) {
                     // came down on lowBlock and got put back: standing on that, that low, is what does it
                     int feet = (int) Math.floor(lowY + 0.1251);
-                    if (!deadly(lowBlock, (int) Math.floor(lastX), feet, (int) Math.floor(lastZ))) {
+                    // (but not something the trail we're on stands on: that went fine for whoever laid it, it was
+                    // touching something else on the way, a wall of the wrong block, that did it)
+                    if (!deadly(lowBlock, (int) Math.floor(lastX), feet, (int) Math.floor(lastZ)) && !RouteMemory.trailFloor(lowBlock, lastX, lastZ) && !bouncy(lowBlock)) {
                         DEADLY.add(new Deadly(lowBlock, (int) Math.floor(lastX), (int) Math.floor(lastZ), feet));
                         generation++;
                         if (Baritone.settings().learnFallFloor.value) {
@@ -214,7 +238,8 @@ public final class FallFloor {
                     }
                 } else {
                     // never touched down, put back in mid air: that low is somewhere the server won't have us
-                    int floor = (int) Math.floor(lowY + 1.0E-3) + 1;
+                    // (a trail that goes lower than that went fine: some block we came down on, not the height, did it)
+                    int floor = Math.min((int) Math.floor(lowY + 1.0E-3) + 1, RouteMemory.trailLow(lastX, lastZ));
                     if (floor > learned(lastX, lastZ)) {
                         FLOORS.add(new Learned((int) Math.floor(lastX), (int) Math.floor(lastZ), floor));
                         generation++;
@@ -239,6 +264,21 @@ public final class FallFloor {
             standTicks++;
             standBlock = on;
             standFeet = (int) Math.floor(y + 0.1251);
+            if (sinceTeleport < SETTLE_TICKS && standTicks == 1 && !landedSincePut) {
+                // just put somewhere (a checkpoint): what we're standing on can't be something that resets us, here. a
+                // put back right after landing on the same kind of block elsewhere (a fence post, a log) made it look
+                // like one, and then the checkpoint itself was somewhere the paths kept off: nothing could be planned
+                final net.minecraft.world.level.block.Block here = on;
+                final int fx = (int) Math.floor(x), fz = (int) Math.floor(z), ff = standFeet;
+                if (DEADLY.removeIf(d -> d.block() == here && ff <= d.maxFeetY()
+                        && (d.x() == Integer.MIN_VALUE || Math.abs(d.x() - fx) <= AROUND && Math.abs(d.z() - fz) <= AROUND))) {
+                    generation++;
+                    Helper.HELPER.logDebug("Put back onto " + here.getName().getString() + ": that's not what resets us here after all");
+                }
+            }
+            // (the first floor after being put somewhere, that is: the next jump coming down on the glass inside the
+            // settling time isn't being put back onto it)
+            landedSincePut = true;
             long cell = net.minecraft.core.BlockPos.asLong((int) Math.floor(x), (int) Math.floor(y + 0.01), (int) Math.floor(z));
             if (cell != seenLast) {
                 seenLast = cell;

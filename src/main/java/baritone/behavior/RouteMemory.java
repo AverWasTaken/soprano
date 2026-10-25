@@ -54,6 +54,9 @@ public final class RouteMemory {
 
     private static final class Trail {
         final LongArrayList cells = new LongArrayList();
+        // laid down from a recording (#routes learn): somebody playing it, put back where the server put them back. what
+        // these stand on is what the course is (see floors)
+        boolean learned;
     }
 
     private static final List<Trail> TRAILS = new ArrayList<>();
@@ -73,7 +76,7 @@ public final class RouteMemory {
     private static boolean dirty;
     private static int ticks;
     // a teleport within this many ticks of stepping onto a block is that block putting us back (FallFloor.JUST_STEPPED)
-    static final int PUT_BACK_TICKS = 20;
+    static final int PUT_BACK_TICKS = 40;
     // higher than this over where a flight left the ground is more than any jump: flown (or launched)
     static final double FLY_RISE = 1.8;
     // and lower than this under it, a fall (not a jump down a block or two onto the next one)
@@ -247,12 +250,19 @@ public final class RouteMemory {
     public static synchronized int learn(List<double[]> ticks, int dx, int dy, int dz) {
         Layer l = new Layer();
         int before = cellCount();
+        java.util.Set<Trail> had = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        had.addAll(TRAILS);
         for (double[] t : ticks) {
             double x = t[0] + dx, y = t[1] + dy, z = t[2] + dz;
             // (the cell the feet are in, the way playerFeet has it: a slab's top or a head is the cell over it)
             l.step(x, y, z, (int) Math.floor(x), (int) Math.floor(y + 0.1251), (int) Math.floor(z), t[3] == 1, t[3] == 2);
         }
         l.done();
+        for (Trail t : TRAILS) {
+            if (!had.contains(t)) {
+                t.learned = true;
+            }
+        }
         dirty = true;
         trailVersion++;
         return cellCount() - before;
@@ -264,6 +274,7 @@ public final class RouteMemory {
         for (BetterBlockPos p : cells) {
             t.cells.add(net.minecraft.core.BlockPos.asLong(p.x, p.y, p.z));
         }
+        t.learned = true; // (a routes.json's trail checked offline: the recording's, as a rule)
         TRAILS.add(t);
         trailVersion++;
     }
@@ -335,17 +346,183 @@ public final class RouteMemory {
     // way); otherwise to the far end of the trail that got furthest on from here (as far as we got last time: on a course
     // that winds, how near the goal the trail came says nothing, the end of it is where we were stuck, and on from there is
     // where to look). null when no trail goes past the start
+    // what the trail the way is on stands on and climbs (the blocks in and under its cells, as far as they're loaded), or
+    // null if none of it is loaded: on a course where most blocks put you back (a dam's glass, a pillar of the wrong wood),
+    // the ones the trail went over are the ones that don't. (but not something it only went over once or twice that's
+    // all over the place round it: a recording made in a practice mode, where nothing puts you back, has the odd cell down
+    // on the dam's glass, and a block there's only a couple of on the course, a coloured block the way goes over once, is
+    // still the course)
+    public static java.util.Set<net.minecraft.world.level.block.Block> floors(Guide g, baritone.pathing.movement.CalculationContext ctx) {
+        int low = Integer.MAX_VALUE;
+        for (long c : g.cells()) {
+            low = Math.min(low, net.minecraft.core.BlockPos.getY(c));
+        }
+        java.util.Set<net.minecraft.world.level.block.Block> out = null;
+        // the recordings of this course, if there are any (a trail of the bot's own may have stood on what put it back,
+        // or be one stretch of the course and not the rest), or else the trail the way is on
+        long c0 = g.cell(0);
+        for (long[] whole : learnedNear(net.minecraft.core.BlockPos.getX(c0), net.minecraft.core.BlockPos.getZ(c0))) {
+            java.util.Set<net.minecraft.world.level.block.Block> f = floorsMemo(whole, ctx);
+            if (f != null) {
+                if (out == null) {
+                    out = new java.util.HashSet<>();
+                }
+                out.addAll(f);
+            }
+        }
+        if (out == null) {
+            out = floorsMemo(g.whole(), ctx);
+        }
+        if (out == null) {
+            return null;
+        }
+        lastFloors = out;
+        lastLow = low;
+        lastFloorsX = net.minecraft.core.BlockPos.getX(g.cell(0));
+        lastFloorsZ = net.minecraft.core.BlockPos.getZ(g.cell(0));
+        return out;
+    }
+
+    private static final java.util.Map<Long, java.util.Set<net.minecraft.world.level.block.Block>> FLOORS_MEMO = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static java.util.Set<net.minecraft.world.level.block.Block> floorsMemo(long[] whole, baritone.pathing.movement.CalculationContext ctx) {
+        long key = whole.length == 0 ? 0 : whole[0] * 31 + whole.length;
+        java.util.Set<net.minecraft.world.level.block.Block> out = FLOORS_MEMO.get(key);
+        if (out == null) {
+            out = floorsOf(whole, ctx);
+            if (out == null) {
+                return null;
+            }
+            if (FLOORS_MEMO.size() > 64) {
+                FLOORS_MEMO.clear();
+            }
+            FLOORS_MEMO.put(key, out);
+        }
+        return out;
+    }
+
+    // every learned trail with a cell within LEARNED_NEAR across of x z
+    private static synchronized List<long[]> learnedNear(int x, int z) {
+        List<long[]> out = new ArrayList<>();
+        for (Trail t : TRAILS) {
+            if (!t.learned) {
+                continue;
+            }
+            for (int i = 0; i < t.cells.size(); i++) {
+                long c = t.cells.getLong(i);
+                if (Math.abs(net.minecraft.core.BlockPos.getX(c) - x) <= LEARNED_NEAR && Math.abs(net.minecraft.core.BlockPos.getZ(c) - z) <= LEARNED_NEAR) {
+                    out.add(t.cells.toLongArray());
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    static final int LEARNED_NEAR = 8;
+
+    static java.util.Set<net.minecraft.world.level.block.Block> floorsOf(long[] whole, baritone.pathing.movement.CalculationContext ctx) {
+        java.util.Map<net.minecraft.world.level.block.Block, Integer> count = new java.util.HashMap<>();
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+        for (long c : whole) {
+            int x = net.minecraft.core.BlockPos.getX(c), y = net.minecraft.core.BlockPos.getY(c), z = net.minecraft.core.BlockPos.getZ(c);
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+            minZ = Math.min(minZ, z);
+            maxZ = Math.max(maxZ, z);
+            for (int dy = 0; dy >= -1; dy--) {
+                net.minecraft.world.level.block.state.BlockState s = ctx.get(x, y + dy, z);
+                if (!s.isAir()) {
+                    count.merge(s.getBlock(), 1, Integer::sum);
+                }
+            }
+        }
+        if (count.isEmpty()) {
+            return null;
+        }
+        // how many of each of the rare ones there are round the trail (a few blocks out, and down to the floor under it)
+        java.util.Map<net.minecraft.world.level.block.Block, Integer> around = new java.util.HashMap<>();
+        count.forEach((b, n) -> {
+            if (n < FLOOR_CELLS) {
+                around.put(b, 0);
+            }
+        });
+        if (!around.isEmpty() && (long) (maxX - minX + 7) * (maxY - minY + 13) * (maxZ - minZ + 7) <= FLOOR_SCAN) {
+            for (int x = minX - 3; x <= maxX + 3; x++) {
+                for (int z = minZ - 3; z <= maxZ + 3; z++) {
+                    for (int y = minY - 10; y <= maxY + 2; y++) {
+                        net.minecraft.world.level.block.Block b = ctx.get(x, y, z).getBlock();
+                        Integer n = around.get(b);
+                        if (n != null) {
+                            around.put(b, n + 1);
+                        }
+                    }
+                }
+            }
+        }
+        java.util.Set<net.minecraft.world.level.block.Block> out = new java.util.HashSet<>();
+        count.forEach((b, n) -> {
+            Integer all = around.get(b);
+            if (n >= FLOOR_CELLS || all == null || all <= Math.max(FLOOR_PLENTY, n * FLOOR_RARE)) {
+                out.add(b);
+            }
+        });
+        return out;
+    }
+
+    // a block the trail went over fewer times than FLOOR_CELLS is only one it stands on if there are no more than this many
+    // times as many of them round it (the dam's glass: two cells of the trail, hundreds of blocks)
+    static final int FLOOR_RARE = 12;
+    // (a course's few dozen heads or slabs, of which the trail stood on one or two, are still the course: it takes more
+    // of them than this round it, the dam's hundreds of glass blocks, to be the stuff in between)
+    static final int FLOOR_PLENTY = 64;
+    // (and only looked for in no more than this many cells round the trail)
+    static final long FLOOR_SCAN = 4_000_000;
+
+    static final int FLOOR_CELLS = 3;
+
+    private static volatile java.util.Set<net.minecraft.world.level.block.Block> lastFloors = java.util.Set.of();
+    private static volatile int lastFloorsX, lastFloorsZ, lastLow = Integer.MAX_VALUE;
+
+    // how low the trail we're on goes (Integer.MAX_VALUE if we're not on one round x z): a reset lower down than that is no
+    // reason to keep above where the trail goes
+    public static int trailLow(double x, double z) {
+        return Math.abs(x - lastFloorsX) <= 128 && Math.abs(z - lastFloorsZ) <= 128 ? lastLow : Integer.MAX_VALUE;
+    }
+
+    // what the trail we were last on stands on, if it's round x z (null if not): a search the trail's given up on (it kept
+    // failing from here, GUIDE_TRIES) is still on that course, and the course is still glass but for the wool
+    public static java.util.Set<net.minecraft.world.level.block.Block> floorsNear(double x, double z) {
+        return !lastFloors.isEmpty() && Math.abs(x - lastFloorsX) <= 128 && Math.abs(z - lastFloorsZ) <= 128 ? lastFloors : null;
+    }
+
+    // the trail we're on (the last one planned along, if it's round x z) stands on block: so it isn't what puts us back
+    public static boolean trailFloor(net.minecraft.world.level.block.Block block, double x, double z) {
+        return Math.abs(x - lastFloorsX) <= 128 && Math.abs(z - lastFloorsZ) <= 128 && lastFloors.contains(block);
+    }
+
+    // a path from here failed (a jump missed, a move that took too long, no path at all): see guide
+    public static synchronized void failedFrom(BetterBlockPos at) {
+        if (at == null) {
+            return;
+        }
+        int n = ASKED_FROM.addTo(net.minecraft.core.BlockPos.asLong(at.x, at.y, at.z), 1) + 1;
+        if (n == GUIDE_TRIES) {
+            baritone.api.utils.Helper.HELPER.logDebug("The way we went before isn't working from here, finding another");
+        }
+    }
+
     public static synchronized Guide guide(BetterBlockPos start, BetterBlockPos goal) {
         if (!Baritone.settings().useRouteMemory.value) {
             return null;
         }
-        // asked from the same spot over and over (for the same goal): the way it went doesn't work from here (the trail's
-        // next jump keeps failing, or it went somewhere that's a dead end), so the search is on its own
-        int asked = ASKED_FROM.addTo(net.minecraft.core.BlockPos.asLong(start.x, start.y, start.z), 1);
+        // failed from the same spot over and over (for the same goal): the way it went doesn't work from here (the trail's
+        // next jump keeps failing, or it went somewhere that's a dead end), so the search is on its own. (failed, not
+        // asked: planning ahead asks from the same spot a dozen times a jump, and a way that's working got dropped)
+        int asked = ASKED_FROM.get(net.minecraft.core.BlockPos.asLong(start.x, start.y, start.z));
         if (asked >= GUIDE_TRIES) {
-            if (asked == GUIDE_TRIES) {
-                baritone.api.utils.Helper.HELPER.logDebug("The way we went before isn't working from here, finding another");
-            }
             return null;
         }
         LongArrayList bestCells = null;
@@ -404,7 +581,7 @@ public final class RouteMemory {
             index.putIfAbsent(bestCells.getLong(i), i - bestS);
             order[i - bestS] = bestCells.getLong(i);
         }
-        return new Guide(index, bestEnd - bestS, bestReaches, order);
+        return new Guide(index, bestEnd - bestS, bestReaches, order, bestCells.toLongArray());
     }
 
     private static long dist2(long c, BetterBlockPos p) {
@@ -458,6 +635,8 @@ public final class RouteMemory {
                     for (int[] u : near) {
                         for (int[] v : near) {
                             out.add(jumpKey(ax + u[0], ay, az + u[1], bx + v[0], by, bz + v[1]));
+                            // (and a block lower: the ladder under a cell the trail went up past, the way it was caught)
+                            out.add(jumpKey(ax + u[0], ay, az + u[1], bx + v[0], by - 1, bz + v[1]));
                         }
                     }
                 }
@@ -467,7 +646,8 @@ public final class RouteMemory {
     }
 
     // how far along the way a cell is (-1: not on it), how long the way is, whether it goes all the way to the goal
-    public record Guide(Long2IntOpenHashMap index, int length, boolean reachesGoal, long[] cells) {
+    // (whole: every cell of the trail it's on, from the start of it)
+    public record Guide(Long2IntOpenHashMap index, int length, boolean reachesGoal, long[] cells, long[] whole) {
         public int along(int x, int y, int z) {
             return index.get(net.minecraft.core.BlockPos.asLong(x, y, z));
         }
@@ -521,6 +701,12 @@ public final class RouteMemory {
         try {
             // (read by hand, not by Gson reflection: the release jar's obfuscation gives a record's fields the same short name)
             com.google.gson.JsonObject o = com.google.gson.JsonParser.parseString(Files.readString(f)).getAsJsonObject();
+            java.util.Set<Integer> learned = new java.util.HashSet<>();
+            if (o.has("learned")) {
+                for (com.google.gson.JsonElement e : o.getAsJsonArray("learned")) {
+                    learned.add(e.getAsInt());
+                }
+            }
             if (o.has("trails")) {
                 for (com.google.gson.JsonElement e : o.getAsJsonArray("trails")) {
                     com.google.gson.JsonArray flat = e.getAsJsonArray();
@@ -528,6 +714,7 @@ public final class RouteMemory {
                     for (int i = 0; i + 2 < flat.size(); i += 3) {
                         t.cells.add(net.minecraft.core.BlockPos.asLong(flat.get(i).getAsInt(), flat.get(i + 1).getAsInt(), flat.get(i + 2).getAsInt()));
                     }
+                    t.learned = learned.contains(TRAILS.size());
                     TRAILS.add(t);
                 }
             }
@@ -556,9 +743,13 @@ public final class RouteMemory {
         trailVersion++; // (the live trail's grown: the jumps along it, worked out again when next asked)
         dirty = false;
         List<int[]> trails = new ArrayList<>();
+        List<Integer> learnedAt = new ArrayList<>();
         for (Trail t : TRAILS) {
             if (t.cells.size() < MIN_CELLS) {
                 continue;
+            }
+            if (t.learned) {
+                learnedAt.add(trails.size());
             }
             int[] flat = new int[t.cells.size() * 3];
             for (int i = 0; i < t.cells.size(); i++) {
@@ -590,6 +781,11 @@ public final class RouteMemory {
                 ts.add(a);
             }
             o.add("trails", ts);
+            com.google.gson.JsonArray ls = new com.google.gson.JsonArray();
+            for (int i : learnedAt) {
+                ls.add(i);
+            }
+            o.add("learned", ls);
             com.google.gson.JsonObject js = new com.google.gson.JsonObject();
             for (Map.Entry<String, int[]> e : jumps.entrySet()) {
                 com.google.gson.JsonArray a = new com.google.gson.JsonArray();

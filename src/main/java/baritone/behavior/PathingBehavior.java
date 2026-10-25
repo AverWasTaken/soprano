@@ -971,8 +971,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
         // the way along a trail we've been along before, see RouteMemory
         context.routeGuide = goal instanceof IGoalRenderPos ? RouteMemory.guide(new BetterBlockPos(start), new BetterBlockPos(((IGoalRenderPos) goal).getGoalPos())) : null;
+        context.trailFloors = null;
         if (context.routeGuide != null) {
             favoring.favorAll(context.routeGuide.index().keySet(), ROUTE_FAVOR);
+            context.trailFloors = RouteMemory.floors(context.routeGuide, context);
+        } else if (Baritone.settings().useRouteMemory.value) {
+            context.trailFloors = RouteMemory.floorsNear(start.getX(), start.getZ());
         }
         AStarPathFinder finder = new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
         finder.keepAbove(goal); // the goal as asked for: a far one keeps its height for this even when the search drops it

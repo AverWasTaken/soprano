@@ -236,7 +236,9 @@ public final class JumpPolicy {
             // a landing well under the water we're in: out of the side of it and down, the way a player does it (forward,
             // and jump held so the drop starts from as high as it gets), whether we're going up or sinking. keeping to the
             // column and leaning only on the way up sinks us straight out of the bottom of a hanging water block instead
-            return new PlayerSim.Controls(1, 0, true, false, toward);
+            // (and the push out only on the way up: a player treading water waits for the bob to the top, and goes out of it
+            // high with the speed of the air above. pushed while sinking it's out of the side lower, and short)
+            return new PlayerSim.Controls(now.vy >= 0 ? 1 : 0, 0, true, false, toward);
         }
         if (depth <= PlayerSim.FLUID_JUMP_THRESHOLD) {
             return new PlayerSim.Controls(1, 0, true, false, toward);

@@ -50,6 +50,8 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
 
     // this many cells along a remembered way (RouteMemory), the search has a part path worth stopping for
     static final int ROUTE_PROGRESS = 12;
+    // what landing on a block the remembered trail never stood on costs (CalculationContext.trailFloors): five seconds
+    static final double OFF_TRAIL_FLOOR = 100;
 
     public AStarPathFinder(BetterBlockPos realStart, int startX, int startY, int startZ, Goal goal, Favoring favoring, CalculationContext context) {
         super(realStart, startX, startY, startZ, goal, context);
@@ -88,6 +90,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         int partialFloorY = this.partialFloorY;
         int avoidBelowY = calcContext.avoidBelowY;
         baritone.behavior.RouteMemory.Guide guide = calcContext.routeGuide;
+        java.util.Set<net.minecraft.world.level.block.Block> trailFloors = calcContext.trailFloors;
         MutableMoveResult res = new MutableMoveResult();
         BetterWorldBorder worldBorder = calcContext.worldBorder;
         long startTime = System.currentTimeMillis();
@@ -100,6 +103,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         boolean failing = true;
         int numNodes = 0;
         int numMovementsConsidered = 0;
+        int offFloorSkips = 0;
         int numEmptyChunk = 0;
         boolean isFavoring = !favoring.isEmpty();
         int timeCheckInterval = 1 << 6;
@@ -205,6 +209,23 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                         || baritone.behavior.FallFloor.deadly(calcContext.get(res.x, res.y - 1, res.z).getBlock(), res.x, res.y, res.z)) {
                     continue; // down on the floor a parkour level resets you from (Settings.avoidBelowY, FallFloor)
                 }
+                boolean offFloor = trailFloors != null && baritone.pathing.tungsten.TungstenJumps.offTrailFloor(calcContext, res.x, res.y, res.z);
+                if (offFloor && (guide == null || guide.along(res.x, res.y, res.z) < 0)) {
+                    if (++offFloorSkips <= 6 && System.getenv("SOPRANO_FLOOR_LOG") != null) {
+                        System.out.println("[floors] off: " + res.x + " " + res.y + " " + res.z + " on " + calcContext.get(res.x, res.y - 1, res.z).getBlock() + " in " + calcContext.get(res.x, res.y, res.z).getBlock() + " from " + currentNode.x + " " + currentNode.y + " " + currentNode.z + " " + moves);
+                    }
+                    // somewhere the trail never went, on something it never stood on: on a course where everything but
+                    // the course puts you back, not somewhere to go at all (any price for it gets lost in a part path's
+                    // cost coefficients, and the dam's floor is the easy way to the end). if it's what the course is
+                    // after all, the fall floor learning is what finds out the other way round
+                    continue;
+                }
+                if (offFloor) {
+                    // on a remembered trail, landing on something it never stood on (a course's glass, a pillar of the wrong
+                    // wood) is likely what puts you back: only if there's no way over what it did stand on. (where it went
+                    // itself is fine, whatever it is: the start's floor, a block it only stood on once)
+                    actionCost += OFF_TRAIL_FLOOR;
+                }
                 if (!moves.dynamicY && res.y != currentNode.y + moves.yOffset) {
                     throw new IllegalStateException(String.format(
                             "%s from %s %s %s ended at y %s instead of %s",
@@ -251,7 +272,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                     if (failing && guide != null && guide.along(neighbor.x, neighbor.y, neighbor.z) >= Math.min(guide.length(), ROUTE_PROGRESS)) {
                         failing = false; // well along a remembered way: that's a part path worth having (bestSoFar takes it)
                     }
-                    for (int i = 0; i < COEFFICIENTS.length; i++) {
+                    // (and never the end of a part path on something the trail never stood on: with the cost coefficients
+                    // that pick a part path, the price of the glass all but goes, and a dam's floor runs right to the end)
+                    for (int i = 0; i < COEFFICIENTS.length && !offFloor; i++) {
                         double heuristic = neighbor.estimatedCostToGoal + neighbor.cost * INVERSE_COEFFICIENTS[i];
                         if (high && bestHeuristicSoFar[i] - heuristic > minimumImprovement) {
                             bestHeuristicSoFar[i] = heuristic;
@@ -280,7 +303,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
             return Optional.empty();
         }
         if (!quiet) {
-            System.out.println(numMovementsConsidered + " movements considered");
+            System.out.println(numMovementsConsidered + " movements considered" + (trailFloors != null ? ", " + offFloorSkips + " landings off the trail's floors (" + trailFloors.size() + " kinds" + (guide == null ? ", no guide" : "") + ")" : ""));
             System.out.println("Open set size: " + openSet.size());
             System.out.println("PathNode map size: " + mapSize());
             System.out.println((int) (numNodes * 1.0 / ((System.currentTimeMillis() - startTime) / 1000F)) + " nodes per second");
