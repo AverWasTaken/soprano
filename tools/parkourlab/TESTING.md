@@ -1,8 +1,29 @@
-# Parkour Lab v7 (bot v11)
+# Parkour Lab v7 (bot v12)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
+
+## What's new in bot v12 (same course, v7)
+
+- **Trail leaps run.** The executor's check of a path rejected every leap (it has no route guide); a leap's worked out plan is looked up without one now.
+- **No pause in the middle of a jump.** Baritone pauses the keys while the next stretch is planned if that plan goes back over where we stand; in a jump's run up (a step back first) that threw the jump off its plan every time, over and over (Chess after stop 7, Hell after 4).
+- **A jump that never lands is no jump.** Missed 4 times in the game and never landed: gone round, whatever the sim says (one along a wall on Endurance was tried 13 times).
+- **Curved jumps under a block.** A jump on a trail with a block over the straight line at head height gets the aimed variants too, the way the player went round under the side of it (Endurance after stop 27).
+- **Out of the side of the water.** Dropping out of a water block to a landing well under it: forward and jump, going up or sinking (before: kept to the column and only leaned on the way up, and sank out of the bottom).
+- The routes file is written by hand (the release jar crashed saving it), and the background search results and ladder memo have caps.
+
+**How v12 did** (`#goto` the finish from the start):
+
+| | runs | result |
+|---|---|---|
+| Chess | 2 | done both, 142 s and 76 s |
+| Aqua | 2 | done both, 40–45 s, 0 falls |
+| Candy | 2 | done both, 24 s, 0 falls |
+| Hell | 3 | done 2 of 3 (93 s and 236 s); the other stuck at 4 |
+| Endurance | 1 | checkpoint 36 of 43 (20 minutes) |
+| Desert | 1 | checkpoint 3: through the swim, not yet off the last water block onto the post |
+| Chess (harder) | 1 | not past 1 |
 
 ## What's new in bot v11 (same course, v7)
 

@@ -232,6 +232,12 @@ public final class JumpPolicy {
         }
         memo.peakY = now.y;
         float toward = Keys.yaw(land.centerX() - now.x, land.centerZ() - now.z);
+        if (land.floor() < now.y - 1.5 && !land.water()) {
+            // a landing well under the water we're in: out of the side of it and down, the way a player does it (forward,
+            // and jump held so the drop starts from as high as it gets), whether we're going up or sinking. keeping to the
+            // column and leaning only on the way up sinks us straight out of the bottom of a hanging water block instead
+            return new PlayerSim.Controls(1, 0, true, false, toward);
+        }
         if (depth <= PlayerSim.FLUID_JUMP_THRESHOLD) {
             return new PlayerSim.Controls(1, 0, true, false, toward);
         }

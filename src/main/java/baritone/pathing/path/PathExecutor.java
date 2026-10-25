@@ -809,6 +809,11 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!path.movements().get(pathPosition).safeToCancel()) {
             return false;
         }
+        if (path.movements().get(pathPosition) instanceof baritone.pathing.movement.movements.MovementTungsten) {
+            // a jump's run up (a step back to the far edge first, then the run): let go of the keys for a tick and the jump
+            // is off its plan, it's cancelled and asked again from standing, and the same pause comes round again
+            return false;
+        }
         Optional<IPath> currentBest = current.get().bestPathSoFar();
         if (!currentBest.isPresent()) {
             return false;
