@@ -56,8 +56,6 @@ public final class RouteMemory {
         final LongArrayList cells = new LongArrayList();
     }
 
-    private record Stored(List<int[]> trails, Map<String, int[]> jumps) {}
-
     private static final List<Trail> TRAILS = new ArrayList<>();
     private static final Map<Long, int[]> JUMPS = new HashMap<>();
     // how far from where we are the end of a trail that stops short has to be, for it to be followed
@@ -515,25 +513,25 @@ public final class RouteMemory {
             return;
         }
         try {
-            Stored s = GSON.fromJson(Files.readString(f), Stored.class);
-            if (s == null) {
-                return;
-            }
-            if (s.trails() != null) {
-                for (int[] flat : s.trails()) {
+            // (read by hand, not by Gson reflection: the release jar's obfuscation gives a record's fields the same short name)
+            com.google.gson.JsonObject o = com.google.gson.JsonParser.parseString(Files.readString(f)).getAsJsonObject();
+            if (o.has("trails")) {
+                for (com.google.gson.JsonElement e : o.getAsJsonArray("trails")) {
+                    com.google.gson.JsonArray flat = e.getAsJsonArray();
                     Trail t = new Trail();
-                    for (int i = 0; i + 2 < flat.length; i += 3) {
-                        t.cells.add(net.minecraft.core.BlockPos.asLong(flat[i], flat[i + 1], flat[i + 2]));
+                    for (int i = 0; i + 2 < flat.size(); i += 3) {
+                        t.cells.add(net.minecraft.core.BlockPos.asLong(flat.get(i).getAsInt(), flat.get(i + 1).getAsInt(), flat.get(i + 2).getAsInt()));
                     }
                     TRAILS.add(t);
                 }
             }
-            if (s.jumps() != null) {
-                for (Map.Entry<String, int[]> e : s.jumps().entrySet()) {
+            if (o.has("jumps")) {
+                for (Map.Entry<String, com.google.gson.JsonElement> e : o.getAsJsonObject("jumps").entrySet()) {
                     String[] q = e.getKey().split("[ >]");
                     long key = jumpKey(Integer.parseInt(q[0]), Integer.parseInt(q[1]), Integer.parseInt(q[2]),
                             Integer.parseInt(q[3]), Integer.parseInt(q[4]), Integer.parseInt(q[5]));
-                    JUMPS.put(key, e.getValue());
+                    com.google.gson.JsonArray v = e.getValue().getAsJsonArray();
+                    JUMPS.put(key, new int[]{v.get(0).getAsInt(), v.get(1).getAsInt()});
                     JUMP_NAMES.put(key, e.getKey());
                 }
             }
@@ -575,9 +573,28 @@ public final class RouteMemory {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, GSON.toJson(new Stored(trails, jumps)));
+            // (written by hand: see load)
+            com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+            com.google.gson.JsonArray ts = new com.google.gson.JsonArray();
+            for (int[] flat : trails) {
+                com.google.gson.JsonArray a = new com.google.gson.JsonArray();
+                for (int v : flat) {
+                    a.add(v);
+                }
+                ts.add(a);
+            }
+            o.add("trails", ts);
+            com.google.gson.JsonObject js = new com.google.gson.JsonObject();
+            for (Map.Entry<String, int[]> e : jumps.entrySet()) {
+                com.google.gson.JsonArray a = new com.google.gson.JsonArray();
+                a.add(e.getValue()[0]);
+                a.add(e.getValue()[1]);
+                js.add(e.getKey(), a);
+            }
+            o.add("jumps", js);
+            Files.writeString(tmp, GSON.toJson(o));
             Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
+        } catch (Exception e) { // (never the game's problem: a route not saved is a route learned again)
             Helper.HELPER.logDebug("Couldn't save the routes to " + file + ": " + e);
         }
     }

@@ -167,8 +167,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         {
             baritone.cache.WorldData wd = baritone.getWorldProvider().getCurrentWorld();
             net.minecraft.client.player.LocalPlayer p = ctx.player();
-            RouteMemory.tick(p.level(), wd == null ? null : wd.directory, p.getX(), p.getY(), p.getZ(), ctx.playerFeet(),
-                    p.onGround() && !p.isInWater(), p.isInWater() || p.onClimbable());
+            try {
+                RouteMemory.tick(p.level(), wd == null ? null : wd.directory, p.getX(), p.getY(), p.getZ(), ctx.playerFeet(),
+                        p.onGround() && !p.isInWater(), p.isInWater() || p.onClimbable());
+            } catch (RuntimeException e) {
+                // (the routes are a help, never a reason for the game to go down)
+                logDebug("Route memory: " + e);
+            }
         }
         // the background jump searches go nearest the player first, path or no path
         NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
