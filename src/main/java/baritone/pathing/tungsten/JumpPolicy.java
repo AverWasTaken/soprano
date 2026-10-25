@@ -919,8 +919,17 @@ public final class JumpPolicy {
                 order.add(v);
             }
         }
+        if (risky && overhead(start, land)) {
+            // (a jump somebody made, with a block over the straight line: they went round under the side of it, the
+            // aimed variants curve the same way)
+            for (Variant v : NEO_VARIANTS) {
+                if (v.aim() != 0F && !order.contains(v)) {
+                    order.add(v);
+                }
+            }
+        }
         for (Variant v : order) {
-            if (standingShort && v.back() == 0 && !v.hop() || v.hop() && !ceiling(start) && !slippery(start)) {
+            if (standingShort && v.back() == 0 && !v.hop() && v.aim() == 0F || v.hop() && !ceiling(start) && !slippery(start)) {
                 continue;
             }
             Rollout r = rollout(start.copy(), land, v);
@@ -1012,6 +1021,24 @@ public final class JumpPolicy {
                 double dx = s.x - land.centerX(), dz = s.z - land.centerZ();
                 double limit = land.ax() != 0.5 || land.az() != 0.5 ? TOUCHDOWN_AIMED : TOUCHDOWN;
                 return dx * dx + dz * dz > limit * limit; // (a corner's further out than a side)
+            }
+        }
+        return false;
+    }
+
+    // something solid where the head goes over the straight line, at the top of the arc (two up from the feet): a jump
+    // straight at the landing bumps it and comes down short
+    static boolean overhead(PlayerSim start, Landing land) {
+        double dx = land.centerX() - start.x, dz = land.centerZ() - start.z;
+        int head = net.minecraft.util.Mth.floor(start.y) + 2;
+        baritone.pathing.sim.BoxList boxes = new baritone.pathing.sim.BoxList();
+        for (int i = 1; i < 10; i++) {
+            double t = i / 10.0;
+            int bx = net.minecraft.util.Mth.floor(start.x + dx * t), bz = net.minecraft.util.Mth.floor(start.z + dz * t);
+            boxes.clear();
+            start.world().boxes(bx, head, bz, boxes);
+            if (boxes.size() > 0) {
+                return true;
             }
         }
         return false;

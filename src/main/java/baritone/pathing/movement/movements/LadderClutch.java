@@ -185,6 +185,9 @@ final class LadderClutch {
         Plan p = MEMO.get(key);
         if (p == null) {
             p = pick(drop, WALK_OFF_VY, 0, 0, mask, FIRST_PLACE, reach);
+            if (MEMO.size() > 4000) {
+                MEMO.clear(); // (one per spot asked about, each a whole plan: a long session in a big world adds up)
+            }
             MEMO.put(key, p == null ? NONE : p);
         }
         return p == NONE || p == null ? null : p;

@@ -28,6 +28,33 @@ public class CubeDebug {
             w.set(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt(),
                     BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, "minecraft:" + b.get(3).getAsString(), false).blockState());
         }
+        if (System.getenv("CUBE_REPLAY") != null) {
+            // a run and a jump from exactly here, the way a player does it: CUBE_REPLAY="x y z vx vz tx tz runTicks"
+            // (run at (tx, tz) with sprint for runTicks on the ground, then jump and keep running at it), every tick printed
+            baritone.api.BaritoneAPI.getSettings().considerPotionEffects.value = false;
+            String[] q = System.getenv("CUBE_REPLAY").trim().split("\\s+");
+            baritone.pathing.sim.PlayerSim sim = new baritone.pathing.sim.PlayerSim(baritone.pathing.sim.PlayerSim.Params.vanilla(), new SafeCollision(w));
+            sim.x = Double.parseDouble(q[0]);
+            sim.y = Double.parseDouble(q[1]);
+            sim.z = Double.parseDouble(q[2]);
+            sim.vx = Double.parseDouble(q[3]);
+            sim.vz = Double.parseDouble(q[4]);
+            sim.vy = -0.0784;
+            sim.onGround = true;
+            sim.sprinting = true;
+            double tx = Double.parseDouble(q[5]), tz = Double.parseDouble(q[6]);
+            int run = Integer.parseInt(q[7]);
+            for (int t = 0; t < 40; t++) {
+                float yaw = baritone.pathing.tungsten.Keys.yaw(tx - sim.x, tz - sim.z);
+                boolean hop = t >= run && sim.onGround;
+                baritone.pathing.tungsten.Keys.step(sim, baritone.pathing.tungsten.Keys.run(yaw, hop));
+                System.out.printf("CUBE t%d %.3f %.3f %.3f v(%.3f %.3f %.3f) %s%n", t, sim.x, sim.y, sim.z, sim.vx, sim.vy, sim.vz, sim.onGround ? "ground" : "");
+                if (sim.onGround && t > run + 2 || sim.y < 90) {
+                    break;
+                }
+            }
+            return;
+        }
         if (System.getenv("CUBE_SOLVE_AT") != null) {
             // the full search from exactly here: CUBE_SOLVE_AT="x y z tx ty tz" (a start where the player stood, to a landing)
             baritone.api.BaritoneAPI.getSettings().allowTungstenJumps.value = true;

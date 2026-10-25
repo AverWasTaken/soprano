@@ -63,14 +63,22 @@ public class RoutesCommand extends Command {
     // #routes learn <recording> [dx dy dz]: the way you went in a #record recording, as trails here (moved, for a map rebuilt
     // somewhere else: Parkour Lab's levels)
     private void learn(IArgConsumer args) throws CommandException {
-        String name = args.getString();
-        int dx = 0, dy = 0, dz = 0;
-        if (args.hasAny()) {
-            dx = args.getAs(Integer.class);
-            dy = args.getAs(Integer.class);
-            dz = args.getAs(Integer.class);
+        // (a name can have spaces in it: "cubecraft endurance". the last three words, if they're numbers, are the move)
+        List<String> words = new ArrayList<>();
+        while (args.hasAny()) {
+            words.add(args.getString());
         }
-        args.requireMax(0);
+        int dx = 0, dy = 0, dz = 0;
+        if (words.size() >= 4 && isInt(words.get(words.size() - 1)) && isInt(words.get(words.size() - 2)) && isInt(words.get(words.size() - 3))) {
+            dz = Integer.parseInt(words.remove(words.size() - 1));
+            dy = Integer.parseInt(words.remove(words.size() - 1));
+            dx = Integer.parseInt(words.remove(words.size() - 1));
+        }
+        if (words.isEmpty()) {
+            logDirect("Which recording? #routes learn <name> [dx dy dz]");
+            return;
+        }
+        String name = String.join(" ", words);
         Path dir = ((baritone.Baritone) baritone).getDirectory().resolve("recordings");
         String trace;
         try {
@@ -96,6 +104,15 @@ public class RoutesCommand extends Command {
         RouteMemory.save();
         logDirect("Learned the way from " + name + ": " + ticks.size() + " ticks, " + cells + " cells of trail. "
                 + RouteMemory.trailCount() + " trails remembered in this world");
+    }
+
+    private static boolean isInt(String s) {
+        try {
+            Integer.parseInt(s);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     private static String readTrace(Path dir, String name) throws IOException {

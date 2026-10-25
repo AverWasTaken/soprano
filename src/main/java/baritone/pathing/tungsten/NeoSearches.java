@@ -195,6 +195,9 @@ public final class NeoSearches {
                 Mth.floor(region.maxX()) + 2, maxY, Mth.floor(region.maxZ()) + 2);
     }
 
+    // at most this many worked out searches kept
+    private static final int MAX_RESULTS = 4000;
+
     // at most this many jobs waiting
     private static final int MAX_QUEUE = 200;
 
@@ -270,6 +273,11 @@ public final class NeoSearches {
             }
             if (plan == null) {
                 FAILED_MS.merge(BetterBlockPos.longHash(job.land().x(), job.land().y(), job.land().z()), System.currentTimeMillis() - t0, Long::sum);
+            }
+            if (RESULTS.size() > MAX_RESULTS) {
+                // (a long session, a big map: every plan worked out is kept, each with all its ticks. past this many they go,
+                // and get worked out again if a path ever wants one again)
+                RESULTS.entrySet().removeIf(e -> e.getValue() != PENDING);
             }
             RESULTS.put(job.key(), plan == null ? NONE : plan);
         }

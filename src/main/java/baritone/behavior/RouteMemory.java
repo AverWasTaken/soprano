@@ -314,11 +314,17 @@ public final class RouteMemory {
         if (v == null || v[1] < 2) {
             return 0;
         }
+        if (v[0] == 0 && v[1] >= NEVER_LANDS) {
+            return NEVER_PENALTY; // (missed every time, never once landed: whatever the sim says, it's not a way, go round)
+        }
         double missRate = v[1] / (double) (v[0] + v[1]);
         return missRate * MISS_PENALTY * Math.min(v[1], 5);
     }
 
     static final double MISS_PENALTY = 20;
+    // missed this many times in the game and never landed: as good as no jump at all
+    static final int NEVER_LANDS = 4;
+    static final double NEVER_PENALTY = 100_000;
 
     private static long jumpKey(int x, int y, int z, int tx, int ty, int tz) {
         return net.minecraft.core.BlockPos.asLong(x, y, z) * 31 + net.minecraft.core.BlockPos.asLong(tx, ty, tz);

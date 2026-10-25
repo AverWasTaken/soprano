@@ -211,8 +211,14 @@ public final class TungstenJumps {
     }
 
     // the same leap from src to dest, if there is one (MovementTungsten.calculateCost, for a movement that's one)
+    // (no guide needed: the executor checks a path's moves with its own context, which has none. what the background worked
+    // out for the leap is kept, so this is a lookup)
     public static Jump leapBetween(CalculationContext context, BetterBlockPos src, BetterBlockPos dest) {
-        if (context.routeGuide == null || context.routeGuide.alongNear(src.x, src.y, src.z) < 0 || context.routeGuide.along(dest.x, dest.y, dest.z) < 0) {
+        if (!context.allowTungstenJumps) {
+            return null;
+        }
+        int dx = dest.x - src.x, dz = dest.z - src.z;
+        if (dx * dx + dz * dz <= TRAIL_LEAP_MIN * TRAIL_LEAP_MIN || dx * dx + dz * dz > TRAIL_LEAP_MAX * TRAIL_LEAP_MAX) {
             return null;
         }
         return context.tungsten().leap(context, src, dest);
