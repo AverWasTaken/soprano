@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import baritone.pathing.movement.CliffAvoidance;
 import java.util.List;
 import org.junit.Test;
 
@@ -61,6 +62,28 @@ public class GoalCommittedRunTest {
             last = h;
         }
         assertEquals(0, goal.heuristic(100, 64, 225), 0.01);
+    }
+
+    // lava in the floor or any of the eight cells around the feet or floor spoils an otherwise finished run
+    @Test
+    public void lavaAroundTheEndSpotIsNotDone() {
+        GoalCommittedRun goal = new GoalCommittedRun(100, 200, 24, 14, List::of, () -> lavaAt(100 + 30, 63, 200 + 1));
+        goal.refresh();
+        assertFalse(goal.isInGoal(130, 64, 200));
+        // two cells off is clear again
+        assertTrue(goal.isInGoal(130, 64, 198));
+        assertTrue(goal.isInGoal(133, 64, 200));
+    }
+
+    @Test
+    public void lavaAtFeetLevelAlsoCounts() {
+        GoalCommittedRun goal = new GoalCommittedRun(100, 200, 24, 14, List::of, () -> lavaAt(129, 64, 199));
+        goal.refresh();
+        assertFalse(goal.isInGoal(130, 64, 200));
+    }
+
+    private static CliffAvoidance.Cells lavaAt(int lx, int ly, int lz) {
+        return (x, y, z) -> x == lx && y == ly && z == lz ? CliffAvoidance.Cell.LAVA : CliffAvoidance.Cell.OPEN;
     }
 
     @Test

@@ -416,12 +416,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private double _rimBestDist;
     private int _rimIdleTicks;
 
+    // a blaze in melee contact knocks us off an edge as well as a zombie does, so it counts here (a blaze that close is not
+    // shooting, it is hitting). ghasts and the real ranged kinds still do not
     private boolean rimFoe(AltoClef mod, Entity entity) {
-        if (entity instanceof Blaze || entity instanceof Ghast || !(entity instanceof Mob mob) || MobReachability.isRanged(mob)
-                || isAnimal(mod, entity)) {
+        if (!(entity instanceof Mob mob)) {
             return false;
         }
-        return entity.isAlive() && entity.distanceTo(mod.getPlayer()) <= RIM_FOE_RANGE;
+        return LavaShore.rimFoe(entity instanceof Ghast, MobReachability.isRanged(mob), isAnimal(mod, entity), entity.isAlive(),
+                entity.distanceTo(mod.getPlayer()), RIM_FOE_RANGE);
     }
 
     private boolean rimBack(AltoClef mod, Entity entity) {

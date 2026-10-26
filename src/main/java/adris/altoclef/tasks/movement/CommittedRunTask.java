@@ -5,6 +5,8 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.baritone.GoalCommittedRun;
 import adris.altoclef.util.helpers.CombatCommit;
 import baritone.api.pathing.goals.Goal;
+import baritone.pathing.movement.CliffAvoidance;
+import baritone.utils.BlockStateInterface;
 import java.util.List;
 import java.util.function.Supplier;
 import net.minecraft.client.player.LocalPlayer;
@@ -42,7 +44,9 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     protected Goal newGoal(AltoClef mod) {
         // run NOW, not after the user's path finishes its segment
         cancelPath(mod);
-        return new GoalCommittedRun(_originX, _originZ, CombatCommit.RUN_DISTANCE, CROWD_CLEAR, _crowd);
+        // the goal is asked from the pathfinder thread, so it gets thread safe copies of the loaded chunks (remade by refresh)
+        return new GoalCommittedRun(_originX, _originZ, CombatCommit.RUN_DISTANCE, CROWD_CLEAR, _crowd,
+                () -> CliffAvoidance.of(new BlockStateInterface(mod.getClientBaritone().getPlayerContext(), true)));
     }
 
     // ...unless we're in the air. a hard cancel mid fall drops the MovementFall doing the bucket or the clutch, and the mlg

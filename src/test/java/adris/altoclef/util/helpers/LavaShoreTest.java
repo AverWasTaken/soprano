@@ -412,4 +412,15 @@ public class LavaShoreTest {
         }
         assertNull(LavaShore.edgeStep(w, 0.5, 0, 0.5));
     }
+
+    // a blaze in melee contact is a rim foe, a ghast and the real ranged kinds are not
+    @Test
+    public void rimFoeTakesAMeleeBlazeButNotGhastsOrArchers() {
+        assertTrue(LavaShore.rimFoe(false, false, false, true, 2.5, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, false, true, 4, 3.5));
+        assertFalse(LavaShore.rimFoe(true, false, false, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, true, false, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, true, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, false, false, 2, 3.5));
+    }
 }

@@ -27,6 +27,11 @@ public final class LavaShore {
     private LavaShore() {
     }
 
+    // who counts as a melee foe on a rim: anything that walks (or hovers) up and hits, in range. blazes are in on purpose
+    public static boolean rimFoe(boolean ghast, boolean ranged, boolean animal, boolean alive, double distance, double range) {
+        return !ghast && !ranged && !animal && alive && distance <= range;
+    }
+
     // lava in the columns within r of (x, z), at the feet cell and the one under it
     public static boolean lavaNear(Cells cells, double x, double y, double z, int r) {
         int cx = (int) Math.floor(x);
