@@ -309,6 +309,42 @@ public class LavaShoreTest {
         assertFalse(LavaShore.swingReady(false, true, true, true));
     }
 
+    // foe on the +x side, the drop is off to the side (z), so the knock line behind us (-x) never touches it
+    @Test
+    public void aDropToTheSideIsAnEdgeEvenOffTheKnockLine() {
+        World w = new World().pit(0, 1).pit(-1, 1).pit(1, 1);
+        assertFalse(LavaShore.backUnsafe(w, 0.5, 0, 0.5, 1.5, 0.5));
+        assertTrue(LavaShore.edgeNear(w, 0.5, 0, 0.5));
+        assertTrue(LavaShore.rimUnsafe(w, 0.5, 0, 0.5, 1.5, 0.5));
+        assertNotNull(LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    @Test
+    public void aDropTwoBlocksAwayIsNotAnEdge() {
+        assertFalse(LavaShore.edgeNear(new World().pit(0, 3), 0.5, 0, 0.5));
+        assertFalse(LavaShore.edgeNear(new World(), 0.5, 0, 0.5));
+        // a wall between us and the drop
+        assertFalse(LavaShore.edgeNear(new World().pit(0, 1).solid(0, 0, 1), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void aShallowDropIsNotAnEdge() {
+        assertFalse(LavaShore.edgeNear(new World().ledge(0, 1, -4), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void aCellBesideADropIsNoStep() {
+        // the stair step: the cell itself sits next to the drop, even with the knock line behind it clean
+        World w = new World().pit(0, 2).pit(-1, 2).pit(1, 2);
+        assertFalse(LavaShore.standable(w, 0, 0, 1, -1.5, 1.5));
+    }
+
+    @Test
+    public void rimBackOffIsSkipped() {
+        assertFalse(LavaShore.backOffAllowed(true));
+        assertTrue(LavaShore.backOffAllowed(false));
+    }
+
     @Test
     public void shoreWaitEndsBeforeTheFightDoes() {
         // the stall ends the fight and the cube gets picked again with its count running, so the cap has to come first
