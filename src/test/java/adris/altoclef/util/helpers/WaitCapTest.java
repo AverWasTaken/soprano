@@ -60,4 +60,21 @@ public class WaitCapTest {
         assertFalse(cap.approaching());
         assertEquals(Verdict.APPROACH, waitFor(cap, ApproachRules.WAIT_TICKS));
     }
+
+    @Test
+    public void rightOnTopOfItWithNoShotCountsAsStuck() {
+        // aim stalled, too close: the plan only waits, so the cap has to be able to see it
+        assertTrue(WaitCap.counts(false, true, false, true, false));
+        // a clear shot waiting on a swing is the stand cap's, and a mob at a sane distance is the approach's
+        assertFalse(WaitCap.counts(false, true, true, true, false));
+        assertFalse(WaitCap.counts(false, true, false, false, false));
+    }
+
+    @Test
+    public void theOldWaitsStillCount() {
+        assertTrue(WaitCap.counts(true, false, true, false, false));
+        assertFalse(WaitCap.counts(true, true, true, false, false));
+        assertTrue(WaitCap.counts(false, true, true, false, true));
+        assertFalse(WaitCap.counts(false, false, true, false, true));
+    }
 }

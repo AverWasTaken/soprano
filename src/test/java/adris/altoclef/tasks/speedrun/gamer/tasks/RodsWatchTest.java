@@ -124,4 +124,10 @@ public class RodsWatchTest {
         assertEquals(Verdict.KEEP_GOING, both.update(719, 0, false, true));
         assertEquals(Verdict.GIVE_UP_RODS, both.update(720, 0, false, true));
     }
+
+    @Test
+    public void aSpawnerWeCannotReachGivesUpTheFortressOnlyWhenItWasTheLastOne() {
+        assertEquals(Verdict.KEEP_GOING, RodsWatch.afterNoWay(true));
+        assertEquals(Verdict.GIVE_UP_SPAWNER, RodsWatch.afterNoWay(false));
+    }
 }

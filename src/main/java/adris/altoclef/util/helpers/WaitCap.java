@@ -13,6 +13,13 @@ public final class WaitCap {
         BAN
     }
 
+    // which plan WAITs are the stuck kind. out of reach for an enderman that comes to us, a swing gated in reach, and in reach
+    // right on top of it with no shot (aim stalled): the plan only waits there, the back-off is what has to fix it, and when
+    // that cannot it should not be a stand for ever
+    public static boolean counts(boolean comesToUs, boolean inReach, boolean shot, boolean tooClose, boolean gated) {
+        return (comesToUs && !inReach) || (gated && inReach) || (inReach && !shot && tooClose);
+    }
+
     private int waited;
     private int approachLeft;
     private int idle;

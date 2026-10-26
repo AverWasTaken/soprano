@@ -43,6 +43,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
@@ -109,6 +110,9 @@ public class NetherPhase implements PhaseHandler {
     private RunState.Pos fortressWalkTo;
     private double fortressWalkSince;
     private RunState.Pos fortressWalkGivenUp;
+    // both walks (to a fortress we know, to a spawner we picked) are only worth it while they get closer, see WalkProgress
+    private final WalkProgress fortressProgress = new WalkProgress();
+    private final WalkProgress spawnerProgress = new WalkProgress();
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
     // the one block dig for the whole phase (walks to the fortress and the spawner spend the bag, not just the sweep)
@@ -275,6 +279,8 @@ public class NetherPhase implements PhaseHandler {
         walkToFortress = null;
         fortressWalkTo = null;
         fortressWalkGivenUp = null;
+        fortressProgress.reset();
+        spawnerProgress.reset();
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
         restock = new NetherBlockRestock();
@@ -910,29 +916,36 @@ public class NetherPhase implements PhaseHandler {
         }
     }
 
-    // what the player has really seen. one kind per scan, rotating: the seen filter has a raycast budget per tick and
+    // what the player has really seen (fortress bricks: see below). one kind per scan, rotating: the seen filter has a raycast budget per tick and
     // the Nether is full of bricks behind rock, so three kinds in one tick would let the first starve the other two
     private void scanSights(AltoClef mod, GamerContext ctx) {
         Sight sight = Sight.values()[rotation++ % Sight.values().length];
-        if (planner.scan(s -> seen(mod, s), sight)) {
+        if (planner.scan(s -> seen(mod, s, planner), sight)) {
             ctx.progress("saw something");
             ctx.save();
         }
     }
 
     // the nearest tracked blocks of this kind that are really still there and in line of sight. the tracker hands them
-    // out in scan order and keeps unloaded ones, so sort by distance and check the block itself
-    private static Optional<RunState.Pos> seen(AltoClef mod, Sight sight) {
+    // out in scan order and keeps unloaded ones, so sort by distance and check the block itself. fortress bricks skip the
+    // line of sight: the tracker has every loaded chunk and nether brick is nothing but fortress, so a fortress behind
+    // rock is as good as seen (the sweep was walking past ones it could not look at). the ones of a fortress we gave up
+    // on are dropped before the sort, or the dud's thousand bricks would be the nearest forty for ever
+    private static Optional<RunState.Pos> seen(AltoClef mod, Sight sight, NetherSweepPlanner planner) {
         Block[] blocks = switch (sight) {
             case FORTRESS -> FORTRESS;
             case BASTION -> BASTION;
             case WARPED -> WARPED;
         };
-        List<BlockPos> near = StrongholdScan.nearest(mod.getBlockTracker().getKnownLocations(blocks),
-                mod.getPlayer().blockPosition(), SCAN_CANDIDATES);
+        boolean xray = sight == Sight.FORTRESS;
+        List<BlockPos> known = mod.getBlockTracker().getKnownLocations(blocks);
+        if (xray) {
+            known = known.stream().filter(p -> !planner.isGivenUp(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
+        }
+        List<BlockPos> near = StrongholdScan.nearest(known, mod.getPlayer().blockPosition(), SCAN_CANDIDATES);
         for (BlockPos p : near) {
             BlockState state = mod.getWorld().getBlockState(p);
-            if (isOneOf(state, blocks) && SeenFilter.isSeen(mod, p)) {
+            if (isOneOf(state, blocks) && (xray || SeenFilter.isSeen(mod, p))) {
                 return Optional.of(new RunState.Pos(p.getX(), p.getY(), p.getZ()));
             }
         }
@@ -1067,7 +1080,17 @@ public class NetherPhase implements PhaseHandler {
         if (campPinger.ping(now, camping || (camped != null && rodsTask.isBusyWithBlazes()))) {
             ctx.progress("waiting at the blaze spawner");
         }
-        Task toFortress = walkToKnownFortress(mod, s, now);
+        // the walk to the spawner goes nowhere (no path, across lava): the task only stands there, so the distance says it
+        if (camped != null && rodsTask.takeWalkingToSpawner() && spawnerWalkStalled(mod, camped, now)) {
+            // this spawner only: banned, and the task picks another if one is known. every fortress around it goes only when
+            // there is no other spawner to go to
+            boolean other = rodsTask.dropSpawner(mod);
+            spawnerProgress.reset();
+            if (RodsWatch.afterNoWay(other) == RodsWatch.Verdict.GIVE_UP_SPAWNER) {
+                return giveUpSpawner(mod, ctx, now);
+            }
+        }
+        Task toFortress = walkToKnownFortress(mod, ctx, now);
         if (toFortress != null) {
             hudState = "Walking to the fortress";
             return toFortress;
@@ -1079,6 +1102,12 @@ public class NetherPhase implements PhaseHandler {
         return rodsTask;
     }
 
+    // no closer to the spawner than a while ago
+    private boolean spawnerWalkStalled(AltoClef mod, BlockPos spawner, double now) {
+        double dist = Math.sqrt(mod.getPlayer().distanceToSqr(spawner.getX() + 0.5, spawner.getY() + 0.5, spawner.getZ() + 0.5));
+        return spawnerProgress.stalled(now, dist);
+    }
+
     private static String rodsHud(boolean camping, int blazesAround) {
         if (!camping) return "Collecting blaze rods";
         return blazesAround > 0 ? "Waiting for blazes to come in reach" : "Waiting for blazes to spawn";
@@ -1087,17 +1116,19 @@ public class NetherPhase implements PhaseHandler {
     // a fortress we saw (an earlier visit, a relog, the next one after a dud spawner) and are nowhere near: the rods task
     // only wanders to whatever bricks are closest, so go to the one we know first. bounded, a fortress behind a lava sea
     // gets the wander instead of this walk for ever
-    private Task walkToKnownFortress(AltoClef mod, RunState s, double now) {
+    private Task walkToKnownFortress(AltoClef mod, GamerContext ctx, double now) {
+        RunState s = ctx.state();
         if (rodsTask.currentSpawner() != null || s.fortress.isEmpty()) {
             return null;
         }
-        RunState.Pos spot = s.fortress.get(0);
-        if (spot.equals(fortressWalkGivenUp)) {
+        RunState.Pos spot = fortressToWalkTo(mod, s);
+        if (spot == null) {
             return null;
         }
         if (!spot.equals(fortressWalkTo)) {
             fortressWalkTo = spot;
             fortressWalkSince = now;
+            fortressProgress.reset();
             walkToFortress = new GetToXZTask(spot.x, spot.z);
         }
         double dx = mod.getPlayer().getX() - spot.x;
@@ -1107,7 +1138,40 @@ public class NetherPhase implements PhaseHandler {
             fortressWalkGivenUp = spot;
             return null;
         }
+        // a fortress we x-rayed through the rock is often not a place we can walk to, and the walk task never says so. no
+        // gain for a while = blacklisted, the sweep goes looking for one we can reach
+        if (fortressProgress.stalled(now, Math.sqrt(dx * dx + dz * dz))) {
+            planner.giveUpFortress(spot);
+            fortressWalkTo = null;
+            fortressProgress.reset();
+            ctx.save();
+            return null;
+        }
         return walkToFortress;
+    }
+
+    // the one we are already walking at while it is still on the list (two that trade places as nearest would restart the
+    // walk every few steps), else the nearest one that has not had its walk already
+    private RunState.Pos fortressToWalkTo(AltoClef mod, RunState s) {
+        // one that had its walk (got there, or ran out of time) is where the search happens, the others wait until the list changes:
+        // walking on to the next one and back is no search
+        if (fortressWalkGivenUp != null && s.fortress.contains(fortressWalkGivenUp)) {
+            return null;
+        }
+        if (fortressWalkTo != null && s.fortress.contains(fortressWalkTo)) {
+            return fortressWalkTo;
+        }
+        RunState.Pos best = null;
+        double bestDist = Double.POSITIVE_INFINITY;
+        for (RunState.Pos p : s.fortress) {
+            double dx = mod.getPlayer().getX() - p.x;
+            double dz = mod.getPlayer().getZ() - p.z;
+            if (dx * dx + dz * dz < bestDist) {
+                bestDist = dx * dx + dz * dz;
+                best = p;
+            }
+        }
+        return best;
     }
 
     // the rods task remembers its spawner and would walk straight back to it, so the dud gets blacklisted in the block

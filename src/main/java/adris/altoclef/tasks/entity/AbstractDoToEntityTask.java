@@ -131,6 +131,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _blockerTarget = null;
         _blockerDigs = 0;
         _backOffGoal = null;
+        _aimStalled = false;
         _unaimedTicks = 0;
         _unaimedEntity = null;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
@@ -210,7 +211,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
             if (isKillTask()) {
-                shot = shot && !aimStalled(mod, entity, inReach && shot);
+                _aimStalled = aimStalled(mod, entity, inReach && shot);
+                shot = shot && !_aimStalled;
                 countStandingTicks(mod, entity, inReach && shot);
             }
             boolean gatesOpen = !mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod)
@@ -227,7 +229,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     _waitCapEntity = entity;
                     _waitCap.reset();
                 }
-                boolean stuckWaiting = plan == ApproachRules.Plan.WAIT && ((comesToUs && !inReach) || (policy == ApproachRules.Policy.KILL_GATED && inReach));
+                boolean stuckWaiting = plan == ApproachRules.Plan.WAIT && WaitCap.counts(comesToUs, inReach, shot, tooClose, policy == ApproachRules.Policy.KILL_GATED);
                 if (stuckWaiting && _waitCap.approaching()) plan = ApproachRules.Plan.APPROACH;
                 WaitCap.Verdict verdict = _waitCap.tick(stuckWaiting);
                 if (verdict == WaitCap.Verdict.APPROACH) {
@@ -455,6 +457,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // stuck check digs or blacklists if walking can't fix it
     private static final int AIM_STALL_TICKS = 30;
     private int _unaimedTicks;
+    // the aim gave up on this mob last time we asked (see aimStalled): a swing that is not coming, so staying close for one is pointless
+    private boolean _aimStalled;
     private Entity _unaimedEntity;
 
     private boolean aimStalled(AltoClef mod, Entity entity, boolean shotInReach) {
@@ -524,8 +528,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (!tooClose && _backOffGoal == null) {
             return;
         }
-        boolean stayClose = mod.getControllerExtras().attackReady()
-                || (wantsCritHops() && mod.getControllerExtras().hopWantsToStayClose(entity));
+        // (no shot to take is nothing to stay close for: a ready swing that cannot be aimed is how the step back never came)
+        boolean stayClose = !_aimStalled && (mod.getControllerExtras().attackReady()
+                || (wantsCritHops() && mod.getControllerExtras().hopWantsToStayClose(entity)));
         if (CritTiming.shouldBackOff(tooClose, stayClose)) {
             if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 _backOffGoal = new GoalRunAway(ReachRules.BACK_OFF_TO, entity.blockPosition());
