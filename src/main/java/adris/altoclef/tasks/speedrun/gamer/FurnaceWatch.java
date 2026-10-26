@@ -24,6 +24,8 @@ import java.util.List;
 public final class FurnaceWatch {
     private CollectFromFurnaceTask task;
     private RunState.FurnaceJob target;
+    // the target's count when its trip started
+    private int visitCount;
     private String hud;
     // the last trip() started a new trip (the phase resets what it was on when that happens)
     private boolean fresh;
@@ -56,6 +58,15 @@ public final class FurnaceWatch {
         task = null;
         target = null;
         hud = null;
+    }
+
+    // a death: the trip and the cook in flight belonged to the old body (the screen they had open is gone). the jobs are in
+    // RunState and stay, the plan sends a new trip. the job already follows the slots (settleMidVisit), so nothing to settle here
+    public void respawned() {
+        reset();
+        quick = false;
+        fresh = false;
+        handedOver = false;
     }
 
     // a fresh phase
@@ -174,6 +185,11 @@ public final class FurnaceWatch {
             say(FurnacePlan.say(target, said.call(), said.text(), ctx.facts().gameTime()));
         }
         if (!task.isFinished(mod)) {
+            if (target != null && FurnaceJobs.settleMidVisit(ctx.state().furnaceJobs, target, task.seenLeft(), task.seenTicks(),
+                    ctx.facts().gameTime())) {
+                ctx.progress("collected from the furnace");
+                ctx.save();
+            }
             return task;
         }
         RunState.FurnaceJob visited = target;
@@ -185,6 +201,9 @@ public final class FurnaceWatch {
         int left = task.inputLeft();
         long now = ctx.facts().gameTime();
         long guess = visited.doneTick - now;
+        // the count the visit started with: settleMidVisit lowered the job as the bag filled, and the stall and progress calls below
+        // are about the whole visit
+        visited.count = Math.max(visited.count, visitCount);
         int before = visited.count;
         FurnaceJobs.afterVisit(ctx.state().furnaceJobs, target, left, task.leftTicks(), now, task.cappedOut());
         if (left > 0) {
@@ -334,6 +353,7 @@ public final class FurnaceWatch {
         long now = ctx.facts().gameTime();
         Block block = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(job.kind));
         target = job;
+        visitCount = job.count;
         quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
         if (quick) {
             FurnacePlan.startStandBy(job, now);

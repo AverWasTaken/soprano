@@ -265,4 +265,33 @@ public class FoodTripRulesTest {
                 true, false, 0));
         assertTrue(FoodTripRules.goHomeForBlocks(0, FoodTripRules.BLOCKS_EXHAUSTED_ENDS, true, false, 0));
     }
+
+    @Test
+    public void aFoodTripThatBroughtFoodDoesNotUseUpTheCap() {
+        assertTrue(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 4, 4 + FoodTripRules.TRIP_GAIN_UNITS));
+        assertTrue(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 0, 70));
+        assertFalse(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 4, 4 + FoodTripRules.TRIP_GAIN_UNITS - 1));
+        // came back with less than it left with (eaten on the way) or the same
+        assertFalse(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 30, 30));
+        assertFalse(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 30, 10));
+        // a blocks trip is paid for in blocks
+        assertFalse(FoodTripRules.refundsTrip(FoodTripRules.Reason.BLOCKS, 0, 70));
+    }
+
+    @Test
+    public void tripsThatKeepGainingStayUnderTheCapAndEmptyOnesHitIt() {
+        int used = 0;
+        for (int trip = 0; trip < 5; trip++) {
+            assertTrue(FoodTripRules.goHome(5, 0, true, false, used));
+            used++;
+            if (FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 5, 60)) {
+                used--;
+            }
+        }
+        assertEquals(0, used);
+        for (int trip = 0; trip < FoodTripRules.MAX_TRIPS; trip++) {
+            assertTrue(FoodTripRules.goHome(5, 0, true, false, trip));
+        }
+        assertFalse(FoodTripRules.goHome(5, 0, true, false, FoodTripRules.MAX_TRIPS));
+    }
 }

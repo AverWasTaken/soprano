@@ -180,9 +180,11 @@ public class CookRawFoodTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         // the smelt task closes its own screen. a chain taking over for a bit is not the end of the cook, the station stays picked
+        // (the pin stays), but the meat in it gets its job now either way: a fight that ends in a death never comes back to this
+        // task, and meat in a station with no job is meat nobody knows about (also the planner moving on mid fuel trip). the load
+        // finishing later records over it, FurnaceJobs.record keeps one job per spot
+        recordLeftBehind(mod);
         if (!isInterrupting()) {
-            // the planner moved on mid fuel trip (the coal it picked up made some other need the head) with the meat in the station
-            recordLeftBehind(mod);
             CookTrip.release();
         }
     }

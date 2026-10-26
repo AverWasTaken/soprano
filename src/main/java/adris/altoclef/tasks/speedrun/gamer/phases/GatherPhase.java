@@ -98,6 +98,11 @@ public class GatherPhase implements PhaseHandler {
     }
 
     @Override
+    public void onRespawn() {
+        furnaces.respawned();
+    }
+
+    @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         support.onEnter(mod);

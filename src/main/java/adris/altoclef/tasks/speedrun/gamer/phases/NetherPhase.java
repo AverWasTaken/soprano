@@ -14,6 +14,7 @@ import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
+import adris.altoclef.tasks.speedrun.gamer.FoodPickup;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -132,6 +133,11 @@ public class NetherPhase implements PhaseHandler {
     // sweep all live in RunState, so none of it is lost on the way
     private final FoodFloor foodFloor = new FoodFloor();
     private DefaultGoToDimensionTask goHome;
+    // the smoker food waiting up top is collected before the hunt, and the engine leaves the benches to us while that runs
+    private final FoodPickup foodPickup = new FoodPickup();
+    private boolean pickingUpFood;
+    // bag units when the trip got up top, so the end of the overworld half can tell if it brought food (FoodTripRules.refundsTrip)
+    private int tripStartUnits;
     private boolean foodTrip;
     // why the live trip started, and the trips used per reason: a blocks trip that came back empty handed leaves the food budget
     // alone and the other way round
@@ -220,6 +226,17 @@ public class NetherPhase implements PhaseHandler {
     }
 
     @Override
+    public boolean ownsBenches() {
+        return pickingUpFood;
+    }
+
+    @Override
+    public void onRespawn() {
+        foodPickup.respawned();
+        pickingUpFood = false;
+    }
+
+    @Override
     public String hudState() {
         return hudState;
     }
@@ -301,7 +318,7 @@ public class NetherPhase implements PhaseHandler {
         lastUnsafeTick = -1;
         foodTripUp = false;
         lastTripUnits = -1;
-        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, ctx.food().shortOfMinimum() || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.foodShort(ctx) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
             // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
             // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
             tripResumed = true;
@@ -312,7 +329,9 @@ public class NetherPhase implements PhaseHandler {
             tripBlocks = keptBlocks;
             foodTripUp = true;
             foodTripStart = ctx.secondsInPhase();
-            tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
+            tripSeconds = FoodTripRules.seconds(FoodFloor.foodShort(ctx), tripBlocks && FoodFloor.blocksShort(ctx));
+            tripStartUnits = FoodTripRules.units(ctx.food());
+            foodPickup.reset();
         }
         foodDeathsSeen = ctx.state().deaths.size();
         rodsTask = null;
@@ -379,6 +398,7 @@ public class NetherPhase implements PhaseHandler {
             onEnter(mod, ctx);
         }
         noteRespawn(ctx);
+        pickingUpFood = false;
         lastGameTime = ctx.facts().gameTime();
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
@@ -389,19 +409,33 @@ public class NetherPhase implements PhaseHandler {
                 if (!foodTripUp) {
                     foodTripUp = true;
                     foodTripStart = ctx.secondsInPhase();
-                    tripSeconds = FoodTripRules.seconds(ctx.food().shortOfMinimum(), tripBlocks && FoodFloor.blocksShort(ctx));
+                    tripSeconds = FoodTripRules.seconds(FoodFloor.foodShort(ctx), tripBlocks && FoodFloor.blocksShort(ctx));
+                    tripStartUnits = FoodTripRules.units(ctx.food());
+                    foodPickup.reset();
                 }
-                // over when nothing is short any more: food at the overworld minimum and, on a blocks trip, the entry stack held
-                // a kill or a pickup raises the count, and the hunt is the one thing up here that should keep the watchdog quiet
+                // over when nothing is short any more: food in the bag at the overworld minimum (what is still cooking is not in
+                // it) and, on a blocks trip, the entry stack held. a kill or a pickup raises the count, and the hunt is the one
+                // thing up here that should keep the watchdog quiet
                 int units = FoodTripRules.units(ctx.food());
                 if (FoodTripRules.gained(lastTripUnits, units)) {
                     ctx.progress("food");
                 }
                 lastTripUnits = units;
+                // what we cooked at home goes in the bag before anything is hunted for
+                Task cooked = foodPickup.tick(mod, ctx);
+                pickingUpFood = cooked != null;
+                if (cooked != null) {
+                    hudState = foodPickup.hud() == null ? "Collecting the food we cooked" : foodPickup.hud();
+                    return cooked;
+                }
                 Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
                     hudState = foodFloor.hud();
                     return hunt;
+                }
+                // a trip that came back with food did its job, so the next dry spell gets its trips too
+                if (hunt == null && FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
+                    foodTrips = Math.max(0, foodTrips - 1);
                 }
                 foodTrip = false;
                 foodTripUp = false;

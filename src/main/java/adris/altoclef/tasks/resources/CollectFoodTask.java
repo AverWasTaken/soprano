@@ -388,6 +388,11 @@ public class CollectFoodTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        // the cook we started may be cut off with the meat already in the smoker (a mob, a death): leave the job for it, or the
+        // meat sits there with nobody knowing. a no-op when it handed off or never loaded anything
+        if (_smeltTask != null && _smeltTask.isActive()) {
+            _smeltTask.recordLeftBehind(mod);
+        }
         mod.getBehaviour().pop();
         mod.getBlockTracker().stopTracking(Blocks.HAY_BLOCK);
         mod.getBlockTracker().stopTracking(Blocks.SWEET_BERRY_BUSH);

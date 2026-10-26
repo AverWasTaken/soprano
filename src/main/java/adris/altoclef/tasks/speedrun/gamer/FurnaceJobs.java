@@ -169,6 +169,22 @@ public final class FurnaceJobs {
         return "smoker".equals(kind) ? state.placedSmokers : null;
     }
 
+    // the food job a trip that is about to leave the dimension should pick up first: cooking food (a stranded one is raw meat sitting
+    // cold, not dinner), ready first, and no further than PackUp.TRIP_BUDGET of walking. `walkOf` = what the walk to it costs from here.
+    // null when there is none worth the detour
+    public static RunState.FurnaceJob foodJob(List<RunState.FurnaceJob> jobs, java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
+        RunState.FurnaceJob best = null;
+        for (RunState.FurnaceJob job : jobs) {
+            if (job.unitsEach <= 0 || job.stranded || walkOf.applyAsDouble(job) > PackUp.TRIP_BUDGET) {
+                continue;
+            }
+            if (best == null || job.doneTick < best.doneTick) {
+                best = job;
+            }
+        }
+        return best;
+    }
+
     // the job that is ready first, null if there are none
     public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs) {
         RunState.FurnaceJob best = null;
@@ -199,6 +215,22 @@ public final class FurnaceJobs {
     // the bag, a station, fuel on paper) unless it sits out the backoff. a visit that took it back because we are leaving is not this
     public static boolean backsOffCook(RunState.FurnaceJob job, boolean tookBackStalled) {
         return tookBackStalled && (job.unitsEach > 0 || job.stranded);
+    }
+
+    // a visit that is still going took something out of the station: the job keeps its full count until the visit ends, so a cut off
+    // visit (a mob, a death) left it counting what is already in the bag. `seen` = input + output in the slots at the last look, -1
+    // for no look. only ever lowers the count and moves the timer, nothing else: whether the job is cooking or counts as stalled is
+    // the visit's end to say (a half cooked stranded batch we just took the cooked half of is still cold). true = brought down
+    public static boolean settleMidVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int seen, long remaining, long now) {
+        if (seen < 0 || seen >= job.count) {
+            return false;
+        }
+        if (seen == 0) {
+            return jobs.remove(job);
+        }
+        job.count = seen;
+        job.doneTick = now + Math.max(1, remaining);
+        return true;
     }
 
     // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.

@@ -67,6 +67,10 @@ public interface PhaseHandler {
     // Task.tick keeps the old child when isEqual says so but a new object per tick restarts its state
     Task tick(AltoClef mod, GamerContext ctx);
 
+    // we died and came back. a phase that holds a trip or a task in flight (they belong to the old body) lets go of it here; RunState stays
+    default void onRespawn() {
+    }
+
     default void onEnter(AltoClef mod, GamerContext ctx) {
     }
 

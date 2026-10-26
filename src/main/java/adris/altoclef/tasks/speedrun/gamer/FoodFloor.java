@@ -44,8 +44,10 @@ public final class FoodFloor {
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
         FoodPlan food = overworld ? ctx.food() : null;
         List<KitNeed> needs = new ArrayList<>();
-        if (food != null && food.shortOfMinimum()) {
-            needs.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
+        if (food != null && foodShort(ctx)) {
+            // the runner reads the need against held, which counts what is still cooking: ask for that on top so it is the bag
+            // that has to reach the minimum
+            needs.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum() + food.pending()));
         }
         if (overworld && wantBlocks && blocksShort(ctx)) {
             needs.add(new KitNeed(KitNeed.BUILD_BLOCKS, TRIP_BLOCKS));
@@ -59,6 +61,13 @@ public final class FoodFloor {
             return null;
         }
         return runner.run(ctx, needs);
+    }
+
+    // the bag is under the overworld minimum. held counts what is still cooking in a smoker too, and a trip that is judged on that
+    // goes back down without the food it came up for (FoodTripRules.units is the bag alone)
+    public static boolean foodShort(GamerContext ctx) {
+        FoodPlan food = ctx.food();
+        return FoodTripRules.units(food) < food.overworldMinimum();
     }
 
     public static boolean blocksShort(GamerContext ctx) {
