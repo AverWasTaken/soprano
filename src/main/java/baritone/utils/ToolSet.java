@@ -19,16 +19,15 @@ package baritone.utils;
 
 import baritone.Baritone;
 import baritone.altoclef.AltoClefBridge;
+import adris.altoclef.util.helpers.ToolPick;
 import baritone.altoclef.AltoClefSettings;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
@@ -38,6 +37,7 @@ import net.minecraft.world.item.enchantment.effects.EnchantmentAttributeEffect;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.function.ToDoubleFunction;
@@ -67,20 +67,6 @@ public class ToolSet {
     private final BiPredicate<BlockState, ItemStack>[] forceUseTool;
     private final double potionMult;
 
-    /**
-     * Used for evaluating the material cost of a tool.
-     * see {@link #getMaterialCost(ItemStack)}
-     * Prefer tools with lower material cost (lower index in this list).
-     */
-    private static final List<TagKey<Item>> materialTagsPriorityList = List.of(
-        ItemTags.WOODEN_TOOL_MATERIALS,
-        ItemTags.STONE_TOOL_MATERIALS,
-        ItemTags.IRON_TOOL_MATERIALS,
-        ItemTags.GOLD_TOOL_MATERIALS,
-        ItemTags.DIAMOND_TOOL_MATERIALS,
-        ItemTags.NETHERITE_TOOL_MATERIALS
-    );
-
     public ToolSet(LocalPlayer player) {
         breakStrengthCache = new Object2DoubleOpenHashMap<>();
         this.player = player;
@@ -109,21 +95,6 @@ public class ToolSet {
             return potionMult * getBestDestructionTime(state);
         }
         return breakStrengthCache.computeIfAbsent(state.getBlock(), backendCalculation);
-    }
-
-    /**
-     * Evaluate the material cost of a possible tool.
-     * If all else is equal, we want to prefer the tool with the lowest material cost.
-     * i.e. we want to prefer a wooden pickaxe over a stone pickaxe, if all else is equal.
-     * @param itemStack a possibly empty ItemStack
-     * @return values from 0 up
-     */
-    private int getMaterialCost(ItemStack itemStack) {
-        for (int i = 0; i < materialTagsPriorityList.size(); i++) {
-            final TagKey<Item> tag = materialTagsPriorityList.get(i);
-            if (itemStack.is(tag)) return i;
-        }
-        return -1;
     }
 
     public boolean hasSilkTouch(ItemStack stack) {
@@ -164,12 +135,14 @@ public class ToolSet {
             return player.getInventory().getSelectedSlot();
         }
 
-        int best = 0;
+        int best = -1;
         double highestSpeed = Double.NEGATIVE_INFINITY;
-        int lowestCost = Integer.MIN_VALUE;
         boolean bestSilkTouch = false;
+        double handSpeed = calculateSpeedVsBlock(ItemStack.EMPTY, blockState);
+        List<ItemStack> chainable = new ArrayList<>(9);
         for (int i = 0; i < 9; i++) {
             ItemStack itemStack = player.getInventory().getItem(i);
+            chainable.add(ItemStack.EMPTY);
             if (!Baritone.settings().useSwordToMine.value && itemStack.is(ItemTags.SWORDS)) {
                 continue;
             }
@@ -177,23 +150,37 @@ public class ToolSet {
             if (Baritone.settings().itemSaver.value && (itemStack.getDamageValue() + Baritone.settings().itemSaverThreshold.value) >= itemStack.getMaxDamage() && itemStack.getMaxDamage() > 1) {
                 continue;
             }
+            chainable.set(i, itemStack);
             // forced tools beat everything, but only for picking the slot. the time it takes still comes from what the tool really does
-            double speed = forceUseTool != null && shouldForceUseTool(blockState, itemStack) ? Double.POSITIVE_INFINITY : calculateSpeedVsBlock(itemStack, blockState);
+            boolean forced = forceUseTool != null && shouldForceUseTool(blockState, itemStack);
+            double speed = forced ? Double.POSITIVE_INFINITY : calculateSpeedVsBlock(itemStack, blockState);
+            // skip it so a tie goes to a slot that isn't a pickaxe instead of the first one on the bar
+            if (!forced && ToolPick.noBetterThanHand(itemStack.isDamageableItem(), speed, handSpeed)) {
+                continue;
+            }
             boolean silkTouch = hasSilkTouch(itemStack);
-            if (speed > highestSpeed) {
+            if (speed > highestSpeed || (speed == highestSpeed && preferSilkTouch && !bestSilkTouch && silkTouch)) {
                 highestSpeed = speed;
                 best = i;
-                lowestCost = getMaterialCost(itemStack);
                 bestSilkTouch = silkTouch;
-            } else if (speed == highestSpeed) {
-                int cost = getMaterialCost(itemStack);
-                if ((cost < lowestCost && (silkTouch || !bestSilkTouch)) ||
-                        (preferSilkTouch && !bestSilkTouch && silkTouch)) {
-                    highestSpeed = speed;
-                    best = i;
-                    lowestCost = cost;
-                    bestSilkTouch = silkTouch;
+            }
+        }
+        if (best < 0) {
+            // nothing but tools that do nothing here. a slot with no durability to burn if there is one, else wherever we are
+            best = player.getInventory().getSelectedSlot();
+            for (int i = 0; i < 9; i++) {
+                if (!player.getInventory().getItem(i).isDamageableItem()) {
+                    return i;
                 }
+            }
+            return best;
+        }
+        // the wear chain only picks between tools that are right for the block, a forced tool or a wanted silk touch
+        // already made their choice above
+        if (Baritone.settings().toolWearChain.value && highestSpeed != Double.POSITIVE_INFINITY && !(preferSilkTouch && bestSilkTouch)) {
+            int chained = ToolPick.chainIndex(chainable, blockState);
+            if (chained >= 0) {
+                return chained;
             }
         }
         return best;
