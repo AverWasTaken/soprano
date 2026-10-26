@@ -966,6 +966,14 @@ public class CritTimingTest {
     }
 
     @Test
+    public void noBackOffUnderFireOrFromAnAngryEnderman() {
+        assertTrue(CritTiming.noBackOff(true, false));
+        assertTrue(CritTiming.noBackOff(false, true));
+        assertTrue(CritTiming.noBackOff(true, true));
+        assertFalse(CritTiming.noBackOff(false, false));
+    }
+
+    @Test
     public void aSwordEndsTheBackOffHardWhenTheSwingIsDue() {
         assertTrue(CritTiming.hardDropBackOff(true, true));
         assertFalse(CritTiming.hardDropBackOff(true, false));

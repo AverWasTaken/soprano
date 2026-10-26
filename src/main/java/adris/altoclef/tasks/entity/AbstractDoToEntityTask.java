@@ -609,6 +609,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (!tooClose && _backOffGoal == null) {
             return;
         }
+        boolean angryEnderman = entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
+        if (CritTiming.noBackOff(LavaShore.underFire(mod.getPlayer().hurtTime, inReach(mod, entity)), angryEnderman)) {
+            dropBackOff(mod, true);
+            return;
+        }
         // (no shot to take is nothing to stay close for: a ready swing that cannot be aimed is how the step back never came)
         boolean stayClose = !_aimStalled && (mod.getControllerExtras().attackReady()
                 || (wantsCritHops() && mod.getControllerExtras().hopWantsToStayClose(entity)));

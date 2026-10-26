@@ -627,6 +627,8 @@ public final class CombatCommit {
     // what the target was and where it stood the last time we saw it alive, for the splits it leaves behind (see splitHeir)
     private String lastSplitType;
     private boolean lastSplits;
+    // the target was an angry enderman: teleporting out of the foe list is not dying (see targetGone)
+    private boolean lastEnder;
     private double lastSplitX;
     private double lastSplitY;
     private double lastSplitZ;
@@ -775,6 +777,7 @@ public final class CombatCommit {
     public void reset() {
         lastSplitType = null;
         lastSplits = false;
+        lastEnder = false;
         mode = Mode.NONE;
         why = Why.NONE;
         targetId = -1;
@@ -1341,6 +1344,14 @@ public final class CombatCommit {
             if (splitGoneAt < 0) splitGoneAt = t.now();
             if (t.now() - splitGoneAt <= SPLIT_WAIT_TICKS) return Event.NONE;
         }
+        // an angry enderman that blinked away is not a dead one: it comes back angry and hits for 3.8 a second. the fight
+        // waits for it (same clock as the split wait), and an enderman that shows up inside the wait is the same fight
+        if (lastEnder) {
+            if (splitGoneAt < 0) splitGoneAt = t.now();
+            Foe back = endermanToFight(t);
+            if (back != null) return startFight(t, back, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
+            if (t.now() - splitGoneAt <= ENDER_WAIT_TICKS) return Event.NONE;
+        }
         return end(t, Event.FIGHT_DEAD);
     }
 
@@ -1364,10 +1375,13 @@ public final class CombatCommit {
     static final double SPLIT_RANGE = 3.0;
     // the death animation is 20 ticks, the rest is margin
     static final long SPLIT_WAIT_TICKS = 30;
+    // a teleport and the walk back is a few seconds at most, three is plenty
+    static final long ENDER_WAIT_TICKS = 60;
 
     private void noteSplit(Foe foe) {
         lastSplitType = foe.splitType();
         lastSplits = foe.splits();
+        lastEnder = foe.standsAndFights();
         lastSplitX = foe.x();
         lastSplitY = foe.y();
         lastSplitZ = foe.z();

@@ -66,6 +66,12 @@ public class CritTiming {
         return tooClose && !hopWantsToStayClose;
     }
 
+    // no back-off from something that is already biting us in reach (the step cannot land under the knockback) or from an
+    // angry enderman (it teleports onto us, backing off just makes us wait for the next hit with a path in the way of the swing)
+    public static boolean noBackOff(boolean underFire, boolean angryEnderman) {
+        return underFire || angryEnderman;
+    }
+
     // a sword has no hop to wait for, so a swing that is due ends the back-off right now, mid step or not. other weapons keep
     // the polite cancel (a hop that is being planned is not worth a cancelled step on a ledge)
     public static boolean hardDropBackOff(boolean swordInHand, boolean stayClose) {
