@@ -121,6 +121,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _rimStepTicks = 0;
         _rimStandTicks = 0;
         _rimLive = false;
+        _rimFailed.clear();
         _standCap.reset();
         _waitCap.reset();
         _waitCapEntity = null;
@@ -213,7 +214,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             boolean ready = LavaShore.swingReady(!mod.getFoodChain().needsToEat() &&
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting(),
-                    mod.getPlayer().onGround(), mod.getControllerExtras().critInFlight(), rim);
+                    mod.getPlayer().onGround(), mod.getControllerExtras().critInFlight(), LavaShore.rimSwing(rim, rimWide, mod.getPlayer().hurtTime));
             // a child that was walking to some other mob is not the one to keep
             boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
@@ -410,6 +411,10 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private boolean _rimLive;
     private static final int RIM_STAND_TICKS = 60;
     private int _rimStandTicks;
+    // cells a step already went nowhere to this fight, so the same doomed one is not picked again the next tick
+    private final java.util.Set<BlockPos> _rimFailed = new java.util.HashSet<>();
+    private double _rimBestDist;
+    private int _rimIdleTicks;
 
     private boolean rimFoe(AltoClef mod, Entity entity) {
         if (entity instanceof Blaze || entity instanceof Ghast || !(entity instanceof Mob mob) || MobReachability.isRanged(mob)
@@ -458,8 +463,29 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         if (_rimCell == null || _rimCell.equals(here) || _rimCell.distSqr(here) > 2
                 || !LavaShore.stepFit(cells, _rimCell.getX(), _rimCell.getY(), _rimCell.getZ(), entity.getX(), entity.getZ())) {
+            // a cell that already went nowhere is not picked again this fight, the plan (the swing) gets the tick instead
+            if (_rimFailed.contains(pick)) {
+                _rimCell = null;
+                _rimStepTicks = 0;
+                return null;
+            }
             _rimCell = pick;
             _rimStepTicks = 0;
+            _rimBestDist = Math.sqrt(pick.distToCenterSqr(us.position()));
+            _rimIdleTicks = 0;
+        } else {
+            // a step that has stopped getting closer (knocked about, a path that cannot be walked) is dropped and remembered:
+            // the swing is worth more than holding a doomed path for two seconds
+            double dist = Math.sqrt(_rimCell.distToCenterSqr(us.position()));
+            double best = LavaShore.stepBest(_rimBestDist, dist);
+            _rimIdleTicks = best < _rimBestDist ? 0 : _rimIdleTicks + 1;
+            _rimBestDist = best;
+            if (LavaShore.stepStalled(_rimIdleTicks)) {
+                _rimFailed.add(_rimCell);
+                _rimCell = null;
+                _rimStepTicks = 0;
+                return null;
+            }
         }
         _rimLive = true;
         setDebugState("Stepping off the rim");

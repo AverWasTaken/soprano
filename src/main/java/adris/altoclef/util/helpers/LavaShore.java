@@ -159,6 +159,26 @@ public final class LavaShore {
         return gatesOpen && (onGround || critInFlight || backUnsafe);
     }
 
+    // the knock behind us, or any rim at all while the last bite is still fresh: a side-on bite throws us airborne with the
+    // drop off to the side, and waiting for the ground then is how the second bite comes (hurtTime counts ten down from a hit)
+    public static boolean rimSwing(boolean backUnsafe, boolean rimWide, int hurtTime) {
+        return backUnsafe || (rimWide && hurtTime > 0);
+    }
+
+    // a rim step that has gone this many ticks without getting any closer to its cell is not going to land (a knock mid step, a
+    // path that cannot be walked)
+    static final int STEP_STALL_TICKS = 6;
+    static final double STEP_STALL_PROGRESS = 0.2;
+
+    // the closest we have been, moved only by a real step closer so a wobble does not count as progress
+    public static double stepBest(double best, double now) {
+        return now < best - STEP_STALL_PROGRESS ? now : best;
+    }
+
+    public static boolean stepStalled(int idleTicks) {
+        return idleTicks >= STEP_STALL_TICKS;
+    }
+
     // is a cell fit to stand on while a foe is on us: floor under it, room for the body, no lava next to it, and nothing
     // bad behind it relative to the foe, and no drop within EDGE_RADIUS either (so a stair step ledge does not trade one edge for the next)
     static boolean standable(Cells cells, int x, int y, int z, double fx, double fz) {
