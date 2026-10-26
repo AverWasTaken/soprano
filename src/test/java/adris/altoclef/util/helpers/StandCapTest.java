@@ -3,6 +3,8 @@ package adris.altoclef.util.helpers;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class StandCapTest {
 
@@ -68,5 +70,16 @@ public class StandCapTest {
             cap.tick(true, false);
             assertEquals(true, cap.waitedLong());
         }
+    }
+
+    @Test
+    public void noShotRightOnTopCountsAsStandingButNoShotFarAwayDoesNot() {
+        assertTrue(StandCap.standing(true, true, false));
+        assertTrue(StandCap.standing(true, false, true));
+        assertFalse(StandCap.standing(true, false, false));
+        assertFalse(StandCap.standing(false, false, true));
+        StandCap cap = new StandCap();
+        for (int i = 0; i < ApproachRules.WAIT_TICKS; i++) cap.tick(StandCap.standing(true, false, true), false);
+        assertTrue(cap.waitedLong());
     }
 }

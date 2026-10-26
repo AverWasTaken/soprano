@@ -214,14 +214,15 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             boolean ready = LavaShore.swingReady(!mod.getFoodChain().needsToEat() &&
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting(),
-                    mod.getPlayer().onGround(), mod.getControllerExtras().critInFlight(), LavaShore.rimSwing(rim, rimWide, mod.getPlayer().hurtTime));
+                    // a sword just waits for the charge, no crits, so being knocked airborne is no reason to hold the swing
+                    mod.getPlayer().onGround() || mod.getControllerExtras().swordInHand(), mod.getControllerExtras().critInFlight(), LavaShore.rimSwing(rim, rimWide, mod.getPlayer().hurtTime));
             // a child that was walking to some other mob is not the one to keep
             boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
             if (isKillTask()) {
                 _aimStalled = aimStalled(mod, entity, inReach && shot);
                 shot = shot && !_aimStalled;
-                countStandingTicks(mod, entity, inReach && shot);
+                countStandingTicks(mod, entity, StandCap.standing(inReach, shot, tooClose));
             }
             boolean gatesOpen = !mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod)
                     && mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting();
@@ -340,7 +341,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                             return off;
                         }
                     }
-                    setDebugState("In reach, waiting for the swing");
+                    setDebugState(!shot ? "In reach, waiting: no shot"
+                            : !ready ? "In reach, waiting: swing gated"
+                            : "In reach, waiting: path mid-step");
                     return null;
                 default:
                     // the shuffle is a walk too
@@ -612,7 +615,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
             }
         } else if (stayClose) {
-            dropBackOff(mod);
+            dropBackOff(mod, CritTiming.hardDropBackOff(mod.getControllerExtras().swordInHand(), stayClose));
         }
     }
 
@@ -620,13 +623,23 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // not walking (the jump press is ignored under its movement input), and the back-off is the walking that was always
     // there. cancel the path too, not just the goal, or isPathing() still says yes for the tick we wanted to jump in
     private void dropBackOff(AltoClef mod) {
+        dropBackOff(mod, false);
+    }
+
+    // hard: the charge is full and a half walked back-off step is all that stands between us and the hit, so it ends on the first safe
+    // tick instead of whenever the walk is done (cutting a step before that is how you walk off a ledge)
+    private void dropBackOff(AltoClef mod, boolean hard) {
         if (_backOffGoal == null) {
             return;
         }
         var goalProcess = mod.getClientBaritone().getCustomGoalProcess();
         if (goalProcess.getGoal() == _backOffGoal) {
             goalProcess.onLostControl();
-            mod.getClientBaritone().getPathingBehavior().cancelSegmentIfSafe();
+            if (hard) {
+                mod.getClientBaritone().getPathingBehavior().cancelWhenSafe();
+            } else {
+                mod.getClientBaritone().getPathingBehavior().cancelSegmentIfSafe();
+            }
         }
         _backOffGoal = null;
     }

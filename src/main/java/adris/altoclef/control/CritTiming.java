@@ -66,6 +66,12 @@ public class CritTiming {
         return tooClose && !hopWantsToStayClose;
     }
 
+    // a sword has no hop to wait for, so a swing that is due ends the back-off right now, mid step or not. other weapons keep
+    // the polite cancel (a hop that is being planned is not worth a cancelled step on a ledge)
+    public static boolean hardDropBackOff(boolean swordInHand, boolean stayClose) {
+        return swordInHand && stayClose;
+    }
+
     // the two reasons above as one question. PlayerExtraController asks it for wantsCritTick too, so the kill tasks and
     // this machine can't disagree about whether a hop is on
     public static boolean underPressure(int meleeNear, float health) {
