@@ -52,6 +52,8 @@ public final class CombatRules {
     // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
     // them back a block or so, and every re-raise is 5 ticks before the shield blocks again
     public static final double PILE_SHIELD_SLACK = 1.5;
+    // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
+    public static final double RIM_SHIELD_FOE_RANGE = 4;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
@@ -128,6 +130,18 @@ public final class CombatRules {
             }
         }
         return target && other;
+    }
+
+    // a fully blocked hit skips the knockback, so on a ledge above a drop the shield is up whenever a melee foe is close. a
+    // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
+    // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem
+    public static boolean rimShield(boolean edgeNear, boolean blazeInContact, List<CombatCommit.Foe> foes) {
+        if (!edgeNear) return false;
+        if (blazeInContact) return true;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.melee() && foe.distance() <= RIM_SHIELD_FOE_RANGE) return true;
+        }
+        return false;
     }
 
     // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)

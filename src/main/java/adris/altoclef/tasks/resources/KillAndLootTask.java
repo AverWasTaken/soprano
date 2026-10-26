@@ -19,7 +19,7 @@ public class KillAndLootTask extends ResourceTask {
 
     private final Class<?> _toKill;
 
-    private final Task _killTask;
+    private final KillEntitiesTask _killTask;
     // -1 = any of the class. otherwise this one animal, and part of isEqual so a new target is a new task (the runner
     // keeps the old object when they compare equal, and the old one would still be chasing the wrong pig)
     private final int _onlyId;
@@ -63,6 +63,12 @@ public class KillAndLootTask extends ResourceTask {
         _toKill = toKill;
         _onlyId = -1;
         _killTask = new KillEntitiesTask(_toKill);
+    }
+
+    // the id of the one the kill walk is after right now, -1 for none
+    public int pursuingId() {
+        Entity target = _killTask.pursuing();
+        return target == null ? -1 : target.getId();
     }
 
     @Override

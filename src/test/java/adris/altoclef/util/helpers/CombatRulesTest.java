@@ -263,4 +263,28 @@ public class CombatRulesTest {
         // the old four argument form still assumes food
         assertEquals(CombatRules.Stance.EAT, CombatRules.stance(true, 3, NOBODY, false));
     }
+
+    // ---- the rim shield
+
+    private static CombatCommit.Foe shooter(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, true, false, NEVER);
+    }
+
+    @Test
+    public void theRimShieldWantsAnEdgeAndAMeleeFoeWithinFour() {
+        assertTrue(CombatRules.rimShield(true, false, List.of(zombie(1, 4, NEVER))));
+        assertFalse(CombatRules.rimShield(true, false, List.of(zombie(1, 4.5, NEVER))));
+        // no drop near us, no rim
+        assertFalse(CombatRules.rimShield(false, false, List.of(zombie(1, 1, 5))));
+        assertFalse(CombatRules.rimShield(true, false, List.of()));
+    }
+
+    @Test
+    public void theRimShieldOnlyCountsABlazeInContactAmongShooters() {
+        assertTrue(CombatRules.rimShield(true, true, List.of()));
+        assertFalse(CombatRules.rimShield(false, true, List.of()));
+        // a skeleton at point blank is no knockback problem, and a creeper is not melee here
+        assertFalse(CombatRules.rimShield(true, false, List.of(shooter(1, 1))));
+        assertFalse(CombatRules.rimShield(true, false, List.of(new CombatCommit.Foe(1, 1, false, true, NEVER))));
+    }
 }

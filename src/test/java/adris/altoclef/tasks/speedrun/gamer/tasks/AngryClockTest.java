@@ -82,4 +82,22 @@ public class AngryClockTest {
         PearlHuntTask.lootable(true, () -> asked[0] = true);
         assertFalse(asked[0]);
     }
+
+    @Test
+    public void oneGiveUpTurnsOffTheLootTargetAndTheLatch() {
+        PearlHuntTask.AngryClock nook = new PearlHuntTask.AngryClock();
+        PearlHuntTask.AngryClock angry = new PearlHuntTask.AngryClock();
+        assertFalse(PearlHuntTask.givenUpOn(5, nook, angry));
+        for (int i = 0; i < 401; i++) {
+            angry.tick(5, 20);
+        }
+        assertTrue(PearlHuntTask.givenUpOn(5, nook, angry));
+        assertFalse(PearlHuntTask.givenUpOn(6, nook, angry));
+        // the nook clock alone counts too, and a missing clock is just no opinion
+        for (int i = 0; i < 401; i++) {
+            nook.tick(6, 20);
+        }
+        assertTrue(PearlHuntTask.givenUpOn(6, nook, angry));
+        assertFalse(PearlHuntTask.givenUpOn(7, null, null));
+    }
 }

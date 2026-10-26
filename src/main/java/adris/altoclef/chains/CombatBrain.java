@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.util.helpers.PearlHuntHook;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
@@ -23,6 +24,8 @@ import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.LavaShore;
+import baritone.pathing.movement.CliffAvoidance;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ReachRules;
@@ -91,6 +94,8 @@ final class CombatBrain {
     private long _shotUntil = Long.MIN_VALUE / 2;
     // a normal fight with a second mob hitting us, the shield is up for it (CombatRules.pileShield)
     private boolean _pile;
+    // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
+    private boolean _rim;
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
     private long _stanceLogAt = Long.MIN_VALUE / 2;
@@ -170,7 +175,7 @@ final class CombatBrain {
     }
 
     boolean auraShield() {
-        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile);
+        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile) || _rim;
     }
 
     float holdPriority() {
@@ -202,6 +207,7 @@ final class CombatBrain {
         _shotAt = false;
         _shotUntil = Long.MIN_VALUE / 2;
         _pile = false;
+        _rim = false;
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
@@ -410,6 +416,7 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
         _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
+        _rim = rimShield(mod, player, foes);
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         // a shooter that was on us a moment ago still is: the ray flickers behind a tree and the skeleton steps in and out of the
@@ -427,6 +434,26 @@ final class CombatBrain {
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
+    }
+
+    // the cheap foe check first, the cell scan only when one is close enough to matter. same edge the kill task steps back from.
+    // a path in progress is a step off the rim (or any walk): the shield pauses pathing, so it waits until the walk is done
+    // instead of pinning us on the edge. a blaze that its own task keeps out of the foes still counts when it is in contact
+    private static boolean rimShield(AltoClef mod, LocalPlayer player, List<Foe> foes) {
+        if (mod.getClientBaritone().bsi == null || mod.getClientBaritone().getPathingBehavior().getInProgress().isPresent()) return false;
+        boolean blaze = false;
+        try {
+            for (Entity entity : mod.getEntityTracker().getHostiles()) {
+                if (entity instanceof Blaze && entity.isAlive() && entity.distanceTo(player) <= CombatRules.CONTACT_RANGE) {
+                    blaze = true;
+                    break;
+                }
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same story as gatherFoes
+        }
+        if (!CombatRules.rimShield(true, blaze, foes)) return false;
+        return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
     }
 
     // fills mobs and foes (in step) from the tracker's hostiles. hands back whether a mob some task kept for itself is
