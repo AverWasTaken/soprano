@@ -345,9 +345,8 @@ final class CombatBrain {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
                 log(mod, dimension, event, fighting, mobs, blocks);
-                // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
-                // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
-                if (event != Event.RUN_EXTENDED) _run = null;
+                // a new run is a new origin, a new fight is a new target, whatever the old ones were
+                _run = null;
                 // the nether sweep keeps off the spot we were chased out of by a heavy hitter (nether coordinates only, the
                 // zones mean nothing in another dimension)
                 if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
@@ -386,8 +385,7 @@ final class CombatBrain {
             nearest = Math.min(nearest, foe.distance());
             // (the nearest fast one gets to say when a bite may start, see CombatRules.RUN_BITE_START_FAST. shooters keep
             // their distance, so they are not chasers)
-            if (foe.melee() && foe.distance() < nearestFast
-                    && mobs.get(i).getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED) {
+            if (foe.melee() && foe.distance() < nearestFast && foe.fast()) {
                 nearestFast = foe.distance();
             }
             // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
@@ -442,7 +440,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(foe);
+                    foes.add(foe.withFast(fast(mob)));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -539,12 +537,30 @@ final class CombatBrain {
             if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
         }
         if (!asked) return true;
+        List<WeaponPick.Candidate> candidates = bagCandidates(mod);
+        return WeaponPick.best(candidates) != null || WeaponPick.bestTool(candidates) != null;
+    }
+
+    // the bag is only walked when something is in contact: that is the only time an in the way fight can start
+    private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
+        for (Foe foe : foes) {
+            if (foe.distance() <= CombatCommit.CONTACT) return hasWeapon(mod);
+        }
+        return true;
+    }
+
+    // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
+    private static boolean hasWeapon(AltoClef mod) {
+        return WeaponPick.best(bagCandidates(mod)) != null;
+    }
+
+    private static List<WeaponPick.Candidate> bagCandidates(AltoClef mod) {
         List<WeaponPick.Candidate> candidates = new ArrayList<>();
         candidates.add(WeaponPick.Candidate.of(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot())));
         for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
             candidates.add(WeaponPick.Candidate.of(stack));
         }
-        return WeaponPick.best(candidates) != null || WeaponPick.bestTool(candidates) != null;
+        return candidates;
     }
 
     // how many path nodes ahead count as "in the way". three is the next couple of steps, further out the mob has time to move
@@ -558,7 +574,7 @@ final class CombatBrain {
         boolean moving = pathing.isPathing() || pathing.getInProgress().isPresent();
         double y = mod.getPlayer().getY();
         IPathExecutor current = pathing.getCurrent();
-        if (current == null) return new CombatCommit.Way(Set.of(), moving, y);
+        if (current == null) return new CombatCommit.Way(Set.of(), moving, y, weaponIfNear(mod, foes));
         List<AABB> cells = new ArrayList<>();
         try {
             IPath path = current.getPath();
@@ -589,7 +605,7 @@ final class CombatBrain {
                 }
             }
         }
-        return new CombatCommit.Way(inWay, moving, y);
+        return new CombatCommit.Way(inWay, moving, y, weaponIfNear(mod, foes));
     }
 
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
@@ -648,7 +664,13 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob));
+    }
+
+    // slimes and magma cubes set their speed from their size (0.2 + 0.1 per size, so 0.3 at the smallest), spiders are 0.3, so all
+    // of them count: the run bite lines and the "it comes along on the run" fight both read this
+    private static boolean fast(Mob mob) {
+        return mob.getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED;
     }
 
     // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.

@@ -377,6 +377,46 @@ public class NetherTripRulesTest {
         assertNull(out.stage());
     }
 
+    private static Inputs gear(Stage stage, boolean hasPick, boolean hasSword) {
+        return new Inputs(stage, Dimension.OVERWORLD, 0, 100, 24, false, 500, false, 0, true, 0, LIMITS, hasPick, 0, 100, 20,
+                Long.MAX_VALUE, hasSword, 0);
+    }
+
+    @Test
+    public void aPickWithoutASwordIsStillThePickStage() {
+        assertEquals(Stage.PICK, NetherTripRules.next(gear(Stage.BLOCKS, true, false)).stage());
+        assertEquals(Stage.PICK, NetherTripRules.next(gear(Stage.PICK, true, false)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(gear(Stage.PICK, true, true)).stage());
+        assertEquals(Stage.PORTAL, NetherTripRules.next(gear(Stage.BLOCKS, true, true)).stage());
+    }
+
+    @Test
+    public void aSwordWithoutAPickIsStillThePickStage() {
+        assertEquals(Stage.PICK, NetherTripRules.next(gear(Stage.PICK, false, true)).stage());
+    }
+
+    // ---- standing still in the walk
+
+    private static Inputs standing(long stuckTicks, long stillTicks) {
+        return new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, true, 0, LIMITS, true, stuckTicks, 100,
+                20, Long.MAX_VALUE, true, stillTicks);
+    }
+
+    @Test
+    public void thirtySecondsOnOneSpotEndsTheWalkLongBeforeTheProgressClockDoes() {
+        long bar = NetherTripRules.WALK_STILL_SECONDS * 20L;
+        assertEquals(Stage.WALK, NetherTripRules.next(standing(0, bar)).stage());
+        Step out = NetherTripRules.next(standing(0, bar + 1));
+        assertEquals("no closer to the pile", out.giveUp());
+        // still in the nether with the kit gone: the walk home, same exit as the progress clock
+        assertEquals(Stage.HOME, out.stage());
+    }
+
+    @Test
+    public void aWalkThatIsMovingNeverTripsTheStillBar() {
+        assertNull(NetherTripRules.next(standing(100, 0)).giveUp());
+    }
+
     // ---- portal progress and the clocks
 
     private static Inputs walking(long stageTicks, long stuckTicks) {

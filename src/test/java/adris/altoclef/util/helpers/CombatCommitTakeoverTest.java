@@ -171,15 +171,18 @@ public class CombatCommitTakeoverTest {
     }
 
     @Test
-    public void whenTheBoxOpensTheNormalBailIsBack() {
+    public void whenTheBoxOpensOnlyTheDangerBailIsBack() {
         Foe first = zombie(1, 1.5, 1, 1.4);
         Foe second = zombie(2, 2, 2, 1.9);
+        Foe warden = new Foe(3, 6, false, false, CombatCommit.NEVER, CombatCommit.Kind.UNTOUCHABLE);
         CombatCommit c = new CombatCommit();
         assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, null, true, first)));
         assertEquals(Event.NONE, c.step(tick(NOW + 1, 11, first, true, first, second)));
         assertTrue(c.cornered());
-        // the gap is free now and two are still hitting us
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 2, 11, first, false, first, second)));
+        // the gap is free now and two are still hitting us: the box made this the cornered fight and the latch holds, hp is no reason
+        assertEquals(Event.NONE, c.step(tick(NOW + 2, 11, first, false, first, second)));
+        // but the warden walking up still is
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 3, 11, first, false, first, second, warden)));
     }
 
     // ---- the hold

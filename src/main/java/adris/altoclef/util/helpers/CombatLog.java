@@ -39,7 +39,6 @@ public final class CombatLog {
             case RUN_CLEAR -> tag + "run over, " + blocks + " blocks, clear";
             case RUN_CAP -> tag + "run over, " + CombatCommit.RUN_CAP / 20 + " s cap, " + blocks + " blocks";
             case RUN_STUCK -> tag + "run over, stuck " + blocks + " blocks from where it started";
-            case RUN_EXTENDED -> tag + "run extended, still chased (hp " + hp + ")";
             case RUN_CHASED_FIGHT -> tag + "chased too long, turning to fight " + target;
         };
     }

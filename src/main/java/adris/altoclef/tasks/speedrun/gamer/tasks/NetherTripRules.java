@@ -28,6 +28,10 @@ public final class NetherTripRules {
     public static final int PORTAL_PROGRESS_SECONDS = 60;
     // the nether walk gets longer: going round a lava ocean is legit, a bridge that went nowhere is not
     public static final int WALK_PROGRESS_SECONDS = 120;
+    // and standing on one spot (STILL_BLOCKS) with no path executing is not going round a lava ocean, it is a ledge with a
+    // pathfinder that keeps saying no: that gets a much shorter bar. heal holds and digs are not standing, they reset it
+    public static final int WALK_STILL_SECONDS = 30;
+    public static final double STILL_BLOCKS = 1.5;
 
     // the trip goes into the nether with something to eat: under FOOD_MIN we stop for a meal first, the food task works up to
     // FOOD_WANTED, and after FOOD_SECONDS of it the trip goes with whatever it found (any food at all) or does not go
@@ -96,7 +100,8 @@ public final class NetherTripRules {
     public enum Stage {
         // by hand, in the overworld
         BLOCKS,
-        // no stone pick on us: get one, the way down to the portal and the netherrack on the far side both want it
+        // no stone pick or no sword on us: get them, the way down to the portal and the netherrack on the far side both want the
+        // pick, and the sword is what the nether crowd gets answered with
         PICK,
         // under FOOD_MIN food on us: a meal first, in the overworld
         FOOD,
@@ -217,7 +222,16 @@ public final class NetherTripRules {
     // stageTicks since this stage began, stuckTicks since the portal walk (or the nether walk, with its own bar) last closed PORTAL_PROGRESS_BLOCKS
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                          double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
-                         boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit) {
+                         boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit, boolean hasSword,
+                         long stillTicks) {
+        // a sword (or an axe) in the bag, and not standing still: nothing to say about either
+        public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
+                      double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
+                      boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit) {
+            this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
+                    toWear, limits, hasPick, stuckTicks, foodUnits, health, ticksSinceHit, true, 0);
+        }
+
         // the common shape: a pick in the bag and a walk that is going fine
         public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                       double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits) {
@@ -270,7 +284,7 @@ public final class NetherTripRules {
         }
         // short of the count after a minute is still worth going with: the blocks only make the walk safer
         if (in.buildBlocks() >= in.limits().blocksWanted() || in.stageTicks() > in.limits().blocksTicks()) {
-            return new Step(in.hasPick() ? afterGear(in) : Stage.PICK, null, false);
+            return new Step(geared(in) ? afterGear(in) : Stage.PICK, null, false);
         }
         return stay(Stage.BLOCKS);
     }
@@ -281,13 +295,18 @@ public final class NetherTripRules {
         if (in.dim() != Dimension.OVERWORLD) {
             return giveUp(in, "not in the overworld to get a pickaxe");
         }
-        if (in.hasPick()) {
+        if (geared(in)) {
             return new Step(afterGear(in), null, false);
         }
         if (in.stageTicks() > in.limits().pickTicks()) {
-            return giveUp(in, "no pickaxe in time");
+            return giveUp(in, "no pickaxe or sword in time");
         }
         return stay(Stage.PICK);
+    }
+
+    // a stone pick for the way down and a sword for whatever is waiting at the bottom
+    private static boolean geared(Inputs in) {
+        return in.hasPick() && in.hasSword();
     }
 
     // the overworld gear stages are done: a meal if the bag is short, hearts if we are hurt, then the portal
@@ -356,7 +375,7 @@ public final class NetherTripRules {
         if (walkAbort(in.health(), in.ticksSinceHit())) {
             return new Step(Stage.HOME, "too hurt to keep walking", false);
         }
-        if (in.stuckTicks() > WALK_PROGRESS_SECONDS * 20L) {
+        if (in.stuckTicks() > WALK_PROGRESS_SECONDS * 20L || in.stillTicks() > WALK_STILL_SECONDS * 20L) {
             return giveUp(in, "no closer to the pile");
         }
         return stay(Stage.WALK);

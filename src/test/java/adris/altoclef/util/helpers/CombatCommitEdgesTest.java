@@ -239,18 +239,18 @@ public class CombatCommitEdgesTest {
         assertEquals(Event.FIGHT_LOST, end);
         assertEquals(fightStart + 1 + CombatCommit.LOST_TICKS, t - 1);
         assertTrue(commit.isIgnored(5));
-        // hurt with it still within 8 but not on us and not hitting us: the cooldown sits it out, then it is a run again
+        // hurt with it still within 8 but not on us and not hitting us: the cooldown sits it out, and the fight that came out of
+        // a run keeps the runs latched off while it stands there within 12, so that is it
         long over = t - 1 + CombatCommit.COOLDOWN;
         for (; t < over; t++) {
             assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 6, 0, 0, foes, null)));
         }
-        assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, 0, 0, foes, null)));
-        assertEquals(Why.LOW_HP, commit.why());
+        assertEquals(Event.NONE, commit.step(new Tick(t, 6, 0, 0, foes, null)));
         // and stuck on the spot for as long as we like, the second tier has nobody left to try
         for (long later = t + 1; later < t + 3 * CombatCommit.CORNER_FAR_TICKS; later++) {
             assertEquals("tick " + later, Event.NONE, commit.step(new Tick(later, 6, 0, 0, foes, null)));
         }
-        assertEquals(Mode.RUN, commit.mode());
+        assertEquals(Mode.NONE, commit.mode());
     }
 
     @Test

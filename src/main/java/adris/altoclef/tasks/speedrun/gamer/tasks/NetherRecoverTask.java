@@ -18,8 +18,10 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Stage;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.slots.PlayerSlot;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -70,6 +72,13 @@ public class NetherRecoverTask extends Task {
     // last tick the mark was asked about: a fight or a meal that held the wheel is not time the walk spent not getting closer
     private long portalSeenTick;
     private Task toPile;
+    // standing on one spot with no path executing (NetherTripRules.WALK_STILL_SECONDS): where we stood, since when, and when it
+    // was last asked
+    private double stillX;
+    private double stillZ;
+    private long stillTick = Long.MIN_VALUE;
+    private long stillSeen;
+    private Task sword;
     // the walk's dig for blocks (same driver the sweep uses). the first nether tick asks for a full bag: it comes through the
     // portal with the 24 the dirt stage got and netherrack is right there, the long walk is where they run out
     private final NetherBlockRestock blockRestock = new NetherBlockRestock();
@@ -189,7 +198,40 @@ public class NetherRecoverTask extends Task {
         return new NetherTripRules.Inputs(stage, facts.dimension(), NetherTripRules.netherTicks(trip.netherTick, now),
                 now - trip.stageTick, facts.buildBlocks(), homeGone, dist, finished, gained,
                 NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now), facts.foodUnits(),
-                mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod));
+                mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod), hasWeapon(mod), stillTicks(mod, stage, now));
+    }
+
+    // a sword or an axe in hand or in the bag (a pickaxe swings, but the fights down there want a real weapon)
+    private static boolean hasWeapon(AltoClef mod) {
+        if (isWeapon(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()))) {
+            return true;
+        }
+        for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
+            if (isWeapon(stack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isWeapon(ItemStack stack) {
+        return ItemHelper.isSword(stack.getItem()) || ItemHelper.isAxe(stack.getItem());
+    }
+
+    // ticks stood on one spot in the WALK with nothing executing and no heal hold or dig going on (those are standing on purpose).
+    // any real step, a path running, or the walk not being ticked for a while starts it over
+    private long stillTicks(AltoClef mod, Stage stage, long now) {
+        double x = mod.getPlayer().getX();
+        double z = mod.getPlayer().getZ();
+        boolean waiting = stage == Stage.WALK && !digging && !holding && !mod.getClientBaritone().getPathingBehavior().isPathing();
+        boolean away = NetherTripRules.markStale(stillSeen, now);
+        stillSeen = now;
+        if (!waiting || away || stillTick == Long.MIN_VALUE || Math.hypot(x - stillX, z - stillZ) >= NetherTripRules.STILL_BLOCKS) {
+            stillX = x;
+            stillZ = z;
+            stillTick = now;
+        }
+        return waiting ? now - stillTick : 0;
     }
 
     // ticks since the walk last got 8 blocks closer. PORTAL: straight line to the portal, the horizontal number closes fast
@@ -244,12 +286,20 @@ public class NetherRecoverTask extends Task {
                 return blocks;
             }
             case PICK -> {
-                if (pick == null) {
-                    // the wooden one on the way comes with it, and stone is what the shaft and the netherrack both want
-                    pick = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
+                // the pick first, the stone sword is made right after it off the same cobble and table
+                if (!StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
+                    if (pick == null) {
+                        // the wooden one on the way comes with it, and stone is what the shaft and the netherrack both want
+                        pick = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
+                    }
+                    setDebugState("Getting a pickaxe for the way down.", "Making a pickaxe");
+                    return pick;
                 }
-                setDebugState("Getting a pickaxe for the way down.", "Making a pickaxe");
-                return pick;
+                if (sword == null) {
+                    sword = TaskCatalogue.getItemTask(Items.STONE_SWORD, 1);
+                }
+                setDebugState("Making a sword for the way down.", "Making a sword");
+                return sword;
             }
             case FOOD -> {
                 if (food == null) {
@@ -363,7 +413,7 @@ public class NetherRecoverTask extends Task {
 
     private String entered(Stage next) {
         return switch (next) {
-            case PICK -> "no pickaxe, getting one first";
+            case PICK -> "no pickaxe or sword, getting them first";
             case FOOD -> "only " + facts.foodUnits() + " food, getting some first";
             case HEAL -> "healing up before the portal";
             case PORTAL -> facts.buildBlocks() >= cfg.get().death.netherBlocks ? "got " + facts.buildBlocks() + " blocks"

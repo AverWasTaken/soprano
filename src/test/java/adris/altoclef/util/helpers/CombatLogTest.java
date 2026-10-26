@@ -102,7 +102,6 @@ public class CombatLogTest {
 
     @Test
     public void aChasedRunSaysItKeptGoingAndThenWhoItTurnedOn() {
-        assertEquals("combat: [overworld] run extended, still chased (hp 14)", line(Dimension.OVERWORLD, Event.RUN_EXTENDED, Why.LOW_HP));
         assertEquals("combat: [overworld] chased too long, turning to fight zombie",
                 line(Dimension.OVERWORLD, Event.RUN_CHASED_FIGHT, Why.CHASED));
         assertEquals("combat: [overworld] still chased, next zombie",
