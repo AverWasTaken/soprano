@@ -309,6 +309,41 @@ public class LavaShoreTest {
         assertFalse(LavaShore.swingReady(false, true, true, true));
     }
 
+    @Test
+    public void aFreshBiteOnASideRimCanSwingAirborne() {
+        assertTrue(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, true, 7)));
+        // bite window over, or no rim near: the ground is waited for as before
+        assertFalse(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, true, 0)));
+        assertFalse(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, false, 7)));
+        assertTrue(LavaShore.rimSwing(true, false, 0));
+    }
+
+    @Test
+    public void aRimStepThatStopsGettingCloserGivesUp() {
+        assertFalse(LavaShore.stepStalled(LavaShore.STEP_STALL_TICKS - 1));
+        assertTrue(LavaShore.stepStalled(LavaShore.STEP_STALL_TICKS));
+        // a wobble is not progress, a real step closer is
+        assertEquals(1.0, LavaShore.stepBest(1.0, 0.9), 1e-9);
+        assertEquals(1.0, LavaShore.stepBest(1.0, 1.4), 1e-9);
+        assertEquals(0.6, LavaShore.stepBest(1.0, 0.6), 1e-9);
+    }
+
+    @Test
+    public void aStepThatMovesThenStallsStillGivesUp() {
+        // walks 1.0 -> 0.6, then sits there: the idle count restarts at the progress and runs out after it
+        double best = 1.0;
+        int idle = 0;
+        double[] dists = {0.9, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6};
+        boolean stalled = false;
+        for (double d : dists) {
+            double nb = LavaShore.stepBest(best, d);
+            idle = nb < best ? 0 : idle + 1;
+            best = nb;
+            stalled = LavaShore.stepStalled(idle);
+        }
+        assertTrue(stalled);
+    }
+
     // foe on the +x side, the drop is off to the side (z), so the knock line behind us (-x) never touches it
     @Test
     public void aDropToTheSideIsAnEdgeEvenOffTheKnockLine() {
