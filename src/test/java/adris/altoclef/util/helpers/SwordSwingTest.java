@@ -50,6 +50,23 @@ public class SwordSwingTest {
     }
 
     @Test
+    public void aCalmNeutralBesideTheTargetSwingsEarlyUnderTheSweepLine() {
+        assertTrue(SwordSwing.charged(0.8, true));
+        assertTrue(SwordSwing.charged(0.85, true));
+        assertFalse(SwordSwing.charged(0.7, true));
+        // the sweep needs more than 0.9, the early swing stays under it
+        assertTrue(SwordSwing.CALM_SWING_SCALE < 0.9);
+    }
+
+    @Test
+    public void withoutACalmNeutralOnlyFullChargeSwings() {
+        assertFalse(SwordSwing.charged(0.8, false));
+        assertFalse(SwordSwing.charged(0.99, false));
+        assertTrue(SwordSwing.charged(1, false));
+        assertTrue(SwordSwing.charged(1, true));
+    }
+
+    @Test
     public void everyChargeAndLockStateHasOneAnswer() {
         for (boolean ready : new boolean[]{false, true}) {
             for (boolean asked : new boolean[]{false, true}) {
