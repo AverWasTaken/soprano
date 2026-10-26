@@ -137,6 +137,20 @@ public final class BiteRules {
         return hasAttacker || hasDirectEntity;
     }
 
+    // what drops a bite: a hit with a body that is not a projectile. an arrow or a fireball comes from a mob that is nowhere
+    // near, so standing to chew is not the wrong call for it (the shield rules have their own say), a zombie in contact is
+    public static boolean contactHit(boolean hasAttacker, boolean hasDirectEntity, boolean projectile) {
+        return !projectile && entityHit(hasAttacker, hasDirectEntity);
+    }
+
+    // a bite in progress gives way to the projectile shield only when the thing is about to land: raising it quick-moves the
+    // food out of the hand, and the bite starts over from nothing
+    public static final double SHIELD_IMPACT_TICKS = 10;
+
+    public static boolean shieldMayStart(boolean biting, double impactTicks) {
+        return !biting || impactTicks <= SHIELD_IMPACT_TICKS;
+    }
+
     // starving behind a stop that does not come. only water and a boat are worth the risk of chewing on the move: a swim
     // or a ride can be as long as the ocean, while mid-air ends by itself, a ladder is a few blocks and a movement that is
     // not safe to cancel is over in a moment

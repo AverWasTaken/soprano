@@ -834,7 +834,7 @@ public class CombatCommitTest {
     public void aCorneredFightChainsToAnotherFoeInReach() {
         CombatCommit c = corneredOn(6, 1.5);
         long dead = NOW + 200;
-        assertEquals(Event.FIGHT_NEXT, c.step(tick(dead, 3f, null, zombie(9, 2.9))));
+        assertEquals(Event.FIGHT_NEXT, c.step(tick(dead, 3f, null, zombie(9, 2.9, 1))));
         assertEquals(Mode.FIGHT, c.mode());
         assertTrue(c.cornered());
         assertEquals(Why.CORNERED, c.why());

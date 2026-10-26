@@ -357,4 +357,32 @@ public class BiteRulesTest {
         assertFalse(BiteRules.dodgeHolds(100, Long.MIN_VALUE));
         assertFalse(BiteRules.dodgeHolds(50, 100));
     }
+
+    @Test
+    public void anArrowOrAFireballDoesNotCountAsAContactHit() {
+        // a zombie in contact, a skeleton's arrow, a ghast ball: only the first one drops a standing bite
+        assertTrue(BiteRules.contactHit(true, true, false));
+        assertFalse(BiteRules.contactHit(true, true, true));
+        assertFalse(BiteRules.contactHit(true, false, true));
+        assertFalse(BiteRules.contactHit(false, true, true));
+        // and the other kinds of damage still are not hits at all
+        assertFalse(BiteRules.contactHit(false, false, false));
+    }
+
+    @Test
+    public void aBiteOnlyGivesWayToTheShieldWhenTheProjectileIsAboutToLand() {
+        assertTrue(BiteRules.shieldMayStart(false, Double.POSITIVE_INFINITY));
+        assertTrue(BiteRules.shieldMayStart(false, 40));
+        assertFalse(BiteRules.shieldMayStart(true, 40));
+        assertFalse(BiteRules.shieldMayStart(true, Double.POSITIVE_INFINITY));
+        assertTrue(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_TICKS));
+        assertTrue(BiteRules.shieldMayStart(true, 3));
+    }
+
+    @Test
+    public void aMeleeHitStillDropsTheBiteAndAnArrowDoesNot() {
+        // the chain feeds the age of the last contact hit: an arrow never gets there, a zombie does
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(5)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(BiteRules.NO_HIT)));
+    }
 }

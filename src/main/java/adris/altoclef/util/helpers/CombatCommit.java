@@ -97,11 +97,9 @@ public final class CombatCommit {
     public static final int HURT_CROWD_SIZE = 2;
     public static final float HURT_CROWD_HP = 12;
 
-    // a run that something in contact keeps hitting us through for this long is not working, and an armed bot turns on it
-    public static final long BITTEN_TICKS = 20;
-    // the other way a run is not working: it keeps taking hits. the biter wants a second of unbroken contact, and every hit
-    // knocks us out of contact, so a mob that runs in, swings, gets knocked off and runs in again never added up to anything.
-    // this many hits landed while we run (each one counted once) and an armed bot turns on it, same turn as the biter's
+    // a run that keeps taking hits is not working. every hit knocks us out of contact, so a mob that runs in, swings, gets
+    // knocked off and runs in again never added up to a second of anything. this many hits landed while we run (each one
+    // counted once) and an armed bot turns on it
     public static final int RUN_HITS = 2;
     // hits in the first this many ticks of a run do not count. a crowd run starts with them on us, and they get their swings in
     // while we turn round and the first path comes back: that is why we are running, not news that it is not working.
@@ -534,6 +532,12 @@ public final class CombatCommit {
     // ones: we are standing about hurt with whatever we ran from somewhere out there
     public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
                                             Bite bite, boolean recovering) {
+        return stance(mode, health, nearest, creeperClose, gapple, bite, recovering, true);
+    }
+
+    // hasFood: see CombatRules.stance
+    public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
+                                            Bite bite, boolean recovering, boolean hasFood) {
         boolean fighting = fighting(mode, recovering, health, nearest, creeperClose, bite);
         // chewing a gapple counts as "biting" too, and the abort line is 5: without this the gapple that a hurt run wants at
         // 5 to 10 blocks would be dropped on the next tick and picked up on the one after, forever
@@ -543,7 +547,7 @@ public final class CombatCommit {
         // (at gapple hp a fight keeps the gapple stance below, that bite is the better one)
         if (mode == Mode.FIGHT && gapple && health <= FLEE_HP) fighting = true;
         if (!fighting) return CombatRules.Stance.CALM;
-        CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple);
+        CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple, hasFood);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
         if (stance == CombatRules.Stance.EAT && mode != Mode.NONE) return CombatRules.Stance.FLEE;
         return stance;
@@ -619,7 +623,6 @@ public final class CombatCommit {
     // the cap counts from here, and a run gets one extension (startTick stays where the run really started)
     private long capFrom;
     private boolean extended;
-    private long bittenSince = -1;
     // hits landed on us this run after the grace, and per foe the tick of the last one we counted: one hit seen for a hundred
     // ticks is still one hit, the next swing from the same mob is a new one
     private int runHits;
@@ -742,7 +745,6 @@ public final class CombatCommit {
         losRun = false;
         noSightSince = -1;
         clearSince = -1;
-        bittenSince = -1;
         clearRunHits();
         cornerSince = -1;
         stuckSince = -1;
@@ -1262,9 +1264,10 @@ public final class CombatCommit {
     private Foe nextTarget(Tick t) {
         Foe best = null;
         if (cornered) {
-            // still boxed in: whatever is touching us (bar the one thing that is never a fight)
+            // still boxed in: whatever is touching us and has hit us (bar the one thing that is never a fight, and creepers: that
+            // is the creeper step's, a fresh zombie standing next to us is not a reason to keep swinging)
             for (Foe foe : t.foes()) {
-                if (foe.id() != targetId && foe.kind() != Kind.UNTOUCHABLE && foe.distance() <= CORNER_RANGE
+                if (foe.id() != targetId && foe.kind() != Kind.UNTOUCHABLE && !foe.creeper() && foe.hitUs() && foe.distance() <= CORNER_RANGE
                         && (best == null || foe.distance() < best.distance())) best = foe;
             }
             return best;
@@ -1318,7 +1321,6 @@ public final class CombatCommit {
         noSightSince = -1;
         losRun = (reason == Why.SHOT || reason == Why.LOW_HP) && t.foes().stream().anyMatch(foe -> foe.sniper() && foe.shooting())
                 && t.foes().stream().noneMatch(foe -> foe.distance() <= LOW_HP_RANGE && (!foe.ranged() || foe.creeper()));
-        bittenSince = -1;
         clearRunHits();
         cornerSince = -1;
         stuckSince = -1;
@@ -1384,18 +1386,9 @@ public final class CombatCommit {
             }
         } else if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS) return end(t, Event.RUN_CLEAR);
 
-        // running is not shaking it: something in contact keeps hitting us while we move. armed, that is a fight (the same
-        // boxed in fight as the cap's, so it finishes this target and cannot flip back to a run on the next tick). unarmed, a
-        // punch is still not a fight, the run goes on and the corner and cap rules decide
-        Foe biter = biter(t);
-        if (biter == null) {
-            bittenSince = -1;
-        } else if (bittenSince < 0) {
-            bittenSince = t.now();
-        } else if (t.armed() && t.now() - bittenSince >= BITTEN_TICKS && !anyDanger(t)) {
-            return startFight(t, biter, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
-        }
-        // or it keeps landing hits whether it stays in contact or not
+        // running is not shaking it: it keeps landing hits, in contact or not. armed, that is a fight (the same boxed in fight
+        // as the cap's, so it finishes this target and cannot flip back to a run on the next tick). unarmed, a punch is still
+        // not a fight, the run goes on and the corner and cap rules decide
         Event hitThrough = hitThrough(t);
         if (hitThrough != Event.NONE) return hitThrough;
 
@@ -1417,14 +1410,14 @@ public final class CombatCommit {
         // on the spot for three seconds with something on top of us, or six with something anywhere within the watch range
         long stuck = t.now() - cornerSince;
         if (stuck < CORNER_TICKS || (nearest > CORNER_RANGE && stuck < CORNER_FAR_TICKS)) return Event.NONE;
-        // nowhere to go and it is close: armed or not, hurt or not, this is a fight. on top of us anything will do. further out
-        // only something we could walk up to and hit: no creeper, and nothing we already gave up on (a skeleton across water that
+        // nowhere to go and it is close: armed or not, hurt or not, this is a fight. never a creeper (the creeper step's). on top
+        // of us anything else will do, further out only something we could walk up to and hit and have not given up on (a skeleton across water that
         // stalled a fight would be picked again every six seconds, with a run in between, for as long as we stood there).
         // the warden is the exception to "anything will do": never a fight in any state, boxed in or not
         Foe closest = null;
         for (Foe foe : t.foes()) {
             if (foe.distance() > CORNER_WATCH || foe.kind() == Kind.UNTOUCHABLE) continue;
-            if (foe.distance() > CORNER_RANGE && (foe.creeper() || ignored.containsKey(foe.id()))) continue;
+            if (foe.creeper() || (foe.distance() > CORNER_RANGE && ignored.containsKey(foe.id()))) continue;
             if (closest == null || foe.distance() < closest.distance()) closest = foe;
         }
         // nobody worth a fight: the run goes on, the cap or the mob settles it
@@ -1450,21 +1443,8 @@ public final class CombatCommit {
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
     }
 
-    // the closest melee foe in contact that has hit us since this run began (the hit that started it does not count: that is
-    // why we are running). never one we only run from, never one we gave up on
-    private Foe biter(Tick t) {
-        Foe best = null;
-        for (Foe foe : t.foes()) {
-            // (stillIgnored, not ignored: one we gave up on that bites us again is news, same as candidates())
-            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.guardHealth()) || stillIgnored(foe, t.now())) continue;
-            if (foe.sinceHit() >= t.now() - startTick) continue;
-            if (best == null || foe.distance() < best.distance()) best = foe;
-        }
-        return best;
-    }
-
-    // RUN_HITS hits after the grace and the run is not working. armed with nothing we only run from about, turn on it (the
-    // biter's turn, boxed in rules). no pick this tick keeps the count, the next tick asks again
+    // RUN_HITS hits after the grace and the run is not working. armed with nothing we only run from about, turn on it (boxed
+    // in rules). no pick this tick keeps the count, the next tick asks again
     private Event hitThrough(Tick t) {
         countRunHits(t);
         if (runHits < RUN_HITS || !t.armed() || anyDanger(t)) return Event.NONE;
@@ -1528,7 +1508,7 @@ public final class CombatCommit {
             if (foe.distance() > LOW_HP_RANGE || foe.kind() == Kind.UNTOUCHABLE) continue;
             // (a lobber or sniper we could not reach is not who the run turns round on)
             if (gaveUpOn(foe, t.now())) continue;
-            if ((foe.distance() <= CONTACT || foe.hitUs()) && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
+            if (!foe.creeper() && (foe.distance() <= CONTACT || foe.hitUs()) && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
             if (!foe.creeper() && !ignored.containsKey(foe.id()) && (near == null || foe.distance() < near.distance())) near = foe;
         }
         return onUs != null ? onUs : near;
@@ -1559,7 +1539,6 @@ public final class CombatCommit {
         cornered = false;
         farSince = -1;
         clearSince = -1;
-        bittenSince = -1;
         clearRunHits();
         cornerSince = -1;
         stuckSince = -1;

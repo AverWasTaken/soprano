@@ -55,6 +55,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -94,6 +95,10 @@ final class CombatBrain {
     private long _stanceLogAt = Long.MIN_VALUE / 2;
     private float _lastHealth = -1;
     private DamageSource _lastSource;
+    // the blaze or skeleton whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
+    private DamageSource _shotSeen;
+    private Mob _shooter;
+    private long _shooterAt = Long.MIN_VALUE / 2;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private final HealUpTask _healUp = new HealUpTask();
@@ -199,6 +204,9 @@ final class CombatBrain {
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
         _lastSource = null;
+        _shotSeen = null;
+        _shooter = null;
+        _shooterAt = Long.MIN_VALUE / 2;
         _run = null;
         _fight = null;
         _fightId = -1;
@@ -286,6 +294,16 @@ final class CombatBrain {
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
+        // the hold's re-run source: who threw the last projectile at us, when it is a blaze or a skeleton. the run steers around it
+        // like around any foe, the hostile list alone would leave it blind to a thrower it never carried
+        Mob shooter = rangedSource(player, now);
+        if (!recovering()) shooter = null;
+        boolean freshShot = shooter != null && now - _shooterAt <= RecoverHold.SHOT_SOURCE_TICKS;
+        if (shooter != null && !mobs.contains(shooter)) {
+            List<Mob> withShooter = new ArrayList<>(mobs);
+            withShooter.add(shooter);
+            _foeMobs = withShooter;
+        }
         // the pearl hunt owns the feet while endermen are the only thing around: a run from a teleporter goes nowhere and a
         // heal hold would sit in the open. the nook it is in (or digging) is the whole answer, so nothing is committed to.
         // the foes stay, the stance (the gapple at 8 hp) and the aura's contact swings still hear about them
@@ -310,7 +328,7 @@ final class CombatBrain {
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
-                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
+                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player))));
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -577,7 +595,8 @@ final class CombatBrain {
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
-        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering());
+        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering(),
+                mod.getFoodChain().hasFood());
     }
 
     // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
@@ -588,6 +607,24 @@ final class CombatBrain {
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
                 food != null && food.isTryingToEat());
+    }
+
+    // the blaze or skeleton whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it
+    // is read every tick and the thrower remembered here. the window only gates starting the re-run (see tick): once it is running
+    // the thrower stays in the run's crowd until the run is over, or the run would turn back toward it after two seconds
+    private Mob rangedSource(LocalPlayer player, long now) {
+        DamageSource source = player.getLastDamageSource();
+        if (source != null && source != _shotSeen) {
+            _shotSeen = source;
+            if (source.getDirectEntity() instanceof Projectile && source.getEntity() instanceof Mob mob
+                    && RecoverHold.rerunSource(typeOf(mob))) {
+                _shooter = mob;
+                _shooterAt = now;
+            }
+        }
+        boolean stale = now - _shooterAt > RecoverHold.SHOT_SOURCE_TICKS && _commit.mode() != Mode.RUN;
+        if (_shooter != null && (stale || !_shooter.isAlive())) _shooter = null;
+        return _shooter;
     }
 
     // a blaze with a line on us that the hostile list does not carry (it only lists the charged ones and the ones in melee). asked

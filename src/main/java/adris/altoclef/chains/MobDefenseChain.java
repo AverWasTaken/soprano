@@ -43,7 +43,6 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
@@ -102,6 +101,9 @@ public class MobDefenseChain extends SingleTaskChain {
     // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
     // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
     private long _dodgeTick = Long.MIN_VALUE;
+    // ticks until the closest incoming projectile reaches us, as of the last isProjectileClose. a bite in progress only gives
+    // way to the shield when this is short (a held shield swaps the food out of the hand, which throws the bite away)
+    private double _impactTicks = Double.POSITIVE_INFINITY;
     private boolean _capSneak;
     private final Object _capOwner = new Object();
     // anything that is not a block, for the main hand while the shield is up
@@ -369,7 +371,8 @@ public class MobDefenseChain extends SingleTaskChain {
         if (creeperShield) {
             // the creeper's shield is up, leave it be
         } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
-                && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
+                && isProjectileClose(mod) && BiteRules.shieldMayStart(mod.getFoodChain().biting(), _impactTicks)
+                && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
             _dodgeTick = mod.getWorld().getGameTime();
@@ -514,34 +517,28 @@ public class MobDefenseChain extends SingleTaskChain {
         // a run keeps walking: stopping to turn round for a fireball is how the ghast gets a free volley on a bot that was
         // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
         boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
+        boolean close = false;
+        _impactTicks = Double.POSITIVE_INFINITY;
         try {
             if (!projectiles.isEmpty()) {
                 for (CachedProjectile projectile : projectiles) {
                     if (projectile.position.distanceToSqr(mod.getPlayer().position()) < 150) {
-                        boolean isGhastBall = projectile.projectileType == LargeFireball.class;
-                        if (isGhastBall) {
-                            Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
-                            Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
-                            if (ghastBall.isPresent() && ghast.isPresent() && !committed
-                                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-                                mod.getClientBaritone().getPathingBehavior().requestPause();
-                                LookHelper.lookAt(mod, ghast.get().getEyePosition());
-                            }
-                            return false;
-                            // Ignore ghast balls
-                        }
                         if (projectile.projectileType == DragonFireball.class) {
-                            // Ignore dragon fireballs
-                            return false;
+                            // dragon fireballs are the dragon fight's problem, not the shield's. (continue, not return: the
+                            // rest of the list still has arrows in it)
+                            continue;
                         }
-                        if (projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class || projectile.projectileType == SmallFireball.class) {
+                        // (a ghast ball goes through the same closest approach as the rest: the shield is the answer to it, and
+                        // the pause and the turn to face it below only happen for one that is actually coming at us)
+                        if (projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class
+                                || projectile.projectileType == SmallFireball.class || projectile.projectileType == LargeFireball.class) {
                             // check if the velocity of the projectile is going away from us
                             // oh no fancy math
                             Vec3 velocity = projectile.velocity;
                             Vec3 delta = mod.getPlayer().position().subtract(projectile.position);
                             // the dot product scales with the fireball's speed and our distance, so 0.25 of slack can throw out one
                             // that is coming straight at us. only a real "away" counts for those
-                            double epsilon = projectile.projectileType == SmallFireball.class ? 0 : 0.25;
+                            double epsilon = projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class ? 0.25 : 0;
                             // signed on purpose: abs() ignored the arrows sailing sideways past us and kept dodging the ones already flying away
                             if (velocity.dot(delta) <= epsilon) {
                                 // Arrow is going away from us, ignore it.
@@ -556,30 +553,23 @@ public class MobDefenseChain extends SingleTaskChain {
                         double horizontalDistanceSq = delta.x * delta.x + delta.z * delta.z;
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
+                            // every close one counts for the impact clock, so a far arrow listed first does not hide a near fireball
+                            _impactTicks = Math.min(_impactTicks, ProjectileHelper.ticksToClosest(projectile.position, projectile.velocity, mod.getPlayer().position()));
+                            if (close) continue;
+                            close = true;
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
                             if (!committed
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
-                                if (projectile.projectileType instanceof Projectile projectileEntity) {
-                                    Entity owner = projectileEntity.getOwner();
-                                    if (owner != null) {
-                                        LookHelper.lookAt(mod, owner.getEyePosition());
-                                        return true;
-                                    }
-                                    LookHelper.lookAt(mod, projectile.position);
-                                    return true;
-                                }
                                 LookHelper.lookAt(mod, projectile.position);
-                                return true;
                             }
-                            return true;
                         }
                     }
                 }
             }
         } catch (ConcurrentModificationException ignored) {
         }
-        return false;
+        return close;
     }
 
     private static boolean hasShield(AltoClef mod) {

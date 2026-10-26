@@ -298,4 +298,27 @@ public class RecoverHoldTest {
         long end2 = runAndClear(d, 1000, 10, FED);
         assertEquals(Event.NONE, d.step(tick(end2 + 1, 12, 30, FED)));
     }
+
+    @Test
+    public void onlyBlazesAndSkeletonTypesAreAHoldRerunSource() {
+        for (String type : new String[]{"blaze", "skeleton", "stray", "bogged"}) {
+            assertTrue(type, RecoverHold.rerunSource(type));
+        }
+        // a ghast shoots from sixty blocks and the nether run would end in lava, the shield is its answer. a wither skeleton swings
+        for (String type : new String[]{"ghast", "wither_skeleton", "zombie", "creeper", "witch", "player"}) {
+            assertFalse(type, RecoverHold.rerunSource(type));
+        }
+    }
+
+    @Test
+    public void aThrowerWeAreToldAboutIsARunAgainAndFireAloneIsNot() {
+        // the brain turns a recent blaze or skeleton hit into the watched flag, with no foe in the list at all
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        assertEquals(Event.NONE, c.step(tick(end + 1, 12, 30, FED)));
+        assertTrue(c.recovering());
+        Tick shot = new Tick(end + 2, 11, 30, 0, List.of(), null, Way.NONE, true, false, false, FED, false, 0, true);
+        assertEquals(Event.RUN_START, c.step(shot));
+        assertEquals(Why.SHOT, c.why());
+    }
 }

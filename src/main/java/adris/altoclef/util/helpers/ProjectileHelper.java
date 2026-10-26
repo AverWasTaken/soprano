@@ -49,6 +49,14 @@ public class ProjectileHelper {
      * of the arrow when it reaches that point as the result's Y value.
      */
     public static Vec3 calculateArrowClosestApproach(Vec3 shootOrigin, Vec3 shootVelocity, double yGravity, Vec3 playerOrigin) {
+        if (yGravity == 0) {
+            // no gravity (fireballs): a straight line, closest point in 3d. the flat version below turns distance into time with
+            // the horizontal speed, which a ball that speeds up (or one that drops straight down) does not keep
+            double speedSq = shootVelocity.lengthSqr();
+            if (speedSq < 1.0E-12) return shootOrigin;
+            double t = shootVelocity.dot(playerOrigin.subtract(shootOrigin)) / speedSq;
+            return shootOrigin.add(shootVelocity.scale(t));
+        }
         Vec3 flatEncounter = getClosestPointOnFlatLine(shootOrigin.x, shootOrigin.z, shootVelocity.x, shootVelocity.z, playerOrigin.x, playerOrigin.z);
         double encounterDistanceTraveled = (flatEncounter.subtract(shootOrigin.x, flatEncounter.y, shootOrigin.z)).length();
 
@@ -59,6 +67,14 @@ public class ProjectileHelper {
         double hitHeight = getArrowHitHeight(yGravity, horizontalVel, verticalVel, initialHeight, encounterDistanceTraveled);
 
         return new Vec3(flatEncounter.x, hitHeight, flatEncounter.z);
+    }
+
+    // ticks until a projectile is closest to a point, going straight at its current speed (no gravity, no speeding up: a rough
+    // clock, good enough to ask "is it about to land"). infinity for one that is standing still, 0 for one already past
+    public static double ticksToClosest(Vec3 origin, Vec3 velocity, Vec3 target) {
+        double speedSq = velocity.lengthSqr();
+        if (speedSq < 1.0E-12) return Double.POSITIVE_INFINITY;
+        return Math.max(0, velocity.dot(target.subtract(origin)) / speedSq);
     }
 
     public static Vec3 calculateArrowClosestApproach(CachedProjectile projectile, Vec3 pos) {

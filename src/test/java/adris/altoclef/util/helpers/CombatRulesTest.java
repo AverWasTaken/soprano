@@ -252,4 +252,15 @@ public class CombatRulesTest {
         assertTrue(CombatRules.healingMeal(BlazeFightRules.RECOVERED_HEALTH - 0.5f, CombatRules.REGEN_HUNGER - 1));
         assertTrue(CombatRules.healingMeal(14.9f, 15));
     }
+
+    @Test
+    public void noFoodMeansNoEatStance() {
+        // hp 3 with nobody near: the quick bite, but only with something to bite
+        assertEquals(CombatRules.Stance.EAT, CombatRules.stance(true, 3, NOBODY, false, true));
+        assertEquals(CombatRules.Stance.FLEE, CombatRules.stance(true, 3, NOBODY, false, false));
+        // the gapple is its own food and does not need the pick
+        assertEquals(CombatRules.Stance.EAT_GAPPLE, CombatRules.stance(true, 3, NOBODY, true, false));
+        // the old four argument form still assumes food
+        assertEquals(CombatRules.Stance.EAT, CombatRules.stance(true, 3, NOBODY, false));
+    }
 }

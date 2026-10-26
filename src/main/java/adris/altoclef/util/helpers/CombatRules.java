@@ -132,9 +132,15 @@ public final class CombatRules {
 
     // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)
     public static Stance stance(boolean inCombat, float health, double nearestThreat, boolean hasGapple) {
+        return stance(inCombat, health, nearestThreat, hasGapple, true);
+    }
+
+    // hasFood: the food chain has something it would eat. without it the EAT stance is a promise nobody can keep (it still
+    // sets the in-combat flag in the food chain and the bucket chain), so it is the flee stance instead
+    public static Stance stance(boolean inCombat, float health, double nearestThreat, boolean hasGapple, boolean hasFood) {
         if (!inCombat) return Stance.CALM;
         if (health <= FLEE_HEALTH && hasGapple) return Stance.EAT_GAPPLE;
-        if (health <= CRITICAL_HEALTH && nearestThreat > QUICK_BITE_CLEARANCE) return Stance.EAT;
+        if (health <= CRITICAL_HEALTH && nearestThreat > QUICK_BITE_CLEARANCE && hasFood) return Stance.EAT;
         if (health <= FLEE_HEALTH) return Stance.FLEE;
         return Stance.FIGHT;
     }
