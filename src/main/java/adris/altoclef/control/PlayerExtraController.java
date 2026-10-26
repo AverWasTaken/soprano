@@ -234,9 +234,10 @@ public class PlayerExtraController {
                 || _mod.getMobDefenseChain().creeperStepActive()) {
             return false;
         }
-        // a sword never hops. the ticks right before the charge fills are still worth a call, that is when sprint comes off
+        // a sword never hops. the ticks right before the charge fills are still worth a call, that is when sprint comes off.
+        // from the early swing scale on too, the callers gate on this and the swing beside a calm neutral goes out down there
         if (swordInHand()) {
-            return ticksToFull() <= SwordSwing.LOCK_LEAD_TICKS;
+            return ticksToFull() <= SwordSwing.LOCK_LEAD_TICKS || chargeScale() >= SwordSwing.CALM_SWING_SCALE;
         }
         if (!Baritone.settings().altoJumpCrits.value) {
             return false;
@@ -330,19 +331,27 @@ public class PlayerExtraController {
     // sprinting when this call began, the stop packet has not gone out yet and the swing waits a tick for it
     private boolean swordSwing(LocalPlayer player, LivingEntity target) {
         boolean wasSprinting = player.isSprinting();
-        boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calmNeutralBeside(target));
+        boolean calm = calmNeutralBeside(target);
+        boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calm);
         if (lock) {
             _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
             player.setSprinting(false);
         }
-        if (!SwordSwing.swing(attackReady(), lock, !wasSprinting)) {
+        // a neutral mob beside the target and the sweep would anger it: swing early, under the 0.9 a sweep needs (SwordSwing)
+        boolean ready = SwordSwing.charged(chargeScale(), calm);
+        if (!SwordSwing.swing(ready, lock, !wasSprinting)) {
             return false;
         }
-        return plainSwing(player, target);
+        return plainSwing(player, target, ready);
+    }
+
+    // the scale the server will judge the swing by, pre 1.9 always full
+    private double chargeScale() {
+        return LegacyCombat.active() ? 1 : _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL);
     }
 
     // a neutral mob nobody has poked within a block or two of the target: the sweep would hit it and start a fight we did not
-    // pick. a sprint hit can't sweep, so we leave sprint alone then
+    // pick. we swing early then (SwordSwing.charged), and leave sprint alone: a sprint hit can't sweep either
     private boolean calmNeutralBeside(LivingEntity target) {
         for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, target.getBoundingBox().inflate(2))) {
             if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)) {
@@ -455,7 +464,11 @@ public class PlayerExtraController {
     // on the ground, coming down or swimming is the old rule, and it is what keeps a swing from spending the rise of a crit hop.
     // with no hop in flight there is no crit to spare, so a bot climbing or pillaring with a mob on it gets to hit it too
     private boolean plainSwing(LocalPlayer player, Entity entity) {
-        if (attackReady() && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater() || !critInFlight())) {
+        return plainSwing(player, entity, attackReady());
+    }
+
+    private boolean plainSwing(LocalPlayer player, Entity entity, boolean ready) {
+        if (ready && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater() || !critInFlight())) {
             attack(entity);
             return true;
         }
