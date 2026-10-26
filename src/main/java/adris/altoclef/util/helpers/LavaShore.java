@@ -170,6 +170,12 @@ public final class LavaShore {
         return backUnsafe || (rimWide && hurtTime > 0);
     }
 
+    // bitten this tick window with the foe in reach: a rim step never lands under that knockback (it gets re-picked every
+    // hit), so the swing is the only way out
+    public static boolean underFire(int hurtTime, boolean inReach) {
+        return hurtTime > 0 && inReach;
+    }
+
     // a rim step that has gone this many ticks without getting any closer to its cell is not going to land (a knock mid step, a
     // path that cannot be walked)
     static final int STEP_STALL_TICKS = 6;

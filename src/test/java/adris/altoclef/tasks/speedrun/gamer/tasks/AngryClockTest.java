@@ -56,6 +56,35 @@ public class AngryClockTest {
     }
 
     @Test
+    public void theThirdLavaBackOffOnTheSameEndermanGivesUpOnIt() {
+        PearlHuntTask.LavaStrikes strikes = new PearlHuntTask.LavaStrikes();
+        PearlHuntTask.AngryClock clock = new PearlHuntTask.AngryClock();
+        // nothing pursued yet: no strike can land on nobody
+        assertFalse(strikes.strike());
+        strikes.pursue(9);
+        assertFalse(strikes.strike());
+        assertFalse(strikes.strike());
+        assertTrue(strikes.strike());
+        clock.giveUp(strikes.id());
+        assertTrue(clock.givenUp(9));
+        assertFalse(PearlHuntTask.lootable(clock.givenUp(9), () -> false));
+    }
+
+    @Test
+    public void aNewTargetStartsTheLavaCountOver() {
+        PearlHuntTask.LavaStrikes strikes = new PearlHuntTask.LavaStrikes();
+        strikes.pursue(1);
+        assertFalse(strikes.strike());
+        assertFalse(strikes.strike());
+        strikes.pursue(2);
+        assertFalse(strikes.strike());
+        assertFalse(strikes.strike());
+        // looking at the same one again every tick does not reset it
+        strikes.pursue(2);
+        assertTrue(strikes.strike());
+    }
+
+    @Test
     public void nookStampGoesStale() {
         assertTrue(PearlHuntTask.nookFresh(1000, 1000));
         assertTrue(PearlHuntTask.nookFresh(1000, 1200));

@@ -256,7 +256,10 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // every few ticks never lands
             boolean stepWalking = _rimLive;
             _rimLive = false;
-            if (isKillTask() && stepWalking && plan != ApproachRules.Plan.SWING_NOW
+            // a foe that is biting us in reach: a step cannot land under the knockback, the swing is the way out
+            boolean underFire = LavaShore.underFire(mod.getPlayer().hurtTime, inReach);
+            boolean stepPlan = plan != ApproachRules.Plan.SWING_NOW && plan != ApproachRules.Plan.INTERACT && !underFire;
+            if (isKillTask() && stepWalking && stepPlan
                     && !mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                 Task off = rimStep(mod, entity);
                 if (off != null) {
@@ -265,7 +268,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             }
             // a kill task on any edge with a melee foe close gets off it before anything else, the plan only gets the tick when
             // there is nowhere better (rimStep is null then) or the step ran out of time
-            if (isKillTask() && rimWide && plan != ApproachRules.Plan.SWING_NOW) {
+            if (isKillTask() && rimWide && stepPlan) {
                 Task off = rimStep(mod, entity);
                 if (off != null) {
                     return off;
@@ -285,7 +288,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     _progress.reset();
                     _blocker = null;
                     // on a rim the cooldown ticks between swings are for getting off it, the swing itself still comes first
-                    if (rimWide && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
+                    if (rimWide && !underFire && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
                         Task off = rimStep(mod, entity);
                         if (off != null) {
                             return off;
@@ -298,7 +301,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     if (isKillTask() && lavaHold(mod, entity)) {
                         _progress.reset();
                         _blocker = null;
-                        Task off = rimStep(mod, entity);
+                        Task off = underFire ? null : rimStep(mod, entity);
                         if (off != null) {
                             return off;
                         }
@@ -335,7 +338,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                         _wanderLive = true;
                         return new TimeoutWanderTask();
                     }
-                    if (isKillTask()) {
+                    if (isKillTask() && !underFire) {
                         Task off = rimStep(mod, entity);
                         if (off != null) {
                             return off;

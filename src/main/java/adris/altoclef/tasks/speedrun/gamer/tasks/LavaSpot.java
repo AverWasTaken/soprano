@@ -23,10 +23,16 @@ final class LavaSpot {
         return armedAt != Long.MIN_VALUE && now >= armedAt && now - armedAt < LIFETIME_TICKS;
     }
 
-    // a second trigger while one is live does not move it: false = nothing changed, the walk away was done once already
+    // a second trigger while one is live does not move it: false = nothing changed, the walk away was done once already.
+    // unless we are standing inside it, then the clock restarts and the walk away runs again (true): a spot we never walked
+    // out of did nothing, and the endermen right next to us were still fair game
     boolean arm(double x, double y, double z, long now) {
         if (active(now)) {
-            return false;
+            if (!covers(x, y, z, now)) {
+                return false;
+            }
+            armedAt = now;
+            return true;
         }
         this.x = x;
         this.y = y;

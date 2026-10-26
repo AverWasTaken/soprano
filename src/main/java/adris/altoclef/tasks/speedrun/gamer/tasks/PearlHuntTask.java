@@ -105,6 +105,10 @@ public class PearlHuntTask extends Task {
     private AwayCount awayCount = new AwayCount(0, Long.MIN_VALUE / 2);
     // where lava kept us stuck: endermen near it are skipped for a few minutes (see LavaSpot) and we walk off it once
     private final LavaSpot lavaSpot = new LavaSpot();
+    private final LavaStrikes lavaStrikes = new LavaStrikes();
+    // a back off is new when the last fleeing tick is more than one tick old, so an interrupt or an early return in between
+    // cannot leave it looking like the same one
+    private long lastFleeAt = Long.MIN_VALUE / 2;
     private RunAwayFromPositionTask leaveSpot;
     private long leaveUntil = Long.MIN_VALUE;
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
@@ -146,6 +150,34 @@ public class PearlHuntTask extends Task {
 
         boolean givenUp(int id) {
             return gaveUp.contains(id);
+        }
+
+        void giveUp(int id) {
+            gaveUp.add(id);
+        }
+    }
+
+    // lava back offs against the enderman we were walking at: the same one every cycle is a foe that is not worth it, even
+    // when each back off on its own looks fine. a new target starts the count over
+    static final class LavaStrikes {
+        static final int LIMIT = 3;
+        private int id = -1;
+        private int count;
+
+        void pursue(int pursued) {
+            if (pursued != id) {
+                id = pursued;
+                count = 0;
+            }
+        }
+
+        // true on the strike that hits the limit
+        boolean strike() {
+            return id >= 0 && ++count >= LIMIT;
+        }
+
+        int id() {
+            return id;
         }
     }
 
@@ -243,6 +275,11 @@ public class PearlHuntTask extends Task {
             // (the loot task wanders when nothing is around, which is no way to heal)
             return say("Recovering before the walk", null);
         }
+        // read before the back off below: it may be the tick that picks the target, and the back off clears it again
+        int lootId = loot.pursuingId();
+        if (lootId >= 0) {
+            lavaStrikes.pursue(lootId);
+        }
         if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod))) {
             // no nook to do it from: lava or fire means step away, low hp means wait while it heals
             List<BlockPos> lava = exposedLava(mod.getWorld(), mod.getPlayer().blockPosition(), EndermanNook.AGGRO_LAVA_GAP);
@@ -251,6 +288,13 @@ public class PearlHuntTask extends Task {
             // a flee that started runs to the end even when the lava is out of reach by the first step, or it is a one block shuffle
             boolean fleeing = stance == EndermanNook.Stance.AWAY || (away != null && !away.isFinished(mod));
             awayCount = awayCount.step(gameTime, fleeing);
+            // one strike per back off, on the tick it starts. the id was saved while looting, the loot task may have let go of it by now
+            if (fleeing && gameTime - lastFleeAt > 1 && !lava.isEmpty() && lavaStrikes.strike()) {
+                angrySpent.giveUp(lavaStrikes.id());
+            }
+            if (fleeing) {
+                lastFleeAt = gameTime;
+            }
             if (fleeing && awayCount.ticks() <= AWAY_GIVE_UP_TICKS) {
                 return say("Backing off", stepAway(mod, lava));
             }
@@ -270,7 +314,6 @@ public class PearlHuntTask extends Task {
         }
         // time spent as the loot target counts toward the same give up as the angry fight, an enderman the walk cannot reach
         // would otherwise bounce between this and the hotspot walk (the latch sees it, drops, sees it) for minutes
-        int lootId = loot.pursuingId();
         if (lootId >= 0) {
             angrySpent.tick(lootId, ANGRY_SECONDS);
         }
