@@ -295,7 +295,9 @@ public class CollectFromFurnaceTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof CollectFromFurnaceTask task && task.pos.equals(pos) && task.mode == mode && task.block == block;
+        // a finished visit is not "the same task" as a fresh one at the same furnace: Task keeps the equal child, and a done one
+        // returns null every tick, so it would sit on top for ever
+        return other instanceof CollectFromFurnaceTask task && !task.done && task.pos.equals(pos) && task.mode == mode && task.block == block;
     }
 
     @Override

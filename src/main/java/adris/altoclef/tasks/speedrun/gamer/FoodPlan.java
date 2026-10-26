@@ -464,6 +464,13 @@ public final class FoodPlan {
         return Math.max(0, stationUnits - Math.max(0, leftover));
     }
 
+    // what an open station screen counts as food. cooked output always, raw input only once something is cooking it: the cook
+    // loads the meat before the fuel, and meat sitting in a cold smoker counted as held food, which turned the need off before
+    // the fuel went in (the fuel slot covers the tick or two before the lit flag syncs)
+    public static int stationUnits(int rawUnits, int cookedUnits, boolean lit, boolean hasFuel) {
+        return cookedUnits + (lit || hasFuel ? rawUnits : 0);
+    }
+
     // the food in the slots of a screen the food task opened that is not the task's own work. the first look (`before` -1) is what
     // was there, after that it only goes down: the task takes the output out and the bag gets it, and what it puts in on top is
     // the bag emptying into the station, the dip inStation exists to hide. `synced` = the slots have arrived, an empty look at a

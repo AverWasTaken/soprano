@@ -266,7 +266,9 @@ public final class MinecraftFacts implements GamerFacts {
         stationSynced = false;
         stationMenuId = -1;
         if (player.containerMenu instanceof AbstractFurnaceMenu furnace) {
-            stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
+            boolean lit = StorageHelper.getFurnaceFuel(furnace) > 0;
+            stationFood = FoodPlan.stationUnits(foodIn(furnace.getSlot(0).getItem()), foodIn(furnace.getSlot(2).getItem()), lit,
+                    !furnace.getSlot(1).getItem().isEmpty());
             stationSynced = furnace.getStateId() > 0;
             stationMenuId = furnace.containerId;
             // which block the screen is, so only that station's own job hides its food (FoodPlan.inStation)

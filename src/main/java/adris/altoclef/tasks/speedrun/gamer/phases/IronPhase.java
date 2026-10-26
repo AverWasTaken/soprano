@@ -700,13 +700,21 @@ public class IronPhase implements PhaseHandler {
         if (f.furnaceJobs().isEmpty() || !surface.aboutToClimb(mod, ctx, head, next)) {
             return null;
         }
+        // end a finished visit before picking, it can remove the job the pick would name
+        Task running = furnaces.active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
         Vec3 me = mod.getPlayer().position();
         RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z), FurnaceWatch.banned(mod));
         if (job == null) {
             return null;
         }
-        packed.add(job.pos);
-        return furnaces.leave(mod, ctx, job, FurnacePlan.Leaving.AREA, jobDepth(mod, job));
+        Task trip = furnaces.leave(mod, ctx, job, FurnacePlan.Leaving.AREA, jobDepth(mod, job));
+        if (trip != null) {
+            packed.add(job.pos);
+        }
+        return trip;
     }
 
     // blocks between the job's furnace and the open sky over it (over us, when its chunk is not loaded)

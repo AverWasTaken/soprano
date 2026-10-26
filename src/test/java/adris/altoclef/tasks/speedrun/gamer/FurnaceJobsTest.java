@@ -466,4 +466,22 @@ public class FurnaceJobsTest {
         assertSame(stuck, FurnaceJobs.foodJob(List.of(stuck, fine), j -> j == fine ? PackUp.TRIP_BUDGET + 1 : 10, banned));
         assertNull(FurnaceJobs.foodJob(List.of(), j -> 0, banned));
     }
+
+    // a visit that emptied the furnace takes its job off the books, and a trip must not start on it afterwards (FurnaceWatch.leave)
+    @Test
+    public void aVisitedAndEmptiedJobIsNoLongerListed() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = job(1, 4, 0, "smoker");
+        jobs.add(j);
+        assertTrue(FurnaceJobs.listed(jobs, j));
+        FurnaceJobs.afterVisit(jobs, j, 0, 800);
+        assertFalse(FurnaceJobs.listed(jobs, j));
+    }
+
+    @Test
+    public void listedIsByIdentity() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        jobs.add(job(1, 4, 0, "smoker"));
+        assertFalse(FurnaceJobs.listed(jobs, job(1, 4, 0, "smoker")));
+    }
 }
