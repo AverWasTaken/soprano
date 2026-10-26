@@ -109,4 +109,20 @@ public class InteriorPickTest {
         air.add("in0");
         assertEquals("in1", pick("in0", 0));
     }
+
+    @Test
+    public void ringOnlyStopsTheFlintUntilItHasBeenAirOnce() {
+        assertEquals(18, InteriorPick.preemptCount(18, 6, false));
+        assertEquals(6, InteriorPick.preemptCount(18, 6, true));
+    }
+
+    @Test
+    public void ringSeenClearNeedsEveryOutsideCellAirAtSomePoint() {
+        List<String> cells = List.of("in0", "in1", "r0", "r1");
+        Set<String> seen = new HashSet<>();
+        // in-plane cells don't count, and one ring cell alone isn't enough
+        assertEquals(false, InteriorPick.ringSeenClear(cells, 2, seen, c -> c.equals("in0") || c.equals("r0")));
+        // r0 refills, r1 clears: never both at once, still counts as seen
+        assertEquals(true, InteriorPick.ringSeenClear(cells, 2, seen, c -> c.equals("r1")));
+    }
 }

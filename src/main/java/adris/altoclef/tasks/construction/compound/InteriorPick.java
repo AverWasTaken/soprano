@@ -76,9 +76,32 @@ final class InteriorPick {
 
     // the world side, same for both builders
     static BlockPos pick(AltoClef mod, BlockPos origin, Vec3i[] interior, Predicate<BlockPos> isAir, BlockPos current, int noReachTicks, int reachSwitches) {
-        List<BlockPos> cells = new ArrayList<>(interior.length);
-        for (Vec3i offs : interior) {
-            cells.add(origin.offset(offs));
+        return pick(mod, origin, interior, interior.length, isAir, current, noReachTicks, reachSwitches);
+    }
+
+    // vanilla only wants the cells in the portal's own plane to be air to light it, the ring round them never blocks the
+    // fire. once every ring cell has been seen clear once, only the first inPlane cells may stop the flint (a ring cell
+    // that refills afterwards, lava cobble and friends, is not worth a restart). no timer, no counter
+    static int preemptCount(int total, int inPlane, boolean ringSeenClear) {
+        return ringSeenClear ? Math.min(inPlane, total) : total;
+    }
+
+    // notes every ring cell (past the first inPlane ones) that is air right now into seen, true once all of them have
+    // been air at some point. they don't have to be air together, clearing one can let another refill
+    static <T> boolean ringSeenClear(List<T> cells, int inPlane, java.util.Set<T> seen, Predicate<T> isAir) {
+        for (int i = inPlane; i < cells.size(); i++) {
+            if (isAir.test(cells.get(i))) {
+                seen.add(cells.get(i));
+            }
+        }
+        return seen.size() >= cells.size() - inPlane;
+    }
+
+    // the first count entries of interior are the ones in the running
+    static BlockPos pick(AltoClef mod, BlockPos origin, Vec3i[] interior, int count, Predicate<BlockPos> isAir, BlockPos current, int noReachTicks, int reachSwitches) {
+        List<BlockPos> cells = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            cells.add(origin.offset(interior[i]));
         }
         return pick(cells, isAir, mod.getBlockTracker()::unreachable, p -> reachNow(mod, p), current, noReachTicks, reachSwitches);
     }

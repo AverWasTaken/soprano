@@ -37,6 +37,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -96,6 +97,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     // only the spawn matters, not the sleep: nearby monsters block sleeping but not the spawn set, so they are not worth a fight
     private boolean _spawnOnly;
     private BlockPos _currentBedRegion;
+    // a spot the bed must keep clear of (the portal we just lit), and how far. null for no such spot
+    private BlockPos _awayFrom;
+    private int _awayDist;
     // spots dropped for a slow block in the clear box. the search only asks canBreak about part of that box, so without
     // this it would hand the same spot straight back
     private final java.util.Set<BlockPos> _slowRegions = new java.util.HashSet<>();
@@ -130,6 +134,56 @@ public class PlaceBedAndSetSpawnTask extends Task {
     public PlaceBedAndSetSpawnTask spawnOnly() {
         this._spawnOnly = true;
         return this;
+    }
+
+    // the clear box and its floor stay awayDist blocks off this spot, the chebyshev way, on every axis
+    public PlaceBedAndSetSpawnTask awayFrom(BlockPos spot, int dist) {
+        this._awayFrom = spot;
+        this._awayDist = dist;
+        return this;
+    }
+
+    // the gap between a point and what the bed task touches: the clear box from origin, and the floor row under it, which
+    // sits one block further out on the z side (BED_BOTTOM_PLATFORM runs z -1..1, the box runs z 0..2). 0 when the point is
+    // inside either. static and pure so it can be tested without a world
+    static int gapToBedBox(BlockPos origin, Vec3i clearSize, BlockPos spot) {
+        int x0 = origin.getX(), x1 = origin.getX() + clearSize.getX() - 1;
+        int box = Math.max(axisGap(spot.getX(), x0, x1), Math.max(
+                axisGap(spot.getY(), origin.getY(), origin.getY() + clearSize.getY() - 1),
+                axisGap(spot.getZ(), origin.getZ(), origin.getZ() + clearSize.getZ() - 1)));
+        int floor = Math.max(axisGap(spot.getX(), x0, x1), Math.max(
+                axisGap(spot.getY(), origin.getY() - 1, origin.getY() - 1),
+                axisGap(spot.getZ(), origin.getZ() - 1, origin.getZ() + 1)));
+        return Math.min(box, floor);
+    }
+
+    private static int axisGap(int v, int lo, int hi) {
+        return v < lo ? lo - v : Math.max(v - hi, 0);
+    }
+
+    // a region that comes closer than dist to the spot is out. no spot, no rule
+    static boolean tooCloseToSpot(BlockPos origin, Vec3i clearSize, BlockPos spot, int dist) {
+        return spot != null && gapToBedBox(origin, clearSize, spot) < dist;
+    }
+
+    // blocks the clear loop never digs: a frame, or a portal. a bed is never worth either
+    static boolean neverDigForBed(Block block) {
+        return block == Blocks.OBSIDIAN || block == Blocks.CRYING_OBSIDIAN || block == Blocks.NETHER_PORTAL;
+    }
+
+    // the first protected block in a clear box, or null. the predicate is the world, the rest is just the box
+    static BlockPos protectedInBox(BlockPos origin, Vec3i clearSize, Predicate<BlockPos> isProtected) {
+        for (int dx = 0; dx < clearSize.getX(); ++dx) {
+            for (int dz = 0; dz < clearSize.getZ(); ++dz) {
+                for (int dy = 0; dy < clearSize.getY(); ++dy) {
+                    BlockPos cell = origin.offset(dx, dy, dz);
+                    if (isProtected.test(cell)) {
+                        return cell;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -391,6 +445,16 @@ public class PlaceBedAndSetSpawnTask extends Task {
             }
         }
 
+        // a frame in the way is not a slow block, it is a no. same exit though: this spot goes and the search starts over.
+        // skipping the block would leave a half cleared box and the bed placed into stone
+        if (protectedInBox(_currentBedRegion, BED_CLEAR_SIZE, cell -> neverDigForBed(mod.getWorld().getBlockState(cell).getBlock())) != null) {
+            _slowRegions.add(_currentBedRegion.immutable());
+            _currentBedRegion = null;
+            _currentBreak = null;
+            _currentStructure = null;
+            return null;
+        }
+
         outer:
         for (int dx = 0; dx < BED_CLEAR_SIZE.getX(); ++dx) {
             for (int dz = 0; dz < BED_CLEAR_SIZE.getZ(); ++dz) {
@@ -606,7 +670,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                         continue; // Skip if the distance is greater than the closest distance found so far
                     }
 
-                    if (!_slowRegions.contains(attemptPos) && isGoodPosition(mod, attemptPos)) {
+                    if (!_slowRegions.contains(attemptPos) && !tooCloseToSpot(attemptPos, BED_CLEAR_SIZE, _awayFrom, _awayDist) && isGoodPosition(mod, attemptPos)) {
                         closestGood = attemptPos;
                         closestDist = distance;
                     }

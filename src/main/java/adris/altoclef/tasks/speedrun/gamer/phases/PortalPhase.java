@@ -377,7 +377,7 @@ public class PortalPhase implements PhaseHandler {
         if (!Respawn.wantPortalBed(ctx.state(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
             return null;
         }
-        portalBed = new PlaceBedAndSetSpawnTask().spawnOnly();
+        portalBed = new PlaceBedAndSetSpawnTask().spawnOnly().awayFrom(at, 4);
         portalBedSince = ctx.secondsInPhase();
         hudState = "Setting the spawn by the portal";
         return portalBed;
