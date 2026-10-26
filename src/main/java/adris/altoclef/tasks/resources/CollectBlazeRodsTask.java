@@ -31,6 +31,8 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
     private boolean _camping;
+    // true on ticks where the walk to the spawner is what we are doing (not the fight, not the camp, not the fire)
+    private boolean _toSpawner;
 
     public CollectBlazeRodsTask(int count) {
         super(Items.BLAZE_ROD, count);
@@ -39,6 +41,13 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     public boolean isCampingSpawner() {
         return _camping;
+    }
+
+    // read once per phase tick and cleared, so a tick this task did not get to run (a rod pickup took the wheel) is not a walk
+    public boolean takeWalkingToSpawner() {
+        boolean was = _toSpawner;
+        _toSpawner = false;
+        return was;
     }
 
     // every live blaze within range, in reach or not. only for saying "they are here, just not in reach" on the hud
@@ -57,6 +66,18 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return _foundBlazeSpawner;
     }
 
+    // the walk to this spawner goes nowhere. only this one block is banned (the ban book honours it, so the pick below
+    // skips it), true when another spawner took its place. none = the caller decides what a fortress with no way in is worth
+    public boolean dropSpawner(AltoClef mod) {
+        if (_foundBlazeSpawner == null) {
+            return false;
+        }
+        mod.getBlockTracker().requestBlockUnreachable(_foundBlazeSpawner, 0, "no way to the blaze spawner");
+        _foundBlazeSpawner = null;
+        pickSpawner(mod);
+        return _foundBlazeSpawner != null;
+    }
+
     @Override
     protected void onResourceStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.SPAWNER);
@@ -73,6 +94,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         _camping = false;
+        _toSpawner = false;
         // the fight only sets this on ticks it runs, the walk to the nether or a rod pickup should not inherit it
         _fight.idle();
         // We must go to the nether.
@@ -101,6 +123,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
         if (_foundBlazeSpawner != null) {
             if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
                 setDebugState("Going to blaze spawner");
+                _toSpawner = true;
                 return new GetToBlockTask(_foundBlazeSpawner.above(), false);
             }
             // Put out fire that might mess with us.

@@ -62,4 +62,24 @@ public class AngryClockTest {
         assertFalse(PearlHuntTask.nookFresh(1000, 1201));
         assertFalse(PearlHuntTask.nookFresh(Long.MIN_VALUE, 5000));
     }
+
+    @Test
+    public void lavaShoreAndGivenUpEndermenAreNotChased() {
+        assertTrue(PearlHuntTask.lootable(false, () -> false));
+        assertFalse(PearlHuntTask.lootable(false, () -> true));
+        // the angry fight spent its 20 s: the loot walk does not hand it a fresh kill task
+        assertFalse(PearlHuntTask.lootable(true, () -> false));
+        // and the angry fight skips the shore ones too, whatever else is true of them
+        assertTrue(PearlHuntTask.fightable(true, false, () -> false));
+        assertFalse(PearlHuntTask.fightable(true, false, () -> true));
+        assertFalse(PearlHuntTask.fightable(false, false, () -> false));
+        assertFalse(PearlHuntTask.fightable(true, true, () -> false));
+    }
+
+    @Test
+    public void theLavaCheckIsNotAskedForOnesAlreadyOut() {
+        boolean[] asked = {false};
+        PearlHuntTask.lootable(true, () -> asked[0] = true);
+        assertFalse(asked[0]);
+    }
 }

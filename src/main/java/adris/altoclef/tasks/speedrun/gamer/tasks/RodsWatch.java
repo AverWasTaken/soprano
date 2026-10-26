@@ -67,6 +67,12 @@ public final class RodsWatch {
         return now - Math.max(campSince, lastGain) >= campSeconds ? Verdict.GIVE_UP_SPAWNER : Verdict.KEEP_GOING;
     }
 
+    // a spawner we cannot get to was banned on its own. another one known = go there, the fortress it sits in is not the
+    // spawner's fault. none = the whole fortress goes, nothing else is left to try in it
+    public static Verdict afterNoWay(boolean otherSpawnerKnown) {
+        return otherSpawnerKnown ? Verdict.KEEP_GOING : Verdict.GIVE_UP_SPAWNER;
+    }
+
     // the task dropped its spawner and picked another by itself, the new one gets its own dry clock
     public void spawnerChanged() {
         spawnerSince = Double.NaN;

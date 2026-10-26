@@ -102,7 +102,7 @@ public class PearlHuntTask extends Task {
         this.dimension = dimension;
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
-        loot = new KillAndLootTask(Enderman.class, man -> !onLavaShore(man), true, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
+        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> onLavaShore(man)), true, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -301,6 +301,18 @@ public class PearlHuntTask extends Task {
         return out;
     }
 
+    // the loot walk goes for an enderman unless it stands on a lava shore (the bot ends up at the lava with nowhere to go) or the
+    // angry fight already spent its 20 s on it: that one is the same unreachable mob, and as a fresh kill task it would get fresh
+    // stand caps and stand there again
+    // the angry fight skips the lava shore ones too: the bot would walk to the lava edge for a mob that never reaches it
+    static boolean fightable(boolean angryAndAlive, boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
+        return angryAndAlive && lootable(gaveUpAngry, onLavaShore);
+    }
+
+    static boolean lootable(boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
+        return !gaveUpAngry && !onLavaShore.getAsBoolean();
+    }
+
     private static boolean onLavaShore(Entity man) {
         return !exposedLava(AltoClef.getInstance().getWorld(), man.blockPosition(), EndermanNook.AGGRO_LAVA_GAP).isEmpty();
     }
@@ -328,7 +340,7 @@ public class PearlHuntTask extends Task {
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
-            dist[i] = man.isAlive() && man.isCreepy() && !angrySpent.givenUp(man.getId()) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
+            dist[i] = fightable(man.isAlive() && man.isCreepy(), angrySpent.givenUp(man.getId()), () -> onLavaShore(man)) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
         int at = EndermanNook.nearestAngry(dist);
         if (at < 0) {

@@ -120,6 +120,7 @@ public final class NetherSweepPlanner {
     // not asked for this long = something else had the wheel
     private static final double IDLE_SECONDS = 5;
     private static final int MAX_GAP_RESETS = 2;
+    static final int SKIPPED_CELL_SLACK = 3;
     // two stuck give-ups this close together are the same dead end pocket
     static final int POCKET_BLOCKS = 24;
     // a give-up from a bot that never left where the cell started says nothing about the cell, see pinned
@@ -150,6 +151,8 @@ public final class NetherSweepPlanner {
     };
     // cells started per goal: a fortress that took four cells must not eat the warped forest search's share
     private final int[] cellsStarted = new int[Goal.values().length];
+    // the ones of those we really walked off from, the count maxCells is about
+    private final int[] cellsWalked = new int[Goal.values().length];
     private double lastStepAt = Double.NaN;
     // where the last stuck give-up happened and in which cell. planner local on purpose, same as 'dead': a rebuilt planner
     // (phase entry after a retry, a death or a regress) starts over, the worst case is one more try at a pocket. a dropped
@@ -264,6 +267,11 @@ public final class NetherSweepPlanner {
         return fresh;
     }
 
+    // a brick of a fortress we gave up on: reporting it does nothing, so the scan should not spend its look on it
+    public boolean isGivenUp(RunState.Pos pos) {
+        return nearAny(state.fortressExhausted, pos, EXHAUSTED_BLOCKS);
+    }
+
     private boolean reportBastion(RunState.Pos pos, String key) {
         // a fortress and a bastion never share a cell, so a "bastion" block in a fortress cell is something else
         // (a ruined portal, a blackstone blob) and must not make us avoid the fortress we want
@@ -335,8 +343,11 @@ public final class NetherSweepPlanner {
     public Action step(Goal goal, int px, int pz, double now) {
         playerX = px;
         playerZ = pz;
-        if (cell != null && dist2(px, pz, cellStartX, cellStartZ) >= (long) PINNED_BLOCKS * PINNED_BLOCKS) {
+        if (cell != null && !leftStart && dist2(px, pz, cellStartX, cellStartZ) >= (long) PINNED_BLOCKS * PINNED_BLOCKS) {
             leftStart = true;
+            // a cell only counts toward maxCells once we have really walked off. one we sat boxed in at is the bot's problem, not
+            // a sweep of nothing (the 120 s stall still ends a bot that is pocketed for ever)
+            cellsWalked[goal.ordinal()]++;
         }
         // we were busy with something else (rods, a ghast, a barter) so the waypoint's clock did not run for real:
         // without this the first step back would time the waypoint out on the spot
@@ -391,9 +402,11 @@ public final class NetherSweepPlanner {
 
     // null = a cell is current now
     private Action startNextCell(Goal goal, int px, int pz, double now) {
-        int started = cellsStarted[goal.ordinal()];
-        if (started >= maxCells) {
-            return new Action(Kind.FAIL, px, pz, "swept " + started + " cells and found nothing");
+        int walked = cellsWalked[goal.ordinal()];
+        // cells that end without a step (nowhere to stand, all behind a bastion) are free, but a grid that never runs out of them
+        // still has to end
+        if (walked >= maxCells || cellsStarted[goal.ordinal()] >= maxCells * SKIPPED_CELL_SLACK) {
+            return new Action(Kind.FAIL, px, pz, "swept " + walked + " cells and found nothing");
         }
         // a revisit in flight (count 1) is spent: out of the fresh pick, and not offered as a deferred one either
         Set<String> spent = state.visitedCells;
