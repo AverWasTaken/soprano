@@ -1255,7 +1255,8 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
+        // (endermanHere runs off the phase tick, a fight under the combat brain lets it lapse, and the pearl it dropped is still there)
+        if (s.warpedForest == null && !endermanHere && !warpedSearchOver && !PearlHuntTask.pearlDropNear(mod)) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;

@@ -20,4 +20,14 @@ public class PearlHuntPickupTest {
         assertTrue(PearlHuntTask.pickupInReach(flat));
         assertFalse(PearlHuntTask.pickupInReach(flat + 20 * 20));
     }
+
+    @Test
+    public void theAngryLatchHoldsUntilDeadGoneFarOrSpent() {
+        assertTrue(PearlHuntTask.stillLatched(true, 10, false, false));
+        assertTrue(PearlHuntTask.stillLatched(true, 32, false, false));
+        assertFalse(PearlHuntTask.stillLatched(false, 10, false, false));
+        assertFalse(PearlHuntTask.stillLatched(true, 33, false, false));
+        assertFalse(PearlHuntTask.stillLatched(true, 10, true, false));
+        assertFalse(PearlHuntTask.stillLatched(true, 10, false, true));
+    }
 }

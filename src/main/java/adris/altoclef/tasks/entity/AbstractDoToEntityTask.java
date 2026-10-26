@@ -229,9 +229,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
             boolean comesToUs = isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
+            // a foe that is biting us in reach: a step cannot land under the knockback, the swing is the way out
+            boolean underFire = LavaShore.underFire(mod.getPlayer().hurtTime, inReach);
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
-                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
+                    isKillTask() ? ApproachRules.swingWaited(_standCap.waitedLong(), underFire, rimWide) : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
                     comesToUs);
             if (isKillTask()) {
                 if (_waitCapEntity != entity) {
@@ -256,8 +258,6 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // every few ticks never lands
             boolean stepWalking = _rimLive;
             _rimLive = false;
-            // a foe that is biting us in reach: a step cannot land under the knockback, the swing is the way out
-            boolean underFire = LavaShore.underFire(mod.getPlayer().hurtTime, inReach);
             boolean stepPlan = plan != ApproachRules.Plan.SWING_NOW && plan != ApproachRules.Plan.INTERACT && !underFire;
             if (isKillTask() && stepWalking && stepPlan
                     && !mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {

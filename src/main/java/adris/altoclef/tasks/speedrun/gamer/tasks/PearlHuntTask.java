@@ -343,15 +343,23 @@ public class PearlHuntTask extends Task {
     // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
     // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
     private Task pickupStep(AltoClef mod) {
-        var me = mod.getPlayer();
-        Optional<ItemEntity> drop = mod.getEntityTracker().getClosestItemDrop(me.position(), e -> pickupInReach(e.distanceToSqr(me)), pearlTarget);
-        if (drop.isEmpty()) {
+        if (closestPearlDrop(mod, pearlTarget).isEmpty()) {
             return null;
         }
         if (pickup == null) {
             pickup = new PickupDroppedItemTask(pearlTarget, true);
         }
         return pickup;
+    }
+
+    private static Optional<ItemEntity> closestPearlDrop(AltoClef mod, ItemTarget target) {
+        var me = mod.getPlayer();
+        return mod.getEntityTracker().getClosestItemDrop(me.position(), e -> pickupInReach(e.distanceToSqr(me)), target);
+    }
+
+    // the phase asks this before it wanders off to sweep for a forest: a pearl on the floor is the hunt's to fetch
+    public static boolean pearlDropNear(AltoClef mod) {
+        return closestPearlDrop(mod, new ItemTarget(Items.ENDER_PEARL, 1)).isPresent();
     }
 
     static boolean pickupInReach(double distSqr) {
@@ -496,6 +504,16 @@ public class PearlHuntTask extends Task {
     // nearest one first, and only inside the range where it walks to us (past it, it teleports to us by itself).
     // but only for a while per target, one we cannot reach (lava, a ledge) does not get to stall the whole hunt
     private Task fightAngry(AltoClef mod) {
+        // the one we are on stays the one until it is dead, gone, far or spent: isCreepy flickers when it looks away, and
+        // every swap to the loot task restarts the kill task and its caps
+        if (angryTarget instanceof Enderman latched && angryTask != null) {
+            if (stillLatched(latched.isAlive() && !latched.isRemoved(), latched.distanceTo(mod.getPlayer()), angrySpent.givenUp(latched.getId()), avoid(latched))) {
+                return angrySpent.tick(latched.getId(), ANGRY_SECONDS) ? null : angryTask;
+            }
+            // (let go for real: a stale latch would come back the moment the mob walked into range again, skipping isCreepy)
+            angryTarget = null;
+            angryTask = null;
+        }
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
@@ -516,6 +534,10 @@ public class PearlHuntTask extends Task {
             return null;
         }
         return angryTask;
+    }
+
+    static boolean stillLatched(boolean aliveAndHere, double dist, boolean gaveUp, boolean avoided) {
+        return aliveAndHere && dist <= EndermanNook.ANGRY_RANGE && !gaveUp && !avoided;
     }
 
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
