@@ -325,9 +325,9 @@ public class IronPhase implements PhaseHandler {
             // same moment the old cooking tick built: a new head is the boundary, the early pick cuts the mining need short
             boolean boundary = head == null || !head.equals(kitHead);
             moment = moment(mod, ctx, needs, head, boundary, schedule);
-            plan = furnaces.plan(ctx, moment);
+            plan = furnaces.plan(mod, ctx, moment);
             if (ctx.food().held() < ctx.food().floor()) {
-                plan = FurnacePlan.foodFirst(plan);
+                plan = FurnacePlan.foodFirst(plan, FurnaceWatch.banned(mod));
             }
             furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                     || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
@@ -470,7 +470,7 @@ public class IronPhase implements PhaseHandler {
         }
         // a pack-up or a stand-by ended earlier this tick: its visit changed the jobs, so the plan is made again (trip() only
         // re-plans for a trip that ends inside its own call)
-        FurnacePlan.Plan fresh = furnaceAsked ? furnaces.plan(ctx, moment) : plan;
+        FurnacePlan.Plan fresh = furnaceAsked ? furnaces.plan(mod, ctx, moment) : plan;
         furnaceAsked = true;
         Task trip = furnaces.trip(mod, ctx, fresh, moment);
         if (trip == null) {
@@ -599,7 +599,7 @@ public class IronPhase implements PhaseHandler {
         // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
         boolean boundary = head == null || !head.equals(committed);
         FurnacePlan.Moment moment = moment(mod, ctx, runnable, head, boundary, schedule);
-        FurnacePlan.Plan plan = furnaces.plan(ctx, moment);
+        FurnacePlan.Plan plan = furnaces.plan(mod, ctx, moment);
         Task side = plan.standingBy() ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
         if (side != null) {
             hudState = support.hud();
@@ -701,7 +701,7 @@ public class IronPhase implements PhaseHandler {
             return null;
         }
         Vec3 me = mod.getPlayer().position();
-        RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z));
+        RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z), FurnaceWatch.banned(mod));
         if (job == null) {
             return null;
         }

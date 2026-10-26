@@ -1154,4 +1154,67 @@ public class FurnacePlanTest {
     private static void assertNotEquals(String message, Object unexpected, Object actual) {
         org.junit.Assert.assertNotEquals(message, unexpected, actual);
     }
+
+    @Test
+    public void aBannedJobIsPickedLastNotDropped() {
+        RunState.FurnaceJob stuck = furnace(100);
+        RunState.FurnaceJob other = furnace(500);
+        Predicate<RunState.FurnaceJob> banned = j -> j == stuck;
+        // the banned one is ready first, the other one still wins
+        assertSame(stuck, FurnacePlan.plan(List.of(stuck, other), BOUNDARY, 1000, null).pick().job());
+        Plan plan = FurnacePlan.plan(List.of(stuck, other), BOUNDARY, 1000, null, banned);
+        assertSame(other, plan.pick().job());
+        assertEquals(2, plan.verdicts().size());
+        // nothing else wants a trip: the banned job is still the pick
+        assertSame(stuck, FurnacePlan.plan(List.of(stuck, furnace(90000)), BOUNDARY, 1000, null, banned).pick().job());
+    }
+
+    @Test
+    public void aBannedQuickSmokerStillLosesToAPlainCollect() {
+        RunState.FurnaceJob quickSmoker = smoker(1100);
+        RunState.FurnaceJob plain = furnace(500);
+        Moment standBy = new Moment(true, true, false, false, true);
+        Plan open = FurnacePlan.plan(List.of(quickSmoker, plain), standBy, 1000, null);
+        // the quick stand-by outranks the plain collect when nothing is banned
+        assertSame(quickSmoker, open.pick().job());
+        assertSame(plain, FurnacePlan.plan(List.of(quickSmoker, plain), standBy, 1000, null, j -> j == quickSmoker).pick().job());
+        assertSame(quickSmoker, FurnacePlan.plan(List.of(quickSmoker), standBy, 1000, null, j -> true).pick().job());
+    }
+
+    @Test
+    public void foodFirstLeavesAReachablePickAloneForBannedFood() {
+        RunState.FurnaceJob iron = furnace(100);
+        RunState.FurnaceJob meatBanned = furnace(200);
+        meatBanned.unitsEach = 6;
+        RunState.FurnaceJob meat = furnace(300);
+        meat.unitsEach = 6;
+        Predicate<RunState.FurnaceJob> banned = j -> j == meatBanned;
+        // reachable food swaps in, banned food does not
+        Plan both = FurnacePlan.plan(List.of(iron, meatBanned, meat), BOUNDARY, 1000, null, banned);
+        assertSame(iron, both.pick().job());
+        assertSame(meat, FurnacePlan.foodFirst(both, banned).pick().job());
+        Plan onlyBanned = FurnacePlan.plan(List.of(iron, meatBanned), BOUNDARY, 1000, null, banned);
+        assertSame(iron, FurnacePlan.foodFirst(onlyBanned, banned).pick().job());
+        // the pick is banned itself: banned food is no worse
+        Plan bothBanned = FurnacePlan.plan(List.of(iron, meatBanned), BOUNDARY, 1000, null, j -> true);
+        assertSame(meatBanned, FurnacePlan.foodFirst(bothBanned, j -> true).pick().job());
+    }
+
+    @Test
+    public void aTripToABannedFurnaceIsLetGoOnlyWhenAnotherJobHasATripToMake() {
+        RunState.FurnaceJob stuck = furnace(100);
+        RunState.FurnaceJob ready = furnace(500);
+        RunState.FurnaceJob cooking = furnace(90000);
+        Predicate<RunState.FurnaceJob> banned = j -> j == stuck;
+        ready.track.call = Call.COLLECT_NOW;
+        cooking.track.call = Call.LEAVE;
+        assertTrue(FurnacePlan.abandonBanned(stuck, List.of(stuck, ready), banned));
+        // another job that is merely due but has no trip to make (LEAVE) is no reason: it would be dropped and picked again
+        assertFalse(FurnacePlan.abandonBanned(stuck, List.of(stuck, cooking), banned));
+        // a trip to a fine furnace, or no trip, is left alone
+        assertFalse(FurnacePlan.abandonBanned(ready, List.of(stuck, ready), banned));
+        assertFalse(FurnacePlan.abandonBanned(null, List.of(stuck, ready), banned));
+        // another banned job with a trip is no reason either
+        assertFalse(FurnacePlan.abandonBanned(stuck, List.of(stuck, ready), j -> true));
+    }
 }
