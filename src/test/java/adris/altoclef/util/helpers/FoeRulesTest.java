@@ -437,8 +437,9 @@ public class FoeRulesTest {
         CombatCommit c = new CombatCommit();
         assertEquals(Event.FIGHT_START, c.step(tick(100, 20, null, man)));
         assertEquals(man.id(), c.targetId());
-        // dead: the fight is over and the user task (looting the pearl) has the wheel back
-        assertEquals(Event.FIGHT_DEAD, c.step(tick(130, 20, null)));
+        // gone: it may just have blinked away, the fight waits out ENDER_WAIT_TICKS before the user task (looting the pearl) gets the wheel back
+        assertEquals(Event.NONE, c.step(tick(130, 20, null)));
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(131 + CombatCommit.ENDER_WAIT_TICKS, 20, null)));
         assertEquals(Mode.NONE, c.mode());
     }
 

@@ -93,6 +93,29 @@ public class CombatCommitSplitTest {
         assertEquals(Event.FIGHT_DEAD, c.step(tick(last + 1, null)));
     }
 
+    private static Foe ender(int id, long sinceHit) {
+        return new Foe(id, 2, false, false, sinceHit, Kind.ENDERMAN, 2.0);
+    }
+
+    @Test
+    public void anEndermanThatBlinkedAwayIsNotDeadYet() {
+        CombatCommit c = fightingCube(ender(1, 3));
+        for (long now = NOW + 1; now <= NOW + CombatCommit.ENDER_WAIT_TICKS; now++) {
+            assertEquals(Event.NONE, c.step(tick(now, null)));
+            assertEquals(Mode.FIGHT, c.mode());
+        }
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(NOW + CombatCommit.ENDER_WAIT_TICKS + 2, null)));
+    }
+
+    @Test
+    public void anEndermanThatComesBackIsTheSameFight() {
+        CombatCommit c = fightingCube(ender(1, 3));
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, null)));
+        assertEquals(Event.NONE, c.step(tick(NOW + 30, null)));
+        assertEquals(Event.FIGHT_NEXT, c.step(tick(NOW + 31, null, ender(2, NEVER))));
+        assertEquals(2, c.targetId());
+    }
+
     @Test
     public void aSizeOneCubeLeavesNothingToWaitFor() {
         CombatCommit c = fightingCube(cube(1, "magma_cube", false, 4, 0, 4, 3));
