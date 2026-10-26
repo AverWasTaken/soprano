@@ -1265,7 +1265,15 @@ def cp_xz(lv, cp):
     x, y, z = cp["x"], cp["y"], cp["z"]
     def solid(st):
         return st and not st.split("[")[0] in ("water", "lava", "air") and "pressure_plate" not in st and "torch" not in st
-    if solid(lv.blocks.get((x, y - 1, z), "")) or solid(lv.blocks.get((x, y, z), "")):
+    below = lv.blocks.get((x, y - 1, z), "")
+    if below.split("[")[0] == "ladder" and not solid(lv.blocks.get((x, y, z), "")):
+        # the top of a ladder: it's only a sixteenth or three thick, along the side it hangs on (opposite the way it faces).
+        # in the middle of the cell you'd be off it, and slide down it and out of the bottom
+        side = {"south": (0, -1), "north": (0, 1), "east": (-1, 0), "west": (1, 0)}
+        for f, (dx, dz) in side.items():
+            if f"facing={f}" in below:
+                return x + 0.5 + dx * 0.18, z + 0.5 + dz * 0.18
+    if solid(below) or solid(lv.blocks.get((x, y, z), "")):
         return x + 0.5, z + 0.5
     for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
         if solid(lv.blocks.get((x + dx, y - 1, z + dz), "")):
