@@ -19,6 +19,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import baritone.api.utils.Pair;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.Item;
@@ -69,6 +70,8 @@ public class FoodChain extends SingleTaskChain {
     // is replaced by a poison tick, this keeps the hit. a fresh source object is a fresh hit, same as the combat log goes by
     private DamageSource _hitSource;
     private long _hitAt = Long.MIN_VALUE;
+    // the same, minus arrows and fireballs: only a hit in contact ends a standing meal (BiteRules.contactHit)
+    private long _contactHitAt = Long.MIN_VALUE;
     private LocalPlayer _hitPlayer;
     // the rule said not now this tick (somebody just hit us): needsToEat() keeps its mouth shut about it
     private boolean _notNow = false;
@@ -164,23 +167,40 @@ public class FoodChain extends SingleTaskChain {
             _hitPlayer = player;
             _hitSource = null;
             _hitAt = Long.MIN_VALUE;
+            _contactHitAt = Long.MIN_VALUE;
         }
         DamageSource source = player.getLastDamageSource();
         if (source == null || source == _hitSource) return;
         _hitSource = source;
-        if (BiteRules.entityHit(source.getEntity() != null, source.getDirectEntity() != null)) {
-            _hitAt = mod.getWorld().getGameTime();
+        long now = mod.getWorld().getGameTime();
+        boolean attacker = source.getEntity() != null;
+        boolean direct = source.getDirectEntity() != null;
+        if (BiteRules.entityHit(attacker, direct)) {
+            _hitAt = now;
+        }
+        if (BiteRules.contactHit(attacker, direct, source.getDirectEntity() instanceof Projectile)) {
+            _contactHitAt = now;
         }
     }
 
     // ticks since a mob or an arrow last hit us, Integer.MAX_VALUE for never. the nether death trip's walk reads it
     public int ticksSinceBodyHit(AltoClef mod) {
-        return hitAge(mod);
+        return age(mod, _hitAt);
     }
 
+    // the bite's own clock: arrows and fireballs left out
     private int hitAge(AltoClef mod) {
-        if (_hitAt == Long.MIN_VALUE) return BiteRules.NO_HIT;
-        return (int) Math.max(Math.min(mod.getWorld().getGameTime() - _hitAt, BiteRules.NO_HIT - 1L), Integer.MIN_VALUE);
+        return age(mod, _contactHitAt);
+    }
+
+    // a bite is going (the shield asks, it does not want to yank the food out of the hand under it)
+    public boolean biting() {
+        return _biting;
+    }
+
+    private static int age(AltoClef mod, long at) {
+        if (at == Long.MIN_VALUE) return BiteRules.NO_HIT;
+        return (int) Math.max(Math.min(mod.getWorld().getGameTime() - at, BiteRules.NO_HIT - 1L), Integer.MIN_VALUE);
     }
 
     private BiteRules.Scene scene(AltoClef mod) {

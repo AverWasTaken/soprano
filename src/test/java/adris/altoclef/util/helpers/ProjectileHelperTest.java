@@ -32,4 +32,28 @@ public class ProjectileHelperTest {
                 new Vec3(0, 70, 0), new Vec3(2, 0, 0), 0.05, new Vec3(20, 70, 0));
         assertEquals(70 - 0.5 * 0.05 * 100, hit.y, EPS);
     }
+
+    @Test
+    public void aFireballIsAStraightLineNoMatterHowFastItGetsThere() {
+        // a ball coming down at an angle: the closest point is on the line, gravity has nothing to say about it
+        Vec3 hit = ProjectileHelper.calculateArrowClosestApproach(
+                new Vec3(0, 80, 0), new Vec3(1, -1, 0), 0, new Vec3(10, 70, 0));
+        assertEquals(10, hit.x, EPS);
+        assertEquals(70, hit.y, EPS);
+    }
+
+    @Test
+    public void aFireballFallingStraightDownDoesNotComeOutAsNaN() {
+        Vec3 hit = ProjectileHelper.calculateArrowClosestApproach(
+                new Vec3(5, 90, 5), new Vec3(0, -1, 0), 0, new Vec3(5.5, 70, 5));
+        assertEquals(5, hit.x, EPS);
+        assertEquals(70, hit.y, EPS);
+    }
+
+    @Test
+    public void aFireballFlyingAwayStaysBehindItsOrigin() {
+        Vec3 hit = ProjectileHelper.calculateArrowClosestApproach(
+                new Vec3(0, 70, 0), new Vec3(1, 0, 0), 0, new Vec3(-4, 70, 0));
+        assertEquals(-4, hit.x, EPS);
+    }
 }

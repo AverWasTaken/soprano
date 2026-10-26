@@ -276,6 +276,8 @@ public class KillAura {
         }
         if (inFieldRange(mod, entity)) {
             if (entity instanceof LargeFireball) {
+                // shield up for it already: it blocks the ball, a swing would only drop our guard for the swing
+                if (mod.getPlayer().isBlocking()) return;
                 mod.getControllerExtras().attack(entity);
                 return;
             }
