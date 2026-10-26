@@ -30,6 +30,7 @@ import baritone.utils.FallingColumn;
 import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
@@ -407,6 +408,7 @@ public abstract class Movement implements IMovement, MovementHelper {
             }
             case GIVE_UP -> {
                 logDebug("stuck while swimming, replanning around it");
+                swimProbe(feetY, flat, up, wasDiving, floating);
                 swimStall.reset();
                 ((PathingBehavior) baritone.getPathingBehavior()).swimStalls().record(src, dest, ctx.world(), System.currentTimeMillis());
                 currentState.setStatus(MovementStatus.FAILED);
@@ -414,6 +416,24 @@ public abstract class Movement implements IMovement, MovementHelper {
             default -> {
             }
         }
+    }
+
+    // temporary: one line per new swim stall pair, to find out why swimming into a 2-high gap pins us. strip with the swimprobe tag
+    private void swimProbe(double feetY, double flat, double up, boolean wasDiving, boolean floating) {
+        PathingBehavior pb = (PathingBehavior) baritone.getPathingBehavior();
+        if (pb.swimStalls().snapshot(ctx.world(), System.currentTimeMillis()).penalty(src.x, src.y, src.z, dest.x, dest.y, dest.z) != 0) {
+            return;
+        }
+        AABB box = ctx.player().getBoundingBox();
+        System.out.println("[swimprobe] " + src + " -> " + dest + " feetY=" + feetY + " flat=" + flat + " up=" + up + " wasDiving=" + wasDiving
+                + " floating=" + floating + " pose=" + ctx.player().getPose() + " swimming=" + ctx.player().isSwimming()
+                + " inWater=" + ctx.player().isInWater() + " underWater=" + ctx.player().isUnderWater() + " onGround=" + ctx.player().onGround()
+                + " box=" + box.minY + ".." + box.maxY + " dest+1=" + blockName(dest.above(1)) + " dest+2=" + blockName(dest.above(2))
+                + " src+2=" + blockName(src.above(2)) + " branch=" + swimStall.lastGiveUp);
+    }
+
+    private String blockName(BlockPos pos) {
+        return String.valueOf(BuiltInRegistries.BLOCK.getKey(ctx.world().getBlockState(pos).getBlock()));
     }
 
     // a dive only gets under something at head height, with water at our level the whole way and more under it (so the

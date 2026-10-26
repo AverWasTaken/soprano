@@ -240,6 +240,16 @@ public final class FurnaceJobs {
         return true;
     }
 
+    // is this very job still on the books (identity, a removed job must not come back through an equal one)
+    public static boolean listed(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job) {
+        for (RunState.FurnaceJob j : jobs) {
+            if (j == job) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.
     // the furnace sat in an unloaded chunk for who knows how long, so the old doneTick was a guess and this one is not
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long now) {

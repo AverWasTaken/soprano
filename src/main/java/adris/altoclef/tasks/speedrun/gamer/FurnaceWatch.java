@@ -350,11 +350,21 @@ public final class FurnaceWatch {
         if (running != null) {
             return running;
         }
-        return job == null ? null : start(mod, ctx, FurnacePlan.leaving(job, why, depth));
+        // a pick made before active() ended the visit can name a job that visit just removed (identity: same objects as the facts list)
+        if (job == null || !FurnaceJobs.listed(ctx.state().furnaceJobs, job)) {
+            return null;
+        }
+        return start(mod, ctx, FurnacePlan.leaving(job, why, depth));
     }
 
     // out of the dimension: the job that is ready first, then the next one on the next call
     public Task leave(AltoClef mod, GamerContext ctx, FurnacePlan.Leaving why) {
+        // finish the visit first: it may remove the job the pick below would have named (argument order bit us once)
+        fresh = false;
+        Task running = active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
         return leave(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs(), banned(mod)), why, 0);
     }
 
