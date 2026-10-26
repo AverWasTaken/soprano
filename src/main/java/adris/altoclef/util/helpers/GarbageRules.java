@@ -192,6 +192,12 @@ public final class GarbageRules {
         return blocks > reserve ? block : -1;
     }
 
+    // a core build block is not garbage while the bag is at or under the reserve, the fragments go first. the stack-level
+    // twin of what junkPick does with the block total
+    public static boolean protectsCore(boolean core, int buildingBlocks, int reserve) {
+        return core && buildingBlocks <= reserve;
+    }
+
     private static int earlierRank(List<Entry> bag, int best, int i) {
         return best < 0 || bag.get(i).throwRank() < bag.get(best).throwRank() ? i : best;
     }
