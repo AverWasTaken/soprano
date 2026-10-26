@@ -93,6 +93,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private final TimerGame _inBedTimer = new TimerGame(1);
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private boolean _stayInBed;
+    // only the spawn matters, not the sleep: nearby monsters block sleeping but not the spawn set, so they are not worth a fight
+    private boolean _spawnOnly;
     private BlockPos _currentBedRegion;
     // spots dropped for a slow block in the clear box. the search only asks canBreak about part of that box, so without
     // this it would hand the same spot straight back
@@ -122,6 +124,11 @@ public class PlaceBedAndSetSpawnTask extends Task {
      */
     public PlaceBedAndSetSpawnTask stayInBed() {
         this._stayInBed = true;
+        return this;
+    }
+
+    public PlaceBedAndSetSpawnTask spawnOnly() {
+        this._spawnOnly = true;
         return this;
     }
 
@@ -278,7 +285,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 Vec3 vec3d = Vec3.atBottomCenterOf(nearestBed.get());
                 // 1.21.2 made isPreventingPlayerRest want a ServerLevel we do not have. every monster says true except zombified piglins, who want to be angry at us
                 List<Monster> list = mod.getWorld().getEntitiesOfClass(Monster.class, new AABB(vec3d.x() - 8.0, vec3d.y() - 5.0, vec3d.z() - 8.0, vec3d.x() + 8.0, vec3d.y() + 5.0, vec3d.z() + 8.0), (entity) -> !(entity instanceof ZombifiedPiglin) || EntityHelper.isAngryAtPlayer(mod, entity));
-                if (!list.isEmpty()) {
+                if (!_spawnOnly && !list.isEmpty()) {
                     for (Monster entity : list) {
                         setDebugState("Killing monster nearby");
                         Predicate<Entity> valid = e -> e == entity;

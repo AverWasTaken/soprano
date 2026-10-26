@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
+import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
@@ -19,6 +20,7 @@ import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -28,6 +30,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -55,6 +58,8 @@ public class PearlHuntTask extends Task {
     // the back off count only starts over after this long without fleeing: lava that is in reach one step and out of it the
     // next would otherwise reset it every other tick and the give up could never come
     private static final int AWAY_CALM_RESET_TICKS = 100;
+    // a pearl this close (all three axes, one 20 blocks down a cliff is not "close") is walked to before the hunt goes on
+    private static final double PICKUP_BLOCKS = 16;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -64,6 +69,9 @@ public class PearlHuntTask extends Task {
     // the angry ones seen last tick, so one that is dead now was one we killed
     private final List<Enderman> watched = new ArrayList<>();
     private final KillAndLootTask loot;
+    private final ItemTarget pearlTarget;
+    // one instance for the hunt: the bans live on the mod so a rebuild would be fine too, but this keeps its walk progress
+    private PickupDroppedItemTask pickup;
     private final Task goToDimension;
 
     private GetWithinRangeOfBlockTask toHotspot;
@@ -105,7 +113,8 @@ public class PearlHuntTask extends Task {
         this.dimension = dimension;
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
-        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> onLavaShore(man)), true, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
+        pearlTarget = new ItemTarget(Items.ENDER_PEARL, pearlsTotal);
+        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> onLavaShore(man)), true, pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -206,6 +215,10 @@ public class PearlHuntTask extends Task {
         if (angry != null) {
             return say("Fighting an angry enderman", angry);
         }
+        Task grab = pickupStep(mod);
+        if (grab != null) {
+            return say("Picking up an ender pearl", grab);
+        }
         Task walk = walkToHotspot(mod);
         if (walk != null) {
             return say("Heading for the warped forest", walk);
@@ -233,6 +246,25 @@ public class PearlHuntTask extends Task {
             away = null;
         }
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
+    }
+
+    // a pearl lying close by comes before the hotspot walk and the recovery wait, the loot task below is the only other thing that
+    // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
+    // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
+    private Task pickupStep(AltoClef mod) {
+        var me = mod.getPlayer();
+        Optional<ItemEntity> drop = mod.getEntityTracker().getClosestItemDrop(me.position(), e -> pickupInReach(e.distanceToSqr(me)), pearlTarget);
+        if (drop.isEmpty()) {
+            return null;
+        }
+        if (pickup == null) {
+            pickup = new PickupDroppedItemTask(pearlTarget, true);
+        }
+        return pickup;
+    }
+
+    static boolean pickupInReach(double distSqr) {
+        return distSqr <= PICKUP_BLOCKS * PICKUP_BLOCKS;
     }
 
     // back off only when there is an enderman the loot walk would actually go for, not from nothing

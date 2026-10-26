@@ -144,11 +144,11 @@ public final class Respawn {
         return atStart && bedsInBag > 0 && state.strongholdStart != null && nothingNearStronghold(state);
     }
 
-    // the bed by the overworld nether portal: a bed we already carry (the wool is the dragon's, none gets made for this), daytime so
-    // the click sets the spawn and does not try to sleep, and nothing holding our respawn near that portal already. the caller
-    // latches it, once per run
-    public static boolean wantPortalBed(RunState state, boolean day, int bedsInBag, double portalX, double portalZ) {
-        if (!day || bedsInBag <= 0) {
+    // the bed by the overworld nether portal: a bed we already carry (the wool is the dragon's, none gets made for this), and nothing
+    // holding our respawn near that portal already. night is fine, the click sets the spawn before the sleep check and we just
+    // sleep through it. the caller latches it, once per run
+    public static boolean wantPortalBed(RunState state, int bedsInBag, double portalX, double portalZ) {
+        if (bedsInBag <= 0) {
             return false;
         }
         RunState.Pos bed = bed(state);

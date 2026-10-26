@@ -357,8 +357,7 @@ public class PortalPhase implements PhaseHandler {
     // RunState.respawnPos (RespawnWatch) is the only record of it. same shape as RoomPhase.roomBedStep
     private Task portalBedStep(AltoClef mod, GamerContext ctx, Optional<BlockPos> portal) {
         if (portalBed != null) {
-            // (dusk mid placement: the click would sleep, not set the spawn)
-            if (portalBed.isFinished(mod) || !mod.getWorld().isBrightOutside() || ctx.secondsInPhase() - portalBedSince > PORTAL_BED_SECONDS) {
+            if (portalBed.isFinished(mod) || ctx.secondsInPhase() - portalBedSince > PORTAL_BED_SECONDS) {
                 ctx.progress("respawn bed");
                 portalBed = null;
                 return null;
@@ -375,10 +374,10 @@ public class PortalPhase implements PhaseHandler {
             return null;
         }
         portalBedDecided = true;
-        if (!Respawn.wantPortalBed(ctx.state(), mod.getWorld().isBrightOutside(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
+        if (!Respawn.wantPortalBed(ctx.state(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
             return null;
         }
-        portalBed = new PlaceBedAndSetSpawnTask();
+        portalBed = new PlaceBedAndSetSpawnTask().spawnOnly();
         portalBedSince = ctx.secondsInPhase();
         hudState = "Setting the spawn by the portal";
         return portalBed;
