@@ -431,7 +431,18 @@ public class ItemHelper {
         // autoTorch on and altoclef tossing the torches as junk would be a short lived feature
         if (Baritone.settings().autoTorch.value && TorchProcess.isTorch(stack))
             return true;
-        return mod.getBehaviour().isProtected(stack.getItem()) || AltoSettings.isImportant(stack.getItem());
+        if (mod.getBehaviour().isProtected(stack.getItem()) || AltoSettings.isImportant(stack.getItem()))
+            return true;
+        // the count is only read for the core kinds, this is asked about every bag stack
+        return isCoreBuildBlock(stack.getItem())
+                && GarbageRules.protectsCore(true, StorageHelper.getBuildingMaterialCount(mod), Baritone.settings().altoReservedBuildingBlockCount.value);
+    }
+
+    // the blocks worth mining for the reserve (end stone is all the end has). granite, andesite and the
+    // rest count as building blocks too but take a slot each for a couple of items, so they are what goes first and never what we go looking for
+    public static boolean isCoreBuildBlock(Item item) {
+        return item == Items.COBBLESTONE || item == Items.COBBLED_DEEPSLATE || item == Items.NETHERRACK || item == Items.DIRT
+                || item == Items.END_STONE;
     }
 
     public static boolean canThrowAwayStack(AltoClef mod, ItemStack stack) {
