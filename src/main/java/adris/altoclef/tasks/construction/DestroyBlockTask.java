@@ -16,6 +16,7 @@ import adris.altoclef.util.helpers.ReachHold;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.ToolPick;
 import adris.altoclef.util.helpers.ToolSwap;
+import baritone.Baritone;
 import baritone.utils.ToolSet;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -979,8 +980,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // by item and by speed, not by slot: the slot object is new every tick, and two tools that are equally
                 // fast would trade places forever (see ToolSwap). a best that is only the fastest wrong tool (iron on
                 // obsidian) has to be strictly faster than the hand, "the hand is wrong too" is not a reason to swap
-                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
-                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed)) {
+                // (or the other way round, the wear chain wants a slower tool that is next to die. decided once per block, the
+                // crackedAlready guard above keeps it from swapping out from under a half broken one)
+                boolean faster = ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
+                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed);
+                boolean chained = !faster && Baritone.settings().toolWearChain.value
+                        && ToolSwap.worthSwappingDown(held.getItem(), ToolPick.optionOf(held, state), best.getItem(), ToolPick.optionOf(best, state));
+                if (faster || chained) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
                             && !mod.getFoodChain().isTryingToEat();
                     if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {

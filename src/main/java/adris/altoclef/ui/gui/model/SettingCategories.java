@@ -49,7 +49,7 @@ public final class SettingCategories {
             "allowClimbJumps", "allowVines", "allowWalkOnBottomSlab", "allowWalkOnMagmaBlocks", "allowDiagonalAscend",
             "allowDiagonalDescend", "allowDownward", "allowSwimming", "allowBoats", "boatPickup", "sprintAscends",
             "sprintThroughDescends", "sprintThroughCorners", "sprintJumping", "preferFasterPathing", "allowGroundShortcuts",
-            "fastMode", "walkWhileBreaking", "useSwordToMine", "freeLook", "blockFreeLook", "elytraFreeLook", "smoothLook",
+            "fastMode", "walkWhileBreaking", "useSwordToMine", "toolWearChain","freeLook", "blockFreeLook", "elytraFreeLook", "smoothLook",
             "elytraSmoothLook", "antiCheatCompatibility", "rightClickSpeed", "blockReachDistance", "blockBreakSpeed",
             "considerPotionEffects", "pauseMiningForFallingBlocks",
             "mineGoalUpdateInterval", "minYLevelWhileMining", "maxYLevelWhileMining", "legitMine", "legitMineYLevel",

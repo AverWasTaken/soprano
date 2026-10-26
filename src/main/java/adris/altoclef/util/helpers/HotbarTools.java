@@ -2,12 +2,17 @@ package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.slots.PlayerSlot;
+import baritone.Baritone;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.util.ArrayList;
+import java.util.List;
 
 // baritone's ToolSet only looks at the hotbar and InventoryBehavior only ever brings a pickaxe down, so the axe or shovel
 // GatherBillTask made for the job sat in the bag and every log got punched. one swap into a hotbar slot nobody else
@@ -28,16 +33,60 @@ public final class HotbarTools {
         }
         if (axe) bringDown(mod, "axe");
         if (shovel) bringDown(mod, "shovel");
+        if (Baritone.settings().toolWearChain.value) {
+            // slot 0 keeps the fastest pick (InventoryBehavior), this is the cheap one the wear chain wants next to it
+            for (Block block : blocks) {
+                if (block.defaultBlockState().is(BlockTags.MINEABLE_WITH_PICKAXE) && bringDownChainPick(mod, block.defaultBlockState())) {
+                    return;
+                }
+            }
+        }
+    }
+
+    // the pick the wear chain wants for this block, from the bag into 2-6, unless the hotbar already has one that is as cheap.
+    // true when a swap went out
+    private static boolean bringDownChainPick(AltoClef mod, BlockState state) {
+        Inventory inv = usableInventory(mod);
+        if (inv == null) return false;
+        List<ItemStack> all = new ArrayList<>(36);
+        for (int i = 0; i < 36; i++) {
+            all.add(inv.getItem(i));
+        }
+        int want = ToolPick.chainIndex(all, state);
+        // nothing that can break it, or it's on the bar already
+        if (want < 9) return false;
+        int have = ToolPick.chainIndex(all.subList(0, 9), state);
+        if (have >= 0 && ToolPick.chainOrder(ToolPick.optionOf(all.get(have), state), ToolPick.optionOf(all.get(want), state)) <= 0) {
+            return false;
+        }
+        int to = slotFor(inv, "pickaxe");
+        if (to < 0) return false;
+        swapIn(mod, want, to);
+        return true;
+    }
+
+    // a swap click goes to whatever menu is open, with a chest up the slot numbers would hit the chest
+    private static Inventory usableInventory(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null || player.containerMenu != player.inventoryMenu || mod.getExtraBaritoneSettings().isInteractionPaused()) {
+            return null;
+        }
+        return player.getInventory();
+    }
+
+    // SWAP with the hotbar index as the button, the selected slot stays where it is. through baritone's gate so
+    // allowInventory, the move delay and standing still hold here too (2b2t does not love a swap mid sprint)
+    private static void swapIn(AltoClef mod, int from, int to) {
+        mod.getClientBaritone().getInventoryBehavior().inventoryMoveIfAllowed(
+                () -> mod.getSlotHandler().clickSlot(new PlayerSlot(from), to, ContainerInput.SWAP));
     }
 
     // the best one of this ItemHelper.toolKind from the bag into the hotbar, unless the hotbar has one already
     public static void bringDown(AltoClef mod, String kind) {
-        LocalPlayer player = mod.getPlayer();
-        // a swap click goes to whatever menu is open, with a chest up the slot numbers would hit the chest
-        if (player == null || player.containerMenu != player.inventoryMenu || mod.getExtraBaritoneSettings().isInteractionPaused()) {
+        Inventory inv = usableInventory(mod);
+        if (inv == null) {
             return;
         }
-        Inventory inv = player.getInventory();
         int best = -1;
         int bestUses = -1;
         boolean bestWorn = false;
@@ -64,11 +113,7 @@ public final class HotbarTools {
         if (best < 0 || (hotbarWorn && bestWorn)) return;
         int to = slotFor(inv, kind);
         if (to < 0) return;
-        // SWAP with the hotbar index as the button, the selected slot stays where it is. through baritone's gate so
-        // allowInventory, the move delay and standing still hold here too (2b2t does not love a swap mid sprint)
-        int from = best;
-        mod.getClientBaritone().getInventoryBehavior().inventoryMoveIfAllowed(
-                () -> mod.getSlotHandler().clickSlot(new PlayerSlot(from), to, ContainerInput.SWAP));
+        swapIn(mod, best, to);
     }
 
     // an empty one of 2-6 that isn't in our hand, else one of those that isn't holding a tool (so the axe and the shovel

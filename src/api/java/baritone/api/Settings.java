@@ -1916,9 +1916,19 @@ public final class Settings {
     public final Setting<Boolean> renderSelectionCorners = new Setting<>(true);
 
     /**
-     * Use sword to mine.
+     * Use sword to mine. Off by default: a sword loses two durability per block it breaks, a pickaxe, axe or shovel loses one.
+     * Swords still get picked for blocks only they can break, like cobwebs, when this is on.
      */
-    public final Setting<Boolean> useSwordToMine = new Setting<>(true);
+    public final Setting<Boolean> useSwordToMine = new Setting<>(false);
+
+    /**
+     * Wear tools out from the worst to the best. Among the tools that are the right kind and tier for a block, use the
+     * one made of the cheapest material first (stone before copper before iron before diamond before netherite, wood and gold
+     * last) and the one with the least durability left within a material, so a spare stone pickaxe dies before the iron one is touched.
+     * <p>
+     * Off means the fastest right tool wins, as before.
+     */
+    public final Setting<Boolean> toolWearChain = new Setting<>(true);
 
     /**
      * Desktop notifications
