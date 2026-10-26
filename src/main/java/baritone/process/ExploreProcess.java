@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
 
 public final class ExploreProcess extends BaritoneProcessHelper implements IExploreProcess {
 
@@ -175,8 +176,19 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         };
     }
 
-    private enum Status {
+    enum Status {
         EXPLORED, NOT_EXPLORED, UNKNOWN;
+    }
+
+    // loaded check first: a loaded chunk the cache never got is still explored
+    static Status decide(boolean loadedNonEmpty, boolean cached, boolean regionLoaded) {
+        if (loadedNonEmpty || cached) {
+            return Status.EXPLORED;
+        }
+        if (!regionLoaded) {
+            return Status.UNKNOWN; // we still need to load regions from disk in order to decide properly
+        }
+        return Status.NOT_EXPLORED;
     }
 
     private interface IChunkFilter {
@@ -194,14 +206,16 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         public Status isAlreadyExplored(int chunkX, int chunkZ) {
             int centerX = chunkX << 4;
             int centerZ = chunkZ << 4;
-            if (cache.isCached(centerX, centerZ)) {
-                return Status.EXPLORED;
-            }
-            if (!((CachedWorld) cache).regionLoaded(centerX, centerZ)) {
+            // the packer queue drops chunks at high render distance, so ask the client world first
+            LevelChunk loaded = ctx.world().getChunkSource().getChunk(chunkX, chunkZ, false);
+            boolean loadedNonEmpty = loaded != null && !loaded.isEmpty();
+            boolean cached = cache.isCached(centerX, centerZ);
+            boolean regionLoaded = ((CachedWorld) cache).regionLoaded(centerX, centerZ);
+            Status status = decide(loadedNonEmpty, cached, regionLoaded);
+            if (status == Status.UNKNOWN) {
                 ((CachedWorld) cache).tryLoadFromDiskAsync(centerX >> 9, centerZ >> 9);
-                return Status.UNKNOWN; // we still need to load regions from disk in order to decide properly
             }
-            return Status.NOT_EXPLORED;
+            return status;
         }
 
         @Override
