@@ -22,7 +22,7 @@ public final class EscapeRoute {
         HAZARD,
         // solid ground that was there before us
         NATURAL,
-        // solid, but ours: obsidian, crying obsidian. never ground worth walking to, the slab is what we are trying to leave
+        // solid, but ours: obsidian, crying obsidian, an old bridge. never ground worth walking to, the slab is what we are trying to leave
         ARTIFICIAL
     }
 

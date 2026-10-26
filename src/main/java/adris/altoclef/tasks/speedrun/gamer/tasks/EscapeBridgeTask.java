@@ -246,7 +246,10 @@ public class EscapeBridgeTask extends Task {
         if (state.isAir() || b == Blocks.NETHER_PORTAL) {
             return Cell.AIR;
         }
-        if (b == Blocks.OBSIDIAN || b == Blocks.CRYING_OBSIDIAN) {
+        // cobble and dirt never generate down here, so they are a bridge some earlier trip laid: walk on it for free, never stop
+        // on it. counting it as ground made a dead run's half bridge look like land and skipped the escape on the way back
+        if (b == Blocks.OBSIDIAN || b == Blocks.CRYING_OBSIDIAN || b == Blocks.COBBLESTONE || b == Blocks.COBBLED_DEEPSLATE
+                || b == Blocks.DIRT) {
             return Cell.ARTIFICIAL;
         }
         if (!state.getFluidState().isEmpty()) {
