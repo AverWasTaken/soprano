@@ -146,7 +146,7 @@ public class HeadLatchTest {
         // a pick of any tier is a pick
         assertEquals(IRON, pick(IRON, 0, 10, List.of(PICK, IRON), new FakeFacts().give(Items.DIAMOND_PICKAXE, 1)));
         // and only a pickaxe need is that urgent, a missing sword waits like anything else
-        assertEquals(IRON, pick(IRON, 0, 10, List.of(new KitNeed("stone_axe", 1), IRON), none));
+        assertEquals(IRON, pick(IRON, 0, 10, List.of(new KitNeed("stone_sword", 1), IRON), none));
     }
 
     // ---- what the planner puts first in IRON ----
@@ -157,7 +157,7 @@ public class HeadLatchTest {
 
     // down the mine with one raw ore in the bag, everything of the starter kit but the pick, food in hand
     private FakeFacts mine() {
-        FakeFacts m = new FakeFacts().give(Items.STONE_AXE, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
+        FakeFacts m = new FakeFacts().give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         m.foodUnits = 70;
         return m;
     }
@@ -203,13 +203,13 @@ public class HeadLatchTest {
         assertFalse(names(KitPlanner.plan(m, cfg, 8)).contains("log"));
     }
 
-    // the 16:08 flip: three raw iron going into a furnace one at a time, the planner's early need dropped out of the list
+    // the flip: three raw iron going into a furnace one at a time, the planner's early need dropped out of the list
     // mid move and the latch let go of it (it is not owed any more), so the head was the 39 need
     @Test
     public void theEarlyBatchStaysTheHeadWhileItsOreIsMidMove() {
         // the default kit owes all four early items: pick 3, chestplate 8, shield 1, shears 2
         KitNeed early = new KitNeed("iron_ingot", 14);
-        FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1)
+        FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         moving.foodUnits = 70;
         moving.earlyLoad = true;
@@ -217,11 +217,11 @@ public class HeadLatchTest {
         assertEquals(early, plan.get(0));
         assertEquals(early, pick(early, 0, 20, plan, moving));
         // without the flight the plan has no early need and the latch can only hand over, which is what used to happen
-        FakeFacts plain = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1)
+        FakeFacts plain = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         plain.foodUnits = 70;
         List<KitNeed> old = KitPlanner.plan(plain, cfg, 8);
-        assertEquals(new KitNeed("iron_ingot", 40), pick(early, 0, 20, old, plain));
+        assertEquals(new KitNeed("iron_ingot", 39), pick(early, 0, 20, old, plain));
     }
 
     @Test

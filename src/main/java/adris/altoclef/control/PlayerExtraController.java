@@ -6,11 +6,13 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
 import adris.altoclef.eventbus.events.BlockBreakingEvent;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
+import adris.altoclef.util.helpers.SwordSwing;
 import baritone.behavior.CombatAim;
 import baritone.behavior.LegacyCombat;
 import net.minecraft.world.item.Item;
@@ -18,10 +20,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Creeper;
@@ -226,8 +230,15 @@ public class PlayerExtraController {
     // (see CritTiming.LEAD_TICKS) and has to be steered all the way down, so those ticks are worth a call. false whenever
     // baritone is walking, then nobody jumps and the old "wait for full" rules are the whole story
     public boolean wantsCritTick() {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()
+        if (LegacyCombat.active() || _mod.getClientBaritone().getPathingBehavior().isPathing()
                 || _mod.getMobDefenseChain().creeperStepActive()) {
+            return false;
+        }
+        // a sword never hops. the ticks right before the charge fills are still worth a call, that is when sprint comes off
+        if (swordInHand()) {
+            return ticksToFull() <= SwordSwing.LOCK_LEAD_TICKS;
+        }
+        if (!Baritone.settings().altoJumpCrits.value) {
             return false;
         }
         // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
@@ -251,7 +262,16 @@ public class PlayerExtraController {
         boolean stepping = _mod.getMobDefenseChain().creeperStepActive();
         // pre 1.9 the scale is faked full, so CritTiming would see a charged swing every tick and hop at everything. plain
         // clicking it is
-        if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
+        if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target)) {
+            _crit.reset();
+            return plainSwing(player, entity);
+        }
+        // a sword is paced by the charge and sweeps, no hop (see SwordSwing)
+        if (swordInHand()) {
+            _crit.reset();
+            return swordSwing(player, target);
+        }
+        if (!Baritone.settings().altoJumpCrits.value) {
             _crit.reset();
             return plainSwing(player, entity);
         }
@@ -299,6 +319,48 @@ public class PlayerExtraController {
             default:
                 return plainSwing(player, entity);
         }
+    }
+
+    // the hand holds a sword (the sweep and the no-hop rules are the sword's)
+    public boolean swordInHand() {
+        return _mod.getPlayer().getMainHandItem().is(ItemTags.SWORDS);
+    }
+
+    // first tick of the current run of sprint locks, MIN when none is running
+    private long _sweepLockSince = Long.MIN_VALUE;
+    private long _sweepLockLast = Long.MIN_VALUE;
+
+    // charge, then swing. shortly before the charge is full sprint is locked off so the swing can sweep, and the swing waits a
+    // tick after the first lock so the stop has gone out
+    private boolean swordSwing(LocalPlayer player, LivingEntity target) {
+        long now = gameTime();
+        boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calmNeutralBeside(target));
+        if (lock) {
+            _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
+            player.setSprinting(false);
+            // a lock nobody refreshed for a tick is gone (see lockSprintOff), so a gap starts the run over
+            if (_sweepLockSince == Long.MIN_VALUE || now - _sweepLockLast > 1) {
+                _sweepLockSince = now;
+            }
+            _sweepLockLast = now;
+        } else {
+            _sweepLockSince = Long.MIN_VALUE;
+        }
+        if (!SwordSwing.swing(attackReady(), lock, _sweepLockSince < now)) {
+            return false;
+        }
+        return plainSwing(player, target);
+    }
+
+    // a neutral mob nobody has poked within a block or two of the target: the sweep would hit it and start a fight we did not
+    // pick. a sprint hit can't sweep, so we leave sprint alone then
+    private boolean calmNeutralBeside(LivingEntity target) {
+        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, target.getBoundingBox().inflate(2))) {
+            if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // what the machine said, once per change and not per tick, so the play log shows which veto is still keeping the bot
@@ -387,7 +449,8 @@ public class PlayerExtraController {
     // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
     // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getMobDefenseChain().creeperStepActive()) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getMobDefenseChain().creeperStepActive()
+                || swordInHand()) {
             return false;
         }
         if (critInFlight()) {

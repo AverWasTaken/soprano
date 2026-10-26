@@ -10,24 +10,26 @@ import java.util.List;
 
 // what the diamonds in the bag buy, and the only place that asks. a diamond is worth more as an upgrade than as a trophy, so the
 // kit plan crafts the list below in order, each one when it is not already ours at diamond tier and what is left still pays for it.
-// no sword (the stone axe out-hits it, see WeaponPick), no shovel, no hoe. pure: facts in, catalogue names out.
+// the sword is the weapon (see WeaponPick), no axe, no shovel, no hoe. pure: facts in, catalogue names out.
 // KitPlanner.iron reads it (and drops the iron it replaces), WoodBudget.owed reads it for the sticks
 public final class DiamondSpend {
-    // the cheapest thing on the list is 3, below that there is nothing to choose
+    // the pick comes first and costs 3: what the dig for diamonds aims at
     public static final int MIN = 3;
+    // the sword at the end of the list costs 2. below that there is nothing to choose
+    public static final int CHEAPEST = 2;
 
     // pick first: it mines faster than anything we make and the side job that finds more diamonds wants it. then the armor,
-    // chestplate first for the same reason as the iron plan (biggest chunk of points). the axe is last and only replaces the
-    // iron one (3 ingots less to smelt), we never upgrade an iron axe we already hold
+    // chestplate first for the same reason as the iron plan (biggest chunk of points). the sword is last and only replaces the
+    // iron one (2 ingots less to smelt), we never upgrade an iron sword we already hold
     private static final String[] ORDER = {"diamond_pickaxe", "diamond_chestplate", "diamond_leggings", "diamond_boots",
-            "diamond_helmet", "diamond_axe"};
-    private static final int[] COST = {3, 8, 7, 4, 5, 3};
+            "diamond_helmet", "diamond_sword"};
+    private static final int[] COST = {3, 8, 7, 4, 5, 2};
 
     private DiamondSpend() {
     }
 
     // which of the six are still up for grabs (not owned at diamond tier, and in the plan at all). same order as ORDER
-    public record Open(boolean pickaxe, boolean chestplate, boolean leggings, boolean boots, boolean helmet, boolean axe) {
+    public record Open(boolean pickaxe, boolean chestplate, boolean leggings, boolean boots, boolean helmet, boolean sword) {
         boolean at(int i) {
             return switch (i) {
                 case 0 -> pickaxe;
@@ -35,7 +37,7 @@ public final class DiamondSpend {
                 case 2 -> leggings;
                 case 3 -> boots;
                 case 4 -> helmet;
-                default -> axe;
+                default -> sword;
             };
         }
     }
@@ -72,7 +74,7 @@ public final class DiamondSpend {
             return List.of();
         }
         int diamonds = f.count(Items.DIAMOND);
-        return diamonds < MIN ? List.of() : spend(diamonds, open(f, cfg));
+        return diamonds < CHEAPEST ? List.of() : spend(diamonds, open(f, cfg));
     }
 
     // better tiers count as owned (KitPlanner.have), so a netherite piece closes its slot too. an armor slot the plan has gone gold
@@ -85,24 +87,24 @@ public final class DiamondSpend {
                 slot(f, slots, "leggings"),
                 slot(f, slots, "boots"),
                 slot(f, slots, "helmet"),
-                axeOpen(f, cfg));
+                swordOpen(f, cfg));
     }
 
     private static boolean slot(GamerFacts f, List<String> slots, String piece) {
         return slots.contains("iron_" + piece) && KitPlanner.have(f, "diamond_" + piece) == 0;
     }
 
-    // only as a stand in for the iron axe: the kit has to want one and nothing iron or better can be in the bag
-    private static boolean axeOpen(GamerFacts f, OverworldConfig cfg) {
+    // only as a stand in for the iron sword: the kit has to want one and nothing iron or better can be in the bag
+    private static boolean swordOpen(GamerFacts f, OverworldConfig cfg) {
         for (KitItem k : cfg.ironKit) {
-            if ("iron_axe".equals(k.item)) {
-                return KitPlanner.have(f, "iron_axe") == 0;
+            if ("iron_sword".equals(k.item)) {
+                return KitPlanner.have(f, "iron_sword") == 0;
             }
         }
         return false;
     }
 
-    // two sticks, or the planks or log they come out of, are in the bag: a diamond pick or axe can be crafted right here
+    // two sticks, or the planks or log they come out of, are in the bag: a diamond pick or sword can be crafted right here
     static boolean sticksInHand(GamerFacts f) {
         return f.count(Items.STICK) >= 2 || f.count(ItemHelper.PLANKS) >= 2 || f.count(ItemHelper.LOG) >= 1;
     }

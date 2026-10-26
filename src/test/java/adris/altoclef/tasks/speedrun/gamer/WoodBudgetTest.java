@@ -81,16 +81,16 @@ public class WoodBudgetTest {
 
     @Test
     public void spareWoodIsWhatIsHeldBeyondTheKeep() {
-        // 15 logs is exactly the budget (WoodReserveTest), 5 more are fuel: a log and a plank are 1.5 smelts apiece
+        // 14 logs is exactly the budget with the two planks in hand, 6 more are fuel: a log and a plank are 1.5 smelts apiece
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 2);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS);
-        assertEquals(new WoodReserve.Keep(15, 0), w.keep());
-        assertEquals(5, w.spareLogs());
-        assertEquals(2, w.sparePlanks());
-        assertEquals(10, w.burnableWoodSmelts(0));
+        assertEquals(new WoodReserve.Keep(14, 2), w.keep());
+        assertEquals(6, w.spareLogs());
+        assertEquals(0, w.sparePlanks());
+        assertEquals(9, w.burnableWoodSmelts(0));
         // logs about to go into a smoker come off the spare ones first
-        assertEquals(3, w.burnableWoodSmelts(5));
-        assertEquals(3, w.burnableWoodSmelts(9));
+        assertEquals(1, w.burnableWoodSmelts(5));
+        assertEquals(0, w.burnableWoodSmelts(9));
     }
 
     @Test
@@ -110,13 +110,13 @@ public class WoodBudgetTest {
     @Test
     public void theFuelReserveIsEverythingOutsideTheOverworld() {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 6);
-        // the planks count towards the budget too: 14 logs and 4 planks are what the kit still wants
-        assertEquals(new WoodReserve.Keep(14, 4), WoodBudget.of(f, cfg, BEDS).fuelKeep());
+        // the planks count towards the budget too: 13 logs and 6 planks are what the kit still wants
+        assertEquals(new WoodReserve.Keep(13, 6), WoodBudget.of(f, cfg, BEDS).fuelKeep());
         f.dimension = Dimension.NETHER;
         WoodBudget nether = WoodBudget.of(f, cfg, BEDS);
         assertEquals(new WoodReserve.Keep(20, 6), nether.fuelKeep());
         // the planner's own keep does not care where we are
-        assertEquals(new WoodReserve.Keep(14, 4), nether.keep());
+        assertEquals(new WoodReserve.Keep(13, 6), nether.keep());
     }
 
     @Test
@@ -124,9 +124,9 @@ public class WoodBudgetTest {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 6);
         WoodReserve.apply(WoodBudget.of(f, cfg, BEDS));
         int[] viaApply = burnable();
-        // 14 logs and 4 planks kept
-        assertEquals(6, viaApply[0]);
-        assertEquals(2, viaApply[1]);
+        // 13 logs and 6 planks kept
+        assertEquals(7, viaApply[0]);
+        assertEquals(0, viaApply[1]);
     }
 
     private static int[] burnable() {
@@ -212,13 +212,13 @@ public class WoodBudgetTest {
         assertEquals(0, w.ironChopLogs(f));
     }
 
-    // ---- the sticks a diamond pick or axe is made with (DiamondSpend), hand written: the golden generators hold no raw diamonds
+    // ---- the sticks a diamond pick or sword is made with (DiamondSpend), hand written: the golden generators hold no raw diamonds
 
     // every kit item held and a table standing, so the only wood owed is what a diamond craft adds
     private static FakeFacts kitBag() {
         FakeFacts f = new FakeFacts();
-        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.STONE_PICKAXE, Items.STONE_AXE, Items.FURNACE,
-                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS}) {
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.STONE_PICKAXE, Items.STONE_SWORD, Items.FURNACE,
+                Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS}) {
             f.give(i, 1);
         }
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
@@ -256,14 +256,14 @@ public class WoodBudgetTest {
     }
 
     @Test
-    public void aDiamondAxeStandingInForTheIronOneOwesNoMore() {
+    public void aDiamondSwordStandingInForTheIronOneOwesNoMore() {
         FakeFacts without = kitBag();
         without.items.remove(Items.IRON_PICKAXE);
-        without.items.remove(Items.IRON_AXE);
+        without.items.remove(Items.IRON_SWORD);
         FakeFacts with = kitBag().give(Items.DIAMOND, 6);
         with.items.remove(Items.IRON_PICKAXE);
-        with.items.remove(Items.IRON_AXE);
-        assertEquals(List.of("diamond_pickaxe", "diamond_axe"), DiamondSpend.choose(with, cfg));
+        with.items.remove(Items.IRON_SWORD);
+        assertEquals(List.of("diamond_pickaxe", "diamond_sword"), DiamondSpend.choose(with, cfg));
         assertEquals(KitPlanner.woodNeed(without, cfg, BEDS, false), KitPlanner.woodNeed(with, cfg, BEDS, false));
     }
 

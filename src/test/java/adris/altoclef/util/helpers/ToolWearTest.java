@@ -37,12 +37,12 @@ public class ToolWearTest {
         assertFalse(ToolWear.wornOut(0, 131));
     }
 
-    // the weapon pick only shows its wear reading by what it prefers: the axe hits harder than the sword, so the sword being picked
-    // over a fresh-looking axe means the axe read as worn
+    // the weapon pick only shows its wear reading by what it prefers: a sword beats any axe, so the fresh axe being picked
+    // over the sword means the sword read as worn
     private static boolean weaponPickCallsItWorn(int damage, int maxDamage) {
-        Candidate axe = new Candidate(Items.IRON_AXE, damage, maxDamage);
-        Candidate sword = new Candidate(Items.IRON_SWORD, 0, 250);
-        return WeaponPick.best(List.of(axe, sword)) == Items.IRON_SWORD;
+        Candidate sword = new Candidate(Items.IRON_SWORD, damage, maxDamage);
+        Candidate axe = new Candidate(Items.IRON_AXE, 0, 250);
+        return WeaponPick.best(List.of(sword, axe)) == Items.IRON_AXE;
     }
 
     @Test

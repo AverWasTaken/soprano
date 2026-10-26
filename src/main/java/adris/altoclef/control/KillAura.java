@@ -288,7 +288,8 @@ public class KillAura {
                 canAttack = mod.getSlotHandler().forceDeequipHitTool();
             }
             if (canAttack) {
-                if (crit && !(entity instanceof LargeFireball)) {
+                // a sword always goes through melee: it waits for the charge and sets up the sweep (fireballs returned above)
+                if ((crit || mod.getControllerExtras().swordInHand()) && !(entity instanceof LargeFireball)) {
                     mod.getControllerExtras().melee(entity);
                 } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()
                         || !mod.getControllerExtras().critInFlight()) {

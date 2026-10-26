@@ -40,9 +40,9 @@ public class WoodReserveTest {
 
     @Test
     public void planksCountTowardsTheBudgetToo() {
-        // the planner asks in whole logs, so 60 planks is where it stops asking and the other 8 are spare
+        // the planner asks in whole logs, so 58 planks is where it stops asking and the other 10 are spare
         FakeFacts f = new FakeFacts().give(Items.OAK_PLANKS, 68);
-        assertEquals(new Keep(0, 60), WoodBudget.of(f, cfg, BEDS).keep());
+        assertEquals(new Keep(0, 58), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test

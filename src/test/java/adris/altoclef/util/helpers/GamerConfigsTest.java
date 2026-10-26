@@ -322,8 +322,8 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 6;
-    private static final String PINNED_KIT_HASH = "f30524e1";
+    private static final int PINNED_VERSION = 7;
+    private static final String PINNED_KIT_HASH = "ac609dc3";
 
     @Test
     public void changingADefaultKitListMeansBumpingTheVersion() {

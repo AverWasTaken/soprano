@@ -33,7 +33,7 @@ public class GoldHuntTest {
     // the whole default kit in hand and on, so the plan has nothing left but the gold
     private static FakeFacts complete() {
         FakeFacts full = new FakeFacts();
-        for (Item i : new Item[]{Items.STONE_PICKAXE, Items.STONE_AXE, Items.FURNACE, Items.IRON_PICKAXE, Items.IRON_AXE,
+        for (Item i : new Item[]{Items.STONE_PICKAXE, Items.STONE_SWORD, Items.FURNACE, Items.IRON_PICKAXE, Items.IRON_SWORD,
                 Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.IRON_CHESTPLATE, Items.IRON_HELMET,
                 Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
