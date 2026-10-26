@@ -50,6 +50,11 @@ public final class FoodHelper {
         return item;
     }
 
+    // raw meat or fish: anything with a cooked form. potatoes are not in here, a raw one is just a poor lunch
+    public static boolean isRawMeat(Item item) {
+        return cookedForm(item) != item;
+    }
+
     // nutrition the planner books for one of these: raw meat at its cooked value, because a gamer run always has a furnace and
     // CollectFoodTask counts it that way (6 raw mutton is 36, not the 12 it is raw, or the kit asked for food while the bag
     // was full of dinner). 0 for anything with no food component

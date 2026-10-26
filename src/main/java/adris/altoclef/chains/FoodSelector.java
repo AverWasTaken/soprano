@@ -36,7 +36,8 @@ final class FoodSelector {
                          FoodChain.FoodChainConfig config) {
         Item bestFood = null;
         double bestFoodScore = Double.NEGATIVE_INFINITY;
-        float bestOvershoot = Float.POSITIVE_INFINITY;
+        Item bestRaw = null;
+        double bestRawScore = Double.NEGATIVE_INFINITY;
         Item rawChicken = null;
         int foodTotal = 0;
         boolean hasRottenFlesh = false;
@@ -82,23 +83,23 @@ final class FoodSelector {
             if (item == Items.CHICKEN) {
                 // 30% hunger effect, the last thing we eat before rotten flesh
                 rawChicken = item;
-            } else {
-                // the food that wastes the least of the empty bar goes first, the score only settles ties. a full cooked beef
-                // at 17 hunger wastes five of its eight points, a raw one (no effect, unlike chicken) wastes none. hurt
-                // under the saturation line it is the big meal that matters, so nothing counts as overshoot there
-                float overshoot = prioritizeSaturation ? 0 : Math.max(0, food.nutrition() - (20 - hunger));
-                if (overshoot < bestOvershoot || (overshoot == bestOvershoot && score > bestFoodScore)) {
-                    bestOvershoot = overshoot;
-                    bestFoodScore = score;
-                    bestFood = item;
+            } else if (FoodHelper.isRawMeat(item)) {
+                if (score > bestRawScore) {
+                    bestRawScore = score;
+                    bestRaw = item;
                 }
+            } else if (score > bestFoodScore) {
+                bestFoodScore = score;
+                bestFood = item;
             }
 
             foodTotal += food.nutrition() * stack.getCount();
         }
 
+        // anything cooked (or just not raw) beats raw meat, however good the raw one scores on a nearly full stomach: it
+        // scores well there because it gives so little, and then the bag fills up with uncooked dinner
         if (bestFood == null) {
-            bestFood = rawChicken;
+            bestFood = bestRaw != null ? bestRaw : rawChicken;
         }
         if (bestFood == null) {
             // last resorts, in order: rotten flesh if we're starving, chorus fruit if there is truly nothing else

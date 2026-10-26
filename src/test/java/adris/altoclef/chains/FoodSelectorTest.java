@@ -137,32 +137,12 @@ public class FoodSelectorTest {
     }
 
     @Test
-    public void cookedBeatsRawWhileThereIsRoomForIt() {
-        // both fit the empty bar, the better meal wins
-        for (float hunger : new float[]{4, 12}) {
+    public void cookedBeatsRawEvenOnANearlyFullStomach() {
+        // raw mutton gives 2 and wastes less at 18 hunger, which is how it used to win. cooked first, always
+        for (float hunger : new float[]{4, 12, 18}) {
             assertEquals(Optional.of(Items.COOKED_MUTTON), pick(inv(Items.MUTTON, 9, Items.COOKED_MUTTON, 1), hunger).best());
             assertEquals(Optional.of(Items.APPLE), pick(inv(Items.BEEF, 9, Items.APPLE, 1), hunger).best());
         }
-    }
-
-    @Test
-    public void theLeastOvershootWinsOnANearlyFullStomach() {
-        // hunger 17 has room for 3: raw beef fills it exactly, cooked beef would throw five points away
-        assertEquals(Optional.of(Items.BEEF), pick(inv(Items.BEEF, 9, Items.COOKED_BEEF, 5), 17).best());
-        assertEquals(Optional.of(Items.PORKCHOP), pick(inv(Items.PORKCHOP, 3, Items.COOKED_PORKCHOP, 5, Items.BREAD, 2), 17).best());
-        // small food is in the running too: a carrot is 3, bread is 5
-        assertEquals(Optional.of(Items.CARROT), pick(inv(Items.CARROT, 2, Items.BREAD, 2, Items.COOKED_BEEF, 5), 17).best());
-        assertEquals(Optional.of(Items.APPLE), pick(inv(Items.APPLE, 2, Items.BREAD, 2, Items.COOKED_BEEF, 5), 17).best());
-        // raw chicken is still the last thing before rotten flesh, however well it fits
-        assertEquals(Optional.of(Items.COOKED_BEEF), pick(inv(Items.CHICKEN, 9, Items.COOKED_BEEF, 5), 17).best());
-        // never the ones it never ate
-        assertTrue(pick(inv(Items.SPIDER_EYE, 9, Items.POISONOUS_POTATO, 9), 17).best().isEmpty());
-    }
-
-    @Test
-    public void hurtUnderTheSaturationLineTheBigMealStillGoesFirst() {
-        FoodSelector.Result result = FoodSelector.select(inv(Items.BEEF, 9, Items.COOKED_BEEF, 5), stack -> true, 6, 17, 2, CONFIG);
-        assertEquals(Optional.of(Items.COOKED_BEEF), result.best());
     }
 
     // the heal meal (hurt, hunger under 18) asks the selector for its food like every other meal
