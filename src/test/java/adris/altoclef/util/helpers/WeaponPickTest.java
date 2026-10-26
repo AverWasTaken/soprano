@@ -29,22 +29,23 @@ public class WeaponPickTest {
     }
 
     @Test
-    public void anAxeBeatsAHigherTierSwordWhenItHitsHarder() {
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE))));
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD))));
+    public void anySwordBeatsAnyAxe() {
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE))));
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD))));
+        assertSame(Items.IRON_SWORD, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE))));
+        assertSame(Items.DIAMOND_SWORD, WeaponPick.best(List.of(fresh(Items.DIAMOND_AXE), fresh(Items.DIAMOND_SWORD))));
+        // even a wooden sword against a netherite axe, the sweep and the faster charge are worth more than the hit
+        assertSame(Items.WOODEN_SWORD, WeaponPick.best(List.of(fresh(Items.NETHERITE_AXE), fresh(Items.WOODEN_SWORD))));
     }
 
     @Test
-    public void anAxeBeatsASwordOfTheSameTier() {
-        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE))));
-        assertSame(Items.DIAMOND_AXE, WeaponPick.best(List.of(fresh(Items.DIAMOND_AXE), fresh(Items.DIAMOND_SWORD))));
-        assertSame(Items.NETHERITE_AXE, WeaponPick.best(List.of(fresh(Items.NETHERITE_SWORD), fresh(Items.NETHERITE_AXE))));
+    public void theBestSwordWinsAmongSwords() {
+        assertSame(Items.DIAMOND_SWORD, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), fresh(Items.DIAMOND_SWORD), fresh(Items.IRON_AXE))));
     }
 
     @Test
-    public void aSwordStillWinsWhenItReallyHitsHarder() {
-        // netherite sword 8 against a wooden axe 7
-        assertSame(Items.NETHERITE_SWORD, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.NETHERITE_SWORD))));
+    public void anAxeIsTheFallbackWhenThereIsNoSword() {
+        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.IRON_AXE))));
     }
 
     @Test
@@ -56,29 +57,29 @@ public class WeaponPickTest {
 
     @Test
     public void aWornToolLosesToAnyHealthyWeapon() {
-        // a diamond axe about to break is worse than a stone sword with all its uses left
-        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(worn(Items.DIAMOND_AXE), fresh(Items.STONE_SWORD))));
-        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), worn(Items.DIAMOND_AXE))));
+        // a diamond sword about to break is worse than a wooden axe with all its uses left
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(worn(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE))));
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), worn(Items.DIAMOND_SWORD))));
     }
 
     @Test
     public void aWornToolIsStillBetterThanFists() {
         assertSame(Items.DIAMOND_AXE, WeaponPick.best(List.of(worn(Items.DIAMOND_AXE))));
-        // and between two worn ones the harder hit still wins
-        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(worn(Items.IRON_SWORD), worn(Items.IRON_AXE))));
+        // and between two worn ones the sword still wins
+        assertSame(Items.IRON_SWORD, WeaponPick.best(List.of(worn(Items.IRON_SWORD), worn(Items.IRON_AXE))));
     }
 
     @Test
     public void wearUsesToolWearsLineLikeTheKitPlanner() {
         // the line itself is pinned in ToolWearTest, this is the ranking following it: 111 of 131 is healthy, 112 is worn
         assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_SWORD, 111, 131),
-                new WeaponPick.Candidate(Items.STONE_AXE, 112, 131))));
-        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_AXE, 112, 131),
-                new WeaponPick.Candidate(Items.STONE_SWORD, 111, 131))));
-        // an item that does not wear (max 0) is never worn, however the damage reads
-        assertSame(Items.STONE_AXE, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_AXE, 5, 0))));
+                new WeaponPick.Candidate(Items.STONE_AXE, 5, 131))));
         assertSame(Items.STONE_AXE, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_SWORD, 112, 131),
-                new WeaponPick.Candidate(Items.STONE_AXE, 5, 0))));
+                new WeaponPick.Candidate(Items.STONE_AXE, 5, 131))));
+        // an item that does not wear (max 0) is never worn, however the damage reads
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_SWORD, 5, 0))));
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_AXE, 112, 131),
+                new WeaponPick.Candidate(Items.STONE_SWORD, 5, 0))));
     }
 
     @Test
@@ -95,81 +96,6 @@ public class WeaponPickTest {
         // the kill tasks list the hand first so equal weapons never get swapped back and forth
         assertSame(Items.WOODEN_SWORD, WeaponPick.best(List.of(fresh(Items.WOODEN_SWORD), fresh(Items.GOLDEN_SWORD))));
         assertSame(Items.GOLDEN_SWORD, WeaponPick.best(List.of(fresh(Items.GOLDEN_SWORD), fresh(Items.WOODEN_SWORD))));
-    }
-
-    // ---- crowds
-
-    private static Item crowdPick(Candidate... candidates) {
-        return WeaponPick.best(List.of(candidates), true, false);
-    }
-
-    @Test
-    public void inACrowdDamagePerSecondDecides() {
-        // wooden axe 7 x 0.8 = 5.6, stone sword 5 x 1.6 = 8
-        assertSame(Items.STONE_SWORD, crowdPick(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)));
-        assertSame(Items.STONE_SWORD, crowdPick(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)));
-        // and the same two alone are the axe, per swing
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD))));
-        // iron axe 9 x 0.9 = 8.1 against iron sword 6 x 1.6 = 9.6
-        assertSame(Items.IRON_SWORD, crowdPick(fresh(Items.IRON_AXE), fresh(Items.IRON_SWORD)));
-        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE))));
-    }
-
-    @Test
-    public void inACrowdTheOnlyWeaponIsStillTheOnlyWeapon() {
-        // the kit makes axes now, a bot with no sword on it just swings the axe
-        assertSame(Items.IRON_AXE, crowdPick(fresh(Items.IRON_AXE)));
-        assertNull(WeaponPick.best(List.of(fresh(Items.STICK)), true, false));
-    }
-
-    @Test
-    public void aWornSwordStillLosesInACrowd() {
-        assertSame(Items.WOODEN_AXE, crowdPick(worn(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)));
-    }
-
-    @Test
-    public void aTieOnDpsFallsBackToTheHarderHitAndThenTheHand() {
-        // the same weapon twice: first listed stays
-        assertSame(Items.WOODEN_SWORD, crowdPick(fresh(Items.WOODEN_SWORD), fresh(Items.GOLDEN_SWORD)));
-    }
-
-    @Test
-    public void aRaisedShieldWantsTheAxeEvenInACrowd() {
-        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE)), true, true));
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)), false, true));
-        // no axe, no problem
-        assertSame(Items.IRON_SWORD, WeaponPick.best(List.of(fresh(Items.IRON_SWORD)), false, true));
-    }
-
-    // ---- pre 1.9 servers
-
-    private static Item legacyPick(boolean crowd, boolean shielded, Candidate... candidates) {
-        return WeaponPick.best(List.of(candidates), crowd, shielded, true);
-    }
-
-    @Test
-    public void preNineASwordBeatsAHarderHittingAxe() {
-        assertSame(Items.STONE_SWORD, legacyPick(false, false, fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)));
-        assertSame(Items.STONE_SWORD, legacyPick(false, false, fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)));
-        assertSame(Items.WOODEN_SWORD, legacyPick(false, false, fresh(Items.NETHERITE_AXE), fresh(Items.WOODEN_SWORD)));
-        // the crowd and shield rules don't exist there, the sword still wins
-        assertSame(Items.IRON_SWORD, legacyPick(false, true, fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE)));
-        assertSame(Items.IRON_SWORD, legacyPick(true, true, fresh(Items.IRON_AXE), fresh(Items.IRON_SWORD)));
-    }
-
-    @Test
-    public void preNineDamageStillRanksWithinAKind() {
-        assertSame(Items.DIAMOND_SWORD, legacyPick(false, false, fresh(Items.STONE_SWORD), fresh(Items.DIAMOND_SWORD)));
-        assertSame(Items.DIAMOND_AXE, legacyPick(false, false, fresh(Items.STONE_AXE), fresh(Items.DIAMOND_AXE)));
-        // worn still loses to healthy, same as everywhere else
-        assertSame(Items.WOODEN_AXE, legacyPick(false, false, worn(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)));
-    }
-
-    @Test
-    public void legacyOffIsTheModernRanking() {
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)), false, false, false));
-        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)), true, false, false));
-        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)), false, true, false));
     }
 
     @Test

@@ -174,9 +174,8 @@ public final class KitPlanner {
         return false;
     }
 
-    // the axe for the logs, not the weapon: stone_axe and iron_axe are in the kit now too (instead of the swords) and they
-    // are crafts like any other. calling them the log axe would have fetched them before the stone pick and skipped their
-    // sticks once the iron phase starts
+    // the axe for the logs, not the weapon: the swords are in the kit and they are crafts like any other. only the wooden axe
+    // gets fetched before the stone pick
     static boolean isAxe(String name) {
         return name.equals("wooden_axe");
     }
@@ -218,7 +217,7 @@ public final class KitPlanner {
     // cobble a stray placement can eat before the crafts, so one misplaced block is not a second trip
     private static final int STONE_SLACK = 2;
     // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8.
-    // the kit makes the axe and not the sword (3 cobble, not 2), so a fresh run mines 19. the split smelt's extra furnaces are not
+    // the kit makes the sword (2 cobble) and not a stone axe, so a fresh run mines 18. the split smelt's extra furnaces are not
     // in here: the mine brings back far more spare cobble than 16, and SmeltSplit.loads uses what is spare when it decides
     private static final Map<String, Integer> COBBLE_COST = Map.of(
             "stone_pickaxe", 3, "stone_axe", 3, "stone_sword", 2, "stone_hoe", 2, "stone_shovel", 1, "furnace", 8);
@@ -523,7 +522,7 @@ public final class KitPlanner {
     }
 
     // what is left of GATHER once the food is not counted: both stone tools. enough to carry on and let IRON do the food.
-    // the weapon is whatever swings: the kit makes an axe, but a sword out of a chest is a stone sword too (a better tier
+    // the weapon is whatever swings: the kit makes a sword, but an axe out of a chest swings too (a better tier
     // of either counts, have() sees to that)
     public static boolean stoneToolsMet(GamerFacts f) {
         return have(f, "stone_pickaxe") >= 1 && (have(f, "stone_axe") >= 1 || have(f, "stone_sword") >= 1);

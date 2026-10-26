@@ -3,14 +3,11 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.helpers.CombatRules;
-import baritone.behavior.LegacyCombat;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
 import baritone.behavior.CombatAim;
 import java.util.ArrayList;
-import java.util.ConcurrentModificationException;
 import java.util.List;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
@@ -42,27 +39,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     // per swing, the pick everything that sizes up a fight with one target uses (the chain's stand capacity, the golem)
     public static Item bestWeapon(AltoClef mod) {
-        return bestWeapon(mod, false, false);
-    }
-
-    // the one we swing: damage per second once two or more melee mobs are around us, the axe against a raised shield
-    private static Item weaponForNow(AltoClef mod) {
-        boolean crowd = mod.getMobDefenseChain().meleeAround(mod) >= 2;
-        return bestWeapon(mod, crowd, crowd && shieldUp(mod));
-    }
-
-    // a hostile close by that is blocking. only worth asking in a crowd, it walks the hostile list
-    private static boolean shieldUp(AltoClef mod) {
-        try {
-            for (Entity entity : mod.getEntityTracker().getHostiles()) {
-                if (entity instanceof LivingEntity living && living.isBlocking() && living.distanceTo(mod.getPlayer()) <= CombatRules.SWARM_RANGE) {
-                    return true;
-                }
-            }
-        } catch (ConcurrentModificationException ignored) {
-            // the tracker rebuilds on another thread, no shield seen this tick is fine
-        }
-        return false;
+        return WeaponPick.best(candidates(mod));
     }
 
     // the hand first, so it wins ties and we don't swap between two equal weapons
@@ -74,14 +51,6 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             candidates.add(WeaponPick.Candidate.of(invStack));
         }
         return candidates;
-    }
-
-    private static Item bestWeapon(AltoClef mod, boolean crowd, boolean shieldedTarget) {
-        List<WeaponPick.Candidate> candidates = candidates(mod);
-        // swords and axes by damage per swing, worn ones last (see WeaponPick). equipping goes by item, so a fresh and a
-        // worn copy of the same axe are the slot handler's coin flip. the mining tool picker never sees any of this, it
-        // only runs while we mine and an axe in hand is the right tool for a log anyway
-        return WeaponPick.best(candidates, crowd, shieldedTarget, LegacyCombat.active());
     }
 
     public static boolean equipWeapon(AltoClef mod) {
@@ -96,11 +65,11 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
     // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
     public static boolean equipWeapon(AltoClef mod, boolean toolFallback) {
-        Item bestWeapon = weaponForNow(mod);
+        Item bestWeapon = bestWeapon(mod);
         if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
         logPick(mod, bestWeapon, equipedWeapon);
-        // (the pick can flip with the crowd, the hand does not: see WeaponPick.hold)
+        // (the hand only moves once a swing landed or the charge is nearly empty: see WeaponPick.hold)
         long swings = mod.getControllerExtras().swings();
         Item hold = WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks(), swings != _swingsAtSwap);
         if (hold != equipedWeapon) {

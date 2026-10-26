@@ -23,7 +23,7 @@ public final class EndGear {
             {Items.NETHERITE_LEGGINGS, Items.DIAMOND_LEGGINGS, Items.IRON_LEGGINGS},
             {Items.NETHERITE_BOOTS, Items.DIAMOND_BOOTS, Items.IRON_BOOTS}
     };
-    // iron is the floor here too. axes count, the kit makes an axe and not a sword (it hits harder, see WeaponPick)
+    // iron is the floor here too. axes count, a sword is what the kit makes and what WeaponPick holds first
     private static final Item[] WEAPONS = {Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD,
             Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE};
     private static final Item[] PICKAXES = {Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE};

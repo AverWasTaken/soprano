@@ -184,8 +184,8 @@ public class CookGateTest {
     public void theSmokersLogsAreNotFuel() {
         // the whole kit done, so the reserve keeps no wood and every log may burn (1.5 smelts each)
         FakeFacts wood = new FakeFacts();
-        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
-                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE}) {
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_SWORD,
+                Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE}) {
             wood.give(i, 1);
         }
         wood.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_LOG, 8);
@@ -293,7 +293,7 @@ public class CookGateTest {
 
     @Test
     public void aFurnaceCookingTheMeatIsNotAReasonToCraftAnother() {
-        f.give(Items.OAK_LOG, 30).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1);
+        f.give(Items.OAK_LOG, 30).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1);
         assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
         // it went down to cook and it is coming back to the bag
         f.furnacePlaced = true;
@@ -358,13 +358,13 @@ public class CookGateTest {
         assertFalse(CookGate.reusable(f, cfg, 8, false));
     }
 
-    // ---- the GATHER -> IRON boundary: 22:05:29, a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
+    // ---- the GATHER -> IRON boundary: a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
     // never came up. the fuel gate wanted a coal per piece of meat in the whole bag and the gather chops exactly its budget
 
     private FakeFacts boundary() {
         FakeFacts b = new FakeFacts();
         b.give(Items.PORKCHOP, 4).give(Items.CHICKEN, 3).give(Items.MUTTON, 3).give(Items.FURNACE, 1).give(Items.CRAFTING_TABLE, 1);
-        b.give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1);
+        b.give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1);
         b.foodUnits = 90;
         return b;
     }
@@ -508,8 +508,8 @@ public class CookGateTest {
     // every kit item and no wood owed, so the reserve keeps no wood (endBeds 0)
     private static FakeFacts kitDone() {
         FakeFacts done = new FakeFacts();
-        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
-                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE, Items.CRAFTING_TABLE}) {
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_SWORD,
+                Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE, Items.CRAFTING_TABLE}) {
             done.give(i, 1);
         }
         return done.give(Items.BUCKET, 2).give(Items.LADDER, 3);
@@ -562,7 +562,7 @@ public class CookGateTest {
     @Test
     public void anIronLoadInFlightHoldsTheCookOffEvenWhenItIsLatched() {
         List<KitNeed> underMine = List.of(CRAFT, ORE, COOK);
-        // 23:18:27 the cook latched while the furnace was still being crafted; 23:18:31 the iron was on its way into the slot
+        // the cook latched while the furnace was still being crafted; the iron was on its way into the slot
         assertTrue(CookGate.leads(underMine, 2, 6, true, true, false));
         assertFalse(CookGate.leads(underMine, 2, 6, true, true, true));
         assertFalse(CookGate.leads(underMine, 2, 6, false, false, true));
@@ -635,7 +635,7 @@ public class CookGateTest {
     public void aBookedSmokerJobHidesTheFuelTheEmptiedSmokerCouldBurn() {
         OverworldConfig full = new OverworldConfig();
         FakeFacts bag = new FakeFacts().give(Items.PORKCHOP, 8).give(Items.OAK_LOG, 12).give(Items.STONE_PICKAXE, 1)
-                .give(Items.STONE_AXE, 1).give(Items.WOODEN_AXE, 1);
+                .give(Items.STONE_SWORD, 1).give(Items.WOODEN_AXE, 1);
         bag.smokerPlaced = true;
         bag.cookingFood("cooked_beef", 9, 8, 0);
         WoodBudget booked = WoodBudget.of(bag, full, 8, GamerPhase.IRON);

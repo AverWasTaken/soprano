@@ -3,18 +3,9 @@ package adris.altoclef.util.helpers;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-// which melee weapon to hold. one on one the kill tasks wait for a full cooldown before every swing, so what matters is
-// damage per swing and not damage per second, and an axe hits harder per swing than a sword of the same tier (wood 7 vs 4,
-// iron 9 vs 6). the price is that it swings slower, which only decides it when two weapons hit for the same
-//
-// in a crowd that flips: we are not standing around for the full cooldown, we are swinging as it comes up and every
-// second the axe takes to come back is a second of zombie. damage per second then (wooden axe 5.6 against a stone
-// sword's 8, iron axe 8.1 against an iron sword's 9.6)
-//
-// a target with a raised shield is the one case the axe wins anyway: it knocks the shield down for a few seconds
-//
-// none of that holds on a pre 1.9 server: no cooldown, so we click as fast as a hand does and every weapon swings at the
-// same rate, no shields, and a sword is the harder hit there anyway. legacy goes sword then axe like SelfDefenseRules
+// which melee weapon to hold. a sword over any axe: it swings faster, it sweeps a crowd, and the charge wait before each
+// swing costs it less. an axe hits harder per swing but the zombies in a cave come three at a time. the axe is left for
+// the logs (and for when there is no sword at all, then it still beats a fist)
 public final class WeaponPick {
 
     private WeaponPick() {
@@ -32,10 +23,17 @@ public final class WeaponPick {
     }
 
     // the weapon to hold, or null if there is no sword or axe in the list. a healthy weapon always beats a worn one, then
-    // the harder hit wins, then the faster swing, and the first one listed wins what is left (hand first, so two
-    // equal weapons never get swapped back and forth)
+    // any sword beats any axe, then the harder hit wins, then the faster swing, and the first one listed wins
+    // what is left (hand first, so two equal weapons never get swapped back and forth)
     public static Item best(Iterable<Candidate> candidates) {
-        return best(candidates, false, false);
+        Candidate best = null;
+        for (Candidate c : candidates) {
+            if (c == null || !isWeapon(c.item())) continue;
+            if (best == null || beats(c, best)) {
+                best = c;
+            }
+        }
+        return best == null ? null : best.item();
     }
 
     // pickaxes, shovels and whatever else hits harder than a fist, the same ranking as the weapons (the harder hit, hand first
@@ -46,25 +44,7 @@ public final class WeaponPick {
         for (Candidate c : candidates) {
             if (c == null || isWeapon(c.item()) || !ItemHelper.hitsHarderThanFists(c.item())) continue;
             if (ToolWear.wornOut(c.damage(), c.maxDamage())) continue;
-            if (best == null || beats(c, best, false, false, false)) {
-                best = c;
-            }
-        }
-        return best == null ? null : best.item();
-    }
-
-    // crowd: two or more melee mobs around us, damage per second decides. shieldedTarget: something is holding a shield up
-    // at us, any axe beats any sword (and it wins over the crowd rule, a shield up in a crowd still eats a sword's hits)
-    public static Item best(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget) {
-        return best(candidates, crowd, shieldedTarget, false);
-    }
-
-    // legacy: the server is pre 1.9 (LegacyCombat.active), see the top
-    public static Item best(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget, boolean legacy) {
-        Candidate best = null;
-        for (Candidate c : candidates) {
-            if (c == null || !isWeapon(c.item())) continue;
-            if (best == null || beats(c, best, crowd, shieldedTarget, legacy)) {
+            if (best == null || beats(c, best)) {
                 best = c;
             }
         }
@@ -97,29 +77,15 @@ public final class WeaponPick {
         return inHand;
     }
 
-    private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget, boolean legacy) {
+    private static boolean beats(Candidate a, Candidate b) {
         boolean aWorn = ToolWear.wornOut(a.damage(), a.maxDamage());
         boolean bWorn = ToolWear.wornOut(b.damage(), b.maxDamage());
         if (aWorn != bWorn) {
             return bWorn;
         }
-        if (legacy) {
-            boolean aSword = ItemHelper.isSword(a.item());
-            if (aSword != ItemHelper.isSword(b.item())) {
-                return aSword;
-            }
-        } else if (shieldedTarget) {
-            boolean aAxe = ItemHelper.isAxe(a.item());
-            if (aAxe != ItemHelper.isAxe(b.item())) {
-                return aAxe;
-            }
-        } else if (crowd) {
-            float aDps = ItemHelper.getAttackDamage(a.item()) * ItemHelper.getAttackSpeed(a.item());
-            float bDps = ItemHelper.getAttackDamage(b.item()) * ItemHelper.getAttackSpeed(b.item());
-            // (float noise would flip two equal weapons back and forth, so only a real gap counts)
-            if (Math.abs(aDps - bDps) > 1e-3) {
-                return aDps > bDps;
-            }
+        boolean aSword = ItemHelper.isSword(a.item());
+        if (aSword != ItemHelper.isSword(b.item())) {
+            return aSword;
         }
         float aDamage = ItemHelper.getAttackDamage(a.item());
         float bDamage = ItemHelper.getAttackDamage(b.item());
