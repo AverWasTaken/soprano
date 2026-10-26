@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import net.minecraft.world.entity.monster.Enderman;
@@ -102,6 +103,7 @@ final class CombatBrain {
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private final HealUpTask _healUp = new HealUpTask();
+    private final IdleTask _splitHold = new IdleTask();
     private int _fightId = -1;
     private String _fightName = FightNames.UNKNOWN;
     private final FightNames _names = new FightNames();
@@ -219,7 +221,8 @@ final class CombatBrain {
         switch (_commit.mode()) {
             case FIGHT: {
                 Entity target = mod.getWorld().getEntity(_commit.targetId());
-                if (target == null) return null;
+                // the fight outlives a dead splitter for a moment (CombatCommit.SPLIT_WAIT_TICKS): stand, the children are coming
+                if (target == null || !target.isAlive()) return _splitHold;
                 // the same task object for the whole fight, a new one each tick would restart its stuck checks
                 if (_fight == null || _fightId != target.getId() || _fight.stopped()) {
                     _fight = new KillEntityTask(target);
@@ -440,7 +443,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(foe.withFast(fast(mob)));
+                    foes.add(withSplit(foe.withFast(fast(mob)), mob));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -663,8 +666,15 @@ final class CombatBrain {
     private static Foe foe(Dimension dimension, Mob mob, double distance, Provocations book, long now, LocalPlayer player) {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
-        return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob));
+        return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)), mob);
+    }
+
+    // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
+    private static Foe withSplit(Foe foe, Mob mob) {
+        String type = typeOf(mob);
+        // a size 1 cube has 1 max health (size squared) and leaves nothing behind
+        return type.equals("slime") || type.equals("magma_cube") ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
     }
 
     // slimes and magma cubes set their speed from their size (0.2 + 0.1 per size, so 0.3 at the smallest), spiders are 0.3, so all

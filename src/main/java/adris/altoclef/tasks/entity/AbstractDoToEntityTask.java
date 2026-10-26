@@ -119,6 +119,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _waitTicks = 0;
         _rimCell = null;
         _rimStepTicks = 0;
+        _rimStandTicks = 0;
         _rimLive = false;
         _standCap.reset();
         _waitCap.reset();
@@ -193,9 +194,15 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // a kill task only minds being right on top of the mob, see ReachRules for how its distances nest
             double backOffLine = isKillTask() ? ReachRules.BACK_OFF_START : maintainDistance;
             boolean tooClose = backOffOk && sqDist < backOffLine * backOffLine;
+            // the wide check (a drop anywhere close) is for stepping and the back-off, the swing timing keeps the knock line only
+            boolean rimWide = isKillTask() && rimUnsafe(mod, entity);
             if (isKillTask()) {
                 watchBackOff(mod, now);
-                killBackOff(mod, entity, tooClose);
+                if (LavaShore.backOffAllowed(rimWide)) {
+                    killBackOff(mod, entity, tooClose);
+                } else {
+                    dropBackOff(mod);
+                }
             } else if (tooClose && !mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 //setDebugState("Maintaining distance");
                 _backOffGoal = new GoalRunAway(maintainDistance, entity.blockPosition());
@@ -254,12 +261,29 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     return off;
                 }
             }
+            // a kill task on any edge with a melee foe close gets off it before anything else, the plan only gets the tick when
+            // there is nowhere better (rimStep is null then) or the step ran out of time
+            if (isKillTask() && rimWide && plan != ApproachRules.Plan.SWING_NOW) {
+                Task off = rimStep(mod, entity);
+                if (off != null) {
+                    return off;
+                }
+                // nowhere better to stand: no walking from here either (an approach or a shuffle along the rim is how we end up
+                // off it), the foe comes to us and the swing is what we do. capped, a foe that cannot get to us is not waited on forever
+                if ((plan == ApproachRules.Plan.APPROACH || plan == ApproachRules.Plan.WANDER) && ++_rimStandTicks <= RIM_STAND_TICKS) {
+                    _progress.reset();
+                    setDebugState("On an edge, letting it come");
+                    return null;
+                }
+            } else {
+                _rimStandTicks = 0;
+            }
             switch (plan) {
                 case INTERACT:
                     _progress.reset();
                     _blocker = null;
                     // on a rim the cooldown ticks between swings are for getting off it, the swing itself still comes first
-                    if (rim && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
+                    if (rimWide && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
                         Task off = rimStep(mod, entity);
                         if (off != null) {
                             return off;
@@ -384,6 +408,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private BlockPos _rimCell;
     private int _rimStepTicks;
     private boolean _rimLive;
+    private static final int RIM_STAND_TICKS = 60;
+    private int _rimStandTicks;
 
     private boolean rimFoe(AltoClef mod, Entity entity) {
         if (entity instanceof Blaze || entity instanceof Ghast || !(entity instanceof Mob mob) || MobReachability.isRanged(mob)
@@ -399,6 +425,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         }
         var us = mod.getPlayer();
         return LavaShore.backUnsafe(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getZ());
+    }
+
+    private boolean rimUnsafe(AltoClef mod, Entity entity) {
+        if (!rimFoe(mod, entity)) {
+            return false;
+        }
+        var us = mod.getPlayer();
+        return LavaShore.rimUnsafe(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getZ());
     }
 
     // one block to a safer cell before the next hit comes, null when there is nothing to do or nowhere better to go

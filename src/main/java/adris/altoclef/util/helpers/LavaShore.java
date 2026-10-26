@@ -17,6 +17,10 @@ public final class LavaShore {
     // half the player's width, the swept box
     static final double HALF_WIDTH = 0.3;
     static final double STEP = 0.5;
+    // how close a drop has to be, in any direction, to count as an edge we are standing on
+    static final double EDGE_RADIUS = 1.5;
+    // finer than STEP: a drop a block away has to land in a sample, 0.5 jumps over the corner of a cell
+    static final double EDGE_STEP = 0.25;
     // the lava check around the feet after a landing
     static final int LANDING_RADIUS = 3;
 
@@ -116,6 +120,39 @@ public final class LavaShore {
         return false;
     }
 
+    // a lethal drop within EDGE_RADIUS of us in any direction, not only behind along the foe line: a split or a second foe hits from
+    // wherever it likes, and the knock goes the other way. sampled on a quarter block grid (strictly inside the radius, so a drop exactly 1.5 away from a cell centre is the next cell's business), same unsafe test as the knock line. a
+    // wall at the feet or head of a cell stops a knock (same rule as dropBeside), so that cell is no edge
+    public static boolean edgeNear(Cells cells, double ux, double uy, double uz) {
+        int cy = (int) Math.floor(uy);
+        for (double dx = -EDGE_RADIUS; dx < EDGE_RADIUS; dx += EDGE_STEP) {
+            for (double dz = -EDGE_RADIUS; dz < EDGE_RADIUS; dz += EDGE_STEP) {
+                if (Math.hypot(dx, dz) >= EDGE_RADIUS) {
+                    continue;
+                }
+                int cx = (int) Math.floor(ux + dx);
+                int cz = (int) Math.floor(uz + dz);
+                if (cells.at(cx, cy, cz) == Cell.SOLID || cells.at(cx, cy + 1, cz) == Cell.SOLID) {
+                    continue;
+                }
+                if (cells.at(cx, cy, cz) == Cell.LAVA || cells.at(cx, cy - 1, cz) == Cell.LAVA || CliffAvoidance.columnUnsafe(cells, cx, cy, cz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // the stepping check: the knock line behind us, or a drop anywhere close
+    public static boolean rimUnsafe(Cells cells, double ux, double uy, double uz, double fx, double fz) {
+        return backUnsafe(cells, ux, uy, uz, fx, fz) || edgeNear(cells, ux, uy, uz);
+    }
+
+    // a back-off walks away from the foe and only checks headroom, never edges, so on a rim it is not ours to start
+    public static boolean backOffAllowed(boolean rim) {
+        return !rim;
+    }
+
     // on a rim a landed hit is worth more than a crit, and waiting for the ground after the first knock is how the second
     // one comes. the attack cooldown still applies downstream
     public static boolean swingReady(boolean gatesOpen, boolean onGround, boolean critInFlight, boolean backUnsafe) {
@@ -123,7 +160,7 @@ public final class LavaShore {
     }
 
     // is a cell fit to stand on while a foe is on us: floor under it, room for the body, no lava next to it, and nothing
-    // bad behind it relative to the foe
+    // bad behind it relative to the foe, and no drop within EDGE_RADIUS either (so a stair step ledge does not trade one edge for the next)
     static boolean standable(Cells cells, int x, int y, int z, double fx, double fz) {
         if (cells.at(x, y - 1, z) != Cell.SOLID || cells.at(x, y, z) != Cell.OPEN || cells.at(x, y + 1, z) != Cell.OPEN) {
             return false;
@@ -131,7 +168,7 @@ public final class LavaShore {
         double cx = x + 0.5;
         double cz = z + 0.5;
         return !lavaNear(cells, cx, y, cz, 1) && !spotUnsafe(cells, cx, y, cz) && !backUnsafe(cells, cx, y, cz, fx, fz)
-                && !dropBeside(cells, x, y, z);
+                && !edgeNear(cells, cx, y, cz) && !dropBeside(cells, x, y, z);
     }
 
     // a knock does not only go along the line from the foe: a hit from the side can throw us off a drop beside the cell, and
@@ -173,7 +210,7 @@ public final class LavaShore {
     // cell that is standable. no lava within 2 wins over a cell that is merely not-on-fire, then the one nearest the foe, so
     // the step also closes the gap instead of backing off. a cell the foe is standing in is no step
     public static int[] safeStep(Cells cells, double ux, double uy, double uz, double fx, double fz) {
-        if (!backUnsafe(cells, ux, uy, uz, fx, fz)) {
+        if (!rimUnsafe(cells, ux, uy, uz, fx, fz)) {
             return null;
         }
         int cx = (int) Math.floor(ux);

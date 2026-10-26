@@ -227,15 +227,26 @@ public final class CombatCommit {
     // sight: it has a line to us (only asked for shooters that hit us lately, so false is the default and the cheap answer).
     // sinceHitBefore: ticks since the hit before the last one (NEVER for fewer than two), a shooter that keeps hitting us (nothing reads it since the pin window went, it is just carried)
     // fast: it moves at CombatRules.FAST_MOB_SPEED or better (spiders, slimes and magma cubes of any size, piglins), so a run does not shake it
+    // splitType: "slime" or "magma_cube" for the cube family, null for everything else. splits: it is big enough to leave splits
+    // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
-                      boolean sight, long sinceHitBefore, boolean fast) {
+                      boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z) {
+        public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
+                   boolean sight, long sinceHitBefore, boolean fast) {
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0);
+        }
+
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore) {
             this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, false);
         }
 
         public Foe withFast(boolean fast) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z);
+        }
+
+        public Foe withSplit(String splitType, boolean splits, double x, double y, double z) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -613,6 +624,14 @@ public final class CombatCommit {
     private Mode mode = Mode.NONE;
     private Why why = Why.NONE;
     private int targetId = -1;
+    // what the target was and where it stood the last time we saw it alive, for the splits it leaves behind (see splitHeir)
+    private String lastSplitType;
+    private boolean lastSplits;
+    private double lastSplitX;
+    private double lastSplitY;
+    private double lastSplitZ;
+    // when the splitter's target was first seen gone, -1 while it is alive
+    private long splitGoneAt = -1;
     private boolean cornered;
     private double originX;
     private double originZ;
@@ -754,6 +773,8 @@ public final class CombatCommit {
     }
 
     public void reset() {
+        lastSplitType = null;
+        lastSplits = false;
         mode = Mode.NONE;
         why = Why.NONE;
         targetId = -1;
@@ -1217,6 +1238,7 @@ public final class CombatCommit {
             latchClearSince = -1;
             if (why != Why.CHASED) why = Why.CORNERED;
         }
+        if (target != null) noteSplit(target);
         if (target == null) return targetGone(t);
         // an enderman that hit us is the target over whatever we are on, it is the one that cannot be walked away from
         Foe ender = endermanOnUs(t);
@@ -1306,11 +1328,19 @@ public final class CombatCommit {
             lobberPick = true;
             return event;
         }
+        Foe heir = splitHeir(t);
+        if (heir != null) return startFight(t, heir, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
         Foe next = nextTarget(t);
         if (next != null) return startFight(t, next, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
         // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
         // leave: a gap and a five second cooldown next to it is not a plan
         if (cornered && anyDanger(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
+        // a cube that splits spawns its children when the body is removed, about a second after the last hit (the death animation).
+        // ending the fight here hands the wheel to whatever walks next, and the children show up behind it. a short wait, then over
+        if (lastSplits) {
+            if (splitGoneAt < 0) splitGoneAt = t.now();
+            if (t.now() - splitGoneAt <= SPLIT_WAIT_TICKS) return Event.NONE;
+        }
         return end(t, Event.FIGHT_DEAD);
     }
 
@@ -1326,6 +1356,39 @@ public final class CombatCommit {
             if (foe.id() == targetId || foe.kind() != Kind.LOBBER || foe.sinceHit() > LOBBER_PICK_TICKS || !foe.sight() || foe.distance() > LOBBER_RANGE) continue;
             if (gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
+    }
+
+    // how far from the corpse a split can spawn and still be the same fight. they pop out within about a block, 3 is the margin
+    static final double SPLIT_RANGE = 3.0;
+    // the death animation is 20 ticks, the rest is margin
+    static final long SPLIT_WAIT_TICKS = 30;
+
+    private void noteSplit(Foe foe) {
+        lastSplitType = foe.splitType();
+        lastSplits = foe.splits();
+        lastSplitX = foe.x();
+        lastSplitY = foe.y();
+        lastSplitZ = foe.z();
+        splitGoneAt = -1;
+    }
+
+    // a slime or magma cube just died: the same kind next to the corpse is its split and the same fight. they have not hit us yet,
+    // so the "must have hit us" rule of nextTarget loses them, the fight ends, and whatever walks next walks past a cube that is
+    // about to bite (on a ledge, that bite is a knock into the drop)
+    private Foe splitHeir(Tick t) {
+        if (lastSplitType == null) return null;
+        Foe best = null;
+        double bestGap = Double.MAX_VALUE;
+        for (Foe foe : t.foes()) {
+            if (foe.id() == targetId || !lastSplitType.equals(foe.splitType()) || !foe.melee() || foe.kind() == Kind.UNTOUCHABLE
+                    || foe.mustRun(t.guardHealth()) || ignored.containsKey(foe.id()) || gaveUpOn(foe, t.now())) continue;
+            double gap = Math.sqrt(Math.pow(foe.x() - lastSplitX, 2) + Math.pow(foe.y() - lastSplitY, 2) + Math.pow(foe.z() - lastSplitZ, 2));
+            if (gap <= SPLIT_RANGE && gap < bestGap) {
+                best = foe;
+                bestGap = gap;
+            }
         }
         return best;
     }
@@ -1370,6 +1433,7 @@ public final class CombatCommit {
         mode = Mode.FIGHT;
         why = reason;
         targetId = foe.id();
+        noteSplit(foe);
         cornered = boxedIn;
         startTick = t.now();
         bestDistance = foe.distance();
