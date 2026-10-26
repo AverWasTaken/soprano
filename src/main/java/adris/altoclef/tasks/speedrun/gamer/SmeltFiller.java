@@ -156,7 +156,7 @@ public final class SmeltFiller {
         }
     }
 
-    // shield is 6 planks, the pickaxe and axe 4 sticks between them (2 planks make 4), a bed is 3 planks (a few beds'
+    // shield is 6 planks, the pickaxe and sword 3 sticks between them (2 planks make 4), a bed is 3 planks (a few beds'
     // worth is stocked, the rest is chopped when the beds are made)
     static int planksWanted(List<KitNeed> blocked, GamerFacts f, OverworldConfig cfg, int endBeds) {
         return planksWanted(blocked, cfg, WoodBudget.bedPlanksOwed(f, endBeds));

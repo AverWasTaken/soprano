@@ -60,6 +60,13 @@ public class DiamondSpendTest {
     }
 
     @Test
+    public void twoDiamondsAreSavedForThePickWhileItIsOpen() {
+        assertEquals(List.of(), DiamondSpend.choose(new FakeFacts().give(Items.DIAMOND, 2), cfg));
+        assertEquals(List.of("diamond_sword"),
+                DiamondSpend.choose(new FakeFacts().give(Items.DIAMOND, 2).give(Items.DIAMOND_PICKAXE, 1), cfg));
+    }
+
+    @Test
     public void fewerThanTwoBuysNothing() {
         for (int d = 0; d < DiamondSpend.CHEAPEST; d++) {
             assertEquals(List.of(), DiamondSpend.spend(d, ALL));

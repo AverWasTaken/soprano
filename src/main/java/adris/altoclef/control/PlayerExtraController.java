@@ -326,27 +326,16 @@ public class PlayerExtraController {
         return _mod.getPlayer().getMainHandItem().is(ItemTags.SWORDS);
     }
 
-    // first tick of the current run of sprint locks, MIN when none is running
-    private long _sweepLockSince = Long.MIN_VALUE;
-    private long _sweepLockLast = Long.MIN_VALUE;
-
-    // charge, then swing. shortly before the charge is full sprint is locked off so the swing can sweep, and the swing waits a
-    // tick after the first lock so the stop has gone out
+    // charge, then swing. shortly before the charge is full sprint is locked off so the swing can sweep. if we were still
+    // sprinting when this call began, the stop packet has not gone out yet and the swing waits a tick for it
     private boolean swordSwing(LocalPlayer player, LivingEntity target) {
-        long now = gameTime();
+        boolean wasSprinting = player.isSprinting();
         boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calmNeutralBeside(target));
         if (lock) {
             _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
             player.setSprinting(false);
-            // a lock nobody refreshed for a tick is gone (see lockSprintOff), so a gap starts the run over
-            if (_sweepLockSince == Long.MIN_VALUE || now - _sweepLockLast > 1) {
-                _sweepLockSince = now;
-            }
-            _sweepLockLast = now;
-        } else {
-            _sweepLockSince = Long.MIN_VALUE;
         }
-        if (!SwordSwing.swing(attackReady(), lock, _sweepLockSince < now)) {
+        if (!SwordSwing.swing(attackReady(), lock, !wasSprinting)) {
             return false;
         }
         return plainSwing(player, target);

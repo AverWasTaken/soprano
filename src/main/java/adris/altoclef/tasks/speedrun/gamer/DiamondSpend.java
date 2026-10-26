@@ -74,7 +74,9 @@ public final class DiamondSpend {
             return List.of();
         }
         int diamonds = f.count(Items.DIAMOND);
-        return diamonds < CHEAPEST ? List.of() : spend(diamonds, open(f, cfg));
+        Open open = open(f, cfg);
+        // the pick is first in line: two diamonds with the pick still open are saved for it, not spent on the sword
+        return diamonds < (open.pickaxe() ? MIN : CHEAPEST) ? List.of() : spend(diamonds, open);
     }
 
     // better tiers count as owned (KitPlanner.have), so a netherite piece closes its slot too. an armor slot the plan has gone gold

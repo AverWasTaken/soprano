@@ -164,7 +164,7 @@ public class KillAura {
                 performFastestAttack(mod);
                 break;
             case SMART:
-                // a committed fight is paced swings at one mob. the crowd branch below is 0.2 s uncharged pokes at the nearest
+                // a committed fight is paced swings at one mob. the crowd branch below is 0.2 s pokes at the nearest (a sword waits for its charge in there)
                 if (_fighting || _targets.size() <= 2 || _targets.stream().allMatch(entity -> entity instanceof Skeleton) ||
                         _targets.stream().allMatch(entity -> entity instanceof Witch) ||
                         _targets.stream().allMatch(entity -> entity instanceof Pillager) ||
@@ -180,7 +180,7 @@ public class KillAura {
                             attack(mod, _forceHit, true);
                         }
                         // pre 1.9 the clicker in attack() paces this, the fixed 0.2 s would be half a hand's cps
-                        if (LegacyCombat.active() || _hitDelay.elapsed()) {
+                        if (LegacyCombat.active() || mod.getControllerExtras().swordInHand() || _hitDelay.elapsed()) {
                             _hitDelay.reset();
 
                             Optional<Entity> toHit = Optional.ofNullable(pick(mod));
@@ -266,7 +266,7 @@ public class KillAura {
     }
 
     // crit is only for the paced swings of the delayed aura. the crowd mode swings every 0.2 s whether the cooldown is back
-    // or not, and a machine that gets asked every fourth tick can't steer a jump
+    // or not (a sword is asked every tick and waits for the charge itself), and a machine that gets asked every fourth tick can't steer a jump
     private void attack(AltoClef mod, Entity entity, boolean equipSword, boolean crit) {
         if (entity == null) return;
         // second guard: a wolf nobody poked is not our enemy, whatever put it in the target list

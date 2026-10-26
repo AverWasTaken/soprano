@@ -947,10 +947,10 @@ public class KitPlannerTest {
     // ---- diamonds in the bag (DiamondSpend)
 
     @Test
-    public void underTwoDiamondsEveryPlanIsTheOneItWas() {
+    public void underThreeDiamondsEveryPlanIsTheOneItWas() {
         f.foodUnits = 40;
         List<KitNeed> bare = KitPlanner.plan(f, cfg, 8);
-        for (int d = 1; d < DiamondSpend.CHEAPEST; d++) {
+        for (int d = 1; d < DiamondSpend.MIN; d++) {
             FakeFacts rich = new FakeFacts().give(Items.DIAMOND, d);
             rich.foodUnits = 40;
             assertEquals(bare, KitPlanner.plan(rich, cfg, 8));
@@ -960,9 +960,9 @@ public class KitPlannerTest {
     }
 
     @Test
-    public void twoDiamondsBuyTheSwordInPlaceOfTheIronOne() {
+    public void twoDiamondsBuyTheSwordInPlaceOfTheIronOneOnceThePickIsDiamond() {
         f.foodUnits = 40;
-        f.give(Items.DIAMOND, 2);
+        f.give(Items.DIAMOND, 2).give(Items.DIAMOND_PICKAXE, 1);
         List<String> n = names(KitPlanner.plan(f, cfg, 8));
         assertTrue(n.toString(), n.contains("diamond_sword"));
         assertFalse(n.toString(), n.contains("iron_sword"));
