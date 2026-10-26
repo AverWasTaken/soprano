@@ -36,6 +36,8 @@ final class SwimStall {
     private double windowStart = Double.NaN;
     private int ticks;
     private int diveLeft;
+    // temporary (swimprobe): which give-up fired, read by Movement's probe line
+    String lastGiveUp = "";
 
     boolean diving() {
         return diveLeft > 0;
@@ -72,6 +74,7 @@ final class SwimStall {
                 windowStart = dist;
                 return Verdict.DIVE;
             }
+            lastGiveUp = "dive ended without progress";
             return Verdict.GIVE_UP;
         }
         if (progressed) {
@@ -84,6 +87,7 @@ final class SwimStall {
         }
         if (!canDive) {
             // the blocker is at our feet level, or there's nowhere to go down, or no air to spare
+            lastGiveUp = "window stalled, cannot dive";
             return Verdict.GIVE_UP;
         }
         diveLeft = DIVE_TICKS;
@@ -94,6 +98,7 @@ final class SwimStall {
 
     private Verdict startOver(double dist, boolean progressed) {
         if (!progressed) {
+            lastGiveUp = "dive abandoned (cannot dive), no progress";
             return Verdict.GIVE_UP;
         }
         windowStart = dist;
