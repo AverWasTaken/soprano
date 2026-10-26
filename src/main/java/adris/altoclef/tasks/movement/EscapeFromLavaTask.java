@@ -2,6 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.HopLatch;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.LavaExit;
 import adris.altoclef.util.helpers.LookHelper;
@@ -74,18 +75,30 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     @Override
     protected Task onTick(AltoClef mod) {
         updateLavaRule(mod);
+        boolean inLava = mod.getPlayer().isInLava();
+        boolean lavaBelow = mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA;
+        if (_hop.active()) {
+            _hop.tick(!inLava && !lavaBelow);
+            if (_hop.active()) {
+                hopInputs(mod);
+                setDebugState("Hopping out of the lava.");
+                return null;
+            }
+            // the hop is over: let go, nothing else may be holding these and no path is guaranteed to take over
+            mod.getInputControls().release(Input.JUMP);
+            mod.getInputControls().release(Input.SPRINT);
+            mod.getInputControls().release(Input.MOVE_FORWARD);
+        }
         // Sprint through lava + jump, it's faster
-        if (mod.getPlayer().isInLava() || mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA) {
+        if (inLava || lavaBelow) {
             mod.getInputControls().hold(Input.JUMP);
             faceTheShore(mod);
             mod.getInputControls().hold(Input.SPRINT);
             mod.getInputControls().hold(Input.MOVE_FORWARD);
-            if (hopToNearExit(mod)) {
+            if (inLava && startHop(mod)) {
                 setDebugState("Hopping out of the lava.");
                 return null;
             }
-        } else {
-            _hopTicks = 0;
         }
         return super.onTick(mod);
     }
@@ -93,23 +106,33 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     // a shore one or two cells away is faster jumped at than planned: a path through lava is a crawl however short, and
     // the hop is the same crawl with no turns in it. baritone owns the inputs while it has a path (PlayerMovementInput
     // reads its forced state and drops ours), so it has to let go first. lava is ~25 ticks a block, so the far end of a two
-    // cell reach needs about 30 ticks to touch the wall, and a hop that still hasn't got us out by 50 hands back to baritone
-    private static final int HOP_GIVE_UP_TICKS = 50;
-    private int _hopTicks;
+    // cell reach needs about 30 ticks to touch the wall. once started the hop is latched (see HopLatch): it keeps the inputs
+    // through the surface flicker, and one that still hasn't got us out by 50 hands back to baritone for good
+    private final HopLatch _hop = new HopLatch();
 
-    private boolean hopToNearExit(AltoClef mod) {
-        if (_hopTicks >= HOP_GIVE_UP_TICKS || !mod.getPlayer().isInLava()) return false;
+    private boolean startHop(AltoClef mod) {
+        if (_hop.spent()) return false;
         BlockPos at = mod.getPlayer().blockPosition();
         LavaExit.Cell exit = LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld()));
         if (!LavaExit.withinHop(exit, at.getX(), at.getY(), at.getZ())) return false;
-        _hopTicks++;
+        if (!_hop.begin()) return false;
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             mod.getClientBaritone().getPathingBehavior().forceCancel();
         }
         mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        hopInputs(mod);
+        return true;
+    }
+
+    private void hopInputs(AltoClef mod) {
+        mod.getInputControls().hold(Input.JUMP);
+        mod.getInputControls().hold(Input.SPRINT);
+        mod.getInputControls().hold(Input.MOVE_FORWARD);
+        BlockPos at = mod.getPlayer().blockPosition();
+        LavaExit.Cell exit = LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld()));
+        if (exit == null) return;
         float yaw = LookHelper.getLookRotation(mod, new Vec3(exit.x() + 0.5, exit.y() + 0.5, exit.z() + 0.5)).getYaw();
         mod.getInputControls().forceLook(yaw, mod.getPlayer().getXRot());
-        return true;
     }
 
     // baritone steers while it has a path. with none (the first ticks, or a search that failed) holding forward swims
@@ -145,7 +168,8 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        return !mod.getPlayer().isInLava() && !mod.getPlayer().isOnFire();
+        // a latched hop sees its dry ticks out, a flicker tick with the fire out is not an escape
+        return !_hop.active() && !mod.getPlayer().isInLava() && !mod.getPlayer().isOnFire();
     }
 
     @Override
