@@ -30,6 +30,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.NetherConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.CampPinger;
+import adris.altoclef.tasks.speedrun.gamer.tasks.EscapeRun;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherBlockRestock;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
@@ -219,6 +220,8 @@ public class NetherPhase implements PhaseHandler {
     private Task flee;
     private double fleeUntil;
     private String hudState;
+    // the bridge off a portal that floats over nothing, see EscapeRun
+    private final EscapeRun escapeRun = new EscapeRun();
 
     @Override
     public GamerPhase phase() {
@@ -367,6 +370,7 @@ public class NetherPhase implements PhaseHandler {
         placingOff(mod);
         flee = null;
         fleeUntil = 0;
+        escapeRun.reset();
         lastHurt = 0;
         lastPearls = 0;
         rotation = 0;
@@ -412,6 +416,7 @@ public class NetherPhase implements PhaseHandler {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
             placingOff(mod);
+            escapeRun.reset();
             if (foodTrip) {
                 // the hunt's clock starts when we are up here, not when we left the fortress
                 if (!foodTripUp) {
@@ -465,10 +470,16 @@ public class NetherPhase implements PhaseHandler {
         // before the cover, whatever path that one walks must not break gold either
         boolean piglins = guardGold(mod);
         noteUnsafe(mod, ctx);
-        Task cover = ghastCover(mod, now);
+        Task cover = ghastCover(mod, now, escapeRun.running());
         if (cover != null) {
             gravel.preempted(ctx.facts().gameTime());
             return cover;
+        }
+        // above the trips, the sweep and the side jobs: nothing out here is worth doing while we are stuck on a slab
+        Task out = escapeRun.step(mod, true, ctx.facts().gameTime(), ctx::log, ctx::progress);
+        if (out != null) {
+            hudState = escapeRun.hud();
+            return out;
         }
         Task home = foodTripHome(mod, ctx);
         if (home != null) {
@@ -1345,10 +1356,14 @@ public class NetherPhase implements PhaseHandler {
     }
 
     // two fireball hits inside the window: stop standing in the open and put some distance between us and the ghast
-    private Task ghastCover(AltoClef mod, double now) {
+    // (not while the escape bridge runs: a run along a 1 wide bridge is a swim, the bridge holds still for the ball instead)
+    private Task ghastCover(AltoClef mod, double now, boolean escaping) {
         Player p = mod.getPlayer();
         boolean freshHit = p.hurtTime > lastHurt;
         lastHurt = p.hurtTime;
+        if (escaping) {
+            return null;
+        }
         if (freshHit && hitByGhast(p) && ghastWatch.onHit(now)) {
             Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
             BlockPos from = ghast.map(Entity::blockPosition).orElse(p.blockPosition());

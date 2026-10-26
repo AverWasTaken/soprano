@@ -26,6 +26,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
 import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.tasks.speedrun.gamer.tasks.EscapeRun;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
@@ -148,6 +149,8 @@ public class GamerTask extends Task {
     private DeathRules.Worth worth;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
+    // the same bridge off a floating portal the nether phase has: the walk back arrives through a portal too
+    private final EscapeRun tripEscape = new EscapeRun();
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
     private int deathsAtStart;
 
@@ -852,9 +855,11 @@ public class GamerTask extends Task {
             setDebugState("Going back to the nether for our stuff.", "Getting our stuff back");
             updateRecoveryHud(tripWords());
             autosave(now);
-            return netherTrip;
+            Task off = tripEscape.step(mod, facts.dimension() == Dimension.NETHER, facts.gameTime(), host::say, what -> machine.progress());
+            return off != null ? off : netherTrip;
         }
         netherTrip = null;
+        tripEscape.reset();
         if (recoverStillWanted(now)) {
             dropNightTrip();
             dropShelter();

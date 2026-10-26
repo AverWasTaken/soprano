@@ -176,7 +176,7 @@ public class PortalPlannerTest {
         f.buildBlocks = 64;
         List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
         assertEquals(List.of(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.netherEntryBlocks)), out);
-        assertEquals(128, cfg.netherEntryBlocks);
+        assertEquals(160, cfg.netherEntryBlocks);
         f.buildBlocks = cfg.netherEntryBlocksLow;
         assertTrue("a near full stack is not worth a trip to the stone", PortalPlanner.gate(f, cfg, 10).isEmpty());
     }

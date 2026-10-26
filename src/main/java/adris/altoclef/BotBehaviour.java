@@ -359,6 +359,15 @@ public class BotBehaviour {
         return current().forceFieldPlayers;
     }
 
+    // a shield up is a fireball punch skipped (KillAura), and the explosion knocks us off a one wide bridge either way
+    public boolean noFireballShield() {
+        return current().noFireballShield;
+    }
+
+    public void setNoFireballShield(boolean on) {
+        current().noFireballShield = on;
+    }
+
     public void setForceFieldPlayers(boolean forceFieldPlayers) {
         current().forceFieldPlayers = forceFieldPlayers;
         // Not needed, nothing changes.
@@ -591,6 +600,7 @@ public class BotBehaviour {
         // Alto Clef params
         public boolean exclusivelyMineLogs;
         public boolean forceFieldPlayers;
+        public boolean noFireballShield;
         public List<Predicate<Entity>> avoidDodgingProjectile = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromForceField = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromMobDefense = new ArrayList<>();
@@ -635,6 +645,7 @@ public class BotBehaviour {
                 excludeFromMobDefense.addAll(toCopy.excludeFromMobDefense);
                 conversionSlots.addAll(toCopy.conversionSlots);
                 forceFieldPlayers = toCopy.forceFieldPlayers;
+                noFireballShield = toCopy.noFireballShield;
                 escapeLava = toCopy.escapeLava;
             }
         }
