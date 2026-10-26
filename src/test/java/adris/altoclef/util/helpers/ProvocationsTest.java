@@ -39,6 +39,15 @@ public class ProvocationsTest {
 
     // a new world starts the game clock over, ids get reused, nobody inherits a grudge from the old one
     @Test
+    public void aClockAFewTicksBackIsStillARecentHit() {
+        Provocations p = new Provocations();
+        p.mark(7, 50_000);
+        assertTrue(p.recent(7, 49_998));
+        p.markHit(7, 50_000);
+        assertEquals(0, p.sinceHit(7, 49_998));
+    }
+
+    @Test
     public void aClockThatWentBackwardsIsNotARecentHit() {
         Provocations p = new Provocations();
         p.mark(7, 50_000);

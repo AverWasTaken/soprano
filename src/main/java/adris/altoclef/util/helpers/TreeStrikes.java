@@ -39,8 +39,8 @@ public final class TreeStrikes {
     // one more failure at `at`. empty until it is the one that ends the tree, then every spot that failed there (the caller
     // bans whatever logs are around them for as long as it likes) and the count for this tree is gone
     public List<BlockPos> strike(Dimension dim, BlockPos at, long now) {
-        // game time only goes backwards with a new world, and then none of this means anything
-        entries.removeIf(e -> now < e.last || now - e.last >= DECAY);
+        // game time only goes way back with a new world, and then none of this means anything (a tick or two is lag)
+        entries.removeIf(e -> GameClock.since(e.last, now) >= DECAY);
         Entry hit = null;
         for (Entry e : entries) {
             if (e.dim == dim && near(e, at)) {

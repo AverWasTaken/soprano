@@ -295,4 +295,25 @@ public class LavaHuntTest {
         h.drop(siteAt(20));
         assertEquals(a, h.nextToSurvey(List.of(a), 0, 64, 0, 1));
     }
+
+    @Test
+    public void theCastLakeIsTheNearestOneBigEnoughForTheFlood() {
+        P tiny = new P(5, 64, 0);
+        P near = new P(30, 64, 0);
+        P far = new P(90, 64, 0);
+        // the tiny puddle is the closest seed but the cast wants a flood, so it is walked past
+        assertEquals(near, LavaHunt.castLake(List.of(far, tiny, near), 0, 64, 0, 12, seed -> seed.equals(tiny) ? 3 : 20));
+        assertNull(LavaHunt.castLake(List.of(tiny), 0, 64, 0, 12, seed -> 3));
+        assertNull(LavaHunt.castLake(List.of(), 0, 64, 0, 12, seed -> 99));
+    }
+
+    @Test
+    public void theFetchBandIsTheSurfaceAndNotTheCaves() {
+        assertTrue(LavaHunt.inBand(64, 70));
+        assertTrue(LavaHunt.inBand(64 + LavaHunt.BAND, 64));
+        assertFalse(LavaHunt.inBand(64 + LavaHunt.BAND + 1, 64));
+        // standing in a cave does not move the band down with us
+        assertFalse(LavaHunt.inBand(2, 10));
+        assertTrue(LavaHunt.inBand(60 - LavaHunt.BAND, 10));
+    }
 }

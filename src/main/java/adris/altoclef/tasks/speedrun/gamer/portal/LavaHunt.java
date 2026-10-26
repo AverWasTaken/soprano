@@ -10,14 +10,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.ToIntFunction;
 
 // the "where is the lava and how do we get there" half of the lava portal, with no minecraft in it so it can be tested.
 // LPortalTask feeds it the scanned lava seeds and what the lake surveys found, it says walk, wait or give up (to the cast).
 // every lake in the loaded chunks gets a verdict before the first walk, so a walk goes to a lake that passed and not to the
 // cheapest seed
-final class LavaHunt {
+public final class LavaHunt {
     // only lakes this far above and below us count. a lake 50 blocks down is a cave lake and those always fail the floor rule
-    static final int BAND = 24;
+    public static final int BAND = 24;
     // the band never sinks below the surface. starting the portal from a cave (an item pickup at y 2, say) would centre it
     // on cave lava 20 blocks down, and the walk there is cliff rims over the pool
     static final int SURFACE_Y = 60;
@@ -59,8 +60,25 @@ final class LavaHunt {
         }
     }
 
-    static int bandCentre(int py) {
+    public static int bandCentre(int py) {
         return Math.max(py, SURFACE_Y);
+    }
+
+    // a lava cell at this height is surface lava from where we stand, same band the scan keeps
+    public static boolean inBand(int y, int py) {
+        return Math.abs(y - bandCentre(py)) <= BAND;
+    }
+
+    // the nearest lake the cast could flood from, any verdict: the pool turned every one down, but the cast does not need a
+    // shore like the pool does, only a flood of sources. lakeSources floods from a seed and says how many it found (a seed in a
+    // lake it already counted says 0, that is lakeSize's own explored set)
+    static P castLake(List<P> seeds, int px, int py, int pz, int minSources, ToIntFunction<P> lakeSources) {
+        for (P p : byCost(seeds, px, py, pz)) {
+            if (lakeSources.applyAsInt(p) >= minSources) {
+                return p;
+            }
+        }
+        return null;
     }
 
     static double cost(P seed, int px, int py, int pz) {

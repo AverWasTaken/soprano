@@ -42,15 +42,15 @@ public final class WaterUpkeep {
 
     public static boolean coolingDown(int now, int failedAt) {
         // the tick counter restarts on a reconnect, a stamp from before it is old news
-        return now >= failedAt && now - failedAt < COOLDOWN_TICKS;
+        return GameClock.since(failedAt, now) < COOLDOWN_TICKS;
     }
 
     public static boolean lookedRecently(int now, int lookedAt) {
-        return now >= lookedAt && now - lookedAt < LOOK_TICKS;
+        return GameClock.since(lookedAt, now) < LOOK_TICKS;
     }
 
     public static boolean timedOut(int now, int startedAt) {
-        return now < startedAt || now - startedAt >= TIMEOUT_TICKS;
+        return GameClock.since(startedAt, now) >= TIMEOUT_TICKS;
     }
 
     // water we can scoop from above: a source with open air over it

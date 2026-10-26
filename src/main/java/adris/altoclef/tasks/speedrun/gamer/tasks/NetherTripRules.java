@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.tasks.speedrun.gamer.RunState;
+import adris.altoclef.util.helpers.GameClock;
 import baritone.api.utils.Dimension;
 
 // the pure half of the trip back for a nether death. we respawn in the overworld, the pile in the nether stops aging the
@@ -175,8 +176,8 @@ public final class NetherTripRules {
         return arrivedTick <= 0 ? 0 : now - arrivedTick;
     }
 
-    // how far back the clock may jump before it is another world and not the server correcting the client. one minute
-    public static final long CLOCK_JITTER_TICKS = 1200;
+    // how far back the clock may jump before it is another world and not the server correcting the client (GameClock owns it)
+    public static final long CLOCK_JITTER_TICKS = GameClock.JITTER_TICKS;
 
     // pushes the nether arrival back by a payback, never past now: a payback stamped under a clock that then got corrected
     // backwards would leave the trip arriving in the future

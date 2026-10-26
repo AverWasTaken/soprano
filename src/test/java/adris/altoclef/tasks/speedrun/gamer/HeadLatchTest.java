@@ -79,8 +79,10 @@ public class HeadLatchTest {
         FakeFacts bag = new FakeFacts().give(Items.OAK_LOG, 3);
         assertEquals(LOG, HeadLatch.pick(LOG, 0, 40, 40 + HeadLatch.DWELL_TICKS - 1, List.of(COBBLE), bag));
         assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 40, 40 + HeadLatch.DWELL_TICKS, List.of(COBBLE), bag));
-        // a clock that went backwards does not hold for ever
-        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 500, 40, List.of(COBBLE), bag));
+        // a clock that went way backwards does not hold for ever
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 5000, 40, List.of(COBBLE), bag));
+        // a tick or two back is lag, the hold stays
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, 500, 498, List.of(COBBLE), bag));
     }
 
     @Test
@@ -133,6 +135,11 @@ public class HeadLatchTest {
     @Test
     public void aClockThatWentBackwardsDoesNotHoldForEver() {
         assertEquals(FOOD, pick(IRON, 5000, 10, List.of(FOOD, IRON), f));
+    }
+
+    @Test
+    public void aClockAFewTicksBackIsLagAndKeepsTheDwell() {
+        assertEquals(IRON, pick(IRON, 5000, 4998, List.of(FOOD, IRON), f));
     }
 
     @Test

@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.util.helpers.BreakRules;
+import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
@@ -961,6 +962,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
                     mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
             ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
+            // not while a fight or a run is committed (or the heal-up hold is on): a resumed task swapping the sword out for a
+            // pick mid fight is how the weapon ends up in the bag
+            boolean combatHolds = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE || mod.getMobDefenseChain().isRecovering();
             boolean handIsATool = ItemHelper.isTool(held.getItem()) || held.getItem() == Items.SHEARS;
             // the two quiet ways to end up swinging a bucket at a wall: nothing in the bag does better, or a crack is in progress
             // (an empty hand isn't news, that is every block at the start of a run)
@@ -988,7 +992,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                         && ToolSwap.worthSwappingDown(held.getItem(), ToolPick.optionOf(held, state), best.getItem(), ToolPick.optionOf(best, state));
                 if (faster || chained) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
-                            && !mod.getFoodChain().isTryingToEat();
+                            && !mod.getFoodChain().isTryingToEat() && !combatHolds;
                     if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {
                         return null;
                     }
@@ -1014,7 +1018,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     _toolSwap.landed();
                 }
             }
-            if (bestToolSlot.isEmpty() && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && !breaksInstantly(mod, swingAt)) {
+            if (bestToolSlot.isEmpty() && !combatHolds && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && !breaksInstantly(mod, swingAt)) {
                 // no tool in the bag beats the hand here, so the pick in it is only taking wear
                 var inv = mod.getPlayer().getInventory().getNonEquipmentItems();
                 boolean[] empty = new boolean[9];

@@ -147,7 +147,7 @@ public final class CreeperStep {
             Event end = Event.NONE;
             if (held == null) end = Event.END_GONE;
             else if (fuseOut(held, mode)) end = Event.END_UNLIT;
-            else if (now < _since || now - _since >= HOLD_CAP) end = Event.END_CAP;
+            else if (GameClock.since(_since, now) >= HOLD_CAP) end = Event.END_CAP;
             if (end == Event.NONE) {
                 if (!_cornered && shieldReady && noHeading && held.lit() && held.distance() <= TRIGGER) {
                     _cornered = true;

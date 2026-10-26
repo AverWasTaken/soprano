@@ -8,6 +8,7 @@ import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -28,6 +29,7 @@ import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -69,6 +71,11 @@ public class PortalPhase implements PhaseHandler {
     private DefaultGoToDimensionTask cast;
     private LPortalTask pool;
     private boolean poolFailed;
+    // the walk to a lava lake between the pool giving up and the cast starting (see castLakeStep)
+    private final WalkProgress lakeWalk = new WalkProgress();
+    private BlockPos castLake;
+    private boolean castLakeAsked;
+    private boolean castLakeDone;
     // the lakes the pool gave up on. here and not in RunState or onEnter, so a retry of the phase doesn't walk to them again
     private final List<LPortalPlan.P> deadLakes = new ArrayList<>();
     // the pool task was the one handed the wheel on the last tick. with no layout yet it is the only time a night may take the
@@ -84,6 +91,8 @@ public class PortalPhase implements PhaseHandler {
     private boolean portalBedDecided;
     private double portalBedSince;
     private static final double PORTAL_BED_SECONDS = 45;
+    // close enough to the lake that the tracker's rescan has it in its nearest sources
+    private static final int LAKE_ARRIVE = 8;
 
     @Override
     public GamerPhase phase() {
@@ -146,6 +155,10 @@ public class PortalPhase implements PhaseHandler {
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
         pool = new LPortalTask(deadLakes);
         poolStarted = false;
+        castLake = null;
+        castLakeAsked = false;
+        castLakeDone = false;
+        lakeWalk.reset();
         if (ctx.attempt() <= 1) {
             ctx.state().portalPoolTimedOut = false;
             deadLakes.clear();
@@ -291,6 +304,10 @@ public class PortalPhase implements PhaseHandler {
             resetCastClock();
             ctx.progress("lava pool gave up: " + pool.failReason());
         }
+        Task toLake = castLakeStep(mod, ctx, portalExists);
+        if (toLake != null) {
+            return toLake;
+        }
         if (castStartTick < 0) {
             castStartTick = f.gameTime();
         }
@@ -305,6 +322,34 @@ public class PortalPhase implements PhaseHandler {
         }
         hudState = "Getting obsidian for the portal";
         return obsidian;
+    }
+
+    // the pool gave up but its scan saw a lake the cast can flood from. the cast only knows the tracker's 25 nearest lava sources
+    // (often all deep ones) and wanders off to find the rest, so it is walked to the lake first and the tracker fills in around
+    // it. the cast clock has not started yet, so the walk does not eat it. a stalled walk or no lake is just the cast as before
+    private Task castLakeStep(AltoClef mod, GamerContext ctx, boolean portalExists) {
+        if (portalExists || castLakeDone || pool == null || !pool.failed() || ctx.facts().dimension() != Dimension.OVERWORLD
+                || PortalPlanner.parse(ctx.state().portalMethod) != Method.CAST) {
+            return null;
+        }
+        if (!castLakeAsked) {
+            castLakeAsked = true;
+            castLake = pool.castLake(mod);
+            lakeWalk.reset();
+        }
+        if (castLake == null) {
+            castLakeDone = true;
+            return null;
+        }
+        var me = mod.getPlayer();
+        // all three axes, the goal is a sphere and a lake 20 blocks down a cliff is not "here"
+        double dist = Math.sqrt(castLake.distToCenterSqr(me.getX(), me.getY(), me.getZ()));
+        if (dist <= LAKE_ARRIVE || lakeWalk.stalled(ctx.secondsInPhase(), dist)) {
+            castLakeDone = true;
+            return null;
+        }
+        hudState = "Walking to a lava lake";
+        return new GetWithinRangeOfBlockTask(castLake.above(), LAKE_ARRIVE);
     }
 
     // a bed from the bag goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the

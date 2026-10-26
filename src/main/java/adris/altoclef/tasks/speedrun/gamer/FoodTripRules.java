@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+import adris.altoclef.util.helpers.GameClock;
 
 // the nether has no food of its own, so when the bag runs dry out there the way back is the portal we came by and the overworld's
 // own food floor (FoodFloor). pure, the phase only feeds it numbers
@@ -50,9 +51,9 @@ public final class FoodTripRules {
     }
 
     // the line is crossed, may the trip start. under the floor it goes anyway, else it waits until nothing unsafe has held for
-    // CALM_TICKS. lastUnsafe < 0 = never seen, a clock that went backwards is a restart (same as the other timers)
+    // CALM_TICKS. lastUnsafe < 0 = never seen, a clock way back is a restart (same as the other timers), a tick or two is lag
     public static boolean mayStart(boolean underFloor, long now, long lastUnsafe) {
-        return underFloor || lastUnsafe < 0 || now < lastUnsafe || now - lastUnsafe >= CALM_TICKS;
+        return underFloor || lastUnsafe < 0 || GameClock.since(lastUnsafe, now) >= CALM_TICKS;
     }
 
     // the overworld half is over: the bag is back at the line, or the clock ran out
@@ -159,9 +160,9 @@ public final class FoodTripRules {
     // always said the next try has to earn its start, and nothing made it
     public static final long COOLDOWN_TICKS = 1200;
 
-    // endedAt < 0 = no trip has ended. a clock that went backwards is a restart, so no cooldown either
+    // endedAt < 0 = no trip has ended. a clock way back is a restart, so no cooldown either
     public static boolean coolingDown(long now, long endedAt) {
-        return endedAt >= 0 && now >= endedAt && now - endedAt < COOLDOWN_TICKS;
+        return endedAt >= 0 && GameClock.since(endedAt, now) < COOLDOWN_TICKS;
     }
 
     // the phase restarted (the watchdog's retry) with a trip's overworld half in flight and the bag still short. the retry

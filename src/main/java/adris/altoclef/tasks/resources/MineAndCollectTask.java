@@ -13,6 +13,7 @@ import adris.altoclef.trackers.Bans;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.GameClock;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -348,7 +349,7 @@ public class MineAndCollectTask extends ResourceTask {
         if (_dirtTask != null) {
             // the task's own count, not "anything to place": one dirt in the bag is a tower one block high
             boolean done = _dirtTask.isFinished(mod);
-            boolean late = now - _dirtSince > DIRT_PATIENCE_TICKS || now < _dirtSince;
+            boolean late = GameClock.since(_dirtSince, now) > DIRT_PATIENCE_TICKS;
             if (!done && !late) {
                 return _dirtTask;
             }

@@ -61,6 +61,9 @@ public class WaterUpkeepTest {
     public void aReconnectDoesNotFreezeTheRules() {
         // the tick counter starts over, so "now" can be smaller than any stamp from before
         assertFalse(WaterUpkeep.coolingDown(50, 400000));
+        // a tick back is lag: still cooling, not timed out
+        assertTrue(WaterUpkeep.coolingDown(998, 1000));
+        assertFalse(WaterUpkeep.timedOut(998, 1000));
         assertTrue(WaterUpkeep.timedOut(50, 400000));
         assertFalse(WaterUpkeep.lookedRecently(50, 400000));
         assertTrue(WaterUpkeep.lookedRecently(110, 100));

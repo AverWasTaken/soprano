@@ -19,6 +19,7 @@ import adris.altoclef.util.helpers.CreeperEscape;
 import adris.altoclef.util.helpers.CreeperStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.ProjectileHelper;
@@ -328,7 +329,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // a block over our head first, when the creeper is up the shaft with us. it takes the wheel (nothing else may swap
             // the pickaxe back in under the click), and gives up to the shield once its share of the fuse is gone or a click
             // is refused
-            if (_capAbove && !_capDone && CreeperCap.inWindow(mod.getWorld().getGameTime() - _capSince) && capCell(mod)) {
+            if (_capAbove && !_capDone && CreeperCap.inWindow(GameClock.since(_capSince, mod.getWorld().getGameTime())) && capCell(mod)) {
                 setTask(new IdleTask());
                 _killAura.stopShielding(mod);
                 stopShielding(mod);
@@ -771,7 +772,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // for the start of the step, and then there was no answer to give)
         if (_capAbove && _capSince == Long.MIN_VALUE) _capSince = now;
         // out of time: the shield has it, and the food chain gets its hands back if there is no shield
-        if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(now - _capSince)) _capDone = true;
+        if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(GameClock.since(_capSince, now))) _capDone = true;
     }
 
     // the same question CreeperStepTask asks before it sprints: is there anywhere to run. asked about the creeper the step

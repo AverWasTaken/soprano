@@ -357,6 +357,10 @@ public final class CombatCommit {
         Tick withNextHit(float hit) {
             return new Tick(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, hit, watched);
         }
+
+        Tick withNow(long at) {
+            return new Tick(at, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, watched);
+        }
     }
 
     // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
@@ -603,6 +607,9 @@ public final class CombatCommit {
     private double originZ;
     private long startTick;
     private long lastTick = Long.MIN_VALUE;
+    // how far step() pulled the clock forward this tick. the foes' sinceHit counts on the raw clock, so a hit's own time is
+    // now - sinceHit - skew (or the same hit reads two ticks newer every time the clock slips and counts twice)
+    private long clockSkew;
     private float lastHp;
     private final java.util.ArrayDeque<HitSize> hitSizes = new java.util.ArrayDeque<>();
     private long cooldownUntil = Long.MIN_VALUE / 2;
@@ -737,6 +744,7 @@ public final class CombatCommit {
         targetId = -1;
         cornered = false;
         lastTick = Long.MIN_VALUE;
+        clockSkew = 0;
         hitSizes.clear();
         cooldownUntil = Long.MIN_VALUE / 2;
         endedFirst = Event.NONE;
@@ -796,8 +804,10 @@ public final class CombatCommit {
     }
 
     public Event step(Tick t) {
-        // a clock that went backwards is a new world, nobody is owed a grudge from there
-        if (lastTick != Long.MIN_VALUE && t.now() < lastTick) reset();
+        // the server's time packet drags the clock back a tick or two under lag. that is not a new world (CombatBrain catches
+        // those), so the clock just stands still instead of wiping a live run and every "since" going negative
+        clockSkew = lastTick != Long.MIN_VALUE && t.now() < lastTick ? lastTick - t.now() : 0;
+        if (clockSkew > 0) t = t.withNow(lastTick);
         t = t.withNextHit(watchHits(t));
         lastTick = t.now();
         endedFirst = Event.NONE;
@@ -1460,7 +1470,7 @@ public final class CombatCommit {
         for (Foe foe : t.foes()) {
             if (!foe.hitUs() || !foe.melee() || foe.distance() > CombatRules.SWARM_RANGE) continue;
             if (foe.mustRun(t.guardHealth()) || stillIgnored(foe, t.now())) continue;
-            long at = t.now() - foe.sinceHit();
+            long at = t.now() - foe.sinceHit() - clockSkew;
             if (at <= startTick + RUN_HIT_GRACE) continue;
             Long counted = runHitAt.get(foe.id());
             if (counted != null && at <= counted) continue;

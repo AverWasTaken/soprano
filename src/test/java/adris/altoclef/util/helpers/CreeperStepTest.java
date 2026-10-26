@@ -345,10 +345,18 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void aClockGoingBackwardsEndsIt() {
+    public void aClockGoingWayBackwardsEndsIt() {
+        CreeperStep step = new CreeperStep();
+        step.step(5000, lit(7, 3), false);
+        assertEquals(Event.END_CAP, step.step(5, lit(7, 3), false));
+    }
+
+    @Test
+    public void aClockAFewTicksBackIsLagAndKeepsIt() {
         CreeperStep step = new CreeperStep();
         step.step(100, lit(7, 3), false);
-        assertEquals(Event.END_CAP, step.step(5, lit(7, 3), false));
+        assertEquals(Event.NONE, step.step(98, lit(7, 3), false));
+        assertEquals(7, step.creeperId());
     }
 
     @Test

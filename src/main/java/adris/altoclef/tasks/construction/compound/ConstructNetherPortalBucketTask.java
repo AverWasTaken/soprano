@@ -98,7 +98,7 @@ public class ConstructNetherPortalBucketTask extends Task {
     // Stored here to cache lava blacklist
     // the cast's own cells are off the menu, the pour we just made is not a lake
     private final CollectBucketLiquidTask _collectLavaTask = new CollectBucketLiquidTask.CollectLavaBucketTask(1)
-            .leaveAlone(cell -> this._cast != null && this._cast.scoopOff(cell));
+            .leaveAlone(cell -> this._cast != null && (this._cast.scoopOff(cell) || this._cast.offBand(cell)));
     // no lake in reach (the search came back empty), for the portal phase's no lava clock
     private boolean _noLake;
     private final TimerGame _refreshTimer = new TimerGame(11);
@@ -348,6 +348,7 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA && !_cast.ownsTheLava(mod)) {
                 setDebugState("Collecting lava");
                 _progressChecker.reset();
+                _cast.startBandClock(mod);
                 return _collectLavaTask;
             }
             return _cast;
@@ -517,13 +518,16 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!inYBand(pos.getY(), playerPos.getY())) continue;
             int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
             // every lone source gets flooded now, only the real lakes are worth a chat line
-            if (depth >= 12) {
+            if (depth >= LAKE_MIN_SOURCES) {
                 Debug.logMessage("Found with depth " + depth);
                 lakes.add(pos);
             }
         }
         return lakes;
     }
+
+    // the flood the cast wants before it calls a pool a lake (LPortalTask walks to one the pool could not build on)
+    public static final int LAKE_MIN_SOURCES = 12;
 
     static boolean inYBand(int lakeY, int playerY) {
         return Math.abs(lakeY - playerY) <= LAKE_Y_BAND;
@@ -535,7 +539,7 @@ public class ConstructNetherPortalBucketTask extends Task {
         return lakeSize(origin, ConstructNetherPortalBucketTask::isFullLavaSource, alreadyExplored);
     }
 
-    static boolean isFullLavaSource(BlockPos pos) {
+    public static boolean isFullLavaSource(BlockPos pos) {
         BlockState s = Minecraft.getInstance().level.getBlockState(pos);
         return s.getBlock() == Blocks.LAVA && s.getFluidState().isSource() && s.getFluidState().getAmount() == 8;
     }
@@ -543,7 +547,7 @@ public class ConstructNetherPortalBucketTask extends Task {
     // full sources touching start, 6 ways. every cell looked at goes in explored, source or not, so findLavaLakes skips
     // the rest of a lake it already counted. this used to recurse one frame per source and a deep lava lake is a lot of
     // sources, so now it's a stack we own instead of the jvm's
-    static int lakeSize(BlockPos start, Predicate<BlockPos> isFullSource, Set<BlockPos> explored) {
+    public static int lakeSize(BlockPos start, Predicate<BlockPos> isFullSource, Set<BlockPos> explored) {
         ArrayDeque<BlockPos> todo = new ArrayDeque<>();
         todo.push(start);
         int count = 0;

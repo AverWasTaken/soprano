@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.GameClock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -755,6 +756,6 @@ public final class FurnacePlan {
     // is an early load that started at `since` still worth waiting for. -1 = none, and a clock that went backwards (a relog,
     // another world) is not a flight
     public static boolean earlyLoadInFlight(long since, long now) {
-        return since >= 0 && now >= since && now - since < EARLY_LOAD_TICKS;
+        return since >= 0 && GameClock.since(since, now) < EARLY_LOAD_TICKS;
     }
 }

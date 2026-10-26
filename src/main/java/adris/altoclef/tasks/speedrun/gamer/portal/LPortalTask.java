@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceStructureBlockTask;
+import adris.altoclef.tasks.construction.compound.ConstructNetherPortalBucketTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
@@ -112,6 +113,16 @@ public class LPortalTask extends Task {
     // rejected = the lakes earlier tries gave up on (the phase keeps the list, so a retry doesn't walk to them again)
     public LPortalTask(List<P> rejected) {
         hunt = new LavaHunt(rejected);
+    }
+
+    // where the cast should start when the pool gave up: the nearest lake in the scan it can flood from, or null (no scan, no lava).
+    // the cast only sees the tracker's 25 nearest sources, often all deep ones, so it is walked to the lake instead of wandering
+    public BlockPos castLake(AltoClef mod) {
+        BlockPos me = mod.getPlayer().blockPosition();
+        Set<BlockPos> explored = new HashSet<>();
+        P lake = LavaHunt.castLake(bandSeeds, me.getX(), me.getY(), me.getZ(), ConstructNetherPortalBucketTask.LAKE_MIN_SOURCES,
+                seed -> ConstructNetherPortalBucketTask.lakeSize(toPos(seed), ConstructNetherPortalBucketTask::isFullLavaSource, explored));
+        return lake == null ? null : toPos(lake);
     }
 
     public String failReason() {
