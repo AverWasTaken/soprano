@@ -160,6 +160,19 @@ public class ApproachRulesTest {
     }
 
     @Test
+    public void underFireInReachSwingsRightAwayButNotWhileEatingOrOnARim() {
+        boolean waited = ApproachRules.swingWaited(false, true, false);
+        assertTrue(waited);
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, false, true, waited, ApproachRules.Policy.KILL));
+        // eating or the bucket has the gates shut: it stands, hurt or not
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, true, false, true, waited, ApproachRules.Policy.KILL_GATED));
+        // a rim has its own way off, and no fire means the stand clock decides as before
+        assertFalse(ApproachRules.swingWaited(false, true, true));
+        assertFalse(ApproachRules.swingWaited(false, false, false));
+        assertTrue(ApproachRules.swingWaited(true, false, true));
+    }
+
+    @Test
     public void aKillTaskNeverShufflesOffAMobInReachAndEatingIsNotForcedThrough() {
         for (boolean tooClose : new boolean[]{false, true}) {
             for (boolean safe : new boolean[]{false, true}) {

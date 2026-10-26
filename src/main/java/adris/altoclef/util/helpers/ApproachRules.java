@@ -89,6 +89,12 @@ public final class ApproachRules {
         return Plan.WANDER;
     }
 
+    // the kill tasks' waitedLong: the stand clock ran out, or something is biting us in reach and waiting out a path step
+    // just feeds it free hits (not on a rim, there the rim step is the way off and has its own say)
+    public static boolean swingWaited(boolean standWaited, boolean underFire, boolean rimWide) {
+        return standWaited || (underFire && !rimWide);
+    }
+
     // nothing to interact with this tick. a wander we already have as our child keeps going even when baritone says it is not
     // safe to cancel (its own explore path is what says that): returning null there stopped it, the next safe tick started a
     // new one, and it re-explored from scratch about twice a second. a wander is only started fresh when nothing is mid-stride
