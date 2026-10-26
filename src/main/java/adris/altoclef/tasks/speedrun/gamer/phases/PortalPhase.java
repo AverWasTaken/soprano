@@ -23,6 +23,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
@@ -32,6 +33,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,6 +66,8 @@ public class PortalPhase implements PhaseHandler {
     private DefaultGoToDimensionTask cast;
     private LPortalTask pool;
     private boolean poolFailed;
+    // the lakes the pool gave up on. here and not in RunState or onEnter, so a retry of the phase doesn't walk to them again
+    private final List<LPortalPlan.P> deadLakes = new ArrayList<>();
     // the pool task was the one handed the wheel on the last tick. with no layout yet it is the only time a night may take the
     // wheel here (read live, a layout can land between our tick and the night's question)
     private boolean poolActive;
@@ -127,10 +131,11 @@ public class PortalPhase implements PhaseHandler {
         userAsync = async.value;
         SettingsOverrides.put(async, false);
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
-        pool = new LPortalTask();
+        pool = new LPortalTask(deadLakes);
         poolStarted = false;
         if (ctx.attempt() <= 1) {
             ctx.state().portalPoolTimedOut = false;
+            deadLakes.clear();
         }
         // a pool that already stalled the phase once is not tried again, not even after a relog
         poolFailed = ctx.state().portalPoolTimedOut;
