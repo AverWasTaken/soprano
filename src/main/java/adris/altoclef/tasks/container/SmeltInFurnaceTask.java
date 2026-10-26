@@ -177,6 +177,9 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         private boolean _ignoreMaterials;
         // async smelting: everything is in the furnace and we walked away, this task is done and must not walk back to it
         private boolean _loaded;
+        // recordStranded left a job for what the screen last showed: once per look, a second stop (an interrupt, then the end) must not
+        // queue it again. the screen opening again is a new look
+        private boolean _recorded;
         // the outer check (bag short of what the furnace still needs) and the one inside the open screen, see FuelShortage
         private final FuelShortage _fuelShort = new FuelShortage();
         private final FuelShortage _dryInside = new FuelShortage();
@@ -289,16 +292,32 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         // dropped with the input in the furnace and no job (the fuel trip outlasted the cook's patience): leave the job for the
         // gamer so somebody goes back and takes it out. the cache is the last look at the slots, the visit reads the real ones
         boolean recordStranded(AltoClef mod) {
+            if (_recorded) {
+                return false;
+            }
+            tryUpdateOpenFurnace(mod);
             BlockPos at = getTargetContainerPosition();
             ItemStack material = _furnaceCache.materialSlot;
+            double slotFuel = _furnaceCache.fuelSlot.isEmpty() ? 0 : ItemHelper.getFuelAmount(_furnaceCache.fuelSlot);
+            double burning = _furnaceCache.burningFuelCount;
+            if (material.isEmpty() && !isContainerOpen(mod)) {
+                StationMemory.Look look = StationMemory.restartedLook(mod, at != null ? at : stationInUse(mod), _allMaterials);
+                if (look != null) {
+                    at = look.at();
+                    material = look.material();
+                    slotFuel = look.slotFuel();
+                    burning = look.burning();
+                }
+            }
             if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
                 return false;
             }
             // same split as the smoker: only a lit one with enough in it is a cook
-            boolean lit = AsyncSmelting.fuelCovers(_furnaceCache.fuelSlot, _furnaceCache.burningFuelCount, material.getCount());
+            boolean lit = AsyncSmelting.fuelCovers(slotFuel, burning, 0, material.getCount());
             Debug.logInternal("furnace at " + at.toShortString() + " still holds " + material.getCount() + " of our input and the cook is leaving, "
                     + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
             AsyncSmelting.leftBehind(mod, at, Blocks.FURNACE, material, _target.getItem(), lit);
+            _recorded = true;
             return true;
         }
 
@@ -534,6 +553,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
 
         private void tryUpdateOpenFurnace(AltoClef mod) {
             if (isContainerOpen(mod)) {
+                _recorded = false;
                 // Update current furnace cache
                 _furnaceCache.burnPercentage = StorageHelper.getFurnaceCookPercent();
                 _furnaceCache.burningFuelCount = StorageHelper.getFurnaceFuel();

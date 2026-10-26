@@ -116,6 +116,11 @@ public class PortalPhase implements PhaseHandler {
     }
 
     @Override
+    public void onRespawn() {
+        furnaces.respawned();
+    }
+
+    @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         BuildBlocks.newEntry(ctx.state());

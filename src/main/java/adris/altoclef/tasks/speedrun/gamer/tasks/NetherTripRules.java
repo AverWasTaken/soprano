@@ -50,6 +50,19 @@ public final class NetherTripRules {
     private NetherTripRules() {
     }
 
+    // the overworld food of ours (a smoker we loaded before the nether) is picked up once, in the stages after the gear and before
+    // the portal: the FOOD stage then judges the bag with it in. the detour gets this long in all, then the trip goes without
+    public static final int COLLECT_SECONDS = 180;
+
+    public static boolean collectsFoodIn(Stage stage) {
+        return stage == Stage.FOOD || stage == Stage.HEAL || stage == Stage.PORTAL;
+    }
+
+    // the pickup is still allowed: not done, and the detour has not used up its time (-1 = not started)
+    public static boolean collectingFood(boolean done, long startedTick, long now) {
+        return !done && (startedTick < 0 || now - startedTick <= COLLECT_SECONDS * 20L);
+    }
+
     // the nether walk stands still to heal: hurt, no shooter has a line on us (a standing target is a dead one), and the
     // minute is not used up. holding = we are already standing for it, which keeps going to HEAL_TO instead of flip-flopping
     // at the line every time a heart comes back

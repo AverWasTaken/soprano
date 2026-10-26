@@ -568,4 +568,24 @@ public class NetherTripRulesTest {
         Inputs there = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 10, false, 0, true, 0, LIMITS, true, 0, 0, 5, 20);
         assertEquals(Stage.RECOVER, NetherTripRules.next(there).stage());
     }
+
+    @Test
+    public void theSmokerFoodIsCollectedAfterTheGearAndBeforeTheNether() {
+        assertTrue(NetherTripRules.collectsFoodIn(Stage.FOOD));
+        assertTrue(NetherTripRules.collectsFoodIn(Stage.HEAL));
+        assertTrue(NetherTripRules.collectsFoodIn(Stage.PORTAL));
+        assertFalse(NetherTripRules.collectsFoodIn(Stage.BLOCKS));
+        assertFalse(NetherTripRules.collectsFoodIn(Stage.PICK));
+        assertFalse(NetherTripRules.collectsFoodIn(Stage.WALK));
+        assertFalse(NetherTripRules.collectsFoodIn(Stage.RECOVER));
+    }
+
+    @Test
+    public void theFoodDetourIsOnceAndHasItsOwnClock() {
+        long limit = NetherTripRules.COLLECT_SECONDS * 20L;
+        assertTrue(NetherTripRules.collectingFood(false, -1, 5000));
+        assertTrue(NetherTripRules.collectingFood(false, 1000, 1000 + limit));
+        assertFalse(NetherTripRules.collectingFood(false, 1000, 1000 + limit + 1));
+        assertFalse(NetherTripRules.collectingFood(true, -1, 5000));
+    }
 }

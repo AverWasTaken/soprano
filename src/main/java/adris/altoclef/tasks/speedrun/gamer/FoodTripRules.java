@@ -171,6 +171,15 @@ public final class FoodTripRules {
         return inOverworld && tripWasUp && !alreadyResumed && stillShort;
     }
 
+    // a food trip that brought this much into the bag (a kill or two cooked, or the smoker we left at home) did what it was for,
+    // so it does not count against MAX_TRIPS: the cap is for the world with no food in reach, not for a bot that keeps running dry
+    // because the nether eats it. blocks trips and trips that came back empty handed stay counted
+    public static final int TRIP_GAIN_UNITS = 12;
+
+    public static boolean refundsTrip(Reason reason, int unitsAtStart, int unitsAtEnd) {
+        return reason == Reason.FOOD && unitsAtEnd - unitsAtStart >= TRIP_GAIN_UNITS;
+    }
+
     // food units went up since the last look: the hunt is getting somewhere, so the watchdog's clock restarts
     public static boolean gained(int lastUnits, int units) {
         return lastUnits >= 0 && units > lastUnits;

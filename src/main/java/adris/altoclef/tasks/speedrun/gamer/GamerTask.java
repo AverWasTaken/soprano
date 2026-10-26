@@ -845,7 +845,7 @@ public class GamerTask extends Task {
             // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
             // state when it is over, and the machine has the next tick
             if (netherTrip == null) {
-                netherTrip = new NetherRecoverTask(state, facts, () -> cfg, host::say, host::save);
+                netherTrip = new NetherRecoverTask(state, facts, () -> cfg, host::say, host::save, machine);
             }
             machine.observe();
             machine.holdClocks();
@@ -1068,6 +1068,10 @@ public class GamerTask extends Task {
     private void onRespawn(DeathRules.Source seenBy) {
         // first thing, before this method logs and the lead up scrolls off the end of the buffer
         Trace.dump("respawn");
+        PhaseHandler live = machine.current();
+        if (live != null) {
+            live.onRespawn();
+        }
         // the same number the recovery decides on, and who told us about it
         double blocks = flatBlocksTo(deathPos);
         Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
