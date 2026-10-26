@@ -52,6 +52,9 @@ public class PearlHuntTask extends Task {
     private static final double AWAY_BLOCKS = 6;
     // 15 s of flailing about is enough, after that the hunt goes on from wherever we ended up
     private static final int AWAY_GIVE_UP_TICKS = 300;
+    // the back off count only starts over after this long without fleeing: lava that is in reach one step and out of it the
+    // next would otherwise reset it every other tick and the give up could never come
+    private static final int AWAY_CALM_RESET_TICKS = 100;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -87,7 +90,7 @@ public class PearlHuntTask extends Task {
     // latched: its isEqual compares the danger blocks, a rebuild per tick would restart it every tick
     private RunAwayFromPositionTask away;
     // ticks spent stepping away in a row; a shore with nowhere to flee to must not hold us in "Backing off" forever
-    private int awayTicks;
+    private AwayCount awayCount = new AwayCount(0, Long.MIN_VALUE / 2);
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
 
@@ -187,6 +190,8 @@ public class PearlHuntTask extends Task {
         trackHp(mod, gameTime);
         lastTickAt = gameTime;
         noteKills(mod);
+        // (any other branch below that returns first still counts as calm)
+        awayCount = awayCount.step(gameTime, false);
         if (dimension == Dimension.NETHER) {
             Task hole = nookStep(mod, gameTime);
             if (hole != null) {
@@ -209,13 +214,15 @@ public class PearlHuntTask extends Task {
             // (the loot task wanders when nothing is around, which is no way to heal)
             return say("Recovering before the walk", null);
         }
-        if (dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class)) {
+        if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod))) {
             // no nook to do it from: lava or fire means step away, low hp means wait while it heals
             List<BlockPos> lava = exposedLava(mod.getWorld(), mod.getPlayer().blockPosition(), EndermanNook.AGGRO_LAVA_GAP);
             EndermanNook.Stance stance = EndermanNook.stance(!lava.isEmpty(), mod.getPlayer().isOnFire(), mod.getPlayer().getHealth(),
                     EndermanNook.hpRising(gameTime, lastRiseAt));
-            awayTicks = stance == EndermanNook.Stance.AWAY ? awayTicks + 1 : 0;
-            if (stance == EndermanNook.Stance.AWAY && awayTicks <= AWAY_GIVE_UP_TICKS) {
+            // a flee that started runs to the end even when the lava is out of reach by the first step, or it is a one block shuffle
+            boolean fleeing = stance == EndermanNook.Stance.AWAY || (away != null && !away.isFinished(mod));
+            awayCount = awayCount.step(gameTime, fleeing);
+            if (fleeing && awayCount.ticks() <= AWAY_GIVE_UP_TICKS) {
                 return say("Backing off", stepAway(mod, lava));
             }
             away = null;
@@ -224,9 +231,34 @@ public class PearlHuntTask extends Task {
             }
         } else {
             away = null;
-            awayTicks = 0;
         }
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
+    }
+
+    // back off only when there is an enderman the loot walk would actually go for, not from nothing
+    static boolean backsOffFrom(boolean endermanFound, boolean anyLootable) {
+        return endermanFound && anyLootable;
+    }
+
+    private boolean anyLootable(AltoClef mod) {
+        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (man.isAlive() && lootable(angrySpent.givenUp(man.getId()), () -> onLavaShore(man))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ticks spent fleeing and the game time of the last one. the count has a short memory (AWAY_CALM_RESET_TICKS) so a back off
+    // that flips with the lava distance still adds up to the give up, and it is read off the clock so the ticks spent fighting
+    // or walking instead count as calm too
+    record AwayCount(int ticks, long lastFlee) {
+        AwayCount step(long now, boolean fleeing) {
+            if (fleeing) {
+                return new AwayCount(ticks + 1, now);
+            }
+            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(0, now) : this;
+        }
     }
 
     private Task say(String hud, Task child) {
