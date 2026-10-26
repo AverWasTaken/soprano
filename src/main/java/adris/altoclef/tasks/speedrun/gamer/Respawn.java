@@ -13,6 +13,10 @@ public final class Respawn {
     public static final double CLICK_REACH = 7;
     // a respawn bed this close to the stronghold start is as good as one we place there
     public static final double NEAR_STRONGHOLD = 300;
+    // a respawn bed this close to the overworld nether portal is as good as one we place by it
+    public static final double NEAR_NETHER_PORTAL = 100;
+    // and the bed gets placed from this close, the walk to the portal brings us there anyway
+    public static final double PORTAL_BED_REACH = 8;
     // a spawn bed this close to the End portal is a short walk after a death in the End
     public static final double NEAR_PORTAL = 300;
 
@@ -138,5 +142,16 @@ public final class Respawn {
     // caller latches it, once per room search and not again mid dig
     public static boolean wantRoomBed(RunState state, boolean atStart, int bedsInBag) {
         return atStart && bedsInBag > 0 && state.strongholdStart != null && nothingNearStronghold(state);
+    }
+
+    // the bed by the overworld nether portal: a bed we already carry (the wool is the dragon's, none gets made for this), daytime so
+    // the click sets the spawn and does not try to sleep, and nothing holding our respawn near that portal already. the caller
+    // latches it, once per run
+    public static boolean wantPortalBed(RunState state, boolean day, int bedsInBag, double portalX, double portalZ) {
+        if (!day || bedsInBag <= 0) {
+            return false;
+        }
+        RunState.Pos bed = bed(state);
+        return bed == null || Math.hypot(bed.x - portalX, bed.z - portalZ) > NEAR_NETHER_PORTAL;
     }
 }

@@ -1269,8 +1269,9 @@ public class GamerTask extends Task {
             BlockPos found = findNightBed(mod);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
                     BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
-            sayNight(mod, source == NightSleep.BedSource.NONE ? NightSleep.Why.NO_BED : why, busy, source);
-            if (source == NightSleep.BedSource.NONE) {
+            boolean keepSpawn = NightSleep.keepsSpawnBed(state.phase, source, spawnBedStands(mod));
+            sayNight(mod, source == NightSleep.BedSource.NONE || keepSpawn ? NightSleep.Why.NO_BED : why, busy, source);
+            if (source == NightSleep.BedSource.NONE || keepSpawn) {
                 // (a prep that was still going when the window opened is over, it does not get to keep its screens all night)
                 nightPrep.drop();
                 return null;
@@ -1294,6 +1295,18 @@ public class GamerTask extends Task {
         }
         nightPrepHolding = prep != null;
         return prep;
+    }
+
+    // the overworld respawn bed we know of is still standing where we put it (unloaded counts as still there)
+    private boolean spawnBedStands(AltoClef mod) {
+        RunState.Pos at = Respawn.bed(state);
+        if (at == null) {
+            return false;
+        }
+        BlockPos pos = new BlockPos(at.x, at.y, at.z);
+        // an unloaded chunk is not news, only a loaded one with no bed in it says the spawn is gone (Respawn.stale)
+        return !Respawn.stale("OVERWORLD", "OVERWORLD", mod.getWorld().hasChunkAt(pos),
+                mod.getWorld().getBlockState(pos).getBlock() instanceof net.minecraft.world.level.block.BedBlock);
     }
 
     // the hole for a night with no armor and no bed after a death (NightShelter). a running one keeps the wheel until it is over,

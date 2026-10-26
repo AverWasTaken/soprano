@@ -381,4 +381,13 @@ public class RecoverRulesTest {
         assertFalse(RecoverRules.walkAbort(4, 5000));
     }
 
+    @Test
+    public void heldArmorGetsAFewSecondsPastTheBudgetNotForever() {
+        assertTrue(RecoverRules.wearPastBudget(true, 91, 90));
+        assertTrue(RecoverRules.wearPastBudget(true, 90 + RecoverRules.WEAR_GRACE_SECONDS - 0.1, 90));
+        assertFalse(RecoverRules.wearPastBudget(true, 90 + RecoverRules.WEAR_GRACE_SECONDS, 90));
+        // nothing in the bag to put on: out of time means out of time
+        assertFalse(RecoverRules.wearPastBudget(false, 91, 90));
+    }
+
 }

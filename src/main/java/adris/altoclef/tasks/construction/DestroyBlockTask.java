@@ -1014,6 +1014,20 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     _toolSwap.landed();
                 }
             }
+            if (bestToolSlot.isEmpty() && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && !breaksInstantly(mod, swingAt)) {
+                // no tool in the bag beats the hand here, so the pick in it is only taking wear
+                var inv = mod.getPlayer().getInventory().getNonEquipmentItems();
+                boolean[] empty = new boolean[9];
+                boolean[] damageable = new boolean[9];
+                for (int i = 0; i < 9; i++) {
+                    empty[i] = inv.get(i).isEmpty();
+                    damageable[i] = inv.get(i).isDamageableItem();
+                }
+                int calm = MineStick.calmSlot(empty, damageable, mod.getPlayer().getInventory().getSelectedSlot());
+                if (calm >= 0) {
+                    mod.getClientBaritone().getInventoryBehavior().selectHotbar(calm, "destroy");
+                }
+            }
             // holding on an old look: the crosshair might be on the dirt in front now, and cracking that is the exact thing
             // this is here to stop. no click until it's back on the block
             boolean click = !holding || LookHelper.isLookingAt(mod, swingAt);

@@ -620,4 +620,26 @@ public class IronActivityTest {
     public void everyoneDecliningListsEveryone() {
         assertTrue(IronActivity.detail(List.of(Kind.COAL, Kind.KIT), 2, PLAIN).contains("declined=[coal,kit]"));
     }
+
+    @Test
+    public void armorInTheBagGoesOnBeforeAFurnaceTripStarts() {
+        Scene wear = new Scene(true, false, true, true, false, false, true);
+        assertTrue(IronActivity.eligible(Kind.FURNACE, COOKING));
+        assertFalse(IronActivity.eligible(Kind.FURNACE, wear));
+        // only the trip start is held back, the kit is still the floor and the side jobs are untouched
+        assertTrue(IronActivity.eligible(Kind.KIT, wear));
+        assertTrue(IronActivity.eligible(Kind.COAL, wear));
+        List<Kind> order = new IronActivity().ask(wear, 0);
+        assertFalse(order.contains(Kind.FURNACE));
+        assertEquals(Kind.KIT, order.get(order.size() - 1));
+    }
+
+    @Test
+    public void wearFirstNeedsAHeldPieceAndNoHostileClose() {
+        assertTrue(IronActivity.wearFirst(true, true, false));
+        assertFalse(IronActivity.wearFirst(true, false, false));
+        assertFalse(IronActivity.wearFirst(false, true, false));
+        assertFalse(IronActivity.wearFirst(true, true, true));
+    }
+
 }

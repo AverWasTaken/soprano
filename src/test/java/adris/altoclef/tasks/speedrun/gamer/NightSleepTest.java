@@ -726,4 +726,16 @@ public class NightSleepTest {
         hold.reset();
         assertTrue(hold.see(false, () -> true, 101));
     }
+
+    @Test
+    public void aFoodTripHomeKeepsTheSpawnBedByThePortal() {
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, true));
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.EYES, NightSleep.BedSource.CRAFT, true));
+        // no spawn bed standing: sleeping is how one gets set
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, false));
+        // a bed already standing is never claimed, and the other legs sleep as before
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.FOUND, true));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.LOCATE, NightSleep.BedSource.BAG, true));
+    }
+
 }

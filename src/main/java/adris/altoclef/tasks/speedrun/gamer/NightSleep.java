@@ -127,6 +127,14 @@ public final class NightSleep {
         return bestWoolStack >= 3 && planks >= 3 ? BedSource.CRAFT : BedSource.NONE;
     }
 
+    // a placed bed (bag or craft) sleeps wherever we stand, and a nether or eyes leg that got home for food would move the respawn
+    // off the bed by the portal and then pick that bed up. so while the spawn bed is standing those phases leave the night alone.
+    // a bed that is already standing close (FOUND) is never claimed or picked up, that one stays fine
+    public static boolean keepsSpawnBed(GamerPhase phase, BedSource source, boolean spawnBedStands) {
+        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES)
+                && (source == BedSource.BAG || source == BedSource.CRAFT);
+    }
+
     // ---- a bed in the bag before dusk
 
     // the earliest the game lets anybody sleep: full rain opens it at 12010, clear weather at 12542 (the branch asks the level, not

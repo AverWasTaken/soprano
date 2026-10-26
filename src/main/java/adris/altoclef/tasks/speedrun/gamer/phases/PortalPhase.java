@@ -8,6 +8,9 @@ import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
+import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -76,6 +79,11 @@ public class PortalPhase implements PhaseHandler {
     private ConstructNetherPortalObsidianTask obsidian;
     private EnterNetherPortalTask enter;
     private String hudState;
+    // the spawn bed by the overworld portal (see portalBedStep). the task once it starts, the latch so it is one try per entry
+    private PlaceBedAndSetSpawnTask portalBed;
+    private boolean portalBedDecided;
+    private double portalBedSince;
+    private static final double PORTAL_BED_SECONDS = 45;
 
     @Override
     public GamerPhase phase() {
@@ -147,6 +155,11 @@ public class PortalPhase implements PhaseHandler {
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
+        portalBed = null;
+        // one try per run: a retry of the phase does not place a second bed
+        if (ctx.attempt() <= 1) {
+            portalBedDecided = false;
+        }
         gravel.reset();
         if (!tracking) {
             // portals so we can tell when ours exists, lava so "no lava seen" means something during the cast
@@ -257,6 +270,10 @@ public class PortalPhase implements PhaseHandler {
             }
             ctx.progress("ready for the portal");
         }
+        Task spawnBed = portalBedStep(mod, ctx, portal);
+        if (spawnBed != null) {
+            return spawnBed;
+        }
         // the lava pool build goes first. when it gives up the cast clock starts from now, not from when the phase did
         if (f.dimension() == Dimension.OVERWORLD
                 && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
@@ -288,6 +305,38 @@ public class PortalPhase implements PhaseHandler {
         }
         hudState = "Getting obsidian for the portal";
         return obsidian;
+    }
+
+    // a bed from the bag goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the
+    // world spawn. the bed is not claimed as a night bed (NightSleepTask never hears of it), so the morning pickup leaves it, and
+    // RunState.respawnPos (RespawnWatch) is the only record of it. same shape as RoomPhase.roomBedStep
+    private Task portalBedStep(AltoClef mod, GamerContext ctx, Optional<BlockPos> portal) {
+        if (portalBed != null) {
+            // (dusk mid placement: the click would sleep, not set the spawn)
+            if (portalBed.isFinished(mod) || !mod.getWorld().isBrightOutside() || ctx.secondsInPhase() - portalBedSince > PORTAL_BED_SECONDS) {
+                ctx.progress("respawn bed");
+                portalBed = null;
+                return null;
+            }
+            hudState = "Setting the spawn by the portal";
+            return portalBed;
+        }
+        var player = mod.getPlayer();
+        if (portalBedDecided || portal.isEmpty() || player == null || ctx.facts().dimension() != Dimension.OVERWORLD) {
+            return null;
+        }
+        BlockPos at = portal.get();
+        if (Math.hypot(at.getX() - player.getX(), at.getZ() - player.getZ()) > Respawn.PORTAL_BED_REACH) {
+            return null;
+        }
+        portalBedDecided = true;
+        if (!Respawn.wantPortalBed(ctx.state(), mod.getWorld().isBrightOutside(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
+            return null;
+        }
+        portalBed = new PlaceBedAndSetSpawnTask();
+        portalBedSince = ctx.secondsInPhase();
+        hudState = "Setting the spawn by the portal";
+        return portalBed;
     }
 
     // the gravel detour, asked after the station pickup and before the gate's own task. anything earlier in tick that took the wheel

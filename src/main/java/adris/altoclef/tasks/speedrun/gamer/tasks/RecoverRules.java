@@ -121,6 +121,15 @@ public final class RecoverRules {
         return budgetSeconds + Math.min(Math.max(0, pickSeconds), PICK_SECONDS);
     }
 
+    // armor already in the bag may still go on this long after the budget ran out. held pieces can't wander off, but a stuck
+    // equip must not run forever either
+    public static final double WEAR_GRACE_SECONDS = 3;
+
+    // out of time, but we hold armor from the pile and are still inside the grace
+    public static boolean wearPastBudget(boolean holdingArmor, double spentSeconds, double budgetSeconds) {
+        return holdingArmor && spentSeconds < budgetSeconds + WEAR_GRACE_SECONDS;
+    }
+
     // the pick trip has had all it gets
     public static boolean pickTimedOut(double pickSeconds) {
         return pickSeconds >= PICK_SECONDS;

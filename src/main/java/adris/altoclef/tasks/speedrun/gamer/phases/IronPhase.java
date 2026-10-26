@@ -36,6 +36,7 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -86,6 +87,9 @@ public class IronPhase implements PhaseHandler {
     // FoodGate: a food top-up that started on the surface runs to the full amount, and the band the count was last in (-1 = unset)
     private boolean foodTopUp;
     private int foodBand = -1;
+    // when armor in the bag first held the furnace trip back, -1 = not holding it back
+    private long wearSince = -1;
+    private static final long WEAR_FIRST_TICKS = 20 * 15;
     // the food need led last tick (a screen that opens then is its own, FoodGate.cookBusy) and the soft top-up was called off
     // because the raw meat in the bag covers the hole (FoodPlan.covered), the second only so it is announced once
     private boolean foodLed;
@@ -271,6 +275,30 @@ public class IronPhase implements PhaseHandler {
 
     // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
 
+    // armor sitting in the bag beats starting a furnace trip, see IronActivity.wearFirst. the same toEquip and held test the
+    // runner's equip uses, so there is no second gold rule in here
+    private boolean wearFirst(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        boolean wanted = needs.stream().anyMatch(n -> KitNeed.EQUIP_ARMOR.equals(n.catalogueName()));
+        if (!wanted) {
+            wearSince = -1;
+            return false;
+        }
+        boolean held = !WearFromBag.held(mod, KitPlanner.toEquip(ctx.facts(), ctx.cfg().overworld)).isEmpty();
+        double r = IronActivity.WEAR_HOSTILE_RADIUS;
+        boolean close = mod.getEntityTracker().getHostiles().stream()
+                .anyMatch(e -> e.distanceToSqr(mod.getPlayer()) <= r * r);
+        if (!held) {
+            wearSince = -1;
+            return false;
+        }
+        // a piece the equip can't put on (a bound one on the body) must not hold the furnace off for good
+        long now = ctx.facts().gameTime();
+        if (wearSince < 0) {
+            wearSince = now;
+        }
+        return IronActivity.wearFirst(true, now - wearSince < WEAR_FIRST_TICKS, close);
+    }
+
     private Task arbiterTick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
         long now = f.gameTime();
@@ -314,7 +342,7 @@ public class IronPhase implements PhaseHandler {
         boolean atScreen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
         boolean starving = !atScreen && ctx.food().starving(tripJob);
         IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
-                support.golemFighting(), starving);
+                support.golemFighting(), starving, wearFirst(mod, ctx, needs));
         support.beginTick(mod, ctx);
         furnaceAsked = false;
         Kind before = arbiter.current();
