@@ -321,6 +321,11 @@ public final class FurnacePlan {
     // `pick` = the trip to start now, null when there is none or one is already running. a quick smoker's stand-by outranks every
     // other collect (it is out in under 50 s, the furnace can wait that long), then the one that is ready first
     public static Plan plan(List<RunState.FurnaceJob> jobs, Moment m, long now, RunState.FurnaceJob active) {
+        return plan(jobs, m, now, active, j -> false);
+    }
+
+    // `banned` = jobs whose furnace the pathing gave up on. they still get their calls, but they are picked last
+    public static Plan plan(List<RunState.FurnaceJob> jobs, Moment m, long now, RunState.FurnaceJob active, Predicate<RunState.FurnaceJob> banned) {
         List<Verdict> out = new ArrayList<>();
         List<String> changes = new ArrayList<>();
         boolean standingBy = false;
@@ -343,9 +348,18 @@ public final class FurnacePlan {
         }
         Verdict pick = null;
         if (active == null) {
-            pick = soonest(out, v -> v.call() == Call.STAND_BY && v.why() == Why.QUICK);
+            Predicate<Verdict> quick = v -> v.call() == Call.STAND_BY && v.why() == Why.QUICK;
+            Predicate<Verdict> trip = v -> v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL;
+            // banned goes behind every group, not just behind its own: a banned quick smoker still loses to a plain collect
+            pick = soonest(out, quick, banned, false);
             if (pick == null) {
-                pick = soonest(out, v -> v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL);
+                pick = soonest(out, trip, banned, false);
+            }
+            if (pick == null) {
+                pick = soonest(out, quick, banned, true);
+            }
+            if (pick == null) {
+                pick = soonest(out, trip, banned, true);
             }
         }
         // a quick smoker only holds the side jobs once its trip is the one picked or going, not while another job's trip runs
@@ -360,12 +374,21 @@ public final class FurnacePlan {
     // the bag is under the food floor: if the trip picked is not for food but a food job wants one too, that one goes first. the
     // plain pick is just the soonest ready, and an iron job ready a minute earlier would shadow the meat the bag is waiting for
     public static Plan foodFirst(Plan plan) {
+        return foodFirst(plan, j -> false);
+    }
+
+    public static Plan foodFirst(Plan plan, Predicate<RunState.FurnaceJob> banned) {
         Verdict pick = plan.pick();
         if (pick == null || pick.job().unitsEach > 0) {
             return plan;
         }
-        Verdict food = soonest(plan.verdicts(), v -> v.job().unitsEach > 0
-                && (v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL));
+        Predicate<Verdict> wantsFood = v -> v.job().unitsEach > 0
+                && (v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL);
+        Verdict food = soonest(plan.verdicts(), wantsFood, banned, false);
+        // only banned food left: it does not shove a pick we can reach aside
+        if (food == null && banned.test(pick.job())) {
+            food = soonest(plan.verdicts(), wantsFood, banned, true);
+        }
         return food == null ? plan : new Plan(plan.verdicts(), food, plan.changes(), plan.standingBy());
     }
 
@@ -506,6 +529,12 @@ public final class FurnacePlan {
         };
     }
 
+    // a banned job (pathing gave up on its furnace) goes to the back, not out: dropping it would hold the phase open for ever.
+    // `bannedOnes` = ask for the banned jobs only (the pick falls through to them when nothing else wants a trip)
+    private static Verdict soonest(List<Verdict> verdicts, Predicate<Verdict> want, Predicate<RunState.FurnaceJob> banned, boolean bannedOnes) {
+        return soonest(verdicts, v -> want.test(v) && banned.test(v.job()) == bannedOnes);
+    }
+
     private static Verdict soonest(List<Verdict> verdicts, Predicate<Verdict> want) {
         Verdict best = null;
         for (Verdict v : verdicts) {
@@ -514,6 +543,21 @@ public final class FurnacePlan {
             }
         }
         return best;
+    }
+
+    // the trip under way is for a furnace the pathing gave up on, and a job that is not banned has a trip of its own to make (its call
+    // from the last plan): let the trip go so the plan picks again. a banned target with nothing else to do keeps going
+    public static boolean abandonBanned(RunState.FurnaceJob target, List<RunState.FurnaceJob> jobs, Predicate<RunState.FurnaceJob> banned) {
+        if (target == null || !banned.test(target)) {
+            return false;
+        }
+        for (RunState.FurnaceJob job : jobs) {
+            Call c = job.track.call;
+            if (job != target && !banned.test(job) && (c == Call.COLLECT_NOW || c == Call.STAND_BY || c == Call.TAKE_ALL)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // the call for a job we are about to leave behind. nothing else asks: the phase says where it is going and which job is worth the

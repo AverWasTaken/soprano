@@ -173,27 +173,34 @@ public final class FurnaceJobs {
     // cold, not dinner), ready first, and no further than PackUp.TRIP_BUDGET of walking. `walkOf` = what the walk to it costs from here.
     // null when there is none worth the detour
     public static RunState.FurnaceJob foodJob(List<RunState.FurnaceJob> jobs, java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
-        RunState.FurnaceJob best = null;
-        for (RunState.FurnaceJob job : jobs) {
-            if (job.unitsEach <= 0 || job.stranded || walkOf.applyAsDouble(job) > PackUp.TRIP_BUDGET) {
-                continue;
-            }
-            if (best == null || job.doneTick < best.doneTick) {
-                best = job;
-            }
-        }
-        return best;
+        return foodJob(jobs, walkOf, j -> false);
+    }
+
+    // `banned` = pathing gave up on its furnace: picked only when no other food job is left
+    public static RunState.FurnaceJob foodJob(List<RunState.FurnaceJob> jobs, java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf,
+                                              java.util.function.Predicate<RunState.FurnaceJob> banned) {
+        return soonest(jobs.stream().filter(j -> j.unitsEach > 0 && !j.stranded && walkOf.applyAsDouble(j) <= PackUp.TRIP_BUDGET).toList(), banned);
     }
 
     // the job that is ready first, null if there are none
     public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs) {
+        return soonest(jobs, j -> false);
+    }
+
+    // a banned job (pathing gave up on its furnace) comes last, never out: the phase cannot end while a job is left
+    public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs, java.util.function.Predicate<RunState.FurnaceJob> banned) {
         RunState.FurnaceJob best = null;
+        RunState.FurnaceJob bestBanned = null;
         for (RunState.FurnaceJob job : jobs) {
-            if (best == null || job.doneTick < best.doneTick) {
+            if (banned.test(job)) {
+                if (bestBanned == null || job.doneTick < bestBanned.doneTick) {
+                    bestBanned = job;
+                }
+            } else if (best == null || job.doneTick < best.doneTick) {
                 best = job;
             }
         }
-        return best;
+        return best != null ? best : bestBanned;
     }
 
     // ticks until the last job is done, 0 when they all are

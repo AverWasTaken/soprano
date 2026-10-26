@@ -172,7 +172,7 @@ public class GatherPhase implements PhaseHandler {
         boolean hungry = ctx.food().band() == 0 || ctx.food().bag() <= 0;
         FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, needEnd.done(runnable, f.gameTime()),
                 job -> (blocking && job.unitsEach > 0) || FurnacePlan.feeds(head, job, hungry, false), false, false, FurnaceWatch.where(mod), head == null ? "nothing" : head.catalogueName());
-        FurnacePlan.Plan calls = furnaces.plan(ctx, moment);
+        FurnacePlan.Plan calls = furnaces.plan(mod, ctx, moment);
         Task trip = furnaces.trip(mod, ctx, calls, moment);
         if (trip != null) {
             if (furnaces.started()) {

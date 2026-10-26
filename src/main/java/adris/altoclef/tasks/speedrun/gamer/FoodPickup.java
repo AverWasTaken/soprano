@@ -58,7 +58,7 @@ public final class FoodPickup {
             if (next == null) {
                 Vec3 me = mod.getPlayer().position();
                 RunState.FurnaceJob job = FurnaceJobs.foodJob(ctx.facts().furnaceJobs(),
-                        j -> visited.contains(j.pos) ? Double.MAX_VALUE : PackUp.walk(j, me.x, me.y, me.z));
+                        j -> visited.contains(j.pos) ? Double.MAX_VALUE : PackUp.walk(j, me.x, me.y, me.z), FurnaceWatch.banned(mod));
                 if (job == null) {
                     return null;
                 }

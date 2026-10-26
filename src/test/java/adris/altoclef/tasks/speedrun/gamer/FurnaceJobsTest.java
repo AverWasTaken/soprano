@@ -452,4 +452,18 @@ public class FurnaceJobsTest {
         assertEquals(1, job.stalls);
         assertEquals(0, FurnaceJobs.pendingUnits(jobs));
     }
+
+    @Test
+    public void bannedJobsComeLastNotOut() {
+        RunState.FurnaceJob stuck = food(1, 5, 100, false);
+        RunState.FurnaceJob fine = food(2, 5, 900, false);
+        java.util.function.Predicate<RunState.FurnaceJob> banned = j -> j == stuck;
+        assertSame(stuck, FurnaceJobs.soonest(List.of(stuck, fine)));
+        assertSame(fine, FurnaceJobs.soonest(List.of(stuck, fine), banned));
+        assertSame(stuck, FurnaceJobs.soonest(List.of(stuck), banned));
+        assertNull(FurnaceJobs.soonest(List.of(), banned));
+        assertSame(fine, FurnaceJobs.foodJob(List.of(stuck, fine), j -> 10, banned));
+        assertSame(stuck, FurnaceJobs.foodJob(List.of(stuck, fine), j -> j == fine ? PackUp.TRIP_BUDGET + 1 : 10, banned));
+        assertNull(FurnaceJobs.foodJob(List.of(), j -> 0, banned));
+    }
 }
