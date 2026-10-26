@@ -158,7 +158,11 @@ public class PlayerExtraController {
     // the stall breaker for a kill task that has stood in reach for too long: no hop, no ground check, no look at the keys,
     // just the hit when the cooldown allows it
     public boolean swingNow(Entity entity) {
-        if (!attackReady()) {
+        // same no-sweep rule as swordSwing: a calm neutral next to the target gets the early swing, a full one would sweep it
+        // and the stall breaker is the swing that fires most in a fight that is biting us
+        boolean ready = swordInHand() && entity instanceof LivingEntity target
+                ? SwordSwing.charged(chargeScale(), calmNeutralBeside(target)) : attackReady();
+        if (!ready) {
             return false;
         }
         _crit.reset();
