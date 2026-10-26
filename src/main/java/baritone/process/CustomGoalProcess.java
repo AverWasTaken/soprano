@@ -65,6 +65,7 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         if (!java.util.Objects.equals(goal, this.goal)) {
             FallFloor.markGoal();
             RouteMemory.newGoal(); // (somewhere to go: where we've been on the way to anywhere else isn't going back)
+            this.stillSince = 0;
         }
         this.goal = goal;
         this.mostRecentGoal = goal;
@@ -172,13 +173,14 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                     this.state = State.WAITING_FOR_TABLES;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
                 }
-                if (calcFailed && dropRetries < DROP_RETRIES && dropDirection() != null) {
+                if ((calcFailed || noProgress()) && dropRetries < DROP_RETRIES && dropDirection() != null) {
                     // stuck somewhere there's no way on from (the top of a ladder, a block the last jump came down short
                     // of) on a parkour course: step off, the way a player would, and get put back on the last checkpoint
                     dropRetries++;
                     groundRetries = 0;
                     dropTicks = 0;
                     dropFrom = ctx.player().position();
+                    stillSince = 0;
                     logDirect("No way on from here: stepping off to be put back on the course (" + dropRetries + " of " + DROP_RETRIES + ")");
                     this.state = State.DROPPING;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
@@ -230,6 +232,36 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
     // which way to walk to step off into a drop, on a course that puts you back when you fall (FallFloor learned something
     // round here, or there's a remembered trail): the nearest side with nothing under it for a few blocks. null for none, or
     // not on such a course
+    // a minute round the same spot (in eight blocks) without getting any nearer the goal, standing: paths that go a few blocks
+    // and back (Chess (harder)'s snow under the tower, above where a fall puts you back) keep the no-path count from ever
+    // getting to the step off
+    private static final long NO_PROGRESS_MS = 60_000;
+    private long stillSince;
+    private double bestH = Double.MAX_VALUE;
+    private net.minecraft.world.phys.Vec3 stillAt = net.minecraft.world.phys.Vec3.ZERO;
+
+    private boolean noProgress() {
+        net.minecraft.client.player.LocalPlayer p = ctx.player();
+        if (p == null || this.goal == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        double h = this.goal.heuristic(ctx.playerFeet());
+        if (stillSince == 0 || p.position().distanceToSqr(stillAt) > 64) {
+            // (somewhere else now: a jump on, a put back)
+            stillSince = now;
+            stillAt = p.position();
+            bestH = h;
+            return false;
+        }
+        if (h < bestH - 1) {
+            bestH = h;
+            stillSince = now;
+            return false;
+        }
+        return p.onGround() && now - stillSince > NO_PROGRESS_MS;
+    }
+
     private Float dropDirection() {
         net.minecraft.client.player.LocalPlayer p = ctx.player();
         if (p == null || !Baritone.settings().learnFallFloor.value || !FallFloor.parkourHere(p.getX(), p.getZ())) {
@@ -257,6 +289,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
 
     @Override
     public void onLostControl() {
+        this.stillSince = 0;
+        this.bestH = Double.MAX_VALUE;
         this.tableRetries = 0;
         this.airRetries = 0;
         this.groundRetries = 0;

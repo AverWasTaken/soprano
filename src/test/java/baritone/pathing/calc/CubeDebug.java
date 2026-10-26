@@ -28,6 +28,52 @@ public class CubeDebug {
             w.set(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt(),
                     BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, "minecraft:" + b.get(3).getAsString(), false).blockState());
         }
+        if (System.getenv("CUBE_KEYS") != null) {
+            // a recording's own keys played through the sim: CUBE_KEYS="trace.csv fromTick toTick dx dz" (dx dz: where the
+            // map was moved to). from the player's state at fromTick, every tick after with that tick's keys and yaw; the sim
+            // and the recording side by side
+            baritone.api.BaritoneAPI.getSettings().considerPotionEffects.value = false;
+            String[] q = System.getenv("CUBE_KEYS").trim().split("\\s+");
+            java.util.List<String> rows = Files.readAllLines(Path.of(q[0]));
+            String[] head = rows.get(0).split(",");
+            java.util.Map<String, Integer> col = new java.util.HashMap<>();
+            for (int i = 0; i < head.length; i++) {
+                col.put(head[i], i);
+            }
+            int from = Integer.parseInt(q[1]), to = Integer.parseInt(q[2]);
+            double ox = Double.parseDouble(q[3]), oz = Double.parseDouble(q[4]);
+            java.util.Map<Integer, String[]> byTick = new java.util.HashMap<>();
+            for (String r : rows.subList(1, rows.size())) {
+                String[] v = r.split(",", -1);
+                if (v.length == head.length) {
+                    byTick.put(Integer.parseInt(v[col.get("tick")]), v);
+                }
+            }
+            java.util.function.BiFunction<String[], String, Double> num = (v, k) -> Double.parseDouble(v[col.get(k)]);
+            String[] s0 = byTick.get(from);
+            PlayerSim sim = new PlayerSim(PlayerSim.Params.vanilla(), new SafeCollision(w));
+            sim.x = num.apply(s0, "x") + ox;
+            sim.y = num.apply(s0, "y");
+            sim.z = num.apply(s0, "z") + oz;
+            sim.vx = num.apply(s0, "vx");
+            sim.vy = num.apply(s0, "vy");
+            sim.vz = num.apply(s0, "vz");
+            sim.onGround = num.apply(s0, "onGround") == 1;
+            sim.sprinting = num.apply(s0, "sprinting") == 1;
+            for (int t = from + 1; t <= to; t++) {
+                String[] v = byTick.get(t);
+                if (v == null) {
+                    break;
+                }
+                int fwd = (int) (num.apply(v, "forward") - num.apply(v, "back")), left = (int) (num.apply(v, "left") - num.apply(v, "right"));
+                float yaw = (float) (double) num.apply(v, "yaw");
+                Keys.step(sim, new PlayerSim.Controls(fwd, left, num.apply(v, "jump") == 1,
+                        num.apply(v, "sprintKey") == 1 || num.apply(v, "sprinting") == 1, yaw));
+                System.out.printf("CUBE t%d sim %.3f %.3f %.3f %s | rec %.3f %.3f %.3f %s | keys f%d l%d j%s y%.1f%n", t, sim.x, sim.y, sim.z, sim.onGround ? "g" : "a",
+                        num.apply(v, "x") + ox, num.apply(v, "y"), num.apply(v, "z") + oz, num.apply(v, "onGround") == 1 ? "g" : "a", fwd, left, v[col.get("jump")], yaw);
+            }
+            return;
+        }
         if (System.getenv("CUBE_REPLAY") != null) {
             // a run and a jump from exactly here, the way a player does it: CUBE_REPLAY="x y z vx vz tx tz runTicks"
             // (run at (tx, tz) with sprint for runTicks on the ground, then jump and keep running at it), every tick printed

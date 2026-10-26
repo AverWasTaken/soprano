@@ -870,6 +870,12 @@ public final class TungstenJumps {
                 // single blocks near the top). only on a trail, every node has eight of these
                 return true;
             }
+            if ((dx != 0 || dz != 0) && (dy == 0 || dy == 1) && context.isLoaded(x + dx, z + dz) && grabCell(context, x + dx, y + dy, z + dz)
+                    && MovementHelper.fullyPassable(context, x + dx, y + dy - 1, z + dz) && baritone.behavior.RouteMemory.trailJump(x, y, z, x + dx, y + dy, z + dz)) {
+                // a hop into the ladder next door with nothing under it, the way the trail went (Chess (hard)'s one-block
+                // ladder over the gap): no grid move gets onto a ladder without standing at the foot of it
+                return true;
+            }
             return !NO_STEPS && (dx != 0 || dz != 0) && dy >= -1 && !upTooFar(context, x, y, z, dx, dy, dz) && oddStep(context, x, y, z, x + dx, y + dy, z + dz)
                     && context.isLoaded(x + dx, z + dz) && destOk(context, x + dx, y + dy, z + dz);
         }
@@ -1322,10 +1328,11 @@ public final class TungstenJumps {
             double cost = context.biasJump(Math.max(r.ticks(), straight) * aimed + context.jumpPenalty);
             return new Jump(src, dest, cost, r.variant(), List.copyOf(r.states()), null);
         }
-        if (ruleOnly) {
+        if (ruleOnly && !baritone.behavior.RouteMemory.trailJumpExact(src.x, src.y, src.z, dest.x, dest.y, dest.z)) {
             // to or from a rim, or a floor along one side of its cell: the rule's jumps only. the background searches (neos,
             // round corners, ledge chains) would be asked about every rim round every post on a walled map, and there are
             // hundreds of those, the queue would never get to the ones the path is waiting on
+            // (one somebody's made is worth asking about: Chess (hard)'s ladder tops, a ladder caught off the top of another)
             return null;
         }
         if (land.grab() && dest.y == src.y && JumpPolicy.blocked(world, sim.x, sim.y, sim.z, land.centerX(), land.y(), land.centerZ())) {
@@ -1520,6 +1527,37 @@ public final class TungstenJumps {
     // of the cell over whatever's under it; or when the floor doesn't reach the middle (the top of a ladder, a plate along one
     // side; a head on a wall) the middle of what floor there is; or with nothing under the cell at all, the rim of a block next
     // door with a post on it
+    // how far across cell x z the middle of a player standing at feet height top can go, {ax min, ax max, az min, az max},
+    // for the blocks in the cells next door along each axis, as high as the player is
+    static double[] clearOfWalls(Cells world, int x, int z, double top) {
+        double[] r = {0, 1, 0, 1};
+        int fy = Mth.floor(top);
+        for (int d = 0; d < 4; d++) {
+            BoxList b = new BoxList();
+            for (int dy = 0; dy <= 2; dy++) {
+                world.boxes(x + DIR_X[d], fy + dy, z + DIR_Z[d], b);
+            }
+            for (int i = 0; i < b.size(); i++) {
+                if (b.get(i, 4) <= top + 0.01 || b.get(i, 1) >= top + 1.79) {
+                    continue; // under the feet or over the head
+                }
+                if (DIR_X[d] != 0 ? b.get(i, 5) <= z + 0.01 || b.get(i, 2) >= z + 0.99 : b.get(i, 3) <= x + 0.01 || b.get(i, 0) >= x + 0.99) {
+                    continue; // not alongside this cell
+                }
+                if (DIR_X[d] == -1) {
+                    r[0] = Math.max(r[0], b.get(i, 3) - x + 0.301);
+                } else if (DIR_X[d] == 1) {
+                    r[1] = Math.min(r[1], b.get(i, 0) - x - 0.301);
+                } else if (DIR_Z[d] == -1) {
+                    r[2] = Math.max(r[2], b.get(i, 5) - z + 0.301);
+                } else {
+                    r[3] = Math.min(r[3], b.get(i, 2) - z - 0.301);
+                }
+            }
+        }
+        return r;
+    }
+
     static double[] stand(Cells world, int x, int y, int z) {
         BoxList boxes = new BoxList();
         world.boxes(x, y - 2, z, boxes);
@@ -1547,7 +1585,13 @@ public final class TungstenJumps {
                 x1 = Math.max(x1, boxes.get(i, 3));
                 z1 = Math.max(z1, boxes.get(i, 5));
             }
-            return new double[]{Mth.clamp((x0 + x1) / 2 - x, STAND_IN, 1 - STAND_IN), Mth.clamp((z0 + z1) / 2 - z, STAND_IN, 1 - STAND_IN), top, 0};
+            double ax = Mth.clamp((x0 + x1) / 2 - x, STAND_IN, 1 - STAND_IN), az = Mth.clamp((z0 + z1) / 2 - z, STAND_IN, 1 - STAND_IN);
+            // and out of the walls round it: the top of a ladder is a sixteenth or three along the wall it hangs on, and the
+            // middle of us can't get nearer the wall than half our width (a jump planned from there starts inside the wall)
+            double[] room = clearOfWalls(world, x, z, top);
+            ax = room[0] > room[1] ? ax : Mth.clamp(ax, room[0], room[1]);
+            az = room[2] > room[3] ? az : Mth.clamp(az, room[2], room[3]);
+            return new double[]{ax, az, top, 0};
         }
         // nothing under us: the rim of a block next door, the side of it facing us. its top has to be right at y and reach
         // the side it shares with us, and whatever stands on it (the post) has to leave MIN_RIM of it clear on that side, all

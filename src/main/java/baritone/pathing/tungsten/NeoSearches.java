@@ -236,9 +236,13 @@ public final class NeoSearches {
                     : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
             if (QUEUE.get(i).kind() == LEAP && !far && !back) {
                 // a leap along the remembered way (somebody went that way) near us: before the rest, it's the way on.
-                // (and it's the last to go when the queue's too long). not one coming back towards us: that's A* looking
-                // behind itself along the trail, and a chess level's dozens of those held up the jump on for minutes
-                d -= 1.0E5;
+                // not one coming back towards us: that's A* looking behind itself along the trail, and a chess level's
+                // dozens of those held up the jump on for minutes. (as if a quarter as far, not first wherever it is: the
+                // leaps all along the level ahead held up the one jump off the block we were standing on for minutes)
+                d = d / 4 - 10;
+            }
+            if (!far && dx * dx + dy * dy + dz * dz < 1 && QUEUE.get(i).kind() != LEDGES && !QUEUE.get(i).combo()) {
+                d -= 20; // from where we're standing: what the path is waiting on right now
             }
             if (first ? d < bestD : d >= bestD) {
                 bestD = d;

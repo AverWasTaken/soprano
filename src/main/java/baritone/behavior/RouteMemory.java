@@ -594,32 +594,46 @@ public final class RouteMemory {
 
     // the jumps along the trails (a cell to one of the next few on, either end give or take a block across: a trail cell
     // can be the one over an edge you jumped from): the planner tries harder at these, somebody's made them
-    private static volatile it.unimi.dsi.fastutil.longs.LongOpenHashSet PAIRS = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+    private static volatile it.unimi.dsi.fastutil.longs.LongOpenHashSet[] PAIR_SETS = {
+            new it.unimi.dsi.fastutil.longs.LongOpenHashSet(), new it.unimi.dsi.fastutil.longs.LongOpenHashSet()};
     private static int pairsFor = -1;
 
     public static boolean trailJump(int x, int y, int z, int tx, int ty, int tz) {
         if (!Baritone.settings().useRouteMemory.value) {
             return false;
         }
-        it.unimi.dsi.fastutil.longs.LongOpenHashSet p = PAIRS;
-        int now = trailVersion;
-        if (pairsFor != now) {
+        return pairSets()[0].contains(jumpKey(x, y, z, tx, ty, tz));
+    }
+
+    // a jump between two cells the trail itself went through (or the ladder a block under the second), not one a block either
+    // side of them: the few worth a background search from anywhere, a rim, a ladder top
+    public static boolean trailJumpExact(int x, int y, int z, int tx, int ty, int tz) {
+        if (!Baritone.settings().useRouteMemory.value) {
+            return false;
+        }
+        return pairSets()[1].contains(jumpKey(x, y, z, tx, ty, tz));
+    }
+
+    private static it.unimi.dsi.fastutil.longs.LongOpenHashSet[] pairSets() {
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet[] p = PAIR_SETS;
+        if (pairsFor != trailVersion) {
             synchronized (RouteMemory.class) {
                 if (pairsFor != trailVersion) {
-                    PAIRS = p = pairs();
+                    PAIR_SETS = p = pairs();
                     pairsFor = trailVersion;
                 } else {
-                    p = PAIRS;
+                    p = PAIR_SETS;
                 }
             }
         }
-        return p.contains(jumpKey(x, y, z, tx, ty, tz));
+        return p;
     }
 
     private static volatile int trailVersion;
 
-    private static it.unimi.dsi.fastutil.longs.LongOpenHashSet pairs() {
+    private static it.unimi.dsi.fastutil.longs.LongOpenHashSet[] pairs() {
         it.unimi.dsi.fastutil.longs.LongOpenHashSet out = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet exact = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
         int[][] near = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (Trail t : TRAILS) {
             LongArrayList c = t.cells;
@@ -632,6 +646,8 @@ public final class RouteMemory {
                     if (Math.abs(bx - ax) <= 1 && Math.abs(bz - az) <= 1 && by == ay) {
                         continue; // (a step)
                     }
+                    exact.add(jumpKey(ax, ay, az, bx, by, bz));
+                    exact.add(jumpKey(ax, ay, az, bx, by - 1, bz));
                     for (int[] u : near) {
                         for (int[] v : near) {
                             out.add(jumpKey(ax + u[0], ay, az + u[1], bx + v[0], by, bz + v[1]));
@@ -642,7 +658,7 @@ public final class RouteMemory {
                 }
             }
         }
-        return out;
+        return new it.unimi.dsi.fastutil.longs.LongOpenHashSet[]{out, exact};
     }
 
     // how far along the way a cell is (-1: not on it), how long the way is, whether it goes all the way to the goal

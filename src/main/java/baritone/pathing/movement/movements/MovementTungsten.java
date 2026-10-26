@@ -87,6 +87,8 @@ public class MovementTungsten extends Movement implements CurvedMovement {
     private CompletableFuture<TungstenSearch.Plan> searching;
     private boolean searched;
     private int waitTicks, stuckTicks;
+    // stood on the ground at some point since this movement started (see the climb up onto src in updateState)
+    private boolean stoodOn;
 
     // the sector the jump into src comes from, for a jump that carries its speed on (TungstenJumps.Jump.carry), -1 otherwise
     private final int carry;
@@ -172,6 +174,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         searching = null;
         searched = false;
         waitTicks = stuckTicks = 0;
+        stoodOn = false;
     }
 
     @Override
@@ -244,6 +247,29 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             pilot = new JumpPilot(land, src.x + at[0], src.z + at[1], planned);
             pilot.fallback(plannedSearch);
             pilot.flow(this::flowsOn);
+        }
+        if (player.onGround()) {
+            stoodOn = true;
+        }
+        if (!stoodOn && !pilot.flew() && !player.onGround() && !MovementHelper.isClimbable(BlockStateInterface.get(ctx, src).getBlock())
+                && (player.onClimbable() || MovementHelper.isClimbable(BlockStateInterface.get(ctx, src.below()).getBlock()))) {
+            // still on the way up the ladder under src: the climb before hands over as soon as the feet are an eighth under
+            // src, and the jump goes from standing on top of it (Chess (hard)'s ladder tops). up the rest of the way first,
+            // and over onto the thin bit along the wall that's the top of it: up out of the middle of the cell there's
+            // nothing to stand on, and it's back down the ladder. (only until we've stood on it: after that, off the ground
+            // is the jump going)
+            if (++stuckTicks > STUCK) {
+                logDebug("tungsten jump: can't get off the ladder");
+                return state.setStatus(MovementStatus.UNREACHABLE);
+            }
+            double[] at = liveWorld == null ? new double[]{0.5, 0.5} : TungstenJumps.standAt(liveWorld, src.x, src.y, src.z);
+            double wx = src.x + at[0] - player.getX(), wz = src.z + at[1] - player.getZ();
+            if (wx * wx + wz * wz > 0.0025) {
+                state.setTarget(new MovementState.MovementTarget(new Rotation(Keys.yaw(wx, wz), ctx.playerRotations().getPitch()), false));
+                state.setInput(Input.MOVE_FORWARD, true);
+            }
+            state.setInput(Input.JUMP, true);
+            return state;
         }
         PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld);
         if (sim == null) {

@@ -23,6 +23,7 @@ import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
+import baritone.pathing.tungsten.Keys;
 import baritone.api.utils.VecUtils;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
@@ -248,7 +249,16 @@ public class MovementPillar extends Movement {
             if (off != null && !MovementHelper.fullyPassable(ctx, ctx.playerFeet().relative(off))) {
                 MovementHelper.moveTowards(ctx, state, dest.relative(off));
             } else {
-                MovementHelper.moveTowards(ctx, state, dest);
+                // to the middle of the column, allowing for the way we're already going: a jump that caught the ladder moving
+                // along the wall carries on along it (there's next to no drag on a ladder), and heading for the middle from
+                // there speeds it up, out of the column and onto the next ladder over (Chess (hard)'s ladder tops)
+                net.minecraft.world.phys.Vec3 v = ctx.player().getDeltaMovement();
+                double wx = dest.getX() + 0.5 - v.x * 8 - ctx.player().getX(), wz = dest.getZ() + 0.5 - v.z * 8 - ctx.player().getZ();
+                if (wx * wx + wz * wz > 0.01) {
+                    state.setTarget(new MovementState.MovementTarget(new Rotation(
+                            Keys.yaw(wx, wz), ctx.playerRotations().getPitch()), false));
+                    state.setInput(Input.MOVE_FORWARD, true);
+                }
             }
             state.setInput(Input.JUMP, true);
             return state;

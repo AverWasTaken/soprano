@@ -121,10 +121,13 @@ public class TrailCheck {
             String[] q = System.getenv("TRAIL_PAIR").trim().split("\\s+");
             BetterBlockPos a = new BetterBlockPos(Integer.parseInt(q[0]), Integer.parseInt(q[1]), Integer.parseInt(q[2]));
             BetterBlockPos b = new BetterBlockPos(Integer.parseInt(q[3]), Integer.parseInt(q[4]), Integer.parseInt(q[5]));
-            for (int attempt = 0; attempt < 5; attempt++) {
+            int attempts = System.getenv("TRAIL_ATTEMPTS") == null ? 5 : Integer.parseInt(System.getenv("TRAIL_ATTEMPTS"));
+            for (int attempt = 0; attempt < attempts; attempt++) {
                 VineLogPathTest.Result r = guided(w, a, b);
                 baritone.behavior.RouteMemory.Guide gg = baritone.behavior.RouteMemory.guide(a, b);
-                System.out.println("TRAIL guide " + gg + (gg == null ? "" : " floors " + baritone.behavior.RouteMemory.floors(gg, new VineLogPathTest.Ctx(w, false))));
+                if (attempt == 0) {
+                    System.out.println("TRAIL guide " + (gg == null ? "none" : gg.length() + " cells") + (gg == null ? "" : " floors " + baritone.behavior.RouteMemory.floors(gg, new VineLogPathTest.Ctx(w, false))));
+                }
                 System.out.println("TRAIL pair " + a + " -> " + b + " attempt " + attempt + ": " + (r.inGoal ? "made it: " + r.positions : "no" + (r.found ? " (part: " + r.positions + ")" : "")));
                 if (r.inGoal) {
                     break;

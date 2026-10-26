@@ -1,10 +1,32 @@
-# Parkour Lab v7 (bot v13)
+# Parkour Lab v7 (bot v14)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v13 (same course, v7, plus Chess (hard) and Dam)
+## What's new in bot v14 (same course, v7; the level data pack's checkpoints moved)
+
+- **Chess (hard) all the way.** The corner jump after stop 4 (a run off the overhang onto the corner of the black wool) is a hop chain now, and then the ladder tops: the bot hops into the one-block ladder over the gap, climbs it, and goes along the tops of the ladders the way you did.
+- **Into a ladder next door.** A hop into the ladder next to us with nothing under it, where the trail went (no grid move gets onto a ladder without standing at the foot of it).
+- **Off the top of a ladder.** A ladder's top is a plate a sixteenth or three thick along the wall. Jumps from one are planned from where you can really stand on it (half a player from the wall, not inside it), the full search is asked about the ones somebody made, the climb finishes standing on the plate before the jump goes, and the climb up a ladder allows for the way we were already going (a ladder caught moving along the wall slid on out of its column onto the next one). No grid "ascend" off a ladder onto the top of the next one: it aims at the middle of the cell and misses the plate.
+- **The jump off the block we're standing on comes first.** The background searches went leaps first, wherever they were along the level; on Chess (hard) the one jump off the checkpoint waited four minutes behind leaps 10 to 30 blocks on. Now: from where we stand, then leaps near us, then the rest by how far.
+- **A minute without getting anywhere, on a course that puts you back, and it steps off.** Short paths a few blocks and back kept the "no path" count from ever getting to the step off (Chess (harder): the snow under the tower, above where a fall puts you back).
+- **Lab data pack: checkpoints on top of a ladder** put you on the ladder's plate, not in the middle of the cell (you slid down it and out of the bottom). Chess (hard) stop 5, Dam stops 1 and 5.
+
+**How v14 did** (`#goto` the finish from the start, 15 minutes each):
+
+| | runs | result |
+|---|---|---|
+| Chess | 1 | done, 121 s, 0 falls |
+| Aqua | 1 | done, 40 s, 0 falls |
+| Candy | 1 | done, 24 s, 0 falls |
+| Hell | 1 | done, 150 s, 1 fall |
+| Chess (hard) | 4 | **done all**: 482 s (42 falls), 514 s (39), 450 s (5), 213 s (1), 178 s (1) as the fixes went in |
+| Dam | 1 | checkpoint 6 in 238 s (v13: 132 s). Next is still the ladder under the fence, the bit you flew |
+| Chess (harder) | 1 | checkpoint 2 in 46 s. After it is the 4 block gap up onto the stair that you flew over in the recording ("too hard"): no jump the sim knows makes it from a 2 block run up, so there's nothing to follow. A recording of someone doing it would be |
+| Desert | - | not rerun (no changes there) |
+
+## What was new in bot v13 (same course, v7, plus Chess (hard) and Dam)
 
 - **The course is what your recording stood on.** On a level where everything but the course puts you back (Dam's glass, the wooden pillar on Chess (hard), Desert's sand), the blocks a learned recording went over are the course. The planner won't land anywhere else. A block the recording only touched once or twice, with hundreds more of it all round (the glass under the odd cell of a practice mode recording), doesn't count. Trails from `#routes learn` are marked as learned in `routes.json` (`"learned"`), and those are the ones it goes by.
 - **No jump plan that touches down on the wrong thing on the way.** A searched plan that came down on the glass floor and hopped up onto the ladder from there was a reset in the game. Those are thrown out now, along with anything that comes down on a block FallFloor learned. Slime is fine.

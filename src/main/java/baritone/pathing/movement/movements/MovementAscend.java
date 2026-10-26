@@ -95,6 +95,12 @@ public class MovementAscend extends Movement {
 
     public static double cost(CalculationContext context, int x, int y, int z, int destX, int destZ) {
         BlockState toPlace = context.get(destX, y, destZ);
+        if (MovementHelper.isClimbable(toPlace.getBlock()) && (MovementHelper.isClimbable(context.get(x, y, z).getBlock())
+                || MovementHelper.isClimbable(context.get(x, y - 1, z).getBlock()))) {
+            // off a ladder and up onto the top of the one next door (Chess (hard)'s ladder tops): the top's a plate against the
+            // wall, and the jump aims at the middle of the cell, which misses it. TungstenJumps' step aims at the plate
+            return COST_INF;
+        }
         double additionalPlacementCost = 0;
         if (!MovementHelper.canWalkOn(context, destX, y, destZ, toPlace)) {
             additionalPlacementCost = context.costOfPlacingAt(destX, y, destZ, toPlace);
