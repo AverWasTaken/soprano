@@ -343,11 +343,24 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // a gap this long between two holds on one mob is a different wait
     private static final int LAVA_WAIT_GAP = 100;
 
+    // across every mob, for the ones that watch the whole pool and not one foe (the pearl hunt's lava spot)
+    private static final LavaHoldClock LAVA_HOLDS = new LavaHoldClock();
+
+    // hold ticks in the last minute, any mob
+    public static int lavaHoldTicks(int now) {
+        return LAVA_HOLDS.ticks(now);
+    }
+
+    public static void clearLavaHolds() {
+        LAVA_HOLDS.clear();
+    }
+
     private boolean lavaHold(AltoClef mod, Entity entity) {
         if (!lavaInTheWay(mod, entity)) {
             return false;
         }
         int now = mod.getPlayer().tickCount;
+        LAVA_HOLDS.note(now);
         if (LAVA_WAITS.size() > 64) {
             LAVA_WAITS.clear();
         }

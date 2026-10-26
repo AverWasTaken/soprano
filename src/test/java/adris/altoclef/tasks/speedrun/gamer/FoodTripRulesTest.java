@@ -24,6 +24,25 @@ public class FoodTripRulesTest {
 
 
     @Test
+    public void aTripRunsToItsEndNotTheMinimum() {
+        // 70 is the overworld minimum, 130 the trip's stop: the bag at 70 is fine for the floor and short for a trip
+        assertTrue(FoodTripRules.tripFoodShort(70, 130));
+        assertTrue(FoodTripRules.tripFoodShort(129, 130));
+        assertFalse(FoodTripRules.tripFoodShort(130, 130));
+        // a full bag settles for the minimum (tripEnd falls back to it)
+        assertFalse(FoodTripRules.tripFoodShort(70, 70));
+    }
+
+    @Test
+    public void aTripThatJustEndedHoldsTheNextOneOffUnlessHungry() {
+        long end = 5000;
+        assertTrue(FoodTripRules.coolingDown(end + 1, end));
+        assertTrue(FoodTripRules.coolingDown(end + FoodTripRules.COOLDOWN_TICKS - 1, end));
+        assertFalse(FoodTripRules.coolingDown(end + FoodTripRules.COOLDOWN_TICKS, end));
+        assertFalse(FoodTripRules.coolingDown(end + 1, -1));
+    }
+
+    @Test
     public void theLinesMoveOutWithTheWalkHome() {
         assertEquals(36, FoodTripRules.goHomeLine(0), 0);
         assertEquals(46, FoodTripRules.goHomeLine(400), 0);

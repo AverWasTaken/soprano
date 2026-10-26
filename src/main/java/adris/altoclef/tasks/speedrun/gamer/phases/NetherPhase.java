@@ -445,6 +445,8 @@ public class NetherPhase implements PhaseHandler {
                 }
                 foodTrip = false;
                 foodTripUp = false;
+                // a bag that just got filled should not start the next trip off the first dip (the under-floor bypass still can)
+                tripEndedTick = ctx.facts().gameTime();
                 foodFloor.reset();
                 ctx.progress(tripBlocks ? "blocks trip done" : "food trip done");
             }

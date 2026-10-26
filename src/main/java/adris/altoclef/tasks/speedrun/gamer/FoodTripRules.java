@@ -156,8 +156,14 @@ public final class FoodTripRules {
         return attempt <= 1;
     }
 
-    // a trip that ended on a stalled walk home waits this long (60 s) before the next one may start. the comment on the stall
-    // always said the next try has to earn its start, and nothing made it
+    // the bag alone (units, not what is still cooking) is under where the trip ends
+    public static boolean tripFoodShort(int units, int tripEnd) {
+        return units < tripEnd;
+    }
+
+    // a trip that ended (a stalled walk home, or the overworld half done) waits this long (60 s) before the next one may start,
+    // unless the bag is under the floor. the stall comment always said the next try has to earn its start, and nothing made it;
+    // a trip that came back with a full bag has no business turning around on the first hungry tick either
     public static final long COOLDOWN_TICKS = 1200;
 
     // endedAt < 0 = no trip has ended. a clock way back is a restart, so no cooldown either

@@ -44,10 +44,10 @@ public final class FoodFloor {
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
         FoodPlan food = overworld ? ctx.food() : null;
         List<KitNeed> needs = new ArrayList<>();
-        if (food != null && foodShort(ctx)) {
+        if (food != null && tripFoodShort(ctx)) {
             // the runner reads the need against held, which counts what is still cooking: ask for that on top so it is the bag
-            // that has to reach the minimum
-            needs.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum() + food.pending()));
+            // that has to reach the trip's end (a real bag, not the 70 that sent the bot straight back down for another trip)
+            needs.add(new KitNeed(KitNeed.FOOD, food.tripEnd() + food.pending()));
         }
         if (overworld && wantBlocks && blocksShort(ctx)) {
             needs.add(new KitNeed(KitNeed.BUILD_BLOCKS, TRIP_BLOCKS));
@@ -68,6 +68,13 @@ public final class FoodFloor {
     public static boolean foodShort(GamerContext ctx) {
         FoodPlan food = ctx.food();
         return FoodTripRules.units(food) < food.overworldMinimum();
+    }
+
+    // the trip's own read: the bag is under where a trip ends (tripEnd, which settles for the minimum on a full bag). foodShort stays
+    // the overworld floor's line for everyone who only asks "is the bag bad", the trip wants a real pile before it goes back down
+    public static boolean tripFoodShort(GamerContext ctx) {
+        FoodPlan food = ctx.food();
+        return FoodTripRules.tripFoodShort(FoodTripRules.units(food), food.tripEnd());
     }
 
     public static boolean blocksShort(GamerContext ctx) {
