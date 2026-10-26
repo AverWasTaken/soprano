@@ -108,6 +108,11 @@ public final class BanPolicy {
         return bans.ban(Key.entity(id), "pickup got nowhere: " + what, TASK_GAVE_UP);
     }
 
+    // GetToEntityTask: a chase that never left a two block circle (ChaseStallWatch). a minute, then the hunter may try again
+    public static boolean chaseStalled(Bans bans, int id, String what) {
+        return bans.ban(Key.entity(id), "chase got nowhere: " + what, TASK_GAVE_UP);
+    }
+
     // CalcFailureWatch: the second empty search. a hit from it proves there is a way
     public static boolean noPath(Bans bans, int id, String what) {
         return bans.ban(Key.entity(id), "no path to " + what, NO_PATH, Until.HIT_US);

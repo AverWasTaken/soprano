@@ -27,6 +27,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     private final MovementProgressChecker _progress = new MovementProgressChecker();
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5);
     private final CalcFailureWatch _calcWatch = new CalcFailureWatch();
+    private final ChaseStallWatch _chase = new ChaseStallWatch();
     private final Entity _entity;
     private final double _closeEnoughDistance;
     private Task _unstuckTask = null;
@@ -124,6 +125,23 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
                 mod.getInputControls().release(Input.MOVE_BACK);
                 mod.getInputControls().release(Input.MOVE_FORWARD);
             }
+        }
+        // the checks below all stand down while baritone is pathing (and the shimmy and the wander own the bot), and a swimmer
+        // in a flooded pocket replans forever. not going anywhere for 45 s is the same verdict as no path
+        if (mod.getPlayer().closerThan(_entity, _closeEnoughDistance)) {
+            _chase.reset();
+        } else if (!(_entity instanceof Player) && _chase.stalled(WorldHelper.getTicks(), mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ())) {
+            Debug.logMessage("Not getting anywhere chasing " + _entity.getType().getDescriptionId() + ", dropping it.");
+            _chase.reset();
+            if (_onNoPath != null) {
+                _onNoPath.run();
+            } else {
+                BanPolicy.chaseStalled(mod.getBans(), _entity.getId(), EntityTracker.describe(_entity));
+            }
+            // the ban stops us at the reachable check below, a callback has to be taken at its word
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            setDebugState("No way to get to the target");
+            return null;
         }
         if (_unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
             setDebugState("Getting unstuck from block.");
