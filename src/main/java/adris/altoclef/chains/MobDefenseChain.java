@@ -105,6 +105,8 @@ public class MobDefenseChain extends SingleTaskChain {
     // ticks until the closest incoming projectile reaches us, as of the last isProjectileClose. a bite in progress only gives
     // way to the shield when this is short (a held shield swaps the food out of the hand, which throws the bite away)
     private double _impactTicks = Double.POSITIVE_INFINITY;
+    // a close projectile of the last isProjectileClose was a ghast ball (the escape bridge keeps its shield down for those)
+    private boolean _closeFireball;
     private boolean _capSneak;
     private final Object _capOwner = new Object();
     // anything that is not a block, for the main hand while the shield is up
@@ -372,7 +374,8 @@ public class MobDefenseChain extends SingleTaskChain {
         if (creeperShield) {
             // the creeper's shield is up, leave it be
         } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
-                && isProjectileClose(mod) && BiteRules.shieldMayStart(mod.getFoodChain().biting(), _impactTicks)
+                && isProjectileClose(mod) && !(_closeFireball && mod.getBehaviour().noFireballShield())
+                && BiteRules.shieldMayStart(mod.getFoodChain().biting(), _impactTicks)
                 && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
@@ -519,6 +522,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
         boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
         boolean close = false;
+        _closeFireball = false;
         _impactTicks = Double.POSITIVE_INFINITY;
         try {
             if (!projectiles.isEmpty()) {
@@ -556,6 +560,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
                             // every close one counts for the impact clock, so a far arrow listed first does not hide a near fireball
                             _impactTicks = Math.min(_impactTicks, ProjectileHelper.ticksToClosest(projectile.position, projectile.velocity, mod.getPlayer().position()));
+                            _closeFireball |= projectile.projectileType == LargeFireball.class;
                             if (close) continue;
                             close = true;
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
