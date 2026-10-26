@@ -60,6 +60,8 @@ public final class NeoSearches {
     // what a job is: a neo (the full search), two neos in one flight, or a chain of walks and jumps by way of ledges
     // (or one by way of slime beside the line, the full search too: BOUNCE)
     static final int NEO = 0, COMBO = 1, LEDGES = 2, LEAP = 3, BOUNCE = 4;
+    // (a leap's full search, after its hop chains came to nothing: see work)
+    static final int LEAP_FULL = 5;
 
     static final boolean LOG = System.getenv("SOPRANO_NEO_LOG") != null;
     static final boolean FLY_DEBUG = System.getenv("SOPRANO_FLY_DEBUG") != null;
@@ -239,7 +241,13 @@ public final class NeoSearches {
                 // not one coming back towards us: that's A* looking behind itself along the trail, and a chess level's
                 // dozens of those held up the jump on for minutes. (as if a quarter as far, not first wherever it is: the
                 // leaps all along the level ahead held up the one jump off the block we were standing on for minutes)
-                d = d / 4 - 10;
+                d = d / 16 - 30;
+                // (and it's only the hop chains now, a fraction of a second each, see work: the full search waits, LEAP_FULL.
+                // so every hop chain in twenty blocks or so goes before the rest: on Chess (harder) the one off the wool
+                // waited eight minutes behind the searches round wherever the bot had wandered off to)
+            }
+            if (QUEUE.get(i).kind() == LEAP_FULL) {
+                d += 50; // (after the leaps' hop chains near us, see work)
             }
             if (!far && dx * dx + dy * dy + dz * dz < 1 && QUEUE.get(i).kind() != LEDGES && !QUEUE.get(i).combo()) {
                 d -= 20; // from where we're standing: what the path is waiting on right now
@@ -270,9 +278,31 @@ public final class NeoSearches {
             }
             TungstenSearch.Plan plan = null;
             long t0 = System.currentTimeMillis();
+            if (job.kind() == LEAP) {
+                // the hop chains first, a fraction of a second: for every leap that's waiting, before any of the full
+                // searches (seconds each, and most come to nothing). the one hop that does it was the last of ten leaps
+                // off a block on Chess (harder), a minute behind the rest
+                TungstenSearch.Plan hop = null;
+                try {
+                    hop = leapByHops(job.world(), job.src(), job.floorY(), job.land());
+                } catch (Throwable t) {
+                    // (as below)
+                }
+                if (hop == null) {
+                    synchronized (QUEUE) {
+                        QUEUE.add(new Job(job.key(), job.world(), job.src(), job.floorY(), job.land(), job.region(), job.via(), LEAP_FULL));
+                    }
+                    continue;
+                }
+                if (LOG) {
+                    System.out.println("[neo search] " + job.src() + " -> " + job.land() + ": " + hop.ticks() + " ticks by hops in " + (System.currentTimeMillis() - t0) + " ms, " + QUEUE.size() + " queued");
+                }
+                RESULTS.put(job.key(), hop);
+                continue;
+            }
             try {
                 plan = job.kind() == COMBO ? solveCombo(job.world(), job.src(), job.floorY(), job.land(), job.region())
-                        : job.kind() == LEAP ? solveLeap(job.world(), job.src(), job.floorY(), job.land(), job.region())
+                        : job.kind() == LEAP_FULL ? solveLeapFull(job.world(), job.src(), job.floorY(), job.land(), job.region())
                         : job.kind() == LEDGES ? Ledges.plan(job.world(), job.src(), job.floorY(), job.land())
                         : solve(job.world(), job.src(), job.floorY(), job.land(), job.region(), job.via());
             } catch (Throwable t) {
@@ -343,8 +373,13 @@ public final class NeoSearches {
     static final int LEAP_LANDED = 12;
 
     public static TungstenSearch.Plan solveLeap(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region) {
-        // a run at it hopping off whatever's on the way (HopChain) first: a few thousand ticks of sim, where the search is
-        // millions, and the search doesn't find those
+        TungstenSearch.Plan hop = leapByHops(world, src, floorY, land);
+        return hop != null ? hop : solveLeapFull(world, src, floorY, land, region);
+    }
+
+    // a run at it hopping off whatever's on the way (HopChain): a few thousand ticks of sim, where the search is millions,
+    // and the search doesn't find those. null if there's none that lands often enough
+    static TungstenSearch.Plan leapByHops(CollisionProvider world, BetterBlockPos src, double floorY, Landing land) {
         TungstenSearch.Plan hop = HopChain.plan(world, src, floorY, land);
         if (hop != null) {
             int landed = 0;
@@ -360,6 +395,11 @@ public final class NeoSearches {
                 return hop;
             }
         }
+        return null;
+    }
+
+    // the full search for a leap
+    static TungstenSearch.Plan solveLeapFull(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, TungstenSearch.Region region) {
         TungstenSearch.Plan plan = TungstenSearch.search(standing(world, src, floorY), land, region, LEAP_BUDGET, null);
         if (plan == null || plan.ticks() == 0) {
             if (LOG) {

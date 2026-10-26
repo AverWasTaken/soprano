@@ -97,8 +97,16 @@ public class TrailCheck {
             }
         }
         Assume.assumeTrue(trail != null);
-        // (and remembered, the way the game has it: the planner tries harder at the jumps along a trail)
-        baritone.behavior.RouteMemory.remember(trail);
+        // (and remembered, the way the game has it: the planner tries harder at the jumps along a trail. all of the file's,
+        // the way the game has them: a recording of just the hard bit joins onto the level's)
+        for (JsonElement e : JsonParser.parseString(Files.readString(Path.of(routes))).getAsJsonObject().getAsJsonArray("trails")) {
+            JsonArray a = e.getAsJsonArray();
+            List<BetterBlockPos> t = new ArrayList<>();
+            for (int i = 0; i + 2 < a.size(); i += 3) {
+                t.add(new BetterBlockPos(a.get(i).getAsInt(), a.get(i + 1).getAsInt(), a.get(i + 2).getAsInt()));
+            }
+            baritone.behavior.RouteMemory.remember(t);
+        }
         VineLogPathTest.Ctx ctx = new VineLogPathTest.Ctx(w);
         // the cells you can stand in (a trail cell over an edge isn't one: the one before it on the trail is where the jump goes from)
         List<BetterBlockPos> stands = new ArrayList<>();
@@ -122,6 +130,8 @@ public class TrailCheck {
             BetterBlockPos a = new BetterBlockPos(Integer.parseInt(q[0]), Integer.parseInt(q[1]), Integer.parseInt(q[2]));
             BetterBlockPos b = new BetterBlockPos(Integer.parseInt(q[3]), Integer.parseInt(q[4]), Integer.parseInt(q[5]));
             int attempts = System.getenv("TRAIL_ATTEMPTS") == null ? 5 : Integer.parseInt(System.getenv("TRAIL_ATTEMPTS"));
+            // (standing at the start, the way the game has it: the background searches round the player go first)
+            baritone.pathing.tungsten.NeoSearches.focus(a.x + 0.5, a.y, a.z + 0.5);
             for (int attempt = 0; attempt < attempts; attempt++) {
                 VineLogPathTest.Result r = guided(w, a, b);
                 baritone.behavior.RouteMemory.Guide gg = baritone.behavior.RouteMemory.guide(a, b);

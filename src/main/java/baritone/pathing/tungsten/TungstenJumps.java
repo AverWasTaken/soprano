@@ -197,7 +197,15 @@ public final class TungstenJumps {
                 continue;
             }
             int tx = net.minecraft.core.BlockPos.getX(c), ty = net.minecraft.core.BlockPos.getY(c), tz = net.minecraft.core.BlockPos.getZ(c);
-            if (!destOk(context, tx, ty, tz)) {
+            // (the trail's own cell is fine to land in whatever it's on, the way A* has it: the stair it came down on once,
+            // with dozens of them round it, is still where it went)
+            boolean own = destOk(context, tx, ty, tz);
+            if (!own && destOk(context, tx, ty + 1, tz) && !MovementHelper.fullyPassable(context, tx, ty, tz)) {
+                // (the cell of a stair the trail stood on the low step of: the top of it)
+                ty++;
+                own = true;
+            }
+            if (!own) {
                 // (a cell of the trail over the edge of the block it stood on: that block, next door)
                 search:
                 for (int ox = -1; ox <= 1; ox++) {
@@ -211,8 +219,12 @@ public final class TungstenJumps {
                 }
             }
             int dx = tx - x, dz = tz - z;
+            if (LEAP_DEBUG) {
+                System.out.println("[trail leap]   " + k + ": " + tx + " " + ty + " " + tz + " own " + own + " d2 " + (dx * dx + dz * dz) + " up " + (ty - y)
+                        + " destOk " + destOk(context, tx, ty, tz) + " offFloor " + offTrailFloor(context, tx, ty, tz));
+            }
             if (dx * dx + dz * dz <= TRAIL_LEAP_MIN * TRAIL_LEAP_MIN || dx * dx + dz * dz > TRAIL_LEAP_MAX * TRAIL_LEAP_MAX
-                    || ty - y > 1 || y - ty > context.maxFallHeightNoWater || !destOk(context, tx, ty, tz) || offTrailFloor(context, tx, ty, tz)) {
+                    || ty - y > TRAIL_LEAP_UP || y - ty > context.maxFallHeightNoWater || !destOk(context, tx, ty, tz) || !own && offTrailFloor(context, tx, ty, tz)) {
                 continue; // (near enough for the jumps A* asks about anyway, or more than a leap)
             }
             Jump j = context.tungsten().leap(context, src, new BetterBlockPos(tx, ty, tz));
@@ -240,6 +252,9 @@ public final class TungstenJumps {
     // how many cells on along the way a leap may go, and how far (across) it has to be to be one
     static final int TRAIL_LEAP = 6;
     static final double TRAIL_LEAP_MIN = 4.5, TRAIL_LEAP_MAX = 12;
+    // (two up: a hop off a block on the way, onto a stair's low step and up it, Chess (harder) after stop 2)
+    static final int TRAIL_LEAP_UP = 2;
+    static final boolean LEAP_DEBUG = System.getenv("SOPRANO_LEAP_DEBUG") != null;
     static final double LEAP_COST = 1.3;
 
     // the sector of CARRY_SECTORS a jump from (fx, fz) to (x, z) heads in, or -1 if that's no jump (next door, or nothing)

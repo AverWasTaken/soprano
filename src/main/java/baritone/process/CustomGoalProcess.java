@@ -284,6 +284,18 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 }
             }
         }
+        // no drop near enough: on the edge of something that puts you back (the dam's glass floor, the middle of us still
+        // over the gap, so it hasn't): onto the middle of it, and that puts us back
+        for (double ox : new double[]{-0.29, 0.29}) {
+            for (double oz : new double[]{-0.29, 0.29}) {
+                int bx = net.minecraft.util.Mth.floor(p.getX() + ox), bz = net.minecraft.util.Mth.floor(p.getZ() + oz);
+                net.minecraft.core.BlockPos under = new net.minecraft.core.BlockPos(bx, feet.getY() - 1, bz);
+                if (FallFloor.deadly(ctx.world().getBlockState(under).getBlock(), bx, feet.getY(), bz)) {
+                    double wx = bx + 0.5 - p.getX(), wz = bz + 0.5 - p.getZ();
+                    return net.minecraft.util.Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(wz, wx)) - 90F);
+                }
+            }
+        }
         return null;
     }
 

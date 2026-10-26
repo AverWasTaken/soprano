@@ -78,15 +78,76 @@ public final class HopChain {
             for (int run = -1; run <= MAX_RUN; run++) {
                 for (double[] aim : aims) {
                     double ax = aim[0], az = aim[1];
-                    TungstenSearch.Plan p = fly(world, src, floorY, land, back, run, ax, az, 0F);
-                    if (p != null && fly(world, src, floorY, land, back, run, ax, az, JITTER) != null
-                            && fly(world, src, floorY, land, back, run, ax, az, -JITTER) != null) {
+                    TungstenSearch.Plan p = fly(world, src, floorY, land, back, run, ax, az, Double.NaN, Double.NaN, 0F);
+                    if (p != null && fly(world, src, floorY, land, back, run, ax, az, Double.NaN, Double.NaN, JITTER) != null
+                            && fly(world, src, floorY, land, back, run, ax, az, Double.NaN, Double.NaN, -JITTER) != null) {
                         return p;
                     }
                 }
             }
         }
+        // by way of a block on the way: the first jump at the bit of it nearest the landing, and the hop off it at the
+        // landing. off at an angle from the straight line, it's what a straight run at the landing never touches (Chess
+        // (harder) after stop 2: off the black wool onto the corner of the quartz, and on from its edge to the stair)
+        for (double[] via : vias(world, src, floorY, land)) {
+            for (int back : BACKS) {
+                for (int run = -1; run <= MAX_RUN; run++) {
+                    for (double inset : VIA_INSETS) {
+                        double vx = Math.max(via[0] + inset, Math.min(via[0] + 1 - inset, land.centerX()));
+                        double vz = Math.max(via[1] + inset, Math.min(via[1] + 1 - inset, land.centerZ()));
+                        for (double[] aim : new double[][]{{land.centerX(), land.centerZ()}, {Double.NaN, NEAR_FOLLOW[0]}}) {
+                            TungstenSearch.Plan p = fly(world, src, floorY, land, back, run, aim[0], aim[1], vx, vz, 0F);
+                            if (p != null && fly(world, src, floorY, land, back, run, aim[0], aim[1], vx, vz, VIA_JITTER) != null
+                                    && fly(world, src, floorY, land, back, run, aim[0], aim[1], vx, vz, -VIA_JITTER) != null
+                                    && fly(world, src, floorY, land, back, run, aim[0], aim[1], vx, vz, 0F, VIA_DRAG) != null) {
+                                if (LOG) {
+                                    System.out.printf("[hop chain] by way of %d %d: back %d run %d inset %.2f%n", (int) via[0], (int) via[1], back, run, inset);
+                                }
+                                return p;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return null;
+    }
+
+    // how far in from the via block's sides the first jump aims (less than nothing: the middle of us just off it, the box
+    // still on it), and the aim's wobble that still has to make it
+    static final double[] VIA_INSETS = {0.15, 0.0, -0.15, -0.22, -0.27};
+    static final float VIA_JITTER = 0.5F;
+    static final double VIA_DRAG = 0.998;
+    static final int MAX_VIAS = 6;
+
+    // blocks between src and the landing with a top a hop can go from: as high as src's floor give or take, not src's
+    // own cell or the landing's
+    static List<double[]> vias(CollisionProvider world, BetterBlockPos src, double floorY, Landing land) {
+        List<double[]> out = new ArrayList<>();
+        int x0 = Math.min(src.x, land.x()) - 1, x1 = Math.max(src.x, land.x()) + 1;
+        int z0 = Math.min(src.z, land.z()) - 1, z1 = Math.max(src.z, land.z()) + 1;
+        int fy = (int) Math.floor(floorY);
+        for (int x = x0; x <= x1; x++) {
+            for (int z = z0; z <= z1; z++) {
+                if (x == src.x && z == src.z || x == land.x() && z == land.z()) {
+                    continue;
+                }
+                double ds = Math.hypot(x + 0.5 - (src.x + 0.5), z + 0.5 - (src.z + 0.5)), dl = Math.hypot(x + 0.5 - land.centerX(), z + 0.5 - land.centerZ());
+                if (ds < 1.5 || dl < 1.5) {
+                    continue;
+                }
+                for (int y = fy; y <= fy + 1; y++) {
+                    double top = TungstenJumps.floorTop(world, x, y, z);
+                    if (!Double.isNaN(top) && top >= floorY - 0.6 && top <= floorY + 1.3) {
+                        out.add(new double[]{x, z, ds + dl});
+                        break;
+                    }
+                }
+            }
+        }
+        // (the ones least out of the way first)
+        out.sort((a, b) -> Double.compare(a[2], b[2]));
+        return out.size() > MAX_VIAS ? out.subList(0, MAX_VIAS) : out;
     }
 
     // running on with no jump, the next tick is off the ground
@@ -109,7 +170,14 @@ public final class HopChain {
     }
 
     private static TungstenSearch.Plan fly(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, int back, int run, double ax,
-                                           double az, float aimError) {
+                                           double az, double viaX, double viaZ, float aimError) {
+        return fly(world, src, floorY, land, back, run, ax, az, viaX, viaZ, aimError, 1.0);
+    }
+
+    // drag: what's left of the speed across each tick in the air, on top of what the sim takes (1: none). a plan that only
+    // just makes it in the sim falls short in the game, which is a hair slower (Chess (harder)'s stair, by half a hundredth)
+    private static TungstenSearch.Plan fly(CollisionProvider world, BetterBlockPos src, double floorY, Landing land, int back, int run, double ax,
+                                           double az, double viaX, double viaZ, float aimError, double drag) {
         PlayerSim sim = NeoSearches.standing(world, src, floorY);
         PlayerSim probe = sim.copy();
         List<PlayerSim.Controls> keys = new ArrayList<>();
@@ -135,7 +203,10 @@ public final class HopChain {
         int hops = 0;
         for (int t = 0; t < MAX_TICKS; t++) {
             double tx = ax, tz = az;
-            if (Double.isNaN(ax)) {
+            if (hops == 0 && !Double.isNaN(viaX)) {
+                tx = viaX; // (the run and the first jump: at the block on the way. the hop off it goes at the landing)
+                tz = viaZ;
+            } else if (Double.isNaN(ax)) {
                 tx = Math.max(land.x() + az, Math.min(land.x() + 1 - az, sim.x));
                 tz = Math.max(land.z() + az, Math.min(land.z() + 1 - az, sim.z));
             }
@@ -147,6 +218,10 @@ public final class HopChain {
             }
             if (!Keys.step(sim, c)) {
                 return null;
+            }
+            if (drag != 1.0 && !sim.onGround) {
+                sim.vx *= drag;
+                sim.vz *= drag;
             }
             keys.add(c);
             states.add(SimState.of(sim));
@@ -172,7 +247,9 @@ public final class HopChain {
                 continue;
             }
             airborne = false;
-            if (JumpPolicy.onTheBlock(SimState.of(sim), land) && Math.abs(sim.y - land.floor()) < 0.01) {
+            // (on its floor, or a stair's low step half a block under it: the settle walks on up)
+            if (JumpPolicy.onTheBlock(SimState.of(sim), land)
+                    && (Math.abs(sim.y - land.floor()) < 0.01 || land.low() && Math.abs(sim.y - (land.floor() - 0.5)) < 0.01)) {
                 List<PlayerSim.Controls> settle = TungstenSearch.settle(sim, probe, land);
                 if (settle == null) {
                     return null;
@@ -184,6 +261,9 @@ public final class HopChain {
                 }
                 // (with no hop and no run up it's any plain jump's)
                 return hops == 0 && run >= 0 ? null : new TungstenSearch.Plan(keys, states, 0, 0);
+            }
+            if (LOG && !Double.isNaN(viaX) && aimError == 0F) {
+                System.out.printf("[hop chain]   via %.2f %.2f back %d run %d: down at %.3f %.3f %.3f v(%.3f %.3f)%n", viaX, viaZ, back, run, sim.x, sim.y, sim.z, sim.vx, sim.vz);
             }
             if (++hops > MAX_HOPS) {
                 return null;

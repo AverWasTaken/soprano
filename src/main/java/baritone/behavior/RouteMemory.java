@@ -81,6 +81,11 @@ public final class RouteMemory {
     static final double FLY_RISE = 1.8;
     // and lower than this under it, a fall (not a jump down a block or two onto the next one)
     static final double FALL_DROP = 3;
+    // a tick in the air where the speed up drops by less than this (gravity: 0.08) is flying, and this many in a row is a
+    // flight (a head hitting a ceiling stops it dead once, and that's not)
+    static final double FLY_DVY = 0.04;
+    static final int FLY_TICKS = 3;
+    static final double FLY_ACROSS = 4.0;
     // the player, laying down trails as they go
     private static Layer live = new Layer();
 
@@ -100,11 +105,27 @@ public final class RouteMemory {
         // fall) that comes down on or by somewhere already on the trail is a way back there, like walking back
         boolean airborne;
         double takeoffY, peakY, standY;
+        // flown since leaving the ground (see step)
+        boolean flight, flewFlying;
+        int flatTicks;
+        double standX, standZ, takeoffX, takeoffZ;
+        double lastVy = Double.NaN;
 
         // grounded: standing on something; floating: in water or on a ladder (swimming up a hanging water block, climbing):
         // both are cells of the way
         void step(double x, double y, double z, int fx, int fy, int fz, boolean grounded, boolean floating) {
             sinceTeleport++;
+            // in the air and not coming down the way anything thrown does (gravity takes 0.08 a tick off the speed up):
+            // flying, a few ticks of it. a fly over a gap isn't a jump anybody can follow (Chess (harder) after stop 2)
+            double vy = Double.isNaN(lastZ) ? Double.NaN : y - lastY;
+            if (!grounded && !floating && airborne && !Double.isNaN(vy) && !Double.isNaN(lastVy) && vy - lastVy > -FLY_DVY) {
+                if (++flatTicks >= FLY_TICKS) {
+                    flight = true;
+                }
+            } else {
+                flatTicks = 0;
+            }
+            lastVy = vy;
             if (!Double.isNaN(lastZ)) {
                 double dx = x - lastX, dz = z - lastZ;
                 if (dx * dx + dz * dz > 16 || y - lastY > 2.5) {
@@ -134,19 +155,31 @@ public final class RouteMemory {
             lastGrounded = grounded || floating;
             cellTicks++;
             boolean flew = false, fell = false;
+            boolean flown = false;
             if (!grounded && !floating) {
                 if (!airborne) {
                     airborne = true;
+                    flight = false;
+                    flatTicks = 0;
                     takeoffY = peakY = standY;
+                    takeoffX = standX;
+                    takeoffZ = standZ;
                 }
                 peakY = Math.max(peakY, y);
             } else if (airborne) {
                 airborne = false;
                 flew = peakY - takeoffY > FLY_RISE;
                 fell = y < takeoffY - FALL_DROP;
+                // (across further than a jump goes, to somewhere no lower: flown over something. flying back up after a
+                // miss is FLY_RISE's, below)
+                flown = flight && Math.hypot(x - takeoffX, z - takeoffZ) > FLY_ACROSS && y > takeoffY - 1;
+                flewFlying = flight;
+                flight = false;
             }
             if (grounded || floating) {
+                standX = x;
                 standY = y;
+                standZ = z;
             }
             if (grounded || floating) {
                 long cell = net.minecraft.core.BlockPos.asLong(fx, fy, fz);
@@ -181,18 +214,29 @@ public final class RouteMemory {
                         pendingCut = -1;
                         dirty = true;
                     }
-                    if ((flew || fell) && pendingCut < 0) {
+                    if ((flew || fell || flown) && pendingCut < 0) {
                         // came down by somewhere earlier on the trail after a flight or a fall (flown back up after a miss,
                         // fallen down to a lower part of the course): like a put back, where we go from here says what to
                         // keep (flown back up to where we fell from keeps the way between; on from here, it goes)
+                        boolean back = false;
                         for (int i = current.cells.size() - 1; i >= 0; i--) {
                             if (near(current.cells.getLong(i), fx, fy, fz, 1)) {
                                 if (i < current.cells.size() - 2) {
                                     pendingCut = i;
                                     return;
                                 }
+                                back = true;
                                 break;
                             }
+                        }
+                        boolean flying = flown;
+                        for (int i = current.cells.size() - 1; flying && !back && i >= 0; i--) {
+                            back = near(current.cells.getLong(i), fx, fy, fz, 2);
+                        }
+                        if (flying && !back && !current.cells.isEmpty()) {
+                            // flown on somewhere new (across a gap, or up off the floor under a course and onto a part of it
+                            // not on the way yet): the way so far stops where we took off, and a new one starts here
+                            newTrail();
                         }
                     }
                     int seen = current.cells.indexOf(cell);
@@ -518,6 +562,18 @@ public final class RouteMemory {
         if (!Baritone.settings().useRouteMemory.value) {
             return null;
         }
+        // the ways learned from recordings first (somebody went that way on purpose), then the ones the bot's own runs left
+        // (which go wherever it wandered: a dead end it tried, the way round it took when it couldn't do a jump)
+        // (a learned one that gets there; else whatever does, the bot's own runs' too; else the learned one that stops short)
+        Guide g = guide(start, goal, true);
+        if (g != null && g.reachesGoal()) {
+            return g;
+        }
+        Guide any = guide(start, goal, false);
+        return any != null && (any.reachesGoal() || g == null) ? any : g;
+    }
+
+    private static Guide guide(BetterBlockPos start, BetterBlockPos goal, boolean learnedOnly) {
         // failed from the same spot over and over (for the same goal): the way it went doesn't work from here (the trail's
         // next jump keeps failing, or it went somewhere that's a dead end), so the search is on its own. (failed, not
         // asked: planning ahead asks from the same spot a dozen times a jump, and a way that's working got dropped)
@@ -528,7 +584,14 @@ public final class RouteMemory {
         LongArrayList bestCells = null;
         int bestS = -1, bestEnd = -1;
         boolean bestReaches = false;
+        // (the ones that stop short, each joined on along whatever crosses it to the goal, if anything does: see below)
+        long[] joinedBest = null;
+        int joinedS = -1;
+        LongArrayList joinedCells = null;
         for (Trail t : TRAILS) {
+            if (learnedOnly && !t.learned) {
+                continue;
+            }
             LongArrayList cells = t.cells;
             int s = indexNear(cells, start, 1);
             if (s < 0) {
@@ -562,6 +625,18 @@ public final class RouteMemory {
             if (end - s < MIN_GUIDE) {
                 continue;
             }
+            if (!reaches) {
+                long[] part = new long[end - s + 1];
+                for (int i = s; i <= end; i++) {
+                    part[i - s] = cells.getLong(i);
+                }
+                long[] j = join(part, goal, JOINS, cells, learnedOnly);
+                if (j != null && (joinedBest == null || j.length < joinedBest.length)) {
+                    joinedBest = j;
+                    joinedS = s;
+                    joinedCells = cells;
+                }
+            }
             boolean better = bestCells == null || reaches && !bestReaches
                     || reaches == bestReaches && (reaches ? end - s < bestEnd - bestS : end - s > bestEnd - bestS);
             if (better) {
@@ -574,14 +649,110 @@ public final class RouteMemory {
         if (bestCells == null) {
             return null;
         }
-        Long2IntOpenHashMap index = new Long2IntOpenHashMap();
-        index.defaultReturnValue(-1);
         long[] order = new long[bestEnd - bestS + 1];
         for (int i = bestS; i <= bestEnd; i++) {
-            index.putIfAbsent(bestCells.getLong(i), i - bestS);
             order[i - bestS] = bestCells.getLong(i);
         }
-        return new Guide(index, bestEnd - bestS, bestReaches, order, bestCells.toLongArray());
+        long[] whole = bestCells.toLongArray();
+        if (!bestReaches && joinedBest != null) {
+            // none goes all the way from here, but one that stops short does, on along another that crosses it and gets
+            // there (a recording of just the hard bit, from the checkpoint before it to a couple past: the rest of the
+            // way is the whole level's recording's). the shortest of those
+            long[] jw = joinedCells.toLongArray();
+            long[] w = new long[joinedS + joinedBest.length];
+            System.arraycopy(jw, 0, w, 0, joinedS);
+            System.arraycopy(joinedBest, 0, w, joinedS, joinedBest.length);
+            order = joinedBest;
+            whole = w;
+            bestReaches = true;
+        }
+        Long2IntOpenHashMap index = new Long2IntOpenHashMap();
+        index.defaultReturnValue(-1);
+        for (int i = 0; i < order.length; i++) {
+            index.putIfAbsent(order[i], i);
+        }
+        return new Guide(index, order.length - 1, bestReaches, order, whole);
+    }
+
+    // how many more trails a guide that stops short may go on along
+    static final int JOINS = 2;
+
+    // way (from where we are) on along trails that cross it, as far as the goal: the shortest, or null. a trail crossing
+    // it is one with a cell next to one of its own (a block either way, one up or down), after which it goes on
+    private static long[] join(long[] way, BetterBlockPos goal, int joins, LongArrayList from, boolean learnedOnly) {
+        long[] best = null;
+        for (Trail t : TRAILS) {
+            LongArrayList c = t.cells;
+            if (c == from || learnedOnly && !t.learned) {
+                continue; // (the one the way is along already)
+            }
+            // (the first place along the way it crosses this trail, and the last place along the trail it does there)
+            int at = -1, k = -1;
+            for (int i = 1; i < way.length && at < 0; i++) {
+                long w = way[i];
+                int wx = net.minecraft.core.BlockPos.getX(w), wy = net.minecraft.core.BlockPos.getY(w), wz = net.minecraft.core.BlockPos.getZ(w);
+                for (int j = c.size() - 2; j >= 0; j--) {
+                    if (near(c.getLong(j), wx, wy, wz, 1)) {
+                        at = i;
+                        k = j;
+                        break;
+                    }
+                }
+            }
+            if (at < 0) {
+                continue;
+            }
+            // (on along the way as long as it's still alongside this one: where the two go the same way, the way's own
+            // cells, it's the one being followed, and the switch is where they part)
+            while (at + 1 < way.length) {
+                long w = way[at + 1];
+                int wx = net.minecraft.core.BlockPos.getX(w), wy = net.minecraft.core.BlockPos.getY(w), wz = net.minecraft.core.BlockPos.getZ(w);
+                int j = c.size() - 2;
+                while (j >= 0 && !near(c.getLong(j), wx, wy, wz, 1)) {
+                    j--;
+                }
+                if (j < 0) {
+                    break;
+                }
+                at++;
+                k = j;
+            }
+            int end = -1;
+            for (int j = k + 1; j < c.size(); j++) {
+                long cj = c.getLong(j);
+                if (Math.abs(net.minecraft.core.BlockPos.getX(cj) - goal.x) <= 2 && Math.abs(net.minecraft.core.BlockPos.getY(cj) - goal.y) <= 2
+                        && Math.abs(net.minecraft.core.BlockPos.getZ(cj) - goal.z) <= 2) {
+                    end = j;
+                    break;
+                }
+            }
+            while (end >= 0 && end + 1 < c.size() && dist2(c.getLong(end + 1), goal) < dist2(c.getLong(end), goal)) {
+                end++;
+            }
+            int last = end >= 0 ? end : c.size() - 1;
+            if (last - k < MIN_GUIDE && end < 0) {
+                continue;
+            }
+            long[] on = new long[at + 1 + last - k];
+            System.arraycopy(way, 0, on, 0, at + 1);
+            for (int j = k + 1; j <= last; j++) {
+                on[at + j - k] = c.getLong(j);
+            }
+            if (end < 0) {
+                // (this one stops short too: on again from it, if there's one more to go)
+                if (joins <= 1 || last - k < FAR_ENOUGH) {
+                    continue;
+                }
+                on = join(on, goal, joins - 1, c, learnedOnly);
+                if (on == null) {
+                    continue;
+                }
+            }
+            if (best == null || on.length < best.length) {
+                best = on;
+            }
+        }
+        return best;
     }
 
     private static long dist2(long c, BetterBlockPos p) {

@@ -1,10 +1,33 @@
-# Parkour Lab v7 (bot v14)
+# Parkour Lab v7 (bot v15)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v14 (same course, v7; the level data pack's checkpoints moved)
+## What's new in bot v15 (same course, v7)
+
+- **Chess (harder) all the way**, with your recording of the gap after stop 2 (`chh-gap`): the bot runs off the black wool, clips the corner of the quartz and hops straight on onto the stair, the way you did.
+- **A recording of just the hard bit joins onto the level's.** A trail that stops short (yours from stop 2 to stop 4) is followed and then the way goes on along whichever trail crosses it and gets to the finish (the level's own recording, past where you flew). Up to three trails in a row. The ones learned from recordings go first; the bot's own runs only when no learned way gets there.
+- **Flying over a gap isn't a way.** Learning a recording, a flight (in the air and not coming down the way anything thrown does) across more than 4 blocks to somewhere new ends the trail there; what's after it is a trail of its own. Flying back up to where you were after a miss is the same as before.
+- **Hop chains by way of a block on the way**: the first jump at the bit of that block nearest the landing, the hop off it at the landing (it's how you did the stair). And onto a stair's low step counts as landing on the stair. The plan has to make it with the aim off half a degree and a hair slower in the air than the sim (the game is).
+- **Leaps up two along a trail** (onto the stair's low step and up it), and onto the trail's own cells whatever they're on.
+- **The quick tries first.** A leap's hop chains (a fraction of a second) for everything waiting, before any leap's full search (seconds each). Your stair hop was found 8 minutes late behind the searches round wherever the bot had wandered.
+- **Stepping off to be put back, with nothing to drop off near**: on the edge of a block that puts you back (Dam's glass, the middle of us over the gap), onto the middle of it.
+- TrailCheck loads every trail in the routes file, stands the player at the start (the search queue's order is the game's), and takes `TRAIL_ATTEMPTS`.
+
+**How v15 did** (`#goto` the finish from the start):
+
+| | runs | result |
+|---|---|---|
+| Chess | 1 | done, 161 s, 1 fall |
+| Aqua | 1 | done, 40 s, 0 falls |
+| Candy | 1 | done, 25 s, 0 falls |
+| Hell | 1 | done, 196 s, 2 falls |
+| Chess (hard) | 1 | done, 125 s, 1 fall |
+| Chess (harder) | 2 | **done once**, 427 s, 3 falls (the gap at 26 s). The other got past the gap at once and to stop 8 in 272 s, then didn't make stop 9 in the 15 minutes (the done one took 4 minutes there too): that's the next one to look at |
+| Dam | 2 | checkpoint 6 in 179-194 s. Your recording of the ladder under the fence is in, but the way past the fence (on top of it, back down into the ladder, edging along it) is more than the planner puts together yet |
+
+## What was new in bot v14 (same course, v7; the level data pack's checkpoints moved)
 
 - **Chess (hard) all the way.** The corner jump after stop 4 (a run off the overhang onto the corner of the black wool) is a hop chain now, and then the ladder tops: the bot hops into the one-block ladder over the gap, climbs it, and goes along the tops of the ladders the way you did.
 - **Into a ladder next door.** A hop into the ladder next to us with nothing under it, where the trail went (no grid move gets onto a ladder without standing at the foot of it).
@@ -13,7 +36,7 @@ The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs eas
 - **A minute without getting anywhere, on a course that puts you back, and it steps off.** Short paths a few blocks and back kept the "no path" count from ever getting to the step off (Chess (harder): the snow under the tower, above where a fall puts you back).
 - **Lab data pack: checkpoints on top of a ladder** put you on the ladder's plate, not in the middle of the cell (you slid down it and out of the bottom). Chess (hard) stop 5, Dam stops 1 and 5.
 
-**How v14 did** (`#goto` the finish from the start, 15 minutes each):
+**How v14 did**:
 
 | | runs | result |
 |---|---|---|
