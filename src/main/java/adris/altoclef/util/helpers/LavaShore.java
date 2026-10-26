@@ -234,6 +234,35 @@ public final class LavaShore {
         return best;
     }
 
+    // safeStep with no foe: a standing-still spot that is on a rim by the same edge test. null when we are fine or nothing
+    // next door is better. every neighbour is judged with itself as the "foe", which switches the knock line off, so only
+    // the edge and lava rules are left
+    public static int[] edgeStep(Cells cells, double ux, double uy, double uz) {
+        if (!edgeNear(cells, ux, uy, uz)) {
+            return null;
+        }
+        int cx = (int) Math.floor(ux);
+        int cy = (int) Math.floor(uy);
+        int cz = (int) Math.floor(uz);
+        int[] best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                int x = cx + dx;
+                int z = cz + dz;
+                if ((dx == 0 && dz == 0) || !standable(cells, x, cy, z, x + 0.5, z + 0.5)) {
+                    continue;
+                }
+                double score = Math.hypot(x + 0.5 - ux, z + 0.5 - uz) + (lavaNear(cells, x + 0.5, cy, z + 0.5, NEAR) ? 100 : 0);
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = new int[]{dx, dz};
+                }
+            }
+        }
+        return best;
+    }
+
     // the keys to press to lean toward the foe, from where the head points. no look added: whatever the yaw is, the keys
     // are picked to walk at the foe from there. yaw is minecraft's (0 = south, +z), dx/dz is us to the foe
     public record Keys(boolean forward, boolean back, boolean left, boolean right) {

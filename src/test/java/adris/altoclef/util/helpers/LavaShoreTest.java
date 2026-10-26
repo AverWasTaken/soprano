@@ -351,4 +351,30 @@ public class LavaShoreTest {
         assertTrue(LavaShore.WAIT_CAP_TICKS < CombatCommit.STALL_TICKS);
         assertEquals(160, LavaShore.WAIT_CAP_TICKS);
     }
+
+    @Test
+    public void edgeStepLeavesAnInlandSpotAlone() {
+        assertNull(LavaShore.edgeStep(new World(), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void edgeStepWalksAwayFromARim() {
+        // pit one block east of us: the step has to be a standable neighbour that is itself clear of the edge
+        World w = new World().pit(1, 0).pit(1, -1).pit(1, 1).pit(2, 0).pit(2, -1).pit(2, 1);
+        assertTrue(LavaShore.edgeNear(w, 0.5, 0, 0.5));
+        int[] step = LavaShore.edgeStep(w, 0.5, 0, 0.5);
+        assertNotNull(step);
+        assertTrue(step[0] < 0);
+    }
+
+    @Test
+    public void edgeStepHasNowhereToGoWhenEveryNeighbourIsBad() {
+        World w = new World();
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                if (x != 0 || z != 0) w.pit(x, z);
+            }
+        }
+        assertNull(LavaShore.edgeStep(w, 0.5, 0, 0.5));
+    }
 }

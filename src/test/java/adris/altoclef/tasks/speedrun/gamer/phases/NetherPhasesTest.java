@@ -198,4 +198,16 @@ public class NetherPhasesTest {
         f.dimension = Dimension.END;
         assertFalse(back.isDone(f, state, cfg));
     }
+
+    @Test
+    public void huntClockPausesOverAGapAndKeepsRunningWithoutOne() {
+        // ticking along: untouched
+        assertEquals(100, NetherPhase.pausedClock(100, 500, 501), 1e-9);
+        assertEquals(100, NetherPhase.pausedClock(100, 500, 502), 1e-9);
+        // 60 s away from the hunt: the start slides forward by the gap
+        assertEquals(160, NetherPhase.pausedClock(100, 500, 560), 1e-9);
+        // nothing started yet, or never seen: nothing to pause
+        assertEquals(-1, NetherPhase.pausedClock(-1, 500, 560), 1e-9);
+        assertEquals(100, NetherPhase.pausedClock(100, -1, 560), 1e-9);
+    }
 }

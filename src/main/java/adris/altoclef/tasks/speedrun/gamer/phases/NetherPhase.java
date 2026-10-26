@@ -212,6 +212,7 @@ public class NetherPhase implements PhaseHandler {
     private int rotation;
     private int lastPearls;
     private double huntWanderSince = -1;
+    private double huntSeen = -1;
     private double barterSpent;
     private double barterTickAt = -1;
     private int lastHurt;
@@ -372,6 +373,7 @@ public class NetherPhase implements PhaseHandler {
         failedAlready = false;
         warpedSearchOver = false;
         huntWanderSince = -1;
+        huntSeen = -1;
         barterSpent = 0;
         barterTickAt = -1;
         hudState = null;
@@ -1253,6 +1255,15 @@ public class NetherPhase implements PhaseHandler {
         return huntStep(mod, ctx, now, pearlsNeed);
     }
 
+    // the no-pearl clock only counts time the hunt actually ran: food trips, the walk home, ghast cover and fights return
+    // before huntStep, and a gap longer than a couple of seconds since the last hunt tick is pushed onto the start (pause, not reset)
+    static double pausedClock(double since, double seen, double now) {
+        if (since < 0 || seen < 0 || now - seen <= 2) {
+            return since;
+        }
+        return since + (now - seen);
+    }
+
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
@@ -1261,6 +1272,8 @@ public class NetherPhase implements PhaseHandler {
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
+        huntWanderSince = pausedClock(huntWanderSince, huntSeen, now);
+        huntSeen = now;
         if (huntWanderSince < 0 || pearls > lastPearls) {
             huntWanderSince = now;
         }
