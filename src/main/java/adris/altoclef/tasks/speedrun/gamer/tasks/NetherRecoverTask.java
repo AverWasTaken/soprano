@@ -282,7 +282,7 @@ public class NetherRecoverTask extends Task {
                 if (dig != null) {
                     long t = facts.gameTime();
                     // digging is not walking: the budget does not run for it
-                    trip.netherTick += NetherTripRules.restockCredit(lastDigTick, t);
+                    trip.netherTick = NetherTripRules.paidBack(trip.netherTick, NetherTripRules.restockCredit(lastDigTick, t), t);
                     lastDigTick = t;
                     digging = true;
                     setDebugState("Restocking building blocks.", "Restocking building blocks");
@@ -330,7 +330,7 @@ public class NetherRecoverTask extends Task {
         if (hold) {
             digging = false;
             long gap = NetherTripRules.restockCredit(lastHoldTick, t);
-            trip.netherTick += gap;
+            trip.netherTick = NetherTripRules.paidBack(trip.netherTick, gap, t);
             heldTicks += gap;
             lastHoldTick = t;
         }

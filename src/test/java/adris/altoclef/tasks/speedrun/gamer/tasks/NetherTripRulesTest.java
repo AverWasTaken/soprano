@@ -259,7 +259,47 @@ public class NetherTripRulesTest {
 
     @Test
     public void aClockThatWentBackwardsIsAnotherWorld() {
-        assertEquals("out of time", NetherTripRules.next(in(Stage.BLOCKS, Dimension.OVERWORLD, -5, -5, 0)).giveUp());
+        assertEquals("out of time", NetherTripRules.next(in(Stage.BLOCKS, Dimension.OVERWORLD, -5000, -5000, 0)).giveUp());
+    }
+
+    @Test
+    public void aClockAFewTicksBehindIsJitterNotAnotherWorld() {
+        Step step = NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, -2, -2, 0));
+        assertNull(step.giveUp());
+        assertEquals(Stage.WALK, step.stage());
+    }
+
+    @Test
+    public void aClockFarBehindOnEitherCounterStillGivesUp() {
+        assertEquals("out of time", NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, -5000, 0, 0)).giveUp());
+        assertEquals("out of time", NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, 0, -5000, 0)).giveUp());
+        assertNull(NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, 0, -2, 0)).giveUp());
+        assertEquals("out of time", NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, 0, -NetherTripRules.CLOCK_JITTER_TICKS - 1, 0)).giveUp());
+    }
+
+    @Test
+    public void stampDigCreditsThenTheClockStepsBackStaysInTheWalk() {
+        long now = 1000;
+        long arrived = now;
+        long lastDig = now;
+        for (int i = 0; i < 20; i++) {
+            now++;
+            arrived = NetherTripRules.paidBack(arrived, NetherTripRules.restockCredit(lastDig, now), now);
+            lastDig = now;
+        }
+        // the server resync lands a tick behind where the client was
+        now -= 2;
+        arrived = NetherTripRules.paidBack(arrived, NetherTripRules.restockCredit(lastDig, now), now);
+        assertTrue(arrived <= now);
+        long trip = NetherTripRules.netherTicks(arrived, now);
+        assertTrue(trip >= 0);
+        assertNull(NetherTripRules.next(in(Stage.WALK, Dimension.NETHER, trip, 0, 0)).giveUp());
+    }
+
+    @Test
+    public void aPaybackNeverPutsTheArrivalInTheFuture() {
+        assertEquals(100, NetherTripRules.paidBack(95, 30, 100));
+        assertEquals(97, NetherTripRules.paidBack(95, 2, 100));
     }
 
     // ---- home

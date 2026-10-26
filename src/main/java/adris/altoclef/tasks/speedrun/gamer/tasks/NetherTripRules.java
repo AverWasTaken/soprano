@@ -175,6 +175,15 @@ public final class NetherTripRules {
         return arrivedTick <= 0 ? 0 : now - arrivedTick;
     }
 
+    // how far back the clock may jump before it is another world and not the server correcting the client. one minute
+    public static final long CLOCK_JITTER_TICKS = 1200;
+
+    // pushes the nether arrival back by a payback, never past now: a payback stamped under a clock that then got corrected
+    // backwards would leave the trip arriving in the future
+    public static long paidBack(long arrivedTick, long credit, long now) {
+        return Math.min(arrivedTick + credit, now);
+    }
+
     // the walk was not ticking for a while (combat or food had the wheel): start the no progress clock over
     public static boolean markStale(long lastSeenTick, long now) {
         return now - lastSeenTick > 40;
@@ -235,8 +244,10 @@ public final class NetherTripRules {
             boolean back = in.dim() == Dimension.OVERWORLD || in.stageTicks() > in.limits().homeTicks();
             return back ? over() : stay(st);
         }
-        // the clock going backwards is another world, not a trip with all its time left
-        if (in.tripTicks() < 0 || in.stageTicks() < 0 || in.tripTicks() > in.limits().tripTicks()) {
+        // the clock going way backwards is another world, not a trip with all its time left. a tick or two is just the
+        // server resyncing game time under a client that ran ahead
+        if (in.tripTicks() < -CLOCK_JITTER_TICKS || in.stageTicks() < -CLOCK_JITTER_TICKS
+                || in.tripTicks() > in.limits().tripTicks()) {
             return giveUp(in, "out of time");
         }
         return switch (st) {
