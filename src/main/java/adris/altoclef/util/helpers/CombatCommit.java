@@ -226,7 +226,7 @@ public final class CombatCommit {
     // it, which is every foe that does not come from the world: the no room rule only believes a gap somebody really took
     // sight: it has a line to us (only asked for shooters that hit us lately, so false is the default and the cheap answer).
     // sinceHitBefore: ticks since the hit before the last one (NEVER for fewer than two), a shooter that keeps hitting us (nothing reads it since the pin window went, it is just carried)
-    // fast: it moves at CombatRules.FAST_MOB_SPEED or better (spiders, slimes and magma cubes of any size, piglins), so a run does not shake it
+    // fast: it moves at CombatRules.FAST_MOB_SPEED or better (spiders, slimes and magma cubes of any size, piglins, angry zombified piglins), so a run does not shake it
     // splitType: "slime" or "magma_cube" for the cube family, null for everything else. splits: it is big enough to leave splits
     // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
@@ -981,12 +981,14 @@ public final class CombatCommit {
     }
 
     // a fast melee mob that has hit us, close, with a weapon in hand to answer it: a run is a jog with it biting our back, so
-    // that is the fight. cubes, slimes and spiders move at 0.3 or better (see CombatBrain.fast)
+    // that is the fight. cubes, slimes and spiders move at 0.3 or better (see CombatBrain.fast). in the heal-up hold it is
+    // seen from further off: knockback puts the thing past the close range and a re-run from it is the cornered death anyway
     private Foe fastTarget(Tick t) {
         if (!t.armed()) return null;
+        double range = recover.on() ? RecoverHold.RERUN_RANGE : FAST_FIGHT_RANGE;
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > FAST_FIGHT_RANGE || foe.kind() == Kind.UNTOUCHABLE) continue;
+            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > range || foe.kind() == Kind.UNTOUCHABLE) continue;
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }

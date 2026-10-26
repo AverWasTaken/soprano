@@ -321,4 +321,25 @@ public class RecoverHoldTest {
         assertEquals(Event.RUN_START, c.step(shot));
         assertEquals(Why.SHOT, c.why());
     }
+
+    // a fast one that hit us, knocked back past the close range: in the hold it is the cornered fight, outside it is a run
+    @Test
+    public void aFastOneSevenOutThatHitUsIsAFightInTheHoldAndARunOutsideIt() {
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        Foe piglin = new Foe(2, 7, false, false, 3).withFast(true);
+        assertEquals(Event.RUN_TO_FIGHT, c.step(tick(end + 1, 10, 30, FED, piglin)));
+        assertEquals(Why.CORNERED, c.why());
+
+        CombatCommit d = new CombatCommit();
+        assertEquals(Event.RUN_START, d.step(tick(1000, 7, 0, Body.NONE, piglin)));
+    }
+
+    // an angry zombified piglin is 0.23 + 0.05; a plain zombie stays under the line
+    @Test
+    public void theFastLineCatchesAnAngryPiglinButNotAZombie() {
+        assertTrue(0.23 + 0.05 >= CombatRules.FAST_MOB_SPEED);
+        assertFalse(0.23 >= CombatRules.FAST_MOB_SPEED);
+        assertFalse(0.25 >= CombatRules.FAST_MOB_SPEED);
+    }
 }

@@ -44,9 +44,9 @@ public final class CombatRules {
     public static final double RUN_BITE_START = 10;
     public static final double RUN_BITE_ABORT = 5;
     public static final double RUN_BITE_START_FAST = 13;
-    // a mob with at least this movement speed attribute is "fast" for the bite (spiders, baby zombies, vindicators; a plain
-    // zombie is 0.23, a skeleton 0.25)
-    public static final double FAST_MOB_SPEED = 0.3;
+    // a mob with at least this movement speed attribute is "fast" for the bite (spiders, baby zombies, vindicators, and an
+    // angry zombified piglin at 0.23 + 0.05; a plain zombie is 0.23, a skeleton 0.25). the epsilon is float noise on 0.28
+    public static final double FAST_MOB_SPEED = 0.28 - 1e-6;
     // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
     public static final double SHOOTER_RANGE = 15;
     // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
