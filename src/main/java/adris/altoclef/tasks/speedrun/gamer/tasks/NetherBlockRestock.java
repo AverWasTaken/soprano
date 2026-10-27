@@ -62,8 +62,8 @@ public class NetherBlockRestock {
             BlockPos origin = mod.getPlayer().blockPosition();
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
-                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p)
-                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)));
+                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p)
+                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)) && !nearLava(mod, p));
         } else if (!on) {
             task = null;
         }
@@ -82,15 +82,11 @@ public class NetherBlockRestock {
         return state.getFluidState().isEmpty() && state.isFaceSturdy(mod.getWorld(), under, Direction.UP);
     }
 
-    // a block with lava on any side is either holding the lava back or holding us up over it (a bridge is all lava
-    // underneath). neither is ours to mine for a few spare blocks
-    private static boolean touchesLava(AltoClef mod, BlockPos p) {
-        for (Direction d : Direction.values()) {
-            if (mod.getWorld().getFluidState(p.relative(d)).is(FluidTags.LAVA)) {
-                return true;
-            }
-        }
-        return false;
+    // a block near lava is holding the lava back, holding us up over it (a bridge is all lava underneath), or the pillar we
+    // would walk down into it. none of it is ours to mine for a few spare blocks (see NetherRestock.nearLava). last in the
+    // predicate, it is the expensive one
+    private static boolean nearLava(AltoClef mod, BlockPos p) {
+        return NetherRestock.nearLava(p, q -> mod.getWorld().getFluidState(q).is(FluidTags.LAVA));
     }
 
     // baritone's list has items it counts but can never place (nether brick the item, leaves), and the merge can list an
