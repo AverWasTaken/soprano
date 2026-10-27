@@ -25,6 +25,10 @@ import static org.junit.Assert.assertTrue;
 // the pure bits of the overworld phases: isDone over fake facts, the config defaults, and the small helpers
 public class OverworldPhasesTest {
     private final GamerConfig cfg = new GamerConfig();
+    // the spare shields have their own test (KitPlannerTest), the budgets here are the kit as it was
+    {
+        cfg.overworld.netherSpareShields = 0;
+    }
     private final RunState state = new RunState();
 
     @BeforeClass

@@ -27,6 +27,7 @@ public class GoldHuntTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
         cfg.cookFuelLogs = 0;
     }
 

@@ -36,6 +36,7 @@ public class DiamondSpendTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
         f = new FakeFacts();
     }
 

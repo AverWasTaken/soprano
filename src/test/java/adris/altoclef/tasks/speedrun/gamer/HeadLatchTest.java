@@ -30,6 +30,7 @@ public class HeadLatchTest {
     public void setUp() {
         f = new FakeFacts().give(Items.STONE_PICKAXE, 1);
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
     }
 
     // the running need is in the plan (or only just left it), the clock KitRunner keeps is not running

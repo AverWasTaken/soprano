@@ -47,6 +47,10 @@ public class OverworldConfig {
     // bag (see diamondPick) needs none of them. 0 = off. a plain
     // number and not a kit list, so an old saved config just gets 3 and GamerConfig.VERSION stays
     public int netherSparePicks = 3;
+    // shields in the bag on top of the one in the offhand when we go through. the blaze fight alone can eat most of one. gather
+    // pays for them with the rest of the kit (KitPlanner.ironKit). 0 = off. a plain number, so an old saved config just gets 2
+    // and GamerConfig.VERSION stays
+    public int netherSpareShields = 2;
     // diamonds in the bag (mined, or out of a chest) get crafted into upgrades instead of sitting there: a pick, then armor, see
     // DiamondSpend. off = the plan is exactly what it was. a plain flag, not a kit list, so an old saved config just gets true
     public boolean diamondSpend = true;

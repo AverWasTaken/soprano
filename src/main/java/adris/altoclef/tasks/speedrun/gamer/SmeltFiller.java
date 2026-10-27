@@ -99,7 +99,10 @@ public final class SmeltFiller {
                 continue;
             }
             int price = KitPlanner.ingotCost(need.catalogueName()) * (need.count() - KitPlanner.held(f, need.catalogueName()));
-            if (price <= 0) {
+            // a spare shield never takes ingots from a craft that is still waiting for its own
+            if (craftWaiting && price > 0 && "shield".equals(need.catalogueName()) && KitPlanner.held(f, "shield") > 0) {
+                blocked.add(need);
+            } else if (price <= 0) {
                 runnable.add(need);
             } else if (price <= ingots) {
                 ingots -= price;

@@ -442,8 +442,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
         snapshot(mod);
         _killAura.tickStart();
-        // all feet and no hands on a run, the shield only when boxed in or with a second mob hitting us. the shield is for
-        // standing in a pile, not for the first zombie that wanders up. a committed fight keeps the aura going under the flee
+        // all feet and no hands on a run, the shield only in a committed melee fight or when boxed in. a committed fight keeps the aura going under the flee
         // line and raises the shield mid move, the machine already decided this is a fight
         _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield(), _brain.auraFighting(), _brain.fightTarget());
         _killAura.setRimGuard(_brain.auraRimGuard());

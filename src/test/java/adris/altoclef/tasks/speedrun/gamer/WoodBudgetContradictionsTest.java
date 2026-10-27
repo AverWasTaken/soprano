@@ -26,6 +26,10 @@ import org.junit.Test;
 public class WoodBudgetContradictionsTest {
     private static final int BEDS = 8;
     private final OverworldConfig cfg = new OverworldConfig();
+    // the spare shields have their own test (KitPlannerTest), the budgets here are the kit as it was
+    {
+        cfg.netherSpareShields = 0;
+    }
 
     @BeforeClass
     public static void boot() {

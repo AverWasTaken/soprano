@@ -272,7 +272,7 @@ public final class KitPlanner {
 
     private static int stoneWanted(GamerFacts f, OverworldConfig cfg, boolean furnaceStanding) {
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
-        all.addAll(cfg.ironKit);
+        all.addAll(ironKit(cfg));
         int wanted = 0;
         for (KitItem k : all) {
             Integer cost = COBBLE_COST.get(k.item);
@@ -331,7 +331,9 @@ public final class KitPlanner {
                 continue;
             }
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
-            crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
+            // the first shield is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
+            int craft = k.item.equals("shield") && have(f, k.item) == 0 ? 1 : missing;
+            crafts.add(new KitNeed(k.item, held(f, k.item) + craft));
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
         // ironItems no longer owes (so nothing gets smelted for a pick or a chestplate we are about to outclass)
@@ -417,12 +419,22 @@ public final class KitPlanner {
         });
     }
 
+    // the iron kit as the planner reads it: the shield entry grows by netherSpareShields, the spares ride in the bag. everything
+    // that sums the kit (ingots, planks, the craft list) goes through this, so none of them can disagree about the count
+    static List<KitItem> ironKit(OverworldConfig cfg) {
+        List<KitItem> out = new ArrayList<>();
+        for (KitItem k : cfg.ironKit) {
+            out.add("shield".equals(k.item) && cfg.netherSpareShields > 0 ? new KitItem(k.item, k.count + cfg.netherSpareShields) : k);
+        }
+        return out;
+    }
+
     private static List<KitItem> ironItems(GamerFacts f, OverworldConfig cfg) {
         // whatever DiamondSpend picked is a diamond item from this tick on and stops being an iron one. nothing already smelted or
         // crafted goes anywhere, the diamond piece just wins the slot
         List<String> diamond = DiamondSpend.choose(f, cfg);
         List<KitItem> all = new ArrayList<>();
-        for (KitItem k : cfg.ironKit) {
+        for (KitItem k : ironKit(cfg)) {
             if (!DiamondSpend.replaces(diamond, k.item)) {
                 all.add(k);
             }
