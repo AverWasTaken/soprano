@@ -220,4 +220,83 @@ public class EscapeRouteTest {
         assertEquals(5, r.placements());
         assertEquals(1, turns(r));
     }
+
+    // ---- the lava lake test
+
+    private static World lavaBelow(int depth) {
+        World w = new World();
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                w.put(x, Y - depth, z, Cell.LAVA);
+            }
+        }
+        return w;
+    }
+
+    @Test
+    public void lakeWhenEveryColumnIsLava() {
+        assertTrue(EscapeRoute.overLavaLake(lavaBelow(5).slab(), 0, Y, 0));
+    }
+
+    @Test
+    public void lakeWithAPillarUnderTheFeet() {
+        World w = lavaBelow(5).slab();
+        for (int y = Y - 2; y >= Y - 5; y--) {
+            w.put(0, y, 0, Cell.NATURAL);
+        }
+        assertTrue(EscapeRoute.overLavaLake(w, 0, Y, 0));
+    }
+
+    @Test
+    public void notLakeWithNaturalFloorBelow() {
+        World w = lavaBelow(5).slab();
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                w.put(x, Y - 3, z, Cell.NATURAL);
+            }
+        }
+        assertFalse(EscapeRoute.overLavaLake(w, 0, Y, 0));
+    }
+
+    @Test
+    public void notLakeWhenUnloadedBelow() {
+        World w = lavaBelow(5).slab();
+        w.unloadedX = x -> true;
+        assertFalse(EscapeRoute.overLavaLake(w, 0, Y, 0));
+    }
+
+    @Test
+    public void notLakeOverNothing() {
+        assertFalse(EscapeRoute.overLavaLake(new World().slab(), 0, Y, 0));
+    }
+
+    @Test
+    public void deepLakeStillCounts() {
+        World w = new World();
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                w.put(x, Y - 100, z, Cell.LAVA);
+            }
+        }
+        assertTrue(EscapeRoute.overLavaLake(w, 0, Y, 0));
+    }
+
+    @Test
+    public void cheapWallBesideTheSlabIsNotALakeEnd() {
+        World w = lavaBelow(5).slab();
+        w.put(-1, Y, 0, Cell.NATURAL).put(-1, Y - 1, 0, Cell.NATURAL);
+        assertFalse(EscapeRoute.lavaLakeNoWay(w, 0, Y, 0));
+    }
+
+    @Test
+    public void farFloorOverLavaWithCheapWallIsNotALakeEnd() {
+        World w = lavaBelow(5).slab().floorFrom(12, Y - 1);
+        w.put(-1, Y, 0, Cell.NATURAL).put(-1, Y - 1, 0, Cell.NATURAL);
+        assertFalse(EscapeRoute.lavaLakeNoWay(w, 0, Y, 0));
+    }
+
+    @Test
+    public void openLavaWithNoWallIsALakeEnd() {
+        assertTrue(EscapeRoute.lavaLakeNoWay(lavaBelow(5).slab(), 0, Y, 0));
+    }
 }
