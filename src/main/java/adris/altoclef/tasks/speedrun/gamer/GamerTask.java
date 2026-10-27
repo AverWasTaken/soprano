@@ -149,6 +149,10 @@ public class GamerTask extends Task {
     private DeathRules.Worth worth;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
+    // last tick the trip sat out a night hide, for the stage clock's credit. tripHiding lets the night branch run in the nether
+    // phase for that one call
+    private long tripHideTick = Long.MIN_VALUE;
+    private boolean tripHiding;
     // the same bridge off a floating portal the nether phase has: the walk back arrives through a portal too
     private final EscapeRun tripEscape = new EscapeRun();
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
@@ -842,6 +846,27 @@ public class GamerTask extends Task {
             // (and so did the hole: a death in it is a respawn up top, the new body starts from the recovery)
             dropShelter();
         }
+        // a naked respawn at night hides first, the trip picks up where it was once the night is over. only when the night branch
+        // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does
+        Task hideNight = null;
+        if (state.netherTrip != null && NetherTripRules.hides(NetherTripRules.Stage.parse(state.netherTrip.stage), facts.dimension(),
+                darkAndBare(mod))) {
+            tripHiding = true;
+            hideNight = nightSleepTick(mod);
+            tripHiding = false;
+        }
+        if (hideNight != null) {
+            // the stage clock sits out the hide, or pick() would time out the moment the trip came back
+            state.netherTrip.stageTick += NetherTripRules.hiddenCredit(tripHideTick, facts.gameTime());
+            tripHideTick = facts.gameTime();
+            machine.observe();
+            machine.holdClocks();
+            setDebugState("Hiding from the night before the trip.", "Hiding from the night");
+            updateRecoveryHud("Hiding from the night");
+            autosave(now);
+            return hideNight;
+        }
+        tripHideTick = Long.MIN_VALUE;
         if (state.netherTrip != null) {
             dropShelter();
             dropNightTrip();
@@ -1124,9 +1149,7 @@ public class GamerTask extends Task {
             host.say("death: died on the way to the last pile, giving that one up");
         }
         // same night the shelter uses, with a minute of walking ahead of it counted (the shelter is blocked while we recover)
-        boolean darkAndBare = facts.dimension() == Dimension.OVERWORLD
-                && NightShelter.dark(!mod.getWorld().isBrightOutside(), mod.getWorld().getOverworldClockTime(), NightShelter.PILE_LEAD_TICKS)
-                && facts.armorPoints() < NightShelter.ARMOR_LINE;
+        boolean darkAndBare = darkAndBare(mod);
         String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         if (why == null) {
@@ -1146,6 +1169,12 @@ public class GamerTask extends Task {
         } else {
             host.say(DeathRules.leaving(why));
         }
+    }
+
+    private boolean darkAndBare(AltoClef mod) {
+        return facts.dimension() == Dimension.OVERWORLD
+                && NightShelter.dark(!mod.getWorld().isBrightOutside(), mod.getWorld().getOverworldClockTime(), NightShelter.PILE_LEAD_TICKS)
+                && facts.armorPoints() < NightShelter.ARMOR_LINE;
     }
 
     // a nether death respawns us at home, so the dimension test above says no and the whole kit used to be rebuilt. the pile
@@ -1426,7 +1455,7 @@ public class GamerTask extends Task {
         boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
         PhaseHandler h = machine.current();
         boolean phaseHolds = h != null && h.phase() == state.phase && h.nightHold();
-        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), phaseHolds, pickup, loading, facts.earlyLoadInFlight(), screenUp);
+        return NightSleep.busy(tripHiding || NightSleep.phaseAllowed(state.phase), !tripHiding && phaseHolds, pickup, loading, facts.earlyLoadInFlight(), screenUp);
     }
 
     // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night
