@@ -183,10 +183,11 @@ public final class CreeperStep {
         }
         if (pick == null) return Event.NONE;
         // a second go is the run's, when there is a run to hand it to. the step still walks us out of the blast until it gets
-        // going. with nobody to hand it to (the commitment is off) it is just the step again
-        _escalate = cameBack(pick.id(), now) && idle && commitOn;
-        // nowhere to go beats every plan that walks
+        // going. with nobody to hand it to (the commitment is off) it is just the step again. a committed fight counts too, it
+        // walks us straight back to the creeper otherwise. boxed in there is nowhere for a run to go, so not then
         boolean boxed = noHeading && shieldReady && pick.lit() && pick.distance() <= TRIGGER;
+        _escalate = cameBack(pick.id(), now) && (idle || (mode == CombatCommit.Mode.FIGHT && !boxed)) && commitOn;
+        // nowhere to go beats every plan that walks
         _id = pick.id();
         _since = now;
         _litSince = now;

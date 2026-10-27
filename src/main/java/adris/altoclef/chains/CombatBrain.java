@@ -311,6 +311,9 @@ final class CombatBrain {
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
+        // a swelling creeper stops being angry at us (the fuse goal pushes the chase aside), so the hostile list drops it right when
+        // the run away from it needs to see it
+        if (_commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.REPEAT_CREEPER) addNearCreepers(mod, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
         // the hold's re-run source: who threw the last projectile at us, when it is a blaze or a skeleton. the run steers around it
@@ -500,6 +503,20 @@ final class CombatBrain {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
         }
         return shotByExcluded;
+    }
+
+    private static void addNearCreepers(AltoClef mod, LocalPlayer player, List<Mob> mobs, List<Foe> foes) {
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive() || mobs.contains(creeper)) continue;
+                double distance = creeper.distanceTo(player);
+                if (distance > CombatCommit.LOW_HP_RANGE) continue;
+                mobs.add(creeper);
+                foes.add(new Foe(creeper.getId(), distance, false, true, CombatCommit.NEVER));
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same as gatherFoes, one tick of stale state is fine
+        }
     }
 
     // a stance change is a line, but a follower hovering right on the bite line would flip it every tick, so a line is at most

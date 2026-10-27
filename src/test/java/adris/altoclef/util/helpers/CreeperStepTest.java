@@ -245,12 +245,22 @@ public class CreeperStepTest {
     }
 
     @Test
-    public void midFightARepeatIsJustTheStep() {
-        // the fight is till dead, so no run
+    public void midFightARepeatIsTheRunsToo() {
+        // the fight walks us back to it every time, so the second go is the run's there as well
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false, Mode.NONE, true);
         step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false, Mode.FIGHT, true);
         assertEquals(Event.START, step.step(120, lit(7, 2.8), false, Mode.FIGHT, true));
+        assertTrue(step.escalate());
+    }
+
+    @Test
+    public void boxedInMidFightARepeatStaysTheStep() {
+        // a run from a box goes nowhere
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false, Mode.NONE, true);
+        step.step(30, List.of(new Seen(7, false, 7.5, false, false)), false, Mode.FIGHT, true);
+        assertEquals(Event.CORNERED, step.step(120, lit(7, 2.8), true, Mode.FIGHT, true, true));
         assertFalse(step.escalate());
     }
 
