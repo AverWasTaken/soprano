@@ -320,8 +320,9 @@ public class LavaShoreTest {
 
     @Test
     public void beingBitenInReachSkipsTheRimStep() {
-        assertTrue(LavaShore.underFire(7, true));
-        assertFalse(LavaShore.underFire(0, true));
+        assertTrue(LavaShore.underFire(0, true));
+        assertTrue(LavaShore.underFire(LavaShore.UNDER_FIRE_TICKS, true));
+        assertFalse(LavaShore.underFire(LavaShore.UNDER_FIRE_TICKS + 1, true));
         assertFalse(LavaShore.underFire(7, false));
     }
 

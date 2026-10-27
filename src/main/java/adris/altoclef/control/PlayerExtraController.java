@@ -82,6 +82,17 @@ public class PlayerExtraController {
         return _mod.getPlayer().closerThan(entity, Baritone.settings().altoEntityReachRange.value);
     }
 
+    // the last tick we were bitten, kept past hurtTime (10 ticks) so a mob that bites every 20 still reads as on us in between
+    private long _lastHurtTick = Long.MIN_VALUE / 2;
+
+    public long ticksSinceHurt() {
+        long now = gameTime();
+        if (_mod.getPlayer().hurtTime > 0) {
+            _lastHurtTick = now;
+        }
+        return now - _lastHurtTick;
+    }
+
     // swings that really went out, for the kill task's "stood in reach and nothing swung" cap
     private volatile long _swings;
 
