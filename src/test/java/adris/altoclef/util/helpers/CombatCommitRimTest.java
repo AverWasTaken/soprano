@@ -134,14 +134,24 @@ public class CombatCommitRimTest {
     }
 
     @Test
-    public void theRunShieldGivesUpAfterTheLeashOnTheSameFoe() {
+    public void theRunShieldGivesUpAfterTheLeash() {
         RimHold hold = new RimHold();
         for (int i = 0; i < CombatRules.RIM_HOLD_TICKS; i++) assertTrue(hold.step(7));
         assertFalse(hold.step(7));
         assertFalse(hold.step(7));
-        // nobody close lifts the leash, and so does another foe
+        // another foe does not start a new leash, nobody wanting it does
+        assertFalse(hold.step(8));
         assertFalse(hold.step(-1));
         assertTrue(hold.step(7));
-        assertTrue(hold.step(8));
+    }
+
+    @Test
+    public void twoCubesTakingTurnsDoNotMakeAFreshLeashEachSwap() {
+        RimHold hold = new RimHold();
+        int up = 0;
+        for (int i = 0; i < 3 * CombatRules.RIM_HOLD_TICKS; i++) {
+            if (hold.step(i % 2 == 0 ? 7 : 8)) up++;
+        }
+        assertEquals(CombatRules.RIM_HOLD_TICKS, up);
     }
 }
