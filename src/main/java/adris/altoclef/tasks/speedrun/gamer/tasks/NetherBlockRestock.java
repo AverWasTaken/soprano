@@ -71,7 +71,10 @@ public class NetherBlockRestock {
         } else if (!on) {
             task = null;
         }
-        return on ? task : null;
+        // a dig with nothing in the band wanders off in whatever direction for a block, and on a span over a lava sea that is
+        // a walk off the span. it stands down instead and the dry clock runs out with us still on our feet (the task is not
+        // ticked, so it keeps saying it is wandering until the clock ends the dig)
+        return on && !exhausted ? task : null;
     }
 
     // the block row the feet are in, not the block the y rounds down to: on soul sand (0.875 tall) the floor row would
