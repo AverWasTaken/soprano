@@ -230,7 +230,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
             boolean comesToUs = isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
             // a foe that is biting us in reach: a step cannot land under the knockback, the swing is the way out
-            boolean underFire = LavaShore.underFire(mod.getPlayer().hurtTime, inReach);
+            boolean underFire = LavaShore.underFire(mod.getControllerExtras().ticksSinceHurt(), inReach);
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
                     isKillTask() ? ApproachRules.swingWaited(_standCap.waitedLong(), underFire, rimWide) : _waitTicks >= ApproachRules.WAIT_TICKS, policy,
@@ -610,7 +610,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return;
         }
         boolean angryEnderman = entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
-        if (CritTiming.noBackOff(LavaShore.underFire(mod.getPlayer().hurtTime, inReach(mod, entity)), angryEnderman)) {
+        if (CritTiming.noBackOff(LavaShore.underFire(mod.getControllerExtras().ticksSinceHurt(), inReach(mod, entity)), angryEnderman)) {
             dropBackOff(mod, true);
             return;
         }

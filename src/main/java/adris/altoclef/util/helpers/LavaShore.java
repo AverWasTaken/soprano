@@ -170,10 +170,13 @@ public final class LavaShore {
         return backUnsafe || (rimWide && hurtTime > 0);
     }
 
-    // bitten this tick window with the foe in reach: a rim step never lands under that knockback (it gets re-picked every
-    // hit), so the swing is the only way out
-    public static boolean underFire(int hurtTime, boolean inReach) {
-        return hurtTime > 0 && inReach;
+    // bitten lately with the foe in reach: a rim step never lands under that knockback (it gets re-picked every hit), so the
+    // swing is the only way out. lately is a bit longer than hurtTime: an enderman bites every 20 ticks and hurtTime is only
+    // 10 of them, so the rim step got every gap and flip-flopped between two cells while the bites kept landing
+    public static final long UNDER_FIRE_TICKS = 30;
+
+    public static boolean underFire(long ticksSinceHurt, boolean inReach) {
+        return ticksSinceHurt <= UNDER_FIRE_TICKS && inReach;
     }
 
     // a rim step that has gone this many ticks without getting any closer to its cell is not going to land (a knock mid step, a
