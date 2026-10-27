@@ -183,6 +183,10 @@ public class NetherPhase implements PhaseHandler {
     private double pickRetryAt;
     private int pickFails;
     private boolean noPickSaid;
+    // same for the sword (see swordSide): a long pearl hunt wears one out, and nothing in the nether makes a new one
+    private NetherPickTask swordTask;
+    private double swordRetryAt;
+    private int swordFails;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
     // the gold piece fallback (goldSide): up to NetherGold.MAX_TRIES tries a visit, a latched one re-arms NetherGold.RETRY_SECONDS later and a death resets
@@ -355,6 +359,9 @@ public class NetherPhase implements PhaseHandler {
         pickRetryAt = 0;
         pickFails = 0;
         noPickSaid = false;
+        swordTask = null;
+        swordRetryAt = 0;
+        swordFails = 0;
         goldTask = null;
         goldWear = null;
         goldWearing = null;
@@ -499,6 +506,10 @@ public class NetherPhase implements PhaseHandler {
         Task pick = pickSide(mod, ctx, now);
         if (pick != null) {
             return pick;
+        }
+        Task sword = swordSide(mod, ctx, now);
+        if (sword != null) {
+            return sword;
         }
         Task gold = goldSide(mod, ctx, now, piglins);
         if (gold != null) {
@@ -907,6 +918,49 @@ public class NetherPhase implements PhaseHandler {
         ctx.log(NetherPick.craftLine(tier));
         hudState = "Making a pickaxe";
         return pickTask;
+    }
+
+    // the sword is about to break (or is gone) and the bag can make one: diamond, iron, then cobble. same rules as pickSide (the
+    // craft only ever eats what the bag holds, a short input drops it, 3 tries a minute apart) but it does not wait for the
+    // pearl hunt to be over, the hunt is what wears the thing out. it waits for a spawner, a trade or a blaze/ghast fight
+    private Task swordSide(AltoClef mod, GamerContext ctx, double now) {
+        GamerFacts f = ctx.facts();
+        if (NetherPick.hasUsableSword(f)) {
+            swordTask = null;
+            swordFails = 0;
+            return null;
+        }
+        if (swordTask != null && swordTask.failed()) {
+            swordTask = null;
+            swordRetryAt = now + PICK_RETRY_SECONDS;
+            if (++swordFails >= PICK_TRIES) {
+                ctx.log("nether: the sword craft keeps failing, giving up on it");
+            }
+        }
+        if (swordFails >= PICK_TRIES || swordBusy(mod, now)) {
+            return null;
+        }
+        if (swordTask != null) {
+            hudState = "Making a sword";
+            return swordTask;
+        }
+        NetherPick.Bag bag = NetherPick.bagOf(f);
+        // (every sword we still hold is a worn one here, see NetherPick.choose)
+        NetherPick.Tier tier = NetherPick.choose(bag, NetherPick.Kind.SWORD, t -> f.has(NetherPick.swordItem(t)));
+        if (tier == NetherPick.Tier.NONE || now < swordRetryAt) {
+            return null;
+        }
+        swordTask = new NetherPickTask(tier, NetherPick.Kind.SWORD, () -> NetherPick.bagOf(ctx.facts()),
+                () -> NetherPick.hasUsableSword(ctx.facts()));
+        ctx.log(NetherPick.swordLine(tier));
+        hudState = "Making a sword";
+        return swordTask;
+    }
+
+    private boolean swordBusy(AltoClef mod, double now) {
+        boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
+        boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
+        return atSpawner || trading || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
     }
 
     private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
