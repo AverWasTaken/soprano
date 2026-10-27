@@ -201,7 +201,7 @@ public class EscapeBridgeTask extends Task {
 
     public static boolean lavaLake(AltoClef mod) {
         BlockPos at = mod.getPlayer().blockPosition();
-        return EscapeRoute.overLavaLake(terrain(mod, at.getY(), Set.of(), Set.of()), at.getX(), at.getY(), at.getZ());
+        return EscapeRoute.lavaLakeNoWay(terrain(mod, at.getY(), Set.of(), Set.of()), at.getX(), at.getY(), at.getZ());
     }
 
     // chunks around us are in, so unloaded cells mean "really nothing" less often than "not here yet"

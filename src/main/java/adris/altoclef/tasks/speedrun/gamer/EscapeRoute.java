@@ -37,8 +37,8 @@ public final class EscapeRoute {
     public static final int ISOLATED_PLACEMENTS = 3;
     // a step down this far is a walk off an edge, past it the fall is damage
     public static final int MAX_STEP_DOWN = 4;
-    // how far down the lava lake test looks for the first real block
-    private static final int LAKE_DEPTH = 64;
+    // how far down the lava lake test looks for the first real block (the real terrain ends it sooner at the world floor)
+    private static final int LAKE_DEPTH = 320;
 
     public record Route(List<int[]> cells, int placements, boolean wall) {
         public int[] end() {
@@ -80,6 +80,16 @@ public final class EscapeRoute {
             }
         }
         return lava >= 3;
+    }
+
+    // the lake only ends the run when no wall within a few placements can be dug into: find() prefers a far floor over its saved
+    // wall, so the plan's own route says nothing about whether a cheap wall exists
+    public static boolean lavaLakeNoWay(Terrain t, int x, int y, int z) {
+        if (!overLavaLake(t, x, y, z)) {
+            return false;
+        }
+        Route r = find(t, x, y, z, ISOLATED_PLACEMENTS);
+        return r == null || !r.wall() && r.placements() > ISOLATED_PLACEMENTS;
     }
 
     private static Cell firstBelow(Terrain t, int x, int fromY, int z) {

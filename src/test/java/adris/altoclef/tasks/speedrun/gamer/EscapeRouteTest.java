@@ -269,4 +269,34 @@ public class EscapeRouteTest {
     public void notLakeOverNothing() {
         assertFalse(EscapeRoute.overLavaLake(new World().slab(), 0, Y, 0));
     }
+
+    @Test
+    public void deepLakeStillCounts() {
+        World w = new World();
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                w.put(x, Y - 100, z, Cell.LAVA);
+            }
+        }
+        assertTrue(EscapeRoute.overLavaLake(w, 0, Y, 0));
+    }
+
+    @Test
+    public void cheapWallBesideTheSlabIsNotALakeEnd() {
+        World w = lavaBelow(5).slab();
+        w.put(-1, Y, 0, Cell.NATURAL).put(-1, Y - 1, 0, Cell.NATURAL);
+        assertFalse(EscapeRoute.lavaLakeNoWay(w, 0, Y, 0));
+    }
+
+    @Test
+    public void farFloorOverLavaWithCheapWallIsNotALakeEnd() {
+        World w = lavaBelow(5).slab().floorFrom(12, Y - 1);
+        w.put(-1, Y, 0, Cell.NATURAL).put(-1, Y - 1, 0, Cell.NATURAL);
+        assertFalse(EscapeRoute.lavaLakeNoWay(w, 0, Y, 0));
+    }
+
+    @Test
+    public void openLavaWithNoWallIsALakeEnd() {
+        assertTrue(EscapeRoute.lavaLakeNoWay(lavaBelow(5).slab(), 0, Y, 0));
+    }
 }
