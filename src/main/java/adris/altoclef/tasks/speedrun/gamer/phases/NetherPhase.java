@@ -787,17 +787,17 @@ public class NetherPhase implements PhaseHandler {
             goldTask = null;
             return null;
         }
-        // blazes and ghasts, a spawner, a barter and a pearl hunt come first, the same list the pick craft waits for
-        if (pickBusy(mod, ctx, now)) {
-            return null;
-        }
+        // blazes and ghasts, a spawner, a barter and a pearl hunt come first for the digging, the same list the pick craft waits
+        // for. folding a piece from gold the bag already holds is quick, and a helmet the endermen broke mid hunt is exactly when
+        // the piglins stop leaving us alone
+        boolean busy = pickBusy(mod, ctx, now);
         NetherGold.Bag bag = goldBag(f);
         if (goldTask == null) {
             String slot = PiglinGold.netherSlot(f, KitPlanner.armorNames(ctx.cfg().overworld));
             int need = PiglinGold.ingotsFor(slot);
             // only the digging angers them. a piece folded from what the bag already holds is the thing that calms the piglins
             // standing right there, waiting for them to leave first is backwards
-            if (piglins && NetherGold.stage(bag, need) == NetherGold.Stage.MINE) {
+            if ((piglins || busy) && NetherGold.stage(bag, need) == NetherGold.Stage.MINE) {
                 return null;
             }
             BlockPos me = mod.getPlayer().blockPosition();
@@ -821,7 +821,7 @@ public class NetherPhase implements PhaseHandler {
                 goldTask = null;
                 return null;
             }
-            if (piglins) {
+            if (piglins || busy) {
                 // wait it out: the clock keeps running, the cap ends it
                 return null;
             }
