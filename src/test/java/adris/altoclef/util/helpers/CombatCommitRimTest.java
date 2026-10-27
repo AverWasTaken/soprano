@@ -52,7 +52,7 @@ public class CombatCommitRimTest {
     @Test
     public void aCubeFarOnARimIsNothingYet() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.NONE, c.step(tick(0, 20, List.of(cube(1, 3.5)), null, RIM)));
+        assertEquals(Event.NONE, c.step(tick(0, 20, List.of(cube(1, 5.5)), null, RIM)));
     }
 
     @Test
@@ -84,11 +84,15 @@ public class CombatCommitRimTest {
     }
 
     @Test
-    public void theRimFightLetsGoOnceItIsPastFourAndNotHitting() {
+    public void theRimFightLetsGoOnceItIsPastSixAndNotHitting() {
         CombatCommit c = new CombatCommit();
         c.step(tick(0, 20, List.of(cube(1, 2.5)), null, RIM));
-        Foe far = cube(1, 4.5);
-        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, 20, List.of(far), far, RIM)));
+        Foe near = cube(1, 5.5);
+        assertEquals(Mode.FIGHT, c.mode());
+        c.step(tick(1, 20, List.of(near), near, RIM));
+        assertEquals(Mode.FIGHT, c.mode());
+        Foe far = cube(1, 6.5);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(2, 20, List.of(far), far, RIM)));
         assertEquals(Mode.NONE, c.mode());
     }
 
