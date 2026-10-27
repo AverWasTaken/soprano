@@ -184,6 +184,8 @@ public final class CombatCommit {
         SHOT,
         // a skeleton that is shooting us and we are fit to fight it: one target, till it is dead
         PINNED,
+        // a cube or an angry piglin walked up to us on a lava rim: hit it first, its first hit is a knock into the lava
+        RIM,
         // a creeper we already stepped from back beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
         // loop, leaving is not
         REPEAT_CREEPER
@@ -230,10 +232,11 @@ public final class CombatCommit {
     // splitType: "slime" or "magma_cube" for the cube family, null for everything else. splits: it is big enough to leave splits
     // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
-                      boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z) {
+                      boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
+                      boolean knocker) {
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
@@ -242,11 +245,16 @@ public final class CombatCommit {
         }
 
         public Foe withFast(boolean fast) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
+        }
+
+        // knocker: a melee hit of its shoves us (cubes of any size, an angry zombified piglin), see CombatRules.rimKnocker
+        public Foe withKnocker(boolean knocker) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
         }
 
         public Foe withSplit(String splitType, boolean splits, double x, double y, double z) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -388,11 +396,20 @@ public final class CombatCommit {
     // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
     // to move (a path or a search going), y: our height, a pillar out of a hole is progress too
     // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight needs. true when nobody asked
-    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon) {
+    // rim: we stand on a lava rim or a ledge over a drop (LavaShore.edgeNear) with a melee foe close, path or no path
+    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim) {
         public static final Way NONE = new Way(Set.of(), false, 0);
 
         public Way(Set<Integer> inWay, boolean pathing, double y) {
             this(inWay, pathing, y, true);
+        }
+
+        public Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon) {
+            this(inWay, pathing, y, weapon, false);
+        }
+
+        public Way withRim(boolean rim) {
+            return new Way(inWay, pathing, y, weapon, rim);
         }
     }
 
@@ -930,6 +947,9 @@ public final class CombatCommit {
             if (!t.armed() && !hit.standsAndFights() && !enderAbout) return startRun(t, Why.UNARMED, Event.RUN_START);
             return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
         }
+        // a cube or an angry piglin close on a rim and no hit yet: its first hit is the knock into the lava, so we hit first
+        Foe rim = rimEngage(t, cooling);
+        if (rim != null) return startFight(t, rim, Why.RIM, Event.FIGHT_START, false);
         // not in contact, but a skeleton is shooting us. one target and kill it. hurt, or more than one of them, is a run out of
         // their sight instead (the low hp run above already took the hurt case when it was close enough to count)
         List<Foe> shooters = snipers(t, cooling);
@@ -960,6 +980,19 @@ public final class CombatCommit {
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         if (way == null || !t.armed() || !t.way().weapon()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
+    }
+
+    // the closest knocker within RIM_ENGAGE_RANGE while we stand on a rim. armed, above the flee line, not crowded and not in a
+    // run latch (those are the run rules' call, and idle already asked them), and never one we gave up on
+    private Foe rimEngage(Tick t, boolean cooling) {
+        if (!t.way().rim() || !t.armed() || runLatch || t.health() <= FLEE_HP || crowded(t.health(), t.foes(), cooling)) return null;
+        Foe best = null;
+        for (Foe foe : candidates(t)) {
+            if (!CombatRules.rimKnocker(foe) || foe.distance() > CombatRules.RIM_ENGAGE_RANGE) continue;
+            if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     // a run for a crowd or low hp, unless every side of us is a wall or a mob: a run from there is a few seconds of digging
@@ -1254,7 +1287,8 @@ public final class CombatCommit {
         if (swap != null) return startFight(t, swap, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
-        if (why == Why.IN_WAY && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
+        // (the rim fight lets go at the same four blocks, one past the three it starts at, so it does not flip back on)
+        if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
         // after three seconds, only the stall rule below writes that one off)

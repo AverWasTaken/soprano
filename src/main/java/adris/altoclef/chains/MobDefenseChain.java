@@ -446,6 +446,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // standing in a pile, not for the first zombie that wanders up. a committed fight keeps the aura going under the flee
         // line and raises the shield mid move, the machine already decided this is a fight
         _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield(), _brain.auraFighting(), _brain.fightTarget());
+        _killAura.setRimGuard(_brain.auraRimGuard());
 
         // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
