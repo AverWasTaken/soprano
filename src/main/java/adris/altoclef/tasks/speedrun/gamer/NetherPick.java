@@ -12,11 +12,23 @@ public final class NetherPick {
         NONE,
         IRON,
         STONE,
-        WOODEN
+        WOODEN,
+        // swords only, a pick from the bag never goes up to diamond
+        DIAMOND
+    }
+
+    // one pipeline, two tools: a sword head is 2 materials and one stick, a pick head is 3 and two
+    public enum Kind {
+        PICKAXE,
+        SWORD
     }
 
     // what the recipes are made of, stems and hyphae folded into logs and crimson/warped planks into planks (ItemHelper)
-    public record Bag(int ingots, int cobble, int planks, int sticks, int logs, boolean table) {
+    public record Bag(int ingots, int cobble, int planks, int sticks, int logs, boolean table, int diamonds) {
+        public Bag(int ingots, int cobble, int planks, int sticks, int logs, boolean table) {
+            this(ingots, cobble, planks, sticks, logs, table, 0);
+        }
+
         // planks if every log were cut up
         int woodPlanks() {
             return planks + PLANKS_PER_LOG * logs;
@@ -24,6 +36,7 @@ public final class NetherPick {
     }
 
     static final int HEAD = 3;
+    static final int SWORD_HEAD = 2;
     public static final int STICKS = 2;
     static final int TABLE_PLANKS = 4;
     public static final int PLANKS_PER_LOG = 4;
@@ -34,7 +47,43 @@ public final class NetherPick {
     private static final Item[] PICKS = {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE,
             Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE};
 
+    private static final Item[] SWORDS = {Items.WOODEN_SWORD, Items.STONE_SWORD, Items.IRON_SWORD, Items.DIAMOND_SWORD,
+            Items.NETHERITE_SWORD};
+
     private NetherPick() {
+    }
+
+    public static boolean isSword(Item item) {
+        for (Item s : SWORDS) {
+            if (s == item) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a sword that is not about to break. count() still holds the worn ones (the planner sizes its targets off them), so the
+    // worn ones come off here. golden is not in the list, nobody fights an enderman with 32 uses
+    public static boolean hasUsableSword(GamerFacts f) {
+        return f.count(SWORDS) - f.wornSwords() > 0;
+    }
+
+    public static Item swordItem(Tier t) {
+        return switch (t) {
+            case WOODEN -> Items.WOODEN_SWORD;
+            case STONE -> Items.STONE_SWORD;
+            case IRON -> Items.IRON_SWORD;
+            case DIAMOND -> Items.DIAMOND_SWORD;
+            case NONE -> null;
+        };
+    }
+
+    static int head(Kind k) {
+        return k == Kind.SWORD ? SWORD_HEAD : HEAD;
+    }
+
+    public static int sticksNeeded(Kind k) {
+        return k == Kind.SWORD ? 1 : STICKS;
     }
 
     // a pick that is not worn out (GamerFacts.count leaves those out, they are 'spent')
@@ -44,7 +93,7 @@ public final class NetherPick {
 
     public static Bag bagOf(GamerFacts f) {
         return new Bag(f.count(Items.IRON_INGOT), f.count(Items.COBBLESTONE), f.count(ItemHelper.PLANKS), f.count(Items.STICK),
-                f.count(ItemHelper.LOG), f.has(Items.CRAFTING_TABLE) || f.stations().table().heldForPlanner());
+                f.count(ItemHelper.LOG), f.has(Items.CRAFTING_TABLE) || f.stations().table().heldForPlanner(), f.count(Items.DIAMOND));
     }
 
     // iron, then stone, then wood. NONE = we hold a pick or the bag cannot make one
@@ -53,8 +102,21 @@ public final class NetherPick {
     }
 
     public static Tier choose(Bag b) {
-        for (Tier t : new Tier[]{Tier.IRON, Tier.STONE, Tier.WOODEN}) {
-            if (covered(b, t)) {
+        return choose(b, Kind.PICKAXE);
+    }
+
+    // sword: diamond, then iron, then cobble (no blackstone, no planks). pick: iron, stone, wood
+    public static Tier choose(Bag b, Kind k) {
+        return choose(b, k, t -> false);
+    }
+
+    // skip = tiers we must not make. a worn sword we still hold is the same item type as a fresh one, and the hand and the
+    // craft target both go by type, so the fresh one would never be the one swung (or never be made at all)
+    public static Tier choose(Bag b, Kind k, java.util.function.Predicate<Tier> skip) {
+        Tier[] order = k == Kind.SWORD ? new Tier[]{Tier.DIAMOND, Tier.IRON, Tier.STONE}
+                : new Tier[]{Tier.IRON, Tier.STONE, Tier.WOODEN};
+        for (Tier t : order) {
+            if (!skip.test(t) && covered(b, t, k)) {
                 return t;
             }
         }
@@ -64,27 +126,38 @@ public final class NetherPick {
     // every input of the craft is in the bag: the head material, the two sticks (or the planks for them) and a table (or the
     // planks for one). this is the one check both the choice and the running task go by
     public static boolean covered(Bag b, Tier t) {
-        int head = switch (t) {
+        return covered(b, t, Kind.PICKAXE);
+    }
+
+    public static boolean covered(Bag b, Tier t, Kind k) {
+        int have = switch (t) {
             case IRON -> b.ingots();
             case STONE -> b.cobble();
             case WOODEN -> b.woodPlanks();
+            case DIAMOND -> b.diamonds();
             case NONE -> 0;
         };
-        if (t == Tier.NONE || head < HEAD) {
+        // (wood only makes a pick, diamond only a sword)
+        boolean exists = t != Tier.NONE && !(k == Kind.SWORD && t == Tier.WOODEN) && !(k == Kind.PICKAXE && t == Tier.DIAMOND);
+        if (!exists || have < head(k)) {
             return false;
         }
-        int wood = woodNeeded(b, t);
+        int wood = woodNeeded(b, t, k);
         return wood <= b.woodPlanks();
     }
 
     // planks the craft eats out of the wood pile: the sticks it lacks, the table if there is none, the head of a wooden pick
     public static int woodNeeded(Bag b, Tier t) {
-        int sticksShort = Math.max(0, STICKS - b.sticks());
+        return woodNeeded(b, t, Kind.PICKAXE);
+    }
+
+    public static int woodNeeded(Bag b, Tier t, Kind k) {
+        int sticksShort = Math.max(0, sticksNeeded(k) - b.sticks());
         int wood = PLANKS_PER_STICK_CRAFT * ((sticksShort + STICKS_PER_CRAFT - 1) / STICKS_PER_CRAFT);
         if (!b.table()) {
             wood += TABLE_PLANKS;
         }
-        if (t == Tier.WOODEN) {
+        if (t == Tier.WOODEN && k == Kind.PICKAXE) {
             wood += HEAD;
         }
         return wood;
@@ -99,7 +172,7 @@ public final class NetherPick {
         if (b.table() || !wasPicking || secondsSincePick > TABLE_GRACE_SECONDS) {
             return b;
         }
-        return new Bag(b.ingots(), b.cobble(), b.planks(), b.sticks(), b.logs(), true);
+        return new Bag(b.ingots(), b.cobble(), b.planks(), b.sticks(), b.logs(), true, b.diamonds());
     }
 
     public enum Stage {
@@ -115,13 +188,17 @@ public final class NetherPick {
     // which craft is next. each one only turns what the bag holds into something the next one wants, and covered() stays true
     // through all of them (planks into sticks takes 2 off the need as well as off the pile), so ABORT only ever means a real shortage
     public static Stage stage(Bag b, Tier t) {
-        if (!covered(b, t)) {
+        return stage(b, t, Kind.PICKAXE);
+    }
+
+    public static Stage stage(Bag b, Tier t, Kind k) {
+        if (!covered(b, t, k)) {
             return Stage.ABORT;
         }
-        if (b.logs() > 0 && b.planks() < woodNeeded(b, t)) {
+        if (b.logs() > 0 && b.planks() < woodNeeded(b, t, k)) {
             return Stage.PLANKS;
         }
-        if (b.sticks() < STICKS) {
+        if (b.sticks() < sticksNeeded(k)) {
             return Stage.STICKS;
         }
         if (!b.table()) {
@@ -131,7 +208,11 @@ public final class NetherPick {
     }
 
     public static String catalogueName(Tier t) {
-        return t.name().toLowerCase() + "_pickaxe";
+        return catalogueName(t, Kind.PICKAXE);
+    }
+
+    public static String catalogueName(Tier t, Kind k) {
+        return t.name().toLowerCase() + (k == Kind.SWORD ? "_sword" : "_pickaxe");
     }
 
     public static Item item(Tier t) {
@@ -139,7 +220,7 @@ public final class NetherPick {
             case IRON -> Items.IRON_PICKAXE;
             case STONE -> Items.STONE_PICKAXE;
             case WOODEN -> Items.WOODEN_PICKAXE;
-            case NONE -> null;
+            case DIAMOND, NONE -> null;
         };
     }
 
@@ -147,6 +228,10 @@ public final class NetherPick {
     public static String shortLine(Bag b) {
         return "nether: no pickaxe and nothing to make one from (ingots " + b.ingots() + ", cobble " + b.cobble() + ", planks "
                 + b.woodPlanks() + ", sticks " + b.sticks() + ", table " + (b.table() ? "yes" : "no") + ")";
+    }
+
+    public static String swordLine(Tier t) {
+        return "nether: sword is nearly gone, crafting " + t.name().toLowerCase() + " from the bag";
     }
 
     public static String craftLine(Tier t) {

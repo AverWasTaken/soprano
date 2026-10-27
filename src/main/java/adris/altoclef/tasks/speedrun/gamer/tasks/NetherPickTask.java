@@ -6,6 +6,7 @@ import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick.Bag;
+import adris.altoclef.tasks.speedrun.gamer.NetherPick.Kind;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick.Stage;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick.Tier;
 import adris.altoclef.tasksystem.Task;
@@ -19,7 +20,7 @@ import net.minecraft.world.item.Items;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
-// one pickaxe out of what the bag holds, stage by stage (planks, sticks, table, pick). every stage is the no-collect form of its
+// one pickaxe (or sword) out of what the bag holds, stage by stage (planks, sticks, table, pick). every stage is the no-collect form of its
 // craft, and the bag is asked again every tick: the moment an input is short the task is over (failed()) instead of letting the
 // catalogue walk off to find it, because in the nether there is nothing to find
 public class NetherPickTask extends Task {
@@ -29,6 +30,7 @@ public class NetherPickTask extends Task {
     private static final double PICK_STAGE_SECONDS = 30;
 
     private final Tier tier;
+    private final Kind kind;
     private final Supplier<Bag> bag;
     private final BooleanSupplier hasPick;
 
@@ -39,7 +41,12 @@ public class NetherPickTask extends Task {
     private boolean failed;
 
     public NetherPickTask(Tier tier, Supplier<Bag> bag, BooleanSupplier hasPick) {
+        this(tier, Kind.PICKAXE, bag, hasPick);
+    }
+
+    public NetherPickTask(Tier tier, Kind kind, Supplier<Bag> bag, BooleanSupplier hasPick) {
         this.tier = tier;
+        this.kind = kind;
         this.bag = bag;
         this.hasPick = hasPick;
     }
@@ -68,11 +75,11 @@ public class NetherPickTask extends Task {
         double now = timeOnTaskSeconds();
         Bag raw = bag.get();
         // (the grace runs from the last tick the book really had a table, so it cannot hold the craft up for ever)
-        if (raw.table() && NetherPick.stage(raw, tier) == Stage.PICK) {
+        if (raw.table() && NetherPick.stage(raw, tier, kind) == Stage.PICK) {
             lastPickAt = now;
         }
         Bag b = NetherPick.graceTable(raw, stage == Stage.PICK, now - lastPickAt);
-        Stage next = NetherPick.stage(b, tier);
+        Stage next = NetherPick.stage(b, tier, kind);
         if (next == Stage.ABORT) {
             failed = true;
             return null;
@@ -95,14 +102,14 @@ public class NetherPickTask extends Task {
             failed = true;
             return null;
         }
-        setDebugState("Making a " + tier.name().toLowerCase() + " pickaxe: " + next.name().toLowerCase(), "Making a pickaxe");
+        setDebugState("Making a " + tier.name().toLowerCase() + " " + noun() + ": " + next.name().toLowerCase(), "Making a " + noun());
         return step;
     }
 
     // logs of the first kind we hold, cut into only the planks the rest of the craft still wants. the no-collect craft, because
     // the catalogue's planks task goes and chops a tree when it runs out of logs and a stem is a tree here too
     private Task cutLogs(AltoClef mod, Bag b) {
-        return cutLogs(mod, Math.max(0, NetherPick.woodNeeded(b, tier) - b.planks()));
+        return cutLogs(mod, Math.max(0, NetherPick.woodNeeded(b, tier, kind) - b.planks()));
     }
 
     // (NetherGoldTask cuts its table's planks the same way)
@@ -124,9 +131,9 @@ public class NetherPickTask extends Task {
     private Task build(AltoClef mod, Stage s, Bag b) {
         return switch (s) {
             case PLANKS -> cutLogs(mod, b);
-            case STICKS -> new CraftInInventoryTask(new RecipeTarget(Items.STICK, NetherPick.STICKS, STICKS_RECIPE), false, true);
+            case STICKS -> new CraftInInventoryTask(new RecipeTarget(Items.STICK, NetherPick.sticksNeeded(kind), STICKS_RECIPE), false, true);
             case TABLE -> new CraftInInventoryTask(TaskCatalogue.recipeOf("crafting_table"), false, true);
-            default -> new CraftInTableTask(TaskCatalogue.recipeOf(NetherPick.catalogueName(tier)), false, true);
+            default -> new CraftInTableTask(TaskCatalogue.recipeOf(NetherPick.catalogueName(tier, kind)), false, true);
         };
     }
 
@@ -145,16 +152,20 @@ public class NetherPickTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof NetherPickTask task && task.tier == tier;
+        return other instanceof NetherPickTask task && task.tier == tier && task.kind == kind;
     }
 
     @Override
     protected String toDebugString() {
-        return "Making a " + tier.name().toLowerCase() + " pickaxe from the bag";
+        return "Making a " + tier.name().toLowerCase() + " " + noun() + " from the bag";
     }
 
     @Override
     protected String toHudString() {
-        return "Making a pickaxe";
+        return "Making a " + noun();
+    }
+
+    private String noun() {
+        return kind == Kind.SWORD ? "sword" : "pickaxe";
     }
 }
