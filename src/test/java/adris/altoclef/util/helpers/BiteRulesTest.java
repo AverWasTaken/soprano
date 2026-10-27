@@ -276,6 +276,45 @@ public class BiteRulesTest {
     }
 
     @Test
+    public void aNormalBiteNeverTripsTheStuckCheck() {
+        UseWatch watch = new UseWatch();
+        for (int remaining = 32; remaining >= -BiteRules.STUCK_TICKS; remaining--) {
+            assertEquals("remaining " + remaining, Press.HOLD, watch.step(true, remaining));
+        }
+        assertEquals(Press.HOLD, watch.step(false, 0));
+    }
+
+    @Test
+    public void aUseStuckBelowTheLimitReleases() {
+        UseWatch watch = new UseWatch();
+        assertEquals(Press.RELEASE, watch.step(true, -BiteRules.STUCK_TICKS - 1));
+    }
+
+    @Test
+    public void stuckAgainAndAgainBacksOff() {
+        UseWatch watch = new UseWatch();
+        for (int i = 0; i < BiteRules.RETRIES; i++) {
+            assertEquals(Press.RELEASE, watch.step(true, -50));
+            // let go, press, the bite starts and sticks all over again
+            watch.step(false, 0);
+            assertEquals(Press.HOLD, watch.step(true, 30));
+        }
+        assertEquals(Press.BACK_OFF, watch.step(true, -50));
+        assertTrue(watch.backingOff());
+    }
+
+    @Test
+    public void resetAndClearForgetTheStuckCount() {
+        UseWatch watch = new UseWatch();
+        for (int i = 0; i < BiteRules.RETRIES; i++) watch.step(true, -50);
+        watch.reset();
+        assertEquals(Press.RELEASE, watch.step(true, -50));
+        for (int i = 1; i < BiteRules.RETRIES; i++) watch.step(true, -50);
+        watch.clear();
+        assertEquals(Press.RELEASE, watch.step(true, -50));
+    }
+
+    @Test
     public void eachBiteOfAFillupStartsAgain() {
         UseWatch watch = new UseWatch();
         watch.step(true);

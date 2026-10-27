@@ -220,6 +220,10 @@ public class FoodChain extends SingleTaskChain {
 
     private void startEat(AltoClef mod, Item food) {
         //Debug.logInternal("EATING " + toUse.getTranslationKey() + " : " + test);
+        // a stale server side use (a shield that broke while up) would swallow the bite's press. letting go first is free
+        if (!_isTryingToEat && !mod.getPlayer().isUsingItem()) {
+            mod.getController().releaseUsingItem(mod.getPlayer());
+        }
         _isTryingToEat = true;
         _requestFillup = true;
         // (the gapple meal is not a pick, it never gets latched)
@@ -236,7 +240,7 @@ public class FoodChain extends SingleTaskChain {
     private void watchUse(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         boolean using = player.isUsingItem() && player.getUseItem().getItem().components().has(DataComponents.FOOD);
-        BiteRules.Press press = _useWatch.step(using);
+        BiteRules.Press press = _useWatch.step(using, player.getUseItemRemainingTicks());
         if (_useWatch.startedThisTick()) {
             _stuckLogged = false;
             logBiteStart(mod, player);
@@ -251,6 +255,13 @@ public class FoodChain extends SingleTaskChain {
                     mod.getExtraBaritoneSettings().setInteractionPaused(true);
                     _biting = true;
                 }
+            }
+            case RELEASE -> {
+                // the server never finished this use, so tell it to drop it before the next press
+                mod.getController().releaseUsingItem(player);
+                mod.getInputControls().release(Input.CLICK_RIGHT);
+                mod.getExtraBaritoneSettings().setInteractionPaused(true);
+                _biting = true;
             }
             case PRESS_AGAIN -> {
                 // once per stuck bite is plenty
