@@ -1249,7 +1249,9 @@ public class KitPlannerTest {
         cfg.netherSpareShields = 2;
         // 3 shields, an ingot each
         assertEquals(base + 2, KitPlanner.ingotsNeeded(f, cfg));
-        assertEquals(new KitNeed("shield", 3), find(KitPlanner.plan(f, cfg, 8), "shield"));
+        // the first one alone until it exists, the spares come after it
+        assertEquals(new KitNeed("shield", 1), find(KitPlanner.plan(f, cfg, 8), "shield"));
+        assertEquals(new KitNeed("shield", 3), find(KitPlanner.plan(new FakeFacts().give(Items.SHIELD, 1), cfg, 8), "shield"));
         // 12 more planks is three logs
         assertEquals(planks + 3, WoodBudget.owed(f, cfg, 8, true));
         // holding the first one and both spares asks for nothing more of them

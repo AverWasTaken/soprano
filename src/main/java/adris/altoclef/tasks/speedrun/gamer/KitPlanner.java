@@ -331,7 +331,9 @@ public final class KitPlanner {
                 continue;
             }
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
-            crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
+            // the first shield is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
+            int craft = k.item.equals("shield") && have(f, k.item) == 0 ? 1 : missing;
+            crafts.add(new KitNeed(k.item, held(f, k.item) + craft));
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
         // ironItems no longer owes (so nothing gets smelted for a pick or a chestplate we are about to outclass)
@@ -348,12 +350,7 @@ public final class KitPlanner {
         List<String> early = EarlyIronPick.front(f, cfg);
         if (!early.isEmpty()) {
             for (String name : early) {
-                // the early shield is the one we are missing, the spares come with the normal crafts
-                if (name.equals("shield") && cfg.netherSpareShields > 0) {
-                    out.add(new KitNeed(name, held(f, name) + 1));
-                } else {
-                    moveToFront(crafts, out, name);
-                }
+                moveToFront(crafts, out, name);
             }
         } else if (EarlyIronPick.due(f, cfg, ingots)) {
             // enough raw iron for the pick, the chestplate, the shield and the shears (whichever are owed): smelt just those, the

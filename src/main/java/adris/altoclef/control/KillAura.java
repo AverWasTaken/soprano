@@ -114,7 +114,7 @@ public class KillAura {
     }
 
     // the id the brain's rim shield for a run is up for (CombatBrain.auraRimGuard), -1 for none. only read while kiting, set
-    // every tick. the aim is that foe and nobody else: a hoglin closer to us would not get the shield from tickEnd either
+    // every tick. the aim is that foe and nobody else: a creeper closer to us would not get the shield from tickEnd either
     public void setRimGuard(int foeId) {
         _rimGuardId = foeId;
     }

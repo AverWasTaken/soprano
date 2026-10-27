@@ -463,8 +463,8 @@ public class EarlyIronPickTest {
         assertEquals(EARLY, EarlyIronPick.batch(out, kit));
         List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
         assertEquals(new KitNeed("shield", 1), plan.get(2));
-        // the spares are still in the list, behind the early items
-        assertEquals(new KitNeed("shield", 3), plan.stream().filter(n -> n.catalogueName().equals("shield") && n.count() == 3).findFirst().orElse(null));
+        // the spares wait until the first one exists
+        assertEquals(1, plan.stream().filter(n -> n.catalogueName().equals("shield")).count());
         // one shield in hand and the early shield is done, the spares are not early work
         FakeFacts one = mining().give(Items.IRON_INGOT, EARLY).give(Items.SHIELD, 1);
         assertFalse(EarlyIronPick.owed(one, kit).contains("shield"));

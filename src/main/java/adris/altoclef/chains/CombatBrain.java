@@ -161,8 +161,8 @@ final class CombatBrain {
         return _swingAt.contains(id);
     }
 
-    // the aura is all feet and no hands while running. the shield is for a fight that is boxed in or has a pile on us: one
-    // zombie still does not get it, two hitting us do
+    // the aura is all feet and no hands while running. the shield is for a committed melee fight (fightShield) or a
+    // boxed in one
     boolean auraKiting() {
         return _commit.mode() == Mode.RUN;
     }
