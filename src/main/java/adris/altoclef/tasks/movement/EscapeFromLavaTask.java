@@ -10,10 +10,12 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.MovementState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
@@ -77,6 +79,12 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         updateLavaRule(mod);
         boolean inLava = mod.getPlayer().isInLava();
         boolean lavaBelow = mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA;
+        // tryStair holds back when it's leaning on the cell, and every way out of it has to let go
+        mod.getInputControls().release(Input.MOVE_BACK);
+        if (inLava && !_hop.active() && tryStair(mod)) {
+            setDebugState("Building a step out of the lava");
+            return null;
+        }
         if (_hop.active()) {
             _hop.tick(!inLava && !lavaBelow);
             if (_hop.active()) {
@@ -124,6 +132,60 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         return true;
     }
 
+    // a rim two above the lava is a wall and the hop only climbs one, so when no exit is in hop range we set a block into the
+    // lava beside us and hop onto that (see LavaExit.stairCell). only clicks that really went out count as a try, the placement
+    // needs a free cell (our own box included) and a few ticks for the server to answer before we look again
+    private static final int STAIR_TRIES = 2;
+    private static final int STAIR_TICKS = 40;
+    private static final int STAIR_SETTLE_TICKS = 4;
+    private int _stairTries;
+    private int _stairTicks;
+    private int _stairSettle;
+
+    private boolean tryStair(AltoClef mod) {
+        if (_stairTries >= STAIR_TRIES || _stairTicks >= STAIR_TICKS) return false;
+        BlockPos at = mod.getPlayer().blockPosition();
+        ItemPickupRules.Terrain terrain = ItemPickupRules.terrain(mod.getWorld());
+        ItemPickupRules.Lava lava = ItemPickupRules.lava(mod.getWorld());
+        if (LavaExit.withinHop(LavaExit.nearest(at.getX(), at.getY(), at.getZ(), terrain, lava), at.getX(), at.getY(), at.getZ())) return false;
+        LavaExit.Cell cell = LavaExit.stairCell(at.getX(), at.getY(), at.getZ(), terrain, lava, mod.getPlayer().getYRot());
+        if (cell == null) return false;
+        BlockPos target = new BlockPos(cell.x(), cell.y(), cell.z());
+        baritone.Baritone b = (baritone.Baritone) mod.getClientBaritone();
+        if (!b.getInventoryBehavior().selectThrowawayForLocation(false, target.getX(), target.getY(), target.getZ(), true)) return false;
+        _stairTicks++;
+        if (b.getPathingBehavior().isPathing()) {
+            b.getPathingBehavior().forceCancel();
+        }
+        b.getCustomGoalProcess().onLostControl();
+        // stay at the surface and hold still, a block can't go where we are leaning
+        mod.getInputControls().hold(Input.JUMP);
+        mod.getInputControls().release(Input.SPRINT);
+        mod.getInputControls().release(Input.MOVE_FORWARD);
+        mod.getInputControls().release(Input.MOVE_BACK);
+        if (_stairSettle > 0) {
+            _stairSettle--;
+            return true;
+        }
+        MovementState state = new MovementState();
+        MovementHelper.PlaceResult result = MovementHelper.attemptToPlaceABlock(state, b, target, false, false);
+        if (result == MovementHelper.PlaceResult.NO_OPTION) return false;
+        state.getTarget().getRotation().ifPresent(r -> mod.getInputControls().forceLook(r.getYaw(), r.getPitch()));
+        if (mod.getPlayer().getBoundingBox().intersects(new AABB(target))) {
+            // facing the cell, so back is away from it
+            mod.getInputControls().hold(Input.MOVE_BACK);
+            return true;
+        }
+        // tryPress skips the swap guard, so a click while the block is still being swapped in uses the old item
+        if (result == MovementHelper.PlaceResult.READY_TO_PLACE && !b.getInventoryBehavior().handWaitingOnSwap()) {
+            mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+            _stairTries++;
+            _stairSettle = STAIR_SETTLE_TICKS;
+            _hop.rearm();
+        }
+        return true;
+    }
+
     private void hopInputs(AltoClef mod) {
         mod.getInputControls().hold(Input.JUMP);
         mod.getInputControls().hold(Input.SPRINT);
@@ -154,6 +216,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         mod.getInputControls().release(Input.JUMP);
         mod.getInputControls().release(Input.SPRINT);
         mod.getInputControls().release(Input.MOVE_FORWARD);
+        mod.getInputControls().release(Input.MOVE_BACK);
     }
 
     @Override
