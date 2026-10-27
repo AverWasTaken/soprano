@@ -60,10 +60,14 @@ public class NetherBlockRestock {
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft
             BlockPos origin = mod.getPlayer().blockPosition();
+            // near lava is off limits first. a dig that came up dry with that (an island in a lava sea, our own span over it)
+            // goes again with only the touching rule: stranded with an empty bag is worse than a block a row off the lava
+            boolean strict = restock.exhaustedEnds() == 0;
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
                     MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p)
-                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)) && !nearLava(mod, p));
+                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p))
+                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)));
         } else if (!on) {
             task = null;
         }
@@ -87,6 +91,14 @@ public class NetherBlockRestock {
     // predicate, it is the expensive one
     private static boolean nearLava(AltoClef mod, BlockPos p) {
         return NetherRestock.nearLava(p, q -> mod.getWorld().getFluidState(q).is(FluidTags.LAVA));
+    }
+
+    // the fallback: only a block with lava on one of its faces, that one is holding the lava back or holding us up over it
+    private static boolean touchesLava(AltoClef mod, BlockPos p) {
+        for (Direction d : Direction.values()) {
+            if (mod.getWorld().getFluidState(p.relative(d)).is(FluidTags.LAVA)) return true;
+        }
+        return false;
     }
 
     // baritone's list has items it counts but can never place (nether brick the item, leaves), and the merge can list an
