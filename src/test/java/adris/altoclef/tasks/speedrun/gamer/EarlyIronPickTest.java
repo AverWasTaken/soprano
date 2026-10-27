@@ -34,6 +34,7 @@ public class EarlyIronPickTest {
         // the pick on its own: the chestplate, shield and shears riding along are their own tests further down (full)
         cfg = new OverworldConfig();
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         cfg.ironKit.removeIf(k -> k.item.equals("shears") || k.item.equals("shield"));
         cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
     }
@@ -41,6 +42,7 @@ public class EarlyIronPickTest {
     private static OverworldConfig full() {
         OverworldConfig c = new OverworldConfig();
         c.netherSpareShields = 0;
+        c.netherSpareSwords = 0;
         return c;
     }
 

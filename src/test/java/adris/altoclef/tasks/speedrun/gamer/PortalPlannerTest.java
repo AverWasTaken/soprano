@@ -28,6 +28,7 @@ public class PortalPlannerTest {
     public void setUp() {
         cfg = new OverworldConfig();
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         // the gate tests below pin the list without the nether picks, those have their own tests at the bottom
         cfg.netherSparePicks = 0;
     }

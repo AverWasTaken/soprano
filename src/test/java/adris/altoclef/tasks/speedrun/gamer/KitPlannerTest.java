@@ -31,6 +31,7 @@ public class KitPlannerTest {
     public void setUp() {
         cfg = new OverworldConfig();
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         // these are the wood budget's tests; the fuel logs on top of it for the cook are in CookGateTest
         cfg.cookFuelLogs = 0;
         f = new FakeFacts();
@@ -1257,9 +1258,53 @@ public class KitPlannerTest {
         // holding the first one and both spares asks for nothing more of them
         FakeFacts shields = new FakeFacts().give(Items.SHIELD, 3);
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         int without = KitPlanner.ingotsNeeded(shields, cfg);
         cfg.netherSpareShields = 2;
         assertEquals(without, KitPlanner.ingotsNeeded(shields, cfg));
         assertNull(find(KitPlanner.plan(shields, cfg, 8), "shield"));
+    }
+
+    @Test
+    public void aSpareSwordIsIronAndSticksInTheNormalBudget() {
+        int base = KitPlanner.ingotsNeeded(f, cfg);
+        int wood = WoodBudget.owed(f, cfg, 8, true);
+        cfg.netherSpareSwords = 1;
+        // 2 swords, 2 ingots each
+        assertEquals(base + 2, KitPlanner.ingotsNeeded(f, cfg));
+        // the first one alone until it exists, the spare comes after it
+        assertEquals(new KitNeed("iron_sword", 1), find(KitPlanner.plan(f, cfg, 8), "iron_sword"));
+        assertEquals(new KitNeed("iron_sword", 2), find(KitPlanner.plan(new FakeFacts().give(Items.IRON_SWORD, 1), cfg, 8), "iron_sword"));
+        assertTrue(WoodBudget.owed(f, cfg, 8, true) >= wood);
+        // holding both asks for nothing more of them
+        FakeFacts swords = new FakeFacts().give(Items.IRON_SWORD, 2);
+        assertNull(find(KitPlanner.plan(swords, cfg, 8), "iron_sword"));
+        // 0 = off, the kit is the one sword again
+        cfg.netherSpareSwords = 0;
+        assertEquals(base, KitPlanner.ingotsNeeded(f, cfg));
+        assertNull(find(KitPlanner.plan(new FakeFacts().give(Items.IRON_SWORD, 1), cfg, 8), "iron_sword"));
+    }
+
+    @Test
+    public void aDiamondSwordInTheBagOwesNoIronSpare() {
+        cfg.netherSpareSwords = 1;
+        FakeFacts diamond = new FakeFacts().give(Items.DIAMOND_SWORD, 1);
+        assertNull(find(KitPlanner.plan(diamond, cfg, 8), "iron_sword"));
+        assertEquals(KitPlanner.ingotsNeeded(diamond, cfg), noSpareIngots(diamond));
+        assertEquals(WoodBudget.owed(diamond, cfg, 8, true), noSpareWood(diamond));
+    }
+
+    private int noSpareIngots(FakeFacts bag) {
+        cfg.netherSpareSwords = 0;
+        int n = KitPlanner.ingotsNeeded(bag, cfg);
+        cfg.netherSpareSwords = 1;
+        return n;
+    }
+
+    private int noSpareWood(FakeFacts bag) {
+        cfg.netherSpareSwords = 0;
+        int n = WoodBudget.owed(bag, cfg, 8, true);
+        cfg.netherSpareSwords = 1;
+        return n;
     }
 }

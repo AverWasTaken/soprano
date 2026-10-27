@@ -177,6 +177,7 @@ public class NetherPhase implements PhaseHandler {
     // a pick craft that fell over (an input went missing, or it hung) is not tried again for this long
     private static final double PICK_RETRY_SECONDS = 60;
     private static final int PICK_TRIES = 3;
+    private static final double SWORD_BUSY_RANGE = 32;
     private Task boots;
     // the pick we are making from the bag (see pickSide) and whether we already said there is nothing to make one from
     private NetherPickTask pickTask;
@@ -960,7 +961,24 @@ public class NetherPhase implements PhaseHandler {
     private boolean swordBusy(AltoClef mod, double now) {
         boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
-        return atSpawner || trading || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
+        return atSpawner || trading || fightersNear(mod);
+    }
+
+    // a blaze or ghast close enough to be a fight. entityFound says yes for one anywhere in the loaded chunks, which is a lot
+    // further than anything that could be swinging at us
+    private static boolean fightersNear(AltoClef mod) {
+        try {
+            var tracker = mod.getEntityTracker();
+            for (Entity e : tracker.getTrackedEntities(Blaze.class)) {
+                if (e.isAlive() && mod.getPlayer().distanceTo(e) <= SWORD_BUSY_RANGE) return true;
+            }
+            for (Entity e : tracker.getTrackedEntities(Ghast.class)) {
+                if (e.isAlive() && mod.getPlayer().distanceTo(e) <= SWORD_BUSY_RANGE) return true;
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // one tick of stale mobs is fine
+        }
+        return false;
     }
 
     private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {

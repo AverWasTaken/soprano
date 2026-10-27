@@ -15,6 +15,7 @@ public class WoodReserveTest {
     private final OverworldConfig cfg = new OverworldConfig();
     {
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
     }
 
     @BeforeClass

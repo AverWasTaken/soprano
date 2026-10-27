@@ -451,4 +451,17 @@ public class FoeRulesTest {
             assertNull(d.name(), accept(d, calm));
         }
     }
+
+    @Test
+    public void theRunCrowdKeepsCalmBlazesInRangeOnly() {
+        java.util.Map<String, Double> at = java.util.Map.of("zombie", 5.0, "near", 12.0, "edge", 20.0, "far", 20.5, "dead", 4.0);
+        List<String> out = FoeRules.crowdWithBlazes(List.of("zombie"), List.of("near", "edge", "far", "dead"), at::get, b -> !b.equals("dead"), 20);
+        assertEquals(List.of("zombie", "near", "edge"), out);
+    }
+
+    @Test
+    public void aBlazeAlreadyAmongTheFoesIsNotCountedTwice() {
+        List<String> out = FoeRules.crowdWithBlazes(List.of("blaze"), List.of("blaze", "other"), b -> 3.0, b -> true, 20);
+        assertEquals(List.of("blaze", "other"), out);
+    }
 }

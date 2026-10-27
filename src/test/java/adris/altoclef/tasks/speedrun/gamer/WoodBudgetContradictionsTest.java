@@ -29,6 +29,7 @@ public class WoodBudgetContradictionsTest {
     // the spare shields have their own test (KitPlannerTest), the budgets here are the kit as it was
     {
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
     }
 
     @BeforeClass

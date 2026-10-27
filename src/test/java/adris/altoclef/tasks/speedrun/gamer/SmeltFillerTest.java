@@ -29,6 +29,7 @@ public class SmeltFillerTest {
     public void setUp() {
         cfg = new OverworldConfig();
         cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
     }
 
     private static List<String> names(List<KitNeed> needs) {

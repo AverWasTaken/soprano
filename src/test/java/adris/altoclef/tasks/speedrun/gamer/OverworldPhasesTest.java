@@ -28,6 +28,7 @@ public class OverworldPhasesTest {
     // the spare shields have their own test (KitPlannerTest), the budgets here are the kit as it was
     {
         cfg.overworld.netherSpareShields = 0;
+        cfg.overworld.netherSpareSwords = 0;
     }
     private final RunState state = new RunState();
 

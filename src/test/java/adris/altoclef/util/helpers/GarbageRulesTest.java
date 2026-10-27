@@ -502,4 +502,15 @@ public class GarbageRulesTest {
         // the cobble drop is the cobble we are mining for, it is not the next thing out
         assertFalse(GarbageRules.dropIsNextPick(bag, pick, block(Items.COBBLESTONE, 1, held, 64), 64, true, 0, 0));
     }
+
+    @Test
+    public void aSecondIronSwordIsNeverTheWorseToolOrTheLeftover() {
+        // two of the same tier tie on durability, so neither one is the worse tool
+        assertEquals(-1, GarbageRules.worseTool(List.of(Items.IRON_SWORD, Items.IRON_SWORD)));
+        // the kit protects the sword by item (GamerTask), so with both stacks barred nothing is a pick at all
+        assertEquals(-1, next(List.of(new GarbageRules.Entry(new ItemStack(Items.IRON_SWORD, 1), false, -1),
+                new GarbageRules.Entry(new ItemStack(Items.IRON_SWORD, 1), false, -1))));
+        // a worse sword next to it still goes, the spare stays
+        assertEquals(2, next(List.of(e(Items.IRON_SWORD, 1), e(Items.IRON_SWORD, 1), e(Items.WOODEN_SWORD, 1))));
+    }
 }
