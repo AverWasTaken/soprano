@@ -1284,4 +1284,27 @@ public class KitPlannerTest {
         assertEquals(base, KitPlanner.ingotsNeeded(f, cfg));
         assertNull(find(KitPlanner.plan(new FakeFacts().give(Items.IRON_SWORD, 1), cfg, 8), "iron_sword"));
     }
+
+    @Test
+    public void aDiamondSwordInTheBagOwesNoIronSpare() {
+        cfg.netherSpareSwords = 1;
+        FakeFacts diamond = new FakeFacts().give(Items.DIAMOND_SWORD, 1);
+        assertNull(find(KitPlanner.plan(diamond, cfg, 8), "iron_sword"));
+        assertEquals(KitPlanner.ingotsNeeded(diamond, cfg), noSpareIngots(diamond));
+        assertEquals(WoodBudget.owed(diamond, cfg, 8, true), noSpareWood(diamond));
+    }
+
+    private int noSpareIngots(FakeFacts bag) {
+        cfg.netherSpareSwords = 0;
+        int n = KitPlanner.ingotsNeeded(bag, cfg);
+        cfg.netherSpareSwords = 1;
+        return n;
+    }
+
+    private int noSpareWood(FakeFacts bag) {
+        cfg.netherSpareSwords = 0;
+        int n = WoodBudget.owed(bag, cfg, 8, true);
+        cfg.netherSpareSwords = 1;
+        return n;
+    }
 }

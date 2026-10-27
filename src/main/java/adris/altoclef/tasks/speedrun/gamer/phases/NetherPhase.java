@@ -964,8 +964,8 @@ public class NetherPhase implements PhaseHandler {
         return atSpawner || trading || fightersNear(mod);
     }
 
-    // a blaze or ghast close enough to be a fight. entityFound says yes for one anywhere in the loaded chunks, and a fortress
-    // across the map was enough to keep the sword from ever being made
+    // a blaze or ghast close enough to be a fight. entityFound says yes for one anywhere in the loaded chunks, which is a lot
+    // further than anything that could be swinging at us
     private static boolean fightersNear(AltoClef mod) {
         try {
             var tracker = mod.getEntityTracker();
