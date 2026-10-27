@@ -847,10 +847,11 @@ public class GamerTask extends Task {
             dropShelter();
         }
         // a naked respawn at night hides first, the trip picks up where it was once the night is over. only when the night branch
-        // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does
+        // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does. a hole or bed
+        // trip already going is seen through to the end, dawn or not
         Task hideNight = null;
         if (state.netherTrip != null && NetherTripRules.hides(NetherTripRules.Stage.parse(state.netherTrip.stage), facts.dimension(),
-                darkAndBare(mod))) {
+                darkAndBare(mod) || nightTrip != null || shelter != null)) {
             tripHiding = true;
             hideNight = nightSleepTick(mod);
             tripHiding = false;
@@ -865,6 +866,10 @@ public class GamerTask extends Task {
             updateRecoveryHud("Hiding from the night");
             autosave(now);
             return hideNight;
+        }
+        if (state.netherTrip != null) {
+            // whatever stretch the hide lost to a fight or the dawn is not the stage's time either
+            state.netherTrip.stageTick += NetherTripRules.hiddenCredit(tripHideTick, facts.gameTime());
         }
         tripHideTick = Long.MIN_VALUE;
         if (state.netherTrip != null) {
