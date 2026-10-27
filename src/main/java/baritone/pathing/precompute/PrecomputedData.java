@@ -108,6 +108,8 @@ public class PrecomputedData {
     }
 
     private int fillData(int id, BlockState state) {
+        // the helpers below answer for the live settings, the table has to answer for the ones it was built with
+        boolean matched = matchesCurrentSettings();
         int blockData = 0;
 
         Ternary canWalkOnState = MovementHelper.canWalkOnBlockState(state);
@@ -142,6 +144,10 @@ public class PrecomputedData {
             blockData |= NEVER_BREAK_MASK;
         }
 
+        // a toggle that flipped under us means this answer belongs to some other table. the search in flight can have it, nobody else
+        if (!matched || !matchesCurrentSettings()) {
+            return blockData;
+        }
         blockData |= COMPLETED_MASK;
 
         data[id] = blockData; // in theory, this is thread "safe" because every thread should compute the exact same int to write?
@@ -159,7 +165,9 @@ public class PrecomputedData {
                 return word & FLAG_MASK;
             }
             int blockData = flagsFromRegistry(state);
-            stamped.baritone$setPathingFlags((generation << FLAG_BITS) | blockData);
+            if ((blockData & COMPLETED_MASK) != 0) { // an answer fillData wouldn't keep doesn't get stamped either
+                stamped.baritone$setPathingFlags((generation << FLAG_BITS) | blockData);
+            }
             return blockData;
         }
         return flagsFromRegistry(state);
