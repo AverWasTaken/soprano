@@ -71,6 +71,35 @@ public class LavaShoreTest {
     }
 
     @Test
+    public void lavaTwoDownBesideABridgeIsAShore() {
+        // a one wide span: floor under us, an open column beside it with lava at the bottom. lavaNear only looks one down
+        World w = new World().pit(0, 1).lava(0, -3, 1);
+        assertFalse(LavaShore.lavaNear(w, 0.5, 0, 0.5, LavaShore.NEAR));
+        assertTrue(LavaShore.lavaDeepNear(w, 0.5, 0, 0.5, LavaShore.NEAR));
+        assertTrue(LavaShore.approachBlocked(w, 0.5, 0, 0.5, 8.5, 0, 0.5));
+    }
+
+    @Test
+    public void aDropThatLandsOnStoneIsNoDeepLava() {
+        World w = new World().pit(0, 1).solid(0, -3, 1).lava(0, -4, 1);
+        assertFalse(LavaShore.lavaDeepNear(w, 0.5, 0, 0.5, LavaShore.NEAR));
+        // and a drop with nothing at all is cliff avoidance's problem, not a lava hold
+        assertFalse(LavaShore.lavaDeepNear(new World().pit(0, 1), 0.5, 0, 0.5, LavaShore.NEAR));
+    }
+
+    @Test
+    public void deepLavaOutOfDepthOrOutOfRangeIsNothing() {
+        assertFalse(LavaShore.lavaDeepNear(new World().pit(0, 1).lava(0, -20, 1), 0.5, 0, 0.5, LavaShore.NEAR));
+        assertFalse(LavaShore.lavaDeepNear(new World().pit(0, 5).lava(0, -3, 5), 0.5, 0, 0.5, LavaShore.NEAR));
+    }
+
+    @Test
+    public void waterOnTheWayDownDoesNotHideTheLava() {
+        World w = new World().pit(0, 1).water(0, -1, 1).lava(0, -3, 1);
+        assertTrue(LavaShore.lavaDeepNear(w, 0.5, 0, 0.5, LavaShore.NEAR));
+    }
+
+    @Test
     public void foeOnTheShoreIsLeftToComeToUs() {
         World w = new World().lava(7, -1, 0);
         assertTrue(LavaShore.approachBlocked(w, 0.5, 0, 0.5, 6.5, 0, 0.5));

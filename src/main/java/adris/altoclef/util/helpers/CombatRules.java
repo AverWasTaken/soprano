@@ -155,6 +155,18 @@ public final class CombatRules {
         return false;
     }
 
+    // the edge scan (the way fight's engage reads it) looks as far as the engage does, the shield keeps its own closer rule. a
+    // scan that only woke at the shield's four blocks made the engage work at four, and a hopping cube covers that in one go
+    public static final double RIM_SCAN_RANGE = Math.max(RIM_SHIELD_FOE_RANGE, RIM_ENGAGE_RANGE);
+
+    public static boolean rimScan(boolean blazeInContact, List<CombatCommit.Foe> foes) {
+        if (blazeInContact) return true;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.melee() && foe.distance() <= RIM_SCAN_RANGE) return true;
+        }
+        return false;
+    }
+
     // a plain melee foe whose hit shoves us (cubes of any size, an angry zombified piglin). heavy hitters, hoglins included, are
     // not it: the aura keeps its shield off them and a run from them is the heavy rules' business
     public static boolean rimKnocker(CombatCommit.Foe foe) {

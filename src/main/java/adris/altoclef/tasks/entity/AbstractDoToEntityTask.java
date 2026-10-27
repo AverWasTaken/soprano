@@ -312,6 +312,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     // reach anyway and the crit walk-up closes the rest, this is for when it doesn't (no clear shot yet)
                     return approach(mod, entity, isKillTask() ? ReachRules.KILL_APPROACH : maintainDistance);
                 case KEEP_CHILD:
+                    // the approach that is already walking is what walks off a bridge: over lava it ends, the foe comes to us
+                    if (isKillTask() && lavaUnderUs(mod, entity)) {
+                        _progress.reset();
+                        _blocker = null;
+                        return null;
+                    }
                     // halfway through a step: let it land, the swing goes next tick that is safe. stopping the child here
                     // cut the path mid stride and the next tick started it again
                     _progress.reset();
@@ -504,6 +510,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // that hit is what throws us into the pool
     private static boolean isAnimal(AltoClef mod, Entity entity) {
         return !(entity instanceof Enemy) && !(entity instanceof NeutralMob) && !EntityHelper.isGenerallyHostileToPlayer(mod, entity);
+    }
+
+    // the same targets lavaInTheWay lets walk (no blazes, shooters or animals), with lava under or beside our own spot
+    private static boolean lavaUnderUs(AltoClef mod, Entity entity) {
+        if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))
+                || isAnimal(mod, entity)) return false;
+        var us = mod.getPlayer();
+        return LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), LavaShore.NEAR);
     }
 
     // the approach walk near lava, see LavaShore. every dimension: a cave lava pool behind a spider is the overworld's version
