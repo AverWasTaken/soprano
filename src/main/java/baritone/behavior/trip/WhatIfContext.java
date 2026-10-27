@@ -61,7 +61,7 @@ public final class WhatIfContext extends CalculationContext {
     // the real bag to hold the what-if up against. built the same unpaused way or a meal would make the real route look
     // blockless and every what-if look faster than it is
     public static CalculationContext real(Baritone baritone) {
-        return unpaused(() -> new CalculationContext(baritone, true));
+        return unpaused(() -> new CalculationContext(baritone, true, false));
     }
 
     private static <T> T unpaused(Supplier<T> build) {

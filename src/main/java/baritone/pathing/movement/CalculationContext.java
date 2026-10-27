@@ -24,6 +24,7 @@ import baritone.api.pathing.movement.ActionCosts;
 import baritone.cache.WorldData;
 import baritone.pathing.path.PathExecutor;
 import baritone.pathing.precompute.PrecomputedData;
+import baritone.utils.BridgeBudget;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
@@ -88,7 +89,7 @@ public class CalculationContext {
     public final float blockReach;
     public final boolean hasThrowaway;
     public final boolean canSprint;
-    protected final double placeBlockCost; // protected because you should call the function instead
+    protected double placeBlockCost; // protected because you should call the function instead. only the real bag constructor rescales it
     public final boolean allowBreak;
     public final List<Block> allowBreakAnyway;
     public final boolean allowParkour;
@@ -192,12 +193,21 @@ public class CalculationContext {
     }
 
     public CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread) {
+        this(baritone, forUseOnAnotherThread, true);
+    }
+
+    // scaleByBag off is for the trip ask's real side, which has to price blocks like the pretend side does
+    public CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, boolean scaleByBag) {
         this(
                 baritone,
                 forUseOnAnotherThread,
                 new ToolSet(baritone.getPlayerContext().player()),
                 Baritone.settings().allowPlace.value && ((Baritone) baritone).getInventoryBehavior().hasGenericThrowaway()
         );
+        if (scaleByBag) {
+            // 0 stays 0 (the lava escape zeroes the penalty) and infinity stays infinity
+            this.placeBlockCost *= BridgeBudget.placeCostScale(((Baritone) baritone).getInventoryBehavior().spareThrowawayCount(), ExperimentalMovement.inNether(world));
+        }
     }
 
     // the real player with a different bag: the what-if search (trip asks) hands in pretend blocks and a pretend pickaxe,
