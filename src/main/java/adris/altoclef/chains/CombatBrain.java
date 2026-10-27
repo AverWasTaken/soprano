@@ -95,6 +95,8 @@ final class CombatBrain {
     private long _shotUntil = Long.MIN_VALUE / 2;
     // a normal fight with a second mob hitting us, the shield is up for it (CombatRules.pileShield)
     private boolean _pile;
+    // an enderman fight with it close, the shield is up for its swing (CombatRules.enderShield)
+    private boolean _ender;
     // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
     private boolean _rim;
     // a run on a rim with a knocker on us: the shield goes up and nothing swings (KillAura.rimGuard), capped by _rimHold
@@ -179,7 +181,7 @@ final class CombatBrain {
     }
 
     boolean auraShield() {
-        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile) || _rim;
+        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile || _ender) || _rim;
     }
 
     int auraRimGuard() {
@@ -215,6 +217,7 @@ final class CombatBrain {
         _shotAt = false;
         _shotUntil = Long.MIN_VALUE / 2;
         _pile = false;
+        _ender = false;
         _rim = false;
         _rimGuardId = -1;
         _rimHold.reset();
@@ -431,6 +434,10 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
         _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
+        // (the target can be missing from a hostile pass, and losing the shield for that restarts its 5 ticks)
+        Foe fightFoe = target;
+        List<Foe> enderFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
+        _ender = _commit.mode() == Mode.FIGHT && CombatRules.enderShield(_ender, _commit.targetId(), enderFoes);
         // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
         _rim = rim && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up

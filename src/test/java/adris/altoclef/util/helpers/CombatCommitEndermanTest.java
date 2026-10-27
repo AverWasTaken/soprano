@@ -72,9 +72,38 @@ public class CombatCommitEndermanTest {
     }
 
     @Test
-    public void anEndermanBeingNearAtLowHpAndNotHittingUsStartsNothing() {
+    public void anEndermanBeingAboutAtLowHpAndNotHittingUsStartsNothing() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.NONE, c.step(tick(0, 4, List.of(enderman(3, NEVER)), null)));
+        assertEquals(Event.NONE, c.step(tick(0, 4, List.of(enderman(6, NEVER)), null)));
+    }
+
+    @Test
+    public void anAngryEndermanCloseEnoughToSwingIsAFightBeforeItHits() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(enderman(4, NEVER)), null)));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(5, c.targetId());
+    }
+
+    @Test
+    public void anEndermanPastTheShieldRangeStillStartsNothing() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.NONE, c.step(tick(0, 20, List.of(enderman(6, NEVER)), null)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aWrittenOffEndermanThatHasNotHitUsIsNotAFightEvenClose() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(enderman(10, 0)), null)));
+        Event end = Event.NONE;
+        long t = 1;
+        for (; t < 400 && end == Event.NONE; t++) {
+            end = c.step(tick(t, 20, List.of(enderman(10, 300 + t)), enderman(10, 300 + t)));
+        }
+        assertEquals(Mode.NONE, c.mode());
+        assertEquals(Event.NONE, c.step(tick(t, 20, List.of(enderman(3, 300 + t)), null)));
+        assertEquals(Mode.NONE, c.mode());
     }
 
     @Test

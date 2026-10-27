@@ -287,4 +287,24 @@ public class CombatRulesTest {
         assertFalse(CombatRules.rimShield(true, false, List.of(shooter(1, 1))));
         assertFalse(CombatRules.rimShield(true, false, List.of(new CombatCommit.Foe(1, 1, false, true, NEVER))));
     }
+
+    // ---- the enderman shield. foe 1 is the fight target
+
+    private static CombatCommit.Foe enderman(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, false, false, NEVER, CombatCommit.Kind.ENDERMAN);
+    }
+
+    @Test
+    public void theEnderShieldWantsTheEndermanTargetCloseAndHoldsALittleFurther() {
+        assertTrue(CombatRules.enderShield(false, 1, List.of(enderman(1, 4))));
+        assertFalse(CombatRules.enderShield(false, 1, List.of(enderman(1, 5))));
+        assertTrue(CombatRules.enderShield(true, 1, List.of(enderman(1, 5))));
+        assertFalse(CombatRules.enderShield(true, 1, List.of(enderman(1, 6))));
+    }
+
+    @Test
+    public void theEnderShieldIsOnlyForAnEndermanThatIsTheTarget() {
+        assertFalse(CombatRules.enderShield(false, 1, List.of(zombie(1, 2, 0))));
+        assertFalse(CombatRules.enderShield(false, 1, List.of(zombie(1, 2, 0), enderman(2, 2))));
+    }
 }
