@@ -57,6 +57,8 @@ public class KillAura {
     private boolean _shieldAllowed = true;
     private boolean _fighting = false;
     private int _committedId = -1;
+    // a run on a lava rim with a knocker on us: shield only, no swings, see tickEnd
+    private int _rimGuardId = -1;
     // whose name the shield keys go under. a task that brings its own aura passes itself, so the task's own key cleanup (a
     // finished root task is let go of without onStop) still lifts them
     private final Object _owner;
@@ -113,7 +115,37 @@ public class KillAura {
         }, entity -> entity.distanceToSqr(mod.getPlayer()));
     }
 
+    // the id the brain's rim shield for a run is up for (CombatBrain.auraRimGuard), -1 for none. only read while kiting, set
+    // every tick. the aim is that foe and nobody else: a hoglin closer to us would not get the shield from tickEnd either
+    public void setRimGuard(int foeId) {
+        _rimGuardId = foeId;
+    }
+
+    // a blocked hit skips the knockback, and on a rim the knock is the lava. shield only: the swing stays off (a run is all feet and
+    // no hands), the shield pauses the path for as long as the brain holds the guard, and the brain caps that (RimHold)
+    private void rimGuard(AltoClef mod) {
+        Optional<Entity> nearest = _targets.stream().filter(entity -> entity.getId() == _rimGuardId).findFirst();
+        Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
+        if (nearest.isEmpty() || !_shieldAllowed || mod.getFoodChain().needsToEat() || mod.getMLGBucketChain().isFallingOhNo(mod)
+                || !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()
+                || !(mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
+                || mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))) {
+            stopShielding(mod);
+            return;
+        }
+        mod.getControllerExtras().aimAt(nearest.get(), CombatAim.Priority.AURA);
+        if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
+            mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
+        } else {
+            startShielding(mod);
+        }
+    }
+
     public void tickEnd(AltoClef mod) {
+        if (_kiting && _rimGuardId >= 0) {
+            rimGuard(mod);
+            return;
+        }
         if (_kiting) {
             stopShielding(mod);
             // ghast balls are still worth the turn

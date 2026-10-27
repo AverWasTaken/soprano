@@ -21,6 +21,7 @@ import adris.altoclef.util.helpers.CombatCommit.Kind;
 import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.RimHold;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
@@ -96,6 +97,9 @@ final class CombatBrain {
     private boolean _pile;
     // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
     private boolean _rim;
+    // a run on a rim with a knocker on us: the shield goes up and nothing swings (KillAura.rimGuard), capped by _rimHold
+    private int _rimGuardId = -1;
+    private final RimHold _rimHold = new RimHold();
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
     private long _stanceLogAt = Long.MIN_VALUE / 2;
@@ -178,6 +182,10 @@ final class CombatBrain {
         return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile) || _rim;
     }
 
+    int auraRimGuard() {
+        return _rimGuardId;
+    }
+
     float holdPriority() {
         return switch (_commit.mode()) {
             case FIGHT -> FIGHT_PRIORITY;
@@ -208,6 +216,8 @@ final class CombatBrain {
         _shotUntil = Long.MIN_VALUE / 2;
         _pile = false;
         _rim = false;
+        _rimGuardId = -1;
+        _rimHold.reset();
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
@@ -320,6 +330,8 @@ final class CombatBrain {
                 (int) mobs.stream().filter(m -> m instanceof Enderman).count());
         enabled &= !standDown;
 
+        // the edge scan once a tick for everybody: the way fight's engage, the fight's shield and the run's shield
+        boolean rim = onRim(mod, player, foes);
         Foe target = null;
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
@@ -336,7 +348,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
+                    way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player))));
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
@@ -416,7 +428,17 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
         _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
-        _rim = rimShield(mod, player, foes);
+        // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
+        _rim = rim && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
+        // for it, for a leash's worth of ticks (RimHold)
+        Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
+        _rimGuardId = _rimHold.step(rimRun == null ? -1 : rimRun.id()) ? rimRun.id() : -1;
+        if (_rimGuardId >= 0) {
+            _commit.pauseCorner();
+            _rim = true;
+            _swingAt.add(rimRun.id());
+        }
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         // a shooter that was on us a moment ago still is: the ray flickers behind a tree and the skeleton steps in and out of the
@@ -437,10 +459,9 @@ final class CombatBrain {
     }
 
     // the cheap foe check first, the cell scan only when one is close enough to matter. same edge the kill task steps back from.
-    // a path in progress is a step off the rim (or any walk): the shield pauses pathing, so it waits until the walk is done
-    // instead of pinning us on the edge. a blaze that its own task keeps out of the foes still counts when it is in contact
-    private static boolean rimShield(AltoClef mod, LocalPlayer player, List<Foe> foes) {
-        if (mod.getClientBaritone().bsi == null || mod.getClientBaritone().getPathingBehavior().getInProgress().isPresent()) return false;
+    // a blaze that its own task keeps out of the foes still counts when it is in contact
+    private static boolean onRim(AltoClef mod, LocalPlayer player, List<Foe> foes) {
+        if (mod.getClientBaritone().bsi == null) return false;
         boolean blaze = false;
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
@@ -700,8 +721,11 @@ final class CombatBrain {
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
     private static Foe withSplit(Foe foe, Mob mob) {
         String type = typeOf(mob);
+        boolean cube = type.equals("slime") || type.equals("magma_cube");
         // a size 1 cube has 1 max health (size squared) and leaves nothing behind
-        return type.equals("slime") || type.equals("magma_cube") ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
+        Foe out = cube ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
+        // the ones whose hit shoves us, the rim rules ask for them (an angry piglin is only ever a foe once it is angry)
+        return cube || type.equals("zombified_piglin") ? out.withKnocker(true) : out;
     }
 
     // slimes and magma cubes set their speed from their size (0.2 + 0.1 per size, so 0.3 at the smallest), spiders are 0.3, so all

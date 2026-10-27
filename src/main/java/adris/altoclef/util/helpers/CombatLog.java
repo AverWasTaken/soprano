@@ -83,6 +83,7 @@ public final class CombatLog {
         return switch (why) {
             case IN_WAY -> "in our way";
             case PINNED -> "shooting us";
+            case RIM -> "on a rim";
             default -> "hit us";
         };
     }

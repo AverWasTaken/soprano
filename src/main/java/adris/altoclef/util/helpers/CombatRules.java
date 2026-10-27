@@ -54,6 +54,12 @@ public final class CombatRules {
     public static final double PILE_SHIELD_SLACK = 1.5;
     // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
     public static final double RIM_SHIELD_FOE_RANGE = 4;
+    // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage), and the
+    // run's rim shield (rimRunFoe) looks this far. the fight lets go at WAY_RELEASE, one block past it
+    public static final double RIM_ENGAGE_RANGE = 3;
+    // the run's rim shield is up this many ticks in a row on one foe and then the run moves on, so it can never pin us there
+    // (the commit's corner timer is held while it is up, see CombatCommit.pauseCorner)
+    public static final int RIM_HOLD_TICKS = 60;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
@@ -142,6 +148,25 @@ public final class CombatRules {
             if (foe.melee() && foe.distance() <= RIM_SHIELD_FOE_RANGE) return true;
         }
         return false;
+    }
+
+    // a plain melee foe whose hit shoves us (cubes of any size, an angry zombified piglin). heavy hitters, hoglins included, are
+    // not it: the aura keeps its shield off them and a run from them is the heavy rules' business
+    public static boolean rimKnocker(CombatCommit.Foe foe) {
+        return foe.knocker() && foe.melee() && foe.kind() == CombatCommit.Kind.NORMAL;
+    }
+
+    // on a rim in a run: the closest foe within RIM_ENGAGE_RANGE that is a knocker or has hit us (plain melee only), or null.
+    // the run walks on with it biting and the next hit is the knock into the lava, so the shield goes up for it
+    public static CombatCommit.Foe rimRunFoe(boolean edgeNear, List<CombatCommit.Foe> foes) {
+        if (!edgeNear) return null;
+        CombatCommit.Foe best = null;
+        for (CombatCommit.Foe foe : foes) {
+            if (!foe.melee() || foe.kind() != CombatCommit.Kind.NORMAL || foe.distance() > RIM_ENGAGE_RANGE) continue;
+            if (!foe.knocker() && !foe.hitUs()) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)
