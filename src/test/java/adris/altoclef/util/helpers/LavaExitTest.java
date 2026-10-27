@@ -138,4 +138,66 @@ public class LavaExitTest {
         assertFalse(LavaExit.withinHop(exit, 0, 62, 10));
         assertTrue(LavaExit.withinHop(nearest(0, 63, 10, w), 0, 63, 10));
     }
+
+    private static LavaExit.Cell stair(int x, int y, int z, LavaWorld w, float yaw) {
+        return LavaExit.stairCell(x, y, z, w, w, yaw);
+    }
+
+    // a rim two high, one lava cell back from us: stone at 63 and 64 on x=7
+    private static LavaWorld wallAt(int x) {
+        return lake().set(x, 63, 10, STONE).set(x, 64, 10, STONE);
+    }
+
+    @Test
+    public void aTwoHighWallGetsAStairBlockInTheLavaBesideUs() {
+        LavaExit.Cell t = stair(5, 63, 10, wallAt(7), 0);
+        assertNotNull(t);
+        assertEquals(6, t.x());
+        assertEquals(63, t.y());
+        assertEquals(10, t.z());
+    }
+
+    @Test
+    public void openSeaHasNoStairCell() {
+        assertNull(stair(5, 63, 10, lake(), 0));
+    }
+
+    @Test
+    public void ourOwnColumnIsNeverTheStairCell() {
+        // a one cell pit with a wall on every face: the only lava cell around is the one we float in
+        LavaWorld w = LavaWorld.flat(63).set(5, 63, 5, LAVA);
+        int[][] faces = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] f : faces) {
+            w.set(5 + f[0], 63, 5 + f[1], STONE).set(5 + f[0], 64, 5 + f[1], STONE);
+        }
+        assertNull(stair(5, 63, 5, w, 0));
+    }
+
+    @Test
+    public void aStairCellWithALidOnItIsRejected() {
+        assertNull(stair(5, 63, 10, wallAt(7).set(6, 65, 10, STONE), 0));
+    }
+
+    @Test
+    public void aRimWithNoRoomOnTopIsRejected() {
+        assertNull(stair(5, 63, 10, wallAt(7).set(7, 66, 10, STONE), 0));
+    }
+
+    @Test
+    public void aWallIsMeasuredFromTheSurfaceNotFromOurFeet() {
+        // three deep, we are at the bottom: the stair still goes at the surface layer
+        LavaWorld w = LavaWorld.flat(61).fill(0, 61, -5, 12, 63, 25, LAVA)
+                .set(7, 63, 10, STONE).set(7, 64, 10, STONE);
+        LavaExit.Cell t = stair(5, 61, 10, w, 0);
+        assertNotNull(t);
+        assertEquals(63, t.y());
+    }
+
+    @Test
+    public void theStairGoesWhereWeAreLooking() {
+        LavaWorld w = wallAt(7).set(3, 63, 10, STONE).set(3, 64, 10, STONE);
+        // yaw -90 faces +x, 90 faces -x
+        assertEquals(6, stair(5, 63, 10, w, -90).x());
+        assertEquals(4, stair(5, 63, 10, w, 90).x());
+    }
 }

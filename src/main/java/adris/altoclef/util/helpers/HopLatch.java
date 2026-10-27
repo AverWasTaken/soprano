@@ -28,6 +28,11 @@ public final class HopLatch {
         return true;
     }
 
+    // a block set down as a step is a new exit, so a hop that gave up on the old wall gets one more go
+    public void rearm() {
+        _spent = false;
+    }
+
     public boolean spent() {
         return _spent;
     }

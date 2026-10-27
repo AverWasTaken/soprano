@@ -61,6 +61,19 @@ public class HopLatchTest {
     }
 
     @Test
+    public void rearmLetsASpentLatchHopAgain() {
+        HopLatch l = new HopLatch();
+        l.begin();
+        for (int i = 0; i < HopLatch.GIVE_UP_TICKS; i++) {
+            l.tick(false);
+        }
+        assertTrue(l.spent());
+        l.rearm();
+        assertFalse(l.spent());
+        assertTrue(l.begin());
+    }
+
+    @Test
     public void ticksWhileIdleDoNothing() {
         HopLatch l = new HopLatch();
         for (int i = 0; i < 100; i++) {
