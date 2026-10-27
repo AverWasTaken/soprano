@@ -303,4 +303,15 @@ public class CombatRulesTest {
         assertFalse(CombatRules.rimShield(true, false, List.of(shooter(1, 1))));
         assertFalse(CombatRules.rimShield(true, false, List.of(new CombatCommit.Foe(1, 1, false, true, NEVER))));
     }
+
+    @Test
+    public void burningIsHungryUntilTheBarIsFull() {
+        // not burning: the regen line, same as before
+        assertTrue(CombatRules.fightHungry(17, false));
+        assertFalse(CombatRules.fightHungry(18, false));
+        // burning: 18 and 19 still want the bite, 20 cannot take one
+        assertTrue(CombatRules.fightHungry(18, true));
+        assertTrue(CombatRules.fightHungry(19, true));
+        assertFalse(CombatRules.fightHungry(20, true));
+    }
 }

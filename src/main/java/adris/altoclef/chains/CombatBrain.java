@@ -456,8 +456,10 @@ final class CombatBrain {
             biteShot = true;
         }
         _shotAt = shotAt;
+        // (in lava a bite is the wrong thing to be doing, the escape has the wheel)
+        boolean burning = mod.getPlayer().isOnFire() && !mod.getPlayer().isInLava();
         CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat(),
-                nearestMelee, mod.getPlayer().getFoodData().getFoodLevel() < 18);
+                nearestMelee, CombatRules.fightHungry(mod.getPlayer().getFoodData().getFoodLevel(), burning));
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
