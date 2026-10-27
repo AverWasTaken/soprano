@@ -27,16 +27,17 @@ public final class BlazeFightRules {
     public static final int DISENGAGE_CALM_TICKS = 60;
     public static final int DISENGAGE_CAP_TICKS = 900;
 
-    // run at or below this with a blaze looking at us
-    public static final float RUN_HEALTH = 10;
+    // run at or below this with a blaze looking at us. 10 was too late: a blaze in melee plus the fire under us took 15 hp to 9
+    // in three seconds, and from there the run never got out
+    public static final float RUN_HEALTH = 14;
     // run at or below this whether or not anything is looking, we are one volley from the respawn screen
     public static final float PANIC_HEALTH = 6;
-    // once we are running we run until we are back up here. the 6 hp between this and RUN_HEALTH is what keeps the mode from
+    // once we are running we run until we are back up here. the 4 hp between this and RUN_HEALTH is what keeps the mode from
     // flipping every heal tick
-    public static final float RECOVERED_HEALTH = 16;
+    public static final float RECOVERED_HEALTH = 18;
 
     // sitting out of sight with no blaze looking and hp not going up for this long means it is not going to go up (no
-    // food, hunger too low to regen). waiting for 16 hp then is waiting for ever
+    // food, hunger too low to regen). waiting for 18 hp then is waiting for ever
     public static final long RUN_GIVE_UP_TICKS = 600;
 
     private BlazeFightRules() {
