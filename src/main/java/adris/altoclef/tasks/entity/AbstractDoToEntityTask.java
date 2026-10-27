@@ -312,6 +312,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     // reach anyway and the crit walk-up closes the rest, this is for when it doesn't (no clear shot yet)
                     return approach(mod, entity, isKillTask() ? ReachRules.KILL_APPROACH : maintainDistance);
                 case KEEP_CHILD:
+                    // the approach that is already walking is what walks off a bridge: over lava it ends, the foe comes to us
+                    if (isKillTask() && LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), mod.getPlayer().getX(),
+                            mod.getPlayer().getY(), mod.getPlayer().getZ(), LavaShore.NEAR)) {
+                        _progress.reset();
+                        _blocker = null;
+                        setDebugState("Lava under us, not walking on");
+                        return null;
+                    }
                     // halfway through a step: let it land, the swing goes next tick that is safe. stopping the child here
                     // cut the path mid stride and the next tick started it again
                     _progress.reset();

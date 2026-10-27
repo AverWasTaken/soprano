@@ -296,6 +296,16 @@ public class CombatRulesTest {
     }
 
     @Test
+    public void theEdgeScanWakesAsFarOutAsTheEngageNotTheShield() {
+        assertTrue(CombatRules.rimScan(false, List.of(zombie(1, 5, NEVER))));
+        assertFalse(CombatRules.rimScan(false, List.of(zombie(1, 5.5, NEVER))));
+        assertTrue(CombatRules.rimScan(true, List.of()));
+        assertFalse(CombatRules.rimScan(false, List.of(shooter(1, 2))));
+        // the shield itself still waits for four
+        assertFalse(CombatRules.rimShield(true, false, List.of(zombie(1, 5, NEVER))));
+    }
+
+    @Test
     public void theRimShieldOnlyCountsABlazeInContactAmongShooters() {
         assertTrue(CombatRules.rimShield(true, true, List.of()));
         assertFalse(CombatRules.rimShield(false, true, List.of()));

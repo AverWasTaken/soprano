@@ -11,7 +11,7 @@ import baritone.pathing.movement.CliffAvoidance.Cells;
 // behind us is a drop we press toward the foe instead of standing there to be thrown
 public final class LavaShore {
     // how close lava has to be (horizontally) for a spot to count as a shore
-    static final int NEAR = 2;
+    public static final int NEAR = 2;
     // a knock is about two blocks, three is the margin
     static final double BACK_LENGTH = 3.0;
     // half the player's width, the swept box
@@ -47,6 +47,37 @@ public final class LavaShore {
         return false;
     }
 
+    // lava at the bottom of an open column: walks down from the feet cell through open air (and water) and says yes only when
+    // the walk ends on lava inside CliffAvoidance.DEPTH. a one wide bridge has solid under our feet and lava two down beside it,
+    // which lavaNear never sees
+    static boolean lavaBelow(Cells cells, int x, int y, int z) {
+        for (int d = 0; d <= CliffAvoidance.DEPTH; d++) {
+            Cell c = cells.at(x, y - d, z);
+            if (c == Cell.LAVA) {
+                return true;
+            }
+            if (c != Cell.OPEN && c != Cell.WATER) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // lavaBelow in any column within r of (x, z)
+    public static boolean lavaDeepNear(Cells cells, double x, double y, double z, int r) {
+        int cx = (int) Math.floor(x);
+        int cy = (int) Math.floor(y);
+        int cz = (int) Math.floor(z);
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                if (lavaBelow(cells, cx + dx, cy, cz + dz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // the straight walk from a to b crosses a lava cell (feet level or the one under it, the y slides from one end to the other)
     public static boolean lineHitsLava(Cells cells, double ax, double ay, double az, double bx, double by, double bz) {
         double dx = bx - ax;
@@ -68,7 +99,7 @@ public final class LavaShore {
     // the approach guard: no walking at a foe that is by the lava, from a spot that is by the lava, or across it
     public static boolean approachBlocked(Cells cells, double ux, double uy, double uz, double tx, double ty, double tz) {
         return lavaNear(cells, tx, ty, tz, NEAR) || lavaNear(cells, ux, uy, uz, NEAR)
-                || lineHitsLava(cells, ux, uy, uz, tx, ty, tz);
+                || lavaDeepNear(cells, ux, uy, uz, NEAR) || lineHitsLava(cells, ux, uy, uz, tx, ty, tz);
     }
 
     // how long a foe by the lava gets to walk up to us before we stop waiting on it: 8 s. a wait with no end
