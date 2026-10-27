@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+import adris.altoclef.util.helpers.GameClock;
 
 // the nether has no food of its own, so when the bag runs dry out there the way back is the portal we came by and the overworld's
 // own food floor (FoodFloor). pure, the phase only feeds it numbers
@@ -50,9 +51,9 @@ public final class FoodTripRules {
     }
 
     // the line is crossed, may the trip start. under the floor it goes anyway, else it waits until nothing unsafe has held for
-    // CALM_TICKS. lastUnsafe < 0 = never seen, a clock that went backwards is a restart (same as the other timers)
+    // CALM_TICKS. lastUnsafe < 0 = never seen, a clock way back is a restart (same as the other timers), a tick or two is lag
     public static boolean mayStart(boolean underFloor, long now, long lastUnsafe) {
-        return underFloor || lastUnsafe < 0 || now < lastUnsafe || now - lastUnsafe >= CALM_TICKS;
+        return underFloor || lastUnsafe < 0 || GameClock.since(lastUnsafe, now) >= CALM_TICKS;
     }
 
     // the overworld half is over: the bag is back at the line, or the clock ran out
@@ -155,13 +156,19 @@ public final class FoodTripRules {
         return attempt <= 1;
     }
 
-    // a trip that ended on a stalled walk home waits this long (60 s) before the next one may start. the comment on the stall
-    // always said the next try has to earn its start, and nothing made it
+    // the bag alone (units, not what is still cooking) is under where the trip ends
+    public static boolean tripFoodShort(int units, int tripEnd) {
+        return units < tripEnd;
+    }
+
+    // a trip that ended (a stalled walk home, or the overworld half done) waits this long (60 s) before the next one may start,
+    // unless the bag is under the floor. the stall comment always said the next try has to earn its start, and nothing made it;
+    // a trip that came back with a full bag has no business turning around on the first hungry tick either
     public static final long COOLDOWN_TICKS = 1200;
 
-    // endedAt < 0 = no trip has ended. a clock that went backwards is a restart, so no cooldown either
+    // endedAt < 0 = no trip has ended. a clock way back is a restart, so no cooldown either
     public static boolean coolingDown(long now, long endedAt) {
-        return endedAt >= 0 && now >= endedAt && now - endedAt < COOLDOWN_TICKS;
+        return endedAt >= 0 && GameClock.since(endedAt, now) < COOLDOWN_TICKS;
     }
 
     // the phase restarted (the watchdog's retry) with a trip's overworld half in flight and the bag still short. the retry
@@ -169,6 +176,15 @@ public final class FoodTripRules {
     // the same read the overworld half ends on (tripOver). once per trip: a hunt that stalls again goes the old way
     public static boolean resume(boolean inOverworld, boolean tripWasUp, boolean alreadyResumed, boolean stillShort) {
         return inOverworld && tripWasUp && !alreadyResumed && stillShort;
+    }
+
+    // a food trip that brought this much into the bag (a kill or two cooked, or the smoker we left at home) did what it was for,
+    // so it does not count against MAX_TRIPS: the cap is for the world with no food in reach, not for a bot that keeps running dry
+    // because the nether eats it. blocks trips and trips that came back empty handed stay counted
+    public static final int TRIP_GAIN_UNITS = 12;
+
+    public static boolean refundsTrip(Reason reason, int unitsAtStart, int unitsAtEnd) {
+        return reason == Reason.FOOD && unitsAtEnd - unitsAtStart >= TRIP_GAIN_UNITS;
     }
 
     // food units went up since the last look: the hunt is getting somewhere, so the watchdog's clock restarts

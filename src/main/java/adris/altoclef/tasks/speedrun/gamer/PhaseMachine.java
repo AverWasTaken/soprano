@@ -338,7 +338,7 @@ public final class PhaseMachine implements GamerContext {
 
     private void retry(PhaseHandler h, int attempt, String reason) {
         RunState s = host.state();
-        host.say(s.phase.hud() + " is not working (" + reason + "), trying again");
+        host.say(where(h, s.phase) + " is not working (" + reason + "), trying again");
         s.phaseAttempts.put(s.phase.name(), attempt + 1);
         safeExit(h);
         host.onPhaseReset();
@@ -432,14 +432,23 @@ public final class PhaseMachine implements GamerContext {
         if (ended()) {
             return;
         }
+        // asked before the exit, which may clear the step
+        String where = where(current(), s.phase);
         safeExit(current());
         s.stuck = true;
         s.stuckReason = reason;
         host.save();
-        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, type #gamer to pick it back up."
+        host.say("Gave up at " + where.toLowerCase() + ": " + reason + ". State saved, type #gamer to pick it back up."
                 + restartHint(s.phase));
         // after the message so the dump has the line that says why it gave up
         Trace.dump("stuck: " + reason);
+    }
+
+    // the phase headline is a static label ("Looking for a fortress" all through the nether), so name the step it was
+    // really on when it has one
+    static String where(PhaseHandler h, GamerPhase phase) {
+        String step = h == null ? null : h.hudState();
+        return step == null || step.isBlank() ? phase.hud() : step;
     }
 
     // a run that died its way to STUCK in the End comes back to the End with the same deaths on the books, the gear check is

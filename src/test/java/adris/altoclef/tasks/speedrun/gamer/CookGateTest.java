@@ -35,6 +35,8 @@ public class CookGateTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         // no iron owed unless a test says so: while it is, the furnace is the iron's and meat only goes in a smoker
         cfg.ironKit.clear();
         cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
@@ -184,8 +186,8 @@ public class CookGateTest {
     public void theSmokersLogsAreNotFuel() {
         // the whole kit done, so the reserve keeps no wood and every log may burn (1.5 smelts each)
         FakeFacts wood = new FakeFacts();
-        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
-                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE}) {
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_SWORD,
+                Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE}) {
             wood.give(i, 1);
         }
         wood.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_LOG, 8);
@@ -293,7 +295,7 @@ public class CookGateTest {
 
     @Test
     public void aFurnaceCookingTheMeatIsNotAReasonToCraftAnother() {
-        f.give(Items.OAK_LOG, 30).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1);
+        f.give(Items.OAK_LOG, 30).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1);
         assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
         // it went down to cook and it is coming back to the bag
         f.furnacePlaced = true;
@@ -358,13 +360,13 @@ public class CookGateTest {
         assertFalse(CookGate.reusable(f, cfg, 8, false));
     }
 
-    // ---- the GATHER -> IRON boundary: 22:05:29, a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
+    // ---- the GATHER -> IRON boundary: a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
     // never came up. the fuel gate wanted a coal per piece of meat in the whole bag and the gather chops exactly its budget
 
     private FakeFacts boundary() {
         FakeFacts b = new FakeFacts();
         b.give(Items.PORKCHOP, 4).give(Items.CHICKEN, 3).give(Items.MUTTON, 3).give(Items.FURNACE, 1).give(Items.CRAFTING_TABLE, 1);
-        b.give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1);
+        b.give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1);
         b.foodUnits = 90;
         return b;
     }
@@ -388,6 +390,8 @@ public class CookGateTest {
     @Test
     public void whileIronIsOwedTheMeatGoesInASmokerNotTheKitFurnace() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         FakeFacts b = boundary().give(Items.COAL, 2);
         assertTrue(CookGate.ironOwed(b, full));
         // the furnace in the bag is the iron's, and nothing to build a smoker from: no cook yet
@@ -408,6 +412,8 @@ public class CookGateTest {
     @Test
     public void onceTheIronIsSmeltedTheFurnaceIsFreeForTheMeat() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         FakeFacts b = boundary().give(Items.COAL, 2);
         // all the ingots the kit wants, in the bag
         b.give(Items.IRON_INGOT, KitPlanner.ingotsNeeded(b, full));
@@ -508,8 +514,8 @@ public class CookGateTest {
     // every kit item and no wood owed, so the reserve keeps no wood (endBeds 0)
     private static FakeFacts kitDone() {
         FakeFacts done = new FakeFacts();
-        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
-                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE, Items.CRAFTING_TABLE}) {
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_SWORD,
+                Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE, Items.CRAFTING_TABLE}) {
             done.give(i, 1);
         }
         return done.give(Items.BUCKET, 2).give(Items.LADDER, 3);
@@ -562,7 +568,7 @@ public class CookGateTest {
     @Test
     public void anIronLoadInFlightHoldsTheCookOffEvenWhenItIsLatched() {
         List<KitNeed> underMine = List.of(CRAFT, ORE, COOK);
-        // 23:18:27 the cook latched while the furnace was still being crafted; 23:18:31 the iron was on its way into the slot
+        // the cook latched while the furnace was still being crafted; the iron was on its way into the slot
         assertTrue(CookGate.leads(underMine, 2, 6, true, true, false));
         assertFalse(CookGate.leads(underMine, 2, 6, true, true, true));
         assertFalse(CookGate.leads(underMine, 2, 6, false, false, true));
@@ -573,6 +579,8 @@ public class CookGateTest {
     @Test
     public void gatherChopsFuelForTheCookOnTopOfItsBudget() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         FakeFacts none = new FakeFacts();
         int base = KitPlanner.woodNeed(none, full, 8);
         assertTrue(base > 0);
@@ -589,6 +597,8 @@ public class CookGateTest {
     @Test
     public void theFuelLogsStopOnceTheyAreChoppedAndOnceTheFoodIsIn() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         // the budget met and plenty spare on top: nothing more to chop
         FakeFacts rich = new FakeFacts().give(Items.OAK_LOG, 60);
         assertEquals(0, KitPlanner.woodNeed(rich, full, 8));
@@ -605,6 +615,8 @@ public class CookGateTest {
     @Test
     public void anEmptiedKitFurnaceIsNotReloadedWithMeatWhileIronIsOwed() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         FakeFacts b = boundary().give(Items.COAL, 2);
         assertFalse(CookGate.reusable(b, full, 8, false));
         // a smoker has no ore to mix it up with
@@ -634,8 +646,10 @@ public class CookGateTest {
     @Test
     public void aBookedSmokerJobHidesTheFuelTheEmptiedSmokerCouldBurn() {
         OverworldConfig full = new OverworldConfig();
+        full.netherSpareShields = 0;
+        full.netherSpareSwords = 0;
         FakeFacts bag = new FakeFacts().give(Items.PORKCHOP, 8).give(Items.OAK_LOG, 12).give(Items.STONE_PICKAXE, 1)
-                .give(Items.STONE_AXE, 1).give(Items.WOODEN_AXE, 1);
+                .give(Items.STONE_SWORD, 1).give(Items.WOODEN_AXE, 1);
         bag.smokerPlaced = true;
         bag.cookingFood("cooked_beef", 9, 8, 0);
         WoodBudget booked = WoodBudget.of(bag, full, 8, GamerPhase.IRON);

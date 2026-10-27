@@ -129,7 +129,7 @@ public class CombatCommitLobberNextTest {
     }
 
     @Test
-    public void thePickedWitchIsKeptAbove8AndLeftAtTheLine() {
+    public void thePickedWitchIsKeptAbove8AndStillKeptAtTheLineWhenTheFightCameFromARun() {
         CombatCommit c = corneredOnZombie();
         c.step(tick(NOW + 300, 15, false, null, with(biters(c), witch(10, 20, true))));
         assertEquals(WITCH, c.targetId());
@@ -139,9 +139,9 @@ public class CombatCommitLobberNextTest {
         assertEquals(Event.NONE, c.step(tick(NOW + 301, 11, false, w, w)));
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(WITCH, c.targetId());
-        // the line itself is a run, as ever
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 302, 8, false, w, w)));
-        assertEquals(Why.LOW_HP, c.why());
+        // the line itself is not a run for this one: the fight came out of a run, so the runs are latched off until it is quiet
+        assertEquals(Event.NONE, c.step(tick(NOW + 302, 8, false, w, w)));
+        assertEquals(Mode.FIGHT, c.mode());
     }
 
     // a plain fight (not cornered) whose zombie just died with the witch still throwing: the witch fight, at 18 hp

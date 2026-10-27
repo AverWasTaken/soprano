@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.util.helpers.BreakRules;
+import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
@@ -16,6 +17,7 @@ import adris.altoclef.util.helpers.ReachHold;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.ToolPick;
 import adris.altoclef.util.helpers.ToolSwap;
+import baritone.Baritone;
 import baritone.utils.ToolSet;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -960,6 +962,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
                     mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
             ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
+            // not while a fight or a run is committed (or the heal-up hold is on): a resumed task swapping the sword out for a
+            // pick mid fight is how the weapon ends up in the bag
+            boolean combatHolds = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE || mod.getMobDefenseChain().isRecovering();
             boolean handIsATool = ItemHelper.isTool(held.getItem()) || held.getItem() == Items.SHEARS;
             // the two quiet ways to end up swinging a bucket at a wall: nothing in the bag does better, or a crack is in progress
             // (an empty hand isn't news, that is every block at the start of a run)
@@ -979,10 +984,15 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // by item and by speed, not by slot: the slot object is new every tick, and two tools that are equally
                 // fast would trade places forever (see ToolSwap). a best that is only the fastest wrong tool (iron on
                 // obsidian) has to be strictly faster than the hand, "the hand is wrong too" is not a reason to swap
-                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
-                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed)) {
+                // (or the other way round, the wear chain wants a slower tool that is next to die. decided once per block, the
+                // crackedAlready guard above keeps it from swapping out from under a half broken one)
+                boolean faster = ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
+                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed);
+                boolean chained = !faster && Baritone.settings().toolWearChain.value
+                        && ToolSwap.worthSwappingDown(held.getItem(), ToolPick.optionOf(held, state), best.getItem(), ToolPick.optionOf(best, state));
+                if (faster || chained) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
-                            && !mod.getFoodChain().isTryingToEat();
+                            && !mod.getFoodChain().isTryingToEat() && !combatHolds;
                     if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {
                         return null;
                     }
@@ -1006,6 +1016,20 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     }
                 } else {
                     _toolSwap.landed();
+                }
+            }
+            if (bestToolSlot.isEmpty() && !combatHolds && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && !breaksInstantly(mod, swingAt)) {
+                // no tool in the bag beats the hand here, so the pick in it is only taking wear
+                var inv = mod.getPlayer().getInventory().getNonEquipmentItems();
+                boolean[] empty = new boolean[9];
+                boolean[] damageable = new boolean[9];
+                for (int i = 0; i < 9; i++) {
+                    empty[i] = inv.get(i).isEmpty();
+                    damageable[i] = inv.get(i).isDamageableItem();
+                }
+                int calm = MineStick.calmSlot(empty, damageable, mod.getPlayer().getInventory().getSelectedSlot());
+                if (calm >= 0) {
+                    mod.getClientBaritone().getInventoryBehavior().selectHotbar(calm, "destroy");
                 }
             }
             // holding on an old look: the crosshair might be on the dirt in front now, and cracking that is the exact thing

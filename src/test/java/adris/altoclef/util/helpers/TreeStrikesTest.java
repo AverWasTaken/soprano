@@ -74,6 +74,13 @@ public class TreeStrikesTest {
     }
 
     @Test
+    public void aClockAFewTicksBackKeepsTheCount() {
+        TreeStrikes s = new TreeStrikes();
+        s.strike(OW, A, 5000);
+        assertFalse(s.strike(OW, A, 4998).isEmpty());
+    }
+
+    @Test
     public void aClockThatWentBackwardsForgetsTheOldCount() {
         // a new world restarts game time, the old strikes mean nothing there
         TreeStrikes s = new TreeStrikes();

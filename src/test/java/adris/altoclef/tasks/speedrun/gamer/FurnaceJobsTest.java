@@ -369,4 +369,119 @@ public class FurnaceJobsTest {
         assertFalse(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(3, 64, 0), "OVERWORLD"));
         assertFalse(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(1, 64, 0), "NETHER"));
     }
+
+    private static RunState.FurnaceJob food(int x, int count, long done, boolean stranded) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(x, 64, 0), "OVERWORLD", "smoker", "beef", count, "cooked_beef", 0, done);
+        job.unitsEach = 8;
+        job.stranded = stranded;
+        return job;
+    }
+
+    @Test
+    public void aCutOffVisitBringsTheCountDownToWhatIsLeftInTheSlots() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob job = food(1, 5, 500, false);
+        jobs.add(job);
+        // three already in the bag: two left to come back for, timer off the arrow
+        assertTrue(FurnaceJobs.settleMidVisit(jobs, job, 2, 150, 1000));
+        assertEquals(2, job.count);
+        assertEquals(1150, job.doneTick);
+        assertEquals(16, FurnaceJobs.pendingUnits(jobs));
+        // no look yet, or nothing taken: the job is left alone
+        assertFalse(FurnaceJobs.settleMidVisit(jobs, job, -1, 0, 1100));
+        assertFalse(FurnaceJobs.settleMidVisit(jobs, job, 2, 150, 1100));
+        assertEquals(1150, job.doneTick);
+        // the slots only ever lower it, a bigger look is the visit's end to sort out
+        assertFalse(FurnaceJobs.settleMidVisit(jobs, job, 9, 0, 1100));
+        assertEquals(2, job.count);
+    }
+
+    @Test
+    public void aCutOffVisitThatEmptiedTheStationDropsTheJob() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob job = food(1, 5, 500, false);
+        jobs.add(job);
+        assertTrue(FurnaceJobs.settleMidVisit(jobs, job, 0, 0, 1000));
+        assertTrue(jobs.isEmpty());
+        assertEquals(0, FurnaceJobs.pendingUnits(jobs));
+    }
+
+    @Test
+    public void anInterruptedCookLeavesALiveJobWhenFueledAndAStrandedOneWhenNot() {
+        RunState.Pos at = new RunState.Pos(3, 64, 3);
+        RunState.FurnaceJob lit = adris.altoclef.tasks.container.AsyncSmelting.strandedJob(at, "OVERWORLD", "smoker", "beef", 5,
+                "cooked_beef", 8, 1000, true);
+        RunState.FurnaceJob cold = adris.altoclef.tasks.container.AsyncSmelting.strandedJob(at, "OVERWORLD", "smoker", "beef", 5,
+                "cooked_beef", 8, 1000, false);
+        assertFalse(lit.stranded);
+        assertEquals(FurnaceJobs.doneTick("smoker", 1000, 5), lit.doneTick);
+        assertTrue(cold.stranded);
+        assertEquals(1000, cold.doneTick);
+        // live is dinner on the way, cold is raw meat sitting in a station
+        assertEquals(40, FurnaceJobs.pendingUnits(List.of(lit)));
+        assertEquals(0, FurnaceJobs.pendingUnits(List.of(cold)));
+        assertEquals(5, FurnaceJobs.pending(List.of(lit), "cooked_beef"));
+        assertEquals(0, FurnaceJobs.pending(List.of(cold), "cooked_beef"));
+    }
+
+    @Test
+    public void theFoodJobWorthADetourIsTheSoonestLiveOneInReach() {
+        RunState.FurnaceJob late = food(1, 5, 900, false);
+        RunState.FurnaceJob soon = food(2, 5, 300, false);
+        RunState.FurnaceJob cold = food(3, 5, 100, true);
+        RunState.FurnaceJob iron = job(4, 5, 0, "furnace");
+        RunState.FurnaceJob far = food(5, 5, 50, false);
+        List<RunState.FurnaceJob> jobs = List.of(late, soon, cold, iron, far);
+        assertSame(soon, FurnaceJobs.foodJob(jobs, j -> j == far ? PackUp.TRIP_BUDGET + 1 : 10));
+        assertNull(FurnaceJobs.foodJob(List.of(cold, iron), j -> 0));
+        assertNull(FurnaceJobs.foodJob(List.of(far), j -> PackUp.TRIP_BUDGET + 1));
+        assertNull(FurnaceJobs.foodJob(List.of(), j -> 0));
+    }
+
+    @Test
+    public void takingTheCookedHalfOutOfAColdStationDoesNotMakeTheRestFood() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob job = food(1, 5, 500, true);
+        job.stalls = 1;
+        jobs.add(job);
+        assertTrue(FurnaceJobs.settleMidVisit(jobs, job, 3, 300, 1000));
+        assertEquals(3, job.count);
+        // still cold raw meat, still no stall bookkeeping: the visit's end decides those
+        assertTrue(job.stranded);
+        assertFalse(job.visited);
+        assertEquals(1, job.stalls);
+        assertEquals(0, FurnaceJobs.pendingUnits(jobs));
+    }
+
+    @Test
+    public void bannedJobsComeLastNotOut() {
+        RunState.FurnaceJob stuck = food(1, 5, 100, false);
+        RunState.FurnaceJob fine = food(2, 5, 900, false);
+        java.util.function.Predicate<RunState.FurnaceJob> banned = j -> j == stuck;
+        assertSame(stuck, FurnaceJobs.soonest(List.of(stuck, fine)));
+        assertSame(fine, FurnaceJobs.soonest(List.of(stuck, fine), banned));
+        assertSame(stuck, FurnaceJobs.soonest(List.of(stuck), banned));
+        assertNull(FurnaceJobs.soonest(List.of(), banned));
+        assertSame(fine, FurnaceJobs.foodJob(List.of(stuck, fine), j -> 10, banned));
+        assertSame(stuck, FurnaceJobs.foodJob(List.of(stuck, fine), j -> j == fine ? PackUp.TRIP_BUDGET + 1 : 10, banned));
+        assertNull(FurnaceJobs.foodJob(List.of(), j -> 0, banned));
+    }
+
+    // a visit that emptied the furnace takes its job off the books, and a trip must not start on it afterwards (FurnaceWatch.leave)
+    @Test
+    public void aVisitedAndEmptiedJobIsNoLongerListed() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = job(1, 4, 0, "smoker");
+        jobs.add(j);
+        assertTrue(FurnaceJobs.listed(jobs, j));
+        FurnaceJobs.afterVisit(jobs, j, 0, 800);
+        assertFalse(FurnaceJobs.listed(jobs, j));
+    }
+
+    @Test
+    public void listedIsByIdentity() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        jobs.add(job(1, 4, 0, "smoker"));
+        assertFalse(FurnaceJobs.listed(jobs, job(1, 4, 0, "smoker")));
+    }
 }

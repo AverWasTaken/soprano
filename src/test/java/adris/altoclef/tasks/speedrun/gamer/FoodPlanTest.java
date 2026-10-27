@@ -33,6 +33,8 @@ public class FoodPlanTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         end = new EndConfig();
     }
 
@@ -1423,5 +1425,22 @@ public class FoodPlanTest {
         f.foodUnits = 60;
         assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
+    }
+
+    @Test
+    public void rawMeatInAColdStationWithNoFuelIsNotFood() {
+        assertEquals(0, FoodPlan.stationUnits(170, 0, false, false));
+    }
+
+    @Test
+    public void rawMeatCountsOnceItIsLitOrFueled() {
+        assertEquals(170, FoodPlan.stationUnits(170, 0, true, false));
+        assertEquals(170, FoodPlan.stationUnits(170, 0, false, true));
+    }
+
+    @Test
+    public void cookedOutputAlwaysCounts() {
+        assertEquals(40, FoodPlan.stationUnits(170, 40, false, false));
+        assertEquals(210, FoodPlan.stationUnits(170, 40, true, true));
     }
 }

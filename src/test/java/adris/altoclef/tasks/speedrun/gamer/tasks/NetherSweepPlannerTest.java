@@ -281,7 +281,8 @@ public class NetherSweepPlannerTest {
             }
         }, 12);
         assertEquals(Kind.FAIL, blank.step(Goal.FORTRESS, 0, 0, 0).kind());
-        assertEquals(12, blank.cellsStarted(Goal.FORTRESS));
+        // cells that end without a step are free, the slack is what stops a grid that never runs out
+        assertEquals(12 * NetherSweepPlanner.SKIPPED_CELL_SLACK, blank.cellsStarted(Goal.FORTRESS));
     }
 
     @Test
@@ -670,5 +671,50 @@ public class NetherSweepPlannerTest {
         assertFalse(planner.takeGiveUp());
         assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 1001, 1018).x());
         assertFalse(planner.takeGiveUp());
+    }
+
+    @Test
+    public void cellsThatEndWithoutAStepDoNotUseUpTheCap() {
+        // the first three cells have nowhere to walk (nothing to stand on, all behind a bastion), the fourth is a real one
+        NetherSweepPlanner.Grid skippy = new NetherSweepPlanner.Grid() {
+            @Override
+            public List<Point> waypoints(Cell cell, int spacingChunks, int px, int pz) {
+                return cell.cx() < 3 ? List.of() : ROW.waypoints(cell, spacingChunks, px, pz);
+            }
+
+            @Override
+            public Optional<Cell> nextCell(int px, int pz, Set<String> visited) {
+                return ROW.nextCell(px, pz, visited);
+            }
+        };
+        NetherSweepPlanner two = new NetherSweepPlanner(state, cfg, skippy, 2);
+        Action a = two.step(Goal.FORTRESS, 0, 0, 0);
+        assertEquals(Kind.GOTO, a.kind());
+        assertEquals("3,0", two.currentCellKey());
+    }
+
+    @Test
+    public void aCellCountsOnceTheBotHasWalkedOffFromItsStart() {
+        NetherSweepPlanner one = new NetherSweepPlanner(state, cfg, ROW, 1);
+        one.step(Goal.FORTRESS, 500, 500, 0);
+        // boxed in at the start: the cell is neither burned nor counted, the bot keeps being sent at it
+        assertEquals(Kind.GOTO, stepAt(one, Goal.FORTRESS, 503, 500, 1, 200).kind());
+        assertEquals("0,0", one.currentCellKey());
+        // walked off and the cell ends: that was the one cell this planner may sweep
+        one.step(Goal.FORTRESS, 560, 500, 201);
+        one.step(Goal.FORTRESS, 0, 0, 202);
+        one.step(Goal.FORTRESS, 100, 0, 203);
+        assertEquals(Kind.FAIL, one.step(Goal.FORTRESS, 200, 0, 204).kind());
+    }
+
+    @Test
+    public void onlyBricksOfAGivenUpFortressAreSkipped() {
+        planner.report(Sight.FORTRESS, pos(500, 500));
+        // a fortress we know still gets reported (its other cells are fortress cells too)
+        assertFalse(planner.isGivenUp(pos(540, 500)));
+        planner.giveUpFortress(pos(500, 500));
+        // the dud's far corner is still the dud
+        assertTrue(planner.isGivenUp(pos(500 + 150, 500)));
+        assertFalse(planner.isGivenUp(pos(500 + 400, 500)));
     }
 }

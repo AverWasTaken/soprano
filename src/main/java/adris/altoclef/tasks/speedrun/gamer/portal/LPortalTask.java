@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceStructureBlockTask;
+import adris.altoclef.tasks.construction.compound.ConstructNetherPortalBucketTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
@@ -36,7 +37,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,21 +49,13 @@ import java.util.function.Supplier;
 // it only ever makes the portal faster. anything that goes wrong (no site, a cell that won't cast, the clock) ends in
 // failed(), and the phase falls back to the old per block cast
 public class LPortalTask extends Task {
-    // the search walks to lava and wanders when there is none. walks and legs of 6+ blocks feed the phase's 120 s stall clock,
-    // waiting and a stuck wander don't (that ends in the phase's free retry instead of this cap). it counts our own ticks and
+    // the search looks at every lake in the loaded chunks, walks to one that passed and builds there. walks feed the phase's
+    // 120 s stall clock, waiting doesn't (that ends in the phase's free retry instead of this cap). it counts our own ticks and
     // not the wall clock, so a snack or a fight in the middle doesn't eat it
     private static final int SEARCH_TICKS = 20 * 300;
     private static final int SCAN_GAP = 20 * 3;
-    private static final int WANDER_LEG = 64;
-    // the finder's source cap, a big lake is a lot of cells and each is 16 layouts
-    private static final int FINDER_SOURCES = 160;
-    // the lake around the seed we walked to, read live, because the scan only keeps a few cells of each chunk
-    private static final int NEAR_SEED = 6;
-    private static final int FINDER_REACH = 90;
-    // cells of lake taken per seed, a lake is a lot of layouts
-    private static final int LAKE_GROW = 40;
-    // only the cheapest seeds grow, the rest are on the far side of the map
-    private static final int GROWN_SEEDS = 8;
+    // layouts surveyed a tick, each full check is a couple hundred reads
+    private static final int LAYOUTS_PER_TICK = 6;
     private static final int CLEANUP_TICKS = 20 * 8;
     private static final int SCOOP_MISSES = 12;
     // one step that does not change the world for this long is stuck
@@ -83,13 +75,9 @@ public class LPortalTask extends Task {
     private boolean prepping;
     // the base is set, the lava cells under it are obsidian and nobody has to keep blocks out of them anymore
     private boolean baseSet;
-    // the cheapest site that needs work, from this pass of the finder
-    private Layout roughest;
-    private int roughestCost;
     private Layout layout;
-    private List<Layout> pending = new ArrayList<>();
-    private int pendingAt;
-    private long lastScan = -100000;
+    // the lake being looked at, a few layouts a tick
+    private LakeSurvey lakeSurvey;
     private String failReason;
     // why we are giving up, while the loose water and lava come back in the buckets first. failReason is set once that is done
     private String failing;
@@ -98,8 +86,7 @@ public class LPortalTask extends Task {
     private final Set<P> badSources = new HashSet<>();
     private int scoopMisses;
     private boolean finished;
-    private String stepKey = "";
-    private int stepSince;
+    private final StepClock stepClock = new StepClock();
     private final Map<String, Integer> strikes = new HashMap<>();
     private TimeoutWanderTask unstick;
     private int lastClickTick = -100;
@@ -115,15 +102,28 @@ public class LPortalTask extends Task {
     private List<P> lavaScan;
     private int lavaScanTick;
     // the lava hunt. the scans run on the baritone executor and hand their seeds over through the volatiles, never on the tick
-    private final LavaHunt hunt = new LavaHunt();
+    private final LavaHunt hunt;
     private volatile List<P> bandSeeds = List.of();
-    private volatile List<P> deepSeeds = List.of();
     private volatile boolean scanning;
-    private volatile boolean bandScanned;
+    // a scan has finished, so an empty seed list means no lava rather than not looked yet
+    private volatile boolean scanned;
     private int lastKick = -100000;
-    private int finderOpen;
-    private TimeoutWanderTask wander;
     private String huntHud = "";
+
+    // rejected = the lakes earlier tries gave up on (the phase keeps the list, so a retry doesn't walk to them again)
+    public LPortalTask(List<P> rejected) {
+        hunt = new LavaHunt(rejected);
+    }
+
+    // where the cast should start when the pool gave up: the nearest lake in the scan it can flood from, or null (no scan, no lava).
+    // the cast only sees the tracker's 25 nearest sources, often all deep ones, so it is walked to the lake instead of wandering
+    public BlockPos castLake(AltoClef mod) {
+        BlockPos me = mod.getPlayer().blockPosition();
+        Set<BlockPos> explored = new HashSet<>();
+        P lake = LavaHunt.castLake(bandSeeds, me.getX(), me.getY(), me.getZ(), ConstructNetherPortalBucketTask.LAKE_MIN_SOURCES,
+                seed -> ConstructNetherPortalBucketTask.lakeSize(toPos(seed), ConstructNetherPortalBucketTask::isFullLavaSource, explored));
+        return lake == null ? null : toPos(lake);
+    }
 
     public String failReason() {
         return failReason;
@@ -275,7 +275,7 @@ public class LPortalTask extends Task {
         Step step = LPortalPlan.next(layout, terrain, inv);
         prepping = LPortalPlan.PREP_CLEAR.equals(step.why()) || LPortalPlan.PREP_FILL.equals(step.why());
         lastDebug = step.toString();
-        watchdog(step, spot);
+        watchdog(mod, step, spot);
         if (failing != null || layout == null) {
             return null;
         }
@@ -333,107 +333,48 @@ public class LPortalTask extends Task {
         }
         kickScan(mod);
         BlockPos me = mod.getPlayer().blockPosition();
-        List<P> seeds = new ArrayList<>(bandSeeds);
-        seeds.addAll(deepSeeds);
-        List<P> usable = hunt.usable(seeds, me.getX(), me.getY(), me.getZ());
+        // the flag first: the scan sets the seeds before it, so these seeds are at least as new as the scan it announces
+        boolean looked = scanned;
+        List<P> seeds = bandSeeds;
         LiveTerrain terrain = new LiveTerrain(mod.getWorld());
-        if (tick - lastScan > 40 && pendingAt >= pending.size()) {
-            lastScan = tick;
-            hunt.passStarted();
-            finderOpen = hunt.pass();
-            // the lake we walked to first, then the seeds cheapest first. the terrain is read live, so a seed that
-            // stopped being lava drops out here
-            Set<P> found = new LinkedHashSet<>();
-            P target = hunt.target();
-            if (target != null && LavaHunt.arrived(target, me.getX(), me.getY(), me.getZ())) {
-                for (int dx = -NEAR_SEED; dx <= NEAR_SEED; dx++) {
-                    for (int dz = -NEAR_SEED; dz <= NEAR_SEED; dz++) {
-                        found.add(new P(target.x() + dx, target.y(), target.z() + dz));
-                    }
-                }
-            }
-            // seeds near us only, a row that fits 60 blocks down or 300 away would start the build clock a long walk from the
-            // site. the lake we walked to gets its own grid above once we are standing at it
-            // every seed goes in before any lake grows, so one big lake can't eat the whole source cap
-            List<P> near = new ArrayList<>();
-            for (P p : usable) {
-                if (Math.abs(p.y() - me.getY()) <= LavaHunt.BAND && sq(p.x() - me.getX()) + sq(p.z() - me.getZ()) <= FINDER_REACH * FINDER_REACH) {
-                    found.add(p);
-                    near.add(p);
-                }
-            }
-            for (int i = 0; i < Math.min(near.size(), GROWN_SEEDS); i++) {
-                growLake(terrain, near.get(i), found);
-            }
-            List<P> sources = new ArrayList<>();
-            for (P p : found) {
-                if (terrain.at(p.x(), p.y(), p.z()) == Mat.LAVA && terrain.at(p.x(), p.y() + 1, p.z()) == Mat.AIR) {
-                    sources.add(p);
-                    if (sources.size() >= FINDER_SOURCES) {
-                        break;
-                    }
-                }
-            }
-            pending = LPortalPlan.candidates(terrain, sources, me.getX(), me.getZ());
-            pendingAt = 0;
-            roughest = null;
-        }
-        // a few a tick, each full check is a couple hundred reads. a perfect site is taken at once, a rough one is remembered
-        // and the cheapest of them is taken when the pass is over with nothing perfect in it
         int blocks = blocksInBag(mod);
-        for (int i = 0; i < 6 && pendingAt < pending.size(); i++) {
-            Layout l = pending.get(pendingAt++);
-            // unloaded reads as rock, so a half loaded box would look fine and be nothing of the sort
-            if (!boxLoaded(mod, l)) {
-                continue;
-            }
-            LPortalPlan.Survey s = LPortalPlan.survey(l, terrain);
-            if (!s.ok() || blocks < 8 + s.fills()) {
-                continue;
-            }
-            int cost = s.mines() + 2 * s.fills();
-            if (cost == 0) {
-                return choose(l);
-            }
-            if (roughest == null || cost < roughestCost) {
-                roughest = l;
-                roughestCost = cost;
+        if (lakeSurvey == null) {
+            P next = hunt.nextToSurvey(seeds, me.getX(), me.getY(), me.getZ(), tick);
+            if (next != null) {
+                lakeSurvey = LakeSurvey.of(terrain, next, me.getX(), me.getZ());
             }
         }
-        if (roughest != null && pendingAt >= pending.size()) {
-            Layout l = roughest;
-            roughest = null;
-            return choose(l);
+        if (lakeSurvey != null && lakeSurvey.step(LAYOUTS_PER_TICK, terrain, l -> boxLoaded(mod, l))) {
+            hunt.surveyed(lakeSurvey.lake(), tick);
+            lakeSurvey = null;
         }
-        if (finderOpen > 0 && pendingAt >= pending.size()) {
-            hunt.passDone(finderOpen);
-            finderOpen = 0;
+        // a perfect site is taken at once, a rough one when every lake has been looked at
+        boolean more = lakeSurvey != null || hunt.nextToSurvey(seeds, me.getX(), me.getY(), me.getZ(), tick) != null;
+        Layout site = looked ? hunt.pick(me.getX(), me.getY(), me.getZ(), blocks, more) : null;
+        if (site != null) {
+            // the verdict may be old, the terrain is read again before anything is built on it
+            LPortalPlan.Survey s = LPortalPlan.survey(site, terrain);
+            if (s.ok() && blocks >= 8 + s.fills() && boxLoaded(mod, site)) {
+                return choose(site);
+            }
+            hunt.drop(site);
+            return null;
         }
-        switch (hunt.decide(seeds, me.getX(), me.getY(), me.getZ(), tick)) {
+        switch (hunt.decide(seeds, looked, lakeSurvey != null, me.getX(), me.getY(), me.getZ(), tick, blocks)) {
             case WALK -> {
-                wander = null;
                 huntHud = "Going to lava";
                 setDebugState("walking to lava " + hunt.target());
                 // near the lava cell and never on it, a goal inside lava is a goal baritone refuses
                 return new GetWithinRangeOfBlockTask(toPos(hunt.target()).above(), 4);
             }
             case WAIT -> {
-                wander = null;
                 huntHud = "Looking for a lava row";
                 setDebugState("looking for a lava row");
                 return null;
             }
             default -> {
-                huntHud = "Looking for lava";
-                if (wander != null && wander.isActive() && wander.isFinished(mod)) {
-                    hunt.legDone(bandScanned, usable.isEmpty());
-                    wander = null;
-                }
-                if (wander == null) {
-                    wander = new TimeoutWanderTask(WANDER_LEG);
-                }
-                setDebugState("no lava in sight, wandering");
-                return wander;
+                // every lake in the loaded chunks was looked at and none is good: the cast finds its own lava
+                return giveUp("no lake here fits the build");
             }
         }
     }
@@ -467,9 +408,7 @@ public class LPortalTask extends Task {
         layout = null;
         // a dropped site doesn't get a fresh search clock, but it gets a little time to look again
         searchStart = Math.max(searchStart, tick - SEARCH_TICKS + 20 * 90);
-        pending = new ArrayList<>();
-        pendingAt = 0;
-        roughest = null;
+        lakeSurvey = null;
         prepping = false;
         baseSet = false;
         strikes.clear();
@@ -477,28 +416,8 @@ public class LPortalTask extends Task {
         return null;
     }
 
-    // the scan keeps a few cells per chunk, and a row needs four in a line, so a seed alone mostly makes no layout. the rest of
-    // its lake in the same layer comes along, a bounded walk over the sources next to it
-    private static void growLake(LiveTerrain terrain, P seed, Set<P> found) {
-        java.util.ArrayDeque<P> queue = new java.util.ArrayDeque<>();
-        int taken = 0;
-        queue.add(seed);
-        while (!queue.isEmpty() && taken < LAKE_GROW) {
-            P at = queue.poll();
-            taken++;
-            int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-            for (int[] d : dirs) {
-                P next = new P(at.x() + d[0], at.y(), at.z() + d[1]);
-                if (!found.contains(next) && terrain.at(next.x(), next.y(), next.z()) == Mat.LAVA) {
-                    found.add(next);
-                    queue.add(next);
-                }
-            }
-        }
-    }
-
-    // the lava seeds come from a scan of everything loaded, off the tick. the band scan is the normal one, the deep one
-    // (no height limit) only runs once the band came up empty and wandering didn't help
+    // the lava seeds come from a scan of everything loaded, off the tick, within the band around the surface. no deeper pass:
+    // cave lakes always fail the floor rule and the dig down to one is a good way to meet the lava
     private void kickScan(AltoClef mod) {
         if (scanning || tick - lastKick < SCAN_GAP) {
             return;
@@ -506,15 +425,11 @@ public class LPortalTask extends Task {
         lastKick = tick;
         scanning = true;
         int py = LavaHunt.bandCentre(mod.getPlayer().blockPosition().getY());
-        boolean deep = hunt.deepAllowed();
         IPlayerContext ctx = mod.getClientBaritone().getPlayerContext();
         Baritone.getExecutor().execute(() -> {
             try {
-                bandSeeds = scanSeeds(ctx, py, true);
-                bandScanned = true;
-                if (deep) {
-                    deepSeeds = scanSeeds(ctx, py, false);
-                }
+                bandSeeds = scanSeeds(ctx, py);
+                scanned = true;
             } catch (RuntimeException e) {
                 // a chunk going away under the scan. the next one will do
             } finally {
@@ -523,12 +438,12 @@ public class LPortalTask extends Task {
         });
     }
 
-    private static List<P> scanSeeds(IPlayerContext ctx, int py, boolean banded) {
+    private static List<P> scanSeeds(IPlayerContext ctx, int py) {
         // the cap is counted in the filter, the scanner stops a chunk at max so a count afterwards is too late
         LavaHunt.ChunkCap cap = new LavaHunt.ChunkCap();
         List<BlockPos> hits = FasterWorldScanner.INSTANCE.scanNearest(ctx, new BlockOptionalMetaLookup(Blocks.LAVA), LavaHunt.SEED_MAX,
                 BlockTracker.FLUID_SCAN_CHUNK_RADIUS, (chunk, x, y, z) -> {
-                    if (banded && Math.abs(y - py) > LavaHunt.BAND) {
+                    if (Math.abs(y - py) > LavaHunt.BAND) {
                         return false;
                     }
                     // a full chunk is the cheap no, before the fluid reads
@@ -707,20 +622,20 @@ public class LPortalTask extends Task {
 
     // ---- when a step goes nowhere ----
 
-    private void watchdog(Step step, Scoop spot) {
+    private void watchdog(AltoClef mod, Step step, Scoop spot) {
         // a lava trip has no cell of its own, the source it is for stands in for it so a new trip is a new step
         String where = step.kind() == Kind.SCOOP && spot != null ? String.valueOf(spot.source()) : String.valueOf(step.cell());
         String key = step.kind() + where + step.why();
-        if (!key.equals(stepKey)) {
-            stepKey = key;
-            stepSince = tick;
-            return;
+        P stand = step.kind() == Kind.SCOOP && spot != null ? spot.stand() : step.stand();
+        double toStand = Double.NaN;
+        if (stand != null) {
+            var pos = mod.getPlayer().position();
+            toStand = Math.sqrt(sq(pos.x - stand.x() - 0.5) + sq(pos.y - stand.y()) + sq(pos.z - stand.z() - 0.5));
         }
         int limit = step.kind() == Kind.WAIT ? WAIT_TICKS : STEP_TICKS;
-        if (tick - stepSince < limit) {
+        if (!stepClock.stuck(key, toStand, tick, limit)) {
             return;
         }
-        stepSince = tick;
         if (step.kind() == Kind.WAIT) {
             giveUp(step.why());
             return;

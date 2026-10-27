@@ -466,4 +466,51 @@ public class GarbageRulesTest {
         // no pick, no room to make
         assertFalse(GarbageRules.dropIsNextPick(bag, -1, e(Items.FEATHER, 1), 64, true, 0, 0));
     }
+
+    // a bag entry the way StorageHelper builds it once the core protection is in: a core stack under the reserve may not go
+    private static GarbageRules.Entry block(net.minecraft.world.item.Item item, int count, int held, int reserve) {
+        boolean core = ItemHelper.isCoreBuildBlock(item);
+        return new GarbageRules.Entry(new ItemStack(item, count), !GarbageRules.protectsCore(core, held, reserve), 0);
+    }
+
+    @Test
+    public void coreBlocksUnderTheReserveAreProtectedAndFragmentsAreNot() {
+        assertTrue(GarbageRules.protectsCore(true, 64, 64));
+        assertTrue(GarbageRules.protectsCore(true, 3, 64));
+        // past the reserve the spare cobble can go like it always could
+        assertFalse(GarbageRules.protectsCore(true, 65, 64));
+        // granite and friends are never protected
+        assertFalse(GarbageRules.protectsCore(false, 3, 64));
+        assertTrue(ItemHelper.isCoreBuildBlock(Items.COBBLESTONE));
+        assertTrue(ItemHelper.isCoreBuildBlock(Items.COBBLED_DEEPSLATE));
+        assertTrue(ItemHelper.isCoreBuildBlock(Items.NETHERRACK));
+        assertTrue(ItemHelper.isCoreBuildBlock(Items.DIRT));
+        assertFalse(ItemHelper.isCoreBuildBlock(Items.GRANITE));
+        assertFalse(ItemHelper.isCoreBuildBlock(Items.ANDESITE));
+        assertFalse(ItemHelper.isCoreBuildBlock(Items.TUFF));
+        assertFalse(ItemHelper.isCoreBuildBlock(Items.STONE));
+    }
+
+    @Test
+    public void aFullBagOfFragmentsThrowsAFragmentNeverTheCobble() {
+        int held = 3 + 1 + 1 + 1 + 2;
+        List<GarbageRules.Entry> bag = List.of(
+                block(Items.COBBLESTONE, 3, held, 64), block(Items.GRANITE, 1, held, 64), block(Items.ANDESITE, 1, held, 64),
+                block(Items.DIORITE, 1, held, 64), block(Items.TUFF, 2, held, 64));
+        int pick = GarbageRules.nextPick(bag, 64, true, 0, 0);
+        assertTrue(pick > 0);
+        // the cobble drop is the cobble we are mining for, it is not the next thing out
+        assertFalse(GarbageRules.dropIsNextPick(bag, pick, block(Items.COBBLESTONE, 1, held, 64), 64, true, 0, 0));
+    }
+
+    @Test
+    public void aSecondIronSwordIsNeverTheWorseToolOrTheLeftover() {
+        // two of the same tier tie on durability, so neither one is the worse tool
+        assertEquals(-1, GarbageRules.worseTool(List.of(Items.IRON_SWORD, Items.IRON_SWORD)));
+        // the kit protects the sword by item (GamerTask), so with both stacks barred nothing is a pick at all
+        assertEquals(-1, next(List.of(new GarbageRules.Entry(new ItemStack(Items.IRON_SWORD, 1), false, -1),
+                new GarbageRules.Entry(new ItemStack(Items.IRON_SWORD, 1), false, -1))));
+        // a worse sword next to it still goes, the spare stays
+        assertEquals(2, next(List.of(e(Items.IRON_SWORD, 1), e(Items.IRON_SWORD, 1), e(Items.WOODEN_SWORD, 1))));
+    }
 }

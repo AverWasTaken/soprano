@@ -23,16 +23,19 @@ public final class Provocations {
     // one real hit, noted once. the tracker watches the damage source change, so a hit is one tick and not the two
     // seconds the client keeps the source around
     public synchronized void markHit(int id, long now) {
-        Long last = hits.put(id, now);
+        Long last = hits.get(id);
+        // a hit a tick or two behind the last one is lag, a later hit on a slipped clock: it keeps the newer stamp
+        boolean lag = last != null && last > now && GameClock.since(last, now) == 0;
+        hits.put(id, lag ? last : now);
         // the hit before this one, for "it shot us twice". noted twice on the same tick (the shooter and the thing that touched
         // us are the same mob for a melee hit) is still one hit, and a clock that went backwards is a new world
-        if (last != null && last < now) {
+        if (last != null && (last < now || lag)) {
             before.put(id, last);
-        } else if (last != null && last > now) {
+        } else if (last != null && GameClock.since(last, now) == Long.MAX_VALUE) {
             before.remove(id);
         }
         if (hits.size() > PRUNE_AT) {
-            hits.values().removeIf(at -> now - at < 0 || now - at > NeutralMobs.MEMORY_TICKS);
+            hits.values().removeIf(at -> GameClock.since(at, now) > NeutralMobs.MEMORY_TICKS);
             before.keySet().retainAll(hits.keySet());
         }
     }
@@ -41,16 +44,16 @@ public final class Provocations {
     public synchronized long sinceHitBefore(int id, long now) {
         Long at = before.get(id);
         if (at == null) return NEVER;
-        long age = now - at;
-        return age < 0 ? NEVER : age;
+        long age = GameClock.since(at, now);
+        return age == Long.MAX_VALUE ? NEVER : age;
     }
 
     // ticks since it hit us, NEVER for no record (or a clock that went backwards: new world, nobody is owed a grudge)
     public synchronized long sinceHit(int id, long now) {
         Long at = hits.get(id);
         if (at == null) return NEVER;
-        long age = now - at;
-        return age < 0 ? NEVER : age;
+        long age = GameClock.since(at, now);
+        return age == Long.MAX_VALUE ? NEVER : age;
     }
 
     public synchronized void mark(int id, long now) {
@@ -58,9 +61,9 @@ public final class Provocations {
         if (stamps.size() > PRUNE_AT) {
             Iterator<Long> it = stamps.values().iterator();
             while (it.hasNext()) {
-                long age = now - it.next();
-                // negative age is a clock that went backwards (new world), nobody is owed a grudge from there
-                if (age < 0 || age > NeutralMobs.MEMORY_TICKS) it.remove();
+                long age = GameClock.since(it.next(), now);
+                // a clock way back is a new world, nobody is owed a grudge from there (a tick or two is lag and keeps them)
+                if (age > NeutralMobs.MEMORY_TICKS) it.remove();
             }
         }
     }
@@ -73,8 +76,7 @@ public final class Provocations {
     public synchronized boolean recent(int id, long now, long window) {
         Long at = stamps.get(id);
         if (at == null) return false;
-        long age = now - at;
-        return age >= 0 && age <= window;
+        return GameClock.since(at, now) <= window;
     }
 
     public synchronized void clear() {

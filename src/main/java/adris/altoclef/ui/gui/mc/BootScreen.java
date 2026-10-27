@@ -26,6 +26,8 @@ public final class BootScreen {
     private static final float MARK_GROW = 0.08f;
 
     private static boolean broken;
+    // set by the logo redirect when it actually skipped mojang's logo this frame, eaten by draw()
+    private static boolean logoSkipped;
     private static McDraw draw;
     private static McCanvas canvas;
     private static int markPx;
@@ -41,9 +43,22 @@ public final class BootScreen {
         return !broken && SopranoMenus.enabled();
     }
 
+    public static void skippedLogo() {
+        logoSkipped = true;
+    }
+
+    // the bar hook runs after the logo blits in the same frame, so it can ask too
+    public static boolean ownsFrame() {
+        return drawing() && logoSkipped;
+    }
+
     // the overlay's tail. the clock numbers are vanilla's own fields, currentProgress already moved this frame
     public static void draw(GuiGraphicsExtractor g, boolean fadeIn, long fadeInStart, long fadeOutStart, float progress) {
-        if (!drawing()) {
+        // the logo redirect is require 0. if another loading screen mod got that call first, mojang's logo is still
+        // there and ours would sit right on top of it. two logos is worse than theirs alone
+        boolean ours = logoSkipped;
+        logoSkipped = false;
+        if (!drawing() || !ours) {
             return;
         }
         long now = Util.getMillis();

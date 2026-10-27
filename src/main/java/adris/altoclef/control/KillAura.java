@@ -27,8 +27,6 @@ import net.minecraft.world.entity.monster.illager.Pillager;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.skeleton.Stray;
 import net.minecraft.world.entity.monster.Witch;
-import net.minecraft.world.entity.monster.Zoglin;
-import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
@@ -57,6 +55,8 @@ public class KillAura {
     private boolean _shieldAllowed = true;
     private boolean _fighting = false;
     private int _committedId = -1;
+    // a run on a lava rim with a knocker on us: shield only, no swings, see tickEnd
+    private int _rimGuardId = -1;
     // whose name the shield keys go under. a task that brings its own aura passes itself, so the task's own key cleanup (a
     // finished root task is let go of without onStop) still lifts them
     private final Object _owner;
@@ -113,7 +113,37 @@ public class KillAura {
         }, entity -> entity.distanceToSqr(mod.getPlayer()));
     }
 
+    // the id the brain's rim shield for a run is up for (CombatBrain.auraRimGuard), -1 for none. only read while kiting, set
+    // every tick. the aim is that foe and nobody else: a creeper closer to us would not get the shield from tickEnd either
+    public void setRimGuard(int foeId) {
+        _rimGuardId = foeId;
+    }
+
+    // a blocked hit skips the knockback, and on a rim the knock is the lava. shield only: the swing stays off (a run is all feet and
+    // no hands), the shield pauses the path for as long as the brain holds the guard, and the brain caps that (RimHold)
+    private void rimGuard(AltoClef mod) {
+        Optional<Entity> nearest = _targets.stream().filter(entity -> entity.getId() == _rimGuardId).findFirst();
+        Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
+        if (nearest.isEmpty() || !_shieldAllowed || mod.getFoodChain().needsToEat() || mod.getMLGBucketChain().isFallingOhNo(mod)
+                || !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()
+                || !(mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
+                || mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))) {
+            stopShielding(mod);
+            return;
+        }
+        mod.getControllerExtras().aimAt(nearest.get(), CombatAim.Priority.AURA);
+        if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
+            mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
+        } else {
+            startShielding(mod);
+        }
+    }
+
     public void tickEnd(AltoClef mod) {
+        if (_kiting && _rimGuardId >= 0) {
+            rimGuard(mod);
+            return;
+        }
         if (_kiting) {
             stopShielding(mod);
             // ghast balls are still worth the turn
@@ -133,19 +163,18 @@ public class KillAura {
                 !mod.getMLGBucketChain().isChorusFruiting()) {
             PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
             Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-            // (one zombie does not get the shield, it stops us walking and vetoes the crit hop. two hitting us do, see
-            // CombatRules.pileShield)
+            // (the brain asks for the shield in every committed melee fight, see CombatRules.fightShield. a hoglin hit that is
+            // blocked still throws us but costs nothing, and the throw comes either way, so they get it too)
             if (!_shieldAllowed) {
                 stopShielding(mod);
-            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
-                    entities.get().getClass() != Zoglin.class && entities.get().getClass() != Warden.class &&
+            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Warden.class &&
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
                     && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                     // mid movement or knocked back mid movement the path is never safe to cancel, and a fight waiting for it
                     // took its hits with the shield down. same deal as the arrow shield in MobDefenseChain
                     && (_fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
-                // (the creeper and hoglin check above stays on the nearest one, the aim is the fight's own target)
+                // (the creeper check above stays on the nearest one, the aim is the fight's own target)
                 mod.getControllerExtras().aimAt(pick(mod), CombatAim.Priority.AURA);
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
@@ -164,7 +193,7 @@ public class KillAura {
                 performFastestAttack(mod);
                 break;
             case SMART:
-                // a committed fight is paced swings at one mob. the crowd branch below is 0.2 s uncharged pokes at the nearest
+                // a committed fight is paced swings at one mob. the crowd branch below is 0.2 s pokes at the nearest (a sword waits for its charge in there)
                 if (_fighting || _targets.size() <= 2 || _targets.stream().allMatch(entity -> entity instanceof Skeleton) ||
                         _targets.stream().allMatch(entity -> entity instanceof Witch) ||
                         _targets.stream().allMatch(entity -> entity instanceof Pillager) ||
@@ -180,7 +209,7 @@ public class KillAura {
                             attack(mod, _forceHit, true);
                         }
                         // pre 1.9 the clicker in attack() paces this, the fixed 0.2 s would be half a hand's cps
-                        if (LegacyCombat.active() || _hitDelay.elapsed()) {
+                        if (LegacyCombat.active() || mod.getControllerExtras().swordInHand() || _hitDelay.elapsed()) {
                             _hitDelay.reset();
 
                             Optional<Entity> toHit = Optional.ofNullable(pick(mod));
@@ -266,7 +295,7 @@ public class KillAura {
     }
 
     // crit is only for the paced swings of the delayed aura. the crowd mode swings every 0.2 s whether the cooldown is back
-    // or not, and a machine that gets asked every fourth tick can't steer a jump
+    // or not (a sword is asked every tick and waits for the charge itself), and a machine that gets asked every fourth tick can't steer a jump
     private void attack(AltoClef mod, Entity entity, boolean equipSword, boolean crit) {
         if (entity == null) return;
         // second guard: a wolf nobody poked is not our enemy, whatever put it in the target list
@@ -276,6 +305,8 @@ public class KillAura {
         }
         if (inFieldRange(mod, entity)) {
             if (entity instanceof LargeFireball) {
+                // shield up for it already: it blocks the ball, a swing would only drop our guard for the swing
+                if (mod.getPlayer().isBlocking()) return;
                 mod.getControllerExtras().attack(entity);
                 return;
             }
@@ -288,7 +319,8 @@ public class KillAura {
                 canAttack = mod.getSlotHandler().forceDeequipHitTool();
             }
             if (canAttack) {
-                if (crit && !(entity instanceof LargeFireball)) {
+                // a sword always goes through melee: it waits for the charge and sets up the sweep (fireballs returned above)
+                if ((crit || mod.getControllerExtras().swordInHand()) && !(entity instanceof LargeFireball)) {
                     mod.getControllerExtras().melee(entity);
                 } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()
                         || !mod.getControllerExtras().critInFlight()) {

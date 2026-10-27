@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -14,7 +15,8 @@ import java.util.List;
 import org.junit.Test;
 
 // a run at low hp that hits its cap with the mobs still on our heels. it used to end, and the low hp rule started a fresh
-// run with a fresh origin on the very same second, forever. now: one more window from the same origin, then turn around
+// run with a fresh origin on the very same second, forever. now it turns around at the cap (25 s, no extension) and fights,
+// and that fight latches the runs off until nothing is within 12 for two seconds
 public class CombatCommitChasedTest {
 
     private static final long NOW = 1000;
@@ -60,71 +62,58 @@ public class CombatCommitChasedTest {
         return c;
     }
 
-    private static CombatCommit extendedRun(Foe... foes) {
+    // the cap lands on the last tick, with the foes still where they were
+    private static CombatCommit atTheCap(Foe... foes) {
         CombatCommit c = lowHpRun();
         holds(c, NOW + 1, NOW + CAP - 1, 7, foes);
-        assertEquals(Event.RUN_EXTENDED, c.step(tick(NOW + CAP, 7, shuffle(NOW + CAP), foes)));
         return c;
     }
 
     @Test
-    public void theFirstCapStillChasedExtendsTheSameRun() {
-        CombatCommit c = extendedRun(zombie(1, 5));
-        assertEquals(Mode.RUN, c.mode());
-        // same origin and the same start: it is one run, the distance keeps counting from where it began
-        assertEquals(0, c.originX(), 0);
-        assertEquals(NOW, c.startTick());
-        assertFalse(c.coolingDown(NOW + CAP));
-    }
-
-    @Test
-    public void theExtensionIsAWholeCapWindow() {
-        CombatCommit c = extendedRun(zombie(1, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
-        assertEquals(Mode.RUN, c.mode());
-    }
-
-    @Test
-    public void theSecondCapStillChasedTurnsAroundAndFights() {
-        CombatCommit c = extendedRun(zombie(1, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
+    public void theCapStillChasedTurnsAroundAndFights() {
+        CombatCommit c = atTheCap(zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(Why.CHASED, c.why());
         assertEquals(1, c.targetId());
         // boxed in rules: a fight we turned around for does not bail back into a run at low hp, that is the loop again
         assertTrue(c.cornered());
         Foe target = zombie(1, 4);
-        assertEquals(Event.NONE, c.step(new Tick(NOW + 2 * CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6)), target)));
+        assertEquals(Event.NONE, c.step(new Tick(NOW + CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6)), target)));
         assertEquals(Mode.FIGHT, c.mode());
     }
 
     @Test
+    public void thereIsNoExtensionTheRunDoesNotOutliveTheCap() {
+        CombatCommit c = atTheCap(zombie(1, 5));
+        assertEquals(Mode.RUN, c.mode());
+        assertNotEquals(Event.NONE, c.step(tick(NOW + CAP, 7, shuffle(NOW + CAP), zombie(1, 5))));
+        assertNotEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
     public void aWardenWalkingUpMidChasedFightIsStillARun() {
-        CombatCommit c = extendedRun(zombie(1, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
+        CombatCommit c = atTheCap(zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
         Foe target = zombie(1, 2);
-        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + 2 * CAP + 1, 7, 0, 0, List.of(target, warden(2, 6)), target)));
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + CAP + 1, 7, 0, 0, List.of(target, warden(2, 6)), target)));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.HEAVY, c.why());
     }
 
     @Test
-    public void aWardenAboutAtTheSecondCapSkipsTheFightAndRunsAgain() {
+    public void aWardenAboutAtTheCapSkipsTheFightAndRunsAgain() {
         Foe[] foes = {zombie(1, 2), warden(2, 7)};
-        CombatCommit c = extendedRun(foes);
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, foes);
-        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP, 7, 0, foes)));
+        CombatCommit c = atTheCap(foes);
+        assertEquals(Event.RUN_START, c.step(tick(NOW + CAP, 7, 0, foes)));
         assertEquals(Event.RUN_CAP, c.endedFirst());
         assertEquals(Why.HEAVY, c.why());
     }
 
     @Test
-    public void onlyACreeperAtRangeLeftAtTheSecondCapJustEndsTheRun() {
-        CombatCommit c = extendedRun(creeper(2, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, creeper(2, 5));
-        assertEquals(Event.RUN_CAP, c.step(tick(NOW + 2 * CAP, 7, 0, creeper(2, 5))));
+    public void onlyACreeperAtRangeLeftAtTheCapJustEndsTheRun() {
+        CombatCommit c = atTheCap(creeper(2, 5));
+        assertEquals(Event.RUN_CAP, c.step(tick(NOW + CAP, 7, 0, creeper(2, 5))));
         assertEquals(Mode.NONE, c.mode());
     }
 
@@ -133,9 +122,8 @@ public class CombatCommitChasedTest {
         // 2 is closest but never touched us, 3 hit us from seven blocks: 3 it is. (seven, not six: a sinceHit that stays 20 for
         // a thousand ticks is a fresh hit every tick, and inside SWARM_RANGE that many hits turns the run around long before the cap)
         Foe[] foes = {zombie(2, 4), zombie(3, 7, 20)};
-        CombatCommit c = extendedRun(foes);
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, foes);
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, foes)));
+        CombatCommit c = atTheCap(foes);
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, foes)));
         assertEquals(3, c.targetId());
     }
 
@@ -143,18 +131,16 @@ public class CombatCommitChasedTest {
     public void nobodyOnUsTurnsOnTheClosestWeCanWalkUpTo() {
         // the creeper is closer, but walking up to a creeper is not a fight
         Foe[] foes = {creeper(2, 4), zombie(3, 7)};
-        CombatCommit c = extendedRun(foes);
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, foes);
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, foes)));
+        CombatCommit c = atTheCap(foes);
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, foes)));
         assertEquals(3, c.targetId());
     }
 
     @Test
     public void neverTurnsOnTheWarden() {
-        CombatCommit c = extendedRun(warden(2, 7));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, warden(2, 7));
+        CombatCommit c = atTheCap(warden(2, 7));
         // it stays a run, never a fight with it: the old run ends and danger starts the next one on the same step
-        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP, 7, 5, warden(2, 7))));
+        assertEquals(Event.RUN_START, c.step(tick(NOW + CAP, 7, 5, warden(2, 7))));
         assertEquals(Event.RUN_CAP, c.endedFirst());
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.HEAVY, c.why());
@@ -164,16 +150,14 @@ public class CombatCommitChasedTest {
     // ---- no gap between one commitment and the next
 
     @Test
-    public void aChasedFightThatWinsWithAFreshHitOnUsRunsOnTheSameStep() {
-        CombatCommit c = extendedRun(zombie(1, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
-        // zombie 1 dies as a skeleton puts an arrow in us from six blocks: the fight is over and the run is on, no tick between
+    public void aChasedFightThatWinsDoesNotStartAFreshRunOnTheSameStep() {
+        CombatCommit c = atTheCap(zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
+        // zombie 1 dies as a skeleton puts an arrow in us from six blocks: the fight is over, and the latch keeps the low hp
+        // rule from starting a run with a fresh origin on the very same step (that is the loop this whole thing is about)
         Foe skeleton = new Foe(2, 6, true, false, 0);
-        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP + 1, 6, 0, skeleton)));
-        assertEquals(Event.FIGHT_DEAD, c.endedFirst());
-        assertEquals(Mode.RUN, c.mode());
-        assertEquals(Why.LOW_HP, c.why());
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(NOW + CAP + 1, 6, 0, skeleton)));
+        assertEquals(Mode.NONE, c.mode());
     }
 
     @Test
@@ -212,10 +196,10 @@ public class CombatCommitChasedTest {
     }
 
     @Test
-    public void anExtendedRunStillEndsClearFromTheOriginalOrigin() {
-        CombatCommit c = extendedRun(zombie(1, 5));
+    public void aRunStillEndsClearOnceItIsFarEnough() {
+        CombatCommit c = lowHpRun();
         // 24 out from where it started, nothing within 12 for two seconds: over, no fight
-        long from = NOW + CAP + 1;
+        long from = NOW + 1;
         for (long now = from; now < from + CombatCommit.RUN_CLEAR_TICKS; now++) {
             assertEquals("tick " + now, Event.NONE, c.step(tick(now, 7, 24)));
         }
@@ -241,17 +225,21 @@ public class CombatCommitChasedTest {
     }
 
     @Test
-    public void aNewRunGetsItsOwnExtension() {
-        // a chased fight that wins, the cooldown, then a fresh low hp run: that one can be extended again
-        CombatCommit c = extendedRun(zombie(1, 5));
-        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
-        long won = NOW + 2 * CAP + 1;
+    public void aWonChasedFightKeepsTheRunsOffUntilNothingIsWithinTwelveForTwoSeconds() {
+        CombatCommit c = atTheCap(zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
+        long won = NOW + CAP + 1;
         assertEquals(Event.FIGHT_DEAD, c.step(tick(won, 7, 0)));
+        // the cooldown is over and a cube bounces about five blocks off at 7 hp: no run, the fight was the answer
         long again = won + CombatCommit.COOLDOWN;
-        assertEquals(Event.RUN_START, c.step(tick(again, 7, 0, zombie(4, 5))));
-        holds(c, again + 1, again + CAP - 1, 7, zombie(4, 5));
-        assertEquals(Event.RUN_EXTENDED, c.step(tick(again + CAP, 7, shuffle(again + CAP), zombie(4, 5))));
+        assertEquals(Event.NONE, c.step(tick(again, 7, 0, zombie(4, 5))));
+        assertEquals(Mode.NONE, c.mode());
+        // it goes quiet for two seconds (nothing within 12): the latch lets go and the next one is a run again
+        long quiet = again + 1;
+        for (long now = quiet; now <= quiet + CombatCommit.RUN_CLEAR_TICKS; now++) {
+            assertEquals("tick " + now, Event.NONE, c.step(tick(now, 7, 0, zombie(5, 20))));
+        }
+        assertEquals(Event.RUN_START, c.step(tick(quiet + CombatCommit.RUN_CLEAR_TICKS + 1, 7, 0, zombie(4, 5))));
     }
 
     // ---- low hp in the cooldown

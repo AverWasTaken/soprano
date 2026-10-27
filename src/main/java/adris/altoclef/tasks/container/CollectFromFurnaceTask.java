@@ -41,6 +41,11 @@ public class CollectFromFurnaceTask extends Task {
     // ticks until that input is out, read off the cook arrow when we let go. the job gets re-stamped with it
     private long leftTicks;
     private boolean cappedOut;
+    // the last look at the slots while the screen was open: input plus output still in the station (what is left to come back for),
+    // and the ticks the input still needs. -1 = never had the screen open. FurnaceWatch keeps the job honest off it, so a visit that
+    // gets cut off (a mob, a death) does not leave the job counting what is already in the bag
+    private int seenLeft = -1;
+    private long seenTicks;
     // the input came back out because the station was not cooking it (cold with no fuel, or it never finished): not a visit that
     // just chose to leave, FurnaceWatch backs the cook off after one of these or the same cook starts again at once
     private boolean tookBackStalled;
@@ -80,6 +85,16 @@ public class CollectFromFurnaceTask extends Task {
     // input still in the furnace when we let go of it, 0 = nothing left to come back for. only meaningful once finished
     public int inputLeft() {
         return inputLeft;
+    }
+
+    // what the last open screen showed still in the station (input + output), -1 when it was never open. see the field
+    public int seenLeft() {
+        return seenLeft;
+    }
+
+    // the ticks that input still needs, as of the same look
+    public long seenTicks() {
+        return seenTicks;
     }
 
     // how long the input we left behind still needs. only meaningful once finished with inputLeft above 0
@@ -156,6 +171,8 @@ public class CollectFromFurnaceTask extends Task {
         boolean lit = StorageHelper.getFurnaceFuel() > 0;
         long now = mod.getWorld().getGameTime();
         boolean hasInput = !input.isEmpty();
+        seenLeft = input.getCount() + output.getCount();
+        seenTicks = hasInput ? remainingTicks(input) : 0;
         FurnacePlan.Look look = new FurnacePlan.Look(!output.isEmpty(), input.getCount(), lit, fuel.isEmpty(),
                 !fuel.isEmpty() && AltoSettings.isSupportedFuel(fuel.getItem()), hasInput ? remainingTicks(input) : 0,
                 hasInput ? untilDry(input, fuel) : Long.MAX_VALUE, waitingSince >= 0 ? now - waitingSince : -1);
@@ -278,7 +295,9 @@ public class CollectFromFurnaceTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof CollectFromFurnaceTask task && task.pos.equals(pos) && task.mode == mode && task.block == block;
+        // a finished visit is not "the same task" as a fresh one at the same furnace: Task keeps the equal child, and a done one
+        // returns null every tick, so it would sit on top for ever
+        return other instanceof CollectFromFurnaceTask task && !task.done && task.pos.equals(pos) && task.mode == mode && task.block == block;
     }
 
     @Override

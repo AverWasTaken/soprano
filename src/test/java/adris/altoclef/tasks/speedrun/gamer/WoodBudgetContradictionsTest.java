@@ -26,6 +26,11 @@ import org.junit.Test;
 public class WoodBudgetContradictionsTest {
     private static final int BEDS = 8;
     private final OverworldConfig cfg = new OverworldConfig();
+    // the spare shields have their own test (KitPlannerTest), the budgets here are the kit as it was
+    {
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
+    }
 
     @BeforeClass
     public static void boot() {
@@ -40,8 +45,8 @@ public class WoodBudgetContradictionsTest {
     // everything the kit makes out of wood is made, the beds are the only wood left owed
     private static FakeFacts madeEverything() {
         return new FakeFacts().give(Items.WOODEN_PICKAXE, 1).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2)
-                .give(Items.STONE_AXE, 1).give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1)
-                .give(Items.LADDER, 3).give(Items.IRON_PICKAXE, 1).give(Items.IRON_AXE, 1).give(Items.BUCKET, 2)
+                .give(Items.STONE_SWORD, 1).give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1)
+                .give(Items.LADDER, 3).give(Items.IRON_PICKAXE, 1).give(Items.IRON_SWORD, 1).give(Items.BUCKET, 2)
                 .give(Items.SHEARS, 1).give(Items.FLINT_AND_STEEL, 1);
     }
 
@@ -229,7 +234,7 @@ public class WoodBudgetContradictionsTest {
                         if (!pick) {
                             f.items.remove(Items.IRON_PICKAXE);
                             f.items.remove(Items.STONE_PICKAXE);
-                            f.items.remove(Items.STONE_AXE);
+                            f.items.remove(Items.STONE_SWORD);
                         }
                         f.give(Items.OAK_LOG, logs).give(Items.OAK_PLANKS, planks);
                         WoodBudget w = WoodBudget.of(f, cfg, beds, GamerPhase.IRON);

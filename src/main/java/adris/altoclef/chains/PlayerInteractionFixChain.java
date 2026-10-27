@@ -104,7 +104,9 @@ public class PlayerInteractionFixChain extends TaskChain {
             // the clicks go to containerMenu, so a menu still open behind a closed screen counts too
             boolean containerOpen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>
                     || mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
-            if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen) {
+            // and not mid bite: 72 slot clicks cut the use short
+            boolean eating = mod.getFoodChain().isTryingToEat() || mod.getPlayer().isUsingItem();
+            if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen && !eating) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
                 Debug.logInternal("Refreshed inventory...");
                 mod.getSlotHandler().refreshInventory();

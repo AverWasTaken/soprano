@@ -3,6 +3,7 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import java.util.function.Predicate;
 
@@ -42,22 +43,62 @@ public final class WaterUpkeep {
 
     public static boolean coolingDown(int now, int failedAt) {
         // the tick counter restarts on a reconnect, a stamp from before it is old news
-        return now >= failedAt && now - failedAt < COOLDOWN_TICKS;
+        return GameClock.since(failedAt, now) < COOLDOWN_TICKS;
     }
 
     public static boolean lookedRecently(int now, int lookedAt) {
-        return now >= lookedAt && now - lookedAt < LOOK_TICKS;
+        return GameClock.since(lookedAt, now) < LOOK_TICKS;
     }
 
     public static boolean timedOut(int now, int startedAt) {
-        return now < startedAt || now - startedAt >= TIMEOUT_TICKS;
+        return GameClock.since(startedAt, now) >= TIMEOUT_TICKS;
     }
 
-    // water we can scoop from above: a source with open air over it
+    // how far from the source we look for somewhere dry to stand
+    private static final int SHORE = 3;
+
+    // water we can scoop from above: a source with open air over it, and a way out again. a flooded cave with a one block gap
+    // under its ceiling has both of the first two and is a trap anyway
     public static boolean pondSource(AltoClef mod, BlockPos p) {
-        return BucketPour.isWaterSource(mod.getWorld(), p)
-                && FluidSources.exposedSource(mod.getWorld().getFluidState(p), mod.getWorld().getFluidState(p.above()))
-                && mod.getWorld().getBlockState(p.above()).getCollisionShape(mod.getWorld(), p.above()).isEmpty();
+        Level world = mod.getWorld();
+        return BucketPour.isWaterSource(world, p)
+                && FluidSources.exposedSource(world.getFluidState(p), world.getFluidState(p.above()))
+                && world.getBlockState(p.above()).getCollisionShape(world, p.above()).isEmpty()
+                && pondOpen(!world.getBlockState(p.above(2)).getCollisionShape(world, p.above(2)).isEmpty(), dryStandNearby(world, p));
+    }
+
+    // a solid lid right over the air layer means the pond is a pocket, and nowhere dry to stand means we would be swimming
+    // for the scoop. either way it is not a pond, it is a cave with water in it
+    public static boolean pondOpen(boolean lidOverTheGap, boolean dryStandNearby) {
+        return !lidOverTheGap && dryStandNearby;
+    }
+
+    // feet and head clear of anything solid and of water, with a floor that is not water under it
+    public static boolean standable(boolean floorSolid, boolean floorWet, boolean feetClear, boolean headClear, boolean wet) {
+        return floorSolid && !floorWet && feetClear && headClear && !wet;
+    }
+
+    private static boolean dryStandNearby(Level world, BlockPos p) {
+        BlockPos.MutableBlockPos c = new BlockPos.MutableBlockPos();
+        for (int dx = -SHORE; dx <= SHORE; dx++) {
+            for (int dz = -SHORE; dz <= SHORE; dz++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    c.set(p.getX() + dx, p.getY() + dy, p.getZ() + dz);
+                    if (dryStand(world, c)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean dryStand(Level world, BlockPos feet) {
+        BlockPos below = feet.below();
+        BlockPos head = feet.above();
+        return standable(!world.getBlockState(below).getCollisionShape(world, below).isEmpty(), !world.getFluidState(below).isEmpty(),
+                world.getBlockState(feet).getCollisionShape(world, feet).isEmpty(), world.getBlockState(head).getCollisionShape(world, head).isEmpty(),
+                !world.getFluidState(feet).isEmpty() || !world.getFluidState(head).isEmpty());
     }
 
     // nearest pond source within range (and 8 up or down), straight line. a cube walk, which is why callers only ask

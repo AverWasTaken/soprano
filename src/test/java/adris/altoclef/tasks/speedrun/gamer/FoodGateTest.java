@@ -31,6 +31,8 @@ public class FoodGateTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         end = new EndConfig();
     }
 

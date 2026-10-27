@@ -10,6 +10,7 @@ import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 // what a smelt task knows about a furnace or smoker it is not looking at right now. an interrupt (the pickup, a mob, a death)
 // restarts the task with empty caches, and "nothing in the caches" used to read as "nothing in the furnace": the bot mined
@@ -36,6 +37,39 @@ final class StationMemory {
             return 0;
         }
         return mod.getItemStorage().getContainerAtPosition(at).map(c -> c.getItemCount(materials.getMatches())).orElse(0);
+    }
+
+    // the raw stack of ours the tracker last saw in this station, empty when none or it is not ours. a cook that was cut off and
+    // restarted has empty caches, and "nothing cached" is not "nothing in the station" (same story as materialsRemembered)
+    static ItemStack materialLook(AltoClef mod, BlockPos at, ItemTarget materials) {
+        if (at == null || !AsyncSmelting.isOurFurnace(at)) {
+            return ItemStack.EMPTY;
+        }
+        return mod.getItemStorage().getContainerAtPosition(at).map(c -> {
+            for (net.minecraft.world.item.Item item : materials.getMatches()) {
+                int n = c.getItemCount(item);
+                if (n > 0) {
+                    return new ItemStack(item, n);
+                }
+            }
+            return ItemStack.EMPTY;
+        }).orElse(ItemStack.EMPTY);
+    }
+
+    // a restarted smelt task's picture of its station (everything it cached went with the restart): where, what raw stuff of ours,
+    // the fuel in the slot, and what is burning. the tracker cannot see the fire, but the block can (lit furnaces show it), and a
+    // load that was cut off after the last fuel went in is lit with an empty fuel slot. null when there is nothing of ours in it by
+    // the last look, or a job already points at it (that one has its own timer, a guess from a stale look would replace it)
+    record Look(BlockPos at, ItemStack material, double slotFuel, double burning) {
+    }
+
+    static Look restartedLook(AltoClef mod, BlockPos at, ItemTarget materials) {
+        ItemStack material = materialLook(mod, at, materials);
+        if (material.isEmpty() || AsyncSmelting.jobAt(at)) {
+            return null;
+        }
+        boolean lit = mod.getWorld().getBlockState(at).getOptionalValue(BlockStateProperties.LIT).orElse(false);
+        return new Look(at, material, fuelRemembered(mod, at, materials), lit ? material.getCount() : 0);
     }
 
     // smelts of fuel in the last look: the fuel slot, in the same units the smelt tasks count in. the cargo is not fuel even

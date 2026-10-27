@@ -58,9 +58,32 @@ public class WaterUpkeepTest {
     }
 
     @Test
+    public void aPocketUnderALidIsNotAPond() {
+        assertTrue(WaterUpkeep.pondOpen(false, true));
+        // one block of air then dirt: the flooded cave
+        assertFalse(WaterUpkeep.pondOpen(true, true));
+        // open sky but nowhere to stand
+        assertFalse(WaterUpkeep.pondOpen(false, false));
+        assertFalse(WaterUpkeep.pondOpen(true, false));
+    }
+
+    @Test
+    public void aDryStandNeedsAFloorAndRoomAndNoWater() {
+        assertTrue(WaterUpkeep.standable(true, false, true, true, false));
+        assertFalse(WaterUpkeep.standable(false, false, true, true, false));
+        assertFalse(WaterUpkeep.standable(true, true, true, true, false));
+        assertFalse(WaterUpkeep.standable(true, false, false, true, false));
+        assertFalse(WaterUpkeep.standable(true, false, true, false, false));
+        assertFalse(WaterUpkeep.standable(true, false, true, true, true));
+    }
+
+    @Test
     public void aReconnectDoesNotFreezeTheRules() {
         // the tick counter starts over, so "now" can be smaller than any stamp from before
         assertFalse(WaterUpkeep.coolingDown(50, 400000));
+        // a tick back is lag: still cooling, not timed out
+        assertTrue(WaterUpkeep.coolingDown(998, 1000));
+        assertFalse(WaterUpkeep.timedOut(998, 1000));
         assertTrue(WaterUpkeep.timedOut(50, 400000));
         assertFalse(WaterUpkeep.lookedRecently(50, 400000));
         assertTrue(WaterUpkeep.lookedRecently(110, 100));

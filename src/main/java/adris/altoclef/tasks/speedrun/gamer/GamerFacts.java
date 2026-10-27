@@ -33,6 +33,12 @@ public interface GamerFacts {
         return 0;
     }
 
+    // swords (NetherPick.isSword) past ToolWear's line that count() still holds. worn picks are left out of count(), swords are
+    // not (the planner and the weapon pick read them as they are), so the nether sword remake asks for this one
+    default int wornSwords() {
+        return 0;
+    }
+
     // diagnostics only: the pickaxes the last scan saw and the open screen, as one greppable tail (PickDiag.scan). the fakes
     // have no inventory to scan
     default String pickScan() {

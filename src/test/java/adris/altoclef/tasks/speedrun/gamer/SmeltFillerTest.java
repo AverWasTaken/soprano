@@ -28,6 +28,8 @@ public class SmeltFillerTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
     }
 
     private static List<String> names(List<KitNeed> needs) {
@@ -41,7 +43,7 @@ public class SmeltFillerTest {
     // the starter kit, enough food to leave, and nothing iron yet: where the bot is when the first batch goes in
     private FakeFacts atTheFurnace() {
         FakeFacts f = new FakeFacts();
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
         f.foodUnits = 70;
         return f;
     }
@@ -50,14 +52,14 @@ public class SmeltFillerTest {
     public void theDiamondDigWaitsForTheCraftsTheFurnaceOwes() {
         // the essentials in hand, the armor's iron still cooking: the dig is no ingots but it is not the filler either
         FakeFacts f = atTheFurnace().give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.BUCKET, 2)
-                .give(Items.IRON_AXE, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("iron_ingot", 24, 400);
+                .give(Items.IRON_SWORD, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("iron_ingot", 24, 400);
         Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
         assertNull(s.runnable().toString(), find(s.runnable(), KitPlanner.DIAMOND));
         assertEquals(new KitNeed(KitPlanner.DIAMOND, 3), find(s.blocked(), KitPlanner.DIAMOND));
         // nothing waiting on the furnace (a smoker cooks the meat, say): the dig is runnable again
         cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
         FakeFacts done = atTheFurnace().give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.BUCKET, 2)
-                .give(Items.IRON_AXE, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("cooked_beef", 8, 400);
+                .give(Items.IRON_SWORD, 1).give(Items.SHIELD, 1).give(Items.SHEARS, 1).cooking("cooked_beef", 8, 400);
         assertEquals(new KitNeed(KitPlanner.DIAMOND, 3), find(SmeltFiller.schedule(done, cfg, BEDS).runnable(), KitPlanner.DIAMOND));
     }
 
@@ -67,7 +69,7 @@ public class SmeltFillerTest {
         Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
         assertEquals(KitPlanner.plan(f, cfg, BEDS), s.runnable());
         assertTrue(s.blocked().isEmpty());
-        assertEquals(40, find(s.runnable(), "iron_ingot").count());
+        assertEquals(39, find(s.runnable(), "iron_ingot").count());
     }
 
     @Test
@@ -77,7 +79,7 @@ public class SmeltFillerTest {
         assertNull(find(KitPlanner.plan(f, cfg, BEDS), "iron_ingot"));
         // but not a smaller batch, that one still needs the rest
         FakeFacts small = atTheFurnace().cooking("iron_ingot", 20, 400);
-        assertEquals(40, find(KitPlanner.plan(small, cfg, BEDS), "iron_ingot").count());
+        assertEquals(39, find(KitPlanner.plan(small, cfg, BEDS), "iron_ingot").count());
     }
 
     @Test
@@ -139,7 +141,7 @@ public class SmeltFillerTest {
     @Test
     public void craftsThatWantIngotsWeDoNotHoldAreBlocked() {
         Schedule s = SmeltFiller.schedule(atTheFurnace().cooking("iron_ingot", 40, 400), cfg, BEDS);
-        assertEquals(List.of("iron_pickaxe", "iron_axe", "bucket", "flint_and_steel", "shield", "shears", "iron_chestplate",
+        assertEquals(List.of("iron_pickaxe", "iron_sword", "bucket", "flint_and_steel", "shield", "shears", "iron_chestplate",
                 "iron_helmet", "iron_leggings", "iron_boots"), names(s.blocked()));
         for (String iron : List.of("iron_pickaxe", "bucket", "iron_boots")) {
             assertNull(iron, find(s.runnable(), iron));
@@ -151,8 +153,8 @@ public class SmeltFillerTest {
         // 3 pays the pickaxe, nothing is left for the sword
         Schedule s = SmeltFiller.schedule(atTheFurnace().give(Items.IRON_INGOT, 3).cooking("iron_ingot", 36, 400), cfg, BEDS);
         assertEquals(new KitNeed("iron_pickaxe", 1), find(s.runnable(), "iron_pickaxe"));
-        assertNull(find(s.runnable(), "iron_axe"));
-        assertEquals(new KitNeed("iron_axe", 1), find(s.blocked(), "iron_axe"));
+        assertNull(find(s.runnable(), "iron_sword"));
+        assertEquals(new KitNeed("iron_sword", 1), find(s.blocked(), "iron_sword"));
         assertNull(find(s.blocked(), "iron_pickaxe"));
     }
 
@@ -171,7 +173,7 @@ public class SmeltFillerTest {
     @Test
     public void ironFreeCraftsStayRunnableWhileTheIronCooks() {
         FakeFacts f = new FakeFacts().cooking("iron_ingot", 40, 400);
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1);
         f.foodUnits = 70;
         Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
         // ladders are sticks, no ingots, so they are not stuck behind the furnace like the pickaxe is

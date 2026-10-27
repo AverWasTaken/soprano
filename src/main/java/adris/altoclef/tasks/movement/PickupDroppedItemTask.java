@@ -311,6 +311,13 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 boolean fits = hasRoomFor(_mod, itemEntity.getItem());
                 ItemPickupRules.Room room = ItemPickupRules.room(fits, canMakeRoom(_mod));
                 if (room == ItemPickupRules.Room.MAKE_ROOM) {
+                    // the drop would be the next thing thrown, so making room for it is a loop with extra steps. same skip as the death pile
+                    if (!fits && StorageHelper.garbageView(_mod).dropIsNext(itemEntity.getItem())) {
+                        BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
+                        _currentDrop = null;
+                        _progressChecker.reset();
+                        return null;
+                    }
                     return new EnsureFreeInventorySlotTask();
                 }
                 if (room == ItemPickupRules.Room.GIVE_UP) {

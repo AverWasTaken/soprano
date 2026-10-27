@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -834,7 +835,7 @@ public class CombatCommitTest {
     public void aCorneredFightChainsToAnotherFoeInReach() {
         CombatCommit c = corneredOn(6, 1.5);
         long dead = NOW + 200;
-        assertEquals(Event.FIGHT_NEXT, c.step(tick(dead, 3f, null, zombie(9, 2.9))));
+        assertEquals(Event.FIGHT_NEXT, c.step(tick(dead, 3f, null, zombie(9, 2.9, 1))));
         assertEquals(Mode.FIGHT, c.mode());
         assertTrue(c.cornered());
         assertEquals(Why.CORNERED, c.why());
@@ -1235,30 +1236,50 @@ public class CombatCommitTest {
     // ---- clocks
 
     @Test
-    public void aClockThatWentBackwardsResetsTheMachine() {
+    public void aClockThatWentBackwardsALittleKeepsTheFight() {
         CombatCommit c = fightOn(5000, zombie(1, 2, 0));
-        assertEquals(Event.NONE, c.step(tick(100, 20, null)));
-        assertEquals(Mode.NONE, c.mode());
-        assertEquals(-1, c.targetId());
+        c.step(facing(5010, zombie(1, 2, 0)));
+        // the server's time packet pulls the clock back a tick or two, the fight stays
+        c.step(facing(5008, zombie(1, 2, 0)));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(1, c.targetId());
+        assertEquals(5000, c.startTick());
     }
 
     @Test
-    public void aClockThatWentBackwardsForgetsTheCooldown() {
+    public void aClockSlipDoesNotCountTheSameHitTwiceOnARun() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        long t0 = NOW + 100;
+        c.step(tick(t0, 20, null, zombie(1, 2, 9)));
+        // two ticks back: the same hit now reads 7 ticks old, which is the same moment, not a second hit
+        assertNotEquals(Event.RUN_CHASED_FIGHT, c.step(tick(t0 - 2, 20, null, zombie(1, 2, 7))));
+    }
+
+    @Test
+    public void aClockThatWentBackwardsALittleKeepsTheRun() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        c.step(runTick(NOW + 10, 0, 0, zombie(2, 3)));
+        c.step(runTick(NOW + 8, 0, 0, zombie(2, 3)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aClockThatWentBackwardsKeepsTheCooldown() {
         CombatCommit c = fightOn(5000, zombie(1, 2, 0));
         assertEquals(Event.FIGHT_DEAD, c.step(tick(5010, 20, null)));
         assertTrue(c.coolingDown(5011));
-        // a new world, a zombie that hit us a while ago right away would be ignored if the old cooldown were still ticking
-        assertEquals(Event.FIGHT_START, c.step(tick(100, 20, null, zombie(2, 2, TEN_SECONDS))));
+        // the cooldown belongs to the same world, a tick back does not wipe it
+        assertEquals(Event.NONE, c.step(tick(5009, 20, null, zombie(2, 2, TEN_SECONDS))));
+        assertEquals(Mode.NONE, c.mode());
     }
 
     @Test
-    public void aClockThatWentBackwardsForgetsWhoWeGaveUpOn() {
+    public void aClockThatWentBackwardsKeepsWhoWeGaveUpOn() {
         CombatCommit c = fightOn(5000, zombie(1, 2, 0));
         standUntilStalled(c, 5000, 5, 5000);
         assertTrue(c.isIgnored(1));
-        // ids get reused in a new world
-        assertEquals(Event.NONE, c.step(tick(100, 20, null)));
-        assertFalse(c.isIgnored(1));
+        c.step(tick(100, 20, null));
+        assertTrue(c.isIgnored(1));
     }
 
     // ---- a new player (what the chain does on a respawn, the clock keeps going so the backwards clock rule is no help)

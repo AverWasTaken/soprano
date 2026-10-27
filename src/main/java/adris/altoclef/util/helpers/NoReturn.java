@@ -23,7 +23,7 @@ public final class NoReturn {
             return false;
         }
         // a clock that went backwards does not hold for ever
-        return now >= droppedAt && now - droppedAt < HOLD_TICKS;
+        return GameClock.since(droppedAt, now) < HOLD_TICKS;
     }
 
     public void clear() {

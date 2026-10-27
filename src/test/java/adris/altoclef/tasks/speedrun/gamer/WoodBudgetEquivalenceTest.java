@@ -389,6 +389,8 @@ public class WoodBudgetEquivalenceTest {
             }
 
             OverworldConfig cfg = new OverworldConfig();
+            cfg.netherSpareShields = 0;
+            cfg.netherSpareSwords = 0;
             int variant = r.nextInt(10);
             if (variant == 0) {
                 // no iron owed: the furnace is the meat's

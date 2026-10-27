@@ -174,9 +174,8 @@ public final class KitPlanner {
         return false;
     }
 
-    // the axe for the logs, not the weapon: stone_axe and iron_axe are in the kit now too (instead of the swords) and they
-    // are crafts like any other. calling them the log axe would have fetched them before the stone pick and skipped their
-    // sticks once the iron phase starts
+    // the axe for the logs, not the weapon: the swords are in the kit and they are crafts like any other. only the wooden axe
+    // gets fetched before the stone pick
     static boolean isAxe(String name) {
         return name.equals("wooden_axe");
     }
@@ -218,7 +217,7 @@ public final class KitPlanner {
     // cobble a stray placement can eat before the crafts, so one misplaced block is not a second trip
     private static final int STONE_SLACK = 2;
     // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8.
-    // the kit makes the axe and not the sword (3 cobble, not 2), so a fresh run mines 19. the split smelt's extra furnaces are not
+    // the kit makes the sword (2 cobble) and not a stone axe, so a fresh run mines 18. the split smelt's extra furnaces are not
     // in here: the mine brings back far more spare cobble than 16, and SmeltSplit.loads uses what is spare when it decides
     private static final Map<String, Integer> COBBLE_COST = Map.of(
             "stone_pickaxe", 3, "stone_axe", 3, "stone_sword", 2, "stone_hoe", 2, "stone_shovel", 1, "furnace", 8);
@@ -273,7 +272,7 @@ public final class KitPlanner {
 
     private static int stoneWanted(GamerFacts f, OverworldConfig cfg, boolean furnaceStanding) {
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
-        all.addAll(cfg.ironKit);
+        all.addAll(ironKit(f, cfg));
         int wanted = 0;
         for (KitItem k : all) {
             Integer cost = COBBLE_COST.get(k.item);
@@ -332,7 +331,9 @@ public final class KitPlanner {
                 continue;
             }
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
-            crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
+            // the first shield (or sword) is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
+            int craft = (k.item.equals("shield") || k.item.equals("iron_sword")) && have(f, k.item) == 0 ? 1 : missing;
+            crafts.add(new KitNeed(k.item, held(f, k.item) + craft));
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
         // ironItems no longer owes (so nothing gets smelted for a pick or a chestplate we are about to outclass)
@@ -418,12 +419,35 @@ public final class KitPlanner {
         });
     }
 
+    // the iron kit as the planner reads it: the shield entry grows by netherSpareShields and the sword entry by netherSpareSwords,
+    // the spares ride in the bag. everything that sums the kit (ingots, planks, the craft list) goes through this, so none of
+    // them can disagree about the count
+    static List<KitItem> ironKit(GamerFacts f, OverworldConfig cfg) {
+        List<KitItem> out = new ArrayList<>();
+        for (KitItem k : cfg.ironKit) {
+            if ("shield".equals(k.item) && cfg.netherSpareShields > 0) {
+                out.add(new KitItem(k.item, k.count + cfg.netherSpareShields));
+            } else if ("iron_sword".equals(k.item) && cfg.netherSpareSwords > 0 && !betterSword(f)) {
+                out.add(new KitItem(k.item, k.count + cfg.netherSpareSwords));
+            } else {
+                out.add(k);
+            }
+        }
+        return out;
+    }
+
+    // a diamond or netherite sword in the bag counts as the iron one (have), and the spare is not owed on top of it: the diamond
+    // craft takes the whole entry while it runs, and the entry must not come back one bigger the moment it is done
+    private static boolean betterSword(GamerFacts f) {
+        return have(f, "iron_sword") > f.count(exact("iron_sword"));
+    }
+
     private static List<KitItem> ironItems(GamerFacts f, OverworldConfig cfg) {
         // whatever DiamondSpend picked is a diamond item from this tick on and stops being an iron one. nothing already smelted or
         // crafted goes anywhere, the diamond piece just wins the slot
         List<String> diamond = DiamondSpend.choose(f, cfg);
         List<KitItem> all = new ArrayList<>();
-        for (KitItem k : cfg.ironKit) {
+        for (KitItem k : ironKit(f, cfg)) {
             if (!DiamondSpend.replaces(diamond, k.item)) {
                 all.add(k);
             }
@@ -523,7 +547,7 @@ public final class KitPlanner {
     }
 
     // what is left of GATHER once the food is not counted: both stone tools. enough to carry on and let IRON do the food.
-    // the weapon is whatever swings: the kit makes an axe, but a sword out of a chest is a stone sword too (a better tier
+    // the weapon is whatever swings: the kit makes a sword, but an axe out of a chest swings too (a better tier
     // of either counts, have() sees to that)
     public static boolean stoneToolsMet(GamerFacts f) {
         return have(f, "stone_pickaxe") >= 1 && (have(f, "stone_axe") >= 1 || have(f, "stone_sword") >= 1);

@@ -178,4 +178,20 @@ public class RespawnTest {
     public void noStartNoBed() {
         assertFalse(Respawn.wantRoomBed(new RunState(), true, 3));
     }
+
+    @Test
+    public void aCarriedBedGoesDownByThePortalOnlyWhenNothingHoldsTheRespawnThere() {
+        RunState s = new RunState();
+        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+        // no bed in the bag (none gets made for this)
+        assertFalse(Respawn.wantPortalBed(s, 0, 100, 100));
+        // a respawn right by the portal is already the answer, one a long way off is not
+        Respawn.set(s, pos(130, 66, 90), "OVERWORLD");
+        assertFalse(Respawn.wantPortalBed(s, 1, 100, 100));
+        Respawn.set(s, pos(900, 66, 90), "OVERWORLD");
+        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+        // a respawn in another dimension holds nothing here
+        Respawn.set(s, pos(130, 66, 90), "NETHER");
+        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+    }
 }

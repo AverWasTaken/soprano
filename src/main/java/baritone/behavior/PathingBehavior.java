@@ -519,6 +519,18 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         return doIt;
     }
 
+    // the processes go now, and a segment that is mid step goes on the first safe tick (see DeferredCancel). unlike handoverCancel
+    // nothing is parked for a later task. NOT exposed on public api
+    public void cancelWhenSafe() {
+        cancelEverything();
+        synchronized (pathPlanLock) {
+            if (current != null && !isSafeToCancel()) {
+                deferredCancel.request();
+                next = null;
+            }
+        }
+    }
+
     public boolean calcFailedLastTick() { // NOT exposed on public api
         return calcFailedLastTick;
     }

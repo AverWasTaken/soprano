@@ -198,4 +198,62 @@ public class NetherPickTest {
                 NetherPick.shortLine(new Bag(2, 1, 1, 0, 2, false)));
         assertFalse(NetherPick.covered(new Bag(3, 0, 0, 0, 0, false), Tier.IRON));
     }
+
+    @Test
+    public void aSwordPrefersDiamondThenIronThenCobble() {
+        NetherPick.Kind sw = NetherPick.Kind.SWORD;
+        // table and sticks in the bag, only the head varies. (diamonds, ingots, cobble)
+        assertEquals(Tier.DIAMOND, NetherPick.choose(new Bag(2, 2, 0, 2, 0, true, 2), sw));
+        assertEquals(Tier.IRON, NetherPick.choose(new Bag(2, 2, 0, 2, 0, true, 1), sw));
+        assertEquals(Tier.STONE, NetherPick.choose(new Bag(1, 2, 0, 2, 0, true, 1), sw));
+        assertEquals(Tier.NONE, NetherPick.choose(new Bag(1, 1, 9, 2, 0, true, 1), sw));
+        // planks are no sword head, and a pick never goes to diamond
+        assertEquals(Tier.WOODEN, NetherPick.choose(new Bag(0, 0, 9, 2, 0, true, 5)));
+        assertEquals(Tier.NONE, NetherPick.choose(new Bag(0, 0, 0, 2, 0, true, 5)));
+    }
+
+    @Test
+    public void headsAreTwoForASwordAndThreeForAPick() {
+        Bag two = new Bag(2, 0, 0, 1, 0, true);
+        assertTrue(NetherPick.covered(two, Tier.IRON, NetherPick.Kind.SWORD));
+        assertFalse(NetherPick.covered(two, Tier.IRON, NetherPick.Kind.PICKAXE));
+        // one stick is enough for a sword, a pick wants two
+        assertEquals(NetherPick.Stage.PICK, NetherPick.stage(two, Tier.IRON, NetherPick.Kind.SWORD));
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(3, 0, 0, 1, 0, true), Tier.IRON));
+    }
+
+    @Test
+    public void aSwordWithoutSticksOrMaterialsAborts() {
+        NetherPick.Kind sw = NetherPick.Kind.SWORD;
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(2, 0, 0, 0, 0, true), Tier.IRON, sw));
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(1, 0, 0, 1, 0, true), Tier.IRON, sw));
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(0, 0, 0, 1, 0, true, 1), Tier.DIAMOND, sw));
+        // the sticks can come out of planks in the bag
+        assertEquals(NetherPick.Stage.STICKS, NetherPick.stage(new Bag(2, 0, 2, 0, 0, true), Tier.IRON, sw));
+        // and a table out of planks, but only with enough of them
+        assertEquals(NetherPick.Stage.TABLE, NetherPick.stage(new Bag(0, 0, 4, 1, 0, false, 2), Tier.DIAMOND, sw));
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(0, 0, 3, 1, 0, false, 2), Tier.DIAMOND, sw));
+    }
+
+    @Test
+    public void aSwordSkipsTheTierOfOneWeHoldWorn() {
+        Bag iron = new Bag(2, 2, 0, 2, 0, true, 0);
+        assertEquals(Tier.STONE, NetherPick.choose(iron, NetherPick.Kind.SWORD, t -> t == Tier.IRON));
+        assertEquals(Tier.NONE, NetherPick.choose(new Bag(2, 0, 0, 2, 0, true), NetherPick.Kind.SWORD, t -> t == Tier.IRON));
+    }
+
+    @Test
+    public void swordNamesFollowTheCatalogue() {
+        assertEquals("diamond_sword", NetherPick.catalogueName(Tier.DIAMOND, NetherPick.Kind.SWORD));
+        assertEquals("stone_pickaxe", NetherPick.catalogueName(Tier.STONE));
+    }
+
+    @Test
+    public void aWornSwordDoesNotCountAsUsable() {
+        FakeFacts f = nether();
+        f.give(Items.IRON_SWORD, 1);
+        assertTrue(NetherPick.hasUsableSword(f));
+        f.wornSwords = 1;
+        assertFalse(NetherPick.hasUsableSword(f));
+    }
 }

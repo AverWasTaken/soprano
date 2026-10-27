@@ -537,7 +537,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, "bricks");
                 shapedRecipeWall("brick_wall", Items.BRICK_WALL, "bricks");
             }
-            shapedRecipe3x3("ladder", Items.LADDER, 3, s, o, s, s, s, s, s, o, s);
+            shapedRecipe3x3("ladder", Items.LADDER, 3, s, o, s, s, s, s, s, o, s).dontMineIfPresent();
             shapedRecipe3x3("jukebox", Items.JUKEBOX, 1, p, p, p, p, "diamond", p, p, p, p);
             shapedRecipe3x3("note_block", Items.NOTE_BLOCK, 1, p, p, p, p, "redstone", p, p, p, p);
             shapedRecipe3x3("redstone_lamp", Items.REDSTONE_LAMP, 1, o, "redstone", o, "redstone", "glowstone", "redstone", o, "redstone", o);

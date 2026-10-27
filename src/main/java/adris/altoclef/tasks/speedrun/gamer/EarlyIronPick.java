@@ -34,7 +34,8 @@ public final class EarlyIronPick {
         Set<String> owed = KitPlanner.ironItemsOwed(f, cfg);
         List<String> out = new ArrayList<>();
         for (String item : ITEMS) {
-            if (owed.contains(item)) {
+            // one early shield, the spares (KitPlanner.ironKit) are the normal crafts' business
+            if (owed.contains(item) && (!"shield".equals(item) || KitPlanner.have(f, item) == 0)) {
                 out.add(item);
             }
         }

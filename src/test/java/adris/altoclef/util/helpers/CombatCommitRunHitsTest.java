@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.function.LongFunction;
 import org.junit.Test;
 
-// a run that keeps taking hits is not working. the biter wants a second of unbroken contact, and a mob that runs in,
-// swings and gets knocked off never gives it one, so the hits get counted instead: RUN_HITS after the grace and we turn
+// a run that keeps taking hits is not working. a mob that runs in, swings and gets knocked off never stays in contact,
+// so the hits get counted: RUN_HITS after the grace and we turn
 public class CombatCommitRunHitsTest {
 
     private static final long NOW = 1000;
@@ -30,7 +30,7 @@ public class CombatCommitRunHitsTest {
         return new Tick(now, hp, x, 0, List.of(foes), target, Way.NONE, armed);
     }
 
-    // ten ticks in contact, five knocked off to 3.8: never BITTEN_TICKS of unbroken contact
+    // ten ticks in contact, five knocked off to 3.8: never a second of unbroken contact
     private static double bounce(long now, long from) {
         return ((now - from) % 15) < 10 ? 2 : 3.8;
     }
@@ -80,9 +80,9 @@ public class CombatCommitRunHitsTest {
     }
 
     @Test
-    public void oneHitAfterTheGraceIsNotEnoughAndTheBiterNeverFiresOnABounce() {
-        // the old rule alone: zombie 1 has bitten us since the run began and spends two thirds of every second in contact,
-        // and the biter still never gets its unbroken second. this is the run that tanked hits until the cap
+    public void oneHitAfterTheGraceIsNotEnough() {
+        // zombie 1 has bitten us once since the run began and spends two thirds of every second in contact,
+        // and one hit is not a failing run. this is the run that tanked hits until the cap
         CombatCommit c = crowdRun(NOW, true, 0);
         assertEquals(Event.NONE, walk(c, NOW + 1, NOW + 300, 20, true, 0, bouncer(NOW, NOW + GRACE + 10)));
         assertEquals(Mode.RUN, c.mode());
@@ -154,7 +154,7 @@ public class CombatCommitRunHitsTest {
     }
 
     @Test
-    public void aMobWeGaveUpOnThatBitesUsMidRunCountsForTheBiter() {
+    public void aMobWeGaveUpOnThatBitesUsMidRunCountsAsHits() {
         CombatCommit c = new CombatCommit();
         assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, 0, true, null, zombie(1, 2, 0))));
         // it hangs back at 5 for the stall window: written off
@@ -169,10 +169,10 @@ public class CombatCommitRunHitsTest {
         // after the cooldown, hurt with another zombie near: a run
         long run = stall + CombatCommit.COOLDOWN;
         assertEquals(Event.RUN_START, c.step(tick(run, 7, 0, true, null, zombie(2, 5, NEVER), zombie(1, 6, run - NOW))));
-        // zombie 1 catches up and stays on us biting. it hit us since we gave up on it, so it is news, and a second of it
-        // is the biter's turn
+        // zombie 1 catches up and stays on us biting. it hit us since we gave up on it, so it is news, and the hits
+        // add up to the turn
         long bite = run + 1;
-        Event seen = walk(c, bite, bite + 100, 7, true, 0, now -> new Foe[]{zombie(1, 2, now - bite), zombie(2, 5, NEVER)});
+        Event seen = walk(c, bite, bite + 100, 7, true, 0, now -> new Foe[]{zombie(1, 2, since(now, bite, bite + GRACE + 2, bite + GRACE + 15)), zombie(2, 5, NEVER)});
         assertEquals(Event.RUN_CHASED_FIGHT, seen);
         assertEquals(1, c.targetId());
         assertEquals(Why.CHASED, c.why());

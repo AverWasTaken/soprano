@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.GameClock;
 import net.minecraft.world.entity.monster.Blaze;
 
 // the last rod is in and the blazes did not get the memo. the rods task finishes the moment the count is met, and with it goes the
@@ -47,9 +48,9 @@ public class BlazeDisengageTask extends Task {
         if (fight.mode() != BlazeFightRules.Mode.CAMP) {
             lastSeenTick = now;
         }
-        // game time going backwards is a world change, the old stamps mean nothing
-        long sinceSeen = now >= lastSeenTick ? now - lastSeenTick : Long.MAX_VALUE;
-        long running = now >= startTick ? now - startTick : Long.MAX_VALUE;
+        // a clock a tick or two back is lag, one way back is a world change and the old stamps mean nothing
+        long sinceSeen = GameClock.since(lastSeenTick, now);
+        long running = GameClock.since(startTick, now);
         over = BlazeFightRules.disengageOver(sinceSeen, running);
         if (away != null) {
             setDebugState("Finishing the blazes: " + fight.mode().name().toLowerCase());

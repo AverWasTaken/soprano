@@ -35,7 +35,7 @@ import java.util.function.IntSupplier;
 // the boot screen. vanilla's overlay keeps running exactly as it does (reload, progress smoothing, the fade clock,
 // removing itself), we only take its paint: the brand colour becomes black, the mojang logo and the bar go, and
 // BootScreen draws ours on top at the tail. every hook asks BootScreen.drawing() so the setting and a crash both
-// fall back to vanilla without a restart
+// fall back to vanilla without a restart. ours only goes up on frames where the logo redirect really ran
 @Mixin(LoadingOverlay.class)
 public abstract class MixinLoadingOverlay {
 
@@ -54,7 +54,7 @@ public abstract class MixinLoadingOverlay {
 
     // all three reads of the brand colour: the first boot clear colour and the two fade fills. no ordinal on purpose.
     // require 0 on both redirects: a loading screen mod redirecting the same call would otherwise kill the boot. this
-    // way ours just skips and BootScreen draws over whatever that mod paints
+    // way ours just skips, and BootScreen stays out of the way when the logo one didn't land
     @Redirect(
             method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
             at = @At(
@@ -80,6 +80,8 @@ public abstract class MixinLoadingOverlay {
                               float u, float v, int w, int h, int uw, int vh, int tw, int th, int color) {
         if (!BootScreen.drawing()) {
             g.blit(pipeline, texture, x, y, u, v, w, h, uw, vh, tw, th, color);
+        } else {
+            BootScreen.skippedLogo();
         }
     }
 
@@ -89,7 +91,8 @@ public abstract class MixinLoadingOverlay {
             cancellable = true
     )
     private void soprano$bar(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1, float fade, CallbackInfo ci) {
-        if (BootScreen.drawing()) {
+        // no logo of ours this frame means no bar of ours either, so vanilla keeps its own
+        if (BootScreen.ownsFrame()) {
             ci.cancel();
         }
     }

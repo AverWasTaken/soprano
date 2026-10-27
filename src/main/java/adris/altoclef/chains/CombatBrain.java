@@ -5,8 +5,10 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasks.movement.HealUpTask;
+import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.util.helpers.PearlHuntHook;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
@@ -19,9 +21,12 @@ import adris.altoclef.util.helpers.CombatCommit.Kind;
 import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.RimHold;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.LavaShore;
+import baritone.pathing.movement.CliffAvoidance;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ReachRules;
@@ -55,6 +60,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -80,6 +86,9 @@ final class CombatBrain {
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
+    // every blaze the tracker has, calm or not (crowd() keeps the live ones in range). the hostile list only lists the charged ones, so a run steered back into the ones
+    // that were just waiting for it to turn around
+    private List<Mob> _crowdBlazes = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
     private final Set<Integer> _swingAt = new HashSet<>();
     private CombatRules.Stance _stance = CombatRules.Stance.CALM;
@@ -87,16 +96,26 @@ final class CombatBrain {
     private int _meleeAround;
     private boolean _shotAt;
     private long _shotUntil = Long.MIN_VALUE / 2;
-    // a normal fight with a second mob hitting us, the shield is up for it (CombatRules.pileShield)
-    private boolean _pile;
+    // a melee fight with the target close, the shield is up for its swing (CombatRules.fightShield)
+    private boolean _fightShield;
+    // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
+    private boolean _rim;
+    // a run on a rim with a knocker on us: the shield goes up and nothing swings (KillAura.rimGuard), capped by _rimHold
+    private int _rimGuardId = -1;
+    private final RimHold _rimHold = new RimHold();
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
     private long _stanceLogAt = Long.MIN_VALUE / 2;
     private float _lastHealth = -1;
     private DamageSource _lastSource;
+    // the blaze or skeleton whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
+    private DamageSource _shotSeen;
+    private Mob _shooter;
+    private long _shooterAt = Long.MIN_VALUE / 2;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private final HealUpTask _healUp = new HealUpTask();
+    private final IdleTask _splitHold = new IdleTask();
     private int _fightId = -1;
     private String _fightName = FightNames.UNKNOWN;
     private final FightNames _names = new FightNames();
@@ -145,8 +164,8 @@ final class CombatBrain {
         return _swingAt.contains(id);
     }
 
-    // the aura is all feet and no hands while running. the shield is for a fight that is boxed in or has a pile on us: one
-    // zombie still does not get it, two hitting us do
+    // the aura is all feet and no hands while running. the shield is for a committed melee fight (fightShield) or a
+    // boxed in one
     boolean auraKiting() {
         return _commit.mode() == Mode.RUN;
     }
@@ -163,7 +182,11 @@ final class CombatBrain {
     }
 
     boolean auraShield() {
-        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _pile);
+        return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _fightShield) || _rim;
+    }
+
+    int auraRimGuard() {
+        return _rimGuardId;
     }
 
     float holdPriority() {
@@ -188,17 +211,24 @@ final class CombatBrain {
         _lastRunEnd = Long.MIN_VALUE / 2;
         _ranSince = false;
         _foeMobs = List.of();
+        _crowdBlazes = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
         _meleeNear = 0;
         _meleeAround = 0;
         _shotAt = false;
         _shotUntil = Long.MIN_VALUE / 2;
-        _pile = false;
+        _fightShield = false;
+        _rim = false;
+        _rimGuardId = -1;
+        _rimHold.reset();
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
         _lastSource = null;
+        _shotSeen = null;
+        _shooter = null;
+        _shooterAt = Long.MIN_VALUE / 2;
         _run = null;
         _fight = null;
         _fightId = -1;
@@ -211,7 +241,8 @@ final class CombatBrain {
         switch (_commit.mode()) {
             case FIGHT: {
                 Entity target = mod.getWorld().getEntity(_commit.targetId());
-                if (target == null) return null;
+                // the fight outlives a dead splitter for a moment (CombatCommit.SPLIT_WAIT_TICKS): stand, the children are coming
+                if (target == null || !target.isAlive()) return _splitHold;
                 // the same task object for the whole fight, a new one each tick would restart its stuck checks
                 if (_fight == null || _fightId != target.getId() || _fight.stopped()) {
                     _fight = new KillEntityTask(target);
@@ -235,6 +266,8 @@ final class CombatBrain {
 
     // in contact: a bit past arm's reach, a cube's middle is further off than its edge
     private static final double LAVA_FOE_RANGE = 3.5;
+    // blazes this close stay in a run's crowd (see _crowdBlazes)
+    static final double BLAZE_CROWD_RANGE = 20;
 
     // the mob the lava guard leans toward: the fight's own target, else whatever hostile is in contact
     Entity lavaFoe(AltoClef mod) {
@@ -251,7 +284,19 @@ final class CombatBrain {
 
     // the goal asks this from the main thread once a tick
     private List<Entity> crowd() {
-        return new ArrayList<>(_foeMobs);
+        LocalPlayer player = _player;
+        if (player == null) return new ArrayList<>(_foeMobs);
+        return new ArrayList<>(FoeRules.<Mob>crowdWithBlazes(_foeMobs, _crowdBlazes, m -> m.distanceTo(player), Mob::isAlive, BLAZE_CROWD_RANGE));
+    }
+
+    private static List<Mob> trackedBlazes(AltoClef mod) {
+        List<Mob> out = new ArrayList<>();
+        try {
+            out.addAll(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+        } catch (ConcurrentModificationException ignored) {
+            // one tick of stale blazes is fine
+        }
+        return out;
     }
 
     // one game tick. creeperClose: a lit creeper close enough that we do not sit down to a meal next to it (we do not
@@ -284,8 +329,22 @@ final class CombatBrain {
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
         boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
+        // a swelling creeper stops being angry at us (the fuse goal pushes the chase aside), so the hostile list drops it right when
+        // the run away from it needs to see it
+        if (_commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.REPEAT_CREEPER) addNearCreepers(mod, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
+        // the hold's re-run source: who threw the last projectile at us, when it is a blaze or a skeleton. the run steers around it
+        // like around any foe, the hostile list alone would leave it blind to a thrower it never carried
+        Mob shooter = rangedSource(player, now);
+        if (!recovering()) shooter = null;
+        boolean freshShot = shooter != null && now - _shooterAt <= RecoverHold.SHOT_SOURCE_TICKS;
+        if (shooter != null && !mobs.contains(shooter)) {
+            List<Mob> withShooter = new ArrayList<>(mobs);
+            withShooter.add(shooter);
+            _foeMobs = withShooter;
+        }
+        _crowdBlazes = trackedBlazes(mod);
         // the pearl hunt owns the feet while endermen are the only thing around: a run from a teleporter goes nowhere and a
         // heal hold would sit in the open. the nook it is in (or digging) is the whole answer, so nothing is committed to.
         // the foes stay, the stance (the gapple at 8 hp) and the aura's contact swings still hear about them
@@ -293,6 +352,8 @@ final class CombatBrain {
                 (int) mobs.stream().filter(m -> m instanceof Enderman).count());
         enabled &= !standDown;
 
+        // the edge scan once a tick for everybody: the way fight's engage, the fight's shield and the run's shield
+        boolean rim = onRim(mod, player, foes);
         Foe target = null;
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
@@ -309,8 +370,8 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
-                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && blazeWatching(mod, player)));
+                    way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
+                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player))));
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -327,9 +388,8 @@ final class CombatBrain {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
                 log(mod, dimension, event, fighting, mobs, blocks);
-                // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
-                // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
-                if (event != Event.RUN_EXTENDED) _run = null;
+                // a new run is a new origin, a new fight is a new target, whatever the old ones were
+                _run = null;
                 // the nether sweep keeps off the spot we were chased out of by a heavy hitter (nether coordinates only, the
                 // zones mean nothing in another dimension)
                 if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
@@ -368,8 +428,7 @@ final class CombatBrain {
             nearest = Math.min(nearest, foe.distance());
             // (the nearest fast one gets to say when a bite may start, see CombatRules.RUN_BITE_START_FAST. shooters keep
             // their distance, so they are not chasers)
-            if (foe.melee() && foe.distance() < nearestFast
-                    && mobs.get(i).getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED) {
+            if (foe.melee() && foe.distance() < nearestFast && foe.fast()) {
                 nearestFast = foe.distance();
             }
             // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
@@ -389,8 +448,21 @@ final class CombatBrain {
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
         }
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
-        // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
-        _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
+        // (the target can be missing from a hostile pass, and losing the shield for that restarts its 5 ticks)
+        Foe fightFoe = target;
+        List<Foe> shieldFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
+        _fightShield = _commit.mode() == Mode.FIGHT && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
+        // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
+        _rim = rim && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
+        // for it, for a leash's worth of ticks (RimHold)
+        Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
+        _rimGuardId = _rimHold.step(rimRun == null ? -1 : rimRun.id()) ? rimRun.id() : -1;
+        if (_rimGuardId >= 0) {
+            _commit.pauseCorner();
+            _rim = true;
+            _swingAt.add(rimRun.id());
+        }
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         // a shooter that was on us a moment ago still is: the ray flickers behind a tree and the skeleton steps in and out of the
@@ -403,11 +475,32 @@ final class CombatBrain {
             biteShot = true;
         }
         _shotAt = shotAt;
+        // (in lava a bite is the wrong thing to be doing, the escape has the wheel)
+        boolean burning = mod.getPlayer().isOnFire() && !mod.getPlayer().isInLava();
         CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat(),
-                nearestMelee, mod.getPlayer().getFoodData().getFoodLevel() < 18);
+                nearestMelee, CombatRules.fightHungry(mod.getPlayer().getFoodData().getFoodLevel(), burning));
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
+    }
+
+    // the cheap foe check first, the cell scan only when one is close enough to matter. same edge the kill task steps back from.
+    // a blaze that its own task keeps out of the foes still counts when it is in contact
+    private static boolean onRim(AltoClef mod, LocalPlayer player, List<Foe> foes) {
+        if (mod.getClientBaritone().bsi == null) return false;
+        boolean blaze = false;
+        try {
+            for (Entity entity : mod.getEntityTracker().getHostiles()) {
+                if (entity instanceof Blaze && entity.isAlive() && entity.distanceTo(player) <= CombatRules.CONTACT_RANGE) {
+                    blaze = true;
+                    break;
+                }
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same story as gatherFoes
+        }
+        if (!CombatRules.rimShield(true, blaze, foes)) return false;
+        return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
     }
 
     // fills mobs and foes (in step) from the tracker's hostiles. hands back whether a mob some task kept for itself is
@@ -424,7 +517,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(foe);
+                    foes.add(withSplit(foe.withFast(fast(mob)), mob));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -433,6 +526,20 @@ final class CombatBrain {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
         }
         return shotByExcluded;
+    }
+
+    private static void addNearCreepers(AltoClef mod, LocalPlayer player, List<Mob> mobs, List<Foe> foes) {
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive() || mobs.contains(creeper)) continue;
+                double distance = creeper.distanceTo(player);
+                if (distance > CombatCommit.LOW_HP_RANGE) continue;
+                mobs.add(creeper);
+                foes.add(new Foe(creeper.getId(), distance, false, true, CombatCommit.NEVER));
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same as gatherFoes, one tick of stale state is fine
+        }
     }
 
     // a stance change is a line, but a follower hovering right on the bite line would flip it every tick, so a line is at most
@@ -521,12 +628,30 @@ final class CombatBrain {
             if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
         }
         if (!asked) return true;
+        List<WeaponPick.Candidate> candidates = bagCandidates(mod);
+        return WeaponPick.best(candidates) != null || WeaponPick.bestTool(candidates) != null;
+    }
+
+    // the bag is only walked when something is in contact: that is the only time an in the way fight can start
+    private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
+        for (Foe foe : foes) {
+            if (foe.distance() <= CombatCommit.CONTACT) return hasWeapon(mod);
+        }
+        return true;
+    }
+
+    // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
+    private static boolean hasWeapon(AltoClef mod) {
+        return WeaponPick.best(bagCandidates(mod)) != null;
+    }
+
+    private static List<WeaponPick.Candidate> bagCandidates(AltoClef mod) {
         List<WeaponPick.Candidate> candidates = new ArrayList<>();
         candidates.add(WeaponPick.Candidate.of(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot())));
         for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
             candidates.add(WeaponPick.Candidate.of(stack));
         }
-        return WeaponPick.best(candidates) != null || WeaponPick.bestTool(candidates) != null;
+        return candidates;
     }
 
     // how many path nodes ahead count as "in the way". three is the next couple of steps, further out the mob has time to move
@@ -540,7 +665,7 @@ final class CombatBrain {
         boolean moving = pathing.isPathing() || pathing.getInProgress().isPresent();
         double y = mod.getPlayer().getY();
         IPathExecutor current = pathing.getCurrent();
-        if (current == null) return new CombatCommit.Way(Set.of(), moving, y);
+        if (current == null) return new CombatCommit.Way(Set.of(), moving, y, weaponIfNear(mod, foes));
         List<AABB> cells = new ArrayList<>();
         try {
             IPath path = current.getPath();
@@ -571,13 +696,14 @@ final class CombatBrain {
                 }
             }
         }
-        return new CombatCommit.Way(inWay, moving, y);
+        return new CombatCommit.Way(inWay, moving, y, weaponIfNear(mod, foes));
     }
 
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
-        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering());
+        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering(),
+                mod.getFoodChain().hasFood());
     }
 
     // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
@@ -588,6 +714,24 @@ final class CombatBrain {
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
                 food != null && food.isTryingToEat());
+    }
+
+    // the blaze or skeleton whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it
+    // is read every tick and the thrower remembered here. the window only gates starting the re-run (see tick): once it is running
+    // the thrower stays in the run's crowd until the run is over, or the run would turn back toward it after two seconds
+    private Mob rangedSource(LocalPlayer player, long now) {
+        DamageSource source = player.getLastDamageSource();
+        if (source != null && source != _shotSeen) {
+            _shotSeen = source;
+            if (source.getDirectEntity() instanceof Projectile && source.getEntity() instanceof Mob mob
+                    && RecoverHold.rerunSource(typeOf(mob))) {
+                _shooter = mob;
+                _shooterAt = now;
+            }
+        }
+        boolean stale = now - _shooterAt > RecoverHold.SHOT_SOURCE_TICKS && _commit.mode() != Mode.RUN;
+        if (_shooter != null && (stale || !_shooter.isAlive())) _shooter = null;
+        return _shooter;
     }
 
     // a blaze with a line on us that the hostile list does not carry (it only lists the charged ones and the ones in melee). asked
@@ -610,8 +754,24 @@ final class CombatBrain {
     private static Foe foe(Dimension dimension, Mob mob, double distance, Provocations book, long now, LocalPlayer player) {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
-        return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
+        return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)), mob);
+    }
+
+    // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
+    private static Foe withSplit(Foe foe, Mob mob) {
+        String type = typeOf(mob);
+        boolean cube = type.equals("slime") || type.equals("magma_cube");
+        // a size 1 cube has 1 max health (size squared) and leaves nothing behind
+        Foe out = cube ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
+        // the ones whose hit shoves us, the rim rules ask for them (an angry piglin is only ever a foe once it is angry)
+        return cube || type.equals("zombified_piglin") ? out.withKnocker(true) : out;
+    }
+
+    // slimes and magma cubes set their speed from their size (0.2 + 0.1 per size, so 0.3 at the smallest), spiders are 0.3, so all
+    // of them count: the run bite lines and the "it comes along on the run" fight both read this
+    private static boolean fast(Mob mob) {
+        return mob.getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED;
     }
 
     // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.

@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
@@ -75,7 +76,7 @@ public final class WorkbenchRules {
 
     // somebody touched this bench lately. a clock that went backwards (another world) is no lease, it can not hold a bench for ever
     public static boolean leased(Bench b, long now) {
-        return b.leasedTick != NEVER && now >= b.leasedTick && now - b.leasedTick <= LEASE_TICKS;
+        return b.leasedTick != NEVER && GameClock.since(b.leasedTick, now) <= LEASE_TICKS;
     }
 
     // nothing is using the bench: no lease, no screen of its kind open, no furnace load in flight and (the inference this slice does

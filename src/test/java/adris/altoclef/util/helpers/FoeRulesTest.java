@@ -437,8 +437,9 @@ public class FoeRulesTest {
         CombatCommit c = new CombatCommit();
         assertEquals(Event.FIGHT_START, c.step(tick(100, 20, null, man)));
         assertEquals(man.id(), c.targetId());
-        // dead: the fight is over and the user task (looting the pearl) has the wheel back
-        assertEquals(Event.FIGHT_DEAD, c.step(tick(130, 20, null)));
+        // gone: it may just have blinked away, the fight waits out ENDER_WAIT_TICKS before the user task (looting the pearl) gets the wheel back
+        assertEquals(Event.NONE, c.step(tick(130, 20, null)));
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(131 + CombatCommit.ENDER_WAIT_TICKS, 20, null)));
         assertEquals(Mode.NONE, c.mode());
     }
 
@@ -449,5 +450,18 @@ public class FoeRulesTest {
         for (Dimension d : Dimension.values()) {
             assertNull(d.name(), accept(d, calm));
         }
+    }
+
+    @Test
+    public void theRunCrowdKeepsCalmBlazesInRangeOnly() {
+        java.util.Map<String, Double> at = java.util.Map.of("zombie", 5.0, "near", 12.0, "edge", 20.0, "far", 20.5, "dead", 4.0);
+        List<String> out = FoeRules.crowdWithBlazes(List.of("zombie"), List.of("near", "edge", "far", "dead"), at::get, b -> !b.equals("dead"), 20);
+        assertEquals(List.of("zombie", "near", "edge"), out);
+    }
+
+    @Test
+    public void aBlazeAlreadyAmongTheFoesIsNotCountedTwice() {
+        List<String> out = FoeRules.crowdWithBlazes(List.of("blaze"), List.of("blaze", "other"), b -> 3.0, b -> true, 20);
+        assertEquals(List.of("blaze", "other"), out);
     }
 }

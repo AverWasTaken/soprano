@@ -13,6 +13,8 @@ public final class BiteRules {
     public static final int USE_START_TICKS = 10;
     // presses again before we give up for a while, and how long a while is
     public static final int RETRIES = 3;
+    // a laggy server can leave a normal bite at about -32 before the completion arrives
+    public static final int STUCK_TICKS = 40;
     public static final int BACKOFF_TICKS = 40;
     // something with a name hit us this recently and a standing meal is off (the game forgets the damage source after 40)
     public static final int HIT_TICKS = 40;
@@ -137,6 +139,20 @@ public final class BiteRules {
         return hasAttacker || hasDirectEntity;
     }
 
+    // what drops a bite: a hit with a body that is not a projectile. an arrow or a fireball comes from a mob that is nowhere
+    // near, so standing to chew is not the wrong call for it (the shield rules have their own say), a zombie in contact is
+    public static boolean contactHit(boolean hasAttacker, boolean hasDirectEntity, boolean projectile) {
+        return !projectile && entityHit(hasAttacker, hasDirectEntity);
+    }
+
+    // a bite in progress gives way to the projectile shield only when the thing is about to land: raising it quick-moves the
+    // food out of the hand, and the bite starts over from nothing
+    public static final double SHIELD_IMPACT_TICKS = 10;
+
+    public static boolean shieldMayStart(boolean biting, double impactTicks) {
+        return !biting || impactTicks <= SHIELD_IMPACT_TICKS;
+    }
+
     // starving behind a stop that does not come. only water and a boat are worth the risk of chewing on the move: a swim
     // or a ride can be as long as the ocean, while mid-air ends by itself, a ladder is a few blocks and a movement that is
     // not safe to cancel is over in a moment
@@ -198,6 +214,8 @@ public final class BiteRules {
         HOLD,
         // let go of the key for this tick, the next hold is a clean rising edge
         PRESS_AGAIN,
+        // the use is on but never finishes: tell the server to let go of it (see UseWatch), then press again
+        RELEASE,
         // it will not start, stop trying for BACKOFF_TICKS
         BACK_OFF
     }
@@ -207,6 +225,8 @@ public final class BiteRules {
     public static final class UseWatch {
         private int idle;
         private int retries;
+        // separate from retries on purpose: a use that is on resets retries, and a stuck use is always on
+        private int stuck;
         private int backoff;
         private int steps;
         private int startedAt;
@@ -214,6 +234,12 @@ public final class BiteRules {
         private boolean started;
 
         public Press step(boolean using) {
+            return step(using, 0);
+        }
+
+        // remaining is the client's use timer. a bite that sits well below zero never got its completion from the server
+        // (the server is still "using" something else, a shield that broke under us), so more holding will not fix it
+        public Press step(boolean using, int remaining) {
             started = using && !wasUsing;
             wasUsing = using;
             if (started) {
@@ -223,6 +249,15 @@ public final class BiteRules {
             if (using) {
                 idle = 0;
                 retries = 0;
+                if (remaining < -STUCK_TICKS) {
+                    if (stuck >= RETRIES) {
+                        backoff = BACKOFF_TICKS;
+                        stuck = 0;
+                        return Press.BACK_OFF;
+                    }
+                    stuck++;
+                    return Press.RELEASE;
+                }
                 return Press.HOLD;
             }
             idle++;
@@ -263,6 +298,7 @@ public final class BiteRules {
         public void reset() {
             idle = 0;
             retries = 0;
+            stuck = 0;
             steps = 0;
             startedAt = 0;
             wasUsing = false;

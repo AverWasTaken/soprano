@@ -14,6 +14,12 @@ public final class StandCap {
     private boolean stalled;
     private boolean forcedLast;
 
+    // what counts as standing: a shot we are not taking, or right on top of the mob with no shot at all (the plan only waits
+    // there, and nothing else would ever end it)
+    public static boolean standing(boolean inReach, boolean shot, boolean tooClose) {
+        return inReach && (shot || tooClose);
+    }
+
     public void reset() {
         ticks = 0;
         stalled = false;

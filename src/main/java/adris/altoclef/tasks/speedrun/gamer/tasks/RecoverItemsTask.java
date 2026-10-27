@@ -93,7 +93,14 @@ public class RecoverItemsTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (overTimeOnTask(RecoverRules.stretched(_budgetSeconds, _pickSeconds))) {
+        double budget = RecoverRules.stretched(_budgetSeconds, _pickSeconds);
+        if (overTimeOnTask(budget)) {
+            // armor we already hold goes on before we leave, a trip that timed out mid equip left it in the bag for good
+            Task lateWear = WearFromBag.task(mod, _toWear.get());
+            if (lateWear != null && RecoverRules.wearPastBudget(true, timeOnTaskSeconds(), budget)) {
+                setDebugState("Putting on armor from the pile.", "Putting on armor");
+                return lateWear;
+            }
             setDebugState("Out of time.", "Giving up on our stuff");
             Debug.logMessage("death: out of time on our stuff, leaving it.");
             _finished = true;

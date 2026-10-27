@@ -169,15 +169,38 @@ public final class FurnaceJobs {
         return "smoker".equals(kind) ? state.placedSmokers : null;
     }
 
+    // the food job a trip that is about to leave the dimension should pick up first: cooking food (a stranded one is raw meat sitting
+    // cold, not dinner), ready first, and no further than PackUp.TRIP_BUDGET of walking. `walkOf` = what the walk to it costs from here.
+    // null when there is none worth the detour
+    public static RunState.FurnaceJob foodJob(List<RunState.FurnaceJob> jobs, java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
+        return foodJob(jobs, walkOf, j -> false);
+    }
+
+    // `banned` = pathing gave up on its furnace: picked only when no other food job is left
+    public static RunState.FurnaceJob foodJob(List<RunState.FurnaceJob> jobs, java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf,
+                                              java.util.function.Predicate<RunState.FurnaceJob> banned) {
+        return soonest(jobs.stream().filter(j -> j.unitsEach > 0 && !j.stranded && walkOf.applyAsDouble(j) <= PackUp.TRIP_BUDGET).toList(), banned);
+    }
+
     // the job that is ready first, null if there are none
     public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs) {
+        return soonest(jobs, j -> false);
+    }
+
+    // a banned job (pathing gave up on its furnace) comes last, never out: the phase cannot end while a job is left
+    public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs, java.util.function.Predicate<RunState.FurnaceJob> banned) {
         RunState.FurnaceJob best = null;
+        RunState.FurnaceJob bestBanned = null;
         for (RunState.FurnaceJob job : jobs) {
-            if (best == null || job.doneTick < best.doneTick) {
+            if (banned.test(job)) {
+                if (bestBanned == null || job.doneTick < bestBanned.doneTick) {
+                    bestBanned = job;
+                }
+            } else if (best == null || job.doneTick < best.doneTick) {
                 best = job;
             }
         }
-        return best;
+        return best != null ? best : bestBanned;
     }
 
     // ticks until the last job is done, 0 when they all are
@@ -199,6 +222,32 @@ public final class FurnaceJobs {
     // the bag, a station, fuel on paper) unless it sits out the backoff. a visit that took it back because we are leaving is not this
     public static boolean backsOffCook(RunState.FurnaceJob job, boolean tookBackStalled) {
         return tookBackStalled && (job.unitsEach > 0 || job.stranded);
+    }
+
+    // a visit that is still going took something out of the station: the job keeps its full count until the visit ends, so a cut off
+    // visit (a mob, a death) left it counting what is already in the bag. `seen` = input + output in the slots at the last look, -1
+    // for no look. only ever lowers the count and moves the timer, nothing else: whether the job is cooking or counts as stalled is
+    // the visit's end to say (a half cooked stranded batch we just took the cooked half of is still cold). true = brought down
+    public static boolean settleMidVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int seen, long remaining, long now) {
+        if (seen < 0 || seen >= job.count) {
+            return false;
+        }
+        if (seen == 0) {
+            return jobs.remove(job);
+        }
+        job.count = seen;
+        job.doneTick = now + Math.max(1, remaining);
+        return true;
+    }
+
+    // is this very job still on the books (identity, a removed job must not come back through an equal one)
+    public static boolean listed(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job) {
+        for (RunState.FurnaceJob j : jobs) {
+            if (j == job) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.

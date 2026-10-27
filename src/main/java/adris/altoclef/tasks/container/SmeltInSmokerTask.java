@@ -156,6 +156,9 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
         private boolean _ignoreMaterials;
         // async cooking: everything is in the smoker and we walked away, this task is done and must not walk back to it
         private boolean _loaded;
+        // recordStranded left a job for what the screen last showed: once per look, a second stop (an interrupt, then the end) must not
+        // queue it again. the screen opening again is a new look
+        private boolean _recorded;
         // the outer check (bag short of what the smoker still needs) and the one inside the open screen, see FuelShortage
         private final FuelShortage _fuelShort = new FuelShortage();
         private final FuelShortage _dryInside = new FuelShortage();
@@ -267,17 +270,34 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
         // dropped with the meat in the smoker and no job (the coal trip outlasted the cook's patience): leave the job for the
         // gamer so somebody goes back and takes it out. the cache is the last look at the slots, the visit reads the real ones
         boolean recordStranded(AltoClef mod) {
+            if (_recorded) {
+                return false;
+            }
+            // the screen may still be open with the cache a tick behind it: the real slots win
+            tryUpdateOpenSmoker(mod);
             BlockPos at = getTargetContainerPosition();
             ItemStack material = _smokerCache.materialSlot;
+            double slotFuel = _smokerCache.fuelSlot.isEmpty() ? 0 : ItemHelper.getFuelAmount(_smokerCache.fuelSlot);
+            double burning = _smokerCache.burningFuelCount;
+            if (material.isEmpty() && !isContainerOpen(mod)) {
+                StationMemory.Look look = StationMemory.restartedLook(mod, at != null ? at : stationInUse(mod), _allMaterials);
+                if (look != null) {
+                    at = look.at();
+                    material = look.material();
+                    slotFuel = look.slotFuel();
+                    burning = look.burning();
+                }
+            }
             if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
                 return false;
             }
             // lit with enough in it for all of it is a cook, anything less is meat sitting cold (the 5 beef that were never lit and
             // still got a "~25 s" timer, and a stand-by that walked up and took them back out)
-            boolean lit = AsyncSmelting.fuelCovers(_smokerCache.fuelSlot, _smokerCache.burningFuelCount, material.getCount());
+            boolean lit = AsyncSmelting.fuelCovers(slotFuel, burning, 0, material.getCount());
             Debug.logInternal("smoker at " + at.toShortString() + " still holds " + material.getCount() + " of our meat and the cook is leaving, "
                     + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
             AsyncSmelting.leftBehind(mod, at, Blocks.SMOKER, material, _target.getItem(), lit);
+            _recorded = true;
             return true;
         }
 
@@ -463,6 +483,7 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
 
         private void tryUpdateOpenSmoker(AltoClef mod) {
             if (isContainerOpen(mod)) {
+                _recorded = false;
                 // Update current furnace cache
                 _smokerCache.burnPercentage = StorageHelper.getSmokerCookPercent();
                 _smokerCache.burningFuelCount = StorageHelper.getSmokerFuel();

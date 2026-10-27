@@ -3,8 +3,12 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.util.helpers.CombatCommit.Foe;
 import adris.altoclef.util.helpers.CombatCommit.Kind;
 import baritone.api.utils.Dimension;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 
 // the pure half of "who counts as a foe here, and what sort". the commitment machine is the same in every dimension, this
 // is where the overworld, the nether and the end differ: a few species that are somebody else's business, and a few that
@@ -21,6 +25,20 @@ public final class FoeRules {
     public static final double WITCH_HIT_RANGE = 12;
 
     private FoeRules() {
+    }
+
+    // the run's crowd: the foes plus every live blaze in range that is not one of them already. the hostile list only holds a
+    // blaze that is charged or in melee, so a calm one watching from across the room was invisible and the run walked back to it.
+    // a fresh list, the goal reads it on its own schedule
+    public static <T> List<T> crowdWithBlazes(List<? extends T> foes, List<? extends T> blazes, ToDoubleFunction<T> distance,
+            Predicate<T> alive, double range) {
+        List<T> out = new ArrayList<>(foes);
+        for (T blaze : blazes) {
+            if (alive.test(blaze) && distance.applyAsDouble(blaze) <= range && !out.contains(blaze)) {
+                out.add(blaze);
+            }
+        }
+        return out;
     }
 
     // one witch as the tracker sees it: id, distance, and whether it has a line to us

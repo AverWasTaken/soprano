@@ -13,6 +13,8 @@ import adris.altoclef.trackers.Bans;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.FloatingBlock;
+import adris.altoclef.util.helpers.GameClock;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -45,11 +47,13 @@ import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 public class MineAndCollectTask extends ResourceTask {
@@ -348,7 +352,7 @@ public class MineAndCollectTask extends ResourceTask {
         if (_dirtTask != null) {
             // the task's own count, not "anything to place": one dirt in the bag is a tower one block high
             boolean done = _dirtTask.isFinished(mod);
-            boolean late = now - _dirtSince > DIRT_PATIENCE_TICKS || now < _dirtSince;
+            boolean late = GameClock.since(_dirtSince, now) > DIRT_PATIENCE_TICKS;
             if (!done && !late) {
                 return _dirtTask;
             }
@@ -730,6 +734,7 @@ public class MineAndCollectTask extends ResourceTask {
         private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos, boolean sparing) {
             Predicate<BlockPos> usable = check -> {
                 if (mod.getBlockTracker().unreachable(check)) return false;
+                if (hangsInTheNether(mod, check)) return false;
                 return WorldHelper.canBreak(mod, check) && _only.test(check) && (!sparing || worthTheTrip(mod, check));
             };
             // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
@@ -1308,9 +1313,19 @@ public class MineAndCollectTask extends ResourceTask {
             return recent ? dirtTreeTrips : 0;
         }
 
+        // the nether has no floating blocks of its own, so one over a drop is a bridge of ours (or a ledge) and stays up
+        private static boolean hangsInTheNether(AltoClef mod, BlockPos at) {
+            if (WorldHelper.getCurrentDimension() != Dimension.NETHER) return false;
+            return FloatingBlock.floating(k -> {
+                BlockState below = mod.getWorld().getBlockState(at.below(k));
+                return below.isAir() || below.getFluidState().is(FluidTags.LAVA);
+            });
+        }
+
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
             if (mod.getBlockTracker().unreachable(pos)) return false;
+            if (hangsInTheNether(mod, pos)) return false;
             if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
             // same answer as isValid, or a block that went unbreakable got dropped there and handed straight back here
             if (!WorldHelper.canBreak(mod, pos)) return false;
@@ -1548,7 +1563,7 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof BlockPos b) {
                 // a block we gave up on is not valid anymore, or the "new target must be twice as close" rule would
                 // keep us on it (it used to be swapped out for any other nearest block, which is how it got away with this)
-                return !mod.getBlockTracker().unreachable(b)
+                return !mod.getBlockTracker().unreachable(b) && !hangsInTheNether(mod, b)
                         && mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {

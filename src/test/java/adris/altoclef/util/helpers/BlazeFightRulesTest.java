@@ -28,7 +28,8 @@ public class BlazeFightRulesTest {
     public void tenHpWithABlazeLookingMeansRun() {
         assertEquals(RUN, BlazeFightRules.decide(10, false, false, true, true));
         assertEquals(RUN, BlazeFightRules.decide(10, false, false, true, false));
-        assertEquals(KILL, BlazeFightRules.decide(11, false, false, true, true));
+        assertEquals(RUN, BlazeFightRules.decide(14, false, false, true, true));
+        assertEquals(KILL, BlazeFightRules.decide(15, false, false, true, true));
     }
 
     @Test
@@ -45,24 +46,24 @@ public class BlazeFightRulesTest {
     }
 
     @Test
-    public void onceRunningWeRunUntilSixteen() {
+    public void onceRunningWeRunUntilEighteen() {
         assertEquals(RUN, BlazeFightRules.decide(11, true, false, true, true));
-        assertEquals(RUN, BlazeFightRules.decide(15.9f, true, false, false, true));
-        assertEquals(KILL, BlazeFightRules.decide(16, true, false, false, true));
+        assertEquals(RUN, BlazeFightRules.decide(17.9f, true, false, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(18, true, false, false, true));
         assertEquals(CAMP, BlazeFightRules.decide(20, true, false, true, false));
     }
 
     @Test
     public void theGapBetweenLeavingAndComingBackIsWideEnoughNotToFlap() {
         assertTrue(BlazeFightRules.RECOVERED_HEALTH - BlazeFightRules.RUN_HEALTH >= 4);
-        // at 12 hp it depends only on which side we came from
-        assertEquals(KILL, BlazeFightRules.decide(12, false, false, true, true));
-        assertEquals(RUN, BlazeFightRules.decide(12, true, false, true, true));
+        // at 16 hp it depends only on which side we came from
+        assertEquals(KILL, BlazeFightRules.decide(16, false, false, true, true));
+        assertEquals(RUN, BlazeFightRules.decide(16, true, false, true, true));
     }
 
     @Test
     public void aRunThatStoppedHealingFallsBackToTheFreshHpRules() {
-        // 12 hp, run given up: not 10 or under, so back to work
+        // 12 hp, run given up and nothing looking: back to work
         assertEquals(KILL, BlazeFightRules.decide(12, true, true, false, true));
         // but 6 hp still runs
         assertEquals(RUN, BlazeFightRules.decide(6, true, true, false, true));
@@ -162,9 +163,9 @@ public class BlazeFightRulesTest {
     }
 
     @Test
-    public void aCombatRunThatEndedLatelyHasUsHealUntilSixteen() {
-        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 14.9f));
-        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 16));
+    public void aCombatRunThatEndedLatelyHasUsHealUntilEighteen() {
+        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 17.9f));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 18));
         assertTrue(BlazeFightRules.healAfterRun(990 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
         assertFalse(BlazeFightRules.healAfterRun(991 + BlazeFightRules.RUN_GIVE_UP_TICKS, 990, 10));
         // never ran, or the clock went backwards: nothing to wait for

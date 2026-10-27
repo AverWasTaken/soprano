@@ -25,6 +25,18 @@ public final class ToolSwap {
         return !heldCorrect || bestSpeed > heldSpeed;
     }
 
+    // the wear chain's reason to swap: both tools are right for the block, and the other one is the one that should die first.
+    // slower is fine here, a stone pick for a stone block we're holding an iron pick at. different items only, so two stacks of
+    // the same pick never trade places
+    public static boolean worthSwappingDown(Object held, ToolPick.Option heldOption, Object best, ToolPick.Option bestOption) {
+        if (best == null || best.equals(held)) {
+            return false;
+        }
+        return heldOption.tool() && heldOption.correct() && !heldOption.sword()
+                && bestOption.tool() && bestOption.correct() && !bestOption.sword()
+                && ToolPick.chainOrder(bestOption, heldOption) < 0;
+    }
+
     // false once this item has missed GIVE_UP times in a row. a different item is a fresh start
     public boolean mayTry(Object best) {
         if (!best.equals(wanted)) {

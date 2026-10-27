@@ -27,6 +27,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.Slot;
+import adris.altoclef.util.helpers.ToolWear;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -46,6 +47,7 @@ public final class MinecraftFacts implements GamerFacts {
     // fastutil so a tick of counting does not box a pile of integers
     private final Object2IntOpenHashMap<Item> counts = new Object2IntOpenHashMap<>(64);
     private final Object2IntOpenHashMap<Item> spent = new Object2IntOpenHashMap<>(4);
+    private int wornSwords;
     private final ItemStack[] worn = new ItemStack[5];
     // diagnostics only (PickDiag): every pickaxe the last scan saw, in scan order. nobody carries more than eight on purpose
     private final PickSeen[] picks = new PickSeen[8];
@@ -237,6 +239,7 @@ public final class MinecraftFacts implements GamerFacts {
     private void countItems(Player player) {
         counts.clear();
         spent.clear();
+        wornSwords = 0;
         picksSeen = 0;
         ironWornNow = false;
         Inventory inv = player.getInventory();
@@ -266,7 +269,9 @@ public final class MinecraftFacts implements GamerFacts {
         stationSynced = false;
         stationMenuId = -1;
         if (player.containerMenu instanceof AbstractFurnaceMenu furnace) {
-            stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
+            boolean lit = StorageHelper.getFurnaceFuel(furnace) > 0;
+            stationFood = FoodPlan.stationUnits(foodIn(furnace.getSlot(0).getItem()), foodIn(furnace.getSlot(2).getItem()), lit,
+                    !furnace.getSlot(1).getItem().isEmpty());
             stationSynced = furnace.getStateId() > 0;
             stationMenuId = furnace.containerId;
             // which block the screen is, so only that station's own job hides its food (FoodPlan.inStation)
@@ -313,6 +318,9 @@ public final class MinecraftFacts implements GamerFacts {
         if (wornOut) {
             spent.addTo(item, stack.getCount());
             return;
+        }
+        if (NetherPick.isSword(item) && ToolWear.wornOut(stack.getDamageValue(), stack.getMaxDamage())) {
+            wornSwords += stack.getCount();
         }
         counts.addTo(item, stack.getCount());
     }
@@ -457,6 +465,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public int count(Item item) {
         return counts.getInt(item);
+    }
+
+    @Override
+    public int wornSwords() {
+        return wornSwords;
     }
 
     @Override

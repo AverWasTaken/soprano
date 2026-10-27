@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BlazeFightRules.Mode;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +26,8 @@ import net.minecraft.world.level.block.state.BlockState;
 final class BlazeFight {
 
     private static final double RUN_DISTANCE = 24;
+    // same reach the plain run's crowd uses for "who is after us"
+    private static final double RUN_CROWD_RADIUS = 20;
 
     private Mode mode = Mode.CAMP;
     private Mode loggedMode = Mode.CAMP;
@@ -108,9 +111,38 @@ final class BlazeFight {
         return switch (mode) {
             case CAMP -> null;
             case KILL -> new KillEntityTask(target);
-            // nobody is looking at us, so this is just sitting tight until the food chain and regen are done
-            case RUN -> threats.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, this::threatEntities);
+            // never stand still in a run: with no blaze on us the wither skeletons that kept chasing still count, only an empty
+            // crowd (nobody at all) is sitting tight until the food chain and regen are done
+            case RUN -> {
+                List<Entity> crowd = runCrowd(mod);
+                yield crowd.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, () -> runCrowd(mod));
+            }
         };
+    }
+
+    // blazes close enough to matter plus whatever else is after us
+    private List<Entity> runCrowd(AltoClef mod) {
+        List<Entity> blazes = new ArrayList<>(threats);
+        List<Entity> others = new ArrayList<>();
+        try {
+            LocalPlayer player = mod.getPlayer();
+            for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {
+                if (blaze.isAlive() && player.distanceTo(blaze) <= BlazeFightRules.SIGHT_RANGE && !blazes.contains(blaze)) blazes.add(blaze);
+            }
+            for (Entity hostile : mod.getEntityTracker().getHostiles()) {
+                if (hostile instanceof Blaze || !hostile.isAlive() || player.distanceTo(hostile) > RUN_CROWD_RADIUS) continue;
+                if (EntityHelper.isAngryAtPlayer(mod, hostile)) others.add(hostile);
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // the tracker rebuilds on another thread sometimes, we get the crowd again next tick
+        }
+        return merge(blazes, others);
+    }
+
+    static <T> List<T> merge(List<? extends T> blazes, List<? extends T> others) {
+        List<T> all = new ArrayList<>(blazes);
+        all.addAll(others);
+        return all;
     }
 
     // an idle run (nobody looking, just healing) that has not gained hp in RUN_GIVE_UP_TICKS gives up. runs after decide, the

@@ -1,9 +1,11 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.entity.AbstractDoToEntityTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
+import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
@@ -19,6 +21,7 @@ import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -28,6 +31,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -52,6 +56,14 @@ public class PearlHuntTask extends Task {
     private static final double AWAY_BLOCKS = 6;
     // 15 s of flailing about is enough, after that the hunt goes on from wherever we ended up
     private static final int AWAY_GIVE_UP_TICKS = 300;
+    // the back off count only starts over after this long without fleeing: lava that is in reach one step and out of it the
+    // next would otherwise reset it every other tick and the give up could never come
+    private static final int AWAY_CALM_RESET_TICKS = 100;
+    // a pearl this close (all three axes, one 20 blocks down a cliff is not "close") is walked to before the hunt goes on
+    private static final double PICKUP_BLOCKS = 16;
+    // out of the lava's reach and a good way out of the spot's own radius, 15 s is plenty to walk it
+    private static final double LEAVE_BLOCKS = 32;
+    private static final long LEAVE_TICKS = 300;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -61,6 +73,9 @@ public class PearlHuntTask extends Task {
     // the angry ones seen last tick, so one that is dead now was one we killed
     private final List<Enderman> watched = new ArrayList<>();
     private final KillAndLootTask loot;
+    private final ItemTarget pearlTarget;
+    // one instance for the hunt: the bans live on the mod so a rebuild would be fine too, but this keeps its walk progress
+    private PickupDroppedItemTask pickup;
     private final Task goToDimension;
 
     private GetWithinRangeOfBlockTask toHotspot;
@@ -87,7 +102,15 @@ public class PearlHuntTask extends Task {
     // latched: its isEqual compares the danger blocks, a rebuild per tick would restart it every tick
     private RunAwayFromPositionTask away;
     // ticks spent stepping away in a row; a shore with nowhere to flee to must not hold us in "Backing off" forever
-    private int awayTicks;
+    private AwayCount awayCount = new AwayCount(0, Long.MIN_VALUE / 2);
+    // where lava kept us stuck: endermen near it are skipped for a few minutes (see LavaSpot) and we walk off it once
+    private final LavaSpot lavaSpot = new LavaSpot();
+    private final LavaStrikes lavaStrikes = new LavaStrikes();
+    // a back off is new when the last fleeing tick is more than one tick old, so an interrupt or an early return in between
+    // cannot leave it looking like the same one
+    private long lastFleeAt = Long.MIN_VALUE / 2;
+    private RunAwayFromPositionTask leaveSpot;
+    private long leaveUntil = Long.MIN_VALUE;
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
 
@@ -102,7 +125,8 @@ public class PearlHuntTask extends Task {
         this.dimension = dimension;
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
-        loot = new KillAndLootTask(Enderman.class, man -> !onLavaShore(man), true, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
+        pearlTarget = new ItemTarget(Items.ENDER_PEARL, pearlsTotal);
+        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> avoid(man)), true, pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -127,6 +151,34 @@ public class PearlHuntTask extends Task {
         boolean givenUp(int id) {
             return gaveUp.contains(id);
         }
+
+        void giveUp(int id) {
+            gaveUp.add(id);
+        }
+    }
+
+    // lava back offs against the enderman we were walking at: the same one every cycle is a foe that is not worth it, even
+    // when each back off on its own looks fine. a new target starts the count over
+    static final class LavaStrikes {
+        static final int LIMIT = 3;
+        private int id = -1;
+        private int count;
+
+        void pursue(int pursued) {
+            if (pursued != id) {
+                id = pursued;
+                count = 0;
+            }
+        }
+
+        // true on the strike that hits the limit
+        boolean strike() {
+            return id >= 0 && ++count >= LIMIT;
+        }
+
+        int id() {
+            return id;
+        }
     }
 
     // the stamp on nook is this fresh or it is a leftover from a hunt that stopped being ticked
@@ -146,7 +198,7 @@ public class PearlHuntTask extends Task {
 
     // the cheap-then-dear enderman check the nook and the phases share: one in range and in sight
     public static boolean endermanNear(AltoClef mod) {
-        return EndermanNook.latchSees(nearestEnderman(mod, null));
+        return EndermanNook.latchSees(nearestEnderman(mod, null, null));
     }
 
     // the angry ones we watched last tick that are dead now: those are kills
@@ -187,6 +239,16 @@ public class PearlHuntTask extends Task {
         trackHp(mod, gameTime);
         lastTickAt = gameTime;
         noteKills(mod);
+        // (any other branch below that returns first still counts as calm)
+        awayCount = awayCount.step(gameTime, false);
+        // before the nook: a nook built by the lava would sit there and put the walk off
+        armLavaSpot(mod, gameTime, false);
+        if (leaveSpot != null) {
+            if (gameTime < leaveUntil && !leaveSpot.isFinished(mod)) {
+                return say("Leaving the lava", leaveSpot);
+            }
+            leaveSpot = null;
+        }
         if (dimension == Dimension.NETHER) {
             Task hole = nookStep(mod, gameTime);
             if (hole != null) {
@@ -201,6 +263,10 @@ public class PearlHuntTask extends Task {
         if (angry != null) {
             return say("Fighting an angry enderman", angry);
         }
+        Task grab = pickupStep(mod);
+        if (grab != null) {
+            return say("Picking up an ender pearl", grab);
+        }
         Task walk = walkToHotspot(mod);
         if (walk != null) {
             return say("Heading for the warped forest", walk);
@@ -209,24 +275,121 @@ public class PearlHuntTask extends Task {
             // (the loot task wanders when nothing is around, which is no way to heal)
             return say("Recovering before the walk", null);
         }
-        if (dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class)) {
+        // read before the back off below: it may be the tick that picks the target, and the back off clears it again
+        int lootId = loot.pursuingId();
+        if (lootId >= 0) {
+            lavaStrikes.pursue(lootId);
+        }
+        if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod))) {
             // no nook to do it from: lava or fire means step away, low hp means wait while it heals
             List<BlockPos> lava = exposedLava(mod.getWorld(), mod.getPlayer().blockPosition(), EndermanNook.AGGRO_LAVA_GAP);
             EndermanNook.Stance stance = EndermanNook.stance(!lava.isEmpty(), mod.getPlayer().isOnFire(), mod.getPlayer().getHealth(),
                     EndermanNook.hpRising(gameTime, lastRiseAt));
-            awayTicks = stance == EndermanNook.Stance.AWAY ? awayTicks + 1 : 0;
-            if (stance == EndermanNook.Stance.AWAY && awayTicks <= AWAY_GIVE_UP_TICKS) {
+            // a flee that started runs to the end even when the lava is out of reach by the first step, or it is a one block shuffle
+            boolean fleeing = stance == EndermanNook.Stance.AWAY || (away != null && !away.isFinished(mod));
+            awayCount = awayCount.step(gameTime, fleeing);
+            // one strike per back off, on the tick it starts. the id was saved while looting, the loot task may have let go of it by now
+            if (fleeing && gameTime - lastFleeAt > 1 && !lava.isEmpty() && lavaStrikes.strike()) {
+                angrySpent.giveUp(lavaStrikes.id());
+            }
+            if (fleeing) {
+                lastFleeAt = gameTime;
+            }
+            if (fleeing && awayCount.ticks() <= AWAY_GIVE_UP_TICKS) {
                 return say("Backing off", stepAway(mod, lava));
             }
             away = null;
+            // the give up fired: this spot is the problem, not the endermen in it
+            if (fleeing) {
+                armLavaSpot(mod, gameTime, true);
+                if (leaveSpot != null) {
+                    return say("Leaving the lava", leaveSpot);
+                }
+            }
             if (stance == EndermanNook.Stance.WAIT) {
                 return say("Recovering before the next enderman", null);
             }
         } else {
             away = null;
-            awayTicks = 0;
+        }
+        // time spent as the loot target counts toward the same give up as the angry fight, an enderman the walk cannot reach
+        // would otherwise bounce between this and the hotspot walk (the latch sees it, drops, sees it) for minutes
+        if (lootId >= 0) {
+            angrySpent.tick(lootId, ANGRY_SECONDS);
         }
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
+    }
+
+    // the lava spot goes up when the back off gave up or the kill tasks have spent 20 s of the last minute standing by lava, and
+    // we walk off it once. a second trigger while it is live changes nothing
+    private void armLavaSpot(AltoClef mod, long gameTime, boolean awayGaveUp) {
+        var me = mod.getPlayer();
+        if (!LavaSpot.trigger(awayGaveUp, AbstractDoToEntityTask.lavaHoldTicks(me.tickCount))) {
+            return;
+        }
+        AbstractDoToEntityTask.clearLavaHolds();
+        if (lavaSpot.arm(me.getX(), me.getY(), me.getZ(), gameTime)) {
+            leaveSpot = new RunAwayFromPositionTask(LEAVE_BLOCKS, me.blockPosition());
+            leaveUntil = gameTime + LEAVE_TICKS;
+        }
+    }
+
+    // not worth the walk: on a lava shore, or inside the lava spot while it lasts
+    private boolean avoid(Entity man) {
+        return onLavaShore(man) || lavaSpot.covers(man.getX(), man.getY(), man.getZ(), man.level().getGameTime());
+    }
+
+    // a pearl lying close by comes before the hotspot walk and the recovery wait, the loot task below is the only other thing that
+    // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
+    // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
+    private Task pickupStep(AltoClef mod) {
+        if (closestPearlDrop(mod, pearlTarget).isEmpty()) {
+            return null;
+        }
+        if (pickup == null) {
+            pickup = new PickupDroppedItemTask(pearlTarget, true);
+        }
+        return pickup;
+    }
+
+    private static Optional<ItemEntity> closestPearlDrop(AltoClef mod, ItemTarget target) {
+        var me = mod.getPlayer();
+        return mod.getEntityTracker().getClosestItemDrop(me.position(), e -> pickupInReach(e.distanceToSqr(me)), target);
+    }
+
+    // the phase asks this before it wanders off to sweep for a forest: a pearl on the floor is the hunt's to fetch
+    public static boolean pearlDropNear(AltoClef mod) {
+        return closestPearlDrop(mod, new ItemTarget(Items.ENDER_PEARL, 1)).isPresent();
+    }
+
+    static boolean pickupInReach(double distSqr) {
+        return distSqr <= PICKUP_BLOCKS * PICKUP_BLOCKS;
+    }
+
+    // back off only when there is an enderman the loot walk would actually go for, not from nothing
+    static boolean backsOffFrom(boolean endermanFound, boolean anyLootable) {
+        return endermanFound && anyLootable;
+    }
+
+    private boolean anyLootable(AltoClef mod) {
+        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (man.isAlive() && lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ticks spent fleeing and the game time of the last one. the count has a short memory (AWAY_CALM_RESET_TICKS) so a back off
+    // that flips with the lava distance still adds up to the give up, and it is read off the clock so the ticks spent fighting
+    // or walking instead count as calm too
+    record AwayCount(int ticks, long lastFlee) {
+        AwayCount step(long now, boolean fleeing) {
+            if (fleeing) {
+                return new AwayCount(ticks + 1, now);
+            }
+            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(0, now) : this;
+        }
     }
 
     private Task say(String hud, Task child) {
@@ -250,7 +413,7 @@ public class PearlHuntTask extends Task {
             nookRetryAt = gameTime + NOOK_RETRY_TICKS;
         }
         if (nook == null) {
-            if (!EndermanNook.latchSees(nearestEnderman(mod, nookFight)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
+            if (!EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
                 return null;
             }
             nook = new NookHuntTask(nookFight);
@@ -301,12 +464,29 @@ public class PearlHuntTask extends Task {
         return out;
     }
 
+    // the loot walk goes for an enderman unless it stands on a lava shore (the bot ends up at the lava with nowhere to go) or the
+    // angry fight already spent its 20 s on it: that one is the same unreachable mob, and as a fresh kill task it would get fresh
+    // stand caps and stand there again
+    // the angry fight skips the lava shore ones too: the bot would walk to the lava edge for a mob that never reaches it
+    static boolean fightable(boolean angryAndAlive, boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
+        return angryAndAlive && lootable(gaveUpAngry, onLavaShore);
+    }
+
+    static boolean lootable(boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
+        return !gaveUpAngry && !onLavaShore.getAsBoolean();
+    }
+
     private static boolean onLavaShore(Entity man) {
         return !exposedLava(AltoClef.getInstance().getWorld(), man.blockPosition(), EndermanNook.AGGRO_LAVA_GAP).isEmpty();
     }
 
+    // one give up turns off the loot target and the latch both: either clock saying so is enough (null = no such clock)
+    static boolean givenUpOn(int id, AngryClock nookGaveUp, AngryClock angryGaveUp) {
+        return nookGaveUp != null && nookGaveUp.givenUp(id) || angryGaveUp != null && angryGaveUp.givenUp(id);
+    }
+
     // distance to the nearest tracked enderman we have line of sight to, infinity for none (see EndermanNook.nearestSeen)
-    private static double nearestEnderman(AltoClef mod, AngryClock gaveUp) {
+    private static double nearestEnderman(AltoClef mod, AngryClock nookGaveUp, AngryClock angryGaveUp) {
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
@@ -314,7 +494,7 @@ public class PearlHuntTask extends Task {
             double d = man.distanceTo(mod.getPlayer());
             // (the cheap distance first, the ray is the dear part and the latch does not care past its range)
             // (one the nook gave up on would keep re-arming the latch and the nook with it)
-            boolean skip = gaveUp != null && gaveUp.givenUp(man.getId());
+            boolean skip = givenUpOn(man.getId(), nookGaveUp, angryGaveUp);
             dist[i] = !skip && man.isAlive() && d <= EndermanNook.LATCH_RANGE && man.hasLineOfSight(mod.getPlayer()) ? d : Double.NaN;
         }
         return EndermanNook.nearestSeen(dist);
@@ -324,11 +504,21 @@ public class PearlHuntTask extends Task {
     // nearest one first, and only inside the range where it walks to us (past it, it teleports to us by itself).
     // but only for a while per target, one we cannot reach (lava, a ledge) does not get to stall the whole hunt
     private Task fightAngry(AltoClef mod) {
+        // the one we are on stays the one until it is dead, gone, far or spent: isCreepy flickers when it looks away, and
+        // every swap to the loot task restarts the kill task and its caps
+        if (angryTarget instanceof Enderman latched && angryTask != null) {
+            if (stillLatched(latched.isAlive() && !latched.isRemoved(), latched.distanceTo(mod.getPlayer()), angrySpent.givenUp(latched.getId()), avoid(latched))) {
+                return angrySpent.tick(latched.getId(), ANGRY_SECONDS) ? null : angryTask;
+            }
+            // (let go for real: a stale latch would come back the moment the mob walked into range again, skipping isCreepy)
+            angryTarget = null;
+            angryTask = null;
+        }
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
-            dist[i] = man.isAlive() && man.isCreepy() && !angrySpent.givenUp(man.getId()) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
+            dist[i] = fightable(man.isAlive() && man.isCreepy(), angrySpent.givenUp(man.getId()), () -> avoid(man)) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
         int at = EndermanNook.nearestAngry(dist);
         if (at < 0) {
@@ -346,11 +536,15 @@ public class PearlHuntTask extends Task {
         return angryTask;
     }
 
+    static boolean stillLatched(boolean aliveAndHere, double dist, boolean gaveUp, boolean avoided) {
+        return aliveAndHere && dist <= EndermanNook.ANGRY_RANGE && !gaveUp && !avoided;
+    }
+
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
     private Task walkToHotspot(AltoClef mod) {
         walkHeld = false;
         RunState.Pos spot = hotspot.get();
-        boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod, nookFight)), System.currentTimeMillis() / 1000.0);
+        boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent)), System.currentTimeMillis() / 1000.0);
         if (spot == null) {
             return null;
         }

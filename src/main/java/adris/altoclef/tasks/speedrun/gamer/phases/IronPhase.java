@@ -36,6 +36,7 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -86,6 +87,9 @@ public class IronPhase implements PhaseHandler {
     // FoodGate: a food top-up that started on the surface runs to the full amount, and the band the count was last in (-1 = unset)
     private boolean foodTopUp;
     private int foodBand = -1;
+    // when armor in the bag first held the furnace trip back, -1 = not holding it back
+    private long wearSince = -1;
+    private static final long WEAR_FIRST_TICKS = 20 * 15;
     // the food need led last tick (a screen that opens then is its own, FoodGate.cookBusy) and the soft top-up was called off
     // because the raw meat in the bag covers the hole (FoodPlan.covered), the second only so it is announced once
     private boolean foodLed;
@@ -156,6 +160,11 @@ public class IronPhase implements PhaseHandler {
         // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in the next phase
         return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, food.atMinimum(), wood).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
+    }
+
+    @Override
+    public void onRespawn() {
+        furnaces.respawned();
     }
 
     @Override
@@ -266,6 +275,30 @@ public class IronPhase implements PhaseHandler {
 
     // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
 
+    // armor sitting in the bag beats starting a furnace trip, see IronActivity.wearFirst. the same toEquip and held test the
+    // runner's equip uses, so there is no second gold rule in here
+    private boolean wearFirst(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        boolean wanted = needs.stream().anyMatch(n -> KitNeed.EQUIP_ARMOR.equals(n.catalogueName()));
+        if (!wanted) {
+            wearSince = -1;
+            return false;
+        }
+        boolean held = !WearFromBag.held(mod, KitPlanner.toEquip(ctx.facts(), ctx.cfg().overworld)).isEmpty();
+        double r = IronActivity.WEAR_HOSTILE_RADIUS;
+        boolean close = mod.getEntityTracker().getHostiles().stream()
+                .anyMatch(e -> e.distanceToSqr(mod.getPlayer()) <= r * r);
+        if (!held) {
+            wearSince = -1;
+            return false;
+        }
+        // a piece the equip can't put on (a bound one on the body) must not hold the furnace off for good
+        long now = ctx.facts().gameTime();
+        if (wearSince < 0) {
+            wearSince = now;
+        }
+        return IronActivity.wearFirst(true, now - wearSince < WEAR_FIRST_TICKS, close);
+    }
+
     private Task arbiterTick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
         long now = f.gameTime();
@@ -292,9 +325,9 @@ public class IronPhase implements PhaseHandler {
             // same moment the old cooking tick built: a new head is the boundary, the early pick cuts the mining need short
             boolean boundary = head == null || !head.equals(kitHead);
             moment = moment(mod, ctx, needs, head, boundary, schedule);
-            plan = furnaces.plan(ctx, moment);
+            plan = furnaces.plan(mod, ctx, moment);
             if (ctx.food().held() < ctx.food().floor()) {
-                plan = FurnacePlan.foodFirst(plan);
+                plan = FurnacePlan.foodFirst(plan, FurnaceWatch.banned(mod));
             }
             furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                     || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
@@ -309,7 +342,7 @@ public class IronPhase implements PhaseHandler {
         boolean atScreen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
         boolean starving = !atScreen && ctx.food().starving(tripJob);
         IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
-                support.golemFighting(), starving);
+                support.golemFighting(), starving, wearFirst(mod, ctx, needs));
         support.beginTick(mod, ctx);
         furnaceAsked = false;
         Kind before = arbiter.current();
@@ -437,7 +470,7 @@ public class IronPhase implements PhaseHandler {
         }
         // a pack-up or a stand-by ended earlier this tick: its visit changed the jobs, so the plan is made again (trip() only
         // re-plans for a trip that ends inside its own call)
-        FurnacePlan.Plan fresh = furnaceAsked ? furnaces.plan(ctx, moment) : plan;
+        FurnacePlan.Plan fresh = furnaceAsked ? furnaces.plan(mod, ctx, moment) : plan;
         furnaceAsked = true;
         Task trip = furnaces.trip(mod, ctx, fresh, moment);
         if (trip == null) {
@@ -566,7 +599,7 @@ public class IronPhase implements PhaseHandler {
         // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
         boolean boundary = head == null || !head.equals(committed);
         FurnacePlan.Moment moment = moment(mod, ctx, runnable, head, boundary, schedule);
-        FurnacePlan.Plan plan = furnaces.plan(ctx, moment);
+        FurnacePlan.Plan plan = furnaces.plan(mod, ctx, moment);
         Task side = plan.standingBy() ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
         if (side != null) {
             hudState = support.hud();
@@ -667,13 +700,21 @@ public class IronPhase implements PhaseHandler {
         if (f.furnaceJobs().isEmpty() || !surface.aboutToClimb(mod, ctx, head, next)) {
             return null;
         }
+        // end a finished visit before picking, it can remove the job the pick would name
+        Task running = furnaces.active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
         Vec3 me = mod.getPlayer().position();
-        RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z));
+        RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z), FurnaceWatch.banned(mod));
         if (job == null) {
             return null;
         }
-        packed.add(job.pos);
-        return furnaces.leave(mod, ctx, job, FurnacePlan.Leaving.AREA, jobDepth(mod, job));
+        Task trip = furnaces.leave(mod, ctx, job, FurnacePlan.Leaving.AREA, jobDepth(mod, job));
+        if (trip != null) {
+            packed.add(job.pos);
+        }
+        return trip;
     }
 
     // blocks between the job's furnace and the open sky over it (over us, when its chunk is not loaded)

@@ -63,8 +63,9 @@ public class StationLeaseTest {
         assertTrue(WorkbenchRules.leased(b, 500));
         assertTrue(WorkbenchRules.leased(b, 500 + WorkbenchRules.LEASE_TICKS));
         assertFalse(WorkbenchRules.leased(b, 500 + WorkbenchRules.LEASE_TICKS + 1));
-        // a clock that went backwards (another world) is no lease, it could never run out
-        assertFalse(WorkbenchRules.leased(b, 499));
+        // a clock a tick back is lag and still leased, one way back (another world) is no lease, it could never run out
+        assertTrue(WorkbenchRules.leased(b, 499));
+        b.leasedTick = 5000;
         assertFalse(WorkbenchRules.leased(b, 0));
     }
 

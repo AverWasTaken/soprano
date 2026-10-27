@@ -7,14 +7,17 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.tasks.speedrun.gamer.portal.LavaHunt;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
+import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.PhantomScoops;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.Minecraft;
@@ -101,6 +104,11 @@ public class PlaceObsidianBucketTask extends Task {
     // the ban on this cell is out, the parent moves the frame
     private boolean _dropped;
     private Task _fetch;
+    // the lava fetch stays on the surface band (LavaHunt) until it has been looking this long. lava 60 blocks down is a mob cave
+    // and the bot walked into one for a bucket. when the band really has none, any depth is the last resort
+    private static final int BAND_ONLY_TICKS = 20 * 60;
+    private int _bandSince = Integer.MIN_VALUE;
+    private int _bandPy;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
         this(pos, List.of());
@@ -163,6 +171,9 @@ public class PlaceObsidianBucketTask extends Task {
      */
     @Override
     protected Task onTick(AltoClef mod) {
+        _bandPy = mod.getPlayer().blockPosition().getY();
+        // a bucket in hand ends the hunt, the next fetch gets the band again
+        if (mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) _bandSince = Integer.MIN_VALUE;
         _backUpThisTick = false;
         _stillCountedThisTick = false;
         Task next = castTick(mod);
@@ -185,10 +196,23 @@ public class PlaceObsidianBucketTask extends Task {
 
     // the cast's own lava fetch, same rule as the parent's: not the cells we are casting in
     private Task ownFetch() {
+        if (_bandSince == Integer.MIN_VALUE) _bandSince = WorldHelper.getTicks();
         if (_fetch == null) {
-            _fetch = new CollectBucketLiquidTask.CollectLavaBucketTask(1).leaveAlone(this::scoopOff);
+            _fetch = new CollectBucketLiquidTask.CollectLavaBucketTask(1).leaveAlone(p -> scoopOff(p) || offBand(p));
         }
         return _fetch;
+    }
+
+    // the parent's own early fetch starts the clock too, it is the same hunt
+    public void startBandClock(AltoClef mod) {
+        _bandPy = mod.getPlayer().blockPosition().getY();
+        if (_bandSince == Integer.MIN_VALUE) _bandSince = WorldHelper.getTicks();
+    }
+
+    // overworld only, the nether has lava everywhere and no band to speak of
+    public boolean offBand(BlockPos p) {
+        return _bandSince != Integer.MIN_VALUE && GameClock.since(_bandSince, WorldHelper.getTicks()) < BAND_ONLY_TICKS
+                && WorldHelper.getCurrentDimension() == Dimension.OVERWORLD && !LavaHunt.inBand(p.getY(), _bandPy);
     }
 
     // our lava just went out, or some of it is loose around the cast. either way it's ours to sort out, and a parent

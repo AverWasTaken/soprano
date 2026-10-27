@@ -20,6 +20,8 @@ public class LavaShoreTest {
     private static final class World implements Cells {
         final Set<Long> lava = new HashSet<>();
         final Set<Long> voids = new HashSet<>();
+        final Set<Long> water = new HashSet<>();
+        final Set<Long> solid = new HashSet<>();
         final Map<Long, Integer> floorAt = new HashMap<>();
 
         static long key(int x, int y, int z) {
@@ -36,6 +38,16 @@ public class LavaShoreTest {
             return this;
         }
 
+        World water(int x, int y, int z) {
+            water.add(key(x, y, z));
+            return this;
+        }
+
+        World solid(int x, int y, int z) {
+            solid.add(key(x, y, z));
+            return this;
+        }
+
         World ledge(int x, int z, int floorY) {
             floorAt.put(key(x, 0, z), floorY);
             return this;
@@ -44,6 +56,8 @@ public class LavaShoreTest {
         @Override
         public Cell at(int x, int y, int z) {
             if (lava.contains(key(x, y, z))) return Cell.LAVA;
+            if (water.contains(key(x, y, z))) return Cell.WATER;
+            if (solid.contains(key(x, y, z))) return Cell.SOLID;
             if (voids.contains(key(x, 0, z))) return Cell.OPEN;
             Integer floor = floorAt.get(key(x, 0, z));
             if (floor != null) return y > floor ? Cell.OPEN : Cell.SOLID;
@@ -255,6 +269,36 @@ public class LavaShoreTest {
         assertNull(LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5));
     }
 
+    // foe at (-1.5, 0.5) so the knock line through cell (0, 0) runs along +x and never touches column (0, 1)
+    @Test
+    public void aDropBesideACellOffTheKnockLineMakesItNoStep() {
+        assertTrue(LavaShore.standable(new World(), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(1, 1), 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aPondBesideACellIsFine() {
+        World w = new World().pit(0, 1).water(0, -2, 1);
+        assertTrue(LavaShore.standable(w, 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aWallBesideACellIsFine() {
+        World w = new World().pit(0, 1).solid(0, 0, 1);
+        assertTrue(LavaShore.standable(w, 0, 0, 0, -1.5, 0.5));
+        // a wall only at head height still stops a knock
+        assertTrue(LavaShore.standable(new World().pit(0, 1).solid(0, 1, 1), 0, 0, 0, -1.5, 0.5));
+    }
+
+    @Test
+    public void aLandingThreeCellsDownCountsAndLavaDoesNot() {
+        // first non-open cell at y-3 is solid: fine. lava there is not a landing
+        assertTrue(LavaShore.standable(new World().pit(0, 1).solid(0, -3, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1).lava(0, -2, 1), 0, 0, 0, -1.5, 0.5));
+        assertFalse(LavaShore.standable(new World().pit(0, 1).solid(0, -4, 1), 0, 0, 0, -1.5, 0.5));
+    }
+
     @Test
     public void rimSwingDoesNotWaitForTheGround() {
         assertTrue(LavaShore.swingReady(true, false, false, true));
@@ -266,9 +310,125 @@ public class LavaShoreTest {
     }
 
     @Test
+    public void aFreshBiteOnASideRimCanSwingAirborne() {
+        assertTrue(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, true, 7)));
+        // bite window over, or no rim near: the ground is waited for as before
+        assertFalse(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, true, 0)));
+        assertFalse(LavaShore.swingReady(true, false, false, LavaShore.rimSwing(false, false, 7)));
+        assertTrue(LavaShore.rimSwing(true, false, 0));
+    }
+
+    @Test
+    public void beingBitenInReachSkipsTheRimStep() {
+        assertTrue(LavaShore.underFire(0, true));
+        assertTrue(LavaShore.underFire(LavaShore.UNDER_FIRE_TICKS, true));
+        assertFalse(LavaShore.underFire(LavaShore.UNDER_FIRE_TICKS + 1, true));
+        assertFalse(LavaShore.underFire(7, false));
+    }
+
+    @Test
+    public void aRimStepThatStopsGettingCloserGivesUp() {
+        assertFalse(LavaShore.stepStalled(LavaShore.STEP_STALL_TICKS - 1));
+        assertTrue(LavaShore.stepStalled(LavaShore.STEP_STALL_TICKS));
+        // a wobble is not progress, a real step closer is
+        assertEquals(1.0, LavaShore.stepBest(1.0, 0.9), 1e-9);
+        assertEquals(1.0, LavaShore.stepBest(1.0, 1.4), 1e-9);
+        assertEquals(0.6, LavaShore.stepBest(1.0, 0.6), 1e-9);
+    }
+
+    @Test
+    public void aStepThatMovesThenStallsStillGivesUp() {
+        // walks 1.0 -> 0.6, then sits there: the idle count restarts at the progress and runs out after it
+        double best = 1.0;
+        int idle = 0;
+        double[] dists = {0.9, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6};
+        boolean stalled = false;
+        for (double d : dists) {
+            double nb = LavaShore.stepBest(best, d);
+            idle = nb < best ? 0 : idle + 1;
+            best = nb;
+            stalled = LavaShore.stepStalled(idle);
+        }
+        assertTrue(stalled);
+    }
+
+    // foe on the +x side, the drop is off to the side (z), so the knock line behind us (-x) never touches it
+    @Test
+    public void aDropToTheSideIsAnEdgeEvenOffTheKnockLine() {
+        World w = new World().pit(0, 1).pit(-1, 1).pit(1, 1);
+        assertFalse(LavaShore.backUnsafe(w, 0.5, 0, 0.5, 1.5, 0.5));
+        assertTrue(LavaShore.edgeNear(w, 0.5, 0, 0.5));
+        assertTrue(LavaShore.rimUnsafe(w, 0.5, 0, 0.5, 1.5, 0.5));
+        assertNotNull(LavaShore.safeStep(w, 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    @Test
+    public void aDropTwoBlocksAwayIsNotAnEdge() {
+        assertFalse(LavaShore.edgeNear(new World().pit(0, 3), 0.5, 0, 0.5));
+        assertFalse(LavaShore.edgeNear(new World(), 0.5, 0, 0.5));
+        // a wall between us and the drop
+        assertFalse(LavaShore.edgeNear(new World().pit(0, 1).solid(0, 0, 1), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void aShallowDropIsNotAnEdge() {
+        assertFalse(LavaShore.edgeNear(new World().ledge(0, 1, -4), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void aCellBesideADropIsNoStep() {
+        // the stair step: the cell itself sits next to the drop, even with the knock line behind it clean
+        World w = new World().pit(0, 2).pit(-1, 2).pit(1, 2);
+        assertFalse(LavaShore.standable(w, 0, 0, 1, -1.5, 1.5));
+    }
+
+    @Test
+    public void rimBackOffIsSkipped() {
+        assertFalse(LavaShore.backOffAllowed(true));
+        assertTrue(LavaShore.backOffAllowed(false));
+    }
+
+    @Test
     public void shoreWaitEndsBeforeTheFightDoes() {
         // the stall ends the fight and the cube gets picked again with its count running, so the cap has to come first
         assertTrue(LavaShore.WAIT_CAP_TICKS < CombatCommit.STALL_TICKS);
         assertEquals(160, LavaShore.WAIT_CAP_TICKS);
+    }
+
+    @Test
+    public void edgeStepLeavesAnInlandSpotAlone() {
+        assertNull(LavaShore.edgeStep(new World(), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void edgeStepWalksAwayFromARim() {
+        // pit one block east of us: the step has to be a standable neighbour that is itself clear of the edge
+        World w = new World().pit(1, 0).pit(1, -1).pit(1, 1).pit(2, 0).pit(2, -1).pit(2, 1);
+        assertTrue(LavaShore.edgeNear(w, 0.5, 0, 0.5));
+        int[] step = LavaShore.edgeStep(w, 0.5, 0, 0.5);
+        assertNotNull(step);
+        assertTrue(step[0] < 0);
+    }
+
+    @Test
+    public void edgeStepHasNowhereToGoWhenEveryNeighbourIsBad() {
+        World w = new World();
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                if (x != 0 || z != 0) w.pit(x, z);
+            }
+        }
+        assertNull(LavaShore.edgeStep(w, 0.5, 0, 0.5));
+    }
+
+    // a blaze in melee contact is a rim foe, a ghast and the real ranged kinds are not
+    @Test
+    public void rimFoeTakesAMeleeBlazeButNotGhastsOrArchers() {
+        assertTrue(LavaShore.rimFoe(false, false, false, true, 2.5, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, false, true, 4, 3.5));
+        assertFalse(LavaShore.rimFoe(true, false, false, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, true, false, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, true, true, 2, 3.5));
+        assertFalse(LavaShore.rimFoe(false, false, false, false, 2, 3.5));
     }
 }

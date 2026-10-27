@@ -115,6 +115,11 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         _expect.clear();
     }
 
+    // what we are chasing right now, null for nothing
+    public T pursuing() {
+        return _currentlyPursuing;
+    }
+
     public boolean wasWandering() {
         return _wasWandering;
     }

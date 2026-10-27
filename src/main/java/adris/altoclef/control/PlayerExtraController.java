@@ -6,11 +6,13 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
 import adris.altoclef.eventbus.events.BlockBreakingEvent;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
+import adris.altoclef.util.helpers.SwordSwing;
 import baritone.behavior.CombatAim;
 import baritone.behavior.LegacyCombat;
 import net.minecraft.world.item.Item;
@@ -18,10 +20,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Creeper;
@@ -76,6 +80,17 @@ public class PlayerExtraController {
 
     public boolean inRange(Entity entity) {
         return _mod.getPlayer().closerThan(entity, Baritone.settings().altoEntityReachRange.value);
+    }
+
+    // the last tick we were bitten, kept past hurtTime (10 ticks) so a mob that bites every 20 still reads as on us in between
+    private long _lastHurtTick = Long.MIN_VALUE / 2;
+
+    public long ticksSinceHurt() {
+        long now = gameTime();
+        if (_mod.getPlayer().hurtTime > 0) {
+            _lastHurtTick = now;
+        }
+        return now - _lastHurtTick;
     }
 
     // swings that really went out, for the kill task's "stood in reach and nothing swung" cap
@@ -154,7 +169,11 @@ public class PlayerExtraController {
     // the stall breaker for a kill task that has stood in reach for too long: no hop, no ground check, no look at the keys,
     // just the hit when the cooldown allows it
     public boolean swingNow(Entity entity) {
-        if (!attackReady()) {
+        // same no-sweep rule as swordSwing: a calm neutral next to the target gets the early swing, a full one would sweep it
+        // and the stall breaker is the swing that fires most in a fight that is biting us
+        boolean ready = swordInHand() && entity instanceof LivingEntity target
+                ? SwordSwing.charged(chargeScale(), calmNeutralBeside(target)) : attackReady();
+        if (!ready) {
             return false;
         }
         _crit.reset();
@@ -226,8 +245,16 @@ public class PlayerExtraController {
     // (see CritTiming.LEAD_TICKS) and has to be steered all the way down, so those ticks are worth a call. false whenever
     // baritone is walking, then nobody jumps and the old "wait for full" rules are the whole story
     public boolean wantsCritTick() {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()
+        if (LegacyCombat.active() || _mod.getClientBaritone().getPathingBehavior().isPathing()
                 || _mod.getMobDefenseChain().creeperStepActive()) {
+            return false;
+        }
+        // a sword never hops. the ticks right before the charge fills are still worth a call, that is when sprint comes off.
+        // from the early swing scale on too, the callers gate on this and the swing beside a calm neutral goes out down there
+        if (swordInHand()) {
+            return ticksToFull() <= SwordSwing.LOCK_LEAD_TICKS || chargeScale() >= SwordSwing.CALM_SWING_SCALE;
+        }
+        if (!Baritone.settings().altoJumpCrits.value) {
             return false;
         }
         // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
@@ -251,7 +278,16 @@ public class PlayerExtraController {
         boolean stepping = _mod.getMobDefenseChain().creeperStepActive();
         // pre 1.9 the scale is faked full, so CritTiming would see a charged swing every tick and hop at everything. plain
         // clicking it is
-        if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
+        if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target)) {
+            _crit.reset();
+            return plainSwing(player, entity);
+        }
+        // a sword is paced by the charge and sweeps, no hop (see SwordSwing)
+        if (swordInHand()) {
+            _crit.reset();
+            return swordSwing(player, target);
+        }
+        if (!Baritone.settings().altoJumpCrits.value) {
             _crit.reset();
             return plainSwing(player, entity);
         }
@@ -299,6 +335,45 @@ public class PlayerExtraController {
             default:
                 return plainSwing(player, entity);
         }
+    }
+
+    // the hand holds a sword (the sweep and the no-hop rules are the sword's)
+    public boolean swordInHand() {
+        return _mod.getPlayer().getMainHandItem().is(ItemTags.SWORDS);
+    }
+
+    // charge, then swing. shortly before the charge is full sprint is locked off so the swing can sweep. if we were still
+    // sprinting when this call began, the stop packet has not gone out yet and the swing waits a tick for it
+    private boolean swordSwing(LocalPlayer player, LivingEntity target) {
+        boolean wasSprinting = player.isSprinting();
+        boolean calm = calmNeutralBeside(target);
+        boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calm);
+        if (lock) {
+            _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
+            player.setSprinting(false);
+        }
+        // a neutral mob beside the target and the sweep would anger it: swing early, under the 0.9 a sweep needs (SwordSwing)
+        boolean ready = SwordSwing.charged(chargeScale(), calm);
+        if (!SwordSwing.swing(ready, lock, !wasSprinting)) {
+            return false;
+        }
+        return plainSwing(player, target, ready);
+    }
+
+    // the scale the server will judge the swing by, pre 1.9 always full
+    private double chargeScale() {
+        return LegacyCombat.active() ? 1 : _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL);
+    }
+
+    // a neutral mob nobody has poked within a block or two of the target: the sweep would hit it and start a fight we did not
+    // pick. we swing early then (SwordSwing.charged), and leave sprint alone: a sprint hit can't sweep either
+    private boolean calmNeutralBeside(LivingEntity target) {
+        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, target.getBoundingBox().inflate(2))) {
+            if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // what the machine said, once per change and not per tick, so the play log shows which veto is still keeping the bot
@@ -387,7 +462,8 @@ public class PlayerExtraController {
     // asks CritTiming.hopPlanned: the hop question with the path left out (the path in the way is usually the back-off
     // itself) and the lead window left out (a back-off that starts mid charge is still walking when the lead comes)
     public boolean hopWantsToStayClose(Entity entity) {
-        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getMobDefenseChain().creeperStepActive()) {
+        if (LegacyCombat.active() || !Baritone.settings().altoJumpCrits.value || _mod.getMobDefenseChain().creeperStepActive()
+                || swordInHand()) {
             return false;
         }
         if (critInFlight()) {
@@ -403,7 +479,11 @@ public class PlayerExtraController {
     // on the ground, coming down or swimming is the old rule, and it is what keeps a swing from spending the rise of a crit hop.
     // with no hop in flight there is no crit to spare, so a bot climbing or pillaring with a mob on it gets to hit it too
     private boolean plainSwing(LocalPlayer player, Entity entity) {
-        if (attackReady() && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater() || !critInFlight())) {
+        return plainSwing(player, entity, attackReady());
+    }
+
+    private boolean plainSwing(LocalPlayer player, Entity entity, boolean ready) {
+        if (ready && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater() || !critInFlight())) {
             attack(entity);
             return true;
         }

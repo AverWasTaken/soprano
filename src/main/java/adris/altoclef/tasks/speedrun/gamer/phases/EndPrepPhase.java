@@ -231,8 +231,8 @@ public class EndPrepPhase implements PhaseHandler {
     // weapon, bucket, pickaxe, blocks, armor, food. null = all there
     private Task gearStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
         if (gap.weapon()) {
-            _hudState = "Getting an axe";
-            return catalogueItem(Items.IRON_AXE);
+            _hudState = "Getting a sword";
+            return catalogueItem(Items.IRON_SWORD);
         }
         if (gap.waterBucket()) {
             Task water = waterStep(mod);

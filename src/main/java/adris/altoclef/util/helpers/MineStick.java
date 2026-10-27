@@ -99,4 +99,21 @@ public final class MineStick {
     public static boolean toolSwapWouldReset(boolean breakingNow, BlockPos breakingPos, double progress, BlockPos target) {
         return breakingNow && progress > 0 && breakingPos != null && breakingPos.equals(target);
     }
+
+    // nothing in the bag beats the hand on this block (dirt, with the pick as the best tool): a pick in hand just wears for
+    // no gain, so hold something that can't. an empty slot first, then any hotbar item that doesn't take damage, never
+    // another tool. -1 when there is no such slot, the hand stays as it is
+    public static int calmSlot(boolean[] empty, boolean[] damageable, int selected) {
+        for (int i = 0; i < 9; i++) {
+            if (i != selected && empty[i]) {
+                return i;
+            }
+        }
+        for (int i = 0; i < 9; i++) {
+            if (i != selected && !damageable[i]) {
+                return i;
+            }
+        }
+        return -1;
+    }
 }

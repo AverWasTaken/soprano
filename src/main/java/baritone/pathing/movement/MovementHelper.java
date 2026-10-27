@@ -1086,7 +1086,7 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     // every movement wants this one: the block is for the path in front of us, so protected throwaways are fair game
-    static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak) {
+    public static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak) {
         return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true, true);
     }
 
@@ -1271,7 +1271,7 @@ public interface MovementHelper extends ActionCosts, Helper {
         return PlaceResult.NO_OPTION;
     }
 
-    enum PlaceResult {
+    public enum PlaceResult {
         // BLOCKED: a mob is in the cell, hold still and do not click
         READY_TO_PLACE, ATTEMPTING, NO_OPTION, BLOCKED;
     }

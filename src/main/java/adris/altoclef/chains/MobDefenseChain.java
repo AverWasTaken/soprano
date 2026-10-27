@@ -19,6 +19,7 @@ import adris.altoclef.util.helpers.CreeperEscape;
 import adris.altoclef.util.helpers.CreeperStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.ProjectileHelper;
@@ -43,7 +44,6 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
@@ -102,6 +102,11 @@ public class MobDefenseChain extends SingleTaskChain {
     // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
     // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
     private long _dodgeTick = Long.MIN_VALUE;
+    // ticks until the closest incoming projectile reaches us, as of the last isProjectileClose. a bite in progress only gives
+    // way to the shield when this is short (a held shield swaps the food out of the hand, which throws the bite away)
+    private double _impactTicks = Double.POSITIVE_INFINITY;
+    // a close projectile of the last isProjectileClose was a ghast ball (the escape bridge keeps its shield down for those)
+    private boolean _closeFireball;
     private boolean _capSneak;
     private final Object _capOwner = new Object();
     // anything that is not a block, for the main hand while the shield is up
@@ -326,7 +331,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // a block over our head first, when the creeper is up the shaft with us. it takes the wheel (nothing else may swap
             // the pickaxe back in under the click), and gives up to the shield once its share of the fuse is gone or a click
             // is refused
-            if (_capAbove && !_capDone && CreeperCap.inWindow(mod.getWorld().getGameTime() - _capSince) && capCell(mod)) {
+            if (_capAbove && !_capDone && CreeperCap.inWindow(GameClock.since(_capSince, mod.getWorld().getGameTime())) && capCell(mod)) {
                 setTask(new IdleTask());
                 _killAura.stopShielding(mod);
                 stopShielding(mod);
@@ -369,7 +374,9 @@ public class MobDefenseChain extends SingleTaskChain {
         if (creeperShield) {
             // the creeper's shield is up, leave it be
         } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
-                && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
+                && isProjectileClose(mod) && !(_closeFireball && mod.getBehaviour().noFireballShield())
+                && BiteRules.shieldMayStart(mod.getFoodChain().biting(), _impactTicks)
+                && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
             _dodgeTick = mod.getWorld().getGameTime();
@@ -435,13 +442,15 @@ public class MobDefenseChain extends SingleTaskChain {
 
         snapshot(mod);
         _killAura.tickStart();
-        // all feet and no hands on a run, the shield only when boxed in or with a second mob hitting us. the shield is for
-        // standing in a pile, not for the first zombie that wanders up. a committed fight keeps the aura going under the flee
+        // all feet and no hands on a run, the shield only in a committed melee fight or when boxed in. a committed fight keeps the aura going under the flee
         // line and raises the shield mid move, the machine already decided this is a fight
         _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield(), _brain.auraFighting(), _brain.fightTarget());
+        _killAura.setRimGuard(_brain.auraRimGuard());
 
         // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
+        int fightId = _brain.fightTarget();
+        boolean fightApplied = false;
         try {
             if (!entities.isEmpty()) {
                 for (Entity entity : entities) {
@@ -470,8 +479,17 @@ public class MobDefenseChain extends SingleTaskChain {
                     }
                     if (shouldForce) {
                         applyForceField(entity);
+                        if (entity.getId() == fightId) fightApplied = true;
                     }
                 }
+            }
+            // the fight target is the aura's for the whole fight. the close list ends at 4 blocks (our own swing knocks it out
+            // that far) and the hostile test drops a cube past 3 or an enderman between hits, and every tick it is missing the
+            // aura has nothing to shield against: down comes the shield and its 5 tick raise starts over, right as it walks back in.
+            // (still only one with a line to us: behind a wall the shield would pause the walk round to it, for nothing)
+            if (fightId != -1 && !fightApplied && mod.getWorld().getEntity(fightId) instanceof Mob target && target.isAlive()
+                    && !mod.getBehaviour().shouldExcludeFromForcefield(target) && LookHelper.seesPlayer(target, mod.getPlayer(), 10)) {
+                applyForceField(target);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -514,34 +532,29 @@ public class MobDefenseChain extends SingleTaskChain {
         // a run keeps walking: stopping to turn round for a fireball is how the ghast gets a free volley on a bot that was
         // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
         boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
+        boolean close = false;
+        _closeFireball = false;
+        _impactTicks = Double.POSITIVE_INFINITY;
         try {
             if (!projectiles.isEmpty()) {
                 for (CachedProjectile projectile : projectiles) {
                     if (projectile.position.distanceToSqr(mod.getPlayer().position()) < 150) {
-                        boolean isGhastBall = projectile.projectileType == LargeFireball.class;
-                        if (isGhastBall) {
-                            Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
-                            Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
-                            if (ghastBall.isPresent() && ghast.isPresent() && !committed
-                                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-                                mod.getClientBaritone().getPathingBehavior().requestPause();
-                                LookHelper.lookAt(mod, ghast.get().getEyePosition());
-                            }
-                            return false;
-                            // Ignore ghast balls
-                        }
                         if (projectile.projectileType == DragonFireball.class) {
-                            // Ignore dragon fireballs
-                            return false;
+                            // dragon fireballs are the dragon fight's problem, not the shield's. (continue, not return: the
+                            // rest of the list still has arrows in it)
+                            continue;
                         }
-                        if (projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class || projectile.projectileType == SmallFireball.class) {
+                        // (a ghast ball goes through the same closest approach as the rest: the shield is the answer to it, and
+                        // the pause and the turn to face it below only happen for one that is actually coming at us)
+                        if (projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class
+                                || projectile.projectileType == SmallFireball.class || projectile.projectileType == LargeFireball.class) {
                             // check if the velocity of the projectile is going away from us
                             // oh no fancy math
                             Vec3 velocity = projectile.velocity;
                             Vec3 delta = mod.getPlayer().position().subtract(projectile.position);
                             // the dot product scales with the fireball's speed and our distance, so 0.25 of slack can throw out one
                             // that is coming straight at us. only a real "away" counts for those
-                            double epsilon = projectile.projectileType == SmallFireball.class ? 0 : 0.25;
+                            double epsilon = projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class ? 0.25 : 0;
                             // signed on purpose: abs() ignored the arrows sailing sideways past us and kept dodging the ones already flying away
                             if (velocity.dot(delta) <= epsilon) {
                                 // Arrow is going away from us, ignore it.
@@ -556,30 +569,24 @@ public class MobDefenseChain extends SingleTaskChain {
                         double horizontalDistanceSq = delta.x * delta.x + delta.z * delta.z;
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
+                            // every close one counts for the impact clock, so a far arrow listed first does not hide a near fireball
+                            _impactTicks = Math.min(_impactTicks, ProjectileHelper.ticksToClosest(projectile.position, projectile.velocity, mod.getPlayer().position()));
+                            _closeFireball |= projectile.projectileType == LargeFireball.class;
+                            if (close) continue;
+                            close = true;
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
                             if (!committed
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
-                                if (projectile.projectileType instanceof Projectile projectileEntity) {
-                                    Entity owner = projectileEntity.getOwner();
-                                    if (owner != null) {
-                                        LookHelper.lookAt(mod, owner.getEyePosition());
-                                        return true;
-                                    }
-                                    LookHelper.lookAt(mod, projectile.position);
-                                    return true;
-                                }
                                 LookHelper.lookAt(mod, projectile.position);
-                                return true;
                             }
-                            return true;
                         }
                     }
                 }
             }
         } catch (ConcurrentModificationException ignored) {
         }
-        return false;
+        return close;
     }
 
     private static boolean hasShield(AltoClef mod) {
@@ -781,7 +788,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // for the start of the step, and then there was no answer to give)
         if (_capAbove && _capSince == Long.MIN_VALUE) _capSince = now;
         // out of time: the shield has it, and the food chain gets its hands back if there is no shield
-        if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(now - _capSince)) _capDone = true;
+        if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(GameClock.since(_capSince, now))) _capDone = true;
     }
 
     // the same question CreeperStepTask asks before it sprints: is there anywhere to run. asked about the creeper the step

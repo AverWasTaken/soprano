@@ -76,12 +76,26 @@ public final class IronActivity {
     // stands at a quick smoker, hasHead = the plan has a need, loots = village/portal/golem jobs are on (IRON yes, GATHER no),
     // golemFighting = a golem fight task exists whatever the activity is, starving = FoodPlan.starving (the bag is under the food
     // floor and the furnace trip on the table is not for food), so the walks that are not food give way to the kit
-    public record Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting, boolean starving) {
+    public record Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting, boolean starving,
+                        boolean wearFirst) {
         // every scene from before the starving fact was a fed one
         public Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting) {
-            this(jobs, standingBy, hasHead, loots, golemFighting, false);
+            this(jobs, standingBy, hasHead, loots, golemFighting, false, false);
+        }
+
+        public Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting, boolean starving) {
+            this(jobs, standingBy, hasHead, loots, golemFighting, starving, false);
         }
     }
+
+    // a piece of armor is in the bag and the plan wants it on: that goes before a furnace trip starts. armor in the bag does
+    // nothing for us on the walk to the furnace. never with a hostile close, the kit would be standing there dressing
+    public static boolean wearFirst(boolean armorWanted, boolean pieceHeld, boolean hostileClose) {
+        return armorWanted && pieceHeld && !hostileClose;
+    }
+
+    // hostile this close and putting armor on waits
+    public static final double WEAR_HOSTILE_RADIUS = 8;
 
     private Kind current;
     private long since;
@@ -142,7 +156,7 @@ public final class IronActivity {
             case RUINED_PORTAL, VILLAGE_CHEST -> s.loots() && !s.standingBy();
             // (a fight that is going is not a start, so this never drops one)
             case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting() && !s.starving();
-            case FURNACE -> s.jobs() && !s.standingBy() && !s.starving();
+            case FURNACE -> s.jobs() && !s.standingBy() && !s.starving() && !s.wearFirst();
             case PACK_UP -> s.jobs() && s.hasHead();
             case SURFACE -> s.hasHead();
         };

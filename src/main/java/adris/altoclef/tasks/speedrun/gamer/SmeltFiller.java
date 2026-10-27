@@ -99,7 +99,10 @@ public final class SmeltFiller {
                 continue;
             }
             int price = KitPlanner.ingotCost(need.catalogueName()) * (need.count() - KitPlanner.held(f, need.catalogueName()));
-            if (price <= 0) {
+            // a spare shield never takes ingots from a craft that is still waiting for its own
+            if (craftWaiting && price > 0 && "shield".equals(need.catalogueName()) && KitPlanner.held(f, "shield") > 0) {
+                blocked.add(need);
+            } else if (price <= 0) {
                 runnable.add(need);
             } else if (price <= ingots) {
                 ingots -= price;
@@ -156,7 +159,7 @@ public final class SmeltFiller {
         }
     }
 
-    // shield is 6 planks, the pickaxe and axe 4 sticks between them (2 planks make 4), a bed is 3 planks (a few beds'
+    // shield is 6 planks, the pickaxe and sword 3 sticks between them (2 planks make 4), a bed is 3 planks (a few beds'
     // worth is stocked, the rest is chopped when the beds are made)
     static int planksWanted(List<KitNeed> blocked, GamerFacts f, OverworldConfig cfg, int endBeds) {
         return planksWanted(blocked, cfg, WoodBudget.bedPlanksOwed(f, endBeds));

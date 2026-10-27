@@ -44,14 +44,28 @@ public final class CombatRules {
     public static final double RUN_BITE_START = 10;
     public static final double RUN_BITE_ABORT = 5;
     public static final double RUN_BITE_START_FAST = 13;
-    // a mob with at least this movement speed attribute is "fast" for the bite (spiders, baby zombies, vindicators; a plain
-    // zombie is 0.23, a skeleton 0.25)
-    public static final double FAST_MOB_SPEED = 0.3;
+    // a mob with at least this movement speed attribute is "fast" for the bite (spiders, baby zombies, vindicators, and an
+    // angry zombified piglin at 0.23 + 0.05; a plain zombie is 0.23, a skeleton 0.25). the epsilon is float noise on 0.28
+    public static final double FAST_MOB_SPEED = 0.28 - 1e-6;
     // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
     public static final double SHOOTER_RANGE = 15;
-    // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
-    // them back a block or so, and every re-raise is 5 ticks before the shield blocks again
-    public static final double PILE_SHIELD_SLACK = 1.5;
+    // a committed melee fight has the shield up from this far out: most things swing once every 20 ticks or so and the
+    // shield needs 5 to block. up, it holds one block past that, our own swing knocks the target back a bit and every
+    // re-raise is 5 ticks of no block
+    public static final double FIGHT_SHIELD_RANGE = CONTACT_RANGE + 1.5;
+    public static final double FIGHT_SHIELD_HOLD = FIGHT_SHIELD_RANGE + 1;
+    // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
+    public static final double RIM_SHIELD_FOE_RANGE = 4;
+    // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage). a big
+    // cube covers three blocks in one hop, so at three the hit was in before the fight was. the fight lets go at
+    // RIM_RELEASE, one block past it
+    public static final double RIM_ENGAGE_RANGE = 5;
+    public static final double RIM_RELEASE = RIM_ENGAGE_RANGE + 1;
+    // the run's rim shield (rimRunFoe) looks this far: it stops the run, so only for what is about to land
+    public static final double RIM_RUN_RANGE = 3;
+    // the run's rim shield is up this many ticks in a row on one foe and then the run moves on, so it can never pin us there
+    // (the commit's corner timer is held while it is up, see CombatCommit.pauseCorner)
+    public static final int RIM_HOLD_TICKS = 60;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
@@ -78,6 +92,13 @@ public final class CombatRules {
 
     public static boolean desperateMeal(float health, int hunger) {
         return health <= DESPERATE_HEALTH && hunger < 20;
+    }
+
+    // hungry enough for a bite in a fight. burning counts at any bar short of full: fire takes 1 a second through armor for
+    // 15 seconds after lava, and only a full bar with saturation in it heals faster than that (up to 2 a second). at 18 the
+    // slow regen loses to the fire
+    public static boolean fightHungry(int hunger, boolean burning) {
+        return hunger < REGEN_HUNGER || (burning && hunger < 20);
     }
 
     // the chain asked for the wheel at this priority. a priority is a promise that something is running, so with no task
@@ -111,30 +132,59 @@ public final class CombatRules {
         return health > FLEE_HEALTH;
     }
 
-    // the shield in a normal (not cornered) fight: the target is melee and in contact, and another melee mob that has hit us
-    // is in contact too. one zombie never gets it, 1v1 is crits first and a raised shield vetoes the jump. only mobs that hit
-    // us count, never bystanders: two zombies milling about while we walk to a target five blocks off must not stop the walk
-    // for a shield. up: it is up already, and then the hold band (contact plus PILE_SHIELD_SLACK) is the one asked
-    public static boolean pileShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
-        double reach = up ? CONTACT_RANGE + PILE_SHIELD_SLACK : CONTACT_RANGE;
-        boolean target = false;
-        boolean other = false;
+    // the shield in every committed melee fight: the target is melee and close. with a sword there is no crit hop for it to
+    // veto (a sword never hops) and a melee target comes to us, one that never does is dropped by the stall rule. up: it is up
+    // already, and then the hold range is the one asked
+    public static boolean fightShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
+        double reach = up ? FIGHT_SHIELD_HOLD : FIGHT_SHIELD_RANGE;
         for (CombatCommit.Foe foe : foes) {
-            if (!foe.melee() || foe.distance() > reach) continue;
-            if (foe.id() == targetId) {
-                target = true;
-            } else if (foe.hitUs()) {
-                other = true;
-            }
+            if (foe.id() == targetId && foe.melee() && foe.distance() <= reach) return true;
         }
-        return target && other;
+        return false;
+    }
+
+    // a fully blocked hit skips the knockback (not for a hoglin or zoglin, they still throw us), so on a ledge above a drop the shield is up whenever a melee foe is close. a
+    // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
+    // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem
+    public static boolean rimShield(boolean edgeNear, boolean blazeInContact, List<CombatCommit.Foe> foes) {
+        if (!edgeNear) return false;
+        if (blazeInContact) return true;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.melee() && foe.distance() <= RIM_SHIELD_FOE_RANGE) return true;
+        }
+        return false;
+    }
+
+    // a plain melee foe whose hit shoves us (cubes of any size, an angry zombified piglin). heavy hitters, hoglins included, are
+    // not it: the aura keeps its shield off them and a run from them is the heavy rules' business
+    public static boolean rimKnocker(CombatCommit.Foe foe) {
+        return foe.knocker() && foe.melee() && foe.kind() == CombatCommit.Kind.NORMAL;
+    }
+
+    // on a rim in a run: the closest foe within RIM_RUN_RANGE that is a knocker or has hit us (plain melee only), or null.
+    // the run walks on with it biting and the next hit is the knock into the lava, so the shield goes up for it
+    public static CombatCommit.Foe rimRunFoe(boolean edgeNear, List<CombatCommit.Foe> foes) {
+        if (!edgeNear) return null;
+        CombatCommit.Foe best = null;
+        for (CombatCommit.Foe foe : foes) {
+            if (!foe.melee() || foe.kind() != CombatCommit.Kind.NORMAL || foe.distance() > RIM_RUN_RANGE) continue;
+            if (!foe.knocker() && !foe.hitUs()) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)
     public static Stance stance(boolean inCombat, float health, double nearestThreat, boolean hasGapple) {
+        return stance(inCombat, health, nearestThreat, hasGapple, true);
+    }
+
+    // hasFood: the food chain has something it would eat. without it the EAT stance is a promise nobody can keep (it still
+    // sets the in-combat flag in the food chain and the bucket chain), so it is the flee stance instead
+    public static Stance stance(boolean inCombat, float health, double nearestThreat, boolean hasGapple, boolean hasFood) {
         if (!inCombat) return Stance.CALM;
         if (health <= FLEE_HEALTH && hasGapple) return Stance.EAT_GAPPLE;
-        if (health <= CRITICAL_HEALTH && nearestThreat > QUICK_BITE_CLEARANCE) return Stance.EAT;
+        if (health <= CRITICAL_HEALTH && nearestThreat > QUICK_BITE_CLEARANCE && hasFood) return Stance.EAT;
         if (health <= FLEE_HEALTH) return Stance.FLEE;
         return Stance.FIGHT;
     }

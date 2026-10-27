@@ -964,4 +964,19 @@ public class CritTimingTest {
         crowd.meleeNear = CritTiming.CROWD_NO_CRIT;
         assertFalse(CritTiming.hopPlanned(crowd));
     }
+
+    @Test
+    public void noBackOffUnderFireOrFromAnAngryEnderman() {
+        assertTrue(CritTiming.noBackOff(true, false));
+        assertTrue(CritTiming.noBackOff(false, true));
+        assertTrue(CritTiming.noBackOff(true, true));
+        assertFalse(CritTiming.noBackOff(false, false));
+    }
+
+    @Test
+    public void aSwordEndsTheBackOffHardWhenTheSwingIsDue() {
+        assertTrue(CritTiming.hardDropBackOff(true, true));
+        assertFalse(CritTiming.hardDropBackOff(true, false));
+        assertFalse(CritTiming.hardDropBackOff(false, true));
+    }
 }

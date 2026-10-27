@@ -276,6 +276,45 @@ public class BiteRulesTest {
     }
 
     @Test
+    public void aNormalBiteNeverTripsTheStuckCheck() {
+        UseWatch watch = new UseWatch();
+        for (int remaining = 32; remaining >= -BiteRules.STUCK_TICKS; remaining--) {
+            assertEquals("remaining " + remaining, Press.HOLD, watch.step(true, remaining));
+        }
+        assertEquals(Press.HOLD, watch.step(false, 0));
+    }
+
+    @Test
+    public void aUseStuckBelowTheLimitReleases() {
+        UseWatch watch = new UseWatch();
+        assertEquals(Press.RELEASE, watch.step(true, -BiteRules.STUCK_TICKS - 1));
+    }
+
+    @Test
+    public void stuckAgainAndAgainBacksOff() {
+        UseWatch watch = new UseWatch();
+        for (int i = 0; i < BiteRules.RETRIES; i++) {
+            assertEquals(Press.RELEASE, watch.step(true, -50));
+            // let go, press, the bite starts and sticks all over again
+            watch.step(false, 0);
+            assertEquals(Press.HOLD, watch.step(true, 30));
+        }
+        assertEquals(Press.BACK_OFF, watch.step(true, -50));
+        assertTrue(watch.backingOff());
+    }
+
+    @Test
+    public void resetAndClearForgetTheStuckCount() {
+        UseWatch watch = new UseWatch();
+        for (int i = 0; i < BiteRules.RETRIES; i++) watch.step(true, -50);
+        watch.reset();
+        assertEquals(Press.RELEASE, watch.step(true, -50));
+        for (int i = 1; i < BiteRules.RETRIES; i++) watch.step(true, -50);
+        watch.clear();
+        assertEquals(Press.RELEASE, watch.step(true, -50));
+    }
+
+    @Test
     public void eachBiteOfAFillupStartsAgain() {
         UseWatch watch = new UseWatch();
         watch.step(true);
@@ -356,5 +395,33 @@ public class BiteRulesTest {
         // never dodged, and a clock that went backwards
         assertFalse(BiteRules.dodgeHolds(100, Long.MIN_VALUE));
         assertFalse(BiteRules.dodgeHolds(50, 100));
+    }
+
+    @Test
+    public void anArrowOrAFireballDoesNotCountAsAContactHit() {
+        // a zombie in contact, a skeleton's arrow, a ghast ball: only the first one drops a standing bite
+        assertTrue(BiteRules.contactHit(true, true, false));
+        assertFalse(BiteRules.contactHit(true, true, true));
+        assertFalse(BiteRules.contactHit(true, false, true));
+        assertFalse(BiteRules.contactHit(false, true, true));
+        // and the other kinds of damage still are not hits at all
+        assertFalse(BiteRules.contactHit(false, false, false));
+    }
+
+    @Test
+    public void aBiteOnlyGivesWayToTheShieldWhenTheProjectileIsAboutToLand() {
+        assertTrue(BiteRules.shieldMayStart(false, Double.POSITIVE_INFINITY));
+        assertTrue(BiteRules.shieldMayStart(false, 40));
+        assertFalse(BiteRules.shieldMayStart(true, 40));
+        assertFalse(BiteRules.shieldMayStart(true, Double.POSITIVE_INFINITY));
+        assertTrue(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_TICKS));
+        assertTrue(BiteRules.shieldMayStart(true, 3));
+    }
+
+    @Test
+    public void aMeleeHitStillDropsTheBiteAndAnArrowDoesNot() {
+        // the chain feeds the age of the last contact hit: an arrow never gets there, a zombie does
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(5)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(BiteRules.NO_HIT)));
     }
 }

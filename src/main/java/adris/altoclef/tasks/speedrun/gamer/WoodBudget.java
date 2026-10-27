@@ -334,8 +334,8 @@ public record WoodBudget(
     static int owed(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering) {
         int[] wood = new int[2];
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
-        all.addAll(cfg.ironKit);
-        // a diamond pick or axe has the same two sticks as the iron one it stands in for, so the kit item steps aside and the
+        all.addAll(KitPlanner.ironKit(f, cfg));
+        // a diamond pick or sword has the same sticks as the iron one it stands in for, so the kit item steps aside and the
         // diamond one is paid below (a pick we upgrade on top of an iron one we hold is the only case that adds sticks)
         List<String> diamond = DiamondSpend.choose(f, cfg);
         for (KitItem k : all) {

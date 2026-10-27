@@ -60,14 +60,23 @@ public class NetherBlockRestock {
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft
             BlockPos origin = mod.getPlayer().blockPosition();
+            // near lava is off limits first. a dig that came up dry with that (an island in a lava sea, our own span over it, or a
+            // band whose only blocks are ones we can't path to) goes again with only what is in arm's reach and only the
+            // touching rule: boxed in with an empty bag, the walls round us are the blocks, a far one is a path we can't make
+            boolean strict = restock.exhaustedEnds() == 0;
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
-                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p) && !touchesLava(mod, p)
-                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p)));
+                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> (strict ? NetherRestock.inRestockBand(origin, p)
+                            : NetherRestock.inReach(mod.getPlayer().getEyePosition(), p))
+                            && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p))
+                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)));
         } else if (!on) {
             task = null;
         }
-        return on ? task : null;
+        // a dig with nothing in the band wanders off in whatever direction for a block, and on a span over a lava sea that is
+        // a walk off the span. it stands down instead and the dry clock runs out with us still on our feet (the task is not
+        // ticked, so it keeps saying it is wandering until the clock ends the dig)
+        return on && !exhausted ? task : null;
     }
 
     // the block row the feet are in, not the block the y rounds down to: on soul sand (0.875 tall) the floor row would
@@ -82,13 +91,17 @@ public class NetherBlockRestock {
         return state.getFluidState().isEmpty() && state.isFaceSturdy(mod.getWorld(), under, Direction.UP);
     }
 
-    // a block with lava on any side is either holding the lava back or holding us up over it (a bridge is all lava
-    // underneath). neither is ours to mine for a few spare blocks
+    // a block near lava is holding the lava back, holding us up over it (a bridge is all lava underneath), or the pillar we
+    // would walk down into it. none of it is ours to mine for a few spare blocks (see NetherRestock.nearLava). last in the
+    // predicate, it is the expensive one
+    private static boolean nearLava(AltoClef mod, BlockPos p) {
+        return NetherRestock.nearLava(p, q -> mod.getWorld().getFluidState(q).is(FluidTags.LAVA));
+    }
+
+    // the fallback: only a block with lava on one of its faces, that one is holding the lava back or holding us up over it
     private static boolean touchesLava(AltoClef mod, BlockPos p) {
         for (Direction d : Direction.values()) {
-            if (mod.getWorld().getFluidState(p.relative(d)).is(FluidTags.LAVA)) {
-                return true;
-            }
+            if (mod.getWorld().getFluidState(p.relative(d)).is(FluidTags.LAVA)) return true;
         }
         return false;
     }

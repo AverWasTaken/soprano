@@ -24,6 +24,8 @@ import java.util.List;
 public final class FurnaceWatch {
     private CollectFromFurnaceTask task;
     private RunState.FurnaceJob target;
+    // the target's count when its trip started
+    private int visitCount;
     private String hud;
     // the last trip() started a new trip (the phase resets what it was on when that happens)
     private boolean fresh;
@@ -56,6 +58,15 @@ public final class FurnaceWatch {
         task = null;
         target = null;
         hud = null;
+    }
+
+    // a death: the trip and the cook in flight belonged to the old body (the screen they had open is gone). the jobs are in
+    // RunState and stay, the plan sends a new trip. the job already follows the slots (settleMidVisit), so nothing to settle here
+    public void respawned() {
+        reset();
+        quick = false;
+        fresh = false;
+        handedOver = false;
     }
 
     // a fresh phase
@@ -164,6 +175,11 @@ public final class FurnaceWatch {
     // the collect trip that is already under way (finishing it when it is done), null when there is none. a trip that
     // started keeps going whatever the plan says, it already walked there
     public Task active(AltoClef mod, GamerContext ctx) {
+        return active(mod, ctx, false);
+    }
+
+    // `mayAbandon` = the plan picks the trips (trip()), so a trip to a banned furnace can be let go for one that is not
+    private Task active(AltoClef mod, GamerContext ctx, boolean mayAbandon) {
         handedOver = false;
         if (task == null) {
             return null;
@@ -174,6 +190,16 @@ public final class FurnaceWatch {
             say(FurnacePlan.say(target, said.call(), said.text(), ctx.facts().gameTime()));
         }
         if (!task.isFinished(mod)) {
+            if (target != null && FurnaceJobs.settleMidVisit(ctx.state().furnaceJobs, target, task.seenLeft(), task.seenTicks(),
+                    ctx.facts().gameTime())) {
+                ctx.progress("collected from the furnace");
+                ctx.save();
+            }
+            // the furnace under the trip got banned (nothing paths to it) and another job has a trip to make: the plan picks again
+            if (mayAbandon && FurnacePlan.abandonBanned(target, ctx.facts().furnaceJobs(), banned(mod))) {
+                drop();
+                return null;
+            }
             return task;
         }
         RunState.FurnaceJob visited = target;
@@ -185,6 +211,9 @@ public final class FurnaceWatch {
         int left = task.inputLeft();
         long now = ctx.facts().gameTime();
         long guess = visited.doneTick - now;
+        // the count the visit started with: settleMidVisit lowered the job as the bag filled, and the stall and progress calls below
+        // are about the whole visit
+        visited.count = Math.max(visited.count, visitCount);
         int before = visited.count;
         FurnaceJobs.afterVisit(ctx.state().furnaceJobs, target, left, task.leftTicks(), now, task.cappedOut());
         if (left > 0) {
@@ -257,9 +286,9 @@ public final class FurnaceWatch {
 
     // every tick the phase has jobs: one call per job (FurnacePlan.plan), the changes into the log. the trip under way holds its
     // job's call, so this can be asked before active() has had its say
-    public FurnacePlan.Plan plan(GamerContext ctx, FurnacePlan.Moment moment) {
+    public FurnacePlan.Plan plan(AltoClef mod, GamerContext ctx, FurnacePlan.Moment moment) {
         GamerFacts f = ctx.facts();
-        FurnacePlan.Plan plan = FurnacePlan.plan(f.furnaceJobs(), moment, f.gameTime(), task == null ? null : target);
+        FurnacePlan.Plan plan = FurnacePlan.plan(f.furnaceJobs(), moment, f.gameTime(), task == null ? null : target, banned(mod));
         for (String line : plan.changes()) {
             say(line);
         }
@@ -271,11 +300,11 @@ public final class FurnaceWatch {
     public Task trip(AltoClef mod, GamerContext ctx, FurnacePlan.Plan plan, FurnacePlan.Moment moment) {
         fresh = false;
         boolean was = task != null;
-        Task running = active(mod, ctx);
+        Task running = active(mod, ctx, true);
         if (running != null) {
             return running;
         }
-        FurnacePlan.Verdict pick = was ? plan(ctx, moment).pick() : plan.pick();
+        FurnacePlan.Verdict pick = was ? plan(mod, ctx, moment).pick() : plan.pick();
         return pick == null ? null : start(mod, ctx, pick);
     }
 
@@ -321,12 +350,22 @@ public final class FurnaceWatch {
         if (running != null) {
             return running;
         }
-        return job == null ? null : start(mod, ctx, FurnacePlan.leaving(job, why, depth));
+        // a pick made before active() ended the visit can name a job that visit just removed (identity: same objects as the facts list)
+        if (job == null || !FurnaceJobs.listed(ctx.state().furnaceJobs, job)) {
+            return null;
+        }
+        return start(mod, ctx, FurnacePlan.leaving(job, why, depth));
     }
 
     // out of the dimension: the job that is ready first, then the next one on the next call
     public Task leave(AltoClef mod, GamerContext ctx, FurnacePlan.Leaving why) {
-        return leave(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs()), why, 0);
+        // finish the visit first: it may remove the job the pick below would have named (argument order bit us once)
+        fresh = false;
+        Task running = active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
+        return leave(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs(), banned(mod)), why, 0);
     }
 
     private Task start(AltoClef mod, GamerContext ctx, FurnacePlan.Verdict v) {
@@ -334,6 +373,7 @@ public final class FurnaceWatch {
         long now = ctx.facts().gameTime();
         Block block = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(job.kind));
         target = job;
+        visitCount = job.count;
         quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
         if (quick) {
             FurnacePlan.startStandBy(job, now);
@@ -370,6 +410,11 @@ public final class FurnaceWatch {
         }
         BlockPos p = mod.getPlayer().blockPosition();
         return new RunState.Pos(p.getX(), p.getY(), p.getZ());
+    }
+
+    // pathing gave up on this job's furnace (InteractWithBlockTask strikes it, the ban book remembers). such a job goes to the back
+    public static java.util.function.Predicate<RunState.FurnaceJob> banned(AltoClef mod) {
+        return job -> mod.getBlockTracker().unreachable(at(job));
     }
 
     private static BlockPos at(RunState.FurnaceJob job) {

@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.GameClock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -93,7 +94,7 @@ public final class HeadLatch {
         // a resize of the same job (a food count moving with the bag) is not a change of plan, it hands over without the flip rule
         boolean flipBack = flips != null && !running.catalogueName().equals(head.catalogueName())
                 && !KitNeed.EQUIP_ARMOR.equals(head.catalogueName()) && flips.recent(head.catalogueName(), now);
-        if (now < since || now - since >= (flipBack ? FLIP_TICKS : DWELL_TICKS)) {
+        if (GameClock.since(since, now) >= (flipBack ? FLIP_TICKS : DWELL_TICKS)) {
             return head;
         }
         return running;
@@ -166,8 +167,8 @@ public final class HeadLatch {
             // nobody started the clock, so it went this very tick
             return true;
         }
-        // a clock that went backwards does not hold for ever (same as the dwell)
-        return now >= missingSince && now - missingSince < DWELL_TICKS;
+        // a clock way back does not hold for ever (same as the dwell)
+        return GameClock.since(missingSince, now) < DWELL_TICKS;
     }
 
     // the bag holds what the need asked for: a need is "hold this many in total", the same count the planner checks

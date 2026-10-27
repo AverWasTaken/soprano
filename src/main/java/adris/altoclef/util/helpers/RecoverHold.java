@@ -23,6 +23,19 @@ public final class RecoverHold {
     public static final long CAP_TICKS = 900;
     // anything this close while we hold is a run again, cooldown or not. same line as the run's bite
     public static final double RERUN_RANGE = CombatRules.RUN_BITE_START;
+    // a projectile that hit us this recently, thrown by a blaze or a skeleton type, is a re-run in the hold even when the hostile
+    // list never carried the thrower (a blaze only shows up charged, a skeleton can be past the foe range). two seconds
+    public static final long SHOT_SOURCE_TICKS = 40;
+
+    // who counts: not the ghast (it shoots from sixty blocks, "run 24" in the nether is lava, the shield is the answer to its
+    // balls), not the wither skeleton (it is a melee mob)
+    public static boolean rerunSource(String entityType) {
+        return switch (entityType) {
+            case "blaze", "skeleton", "stray", "bogged" -> true;
+            default -> false;
+        };
+    }
+
     // meals while holding go to a full bar, saturation regen only kicks in at 20
     public static final int FILL_TO = 20;
 

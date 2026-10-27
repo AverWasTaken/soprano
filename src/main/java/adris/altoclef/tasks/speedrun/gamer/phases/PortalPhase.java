@@ -8,6 +8,10 @@ import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
+import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
+import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
+import adris.altoclef.tasks.speedrun.gamer.Respawn;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -23,7 +27,9 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -32,6 +38,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,6 +71,13 @@ public class PortalPhase implements PhaseHandler {
     private DefaultGoToDimensionTask cast;
     private LPortalTask pool;
     private boolean poolFailed;
+    // the walk to a lava lake between the pool giving up and the cast starting (see castLakeStep)
+    private final WalkProgress lakeWalk = new WalkProgress();
+    private BlockPos castLake;
+    private boolean castLakeAsked;
+    private boolean castLakeDone;
+    // the lakes the pool gave up on. here and not in RunState or onEnter, so a retry of the phase doesn't walk to them again
+    private final List<LPortalPlan.P> deadLakes = new ArrayList<>();
     // the pool task was the one handed the wheel on the last tick. with no layout yet it is the only time a night may take the
     // wheel here (read live, a layout can land between our tick and the night's question)
     private boolean poolActive;
@@ -72,6 +86,13 @@ public class PortalPhase implements PhaseHandler {
     private ConstructNetherPortalObsidianTask obsidian;
     private EnterNetherPortalTask enter;
     private String hudState;
+    // the spawn bed by the overworld portal (see portalBedStep). the task once it starts, the latch so it is one try per entry
+    private PlaceBedAndSetSpawnTask portalBed;
+    private boolean portalBedDecided;
+    private double portalBedSince;
+    private static final double PORTAL_BED_SECONDS = 45;
+    // close enough to the lake that the tracker's rescan has it in its nearest sources
+    private static final int LAKE_ARRIVE = 8;
 
     @Override
     public GamerPhase phase() {
@@ -112,6 +133,11 @@ public class PortalPhase implements PhaseHandler {
     }
 
     @Override
+    public void onRespawn() {
+        furnaces.respawned();
+    }
+
+    @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         BuildBlocks.newEntry(ctx.state());
@@ -127,16 +153,26 @@ public class PortalPhase implements PhaseHandler {
         userAsync = async.value;
         SettingsOverrides.put(async, false);
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
-        pool = new LPortalTask();
+        pool = new LPortalTask(deadLakes);
         poolStarted = false;
+        castLake = null;
+        castLakeAsked = false;
+        castLakeDone = false;
+        lakeWalk.reset();
         if (ctx.attempt() <= 1) {
             ctx.state().portalPoolTimedOut = false;
+            deadLakes.clear();
         }
         // a pool that already stalled the phase once is not tried again, not even after a relog
         poolFailed = ctx.state().portalPoolTimedOut;
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
+        portalBed = null;
+        // one try per run: a retry of the phase does not place a second bed
+        if (ctx.attempt() <= 1) {
+            portalBedDecided = false;
+        }
         gravel.reset();
         if (!tracking) {
             // portals so we can tell when ours exists, lava so "no lava seen" means something during the cast
@@ -247,6 +283,10 @@ public class PortalPhase implements PhaseHandler {
             }
             ctx.progress("ready for the portal");
         }
+        Task spawnBed = portalBedStep(mod, ctx, portal);
+        if (spawnBed != null) {
+            return spawnBed;
+        }
         // the lava pool build goes first. when it gives up the cast clock starts from now, not from when the phase did
         if (f.dimension() == Dimension.OVERWORLD
                 && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
@@ -264,6 +304,10 @@ public class PortalPhase implements PhaseHandler {
             resetCastClock();
             ctx.progress("lava pool gave up: " + pool.failReason());
         }
+        Task toLake = castLakeStep(mod, ctx, portalExists);
+        if (toLake != null) {
+            return toLake;
+        }
         if (castStartTick < 0) {
             castStartTick = f.gameTime();
         }
@@ -278,6 +322,65 @@ public class PortalPhase implements PhaseHandler {
         }
         hudState = "Getting obsidian for the portal";
         return obsidian;
+    }
+
+    // the pool gave up but its scan saw a lake the cast can flood from. the cast only knows the tracker's 25 nearest lava sources
+    // (often all deep ones) and wanders off to find the rest, so it is walked to the lake first and the tracker fills in around
+    // it. the cast clock has not started yet, so the walk does not eat it. a stalled walk or no lake is just the cast as before
+    private Task castLakeStep(AltoClef mod, GamerContext ctx, boolean portalExists) {
+        if (portalExists || castLakeDone || pool == null || !pool.failed() || ctx.facts().dimension() != Dimension.OVERWORLD
+                || PortalPlanner.parse(ctx.state().portalMethod) != Method.CAST) {
+            return null;
+        }
+        if (!castLakeAsked) {
+            castLakeAsked = true;
+            castLake = pool.castLake(mod);
+            lakeWalk.reset();
+        }
+        if (castLake == null) {
+            castLakeDone = true;
+            return null;
+        }
+        var me = mod.getPlayer();
+        // all three axes, the goal is a sphere and a lake 20 blocks down a cliff is not "here"
+        double dist = Math.sqrt(castLake.distToCenterSqr(me.getX(), me.getY(), me.getZ()));
+        if (dist <= LAKE_ARRIVE || lakeWalk.stalled(ctx.secondsInPhase(), dist)) {
+            castLakeDone = true;
+            return null;
+        }
+        hudState = "Walking to a lava lake";
+        return new GetWithinRangeOfBlockTask(castLake.above(), LAKE_ARRIVE);
+    }
+
+    // a bed from the bag goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the
+    // world spawn. the bed is not claimed as a night bed (NightSleepTask never hears of it), so the morning pickup leaves it, and
+    // RunState.respawnPos (RespawnWatch) is the only record of it. same shape as RoomPhase.roomBedStep
+    private Task portalBedStep(AltoClef mod, GamerContext ctx, Optional<BlockPos> portal) {
+        if (portalBed != null) {
+            if (portalBed.isFinished(mod) || ctx.secondsInPhase() - portalBedSince > PORTAL_BED_SECONDS) {
+                ctx.progress("respawn bed");
+                portalBed = null;
+                return null;
+            }
+            hudState = "Setting the spawn by the portal";
+            return portalBed;
+        }
+        var player = mod.getPlayer();
+        if (portalBedDecided || portal.isEmpty() || player == null || ctx.facts().dimension() != Dimension.OVERWORLD) {
+            return null;
+        }
+        BlockPos at = portal.get();
+        if (Math.hypot(at.getX() - player.getX(), at.getZ() - player.getZ()) > Respawn.PORTAL_BED_REACH) {
+            return null;
+        }
+        portalBedDecided = true;
+        if (!Respawn.wantPortalBed(ctx.state(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
+            return null;
+        }
+        portalBed = new PlaceBedAndSetSpawnTask().spawnOnly().awayFrom(at, 4);
+        portalBedSince = ctx.secondsInPhase();
+        hudState = "Setting the spawn by the portal";
+        return portalBed;
     }
 
     // the gravel detour, asked after the station pickup and before the gate's own task. anything earlier in tick that took the wheel

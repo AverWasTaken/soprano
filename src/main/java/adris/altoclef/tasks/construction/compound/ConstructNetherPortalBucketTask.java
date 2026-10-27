@@ -87,6 +87,9 @@ public class ConstructNetherPortalBucketTask extends Task {
             new Vec3i(-1, 2, 1)
     };
 
+    // the first six of those are the cells in the portal's plane
+    private static final int PORTAL_IN_PLANE = 6;
+
     // The "portalable" region includes the portal (1 x 6 x 4 structure) and an outer buffer for its construction and water bullshit.
     // The "portal origin relative to region" corresponds to the portal origin with respect to the "portalable" region (see _portalOrigin).
     // This can only really be explained visually, sorry!
@@ -98,7 +101,7 @@ public class ConstructNetherPortalBucketTask extends Task {
     // Stored here to cache lava blacklist
     // the cast's own cells are off the menu, the pour we just made is not a lake
     private final CollectBucketLiquidTask _collectLavaTask = new CollectBucketLiquidTask.CollectLavaBucketTask(1)
-            .leaveAlone(cell -> this._cast != null && this._cast.scoopOff(cell));
+            .leaveAlone(cell -> this._cast != null && (this._cast.scoopOff(cell) || this._cast.offBand(cell)));
     // no lake in reach (the search came back empty), for the portal phase's no lava clock
     private boolean _noLake;
     private final TimerGame _refreshTimer = new TimerGame(11);
@@ -112,6 +115,10 @@ public class ConstructNetherPortalBucketTask extends Task {
     // ticks the interior cell we're on has gone without a ray, see InteriorPick
     private int _noReachTicks;
     private int _reachSwitches;
+    // the frame whose outside cells have all been seen air once, see InteriorPick.preemptCount, and which of them we have seen
+    private BlockPos _ringClearFor;
+    private BlockPos _ringSeenFor;
+    private final java.util.Set<BlockPos> _ringSeen = new java.util.HashSet<>();
     private boolean _firstSearch = false;
     private static final int LAKE_Y_BAND = 16;
     private static final float WANDER_LEG = 64;
@@ -150,6 +157,8 @@ public class ConstructNetherPortalBucketTask extends Task {
         mod.getBlockTracker().trackBlock(Blocks.LAVA);
 
         _currentDestroyTarget = null;
+        _ringClearFor = null;
+        _ringSeenFor = null;
         _reachSwitches = 0;
         _noReachTicks = 0;
 
@@ -232,7 +241,7 @@ public class ConstructNetherPortalBucketTask extends Task {
         if (_currentDestroyTarget != null) {
             // same test the picker below uses, or a fluid/fire/plant in the interior gets picked and dropped every tick
             BlockState targetState = mod.getWorld().getBlockState(_currentDestroyTarget);
-            if (targetState.isAir()) {
+            if (targetState.isAir() || (_portalOrigin != null && ringCellDone(mod, _currentDestroyTarget))) {
                 _currentDestroyTarget = null;
             } else if (!isLiquid(targetState) && WorldHelper.tooSlowToBreak(mod, _currentDestroyTarget)) {
                 moveFrame(mod, _currentDestroyTarget, "portal interior");
@@ -348,13 +357,14 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA && !_cast.ownsTheLava(mod)) {
                 setDebugState("Collecting lava");
                 _progressChecker.reset();
+                _cast.startBandClock(mod);
                 return _collectLavaTask;
             }
             return _cast;
         }
 
         // Now, clear the inside.
-        BlockPos p = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, cell -> mod.getWorld().getBlockState(cell).isAir(), null, 0, _reachSwitches);
+        BlockPos p = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, interiorCount(mod), cell -> mod.getWorld().getBlockState(cell).isAir(), null, 0, _reachSwitches);
         if (p != null) {
             if (!isLiquid(mod.getWorld().getBlockState(p)) && WorldHelper.tooSlowToBreak(mod, p)) {
                 moveFrame(mod, p, "portal interior");
@@ -392,10 +402,44 @@ public class ConstructNetherPortalBucketTask extends Task {
         return "Construct Nether Portal";
     }
 
+    // how many of PORTAL_INTERIOR may stop the flint right now: the six in the portal's plane come first in the list, the
+    // twelve outside ones only until they have all been air once
+    private int interiorCount(AltoClef mod) {
+        if (_portalOrigin == null) {
+            return PORTAL_INTERIOR.length;
+        }
+        if (!_portalOrigin.equals(_ringSeenFor)) {
+            _ringSeen.clear();
+            _ringSeenFor = _portalOrigin;
+            _ringClearFor = null;
+        }
+        if (_ringClearFor == null) {
+            List<BlockPos> cells = new ArrayList<>(PORTAL_INTERIOR.length);
+            for (Vec3i offs : PORTAL_INTERIOR) {
+                cells.add(_portalOrigin.offset(offs));
+            }
+            _ringClearFor = InteriorPick.ringSeenClear(cells, PORTAL_IN_PLANE, _ringSeen, cell -> mod.getWorld().getBlockState(cell).isAir()) ? _portalOrigin : null;
+        }
+        return InteriorPick.preemptCount(PORTAL_INTERIOR.length, PORTAL_IN_PLANE, _ringClearFor != null);
+    }
+
+    // a ring cell that refilled after the whole ring was clear once: not ours to chase any more
+    private boolean ringCellDone(AltoClef mod, BlockPos cell) {
+        if (interiorCount(mod) >= PORTAL_INTERIOR.length) {
+            return false;
+        }
+        for (int i = PORTAL_IN_PLANE; i < PORTAL_INTERIOR.length; i++) {
+            if (cell.equals(_portalOrigin.offset(PORTAL_INTERIOR[i]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // count the cell we're on going without a ray and move to a better one when InteriorPick says so
     private boolean switchedInteriorCell(AltoClef mod) {
         _noReachTicks = InteriorPick.reachNow(mod, _currentDestroyTarget) ? 0 : _noReachTicks + 1;
-        BlockPos next = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, cell -> mod.getWorld().getBlockState(cell).isAir(), _currentDestroyTarget, _noReachTicks, _reachSwitches);
+        BlockPos next = InteriorPick.pick(mod, _portalOrigin, PORTAL_INTERIOR, interiorCount(mod), cell -> mod.getWorld().getBlockState(cell).isAir(), _currentDestroyTarget, _noReachTicks, _reachSwitches);
         if (next == null || next.equals(_currentDestroyTarget)) {
             return false;
         }
@@ -517,13 +561,16 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (!inYBand(pos.getY(), playerPos.getY())) continue;
             int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
             // every lone source gets flooded now, only the real lakes are worth a chat line
-            if (depth >= 12) {
+            if (depth >= LAKE_MIN_SOURCES) {
                 Debug.logMessage("Found with depth " + depth);
                 lakes.add(pos);
             }
         }
         return lakes;
     }
+
+    // the flood the cast wants before it calls a pool a lake (LPortalTask walks to one the pool could not build on)
+    public static final int LAKE_MIN_SOURCES = 12;
 
     static boolean inYBand(int lakeY, int playerY) {
         return Math.abs(lakeY - playerY) <= LAKE_Y_BAND;
@@ -535,7 +582,7 @@ public class ConstructNetherPortalBucketTask extends Task {
         return lakeSize(origin, ConstructNetherPortalBucketTask::isFullLavaSource, alreadyExplored);
     }
 
-    static boolean isFullLavaSource(BlockPos pos) {
+    public static boolean isFullLavaSource(BlockPos pos) {
         BlockState s = Minecraft.getInstance().level.getBlockState(pos);
         return s.getBlock() == Blocks.LAVA && s.getFluidState().isSource() && s.getFluidState().getAmount() == 8;
     }
@@ -543,7 +590,7 @@ public class ConstructNetherPortalBucketTask extends Task {
     // full sources touching start, 6 ways. every cell looked at goes in explored, source or not, so findLavaLakes skips
     // the rest of a lake it already counted. this used to recurse one frame per source and a deep lava lake is a lot of
     // sources, so now it's a stack we own instead of the jvm's
-    static int lakeSize(BlockPos start, Predicate<BlockPos> isFullSource, Set<BlockPos> explored) {
+    public static int lakeSize(BlockPos start, Predicate<BlockPos> isFullSource, Set<BlockPos> explored) {
         ArrayDeque<BlockPos> todo = new ArrayDeque<>();
         todo.push(start);
         int count = 0;

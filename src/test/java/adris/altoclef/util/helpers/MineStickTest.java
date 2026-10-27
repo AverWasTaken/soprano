@@ -207,4 +207,24 @@ public class MineStickTest {
         stick.begin(5, BLOCK);
         assertEquals(BLOCK, stick.holdOn(6, p -> true));
     }
+
+    @Test
+    public void calmSlotPrefersEmptyThenNonToolsAndNeverATool() {
+        boolean[] empty = new boolean[9];
+        boolean[] dmg = new boolean[9];
+        // hotbar of tools and blocks, pick in hand (slot 0): the block slot, not a tool
+        java.util.Arrays.fill(dmg, true);
+        dmg[3] = false;
+        assertEquals(3, MineStick.calmSlot(empty, dmg, 0));
+        // an empty slot beats a block slot
+        empty[6] = true;
+        assertEquals(6, MineStick.calmSlot(empty, dmg, 0));
+        // all tools: stay put
+        java.util.Arrays.fill(empty, false);
+        dmg[3] = true;
+        assertEquals(-1, MineStick.calmSlot(empty, dmg, 0));
+        // the slot in hand is never the answer
+        empty[0] = true;
+        assertEquals(-1, MineStick.calmSlot(empty, dmg, 0));
+    }
 }

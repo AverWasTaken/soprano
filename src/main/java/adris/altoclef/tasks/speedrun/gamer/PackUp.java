@@ -25,16 +25,16 @@ public final class PackUp {
     // walk to it costs from here (WalkCost units), one that is a long way off waits for the plain due-collect like it always did
     public static RunState.FurnaceJob pick(List<RunState.FurnaceJob> jobs, Set<RunState.Pos> tried, ToIntFunction<RunState.FurnaceJob> depthOf,
                                            java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
-        RunState.FurnaceJob best = null;
-        for (RunState.FurnaceJob job : jobs) {
-            if (tried.contains(job.pos) || !stranded(depthOf.applyAsInt(job)) || walkOf.applyAsDouble(job) > TRIP_BUDGET) {
-                continue;
-            }
-            if (best == null || job.doneTick < best.doneTick) {
-                best = job;
-            }
-        }
-        return best;
+        return pick(jobs, tried, depthOf, walkOf, j -> false);
+    }
+
+    // `banned` = pathing gave up on its furnace: it goes after the others, never out
+    public static RunState.FurnaceJob pick(List<RunState.FurnaceJob> jobs, Set<RunState.Pos> tried, ToIntFunction<RunState.FurnaceJob> depthOf,
+                                           java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf,
+                                           java.util.function.Predicate<RunState.FurnaceJob> banned) {
+        return FurnaceJobs.soonest(jobs.stream()
+                .filter(j -> !tried.contains(j.pos) && stranded(depthOf.applyAsInt(j)) && walkOf.applyAsDouble(j) <= TRIP_BUDGET)
+                .toList(), banned);
     }
 
     // the trip budget, in WalkCost.estimate units (4 per block of height), not the station line: this is not about reusing the

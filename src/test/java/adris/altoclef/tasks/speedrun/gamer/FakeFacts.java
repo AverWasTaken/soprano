@@ -98,6 +98,13 @@ public class FakeFacts implements GamerFacts {
         return items.getOrDefault(item, 0);
     }
 
+    public int wornSwords;
+
+    @Override
+    public int wornSwords() {
+        return wornSwords;
+    }
+
     @Override
     public int spent(Item item) {
         return spent.getOrDefault(item, 0);

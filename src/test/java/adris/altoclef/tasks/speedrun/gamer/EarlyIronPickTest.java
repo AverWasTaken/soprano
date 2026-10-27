@@ -17,10 +17,10 @@ import static org.junit.Assert.assertTrue;
 
 public class EarlyIronPickTest {
     private static final int BEDS = 8;
-    // the default kit's 40 ingots minus the shears' 2, the shield's 1 and the armor's 24, the kit these tests run with (setUp)
-    private static final int TOTAL = 13;
+    // the default kit's 39 ingots minus the shears' 2, the shield's 1 and the armor's 24, the kit these tests run with (setUp)
+    private static final int TOTAL = 12;
     // the default kit, all four early items owed: pick 3, chestplate 8, shield 1, shears 2
-    private static final int FULL = 40;
+    private static final int FULL = 39;
     private static final int EARLY = 14;
     private OverworldConfig cfg;
 
@@ -33,12 +33,17 @@ public class EarlyIronPickTest {
     public void setUp() {
         // the pick on its own: the chestplate, shield and shears riding along are their own tests further down (full)
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
+        cfg.netherSpareSwords = 0;
         cfg.ironKit.removeIf(k -> k.item.equals("shears") || k.item.equals("shield"));
         cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
     }
 
     private static OverworldConfig full() {
-        return new OverworldConfig();
+        OverworldConfig c = new OverworldConfig();
+        c.netherSpareShields = 0;
+        c.netherSpareSwords = 0;
+        return c;
     }
 
     private static List<String> names(List<KitNeed> needs) {
@@ -48,7 +53,7 @@ public class EarlyIronPickTest {
     // underground with the starter kit and the food, nothing iron yet
     private static FakeFacts mining() {
         FakeFacts f = new FakeFacts();
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
         f.foodUnits = 70;
         return f;
     }
@@ -98,15 +103,15 @@ public class EarlyIronPickTest {
     @Test
     public void theEarlyJobsPendingIngotsCountAsHeld() {
         // three cooking: the pickaxe is paid for, the rest of the kit (36) still needs mining, and it is asked for as the
-        // 40 it always was, held and pending ingots come off it (KitPlanner.iron), so the planner does not double plan
+        // 39 it always was, held and pending ingots come off it (KitPlanner.iron), so the planner does not double plan
         FakeFacts f = mining().cooking("iron_ingot", 3, 30);
         assertEquals(3, f.pendingOutput(Items.IRON_INGOT));
         List<KitNeed> plan = KitPlanner.plan(f, cfg, BEDS);
         assertEquals(new KitNeed("iron_ingot", TOTAL), plan.get(0));
         assertEquals(1, plan.stream().filter(n -> n.catalogueName().equals("iron_ingot")).count());
-        // and with the whole 40 cooking there is nothing left to mine
+        // and with the whole 39 cooking there is nothing left to mine
         assertNull(plan.stream().filter(n -> n.catalogueName().equals("iron_ingot") && n.count() == 3).findFirst().orElse(null));
-        assertFalse(names(KitPlanner.plan(mining().cooking("iron_ingot", 40, 400), cfg, BEDS)).contains("iron_ingot"));
+        assertFalse(names(KitPlanner.plan(mining().cooking("iron_ingot", 39, 400), cfg, BEDS)).contains("iron_ingot"));
     }
 
     @Test
@@ -162,7 +167,7 @@ public class EarlyIronPickTest {
     // everything except the iron pickaxe
     private FakeFacts complete() {
         FakeFacts full = mining();
-        for (Item i : new Item[]{Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS,
+        for (Item i : new Item[]{Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS,
                 Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
@@ -216,7 +221,7 @@ public class EarlyIronPickTest {
     }
 
     // the 16:08 run: the first raw iron went into the furnace, the bag stopped showing three, the early need vanished and the
-    // 40 need took the head (and then pulled the ore out of the furnace again)
+    // 39 need took the head (and then pulled the ore out of the furnace again)
     @Test
     public void aLoadInFlightKeepsTheEarlyNeedWithTheOreOutOfTheBag() {
         FakeFacts f = mining();
@@ -448,5 +453,22 @@ public class EarlyIronPickTest {
         assertFalse(EarlyIronPick.endsLoad(List.of()));
         assertTrue(EarlyIronPick.endsLoad(List.of(job("iron_ingot"))));
         assertTrue(EarlyIronPick.endsLoad(List.of(job("cooked_porkchop"), job("iron_ingot"))));
+    }
+
+    // the pick's ingots never pay for spares: one shield early, the rest come with the normal crafts
+    @Test
+    public void theEarlyBatchMakesOneShieldWhateverTheSparesAre() {
+        OverworldConfig kit = full();
+        kit.netherSpareShields = 2;
+        FakeFacts out = mining().give(Items.IRON_INGOT, EARLY).give(Items.OAK_PLANKS, 6);
+        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears"), EarlyIronPick.front(out, kit));
+        assertEquals(EARLY, EarlyIronPick.batch(out, kit));
+        List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
+        assertEquals(new KitNeed("shield", 1), plan.get(2));
+        // the spares wait until the first one exists
+        assertEquals(1, plan.stream().filter(n -> n.catalogueName().equals("shield")).count());
+        // one shield in hand and the early shield is done, the spares are not early work
+        FakeFacts one = mining().give(Items.IRON_INGOT, EARLY).give(Items.SHIELD, 1);
+        assertFalse(EarlyIronPick.owed(one, kit).contains("shield"));
     }
 }
