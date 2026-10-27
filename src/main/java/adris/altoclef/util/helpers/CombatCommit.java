@@ -925,8 +925,8 @@ public final class CombatCommit {
         // low hp in the cooldown wants it on top of us or a fresh hit, see trigger
         Why run = unlatched(runReason(t, cooling));
         if (run != Why.NONE) return runOrBox(t, run);
-        // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. idle only, a
-        // committed fight is till dead and the step just steps again for it
+        // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. a committed
+        // fight asks the same thing at its top, the fight walking us back to the creeper is how the circle keeps going
         if (t.creeperRepeat()) return startRun(t, Why.REPEAT_CREEPER, Event.RUN_START);
         // healing up: whatever comes back near is a run again, before it is a fight and whatever the cooldown says. we are
         // standing here because we are hurt, and trading blows at 10 hp is how the last run started
@@ -1255,6 +1255,9 @@ public final class CombatCommit {
             cornered = false;
             if (why == Why.CORNERED) why = Why.HIT;
         }
+        // the step keeps backing us off the same creeper and the fight keeps walking us back to it: the second go is the run's.
+        // boxed in a run goes nowhere, so there the fight stays
+        if (t.creeperRepeat() && !t.boxed()) return startRun(t, Why.REPEAT_CREEPER, Event.FIGHT_TO_RUN);
         // the bail-outs, and the only ones: the danger rules. a wobble above 8 is a fight, and so is hp 8 with nothing
         // within 8 (the last thing we were hitting died, that is a won fight, not a reason to run 24 blocks). boxed in
         // there is nowhere to bail to, so a cornered fight never asks
@@ -1583,10 +1586,11 @@ public final class CombatCommit {
         // running is not shaking it: it keeps landing hits, in contact or not. armed, that is a fight (the same boxed in fight
         // as the cap's, so it finishes this target and cannot flip back to a run on the next tick). unarmed, a punch is still
         // not a fight, the run goes on and the corner and cap rules decide
-        Event hitThrough = hitThrough(t);
+        boolean holds = creeperHolds(t);
+        Event hitThrough = holds ? Event.NONE : hitThrough(t);
         if (hitThrough != Event.NONE) return hitThrough;
 
-        Event cramped = noRoomFight(t);
+        Event cramped = holds ? Event.NONE : noRoomFight(t);
         if (cramped != Event.NONE) return cramped;
 
         if (nearest > CORNER_WATCH) {
@@ -1610,6 +1614,7 @@ public final class CombatCommit {
         // the warden is the exception to "anything will do": never a fight in any state, boxed in or not
         Foe closest = null;
         for (Foe foe : t.foes()) {
+            if (holds) break;
             if (foe.distance() > CORNER_WATCH || foe.kind() == Kind.UNTOUCHABLE) continue;
             if (foe.creeper() || (foe.distance() > CORNER_RANGE && ignored.containsKey(foe.id()))) continue;
             if (closest == null || foe.distance() < closest.distance()) closest = foe;
@@ -1627,8 +1632,18 @@ public final class CombatCommit {
         // nobody to turn on: the warden (danger starts the next run on the same step), or only a creeper at range or mobs we
         // gave up on (the run just ends, the cooldown waits for one of them to get on us or hit us)
         // and with danger about a fight would only bail again on the next step, so it is the next run straight away
-        if (chaser == null || anyDanger(t)) return end(t, Event.RUN_CAP);
+        if (chaser == null || anyDanger(t) || creeperHolds(t)) return end(t, Event.RUN_CAP);
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
+    }
+
+    // a run that exists because the creeper step kept going round stays a run while that creeper is still within 8: turning on
+    // the zombie walks us straight back to it, which is the loop the run was started for
+    private boolean creeperHolds(Tick t) {
+        if (why != Why.REPEAT_CREEPER) return false;
+        for (Foe foe : t.foes()) {
+            if (foe.creeper() && foe.distance() <= LOW_HP_RANGE) return true;
+        }
+        return false;
     }
 
     // RUN_HITS hits after the grace and the run is not working. armed with nothing we only run from about, turn on it (boxed
