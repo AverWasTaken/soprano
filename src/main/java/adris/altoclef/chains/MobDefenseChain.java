@@ -449,6 +449,8 @@ public class MobDefenseChain extends SingleTaskChain {
 
         // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
+        int fightId = _brain.fightTarget();
+        boolean fightApplied = false;
         try {
             if (!entities.isEmpty()) {
                 for (Entity entity : entities) {
@@ -477,8 +479,17 @@ public class MobDefenseChain extends SingleTaskChain {
                     }
                     if (shouldForce) {
                         applyForceField(entity);
+                        if (entity.getId() == fightId) fightApplied = true;
                     }
                 }
+            }
+            // the fight target is the aura's for the whole fight. the close list ends at 4 blocks (our own swing knocks it out
+            // that far) and the hostile test drops a cube past 3 or an enderman between hits, and every tick it is missing the
+            // aura has nothing to shield against: down comes the shield and its 5 tick raise starts over, right as it walks back in.
+            // (still only one with a line to us: behind a wall the shield would pause the walk round to it, for nothing)
+            if (fightId != -1 && !fightApplied && mod.getWorld().getEntity(fightId) instanceof Mob target && target.isAlive()
+                    && !mod.getBehaviour().shouldExcludeFromForcefield(target) && LookHelper.seesPlayer(target, mod.getPlayer(), 10)) {
+                applyForceField(target);
             }
         } catch (Exception e) {
             e.printStackTrace();
