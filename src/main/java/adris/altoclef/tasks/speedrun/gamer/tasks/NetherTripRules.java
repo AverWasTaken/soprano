@@ -138,6 +138,18 @@ public final class NetherTripRules {
         return died == Dimension.NETHER && now == Dimension.OVERWORLD;
     }
 
+    // a naked respawn at night does not walk the open surface for blocks and a pick: the trip waits in the hole or the bed. only
+    // while it is still gathering (BLOCKS), later stages are already on their way and the portal is the shelter
+    public static boolean hides(Stage stage, Dimension now, boolean darkAndBare) {
+        return stage == Stage.BLOCKS && now == Dimension.OVERWORLD && darkAndBare;
+    }
+
+    // ticks the stage clock moves up for a hide tick: everything since the last hidden tick, so a fight in the middle does not
+    // eat the stage either. nothing hidden yet, or a clock that went backwards, credits nothing
+    public static long hiddenCredit(long lastHiddenTick, long now) {
+        return lastHiddenTick == Long.MIN_VALUE ? 0 : Math.max(0, now - lastHiddenTick);
+    }
+
     // null = go for it, otherwise the reason it is not worth it (said in the log, so it reads as a sentence)
     public static String refuse(Cause cause, boolean homeKnown, boolean enabled, boolean tripPending, boolean pileTried,
                                 boolean kitIntact) {

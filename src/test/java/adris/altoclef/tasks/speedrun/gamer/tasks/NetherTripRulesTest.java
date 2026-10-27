@@ -668,4 +668,30 @@ public class NetherTripRulesTest {
         assertFalse(NetherTripRules.collectingFood(false, 1000, 1000 + limit + 1));
         assertFalse(NetherTripRules.collectingFood(true, -1, 5000));
     }
+
+    @Test
+    public void aNakedNightHidesOnlyTheGatheringStageInTheOverworld() {
+        assertTrue(NetherTripRules.hides(Stage.BLOCKS, Dimension.OVERWORLD, true));
+        assertFalse(NetherTripRules.hides(Stage.BLOCKS, Dimension.OVERWORLD, false));
+        assertFalse(NetherTripRules.hides(Stage.BLOCKS, Dimension.NETHER, true));
+        assertFalse(NetherTripRules.hides(Stage.PICK, Dimension.OVERWORLD, true));
+        assertFalse(NetherTripRules.hides(Stage.PORTAL, Dimension.OVERWORLD, true));
+        assertFalse(NetherTripRules.hides(null, Dimension.OVERWORLD, true));
+    }
+
+    @Test
+    public void aHideCreditsTheStageClockEvenAcrossAGap() {
+        long stageTick = 1000;
+        long last = Long.MIN_VALUE;
+        // the first held tick credits nothing, then ticks 1 apart, then a fight eats 500 ticks, then 1 apart again
+        long[] ticks = {1100, 1101, 1102, 1602, 1603};
+        for (long now : ticks) {
+            stageTick += NetherTripRules.hiddenCredit(last, now);
+            last = now;
+        }
+        assertEquals(1000 + 503, stageTick);
+        // the stage is exactly as old as it was when the hide began
+        assertEquals(100, 1603 - stageTick);
+        assertEquals(0, NetherTripRules.hiddenCredit(5000, 4000));
+    }
 }
