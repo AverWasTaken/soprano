@@ -110,6 +110,29 @@ public class CombatCommitRimTest {
         assertNull(CombatRules.rimRunFoe(true, List.of(new Foe(1, 2, false, false, 5, Kind.HEAVY))));
     }
 
+    // the brain calls pauseCorner every tick the run shield is up: standing still behind it is not being cornered, and the window
+    // starts fresh when it lets go
+    @Test
+    public void aShieldedStandStillIsNotCorneredAndTheWindowStartsOverAfter() {
+        CombatCommit c = new CombatCommit();
+        Foe z = new Foe(1, 1.5, false, false, NEVER);
+        Way way = new Way(Set.of(), true, 64);
+        assertEquals(Event.RUN_START, c.step(tick(100, 6, List.of(z), null, way)));
+        long shieldEnd = 101 + 3 * CombatCommit.CORNER_TICKS;
+        for (long t = 101; t < shieldEnd; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 6, List.of(z), null, way)));
+            c.pauseCorner();
+        }
+        assertEquals(Mode.RUN, c.mode());
+        Event event = Event.NONE;
+        long t = shieldEnd;
+        for (; t <= shieldEnd + 2 * CombatCommit.CORNER_TICKS && event == Event.NONE; t++) {
+            event = c.step(tick(t, 6, List.of(z), null, way));
+        }
+        assertEquals(Event.RUN_TO_FIGHT, event);
+        assertTrue(t - shieldEnd >= CombatCommit.CORNER_TICKS);
+    }
+
     @Test
     public void theRunShieldGivesUpAfterTheLeashOnTheSameFoe() {
         RimHold hold = new RimHold();

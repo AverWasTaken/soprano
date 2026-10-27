@@ -982,6 +982,13 @@ public final class CombatCommit {
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }
 
+    // the run's rim shield is up this tick and stands us still on purpose: the on the spot timers start over, so the shield never
+    // counts toward a cornered fight or a stuck run. once it lets go the run gets its whole window to walk again
+    public void pauseCorner() {
+        cornerSince = -1;
+        stuckSince = -1;
+    }
+
     // the closest knocker within RIM_ENGAGE_RANGE while we stand on a rim. armed, above the flee line, not crowded and not in a
     // run latch (those are the run rules' call, and idle already asked them), and never one we gave up on
     private Foe rimEngage(Tick t, boolean cooling) {

@@ -57,9 +57,9 @@ public final class CombatRules {
     // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage), and the
     // run's rim shield (rimRunFoe) looks this far. the fight lets go at WAY_RELEASE, one block past it
     public static final double RIM_ENGAGE_RANGE = 3;
-    // the run's rim shield is up this many ticks in a row on one foe and then the run moves on, so it can never pin us there.
-    // under CombatCommit.CORNER_TICKS: the shield stands us still and a full corner window is a cornered fight
-    public static final int RIM_HOLD_TICKS = 40;
+    // the run's rim shield is up this many ticks in a row on one foe and then the run moves on, so it can never pin us there
+    // (the commit's corner timer is held while it is up, see CombatCommit.pauseCorner)
+    public static final int RIM_HOLD_TICKS = 60;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.

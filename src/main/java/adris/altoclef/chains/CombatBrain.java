@@ -435,6 +435,7 @@ final class CombatBrain {
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
         _rimGuardId = _rimHold.step(rimRun == null ? -1 : rimRun.id()) ? rimRun.id() : -1;
         if (_rimGuardId >= 0) {
+            _commit.pauseCorner();
             _rim = true;
             _swingAt.add(rimRun.id());
         }
