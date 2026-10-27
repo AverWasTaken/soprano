@@ -221,4 +221,37 @@ public class NetherRestockTest {
         NetherRestock full = new NetherRestock();
         assertFalse(full.update(NetherRestock.TARGET, NetherRestock.TARGET, true, false, 0));
     }
+
+    // a lava sea with its surface at y 31, everything below it lava
+    private static boolean sea(BlockPos p) {
+        return p.getY() <= 31;
+    }
+
+    @Test
+    public void aPillarInALavaSeaIsOffLimitsAllTheWayUp() {
+        // the top of the staircase dug down a pillar: lava three below
+        assertTrue(NetherRestock.nearLava(new BlockPos(74, 34, 3), NetherRestockTest::sea));
+        assertTrue(NetherRestock.nearLava(new BlockPos(74, 33, 3), NetherRestockTest::sea));
+        // four up is far enough
+        assertFalse(NetherRestock.nearLava(new BlockPos(74, 35, 3), NetherRestockTest::sea));
+    }
+
+    @Test
+    public void lavaTwoBlocksOffToTheSideCounts() {
+        BlockPos pool = new BlockPos(2, 64, 0);
+        assertTrue(NetherRestock.nearLava(new BlockPos(0, 64, 0), p -> p.equals(pool)));
+        assertTrue(NetherRestock.nearLava(new BlockPos(0, 64, 0), p -> p.equals(new BlockPos(2, 64, 2))));
+        assertFalse(NetherRestock.nearLava(new BlockPos(0, 64, 0), p -> p.equals(new BlockPos(3, 64, 0))));
+    }
+
+    @Test
+    public void lavaAboveOnlyCountsOneUp() {
+        assertTrue(NetherRestock.nearLava(new BlockPos(0, 64, 0), p -> p.equals(new BlockPos(0, 65, 1))));
+        assertFalse(NetherRestock.nearLava(new BlockPos(0, 64, 0), p -> p.equals(new BlockPos(0, 66, 0))));
+    }
+
+    @Test
+    public void noLavaNoReject() {
+        assertFalse(NetherRestock.nearLava(new BlockPos(10, 70, 10), p -> false));
+    }
 }
