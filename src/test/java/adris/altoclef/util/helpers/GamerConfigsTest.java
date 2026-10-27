@@ -314,6 +314,26 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysTwoSpareShieldsGetsTheNewDefault() throws IOException {
+        write("{\"version\": 7, \"overworld\": {\"netherSpareShields\": 2}}");
+        assertEquals(3, GamerConfigs.load().overworld.netherSpareShields);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 7, \"overworld\": {\"netherSpareShields\": 0}}");
+        assertEquals(0, GamerConfigs.load().overworld.netherSpareShields);
+        write("{\"version\": 7, \"overworld\": {\"netherSpareShields\": 5}}");
+        assertEquals(5, GamerConfigs.load().overworld.netherSpareShields);
+        // and a current file that says 2 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherSpareShields\": 2}}");
+        assertEquals(2, GamerConfigs.load().overworld.netherSpareShields);
+    }
+
+    @Test
+    public void aSavedFileWithoutSpareSwordsGetsOne() throws IOException {
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherSparePicks\": 1}}");
+        assertEquals(1, GamerConfigs.load().overworld.netherSpareSwords);
+    }
+
+    @Test
     public void aCurrentFileKeepsItsKitLists() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"ironKit\": [{\"item\": \"bucket\", \"count\": 2}]}}");
         assertEquals(List.of("bucket x2"), names(GamerConfigs.load().overworld.ironKit));
@@ -322,7 +342,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 7;
+    private static final int PINNED_VERSION = 8;
     private static final String PINNED_KIT_HASH = "ac609dc3";
 
     @Test

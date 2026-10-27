@@ -10,6 +10,7 @@ public class StubContext implements GamerContext {
     public final GamerConfig cfg = new GamerConfig();
     {
         cfg.overworld.netherSpareShields = 0;
+        cfg.overworld.netherSpareSwords = 0;
     }
     public final RunState state = new RunState();
     public final FakeFacts facts = new FakeFacts();

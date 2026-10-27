@@ -45,6 +45,10 @@ public final class GamerConfigs {
         if (from < 6 && c.nether != null && c.nether.sweepSpacingChunks == 9) {
             c.nether.sweepSpacingChunks = new GamerConfig().nether.sweepSpacingChunks;
         }
+        // same for the shields: 2 was the default until the fortress ate three in one soak
+        if (from < 8 && c.overworld != null && c.overworld.netherSpareShields == 2) {
+            c.overworld.netherSpareShields = new GamerConfig().overworld.netherSpareShields;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

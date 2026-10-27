@@ -48,9 +48,13 @@ public class OverworldConfig {
     // number and not a kit list, so an old saved config just gets 3 and GamerConfig.VERSION stays
     public int netherSparePicks = 3;
     // shields in the bag on top of the one in the offhand when we go through. the blaze fight alone can eat most of one. gather
-    // pays for them with the rest of the kit (KitPlanner.ironKit). 0 = off. a plain number, so an old saved config just gets 2
-    // and GamerConfig.VERSION stays
-    public int netherSpareShields = 2;
+    // pays for them with the rest of the kit (KitPlanner.ironKit). 0 = off. a plain number, so an old saved config keeps its
+    // own, and GamerConfig.VERSION moved when the default went from 2 to 3 (GamerConfigs.migrate)
+    public int netherSpareShields = 3;
+    // iron swords in the bag on top of the one in hand. a long pearl hunt wears one out and nothing in the nether makes a new one.
+    // priced like the spare shields (KitPlanner.ironKit). a diamond sword replaces the whole entry, see DiamondSpend. 0 = off. a
+    // plain number, so an old saved config just gets 1 and GamerConfig.VERSION stays
+    public int netherSpareSwords = 1;
     // diamonds in the bag (mined, or out of a chest) get crafted into upgrades instead of sitting there: a pick, then armor, see
     // DiamondSpend. off = the plan is exactly what it was. a plain flag, not a kit list, so an old saved config just gets true
     public boolean diamondSpend = true;

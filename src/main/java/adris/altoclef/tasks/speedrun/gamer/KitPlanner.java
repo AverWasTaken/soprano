@@ -331,8 +331,8 @@ public final class KitPlanner {
                 continue;
             }
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
-            // the first shield is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
-            int craft = k.item.equals("shield") && have(f, k.item) == 0 ? 1 : missing;
+            // the first shield (or sword) is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
+            int craft = (k.item.equals("shield") || k.item.equals("iron_sword")) && have(f, k.item) == 0 ? 1 : missing;
             crafts.add(new KitNeed(k.item, held(f, k.item) + craft));
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
@@ -419,12 +419,19 @@ public final class KitPlanner {
         });
     }
 
-    // the iron kit as the planner reads it: the shield entry grows by netherSpareShields, the spares ride in the bag. everything
-    // that sums the kit (ingots, planks, the craft list) goes through this, so none of them can disagree about the count
+    // the iron kit as the planner reads it: the shield entry grows by netherSpareShields and the sword entry by netherSpareSwords,
+    // the spares ride in the bag. everything that sums the kit (ingots, planks, the craft list) goes through this, so none of
+    // them can disagree about the count
     static List<KitItem> ironKit(OverworldConfig cfg) {
         List<KitItem> out = new ArrayList<>();
         for (KitItem k : cfg.ironKit) {
-            out.add("shield".equals(k.item) && cfg.netherSpareShields > 0 ? new KitItem(k.item, k.count + cfg.netherSpareShields) : k);
+            if ("shield".equals(k.item) && cfg.netherSpareShields > 0) {
+                out.add(new KitItem(k.item, k.count + cfg.netherSpareShields));
+            } else if ("iron_sword".equals(k.item) && cfg.netherSpareSwords > 0) {
+                out.add(new KitItem(k.item, k.count + cfg.netherSpareSwords));
+            } else {
+                out.add(k);
+            }
         }
         return out;
     }

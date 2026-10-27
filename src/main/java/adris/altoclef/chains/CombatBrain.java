@@ -86,6 +86,9 @@ final class CombatBrain {
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
+    // every blaze the tracker has, calm or not (crowd() keeps the live ones in range). the hostile list only lists the charged ones, so a run steered back into the ones
+    // that were just waiting for it to turn around
+    private List<Mob> _crowdBlazes = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
     private final Set<Integer> _swingAt = new HashSet<>();
     private CombatRules.Stance _stance = CombatRules.Stance.CALM;
@@ -208,6 +211,7 @@ final class CombatBrain {
         _lastRunEnd = Long.MIN_VALUE / 2;
         _ranSince = false;
         _foeMobs = List.of();
+        _crowdBlazes = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
         _meleeNear = 0;
@@ -262,6 +266,8 @@ final class CombatBrain {
 
     // in contact: a bit past arm's reach, a cube's middle is further off than its edge
     private static final double LAVA_FOE_RANGE = 3.5;
+    // blazes this close stay in a run's crowd (see _crowdBlazes)
+    static final double BLAZE_CROWD_RANGE = 20;
 
     // the mob the lava guard leans toward: the fight's own target, else whatever hostile is in contact
     Entity lavaFoe(AltoClef mod) {
@@ -278,7 +284,19 @@ final class CombatBrain {
 
     // the goal asks this from the main thread once a tick
     private List<Entity> crowd() {
-        return new ArrayList<>(_foeMobs);
+        LocalPlayer player = _player;
+        if (player == null) return new ArrayList<>(_foeMobs);
+        return new ArrayList<>(FoeRules.<Mob>crowdWithBlazes(_foeMobs, _crowdBlazes, m -> m.distanceTo(player), Mob::isAlive, BLAZE_CROWD_RANGE));
+    }
+
+    private static List<Mob> trackedBlazes(AltoClef mod) {
+        List<Mob> out = new ArrayList<>();
+        try {
+            out.addAll(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+        } catch (ConcurrentModificationException ignored) {
+            // one tick of stale blazes is fine
+        }
+        return out;
     }
 
     // one game tick. creeperClose: a lit creeper close enough that we do not sit down to a meal next to it (we do not
@@ -326,6 +344,7 @@ final class CombatBrain {
             withShooter.add(shooter);
             _foeMobs = withShooter;
         }
+        _crowdBlazes = trackedBlazes(mod);
         // the pearl hunt owns the feet while endermen are the only thing around: a run from a teleporter goes nowhere and a
         // heal hold would sit in the open. the nook it is in (or digging) is the whole answer, so nothing is committed to.
         // the foes stay, the stance (the gapple at 8 hp) and the aura's contact swings still hear about them

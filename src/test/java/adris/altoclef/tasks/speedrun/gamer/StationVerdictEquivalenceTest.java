@@ -580,6 +580,7 @@ public class StationVerdictEquivalenceTest {
         f.foodUnits = 20 + r.nextInt(131);
         OverworldConfig cfg = new OverworldConfig();
             cfg.netherSpareShields = 0;
+            cfg.netherSpareSwords = 0;
         int beds = 0;
         EndConfig end = new EndConfig();
         end.beds = beds;
