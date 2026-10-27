@@ -60,12 +60,14 @@ public class NetherBlockRestock {
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft
             BlockPos origin = mod.getPlayer().blockPosition();
-            // near lava is off limits first. a dig that came up dry with that (an island in a lava sea, our own span over it)
-            // goes again with only the touching rule: stranded with an empty bag is worse than a block a row off the lava
+            // near lava is off limits first. a dig that came up dry with that (an island in a lava sea, our own span over it, or a
+            // band whose only blocks are ones we can't path to) goes again with only what is in arm's reach and only the
+            // touching rule: boxed in with an empty bag, the walls round us are the blocks, a far one is a path we can't make
             boolean strict = restock.exhaustedEnds() == 0;
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
-                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> NetherRestock.inRestockBand(origin, p)
+                    MiningRequirement.WOOD).noReserve().onlyWhere(p -> (strict ? NetherRestock.inRestockBand(origin, p)
+                            : NetherRestock.inReach(mod.getPlayer().getEyePosition(), p))
                             && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p))
                             && !(strict ? nearLava(mod, p) : touchesLava(mod, p)));
         } else if (!on) {

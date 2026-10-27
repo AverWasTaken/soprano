@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.function.Predicate;
 
@@ -26,9 +27,11 @@ public final class NetherRestock {
     private boolean active;
     private int activeStopAt = TARGET;
     private double startedAt;
+    private int heldAtStart;
     private double exhaustedSince = Double.NaN;
     private double coolUntil = Double.NEGATIVE_INFINITY;
-    // the last dig ended on the clock: a whole MAX_SECONDS with nothing to show for it, so even an empty bag waits
+    // the last dig ended on the clock with a few blocks but not the target: the same spot would just eat another MAX_SECONDS,
+    // so even an empty bag waits. (a clock end with nothing at all is a dry end, see update)
     private boolean clockEnd;
     // restocks in a row that ended because the dig had nothing left to go to (not the clock, not a full bag). the phase reads it to
     // tell "short" from "short and the band is empty"
@@ -72,6 +75,14 @@ public final class NetherRestock {
     // reach it (a one wide path over nothing, dug ahead and behind, was the whole floor going)
     public static boolean keepsFooting(int feetY, BlockPos pos, boolean solidBelow) {
         return pos.getY() >= feetY || solidBelow;
+    }
+
+    // what the fallback dig may touch: blocks we can break from where we stand, no walk to them (survival reach is 4.5 from
+    // the eyes, a little under it so the dig never needs the step it can't take)
+    static final double DIG_REACH = 4;
+
+    public static boolean inReach(Vec3 eye, BlockPos pos) {
+        return eye.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= DIG_REACH * DIG_REACH;
     }
 
     // lava a couple of blocks off, or a few below, means the block is a shore or a pillar standing in a lava sea. only
@@ -129,8 +140,10 @@ public final class NetherRestock {
             }
             boolean dry = !Double.isNaN(exhaustedSince) && now - exhaustedSince >= EXHAUSTED_SECONDS;
             if (held >= activeStopAt || dry || now - startedAt >= MAX_SECONDS) {
-                exhaustedEnds = held < activeStopAt && dry ? exhaustedEnds + 1 : 0;
-                clockEnd = held < activeStopAt && !dry;
+                // the whole clock without one block in the bag is a dry dig too: every pick was a path it couldn't make
+                boolean empty = dry || held <= heldAtStart;
+                exhaustedEnds = held < activeStopAt && empty ? exhaustedEnds + 1 : 0;
+                clockEnd = held < activeStopAt && !empty;
                 active = false;
                 exhaustedSince = Double.NaN;
                 coolUntil = now + COOLDOWN_SECONDS;
@@ -146,6 +159,7 @@ public final class NetherRestock {
             active = true;
             activeStopAt = stopAt;
             startedAt = now;
+            heldAtStart = held;
             exhaustedSince = Double.NaN;
         }
         return active;

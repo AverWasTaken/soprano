@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -134,12 +135,23 @@ public class NetherRestockTest {
     }
 
     @Test
-    public void anEmptyBagThatRanOutTheClockStillWaitsOutTheCooldown() {
+    public void anEmptyBagThatRanOutTheClockWithSomethingToShowStillWaitsOutTheCooldown() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(2, false, true, false, 0));
+        assertFalse(r.update(5, false, true, false, NetherRestock.MAX_SECONDS));
+        assertFalse(r.update(5, false, true, false, NetherRestock.MAX_SECONDS + 1));
+        assertTrue(r.update(5, false, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+    }
+
+    // the whole clock and not one block: every pick was a path it couldn't make, that is a dry dig and the next one is the
+    // fallback, right away when the bag is empty
+    @Test
+    public void aClockEndWithNothingGainedIsADryEnd() {
         NetherRestock r = new NetherRestock();
         assertTrue(r.update(2, false, true, false, 0));
         assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS));
-        assertFalse(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + 1));
-        assertTrue(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + NetherRestock.COOLDOWN_SECONDS));
+        assertEquals(1, r.exhaustedEnds());
+        assertTrue(r.update(2, false, true, false, NetherRestock.MAX_SECONDS + 1));
     }
 
     // the empty bag line: at EMPTY the cooldown holds, one under it a dry end digs again right away
@@ -187,10 +199,10 @@ public class NetherRestockTest {
         // second one after the cooldown
         t = dryRestock(r, t + NetherRestock.COOLDOWN_SECONDS);
         assertEquals(2, r.exhaustedEnds());
-        // one that ends on the clock breaks the run
+        // one that ends on the clock with blocks to show for it breaks the run
         t += NetherRestock.COOLDOWN_SECONDS;
         assertTrue(r.update(10, true, true, false, t));
-        assertFalse(r.update(10, true, true, false, t + NetherRestock.MAX_SECONDS));
+        assertFalse(r.update(12, true, true, false, t + NetherRestock.MAX_SECONDS));
         assertEquals(0, r.exhaustedEnds());
     }
 
@@ -253,5 +265,16 @@ public class NetherRestockTest {
     @Test
     public void noLavaNoReject() {
         assertFalse(NetherRestock.nearLava(new BlockPos(10, 70, 10), p -> false));
+    }
+
+    @Test
+    public void theFallbackOnlyDigsWhatIsInArmsReach() {
+        Vec3 eye = new Vec3(0.5, 65.62, 0.5);
+        // the wall beside us and the one at head height
+        assertTrue(NetherRestock.inReach(eye, new BlockPos(1, 64, 0)));
+        assertTrue(NetherRestock.inReach(eye, new BlockPos(0, 66, 2)));
+        // three over and one down is still a swing, five over is a walk
+        assertTrue(NetherRestock.inReach(eye, new BlockPos(3, 64, 0)));
+        assertFalse(NetherRestock.inReach(eye, new BlockPos(5, 65, 0)));
     }
 }
