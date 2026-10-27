@@ -94,6 +94,13 @@ public final class CombatRules {
         return health <= DESPERATE_HEALTH && hunger < 20;
     }
 
+    // hungry enough for a bite in a fight. burning counts at any bar short of full: fire takes 1 a second through armor for
+    // 15 seconds after lava, and only a full bar with saturation in it heals faster than that (up to 2 a second). at 18 the
+    // slow regen loses to the fire
+    public static boolean fightHungry(int hunger, boolean burning) {
+        return hunger < REGEN_HUNGER || (burning && hunger < 20);
+    }
+
     // the chain asked for the wheel at this priority. a priority is a promise that something is running, so with no task
     // (or one that was born finished, a run we are already outside of) it is a zero. the live bug was eleven seconds of
     // "Mob Defense holds the wheel at 70.0 with nothing running"
