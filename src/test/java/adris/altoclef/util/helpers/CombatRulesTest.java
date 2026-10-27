@@ -187,7 +187,7 @@ public class CombatRulesTest {
         assertEquals(CombatRules.LOW_HP_RANGE, MobReachRules.FLEEING_STALL_RANGE, 0);
     }
 
-    // ---- the pile shield. zombie 1 is the fight target throughout
+    // ---- the fight shield. foe 1 is the fight target throughout
 
     private static final long NEVER = CombatCommit.NEVER;
 
@@ -195,55 +195,71 @@ public class CombatRulesTest {
         return new CombatCommit.Foe(id, distance, false, false, sinceHit);
     }
 
-    private static boolean pile(boolean up, CombatCommit.Foe... foes) {
-        return CombatRules.pileShield(up, 1, List.of(foes));
+    private static CombatCommit.Foe hoglin(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, false, false, NEVER, CombatCommit.Kind.HEAVY);
+    }
+
+    private static CombatCommit.Foe magmaCube(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, false, false, NEVER, CombatCommit.Kind.NORMAL);
+    }
+
+    private static CombatCommit.Foe skeleton(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, true, false, NEVER);
+    }
+
+    private static CombatCommit.Foe creeper(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, false, true, NEVER);
+    }
+
+    private static CombatCommit.Foe enderman(int id, double distance) {
+        return new CombatCommit.Foe(id, distance, false, false, NEVER, CombatCommit.Kind.ENDERMAN);
+    }
+
+    private static boolean shield(boolean up, CombatCommit.Foe... foes) {
+        return CombatRules.fightShield(up, 1, List.of(foes));
     }
 
     @Test
-    public void thePileShieldWantsTheTargetAndAnotherHitterInContact() {
-        assertTrue(pile(false, zombie(1, 2.5, 30), zombie(2, 2.9, 10)));
-        // the target need not have hit us itself, it is the target
-        assertTrue(pile(false, zombie(1, 2.5, NEVER), zombie(2, 2.9, 10)));
-        // the other one hit us but is a step out of contact: not raised yet
-        assertFalse(pile(false, zombie(1, 2.5, 30), zombie(2, 3.5, 10)));
+    public void theFightShieldWantsAMeleeTargetCloseAndHoldsALittleFurther() {
+        for (CombatCommit.Foe[] foe : new CombatCommit.Foe[][]{
+                {zombie(1, 4, NEVER)}, {hoglin(1, 4)}, {enderman(1, 4)}, {magmaCube(1, 4)}}) {
+            assertTrue(shield(false, foe));
+        }
+        assertFalse(shield(false, zombie(1, 5, NEVER)));
+        assertFalse(shield(false, hoglin(1, 5)));
+        assertTrue(shield(true, zombie(1, 5, NEVER)));
+        assertTrue(shield(true, hoglin(1, 5)));
+        assertTrue(shield(true, enderman(1, 5)));
+        assertTrue(shield(true, magmaCube(1, 5)));
+        assertFalse(shield(true, zombie(1, 6, NEVER)));
+        assertFalse(shield(true, hoglin(1, 6)));
     }
 
     @Test
-    public void oneZombieNeverGetsThePileShield() {
-        assertFalse(pile(false, zombie(1, 1, 0)));
-        assertFalse(pile(true, zombie(1, 1, 0)));
+    public void aLoneZombieGetsTheFightShieldToo() {
+        assertTrue(shield(false, zombie(1, 1, 0)));
+        assertTrue(shield(true, zombie(1, 1, 0)));
     }
 
     @Test
-    public void aBystanderInContactIsNotAPile() {
-        assertFalse(pile(false, zombie(1, 2, 0), zombie(2, 2, NEVER)));
-        assertFalse(pile(false, zombie(1, 2, 0), zombie(2, 2, CombatCommit.HIT_MEMORY + 1)));
+    public void aShooterOrACreeperTargetNeverGetsTheFightShield() {
+        assertFalse(shield(false, skeleton(1, 2)));
+        assertFalse(shield(true, skeleton(1, 2)));
+        assertFalse(shield(false, creeper(1, 2)));
+        assertFalse(shield(true, creeper(1, 2)));
     }
 
     @Test
-    public void aRaisedPileShieldHoldsThroughTheKnockback() {
-        double band = CombatRules.CONTACT_RANGE + CombatRules.PILE_SHIELD_SLACK;
-        assertTrue(pile(true, zombie(1, 4.0, 30), zombie(2, 4.0, 10)));
-        assertTrue(pile(true, zombie(1, band, 30), zombie(2, band, 10)));
-        // the same spread would not raise it
-        assertFalse(pile(false, zombie(1, 4.0, 30), zombie(2, 4.0, 10)));
-        // past the band it drops, either one
-        assertFalse(pile(true, zombie(1, 2, 30), zombie(2, 4.6, 10)));
-        assertFalse(pile(true, zombie(1, 4.6, 30), zombie(2, 2, 10)));
+    public void onlyTheTargetCountsForTheFightShield() {
+        assertFalse(shield(false, zombie(2, 2, 0)));
+        assertFalse(shield(false, zombie(1, 6, 0), zombie(2, 2, 0), zombie(3, 2, 0)));
+        assertFalse(shield(true, zombie(2, 2, 0), zombie(3, 2, 0)));
     }
 
     @Test
-    public void theTargetOutOfReachDropsThePileShield() {
-        assertFalse(pile(true, zombie(1, 6, 30), zombie(2, 2, 0), zombie(3, 2, 0)));
-        // and gone from the list altogether too
-        assertFalse(pile(true, zombie(2, 2, 0), zombie(3, 2, 0)));
-    }
-
-    @Test
-    public void rangedNeverMakesAPile() {
-        // a skeleton target is not a shield fight, and a skeleton plinking us is not the second mob on us
-        assertFalse(pile(false, new CombatCommit.Foe(1, 2, true, false, 10), zombie(2, 2, 10)));
-        assertFalse(pile(false, zombie(1, 2, 10), new CombatCommit.Foe(2, 2, true, false, 10)));
+    public void aPileInContactStillGetsTheFightShield() {
+        assertTrue(shield(false, zombie(1, 2.5, 30), zombie(2, 2.9, 10)));
+        assertTrue(shield(false, zombie(1, 2.5, NEVER), zombie(2, 2.9, 10)));
     }
 
     @Test
@@ -286,25 +302,5 @@ public class CombatRulesTest {
         // a skeleton at point blank is no knockback problem, and a creeper is not melee here
         assertFalse(CombatRules.rimShield(true, false, List.of(shooter(1, 1))));
         assertFalse(CombatRules.rimShield(true, false, List.of(new CombatCommit.Foe(1, 1, false, true, NEVER))));
-    }
-
-    // ---- the enderman shield. foe 1 is the fight target
-
-    private static CombatCommit.Foe enderman(int id, double distance) {
-        return new CombatCommit.Foe(id, distance, false, false, NEVER, CombatCommit.Kind.ENDERMAN);
-    }
-
-    @Test
-    public void theEnderShieldWantsTheEndermanTargetCloseAndHoldsALittleFurther() {
-        assertTrue(CombatRules.enderShield(false, 1, List.of(enderman(1, 4))));
-        assertFalse(CombatRules.enderShield(false, 1, List.of(enderman(1, 5))));
-        assertTrue(CombatRules.enderShield(true, 1, List.of(enderman(1, 5))));
-        assertFalse(CombatRules.enderShield(true, 1, List.of(enderman(1, 6))));
-    }
-
-    @Test
-    public void theEnderShieldIsOnlyForAnEndermanThatIsTheTarget() {
-        assertFalse(CombatRules.enderShield(false, 1, List.of(zombie(1, 2, 0))));
-        assertFalse(CombatRules.enderShield(false, 1, List.of(zombie(1, 2, 0), enderman(2, 2))));
     }
 }

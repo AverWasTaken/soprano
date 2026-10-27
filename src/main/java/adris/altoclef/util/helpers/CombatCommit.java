@@ -1179,7 +1179,7 @@ public final class CombatCommit {
 
     // the nearest angry enderman within FOE_RANGE, the fight target counted too (it can be outside the foe list). hitUsOnly: only
     // one that has hit us lately, which is what starts or takes over a fight (a merely angry one is no reason to start swinging, it
-    // comes to us, unless it is already within ENDER_SHIELD_RANGE, see endermanClose). skipIgnored: not one we wrote off after it stalled or wandered off, unless it hit us since
+    // comes to us, unless it is already within FIGHT_SHIELD_RANGE, see endermanClose). skipIgnored: not one we wrote off after it stalled or wandered off, unless it hit us since
     private Foe nearestEnderman(Tick t, boolean hitUsOnly, boolean skipIgnored) {
         Foe best = null;
         Foe target = t.target();
@@ -1209,7 +1209,7 @@ public final class CombatCommit {
     // an angry one that has not hit us yet but is close enough to swing next: fight it now so the shield is up for that swing
     private Foe endermanClose(Tick t) {
         Foe best = nearestEnderman(t, false, true);
-        return best != null && best.distance() <= CombatRules.ENDER_SHIELD_RANGE ? best : null;
+        return best != null && best.distance() <= CombatRules.FIGHT_SHIELD_RANGE ? best : null;
     }
 
     // the foes a run can be about: everyone but the ones we stand and fight

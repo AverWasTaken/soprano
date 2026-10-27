@@ -33,6 +33,7 @@ public class FoodPlanTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
         end = new EndConfig();
     }
 

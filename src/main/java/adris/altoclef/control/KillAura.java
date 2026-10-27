@@ -27,8 +27,6 @@ import net.minecraft.world.entity.monster.illager.Pillager;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.skeleton.Stray;
 import net.minecraft.world.entity.monster.Witch;
-import net.minecraft.world.entity.monster.Zoglin;
-import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
@@ -165,19 +163,18 @@ public class KillAura {
                 !mod.getMLGBucketChain().isChorusFruiting()) {
             PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
             Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-            // (one zombie does not get the shield, it stops us walking and vetoes the crit hop. two hitting us do, see
-            // CombatRules.pileShield)
+            // (the brain asks for the shield in every committed melee fight, see CombatRules.fightShield. a hoglin hit that is
+            // blocked still throws us but costs nothing, and the throw comes either way, so they get it too)
             if (!_shieldAllowed) {
                 stopShielding(mod);
-            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
-                    entities.get().getClass() != Zoglin.class && entities.get().getClass() != Warden.class &&
+            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Warden.class &&
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
                     && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                     // mid movement or knocked back mid movement the path is never safe to cancel, and a fight waiting for it
                     // took its hits with the shield down. same deal as the arrow shield in MobDefenseChain
                     && (_fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
-                // (the creeper and hoglin check above stays on the nearest one, the aim is the fight's own target)
+                // (the creeper check above stays on the nearest one, the aim is the fight's own target)
                 mod.getControllerExtras().aimAt(pick(mod), CombatAim.Priority.AURA);
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {

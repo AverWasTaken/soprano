@@ -8,6 +8,9 @@ import java.util.List;
 // the engine's side of a handler call, written down so a test can read what the handler said
 public class StubContext implements GamerContext {
     public final GamerConfig cfg = new GamerConfig();
+    {
+        cfg.overworld.netherSpareShields = 0;
+    }
     public final RunState state = new RunState();
     public final FakeFacts facts = new FakeFacts();
     public final List<String> progress = new ArrayList<>();

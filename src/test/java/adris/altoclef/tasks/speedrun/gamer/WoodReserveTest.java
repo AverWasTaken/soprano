@@ -13,6 +13,9 @@ import org.junit.Test;
 public class WoodReserveTest {
     private static final int BEDS = 8;
     private final OverworldConfig cfg = new OverworldConfig();
+    {
+        cfg.netherSpareShields = 0;
+    }
 
     @BeforeClass
     public static void boot() {

@@ -49,13 +49,11 @@ public final class CombatRules {
     public static final double FAST_MOB_SPEED = 0.28 - 1e-6;
     // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
     public static final double SHOOTER_RANGE = 15;
-    // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
-    // them back a block or so, and every re-raise is 5 ticks before the shield blocks again
-    public static final double PILE_SHIELD_SLACK = 1.5;
-    // an enderman fight has the shield up from this far out: it swings once every 20 ticks and the shield needs 5 to block.
-    // up, it holds one block past that, our own swing knocks it back a bit
-    public static final double ENDER_SHIELD_RANGE = CONTACT_RANGE + PILE_SHIELD_SLACK;
-    public static final double ENDER_SHIELD_HOLD = ENDER_SHIELD_RANGE + 1;
+    // a committed melee fight has the shield up from this far out: most things swing once every 20 ticks or so and the
+    // shield needs 5 to block. up, it holds one block past that, our own swing knocks the target back a bit and every
+    // re-raise is 5 ticks of no block
+    public static final double FIGHT_SHIELD_RANGE = CONTACT_RANGE + 1.5;
+    public static final double FIGHT_SHIELD_HOLD = FIGHT_SHIELD_RANGE + 1;
     // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
     public static final double RIM_SHIELD_FOE_RANGE = 4;
     // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage). a big
@@ -127,36 +125,18 @@ public final class CombatRules {
         return health > FLEE_HEALTH;
     }
 
-    // the shield in a normal (not cornered) fight: the target is melee and in contact, and another melee mob that has hit us
-    // is in contact too. one zombie never gets it, 1v1 is crits first and a raised shield vetoes the jump. only mobs that hit
-    // us count, never bystanders: two zombies milling about while we walk to a target five blocks off must not stop the walk
-    // for a shield. up: it is up already, and then the hold band (contact plus PILE_SHIELD_SLACK) is the one asked
-    public static boolean pileShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
-        double reach = up ? CONTACT_RANGE + PILE_SHIELD_SLACK : CONTACT_RANGE;
-        boolean target = false;
-        boolean other = false;
+    // the shield in every committed melee fight: the target is melee and close. with a sword there is no crit hop for it to
+    // veto (a sword never hops) and a melee target comes to us, one that never does is dropped by the stall rule. up: it is up
+    // already, and then the hold range is the one asked
+    public static boolean fightShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
+        double reach = up ? FIGHT_SHIELD_HOLD : FIGHT_SHIELD_RANGE;
         for (CombatCommit.Foe foe : foes) {
-            if (!foe.melee() || foe.distance() > reach) continue;
-            if (foe.id() == targetId) {
-                target = true;
-            } else if (foe.hitUs()) {
-                other = true;
-            }
-        }
-        return target && other;
-    }
-
-    // the shield in an enderman fight: it blocks them from the front and they never disable it, so a 1v1 gets it too
-    // (unlike a zombie, where the shield vetoes the crit jump). up: it is up already, and then the hold range is the one asked
-    public static boolean enderShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
-        double reach = up ? ENDER_SHIELD_HOLD : ENDER_SHIELD_RANGE;
-        for (CombatCommit.Foe foe : foes) {
-            if (foe.id() == targetId && foe.standsAndFights() && foe.distance() <= reach) return true;
+            if (foe.id() == targetId && foe.melee() && foe.distance() <= reach) return true;
         }
         return false;
     }
 
-    // a fully blocked hit skips the knockback, so on a ledge above a drop the shield is up whenever a melee foe is close. a
+    // a fully blocked hit skips the knockback (not for a hoglin or zoglin, they still throw us), so on a ledge above a drop the shield is up whenever a melee foe is close. a
     // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
     // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem
     public static boolean rimShield(boolean edgeNear, boolean blazeInContact, List<CombatCommit.Foe> foes) {

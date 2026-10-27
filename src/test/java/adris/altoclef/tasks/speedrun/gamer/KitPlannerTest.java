@@ -30,6 +30,7 @@ public class KitPlannerTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
         // these are the wood budget's tests; the fuel logs on top of it for the cook are in CookGateTest
         cfg.cookFuelLogs = 0;
         f = new FakeFacts();
@@ -1239,5 +1240,24 @@ public class KitPlannerTest {
         FakeFacts lower = new FakeFacts().give(Items.DIAMOND_LEGGINGS, 1).give(Items.IRON_LEGGINGS, 1);
         lower.worn.add(Items.DIAMOND_LEGGINGS);
         assertEquals(List.of(), KitPlanner.toEquip(lower, cfg));
+    }
+
+    @Test
+    public void spareShieldsAreIronAndPlanksInTheNormalBudget() {
+        int base = KitPlanner.ingotsNeeded(f, cfg);
+        int planks = WoodBudget.owed(f, cfg, 8, true);
+        cfg.netherSpareShields = 2;
+        // 3 shields, an ingot each
+        assertEquals(base + 2, KitPlanner.ingotsNeeded(f, cfg));
+        assertEquals(new KitNeed("shield", 3), find(KitPlanner.plan(f, cfg, 8), "shield"));
+        // 12 more planks is three logs
+        assertEquals(planks + 3, WoodBudget.owed(f, cfg, 8, true));
+        // holding the first one and both spares asks for nothing more of them
+        FakeFacts shields = new FakeFacts().give(Items.SHIELD, 3);
+        cfg.netherSpareShields = 0;
+        int without = KitPlanner.ingotsNeeded(shields, cfg);
+        cfg.netherSpareShields = 2;
+        assertEquals(without, KitPlanner.ingotsNeeded(shields, cfg));
+        assertNull(find(KitPlanner.plan(shields, cfg, 8), "shield"));
     }
 }

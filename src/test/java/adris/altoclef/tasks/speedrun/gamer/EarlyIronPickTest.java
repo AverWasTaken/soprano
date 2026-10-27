@@ -33,12 +33,15 @@ public class EarlyIronPickTest {
     public void setUp() {
         // the pick on its own: the chestplate, shield and shears riding along are their own tests further down (full)
         cfg = new OverworldConfig();
+        cfg.netherSpareShields = 0;
         cfg.ironKit.removeIf(k -> k.item.equals("shears") || k.item.equals("shield"));
         cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
     }
 
     private static OverworldConfig full() {
-        return new OverworldConfig();
+        OverworldConfig c = new OverworldConfig();
+        c.netherSpareShields = 0;
+        return c;
     }
 
     private static List<String> names(List<KitNeed> needs) {
@@ -448,5 +451,22 @@ public class EarlyIronPickTest {
         assertFalse(EarlyIronPick.endsLoad(List.of()));
         assertTrue(EarlyIronPick.endsLoad(List.of(job("iron_ingot"))));
         assertTrue(EarlyIronPick.endsLoad(List.of(job("cooked_porkchop"), job("iron_ingot"))));
+    }
+
+    // the pick's ingots never pay for spares: one shield early, the rest come with the normal crafts
+    @Test
+    public void theEarlyBatchMakesOneShieldWhateverTheSparesAre() {
+        OverworldConfig kit = full();
+        kit.netherSpareShields = 2;
+        FakeFacts out = mining().give(Items.IRON_INGOT, EARLY).give(Items.OAK_PLANKS, 6);
+        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears"), EarlyIronPick.front(out, kit));
+        assertEquals(EARLY, EarlyIronPick.batch(out, kit));
+        List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
+        assertEquals(new KitNeed("shield", 1), plan.get(2));
+        // the spares are still in the list, behind the early items
+        assertEquals(new KitNeed("shield", 3), plan.stream().filter(n -> n.catalogueName().equals("shield") && n.count() == 3).findFirst().orElse(null));
+        // one shield in hand and the early shield is done, the spares are not early work
+        FakeFacts one = mining().give(Items.IRON_INGOT, EARLY).give(Items.SHIELD, 1);
+        assertFalse(EarlyIronPick.owed(one, kit).contains("shield"));
     }
 }
