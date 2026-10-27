@@ -52,6 +52,10 @@ public final class CombatRules {
     // a pile shield (see pileShield) that is up holds while they are this much past contact. our own swing knocks one of
     // them back a block or so, and every re-raise is 5 ticks before the shield blocks again
     public static final double PILE_SHIELD_SLACK = 1.5;
+    // an enderman fight has the shield up from this far out: it swings once every 20 ticks and the shield needs 5 to block.
+    // up, it holds one block past that, our own swing knocks it back a bit
+    public static final double ENDER_SHIELD_RANGE = CONTACT_RANGE + PILE_SHIELD_SLACK;
+    public static final double ENDER_SHIELD_HOLD = ENDER_SHIELD_RANGE + 1;
     // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
     public static final double RIM_SHIELD_FOE_RANGE = 4;
     // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage). a big
@@ -140,6 +144,16 @@ public final class CombatRules {
             }
         }
         return target && other;
+    }
+
+    // the shield in an enderman fight: it blocks them from the front and they never disable it, so a 1v1 gets it too
+    // (unlike a zombie, where the shield vetoes the crit jump). up: it is up already, and then the hold range is the one asked
+    public static boolean enderShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
+        double reach = up ? ENDER_SHIELD_HOLD : ENDER_SHIELD_RANGE;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.id() == targetId && foe.standsAndFights() && foe.distance() <= reach) return true;
+        }
+        return false;
     }
 
     // a fully blocked hit skips the knockback, so on a ledge above a drop the shield is up whenever a melee foe is close. a
