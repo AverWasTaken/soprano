@@ -434,7 +434,10 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         // (a cornered fight has the shield anyway, and the pile starts over from the raise rule when the next pile comes)
         _pile = _commit.mode() == Mode.FIGHT && !_commit.cornered() && CombatRules.pileShield(_pile, _commit.targetId(), foes);
-        _ender = _commit.mode() == Mode.FIGHT && CombatRules.enderShield(_ender, _commit.targetId(), foes);
+        // (the target can be missing from a hostile pass, and losing the shield for that restarts its 5 ticks)
+        Foe fightFoe = target;
+        List<Foe> enderFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
+        _ender = _commit.mode() == Mode.FIGHT && CombatRules.enderShield(_ender, _commit.targetId(), enderFoes);
         // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
         _rim = rim && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
