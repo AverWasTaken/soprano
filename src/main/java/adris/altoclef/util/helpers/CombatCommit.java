@@ -1294,8 +1294,9 @@ public final class CombatCommit {
         if (swap != null) return startFight(t, swap, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
-        // (the rim fight lets go at the same four blocks, one past the three it starts at, so it does not flip back on)
-        if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
+        // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
+        double release = why == Why.RIM ? CombatRules.RIM_RELEASE : WAY_RELEASE;
+        if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > release && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
         // after three seconds, only the stall rule below writes that one off)
