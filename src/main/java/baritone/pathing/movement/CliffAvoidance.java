@@ -37,7 +37,7 @@ public final class CliffAvoidance {
     // how far sideways a knockback is worth worrying about
     static final int REACH = 2;
     // a floor this close is a short fall, further than this is the sea
-    static final int DEPTH = 8;
+    public static final int DEPTH = 8;
 
     private CliffAvoidance() {}
 

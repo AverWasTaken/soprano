@@ -353,7 +353,8 @@ final class CombatBrain {
         enabled &= !standDown;
 
         // the edge scan once a tick for everybody: the way fight's engage, the fight's shield and the run's shield
-        boolean rim = onRim(mod, player, foes);
+        boolean blazeContact = blazeInContact(mod, player);
+        boolean rim = onRim(mod, player, foes, blazeContact);
         Foe target = null;
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
@@ -453,7 +454,7 @@ final class CombatBrain {
         List<Foe> shieldFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
         _fightShield = _commit.mode() == Mode.FIGHT && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
         // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
-        _rim = rim && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        _rim = rim && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
@@ -484,23 +485,25 @@ final class CombatBrain {
         logHurt(mod, dimension);
     }
 
-    // the cheap foe check first, the cell scan only when one is close enough to matter. same edge the kill task steps back from.
+    // the cheap foe check first, the cell scan only when one is close enough to matter (rimScan). same edge the kill task steps back from.
     // a blaze that its own task keeps out of the foes still counts when it is in contact
-    private static boolean onRim(AltoClef mod, LocalPlayer player, List<Foe> foes) {
+    private static boolean onRim(AltoClef mod, LocalPlayer player, List<Foe> foes, boolean blazeContact) {
         if (mod.getClientBaritone().bsi == null) return false;
-        boolean blaze = false;
+        if (!CombatRules.rimScan(blazeContact, foes)) return false;
+        return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
+    }
+
+    private static boolean blazeInContact(AltoClef mod, LocalPlayer player) {
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
                 if (entity instanceof Blaze && entity.isAlive() && entity.distanceTo(player) <= CombatRules.CONTACT_RANGE) {
-                    blaze = true;
-                    break;
+                    return true;
                 }
             }
         } catch (ConcurrentModificationException ignored) {
             // same story as gatherFoes
         }
-        if (!CombatRules.rimShield(true, blaze, foes)) return false;
-        return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
+        return false;
     }
 
     // fills mobs and foes (in step) from the tracker's hostiles. hands back whether a mob some task kept for itself is

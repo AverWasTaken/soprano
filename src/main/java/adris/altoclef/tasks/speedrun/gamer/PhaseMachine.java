@@ -444,6 +444,21 @@ public final class PhaseMachine implements GamerContext {
         Trace.dump("stuck: " + reason);
     }
 
+    // stuck() with the owner's words instead of the "Gave up at" line
+    @Override
+    public void giveUp(String reason, String message) {
+        RunState s = host.state();
+        if (ended()) {
+            return;
+        }
+        safeExit(current());
+        s.stuck = true;
+        s.stuckReason = reason;
+        host.save();
+        host.say(message);
+        Trace.dump("stuck: " + reason);
+    }
+
     // the phase headline is a static label ("Looking for a fortress" all through the nether), so name the step it was
     // really on when it has one
     static String where(PhaseHandler h, GamerPhase phase) {

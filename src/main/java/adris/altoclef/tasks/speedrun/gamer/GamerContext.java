@@ -53,6 +53,11 @@ public interface GamerContext {
     // this phase cannot work the way it is going: hands the decision to the handler's onTimeout
     void fail(String reason);
 
+    // the run is over and nothing here can fix it: say message as is and stop. stubs just fail the step
+    default void giveUp(String reason, String message) {
+        fail(reason);
+    }
+
     // one line in chat, soprano prefix, for things the user should know ("giving up on casting, mining obsidian")
     void log(String line);
 

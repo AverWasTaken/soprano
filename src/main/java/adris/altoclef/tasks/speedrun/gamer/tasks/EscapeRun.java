@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.speedrun.gamer.EscapeRoute;
 import adris.altoclef.tasksystem.Task;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 // a forced nether portal can hang on a 2x3 obsidian slab over the lava sea with the first real ground a hundred blocks out, and the
@@ -13,7 +14,10 @@ import java.util.function.Consumer;
 // ordinary arrival has floor beside the portal, so it plans nothing and whoever owns the walk goes on as it always did.
 // the nether phase and the walk back for our things after a death both arrive through a portal, so both own one of these
 public class EscapeRun {
-    private enum State { NONE, PENDING, RUNNING, OVER }
+    private enum State { NONE, PENDING, RUNNING, OVER, LAVA_LAKE }
+
+    // what the arrival plan means to do about the portal
+    enum Verdict { STAY, LAKE, STRANDED, BRIDGE }
 
     // how long the arrival waits for the chunks around it before it plans with what it has
     private static final long LOAD_TICKS = 60;
@@ -38,8 +42,25 @@ public class EscapeRun {
         return state == State.RUNNING;
     }
 
+    // the portal floats over a lava lake and there is no cheap way off: the run is over, the owner calls that an unlucky world
+    public boolean lavaLake() {
+        return state == State.LAVA_LAKE;
+    }
+
     public String hud() {
         return hud;
+    }
+
+    // a cheap way off (a wall to dig, a few blocks to lay) still gets taken over lava, the lake only ends the run when the way off is long
+    static Verdict verdict(EscapeRoute.Plan plan, BooleanSupplier overLavaLake) {
+        if (!plan.isolated()) {
+            return Verdict.STAY;
+        }
+        boolean cheap = plan.route() != null && plan.route().placements() <= EscapeRoute.ISOLATED_PLACEMENTS;
+        if (!cheap && overLavaLake.getAsBoolean()) {
+            return Verdict.LAKE;
+        }
+        return plan.route() == null ? Verdict.STRANDED : Verdict.BRIDGE;
     }
 
     // once per tick. null = nothing to do, carry on; else the task that has the wheel
@@ -56,7 +77,7 @@ public class EscapeRun {
             arrivalTick = gameTime;
             escape = null;
         }
-        if (state == State.OVER) {
+        if (state == State.OVER || state == State.LAVA_LAKE) {
             return null;
         }
         if (state == State.PENDING) {
@@ -65,11 +86,16 @@ public class EscapeRun {
                 return new IdleTask();
             }
             EscapeRoute.Plan plan = EscapeBridgeTask.plan(mod);
-            if (!plan.isolated()) {
+            Verdict v = verdict(plan, () -> EscapeBridgeTask.lavaLake(mod));
+            if (v == Verdict.STAY) {
                 state = State.OVER;
                 return null;
             }
-            if (plan.route() == null) {
+            if (v == Verdict.LAKE) {
+                state = State.LAVA_LAKE;
+                return null;
+            }
+            if (v == Verdict.STRANDED) {
                 state = State.OVER;
                 say.accept("nether: stranded and no way off fits the bag, sweeping anyway");
                 return null;

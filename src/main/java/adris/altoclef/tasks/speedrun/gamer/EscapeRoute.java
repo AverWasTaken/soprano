@@ -37,6 +37,8 @@ public final class EscapeRoute {
     public static final int ISOLATED_PLACEMENTS = 3;
     // a step down this far is a walk off an edge, past it the fall is damage
     public static final int MAX_STEP_DOWN = 4;
+    // how far down the lava lake test looks for the first real block (the real terrain ends it sooner at the world floor)
+    private static final int LAKE_DEPTH = 320;
 
     public record Route(List<int[]> cells, int placements, boolean wall) {
         public int[] end() {
@@ -64,6 +66,41 @@ public final class EscapeRoute {
         }
         boolean fits = r != null && r.placements() <= budget(heldThrowaways);
         return new Plan(fits ? r : null, true);
+    }
+
+    // the arrival hangs over a lava lake: look down the feet column and the ones two out each way. our own slab and bridge cells
+    // are skipped (the slab is what we stand on), the first thing under them decides the column. a netherrack pillar under the
+    // feet with lava all around still counts, that is the lake with one post in it
+    public static boolean overLavaLake(Terrain t, int x, int y, int z) {
+        int lava = 0;
+        int[][] cols = {{0, 0}, {2, 0}, {-2, 0}, {0, 2}, {0, -2}};
+        for (int[] c : cols) {
+            if (firstBelow(t, x + c[0], y - 1, z + c[1]) == Cell.LAVA) {
+                lava++;
+            }
+        }
+        return lava >= 3;
+    }
+
+    // the lake only ends the run when no wall within a few placements can be dug into: find() prefers a far floor over its saved
+    // wall, so the plan's own route says nothing about whether a cheap wall exists
+    public static boolean lavaLakeNoWay(Terrain t, int x, int y, int z) {
+        if (!overLavaLake(t, x, y, z)) {
+            return false;
+        }
+        Route r = find(t, x, y, z, ISOLATED_PLACEMENTS);
+        return r == null || !r.wall() && r.placements() > ISOLATED_PLACEMENTS;
+    }
+
+    private static Cell firstBelow(Terrain t, int x, int fromY, int z) {
+        // the terrain calls out of height hazard, but a test world is air forever, so the walk down has its own end
+        for (int y = fromY; y > fromY - LAKE_DEPTH; y--) {
+            Cell c = t.at(x, y, z);
+            if (c != Cell.AIR && c != Cell.ARTIFICIAL) {
+                return c;
+            }
+        }
+        return Cell.AIR;
     }
 
     // cheapest floor within the budget, else the cheapest wall to dig into, else null. cost is placements first, then turns
