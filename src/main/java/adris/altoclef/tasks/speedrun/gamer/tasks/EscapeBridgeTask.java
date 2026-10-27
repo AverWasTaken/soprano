@@ -199,6 +199,11 @@ public class EscapeBridgeTask extends Task {
         return EscapeRoute.plan(terrain(mod, at.getY(), Set.of(), Set.of()), at.getX(), at.getY(), at.getZ(), NetherBlockRestock.heldThrowaways(mod));
     }
 
+    public static boolean lavaLake(AltoClef mod) {
+        BlockPos at = mod.getPlayer().blockPosition();
+        return EscapeRoute.overLavaLake(terrain(mod, at.getY(), Set.of(), Set.of()), at.getX(), at.getY(), at.getZ());
+    }
+
     // chunks around us are in, so unloaded cells mean "really nothing" less often than "not here yet"
     public static boolean chunksLoaded(AltoClef mod, int chunks) {
         BlockPos at = mod.getPlayer().blockPosition();

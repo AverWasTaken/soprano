@@ -485,6 +485,11 @@ public class NetherPhase implements PhaseHandler {
         }
         // above the trips, the sweep and the side jobs: nothing out here is worth doing while we are stuck on a slab
         Task out = escapeRun.step(mod, true, ctx.facts().gameTime(), ctx::log, ctx::progress);
+        if (escapeRun.lavaLake()) {
+            // the machine exits us from inside this call, so nothing below runs
+            ctx.giveUp("spawned over a lava lake", "Unlucky, we spawned over a lava lake, and I could not get any further");
+            return null;
+        }
         if (out != null) {
             hudState = escapeRun.hud();
             return out;
