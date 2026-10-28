@@ -372,7 +372,7 @@ final class CombatBrain {
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
-                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player))));
+                    boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -558,6 +558,12 @@ final class CombatBrain {
     }
 
     // hp went down: one line per new damage source object (the client makes a fresh one per hit), naming who if it knows
+    // wither, poison or burning (fire resistance covers the fire) keep hurting after the hit that started them
+    private static boolean lingering(LocalPlayer player) {
+        return player.hasEffect(MobEffects.WITHER) || player.hasEffect(MobEffects.POISON)
+                || (player.isOnFire() && !player.isInLava() && !player.hasEffect(MobEffects.FIRE_RESISTANCE));
+    }
+
     private void logHurt(AltoClef mod, Dimension dimension) {
         LocalPlayer player = mod.getPlayer();
         float hp = player.getHealth();

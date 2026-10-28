@@ -157,6 +157,7 @@ public class NetherRecoverTask extends Task {
             say.accept(entered(step.stage()));
         }
         if (step.stage() == null) {
+            if (stage == Stage.HOME && facts.dimension() == Dimension.NETHER) say.accept("walk home ran out of time, still in the nether");
             end(mod, null);
             return null;
         }
