@@ -136,6 +136,20 @@ public class LocateLegPlannerTest {
     }
 
     @Test
+    public void settleWaitRunsFromWhenTheEyeWentGone() {
+        // still flying: not this wait
+        assertFalse(LocateLegPlanner.settleWait(true, 0, false));
+        // just went, nothing on the floor yet: keep waiting
+        assertTrue(LocateLegPlanner.settleWait(false, 0.5, false));
+        // gone too long: it shattered
+        assertFalse(LocateLegPlanner.settleWait(false, 3.1, false));
+        // drop showed up: stop waiting
+        assertFalse(LocateLegPlanner.settleWait(false, 0.5, true));
+        // unstamped clock stops the wait rather than hanging it
+        assertFalse(LocateLegPlanner.settleWait(false, Double.NaN, false));
+    }
+
+    @Test
     public void anEyeOwedToUsSurvivesAnInterrupt() {
         // held 6 before the throw, 5 now: the eye is still flying -> collect it
         assertTrue(LocateLegPlanner.collectPending(6, 5, true, false));

@@ -35,7 +35,6 @@ public class LocateStrongholdTask extends Task {
     private static final int STILL_TICKS = 4;
     // after a throw we wait this long for the eye entity to be gone so the item drop exists
     private static final double COLLECT_WAIT_SECONDS = 9;
-    private static final double DROP_SETTLE_SECONDS = 1.5;
     private static final double PICKUP_SECONDS = 20;
     private static final double PICKUP_RANGE = 40;
     private static final int ADVISE_EVERY_TICKS = 10;
@@ -70,6 +69,8 @@ public class LocateStrongholdTask extends Task {
     private int tickCounter;
     private boolean done;
     private double stageSince;
+    // when the eye entity was first seen gone while collecting. NaN = not yet
+    private double _eyeGoneAt = Double.NaN;
     private final TimerGame _pickupTimer = new TimerGame(PICKUP_SECONDS);
     private String step = "Throwing an Eye of Ender";
 
@@ -169,6 +170,7 @@ public class LocateStrongholdTask extends Task {
     private void enter(AltoClef mod, Stage next) {
         stage = next;
         stageSince = seconds(mod);
+        _eyeGoneAt = Double.NaN;
         stillTicks = 0;
     }
 
@@ -260,6 +262,7 @@ public class LocateStrongholdTask extends Task {
         if (baseline <= 0) {
             return false;
         }
+        // same blind spot as collect(): a falling eye item reads as no drop, so this only holds up after an interrupt
         boolean pending = LocateLegPlanner.collectPending(baseline, mod.getItemStorage().getItemCount(Items.ENDER_EYE),
                 mod.getEntityTracker().entityFound(EyeOfEnder.class), nearDrop(mod));
         if (!pending) {
@@ -468,11 +471,14 @@ public class LocateStrongholdTask extends Task {
         if (flying && waited < COLLECT_WAIT_SECONDS) {
             return null;
         }
-        if (waited < DROP_SETTLE_SECONDS && !flying) {
-            // the item entity shows up a moment after the eye goes
-            if (!mod.getEntityTracker().itemDropped(Items.ENDER_EYE)) {
-                return null;
-            }
+        if (!flying && Double.isNaN(_eyeGoneAt)) {
+            _eyeGoneAt = seconds(mod);
+        }
+        // the item falls from ~8 blocks up and the tracker only lists it once it is near the ground, so the clock
+        // runs from when the eye went, not from when we entered collect
+        if (LocateLegPlanner.settleWait(flying, seconds(mod) - _eyeGoneAt,
+                mod.getEntityTracker().itemDropped(Items.ENDER_EYE))) {
+            return null;
         }
         if (mod.getItemStorage().getItemCount(Items.ENDER_EYE) < baseline && nearDrop(mod)) {
             pickupTask = new PickupDroppedItemTask(Items.ENDER_EYE, baseline);
