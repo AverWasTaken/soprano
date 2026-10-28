@@ -17,6 +17,7 @@ public final class ThrowAim {
 
     public static final int DIRECTIONS = 16;
     public static final int MAX_RUN = 4;
+    private static final int SUBSTEPS = 4;
     // a little up so it carries, but not much: a 2 high tunnel has the item's top near 1.77 against a ceiling at 2.0
     public static final float PITCH = -10f;
     // how far off the aim still counts as lined up, and how long we wait for the look to land before throwing anyway
@@ -70,15 +71,18 @@ public final class ThrowAim {
             double yaw = Math.toRadians(yawOf(i));
             double dx = -Math.sin(yaw);
             double dz = Math.cos(yaw);
-            int run = 0;
-            while (run < MAX_RUN) {
-                int x = (int) Math.floor(p.x + dx * (run + 1));
-                int z = (int) Math.floor(p.z + dz * (run + 1));
+            // quarter block steps so a diagonal can't hop over a cell it clips
+            int steps = 0;
+            while (steps < MAX_RUN * SUBSTEPS) {
+                double d = (steps + 1) / (double) SUBSTEPS;
+                int x = (int) Math.floor(p.x + dx * d);
+                int z = (int) Math.floor(p.z + dz * d);
                 if (!open(level, new BlockPos(x, feet.getY(), z)) || !open(level, new BlockPos(x, feet.getY() + 1, z))) {
                     break;
                 }
-                run++;
+                steps++;
             }
+            int run = steps / SUBSTEPS;
             runs[i] = run;
         }
         return pick(runs, random);

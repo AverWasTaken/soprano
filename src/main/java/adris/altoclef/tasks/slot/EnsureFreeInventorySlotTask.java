@@ -62,10 +62,13 @@ public class EnsureFreeInventorySlotTask extends Task {
                 // a 1x1 pocket has no run to throw along, so the stack still comes back there. the bucket task has a
                 // backstop for that
                 pickAim(mod);
-                // read the rotation before forceLook touches it: the click goes out ahead of this tick's rotation packet, so
-                // only a rotation that was already set last tick has reached the server
+                // what the server last heard from us, not the camera: the click goes out ahead of this tick's rotation packet,
+                // and baritone's free look can send one angle and put another on the camera
                 var player = mod.getPlayer();
-                boolean aligned = ThrowAim.isAligned(player.getYRot(), player.getXRot(), _aimYaw, ThrowAim.PITCH);
+                var sent = mod.getClientBaritone().getLookBehavior().serverRotation();
+                float sentYaw = sent.map(r -> r.getYaw()).orElse(player.getYRot());
+                float sentPitch = sent.map(r -> r.getPitch()).orElse(player.getXRot());
+                boolean aligned = ThrowAim.isAligned(sentYaw, sentPitch, _aimYaw, ThrowAim.PITCH);
                 if (ThrowAim.shouldThrow(aligned, WorldHelper.getTicks() - _aimSince)) {
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 }
