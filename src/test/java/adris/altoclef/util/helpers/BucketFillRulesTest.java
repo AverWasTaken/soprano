@@ -148,8 +148,9 @@ public class BucketFillRulesTest {
             makeRoomAt(t);
         }
         // 40 ticks of nothing, then it is back
-        assertFalse(makeRoomAt(190));
-        assertFalse(makeRoomAt(190 + BucketFillRules.ROOM_GIVE_UP_TICKS - 1));
+        for (long t = 190; t < 190 + BucketFillRules.ROOM_GIVE_UP_TICKS; t++) {
+            assertFalse(makeRoomAt(t));
+        }
         assertTrue(makeRoomAt(190 + BucketFillRules.ROOM_GIVE_UP_TICKS));
     }
 }
