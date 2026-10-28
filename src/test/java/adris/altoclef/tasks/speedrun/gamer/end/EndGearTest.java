@@ -36,7 +36,7 @@ public class EndGearTest {
     }
 
     private FakeFacts ready() {
-        FakeFacts f = new FakeFacts().with(Items.BED.white(), 8).with(Items.IRON_SWORD, 1).with(Items.WATER_BUCKET, 1)
+        FakeFacts f = new FakeFacts().with(Items.BED.white(), cfg.beds).with(Items.IRON_SWORD, 1).with(Items.WATER_BUCKET, 1)
                 .with(Items.IRON_PICKAXE, 1);
         f.wear(Items.IRON_HELMET).wear(Items.IRON_CHESTPLATE).wear(Items.IRON_LEGGINGS).wear(Items.IRON_BOOTS);
         f.armorPoints = 15;
@@ -112,7 +112,7 @@ public class EndGearTest {
         f.blocks = 0;
         f.food = 0;
         EndGear.Gap gap = missing(f, new RunState(), cfg.beds);
-        assertEquals(8, gap.beds());
+        assertEquals(cfg.beds, gap.beds());
         assertTrue(gap.weapon());
         assertTrue(gap.waterBucket());
         assertTrue(gap.pickaxe());
@@ -190,7 +190,7 @@ public class EndGearTest {
 
     @Test
     public void bedsAreCountedAcrossColours() {
-        FakeFacts f = ready().with(Items.BED.white(), 5).with(Items.BED.red(), 2);
+        FakeFacts f = ready().with(Items.BED.white(), cfg.beds - 2).with(Items.BED.red(), 1);
         assertEquals(1, missing(f, new RunState(), cfg.beds).beds());
     }
 
@@ -218,7 +218,7 @@ public class EndGearTest {
         f.gameTime = 92_000;
         EndGear.Gap gap = missing(f, s, cfg.beds);
         assertFalse(gap.pickaxe());
-        assertEquals(5, gap.beds());
+        assertEquals(cfg.beds - 3, gap.beds());
     }
 
     @Test
@@ -308,23 +308,23 @@ public class EndGearTest {
     public void spawnBedShortfallAsksForOneMoreAndGoesNegativeWithASpare() {
         FakeFacts f = ready();
         RunState s = new RunState();
-        // 8 held, 8 required: nothing short, but a spawn bed makes it 1
+        // all held, all required: nothing short, but a spawn bed makes it 1
         assertEquals(0, EndGear.bedShortfall(f, s, cfg, cfg.beds, false));
         assertEquals(1, EndGear.bedShortfall(f, s, cfg, cfg.beds, true));
         // placing the spawn bed takes one out of the inventory and the want goes away with it, no crafting loop
-        f.with(Items.BED.white(), 9);
+        f.with(Items.BED.white(), cfg.beds + 1);
         assertEquals(0, EndGear.bedShortfall(f, s, cfg, cfg.beds, true));
-        f.with(Items.BED.white(), 8);
+        f.with(Items.BED.white(), cfg.beds);
         assertEquals(0, EndGear.bedShortfall(f, s, cfg, cfg.beds, false));
-        assertEquals(-8, EndGear.bedShortfall(f, s, cfg, 0, false));
+        assertEquals(-cfg.beds, EndGear.bedShortfall(f, s, cfg, 0, false));
     }
 
     @Test
     public void spawnBedWantFollowsConfigAndState() {
         RunState s = new RunState();
         assertTrue(EndGear.wantSpawnBed(s, cfg));
-        assertEquals(9, EndGear.bedTarget(cfg, true));
-        assertEquals(8, EndGear.bedTarget(cfg, false));
+        assertEquals(cfg.beds + 1, EndGear.bedTarget(cfg, true));
+        assertEquals(cfg.beds, EndGear.bedTarget(cfg, false));
         s.respawnPos = new RunState.Pos(1, 1, 1);
         assertFalse(EndGear.wantSpawnBed(s, cfg));
         s.respawnPos = null;
@@ -360,5 +360,27 @@ public class EndGearTest {
         assertEquals("blocks", EndGear.gate(new EndGear.Gap(0, false, false, false, 20, true, List.of(Items.IRON_HELMET))));
         assertEquals("armor", EndGear.gate(new EndGear.Gap(0, false, false, false, 0, true, List.of(Items.IRON_HELMET))));
         assertEquals("food", EndGear.gate(new EndGear.Gap(0, false, false, false, 0, true, List.of())));
+    }
+
+    @Test
+    public void aGivenUpWoolHuntAsksForWhatTheBagCanMake() {
+        // 15 wool is five beds, the chase never mattered
+        assertEquals(5, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 15), cfg, true));
+        // 7 white is two beds, the scraps do not count, and a held bed adds itself
+        assertEquals(2, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 7), cfg, true));
+        assertEquals(3, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 7).with(Items.BED.white(), 1), cfg, true));
+        // never more than the config, and nothing at all with nothing in the bag
+        assertEquals(5, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 60), cfg, true));
+        assertEquals(0, EndGear.bedsRequired(new FakeFacts(), cfg, true));
+        // while the chase is alive the config number stands
+        assertEquals(5, EndGear.bedsRequired(new FakeFacts(), cfg, false));
+    }
+
+    @Test
+    public void aGivenUpWoolHuntNeverCraftsForTheSpawnBed() {
+        FakeFacts four = new FakeFacts().with(Items.BED.white(), 4);
+        assertFalse(EndGear.spawnBedAffordable(four, 4, true));
+        assertTrue(EndGear.spawnBedAffordable(new FakeFacts().with(Items.BED.white(), 5), 4, true));
+        assertTrue(EndGear.spawnBedAffordable(new FakeFacts(), 5, false));
     }
 }

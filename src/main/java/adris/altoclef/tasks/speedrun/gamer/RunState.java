@@ -226,6 +226,9 @@ public class RunState {
     // same two for the raw gold dig (GoldHunt)
     public double goldHuntSeconds;
     public boolean goldHuntGaveUp;
+    // and for the sheep chase (WoolHunt)
+    public double woolHuntSeconds;
+    public boolean woolHuntGaveUp;
 
     // crafting tables this run placed, the only ones the pickup may take back. these three lists are what is saved of the
     // station registry (Workbenches), the rest of an entry (state, clocks, tries) is rebuilt from them after a relog

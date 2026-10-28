@@ -22,6 +22,7 @@ import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
 import adris.altoclef.tasks.speedrun.gamer.WoodBudget;
+import adris.altoclef.tasks.speedrun.gamer.WoolHunt;
 import adris.altoclef.tasks.speedrun.gamer.NeedEnd;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
@@ -106,6 +107,9 @@ public class IronPhase implements PhaseHandler {
     // the same two for the raw gold dig (GoldHunt)
     private boolean goldDug;
     private double goldAge = -1;
+    // and the sheep chase (WoolHunt)
+    private boolean woolChased;
+    private double woolAge = -1;
 
     @Override
     public GamerPhase phase() {
@@ -226,7 +230,7 @@ public class IronPhase implements PhaseHandler {
                     ctx.facts().pickScan()));
         }
         // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
-        FoodHunt.setWoolWanted(KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
+        FoodHunt.setWoolWanted(!ctx.facts().woolHuntGaveUp() && KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
         boolean on = Baritone.settings().altoIronArbiter.value;
         if (arbiterOn == null || on != arbiterOn) {
             arbiter.reset();
@@ -238,6 +242,7 @@ public class IronPhase implements PhaseHandler {
         tickNeeds = null;
         dug = false;
         goldDug = false;
+        woolChased = false;
         Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
         huntClock(ctx);
         return task;
@@ -257,6 +262,12 @@ public class IronPhase implements PhaseHandler {
         if (gold.gaveUp()) {
             ctx.save();
         }
+        DiamondHunt.Step wool = WoolHunt.tick(ctx.state(), woolAge, woolChased, ctx.secondsInPhase(), ctx.cfg().overworld.woolHuntMinutes);
+        woolAge = wool.lastAge();
+        if (wool.gaveUp()) {
+            ctx.log("no sheep in time, the beds will be whatever the wool allows");
+            ctx.save();
+        }
     }
 
     // the tick's list without the stock-ups SmeltFiller tacks on the end: an optional log or wool top-up behind the dig is not a
@@ -270,6 +281,7 @@ public class IronPhase implements PhaseHandler {
         Task task = runner.run(ctx, needs);
         dug = task != null && DiamondHunt.digging(runner.current());
         goldDug = task != null && GoldHunt.digging(runner.current());
+        woolChased = task != null && WoolHunt.chasing(runner.current());
         return task;
     }
 

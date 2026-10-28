@@ -328,6 +328,24 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysEightEndBedsGetsTheNewDefault() throws IOException {
+        write("{\"version\": 9, \"end\": {\"beds\": 8}}");
+        assertEquals(5, GamerConfigs.load().end.beds);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 9, \"end\": {\"beds\": 6}}");
+        assertEquals(6, GamerConfigs.load().end.beds);
+        // and a current file that says 8 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"end\": {\"beds\": 8}}");
+        assertEquals(8, GamerConfigs.load().end.beds);
+    }
+
+    @Test
+    public void anOldSavedStockUpListLosesTheWoolBeds() throws IOException {
+        write("{\"version\": 9, \"overworld\": {\"smeltExtras\": [{\"item\": \"wool_beds\", \"count\": 3}]}}");
+        assertTrue(GamerConfigs.load().overworld.smeltExtras.stream().noneMatch(e -> e.item.equals("wool_beds")));
+    }
+
+    @Test
     public void anOldFileThatStillSaysTenHuntMinutesGetsTheNewDefault() throws IOException {
         write("{\"version\": 8, \"nether\": {\"huntWanderMinutes\": 10}}");
         assertEquals(15, GamerConfigs.load().nether.huntWanderMinutes, 0);
@@ -354,8 +372,8 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 9;
-    private static final String PINNED_KIT_HASH = "ac609dc3";
+    private static final int PINNED_VERSION = 10;
+    private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test
     public void changingADefaultKitListMeansBumpingTheVersion() {

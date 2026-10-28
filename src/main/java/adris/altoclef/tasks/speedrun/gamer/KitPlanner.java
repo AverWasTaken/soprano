@@ -519,6 +519,9 @@ public final class KitPlanner {
     // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so
     // 5 red and 4 white is one bed's worth, not nine wool
     private static void addWool(List<KitNeed> out, GamerFacts f, int endBeds) {
+        if (f.woolHuntGaveUp()) {
+            return;
+        }
         int missing = woolShortfall(f, endBeds);
         if (missing > 0) {
             // the wool task counts every colour, so ask for what we hold plus the shortfall or it stops too early

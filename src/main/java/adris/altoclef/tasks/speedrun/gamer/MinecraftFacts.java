@@ -558,6 +558,11 @@ public final class MinecraftFacts implements GamerFacts {
     }
 
     @Override
+    public boolean woolHuntGaveUp() {
+        return state != null && state.woolHuntGaveUp;
+    }
+
+    @Override
     public boolean goldOreKnown() {
         return goldOreKnown;
     }

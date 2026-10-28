@@ -164,7 +164,7 @@ public class SmeltFillerTest {
         // a: what the kit wanted anyway (wool, the food target), then the portal's blocks
         // b: flint for the steel, planks for the shield, sticks and beds
         // c: the stock-up, in the order the config lists it
-        assertEquals(List.of("wool", "food", "build_blocks", "flint", "planks", "food", "wool", "build_blocks", "log"),
+        assertEquals(List.of("wool", "food", "build_blocks", "flint", "planks", "food", "build_blocks", "log"),
                 names(s.runnable()));
         assertEquals(new KitNeed("flint", 1), s.runnable().get(3));
         assertEquals(new KitNeed("planks", 6 + 2 + 12), s.runnable().get(4));
@@ -188,11 +188,9 @@ public class SmeltFillerTest {
         assertEquals(new KitNeed(KitNeed.FOOD, 100), r.get(1));
         assertEquals(new KitNeed(KitNeed.FOOD, 130), r.get(5));
         assertEquals(new KitNeed("wool", 3 * BEDS), r.get(0));
-        // three more beds of wool on top of the eight
-        assertEquals(new KitNeed("wool", 3 * (BEDS + 3)), r.get(6));
         assertEquals(new KitNeed(KitNeed.BUILD_BLOCKS, 32), r.get(2));
-        assertEquals(new KitNeed(KitNeed.BUILD_BLOCKS, 64), r.get(7));
-        assertEquals(new KitNeed("log", 8), r.get(8));
+        assertEquals(new KitNeed(KitNeed.BUILD_BLOCKS, 64), r.get(6));
+        assertEquals(new KitNeed("log", 8), r.get(7));
     }
 
     @Test
@@ -283,7 +281,7 @@ public class SmeltFillerTest {
         assertTrue(deep.stockUps().isEmpty());
         assertNull(find(deep.runnable(), "log"));
         Schedule up = SmeltFiller.schedule(f, cfg, BEDS, true);
-        assertEquals(List.of("food", "wool", "build_blocks", "log"), names(up.stockUps()));
+        assertEquals(List.of("food", "build_blocks", "log"), names(up.stockUps()));
         for (KitNeed extra : up.stockUps()) {
             assertTrue(up.runnable().contains(extra));
         }
@@ -323,7 +321,7 @@ public class SmeltFillerTest {
     public void farAwayWorkIsNotFilteredByDistanceAnyMore() {
         // wool and food used to wait for a sheep or an animal inside the leash, now the filler is just the filler
         Schedule s = SmeltFiller.schedule(atTheFurnace().cooking("iron_ingot", 40, 400), cfg, BEDS);
-        assertEquals(2, s.runnable().stream().filter(n -> n.catalogueName().equals("wool")).count());
+        assertEquals(1, s.runnable().stream().filter(n -> n.catalogueName().equals("wool")).count());
         assertEquals(2, s.runnable().stream().filter(n -> n.catalogueName().equals("food")).count());
         assertEquals(1, s.runnable().stream().filter(n -> n.catalogueName().equals("flint")).count());
     }
