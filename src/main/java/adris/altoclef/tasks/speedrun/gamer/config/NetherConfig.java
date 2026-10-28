@@ -44,7 +44,7 @@ public class NetherConfig {
     // total time we are willing to spend on the barter top-up
     public double barterMinutes = 8;
     // give up the nether pearl hunt after this long without a new pearl, forest known or not
-    public double huntWanderMinutes = 10;
+    public double huntWanderMinutes = 15;
     // the engine budget fires at nether minutes, leave a little earlier than that when deciding "budget over"
     // so the floor rule wins the race against the timeout
     public double budgetGraceSeconds = 20;

@@ -102,7 +102,7 @@ public class PearlHuntTask extends Task {
     // latched: its isEqual compares the danger blocks, a rebuild per tick would restart it every tick
     private RunAwayFromPositionTask away;
     // ticks spent stepping away in a row; a shore with nowhere to flee to must not hold us in "Backing off" forever
-    private AwayCount awayCount = new AwayCount(0, Long.MIN_VALUE / 2);
+    private AwayCount awayCount = AwayCount.NONE;
     // where lava kept us stuck: endermen near it are skipped for a few minutes (see LavaSpot) and we walk off it once
     private final LavaSpot lavaSpot = new LavaSpot();
     private final LavaStrikes lavaStrikes = new LavaStrikes();
@@ -380,15 +380,22 @@ public class PearlHuntTask extends Task {
         return false;
     }
 
-    // ticks spent fleeing and the game time of the last one. the count has a short memory (AWAY_CALM_RESET_TICKS) so a back off
-    // that flips with the lava distance still adds up to the give up, and it is read off the clock so the ticks spent fighting
-    // or walking instead count as calm too
-    record AwayCount(int ticks, long lastFlee) {
+    // a back off streak: the game time of its first flee and of the last one. the streak has a short memory (AWAY_CALM_RESET_TICKS)
+    // so a back off that flips with the lava distance is still one streak, and it is read off the clock so the ticks spent
+    // fighting or walking instead count as calm too. the length is wall time since the first flee, not the flee ticks in it:
+    // a flip flees a few ticks out of every twenty, and counting only those takes minutes to get anywhere
+    record AwayCount(long first, long lastFlee) {
+        static final AwayCount NONE = new AwayCount(Long.MAX_VALUE / 2, Long.MIN_VALUE / 2);
+
         AwayCount step(long now, boolean fleeing) {
             if (fleeing) {
-                return new AwayCount(ticks + 1, now);
+                return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(now, now) : new AwayCount(first, now);
             }
-            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(0, now) : this;
+            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? NONE : this;
+        }
+
+        int ticks() {
+            return lastFlee < first ? 0 : (int) Math.min(Integer.MAX_VALUE, lastFlee - first + 1);
         }
     }
 
@@ -445,7 +452,7 @@ public class PearlHuntTask extends Task {
     }
 
     // exposed lava (nothing solid right on top of it) from one below the middle up, inside r. under a floor it is just scenery
-    static List<BlockPos> exposedLava(Level level, BlockPos at, int r) {
+    public static List<BlockPos> exposedLava(Level level, BlockPos at, int r) {
         List<BlockPos> out = new ArrayList<>();
         for (int x = -r; x <= r; x++) {
             for (int y = -1; y <= r; y++) {

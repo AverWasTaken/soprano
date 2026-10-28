@@ -52,9 +52,9 @@ public class NookHuntTask extends Task {
     // nobody to stare at, nothing to fight and nothing to fetch for this long and the hole is not paying, hunt somewhere else
     private static final long IDLE_TICKS = 1200;
     // a stare that gets no answer this long is a stare at an enderman that does not care, try another
-    private static final int STARE_TICKS = 100;
+    private static final int STARE_TICKS = EndermanNook.STARE_TICKS;
     private static final long SKIP_TICKS = 400;
-    private static final double STARE_RANGE = 48;
+    private static final double STARE_RANGE = EndermanNook.STARE_RANGE;
     private static final double SWING_RANGE = 4.5;
     private static final double PEARL_RANGE = 10;
     private static final int PLACE_TICKS = 120;

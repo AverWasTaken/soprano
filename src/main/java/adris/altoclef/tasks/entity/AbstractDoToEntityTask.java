@@ -5,6 +5,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.CritTiming;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
@@ -305,6 +307,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                         if (off != null) {
                             return off;
                         }
+                        if (stareDown(mod, entity)) {
+                            return null;
+                        }
                         setDebugState("Lava by the foe, letting it come");
                         return null;
                     }
@@ -390,6 +395,41 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
     public static void clearLavaHolds() {
         LAVA_HOLDS.clear();
+    }
+
+    // a calm enderman never walks up on its own, so while we hold by the lava we look at it and make it angry (same bait rules as
+    // the nook, EndermanNook.stareWorthwhile). per mob id and static like the waits. a stare nobody answers stops at STARE_TICKS and
+    // the hold carries on to the lava shore ban. this all runs inside lavaHold, so it counts toward the lava spot's hold ticks:
+    // about four ignored stares and we leave the spot, which is the point
+    private static final java.util.Map<Integer, int[]> LAVA_STARES = new java.util.HashMap<>();
+
+    private boolean stareDown(AltoClef mod, Entity entity) {
+        if (!(entity instanceof Enderman man)) {
+            return false;
+        }
+        var us = mod.getPlayer();
+        int angryNow = 0;
+        for (Enderman other : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (other.isAlive() && other.isCreepy()) {
+                angryNow++;
+            }
+        }
+        boolean ourLavaClear = PearlHuntTask.exposedLava(mod.getWorld(), us.blockPosition(), EndermanNook.AGGRO_LAVA_GAP).isEmpty();
+        boolean between = LavaShore.lineHitsLava(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(),
+                man.getX(), man.getY(), man.getZ());
+        if (!EndermanNook.stareWorthwhile(us.isOnFire(), us.getHealth(), ourLavaClear, angryNow, man.distanceTo(us), man.isAlive(),
+                man.isCreepy(), man.hasLineOfSight(us), between)) {
+            return false;
+        }
+        if (LAVA_STARES.size() > 64) {
+            LAVA_STARES.clear();
+        }
+        if (++LAVA_STARES.computeIfAbsent(man.getId(), k -> new int[1])[0] > EndermanNook.STARE_TICKS) {
+            return false;
+        }
+        setDebugState("Lava by the foe, staring it down");
+        LookHelper.lookAt(mod, man.getEyePosition());
+        return true;
     }
 
     private boolean lavaHold(AltoClef mod, Entity entity) {

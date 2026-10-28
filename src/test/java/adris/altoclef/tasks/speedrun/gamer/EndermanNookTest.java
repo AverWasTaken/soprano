@@ -187,4 +187,39 @@ public class EndermanNookTest {
         assertFalse(EndermanNook.lavaExposed(true, true));
         assertFalse(EndermanNook.lavaExposed(false, false));
     }
+
+    // alive, calm, seen, in range, healthy, our lava clear, nobody angry yet, no lava between
+    private static boolean stare(double dist, boolean between) {
+        return EndermanNook.stareWorthwhile(false, 20, true, 0, dist, true, false, true, between);
+    }
+
+    @Test
+    public void staresOnlyAtACalmSeenEndermanInRange() {
+        assertTrue(stare(20, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 20, true, 0, 20, false, false, true, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 20, true, 0, 20, true, true, true, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 20, true, 0, 20, true, false, false, false));
+        assertFalse(stare(48.5, false));
+        assertTrue(stare(48, false));
+        // closer than 6 only makes it blink away
+        assertFalse(stare(5.9, false));
+    }
+
+    @Test
+    public void stareFollowsTheAggroRules() {
+        assertFalse(EndermanNook.stareWorthwhile(true, 20, true, 0, 20, true, false, true, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 17, true, 0, 20, true, false, true, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 20, false, 0, 20, true, false, true, false));
+        assertFalse(EndermanNook.stareWorthwhile(false, 20, true, 1, 20, true, false, true, false));
+    }
+
+    @Test
+    public void lavaBetweenOnlyMattersInsideTheTeleportRange() {
+        // inside 16 it walks and a walk does not cross lava
+        assertFalse(stare(10, true));
+        assertFalse(stare(16, true));
+        assertTrue(stare(10, false));
+        // past 16 an angry one teleports to us, lava or not
+        assertTrue(stare(16.5, true));
+    }
 }
