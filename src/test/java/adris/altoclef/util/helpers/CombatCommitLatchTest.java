@@ -70,10 +70,11 @@ public class CombatCommitLatchTest {
         Foe bouncer = cube(2, 5, 20);
         assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 8, bouncer)));
         assertEquals(Mode.NONE, c.mode());
-        // and not a tick later, nor after the cooldown
-        for (long now = dead + 1; now <= dead + CombatCommit.COOLDOWN + 5; now++) {
+        // and not a tick later: the cooldown sits it out. once it is over the latch lets its one low hp run through
+        for (long now = dead + 1; now < dead + CombatCommit.COOLDOWN; now++) {
             assertEquals("tick " + now, Event.NONE, c.step(tick(now, 8, bouncer)));
         }
+        assertEquals(Event.RUN_START, c.step(tick(dead + CombatCommit.COOLDOWN, 8, bouncer)));
     }
 
     @Test
@@ -102,9 +103,46 @@ public class CombatCommitLatchTest {
         // a mob walks in at ten blocks just before the two seconds are up: the clock starts over
         long mid = start + CombatCommit.RUN_CLEAR_TICKS - 1;
         assertEquals(Event.NONE, c.step(tick(mid, 8, zombie(3, 10, NEVER))));
+        // (the latch is still on, so this is its one break and not a fresh run)
         long after = start + CombatCommit.COOLDOWN;
-        assertEquals(Event.NONE, c.step(tick(after, 8, zombie(3, 5, NEVER))));
+        assertEquals(Event.RUN_START, c.step(tick(after, 8, zombie(3, 5, NEVER))));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void aFullClearGivesTheBreakBack() {
+        CombatCommit c = chasedFight();
+        long dead = NOW + CAP + 1;
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 7)));
+        long again = dead + CombatCommit.COOLDOWN;
+        assertEquals(Event.RUN_START, c.step(tick(again, 7, zombie(3, 5, NEVER))));
+        // out of sight and 24 away: the run ends clear, and the latch lets go with nothing within 12 for two seconds
+        long now = again + 1;
+        while (c.mode() == Mode.RUN && now < again + 300) {
+            c.step(new Tick(now++, 7, 24, 0, List.of(), null));
+        }
         assertEquals(Mode.NONE, c.mode());
+        now += CombatCommit.COOLDOWN;
+        // the same story again: a run that never shakes the zombie, the cap turns round, and the break is back
+        long start = now;
+        assertEquals(Event.RUN_START, c.step(tick(start, 7, zombie(1, 5, NEVER))));
+        for (now = start + 1; now < start + CAP; now++) {
+            assertEquals(Event.NONE, c.step(shuffle(now, zombie(1, 5, NEVER))));
+        }
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(start + CAP, 7, zombie(1, 5, NEVER))));
+        Foe target = zombie(1, 4, 3);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(start + CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6, NEVER)), target)));
+    }
+
+    @Test
+    public void aFastMobOnUsNeverBreaksTheLatch() {
+        CombatCommit c = chasedFight();
+        Foe target = zombie(1, 2, 3);
+        // hp 5 with a cube that bit us three blocks away: it comes along on a run, so the fight stays
+        assertEquals(Event.NONE, c.step(new Tick(NOW + CAP + 1, 5, 0, 0, List.of(target, cube(2, 3, 3)), target)));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.NONE, c.step(new Tick(NOW + CAP + 2, 5, 0, 0, List.of(target, cube(2, 3, 4)), target)));
+        assertEquals(Mode.FIGHT, c.mode());
     }
 
     @Test

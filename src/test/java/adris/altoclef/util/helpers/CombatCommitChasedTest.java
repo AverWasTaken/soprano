@@ -76,11 +76,12 @@ public class CombatCommitChasedTest {
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(Why.CHASED, c.why());
         assertEquals(1, c.targetId());
-        // boxed in rules: a fight we turned around for does not bail back into a run at low hp, that is the loop again
+        // boxed in rules, but the latch breaks once: a second zombie close at low hp is the run again, one time
         assertTrue(c.cornered());
         Foe target = zombie(1, 4);
-        assertEquals(Event.NONE, c.step(new Tick(NOW + CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6)), target)));
-        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6)), target)));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Why.LOW_HP, c.why());
     }
 
     @Test
@@ -153,11 +154,12 @@ public class CombatCommitChasedTest {
     public void aChasedFightThatWinsDoesNotStartAFreshRunOnTheSameStep() {
         CombatCommit c = atTheCap(zombie(1, 5));
         assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
-        // zombie 1 dies as a skeleton puts an arrow in us from six blocks: the fight is over, and the latch keeps the low hp
-        // rule from starting a run with a fresh origin on the very same step (that is the loop this whole thing is about)
+        // zombie 1 dies as a skeleton puts an arrow in us from six blocks: the kill itself is no bail (the fight ends as dead), and
+        // the one latch break the chased turn carries is what starts the run on that same step
         Foe skeleton = new Foe(2, 6, true, false, 0);
-        assertEquals(Event.FIGHT_DEAD, c.step(tick(NOW + CAP + 1, 6, 0, skeleton)));
-        assertEquals(Mode.NONE, c.mode());
+        assertEquals(Event.RUN_START, c.step(tick(NOW + CAP + 1, 6, 0, skeleton)));
+        assertEquals(Event.FIGHT_DEAD, c.endedFirst());
+        assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
@@ -225,21 +227,16 @@ public class CombatCommitChasedTest {
     }
 
     @Test
-    public void aWonChasedFightKeepsTheRunsOffUntilNothingIsWithinTwelveForTwoSeconds() {
+    public void aWonChasedFightLetsOneLowHpRunThroughTheLatch() {
         CombatCommit c = atTheCap(zombie(1, 5));
         assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, 0, zombie(1, 5))));
         long won = NOW + CAP + 1;
         assertEquals(Event.FIGHT_DEAD, c.step(tick(won, 7, 0)));
-        // the cooldown is over and a cube bounces about five blocks off at 7 hp: no run, the fight was the answer
+        // the cooldown is over and a zombie stands five blocks off at 7 hp: the latch lets the one run through (the heal-up
+        // would otherwise stand still next to it)
         long again = won + CombatCommit.COOLDOWN;
-        assertEquals(Event.NONE, c.step(tick(again, 7, 0, zombie(4, 5))));
-        assertEquals(Mode.NONE, c.mode());
-        // it goes quiet for two seconds (nothing within 12): the latch lets go and the next one is a run again
-        long quiet = again + 1;
-        for (long now = quiet; now <= quiet + CombatCommit.RUN_CLEAR_TICKS; now++) {
-            assertEquals("tick " + now, Event.NONE, c.step(tick(now, 7, 0, zombie(5, 20))));
-        }
-        assertEquals(Event.RUN_START, c.step(tick(quiet + CombatCommit.RUN_CLEAR_TICKS + 1, 7, 0, zombie(4, 5))));
+        assertEquals(Event.RUN_START, c.step(tick(again, 7, 0, zombie(4, 5))));
+        assertEquals(Why.LOW_HP, c.why());
     }
 
     // ---- low hp in the cooldown
