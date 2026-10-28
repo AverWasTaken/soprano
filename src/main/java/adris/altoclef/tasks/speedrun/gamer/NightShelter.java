@@ -34,7 +34,7 @@ public final class NightShelter {
         return lead > 0 && tod >= NightSleep.EARLIEST_WINDOW - lead;
     }
 
-    // everything the branch can see. tripNight = a nether or eyes leg that came home for food: the trip has no bed to use and
+    // everything the branch can see. tripNight = a nether or eyes leg that is home in the overworld (the nether phase only lets a food trip through, NetherPhase.nightHold): the trip has no bed to use and
     // was not just killed, so armor and a recent death are not asked. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
     // to regen, and the bed trip's tries have nothing to do with this
     public record Trigger(boolean windowOpen, boolean overworld, int armorPoints, boolean noBed, int depthBelowSky, boolean recoveryActive,
@@ -44,6 +44,11 @@ public final class NightShelter {
     public static boolean wanted(Trigger t) {
         return t.windowOpen() && t.overworld() && (t.tripNight() || t.armorPoints() < ARMOR_LINE) && t.noBed() && t.depthBelowSky() <= SURFACE_DEPTH
                 && !t.recoveryActive() && !t.fighting() && !t.busy() && !t.usedThisNight() && (t.tripNight() || recentDeath(t.ticksSinceDeath()));
+    }
+
+    // no bed for tonight: none to be had, or one the trip may not use because it would move the spawn bed (NightSleep.keepsSpawnBed)
+    public static boolean noBedTonight(GamerPhase phase, NightSleep.BedSource source, boolean spawnBedStands) {
+        return source == NightSleep.BedSource.NONE || NightSleep.keepsSpawnBed(phase, source, spawnBedStands);
     }
 
     // -1 = no death on record (or the clock went backwards, a relog)

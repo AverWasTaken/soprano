@@ -1389,7 +1389,7 @@ public class GamerTask extends Task {
         NightSleep.BedSource source = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
                 BedCraft.usableWood(mod));
         // a bed that keepsSpawnBed would not let it use is no bed for tonight
-        boolean noBed = source == NightSleep.BedSource.NONE || NightSleep.keepsSpawnBed(state.phase, source, spawnBedStands(mod));
+        boolean noBed = NightShelter.noBedTonight(state.phase, source, spawnBedStands(mod));
         BlockPos spot = noBed ? ShelterTask.pick(mod, shelterFailedNight == night ? shelterFailedSpot : null) : null;
         if (spot == null) {
             return null;

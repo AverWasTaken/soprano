@@ -79,14 +79,16 @@ public class NightShelterTest {
     }
 
     @Test
-    public void aTripNightWithTheSpawnBedKeptHidesToo() {
-        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, true));
-        assertTrue(NightShelter.wanted(with(base(), b -> {
-            b.trip = true;
-            b.since = -1;
-            b.armor = 20;
-            return b;
-        })));
+    public void noBedTonightIsNoBedOrASpawnBedWeKeep() {
+        GamerPhase n = GamerPhase.NETHER;
+        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.NONE, false));
+        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, true));
+        assertTrue(NightShelter.noBedTonight(GamerPhase.EYES, NightSleep.BedSource.CRAFT, true));
+        // the spawn bed is gone: sleep in the bag bed, no hole
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, false));
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.CRAFT, false));
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.FOUND, true));
+        assertFalse(NightShelter.noBedTonight(GamerPhase.GATHER, NightSleep.BedSource.BAG, true));
     }
 
     @Test
@@ -157,7 +159,7 @@ public class NightShelterTest {
     @Test
     public void lowHealthAndASpentBedTripDoNotBlockIt() {
         assertTrue(NightShelter.wanted(base()));
-        assertEquals(10, Trigger.class.getRecordComponents().length);
+        assertEquals(11, Trigger.class.getRecordComponents().length);
         for (var c : Trigger.class.getRecordComponents()) {
             assertFalse(c.getName().toLowerCase().contains("health"));
             assertFalse(c.getName().toLowerCase().contains("spent"));

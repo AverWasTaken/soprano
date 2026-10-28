@@ -233,6 +233,12 @@ public class NetherPhase implements PhaseHandler {
         return GamerPhase.NETHER;
     }
 
+    // only a food trip home may be cut by a night. a fresh portal at dusk or a respawn walk still goes on into the nether
+    @Override
+    public boolean nightHold() {
+        return !foodTrip;
+    }
+
     @Override
     public String hud() {
         return GamerPhase.NETHER.hud();
