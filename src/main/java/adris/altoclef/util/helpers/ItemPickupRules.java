@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.Level;
@@ -122,6 +123,16 @@ public final class ItemPickupRules {
                 return state.getFluidState().isEmpty() && state.getCollisionShape(level, pos).isEmpty();
             }
         };
+    }
+
+    // eyes of ender are the one drop worth a swim: they are what the stronghold hunt runs on, and losing one costs a trip back
+    // to the Nether. thrown over open ocean they land well off a bridge, where no dry spot is within reach
+    public static boolean worthSwimming(String itemPath) {
+        return "ender_eye".equals(itemPath);
+    }
+
+    public static boolean worthSwimming(ItemEntity drop) {
+        return worthSwimming(BuiltInRegistries.ITEM.getKey(drop.getItem().getItem()).getPath());
     }
 
     public static boolean isPickupSafe(ItemEntity item) {

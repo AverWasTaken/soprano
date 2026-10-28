@@ -31,9 +31,15 @@ public final class FoodTripRules {
     }
 
     // the one count the line is read against: FoodPlan's held with nothing pending. out here raw meat is raw (FoodPlan already
-    // knows nothing cooks past PORTAL) and a smoker still cooking up top is not food we can reach
+    // knows nothing cooks past PORTAL) and a smoker still cooking up top is not food we can reach. the open screen's share is
+    // out too: meat going into a smoker mid-load reads as cooked food, and a trip that ends on that walks off with the bag empty
     public static int units(FoodPlan food) {
-        return food.held() - food.pending();
+        return bagOnly(food.held(), food.pending(), food.station());
+    }
+
+    // pure half of units. station is already inside held (it rides in on facts.foodUnits()), pending is a separate sum
+    static int bagOnly(int held, int pending, int station) {
+        return held - pending - station;
     }
 
     // no food in the bag at all is just the same line: nothing to eat means no regen once hunger drops, and the floor is far over that

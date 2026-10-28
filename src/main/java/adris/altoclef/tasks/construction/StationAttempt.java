@@ -126,7 +126,8 @@ final class StationAttempt {
 
     // one pick came back empty. a walk only follows an answer that held for NO_SPOT_TICKS grounded ticks in a row: a hop, a
     // knockback or a mob standing in the only cell is a bad answer for a moment, not a bad patch of floor. a tick in the air
-    // doesn't count and starts the wait over. the digs and the old placer come after the walks and don't wait
+    // doesn't count and starts the wait over. a steady swim counts as grounded, the caller says so (onGround is never true in
+    // deep water, so the wait would never run out). the digs and the old placer come after the walks and don't wait
     void noSpot(boolean grounded) {
         if (relocations >= MAX_RELOCATIONS) {
             noSpot();

@@ -374,4 +374,17 @@ public class StationAttemptTest {
         assertEquals(PICK, a.phase());
         assertEquals(1, a.tries());
     }
+
+    // swimming: the caller passes onGround || isInWater, so a steady swim of empty picks walks like a grounded one does
+    @Test
+    public void aSteadySwimOfEmptyPicksEscalates() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+            assertEquals(PICK, a.phase());
+        }
+        a.noSpot(true);
+        assertEquals(RELOCATE, a.phase());
+        assertEquals(1, a.relocations());
+    }
 }

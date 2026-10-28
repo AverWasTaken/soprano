@@ -360,7 +360,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         if (ItemPickupRules.lavaBlocksPickup(obj)) return false;
         // it can end up in the water after we picked it as the target (broke the block over a lake), the tracker has
         // already forgotten it by then so we have to drop it ourselves
-        return Baritone.settings().altoPickupItemsInWater.value || ItemPickupRules.isPickupSafe(obj);
+        return Baritone.settings().altoPickupItemsInWater.value || ItemPickupRules.worthSwimming(obj) || ItemPickupRules.isPickupSafe(obj);
     }
 
 }

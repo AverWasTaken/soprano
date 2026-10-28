@@ -390,4 +390,25 @@ public class RecoverRulesTest {
         assertFalse(RecoverRules.wearPastBudget(false, 91, 90));
     }
 
+    @Test
+    public void aQuietCreeperStillCountsAsAThreat() {
+        assertTrue(RecoverRules.isThreat(true, false));
+        assertTrue(RecoverRules.isThreat(false, true));
+        assertFalse(RecoverRules.isThreat(false, false));
+    }
+
+    @Test
+    public void anIdleOneNeedsToBeCloseOrInSight() {
+        assertTrue(RecoverRules.threatensAt(false, false, 6, 3, 0));
+        assertFalse(RecoverRules.threatensAt(false, false, 10, 0, 0));
+        assertFalse(RecoverRules.threatensAt(false, false, 2, 6, 0));
+        assertTrue(RecoverRules.threatensAt(false, true, 10, 0, 0));
+        assertFalse(RecoverRules.threatensAt(false, true, 17, 0, 0));
+    }
+
+    @Test
+    public void anAggressiveOneKeepsTheFullRange() {
+        assertTrue(RecoverRules.threatensAt(true, false, 15, 7, 0));
+        assertFalse(RecoverRules.threatensAt(true, false, 17, 0, 0));
+    }
 }
