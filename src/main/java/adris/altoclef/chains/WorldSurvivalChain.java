@@ -2,7 +2,6 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
-import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
@@ -71,8 +70,11 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         // Fire escape
-        if (isInFire(mod)) {
-            setTask(new DoToClosestBlockTask(PutOutFireTask::new, Blocks.FIRE, Blocks.SOUL_FIRE));
+        BlockPos fire = fireWeTouch(mod);
+        if (fire != null) {
+            // the exact block we stand in, not the tracker's nearest: a fire a fireball just lit is not in the tracker yet,
+            // and it has no radius, so it sent us walking at fires in other chunks while the one on us kept burning
+            setTask(new PutOutFireTask(fire));
             return 100;
         }
 
@@ -255,16 +257,20 @@ public class WorldSurvivalChain extends SingleTaskChain {
         return mod.getPlayer().isOnFire() && !_wasInLavaTimer.elapsed();
     }
 
-    private boolean isInFire(AltoClef mod) {
+    private BlockPos fireWeTouch(AltoClef mod) {
         if (mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
-            for (BlockPos pos : WorldHelper.getBlocksTouchingPlayer(mod)) {
-                Block b = mod.getWorld().getBlockState(pos).getBlock();
-                if (b instanceof BaseFireBlock) {
-                    return true;
-                }
-            }
+            return firstMatch(WorldHelper.getBlocksTouchingPlayer(mod),
+                    pos -> mod.getWorld().getBlockState(pos).getBlock() instanceof BaseFireBlock);
         }
-        return false;
+        return null;
+    }
+
+    // scanRegion may hand back the same mutable pos every step, so the hit is copied
+    static BlockPos firstMatch(Iterable<BlockPos> positions, java.util.function.Predicate<BlockPos> test) {
+        for (BlockPos pos : positions) {
+            if (test.test(pos)) return pos.immutable();
+        }
+        return null;
     }
 
     private boolean isStuckInNetherPortal(AltoClef mod) {

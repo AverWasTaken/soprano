@@ -14,6 +14,7 @@ import java.util.List;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.level.Level;
@@ -101,7 +102,8 @@ final class BlazeFight {
                 armedFromRun = runEnd;
             }
         }
-        Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null);
+        boolean burning = player.isOnFire() && !player.hasEffect(MobEffects.FIRE_RESISTANCE);
+        Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null, burning);
         running = next == Mode.RUN;
         mode = next;
         noPlacing = mode != Mode.CAMP;
