@@ -5,6 +5,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.CursorWatch;
 import adris.altoclef.trace.DebugCollapse;
+import adris.altoclef.trace.EntryLatch;
 import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.MonitorErrors;
 import adris.altoclef.trace.StandWatch;
@@ -19,6 +20,8 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -39,6 +42,8 @@ public final class Monitors {
     private int cursorTicks;
     private final CursorWatch cursorWatch = new CursorWatch();
     private final StandWatch standWatch = new StandWatch();
+    // 40 ticks out of the lava before the next dip gets its own line
+    private final EntryLatch lavaLatch = new EntryLatch(40);
 
     // baritone's logDebug goes nowhere unless chatDebug is on, which is most of what it says about why it stopped. the
     // collapse is static because the tap is, and so is the tick it stamps lines with (the path threads log too)
@@ -95,6 +100,11 @@ public final class Monitors {
             broke("baritone tap", e);
         }
         try {
+            watchLava(mod);
+        } catch (RuntimeException e) {
+            broke("lava", e);
+        }
+        try {
             watchStand(mod);
         } catch (RuntimeException e) {
             broke("stand", e);
@@ -128,6 +138,19 @@ public final class Monitors {
                 // after the line, so the dump has it. the cooldown keeps this to one a minute with the other monitors
                 Trace.dump("monitor:stand");
             }
+        }
+    }
+
+    // one line per dip: standing in it, or the client saying the last hit was lava (a hop out still burns)
+    private void watchLava(AltoClef mod) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return;
+        }
+        DamageSource source = player.hurtTime > 0 ? player.getLastDamageSource() : null;
+        boolean lava = player.isInLava() || (source != null && source.is(DamageTypes.LAVA));
+        if (lavaLatch.tick(lava)) {
+            Debug.logInternal(StandReport.lava(mod, mod.getClientBaritone(), player, WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT)));
         }
     }
 

@@ -60,17 +60,17 @@ public class CombatLogTest {
 
     @Test
     public void theRunLinesNameTheCrowdAndTheReason() {
-        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.LOW_HP));
-        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (something nasty close, hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.HEAVY));
-        assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (hp 14)", line(Dimension.OVERWORLD, Event.FIGHT_TO_RUN, Why.LOW_HP));
+        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (hp 14) [LOW_HP]", line(Dimension.NETHER, Event.RUN_START, Why.LOW_HP));
+        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (something nasty close, hp 14) [HEAVY]", line(Dimension.NETHER, Event.RUN_START, Why.HEAVY));
+        assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (hp 14) [LOW_HP]", line(Dimension.OVERWORLD, Event.FIGHT_TO_RUN, Why.LOW_HP));
     }
 
     @Test
     public void theNewRunReasonsSayWhy() {
-        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14)", line(Dimension.OVERWORLD, Event.RUN_START, Why.CROWD));
-        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (it hit us and we have nothing to hit back with, hp 14)",
+        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14) [CROWD]", line(Dimension.OVERWORLD, Event.RUN_START, Why.CROWD));
+        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (it hit us and we have nothing to hit back with, hp 14) [UNARMED]",
                 line(Dimension.OVERWORLD, Event.RUN_START, Why.UNARMED));
-        assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14)",
+        assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14) [CROWD]",
                 line(Dimension.OVERWORLD, Event.FIGHT_TO_RUN, Why.CROWD));
     }
 
@@ -102,7 +102,7 @@ public class CombatLogTest {
 
     @Test
     public void aChasedRunSaysItKeptGoingAndThenWhoItTurnedOn() {
-        assertEquals("combat: [overworld] chased too long, turning to fight zombie",
+        assertEquals("combat: [overworld] chased too long, turning to fight zombie [CHASED]",
                 line(Dimension.OVERWORLD, Event.RUN_CHASED_FIGHT, Why.CHASED));
         assertEquals("combat: [overworld] still chased, next zombie",
                 CombatLog.line(Dimension.OVERWORLD, Event.FIGHT_NEXT, Why.CHASED, true, "zombie", "zombie", "", 14, 0));
