@@ -35,6 +35,12 @@ public final class RecoverRules {
         return dx * dx + dz * dz <= THREAT_RADIUS * THREAT_RADIUS && Math.abs(dy) <= THREAT_HEIGHT;
     }
 
+    // creepers are never neutral: a quiet one in a dark tunnel blows up the same as an awake one, so the angry flag is only
+    // for everything else
+    public static boolean isThreat(boolean creeper, boolean angry) {
+        return creeper || angry;
+    }
+
     // lava eats item entities, the void takes them and the walk back is a dare. not worth it
     public static boolean hopeless(boolean inLava, int y, int minY) {
         return inLava || y < minY;

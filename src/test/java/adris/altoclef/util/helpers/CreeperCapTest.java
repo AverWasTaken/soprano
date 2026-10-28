@@ -1,6 +1,9 @@
 package adris.altoclef.util.helpers;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -40,5 +43,38 @@ public class CreeperCapTest {
         assertFalse(CreeperCap.inWindow(-5));
         // and the shield still has time to raise inside the 30 tick fuse
         assertTrue(CreeperCap.CAP_TICKS + 5 < 30);
+    }
+
+    @Test
+    public void theWallGoesOnTheAxisTowardTheCreeper() {
+        assertArrayEquals(new int[]{1, 0, 0}, CreeperCap.besideCell(true, 3, 0, 0.4));
+        assertArrayEquals(new int[]{-1, 0, 0}, CreeperCap.besideCell(true, -3, 0, 0.4));
+        assertArrayEquals(new int[]{0, 0, 1}, CreeperCap.besideCell(true, 0.4, 0, 2.5));
+        assertArrayEquals(new int[]{0, 0, -1}, CreeperCap.besideCell(true, 0.4, 0, -2.5));
+        // a diagonal takes the longer axis
+        assertArrayEquals(new int[]{1, 0, 0}, CreeperCap.besideCell(true, 3, 0, -2));
+    }
+
+    @Test
+    public void theWallSitsAtTheCreepersFeetClampedToOurFeetOrHead() {
+        assertArrayEquals(new int[]{1, 0, 0}, CreeperCap.besideCell(true, 3, -4, 0));
+        assertArrayEquals(new int[]{1, 0, 0}, CreeperCap.besideCell(true, 3, 0.5, 0));
+        assertArrayEquals(new int[]{1, 1, 0}, CreeperCap.besideCell(true, 3, 1, 0));
+        // well over our head and off to the side is still our head cell, the most a wall can do
+        assertArrayEquals(new int[]{1, 1, 0}, CreeperCap.besideCell(true, 3, 4, 0));
+    }
+
+    @Test
+    public void noWallWithAWayOutOrWithTheCreeperOnTopOfUs() {
+        assertNull(CreeperCap.besideCell(false, 3, 0, 0));
+        assertNull(CreeperCap.besideCell(true, 1.4, 0, 0));
+        assertNull(CreeperCap.besideCell(true, 0.5, 0, 0.5));
+        assertNotNull(CreeperCap.besideCell(true, 1.5, 0, 0));
+    }
+
+    @Test
+    public void aCreeperUpTheShaftIsTheCapsJobNotTheWalls() {
+        assertNull(CreeperCap.besideCell(true, 0.7, 3.5, 0));
+        assertTrue(CreeperCap.creeperAbove(true, 3.5, 0.7));
     }
 }

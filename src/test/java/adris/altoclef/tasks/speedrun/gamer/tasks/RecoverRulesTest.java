@@ -390,4 +390,10 @@ public class RecoverRulesTest {
         assertFalse(RecoverRules.wearPastBudget(false, 91, 90));
     }
 
+    @Test
+    public void aQuietCreeperStillCountsAsAThreat() {
+        assertTrue(RecoverRules.isThreat(true, false));
+        assertTrue(RecoverRules.isThreat(false, true));
+        assertFalse(RecoverRules.isThreat(false, false));
+    }
 }
