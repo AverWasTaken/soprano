@@ -918,6 +918,9 @@ public final class CombatCommit {
             latchBreaks++;
             return reason;
         }
+        // under the flee line the latch has no say: a second fight at that hp is the one that kills us, and the break counter
+        // is for the crowd. boxed or with something fast on us it still stays the cornered fight, see runOrBox
+        if (reason == Why.LOW_HP && !t.boxed() && fastTarget(t) == null) return reason;
         return Why.NONE;
     }
 
@@ -996,7 +999,8 @@ public final class CombatCommit {
         }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
-        if (way == null || !t.armed() || !t.way().weapon()) return Event.NONE;
+        // (and not hurt: walking at a horde for a pig is how we got here)
+        if (way == null || !t.armed() || !t.way().weapon() || t.low()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }
 
@@ -1657,8 +1661,9 @@ public final class CombatCommit {
         return startFight(t, closest, Why.CORNERED, Event.RUN_TO_FIGHT, true);
     }
 
-    // the cap with nothing on us is just the end of a run. hurt with something still inside 8, ending it only meant a fresh
-    // run with a fresh origin on the very next tick, forever. so turn around and fight. bleeding out at a jog is the worst way to go
+    // the cap with nothing on us is just the end of a run. chased with something still inside 8, ending it only meant a fresh
+    // run with a fresh origin on the very next tick, forever. so turn around and fight, unless we are under the flee line:
+    // there the fresh origin is the point, a new run of the same kind instead of a fight we would lose
     private Event capped(Tick t) {
         if (!chased(t)) return end(t, Event.RUN_CAP);
         Foe chaser = chaser(t);
@@ -1666,6 +1671,7 @@ public final class CombatCommit {
         // gave up on (the run just ends, the cooldown waits for one of them to get on us or hit us)
         // and with danger about a fight would only bail again on the next step, so it is the next run straight away
         if (chaser == null || anyDanger(t) || creeperHolds(t)) return end(t, Event.RUN_CAP);
+        if (t.low() && !t.boxed() && fastTarget(t) == null) return startRun(t, Why.LOW_HP, Event.RUN_START);
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
     }
 
@@ -1684,6 +1690,8 @@ public final class CombatCommit {
     private Event hitThrough(Tick t) {
         countRunHits(t);
         if (runHits < RUN_HITS || !t.armed() || anyDanger(t)) return Event.NONE;
+        // hurt, turning round is the fight that ends us. the run keeps going, boxed in the corner rules still fight
+        if (t.low()) return Event.NONE;
         Foe pick = hitPick(t);
         if (pick == null) return Event.NONE;
         return startFight(t, pick, Why.CHASED, Event.RUN_CHASED_FIGHT, true);

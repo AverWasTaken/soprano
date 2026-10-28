@@ -11,6 +11,7 @@ import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatCommit.Tick;
 import adris.altoclef.util.helpers.CombatCommit.Way;
 import adris.altoclef.util.helpers.CombatCommit.Why;
+import adris.altoclef.util.helpers.RecoverHold.Body;
 import java.util.List;
 import java.util.Set;
 import org.junit.Test;
@@ -40,19 +41,38 @@ public class CombatCommitLatchTest {
     }
 
     // two blocks back and forth every half second: moving, so never cornered, never stuck, never far
-    private static Tick shuffle(long now, Foe... foes) {
+    private static Tick shuffle(long now, float health, Foe... foes) {
         double x = ((now - NOW) / 10) % 2 == 0 ? 0 : 2;
-        return new Tick(now, 7, x, 0, List.of(foes), null);
+        return new Tick(now, health, x, 0, List.of(foes), null);
     }
 
-    // a low hp run that never gets away from the zombie behind it for the whole cap, then turns round: a chased fight on zombie 1
+    // three on us, none of them hit yet: a crowd, which is what turns a run into a chased fight above the low hp line
+    private static Foe[] crowd() {
+        return new Foe[]{zombie(1, 2, NEVER), zombie(2, 2.4, NEVER), zombie(3, 2.8, NEVER)};
+    }
+
+    // a crowd run at 10 hp that never gets away from the zombies behind it for the whole cap, then turns round: a chased fight
+    // on zombie 1. above the low line on purpose, under it the cap starts a fresh run instead
     private static CombatCommit chasedFight() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, 7, zombie(1, 5, NEVER))));
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 10, crowd())));
         for (long now = NOW + 1; now < NOW + CAP; now++) {
-            assertEquals(Event.NONE, c.step(shuffle(now, zombie(1, 5, NEVER))));
+            assertEquals(Event.NONE, c.step(shuffle(now, 10, crowd())));
         }
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 7, zombie(1, 5, NEVER))));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + CAP, 10, crowd())));
+        return c;
+    }
+
+    // the crowd bails the chased fight once (that is the latch's one break), runs to the next cap and turns round again
+    private static CombatCommit breakSpentFight() {
+        CombatCommit c = chasedFight();
+        long start = NOW + CAP + 1;
+        Foe target = zombie(1, 2, NEVER);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(start, 10, 0, 0, List.of(crowd()), target)));
+        for (long now = start + 1; now < start + CAP; now++) {
+            assertEquals(Event.NONE, c.step(shuffle(now, 10, crowd())));
+        }
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(start + CAP, 10, crowd())));
         return c;
     }
 
@@ -70,7 +90,7 @@ public class CombatCommitLatchTest {
         Foe bouncer = cube(2, 5, 20);
         assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 8, bouncer)));
         assertEquals(Mode.NONE, c.mode());
-        // and not a tick later: the cooldown sits it out. once it is over the latch lets its one low hp run through
+        // and not a tick later: the cooldown sits it out. once it is over the latch lets the low hp run through
         for (long now = dead + 1; now < dead + CombatCommit.COOLDOWN; now++) {
             assertEquals("tick " + now, Event.NONE, c.step(tick(now, 8, bouncer)));
         }
@@ -103,7 +123,7 @@ public class CombatCommitLatchTest {
         // a mob walks in at ten blocks just before the two seconds are up: the clock starts over
         long mid = start + CombatCommit.RUN_CLEAR_TICKS - 1;
         assertEquals(Event.NONE, c.step(tick(mid, 8, zombie(3, 10, NEVER))));
-        // (the latch is still on, so this is its one break and not a fresh run)
+        // (the latch is still on, and low hp goes through it)
         long after = start + CombatCommit.COOLDOWN;
         assertEquals(Event.RUN_START, c.step(tick(after, 8, zombie(3, 5, NEVER))));
         assertEquals(Why.LOW_HP, c.why());
@@ -113,25 +133,74 @@ public class CombatCommitLatchTest {
     public void aFullClearGivesTheBreakBack() {
         CombatCommit c = chasedFight();
         long dead = NOW + CAP + 1;
-        assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 7)));
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 10)));
         long again = dead + CombatCommit.COOLDOWN;
-        assertEquals(Event.RUN_START, c.step(tick(again, 7, zombie(3, 5, NEVER))));
+        assertEquals(Event.RUN_START, c.step(tick(again, 10, crowd())));
+        assertEquals(Why.CROWD, c.why());
         // out of sight and 24 away: the run ends clear, and the latch lets go with nothing within 12 for two seconds
         long now = again + 1;
         while (c.mode() == Mode.RUN && now < again + 300) {
-            c.step(new Tick(now++, 7, 24, 0, List.of(), null));
+            c.step(new Tick(now++, 10, 24, 0, List.of(), null));
         }
         assertEquals(Mode.NONE, c.mode());
         now += CombatCommit.COOLDOWN;
-        // the same story again: a run that never shakes the zombie, the cap turns round, and the break is back
+        // the same story again: a run that never shakes the crowd, the cap turns round, and the break is back
         long start = now;
-        assertEquals(Event.RUN_START, c.step(tick(start, 7, zombie(1, 5, NEVER))));
+        assertEquals(Event.RUN_START, c.step(tick(start, 10, crowd())));
         for (now = start + 1; now < start + CAP; now++) {
-            assertEquals(Event.NONE, c.step(shuffle(now, zombie(1, 5, NEVER))));
+            assertEquals(Event.NONE, c.step(shuffle(now, 10, crowd())));
         }
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(start + CAP, 7, zombie(1, 5, NEVER))));
-        Foe target = zombie(1, 4, 3);
-        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(start + CAP + 1, 6, 0, 0, List.of(target, zombie(2, 6, NEVER)), target)));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(start + CAP, 10, crowd())));
+        Foe target = zombie(1, 2, NEVER);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(start + CAP + 1, 10, 0, 0, List.of(crowd()), target)));
+    }
+
+    @Test
+    public void aCrowdAboveTheLowLineGetsOneBreakAndNoMore() {
+        CombatCommit c = breakSpentFight();
+        // the second turn round, the crowd is still on us at 10 hp: no second break, the fight stays
+        Foe target = zombie(1, 2, NEVER);
+        long next = NOW + 2 * CAP + 2;
+        assertEquals(Event.NONE, c.step(new Tick(next, 10, 0, 0, List.of(crowd()), target)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void lowHpAfterTheBreakIsSpentIsARunNotAFight() {
+        CombatCommit c = breakSpentFight();
+        long dead = NOW + 2 * CAP + 2;
+        // zombie 1 dies at 7 hp with another one on us: no IN_WAY or HIT fight, the run is the answer
+        assertEquals(Event.RUN_START, c.step(tick(dead, 7, zombie(9, 2, NEVER))));
+        assertEquals(Event.FIGHT_DEAD, c.endedFirst());
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void theHealUpHoldRunsAtLowHpAfterTheBreakIsSpent() {
+        CombatCommit c = breakSpentFight();
+        Body canHeal = new Body(20, true, false, false);
+        long dead = NOW + 2 * CAP + 2;
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 10, 0, 0, List.of(), null, Way.NONE, true, false, false, canHeal)));
+        assertTrue(c.recovering());
+        // hp 8 and a zombie hitting us from four blocks: the hold's rerun asks, and the latch no longer says no
+        long hit = dead + 2;
+        Foe biter = zombie(9, 4, 3);
+        assertEquals(Event.RUN_START, c.step(new Tick(hit, 8, 0, 0, List.of(biter), null, Way.NONE, true, false, false, canHeal)));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void aLowHpCapStartsAFreshRunNotAFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 7, zombie(1, 5, NEVER))));
+        for (long now = NOW + 1; now < NOW + CAP; now++) {
+            assertEquals(Event.NONE, c.step(shuffle(now, 7, zombie(1, 5, NEVER))));
+        }
+        assertEquals(Event.RUN_START, c.step(new Tick(NOW + CAP, 7, 6, 0, List.of(zombie(1, 5, NEVER)), null)));
+        assertEquals(Event.RUN_CAP, c.endedFirst());
+        assertEquals(Why.LOW_HP, c.why());
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(6, c.originX(), 0);
     }
 
     @Test
