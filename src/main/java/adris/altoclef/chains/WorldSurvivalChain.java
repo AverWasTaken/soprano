@@ -72,8 +72,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // Fire escape
         BlockPos fire = fireWeTouch(mod);
         if (fire != null) {
-            // the exact block we stand in, not the tracker's nearest: a fire a fireball just lit is not in the tracker yet,
-            // and it has no radius, so it sent us walking at fires in other chunks while the one on us kept burning
+            // a fresh fire is not in the tracker yet, so punch the block touching us
             setTask(new PutOutFireTask(fire));
             return 100;
         }
