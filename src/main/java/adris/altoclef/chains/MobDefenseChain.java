@@ -824,7 +824,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private BlockPos besideTarget(AltoClef mod, Entity creeper) {
         LocalPlayer player = mod.getPlayer();
         Level level = mod.getWorld();
-        int[] off = CreeperCap.besideCell(true, creeper.getX() - player.getX(), creeper.getY() - player.getY(),
+        int[] off = CreeperCap.besideCell(true, creeper.getX() - player.getX(), player.getY(), creeper.getY(),
                 creeper.getZ() - player.getZ());
         if (off == null) return null;
         BlockPos cell = player.blockPosition().offset(off[0], off[1], off[2]);

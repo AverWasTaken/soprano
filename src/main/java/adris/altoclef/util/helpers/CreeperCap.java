@@ -32,13 +32,13 @@ public final class CreeperCap {
     // the wall for a creeper down the tunnel with us: one block in the cell next to us, toward the creeper, at its foot level.
     // the blast is centred on its feet and the damage rays start there, so a block at that height over the near edge of the
     // cell covers the lot. one block and not a seal on purpose: it keeps its line over the top, finishes swelling and pops
-    // harmlessly, a full seal would un-swell it and leave a live one behind the wall. dx/dy/dz = creeper minus us, feet to feet.
+    // harmlessly, a full seal would un-swell it and leave a live one behind the wall. dx/dz = creeper minus us, playerY/creeperY = absolute feet y (cells are compared, not the raw difference: a slab at 64.5 is still the 64 cell).
     // null = no cell (it has a way out, it is on top of us, or it is above us and that is the cap). else {x, y, z} offsets from
     // our own block: the dominant horizontal axis, and our feet or head cell for the height
-    public static int[] besideCell(boolean noHeading, double dx, double dy, double dz) {
+    public static int[] besideCell(boolean noHeading, double dx, double playerY, double creeperY, double dz) {
         double horizontal = Math.hypot(dx, dz);
-        if (!noHeading || horizontal < MIN_BESIDE || creeperAbove(true, dy, horizontal)) return null;
-        int up = (int) Math.max(0, Math.min(1, Math.floor(dy)));
+        if (!noHeading || horizontal < MIN_BESIDE || creeperAbove(true, creeperY - playerY, horizontal)) return null;
+        int up = (int) Math.max(0, Math.min(1, Math.floor(creeperY) - Math.floor(playerY)));
         if (Math.abs(dx) >= Math.abs(dz)) return new int[]{dx > 0 ? 1 : -1, up, 0};
         return new int[]{0, up, dz > 0 ? 1 : -1};
     }

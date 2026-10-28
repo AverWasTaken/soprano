@@ -276,7 +276,7 @@ public class RecoverItemsTask extends Task {
     }
 
     // the angry ones near the pile, if the world has loaded them (from far away it hasn't, they show up as we get closer
-    // and the gate takes it from there). creepers count asleep too, an idle one in a dark tunnel is the one that got us twice
+    // and the gate takes it from there). creepers count asleep too, but an idle one only when it is close or can see us (RecoverRules.threatensAt)
     private List<Entity> threatsAtPile(AltoClef mod) {
         List<Entity> out = new ArrayList<>();
         try {
@@ -288,8 +288,9 @@ public class RecoverItemsTask extends Task {
             for (Entity entity : candidates) {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 if (!RecoverRules.isThreat(mob instanceof Creeper, EntityHelper.isAngryAtPlayer(mod, mob))) continue;
-                if (RecoverRules.threatens(mob.getX() - (_deathPos.getX() + 0.5), mob.getY() - _deathPos.getY(),
-                        mob.getZ() - (_deathPos.getZ() + 0.5))) {
+                boolean aggressive = EntityHelper.isAngryAtPlayer(mod, mob);
+                if (RecoverRules.threatensAt(aggressive, mob.hasLineOfSight(mod.getPlayer()), mob.getX() - (_deathPos.getX() + 0.5),
+                        mob.getY() - _deathPos.getY(), mob.getZ() - (_deathPos.getZ() + 0.5))) {
                     out.add(mob);
                 }
             }

@@ -35,6 +35,18 @@ public final class RecoverRules {
         return dx * dx + dz * dz <= THREAT_RADIUS * THREAT_RADIUS && Math.abs(dy) <= THREAT_HEIGHT;
     }
 
+    // an idle creeper only matters up close or when it can see us. the full radius is for the ones that are coming, a quiet one
+    // behind a wall of rock is not worth walking away from a whole kit for
+    public static final double IDLE_RADIUS = 8;
+    public static final double IDLE_HEIGHT = 4;
+
+    // aggressive = the full threatens range. idle = IDLE_RADIUS/IDLE_HEIGHT, or the full range with a line of sight
+    public static boolean threatensAt(boolean aggressive, boolean sighted, double dx, double dy, double dz) {
+        if (!threatens(dx, dy, dz)) return false;
+        if (aggressive || sighted) return true;
+        return dx * dx + dz * dz <= IDLE_RADIUS * IDLE_RADIUS && Math.abs(dy) <= IDLE_HEIGHT;
+    }
+
     // creepers are never neutral: a quiet one in a dark tunnel blows up the same as an awake one, so the angry flag is only
     // for everything else
     public static boolean isThreat(boolean creeper, boolean angry) {
