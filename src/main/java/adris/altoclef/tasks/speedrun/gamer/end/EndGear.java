@@ -59,10 +59,15 @@ public final class EndGear {
         return attempt >= 2 || endDeaths >= 1;
     }
 
-    // the beds the prep asks for. once the sheep chase gave up (WoolHunt) it takes what the bag can make: the beds held plus a bed for
-    // every three wool of one colour, never more than cfg.beds. the dragon fight falls back to the sword when the beds run out
+    // the beds the prep asks for. once the sheep chase gave up (WoolHunt) it takes what the bag can make, never more than cfg.beds.
+    // with beds already held it takes just those: the bed collector counts a held bed of another colour towards one colour's target
+    // and would go back out for sheep. the dragon fight falls back to the sword when the beds run out
     public static int bedsRequired(GamerFacts facts, EndConfig cfg, boolean woolGaveUp) {
-        return woolGaveUp ? Math.min(cfg.beds, facts.count(ItemHelper.BED) + KitPlanner.usableWool(facts) / 3) : cfg.beds;
+        if (!woolGaveUp) {
+            return cfg.beds;
+        }
+        int held = facts.count(ItemHelper.BED);
+        return held > 0 ? Math.min(cfg.beds, held) : Math.min(cfg.beds, KitPlanner.usableWool(facts) / 3);
     }
 
     // the spawn bed rides on a spare. after the chase gave up there is no wool to make one, so only a bed beyond the required ones

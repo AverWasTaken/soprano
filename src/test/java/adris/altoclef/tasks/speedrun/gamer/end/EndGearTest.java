@@ -368,7 +368,8 @@ public class EndGearTest {
         assertEquals(5, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 15), cfg, true));
         // 7 white is two beds, the scraps do not count, and a held bed adds itself
         assertEquals(2, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 7), cfg, true));
-        assertEquals(3, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 7).with(Items.BED.white(), 1), cfg, true));
+        // a held bed means no crafting at all, the collector would mix its colour into the target and hunt sheep again
+        assertEquals(1, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.red(), 7).with(Items.BED.white(), 1), cfg, true));
         // never more than the config, and nothing at all with nothing in the bag
         assertEquals(5, EndGear.bedsRequired(new FakeFacts().with(Items.WOOL.white(), 60), cfg, true));
         assertEquals(0, EndGear.bedsRequired(new FakeFacts(), cfg, true));
