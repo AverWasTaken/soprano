@@ -911,17 +911,26 @@ public final class CombatCommit {
     }
 
     // a run reason the latch lets through: the warden and the heavy hitters always, the rest only once the latch is off. low hp
-    // and crowd get one break per latch, unless we are boxed or something fast is on us (those stay the fight, see runOrBox)
+    // gets through whenever a melee mob is on us, crowd gets one break per latch, unless we are boxed or something fast is on us
+    // (those stay the fight, see runOrBox)
     private Why unlatched(Why reason, Tick t) {
         if (!runLatch || reason == Why.HEAVY) return reason;
         if ((reason == Why.LOW_HP || reason == Why.CROWD) && latchChased && latchBreaks == 0 && !t.boxed() && fastTarget(t) == null) {
             latchBreaks++;
             return reason;
         }
-        // under the flee line the latch has no say: a second fight at that hp is the one that kills us, and the break counter
-        // is for the crowd. boxed or with something fast on us it still stays the cornered fight, see runOrBox
-        if (reason == Why.LOW_HP && !t.boxed() && fastTarget(t) == null) return reason;
+        // under the flee line with something melee on us the latch has no say: another fight at that hp is the one that kills
+        // us, and the break counter is for the crowd. boxed or with something fast on us it still stays the cornered fight, see
+        // runOrBox. a shooter out there or a mob we gave up on is not that, the latch exists for exactly those
+        if (reason == Why.LOW_HP && t.health() <= FLEE_HP && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
         return Why.NONE;
+    }
+
+    private static boolean meleeOnUs(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.melee() && engaged(foe, false)) return true;
+        }
+        return false;
     }
 
     // what idle would have seen next tick: no fight target (there is none with nothing committed), and not the target if it
@@ -999,7 +1008,7 @@ public final class CombatCommit {
         }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
-        // (and not hurt: walking at a horde for a pig is how we got here)
+        // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
         if (way == null || !t.armed() || !t.way().weapon() || t.low()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }

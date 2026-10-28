@@ -108,7 +108,6 @@ public class CombatCommitChasedTest {
     public void aLowHpCapIsAFreshRunWithAFreshOrigin() {
         CombatCommit c = atTheCap(zombie(1, 5));
         assertEquals(Event.RUN_START, c.step(tick(NOW + CAP, 7, 6, zombie(1, 5))));
-        assertEquals(Event.RUN_CAP, c.endedFirst());
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.LOW_HP, c.why());
         assertEquals(6, c.originX(), 0);

@@ -273,12 +273,25 @@ public class CombatCommitCrowdTest {
         return seen;
     }
 
+    // three in contact at 10 hp: a crowd run, above the flee line, which is where being hit turns the run round
+    private static Tick crowdStart() {
+        return tick(NOW, 10, null, zombie(1, 2, NEVER), zombie(2, 2.4, NEVER), zombie(3, 2.8, NEVER));
+    }
+
+    @Test
+    public void hurtAndHitTwiceTheRunKeepsGoing() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 8, null, zombie(1, 5, NEVER))));
+        assertEquals(Event.NONE, hitRun(c, NOW + 1, SECOND_HIT + 50, 8));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
     @Test
     public void armedAndHitTwiceAfterTheGraceWhileMovingTurnsToFight() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, 8, null, zombie(1, 5, NEVER))));
-        assertEquals(Event.NONE, hitRun(c, NOW + 1, SECOND_HIT - 1, 8));
-        assertEquals(Event.RUN_CHASED_FIGHT, hitRun(c, SECOND_HIT, SECOND_HIT, 8));
+        assertEquals(Event.RUN_START, c.step(crowdStart()));
+        assertEquals(Event.NONE, hitRun(c, NOW + 1, SECOND_HIT - 1, 10));
+        assertEquals(Event.RUN_CHASED_FIGHT, hitRun(c, SECOND_HIT, SECOND_HIT, 10));
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(Why.CHASED, c.why());
         assertEquals(1, c.targetId());
@@ -296,30 +309,30 @@ public class CombatCommitCrowdTest {
     @Test
     public void theFightWeTurnedForBailsOnceAndTheNextTurnHolds() {
         CombatCommit c = new CombatCommit();
-        c.step(tick(NOW, 8, null, zombie(1, 5, NEVER)));
-        assertEquals(Event.RUN_CHASED_FIGHT, hitRun(c, NOW + 1, NOW + 100, 8));
-        // at hp 5 with the zombie on us and a second one joining: the latch breaks once and it is a run (the turn was on the
-        // second hit, so this starts on the very next tick)
+        c.step(crowdStart());
+        assertEquals(Event.RUN_CHASED_FIGHT, hitRun(c, NOW + 1, NOW + 100, 10));
+        // the crowd is still on us: the latch breaks once and it is a run (the turn was on the second hit, so this starts on
+        // the very next tick)
         long start = SECOND_HIT + 1;
         Foe target = zombie(1, 2, 1);
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(start, 5, target, target, zombie(2, 2.5, 1))));
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(start, 10, target, target, zombie(2, 2.5, 1), zombie(3, 2.8, 1))));
         assertEquals(Mode.RUN, c.mode());
-        assertEquals(Why.LOW_HP, c.why());
-        // and it gets bitten through again: the second turn is final, no more bails however low we are
+        assertEquals(Why.CROWD, c.why());
+        // and it gets bitten through again: the second turn is final, the crowd gets no more bails
         long first = start + CombatCommit.RUN_HIT_GRACE + 2;
         long second = first + 12;
         Event seen = Event.NONE;
         for (long now = start + 1; now <= second && seen == Event.NONE; now++) {
             long last = now >= second ? second : now >= first ? first : start;
-            seen = c.step(tick(now, 5, (now - NOW) * 0.3, true, null, zombie(1, 2, now - last), zombie(2, 2.5, NEVER)));
+            seen = c.step(tick(now, 10, (now - NOW) * 0.3, true, null, zombie(1, 2, now - last), zombie(2, 2.5, NEVER), zombie(3, 2.8, NEVER)));
         }
         assertEquals(Event.RUN_CHASED_FIGHT, seen);
         for (long now = second + 1; now < second + 300; now++) {
             Foe again = zombie(1, 2, 1);
-            assertEquals("tick " + now, Event.NONE, c.step(tick(now, 5, again, again, zombie(2, 2.5, 1))));
+            assertEquals("tick " + now, Event.NONE, c.step(tick(now, 10, again, again, zombie(2, 2.5, 1), zombie(3, 2.8, 1))));
         }
         assertEquals(Mode.FIGHT, c.mode());
-        assertEquals(Event.FIGHT_NEXT, c.step(tick(second + 300, 5, null, zombie(2, 2.5, 1))));
+        assertEquals(Event.FIGHT_NEXT, c.step(tick(second + 300, 10, null, zombie(2, 2.5, 1), zombie(3, 2.8, 1))));
     }
 
     @Test
@@ -373,7 +386,7 @@ public class CombatCommitCrowdTest {
         Event seen = Event.NONE;
         for (long now = NOW + 1; now < NOW + 100 && seen == Event.NONE; now++) {
             Foe spider = zombie(3, 2, 0);
-            seen = c.step(tick(now, 7, (now - NOW) * 0.3, true, null, spider, skeleton(1, 12, NEVER)));
+            seen = c.step(tick(now, 10, (now - NOW) * 0.3, true, null, spider, skeleton(1, 12, NEVER)));
         }
         assertEquals(Event.RUN_CHASED_FIGHT, seen);
         assertEquals(3, c.targetId());

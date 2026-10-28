@@ -118,6 +118,11 @@ public class CombatCommitCreeperRepeatTest {
         return ((now - NOW) / 10) % 2 == 0 ? 0 : 2;
     }
 
+    // hurt and boxed in at the cap: nowhere to run to, so it is still the turn round (not boxed it is a fresh run)
+    private static Tick boxed(Tick t) {
+        return new Tick(t.now(), t.health(), t.x(), t.z(), t.foes(), t.target(), Way.NONE, true, false, false, RecoverHold.Body.NONE, true);
+    }
+
     @Test
     public void theCapDoesNotTurnOnTheZombieWithTheCreeperStillNear() {
         CombatCommit c = repeatRun();
@@ -132,7 +137,7 @@ public class CombatCommitCreeperRepeatTest {
         CombatCommit c = repeatRun();
         LongFunction<Tick> scene = now -> new Tick(now, 7, shuffle(now), 0, List.of(zombie(5, CombatCommit.NEVER), creeper(9)), null);
         assertEquals(Event.NONE, firstEvent(c, NOW + 1, NOW + CAP - 1, scene));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(scene.apply(NOW + CAP)));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(boxed(scene.apply(NOW + CAP))));
     }
 
     @Test
@@ -140,7 +145,7 @@ public class CombatCommitCreeperRepeatTest {
         CombatCommit c = lowHpRun();
         LongFunction<Tick> scene = now -> new Tick(now, 7, shuffle(now), 0, List.of(zombie(5, CombatCommit.NEVER), creeper(5)), null);
         assertEquals(Event.NONE, firstEvent(c, NOW + 1, NOW + CAP - 1, scene));
-        assertEquals(Event.RUN_CHASED_FIGHT, c.step(scene.apply(NOW + CAP)));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(boxed(scene.apply(NOW + CAP))));
     }
 
     // ten ticks in contact, five knocked off to 3.8: never a second of unbroken contact

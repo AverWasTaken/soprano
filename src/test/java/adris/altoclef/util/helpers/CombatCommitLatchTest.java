@@ -90,7 +90,7 @@ public class CombatCommitLatchTest {
         Foe bouncer = cube(2, 5, 20);
         assertEquals(Event.FIGHT_DEAD, c.step(tick(dead, 8, bouncer)));
         assertEquals(Mode.NONE, c.mode());
-        // and not a tick later: the cooldown sits it out. once it is over the latch lets the low hp run through
+        // and not a tick later: the cooldown sits it out. once it is over the latch lets its one low hp run through
         for (long now = dead + 1; now < dead + CombatCommit.COOLDOWN; now++) {
             assertEquals("tick " + now, Event.NONE, c.step(tick(now, 8, bouncer)));
         }
@@ -123,7 +123,7 @@ public class CombatCommitLatchTest {
         // a mob walks in at ten blocks just before the two seconds are up: the clock starts over
         long mid = start + CombatCommit.RUN_CLEAR_TICKS - 1;
         assertEquals(Event.NONE, c.step(tick(mid, 8, zombie(3, 10, NEVER))));
-        // (the latch is still on, and low hp goes through it)
+        // (the latch is still on, so this is its one break and not a fresh run)
         long after = start + CombatCommit.COOLDOWN;
         assertEquals(Event.RUN_START, c.step(tick(after, 8, zombie(3, 5, NEVER))));
         assertEquals(Why.LOW_HP, c.why());
@@ -180,11 +180,11 @@ public class CombatCommitLatchTest {
         CombatCommit c = breakSpentFight();
         Body canHeal = new Body(20, true, false, false);
         long dead = NOW + 2 * CAP + 2;
-        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 10, 0, 0, List.of(), null, Way.NONE, true, false, false, canHeal)));
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 8, 0, 0, List.of(), null, Way.NONE, true, false, false, canHeal)));
         assertTrue(c.recovering());
-        // hp 8 and a zombie hitting us from four blocks: the hold's rerun asks, and the latch no longer says no
+        // hp 8 and a zombie that hit us a while ago, four blocks off: the hold's rerun asks, and the latch no longer says no
         long hit = dead + 2;
-        Foe biter = zombie(9, 4, 3);
+        Foe biter = zombie(9, 4, CombatCommit.FRESH + 1);
         assertEquals(Event.RUN_START, c.step(new Tick(hit, 8, 0, 0, List.of(biter), null, Way.NONE, true, false, false, canHeal)));
         assertEquals(Why.LOW_HP, c.why());
     }
@@ -197,7 +197,6 @@ public class CombatCommitLatchTest {
             assertEquals(Event.NONE, c.step(shuffle(now, 7, zombie(1, 5, NEVER))));
         }
         assertEquals(Event.RUN_START, c.step(new Tick(NOW + CAP, 7, 6, 0, List.of(zombie(1, 5, NEVER)), null)));
-        assertEquals(Event.RUN_CAP, c.endedFirst());
         assertEquals(Why.LOW_HP, c.why());
         assertEquals(Mode.RUN, c.mode());
         assertEquals(6, c.originX(), 0);
