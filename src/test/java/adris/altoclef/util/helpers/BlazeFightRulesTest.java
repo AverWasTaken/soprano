@@ -54,6 +54,24 @@ public class BlazeFightRulesTest {
     }
 
     @Test
+    public void aRunHoldsWhileWeAreStillBurning() {
+        assertEquals(RUN, BlazeFightRules.decide(20, true, false, false, true, true));
+        assertEquals(KILL, BlazeFightRules.decide(20, true, false, false, true, false));
+    }
+
+    @Test
+    public void burningAfterTheRunGaveUpDoesNotHoldIt() {
+        assertEquals(KILL, BlazeFightRules.decide(20, true, true, false, true, true));
+        assertEquals(CAMP, BlazeFightRules.decide(20, true, true, false, false, true));
+    }
+
+    @Test
+    public void burningAtFullHpDoesNotStartARun() {
+        assertEquals(KILL, BlazeFightRules.decide(20, false, false, true, true, true));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, false, true, false, true));
+    }
+
+    @Test
     public void theGapBetweenLeavingAndComingBackIsWideEnoughNotToFlap() {
         assertTrue(BlazeFightRules.RECOVERED_HEALTH - BlazeFightRules.RUN_HEALTH >= 4);
         // at 16 hp it depends only on which side we came from
