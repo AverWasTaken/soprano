@@ -81,6 +81,9 @@ public class PearlHuntTask extends Task {
 
     // an enderman this close to a heavy hitter is not a loot target
     private static final double HEAVY_SKIP_BLOCKS = 16;
+    // nether endermen stand on ledges over the lava sea, chasing one downhill is how the falls happen
+    private static final double ACQUIRE_BELOW_BLOCKS = 6;
+    private static final double KEEP_BELOW_BLOCKS = 10;
     // the tracker is keyed by exact class: the nether ones from FoeRules HEAVY that stand around bastions
     private static final List<Class<? extends Entity>> HEAVY_TYPES = List.of(PiglinBrute.class, Hoglin.class);
 
@@ -158,7 +161,7 @@ public class PearlHuntTask extends Task {
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
         pearlTarget = new ItemTarget(Items.ENDER_PEARL, pearlsTotal);
-        loot = new KillAndLootTask(Enderman.class, this::lootTarget, true, pearlTarget);
+        loot = new KillAndLootTask(Enderman.class, man -> lootTarget(man, false), man -> lootTarget(man, true), pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -405,8 +408,12 @@ public class PearlHuntTask extends Task {
     }
 
     // loot filter only, not avoid(): an angry one already coming at us near a brute still has to be fought
-    private boolean lootTarget(Entity man) {
+    // chasing = asked about the one the kill walk is already on (the keep line), not about picking one
+    private boolean lootTarget(Entity man, boolean chasing) {
         if (!lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            return false;
+        }
+        if (farBelow(man, chasing)) {
             return false;
         }
         boolean skip = skipNearHeavy(man.getX(), man.getZ(), heavyPositions(AltoClef.getInstance()), nearBastion.test(man.getBlockX(), man.getBlockZ()));
@@ -478,7 +485,7 @@ public class PearlHuntTask extends Task {
 
     private boolean anyLootable(AltoClef mod) {
         for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (man.isAlive() && lootTarget(man)) {
+            if (man.isAlive() && lootTarget(man, false)) {
                 return true;
             }
         }
@@ -580,8 +587,17 @@ public class PearlHuntTask extends Task {
     // angry fight already spent its 20 s on it: that one is the same unreachable mob, and as a fresh kill task it would get fresh
     // stand caps and stand there again
     // the angry fight skips the lava shore ones too: the bot would walk to the lava edge for a mob that never reaches it
-    static boolean fightable(boolean angryAndAlive, boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
-        return angryAndAlive && lootable(gaveUpAngry, onLavaShore);
+    static boolean fightable(boolean angryAndAlive, boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore, boolean farBelow) {
+        return angryAndAlive && !farBelow && lootable(gaveUpAngry, onLavaShore);
+    }
+
+    // dy = enderman feet y minus ours. an angry one far below is not given up on (no angrySpent), it teleports up to us on its own
+    static boolean tooFarBelow(double dy, boolean alreadyChasing, boolean nether) {
+        return nether && dy < -(alreadyChasing ? KEEP_BELOW_BLOCKS : ACQUIRE_BELOW_BLOCKS);
+    }
+
+    private boolean farBelow(Entity man, boolean chasing) {
+        return tooFarBelow(man.getY() - AltoClef.getInstance().getPlayer().getY(), chasing, dimension == Dimension.NETHER);
     }
 
     static boolean lootable(boolean gaveUpAngry, java.util.function.BooleanSupplier onLavaShore) {
@@ -598,15 +614,17 @@ public class PearlHuntTask extends Task {
     }
 
     // distance to the nearest tracked enderman we have line of sight to, infinity for none (see EndermanNook.nearestSeen)
-    private static double nearestEnderman(AltoClef mod, AngryClock nookGaveUp, AngryClock angryGaveUp) {
+    private double nearestEnderman(AltoClef mod, AngryClock nookGaveUp, AngryClock angryGaveUp) {
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
             double d = man.distanceTo(mod.getPlayer());
+            boolean farBelow = farBelow(man, false);
             // (the cheap distance first, the ray is the dear part and the latch does not care past its range)
             // (one the nook gave up on would keep re-arming the latch and the nook with it)
-            boolean skip = givenUpOn(man.getId(), nookGaveUp, angryGaveUp);
+            // (and one far below in the nether, we would never take it)
+            boolean skip = givenUpOn(man.getId(), nookGaveUp, angryGaveUp) || farBelow;
             dist[i] = !skip && man.isAlive() && d <= EndermanNook.LATCH_RANGE && man.hasLineOfSight(mod.getPlayer()) ? d : Double.NaN;
         }
         return EndermanNook.nearestSeen(dist);
@@ -619,7 +637,7 @@ public class PearlHuntTask extends Task {
         // the one we are on stays the one until it is dead, gone, far or spent: isCreepy flickers when it looks away, and
         // every swap to the loot task restarts the kill task and its caps
         if (angryTarget instanceof Enderman latched && angryTask != null) {
-            if (stillLatched(latched.isAlive() && !latched.isRemoved(), latched.distanceTo(mod.getPlayer()), angrySpent.givenUp(latched.getId()), avoid(latched))) {
+            if (stillLatched(latched.isAlive() && !latched.isRemoved(), latched.distanceTo(mod.getPlayer()), angrySpent.givenUp(latched.getId()), avoid(latched) || farBelow(latched, true))) {
                 return angrySpent.tick(latched.getId(), ANGRY_SECONDS) ? null : angryTask;
             }
             // (let go for real: a stale latch would come back the moment the mob walked into range again, skipping isCreepy)
@@ -630,7 +648,7 @@ public class PearlHuntTask extends Task {
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
-            dist[i] = fightable(man.isAlive() && man.isCreepy(), angrySpent.givenUp(man.getId()), () -> avoid(man)) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
+            dist[i] = fightable(man.isAlive() && man.isCreepy(), angrySpent.givenUp(man.getId()), () -> avoid(man), farBelow(man, false)) ? man.distanceTo(mod.getPlayer()) : Double.NaN;
         }
         int at = EndermanNook.nearestAngry(dist);
         if (at < 0) {
