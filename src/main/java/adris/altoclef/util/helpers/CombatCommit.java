@@ -23,6 +23,8 @@ public final class CombatCommit {
     // the warden's sonic boom reaches about this far, and a boom is a run whatever the hp
     public static final double BOOM_RANGE = 15;
     public static final float FLEE_HP = CombatRules.FLEE_HEALTH;
+    // under this hp, with wither or fire on us, we do not pick a path fight
+    public static final float LINGER_PICK_HP = 16;
     // heavy hitters are run from at this hp instead (see CombatRules.HEAVY_FLEE_HEALTH for why it is its own number)
     public static final float HEAVY_FLEE_HP = CombatRules.HEAVY_FLEE_HEALTH;
     // at or below FLEE_HP anything angry this close is a reason to leave
@@ -83,6 +85,8 @@ public final class CombatCommit {
     public static final double WAY_PROGRESS = 1;
     // an in-the-way fight is over once it is this far off (and not hitting us), the path is clear again
     public static final double WAY_RELEASE = 4;
+    // a flyer fight lets go this far past contact, so a blaze bobbing at the edge does not flip it on and off
+    public static final double FLYER_SLACK = 1.5;
     // baritone drops the path for a tick or two between giving up on a place and the next search. that is not "we stopped
     // wanting to move", so the boxed clock only starts over after this long without a path
     public static final long WAY_GAP_TICKS = 10;
@@ -334,11 +338,17 @@ public final class CombatCommit {
     // a caller puts there is replaced, 0 by default
     // watched: a shooter that is not a foe (an uncharged blaze at range is not in the hostile list) has a line to us right now. only the
     // heal-up hold's re-run reads it, so it breaks the line before the meal and not after. false by default
+    // lingering: wither, poison or fire is on us right now, so the damage keeps coming after the swing that started it. false by default
     public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
-                       boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched) {
+                       boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched, boolean lingering) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
+                    boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit, boolean watched) {
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, watched, false);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
                     boolean creeperRepeat, RecoverHold.Body body, boolean boxed, float nextHit) {
-            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, false);
+            this(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, false, false);
         }
 
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying,
@@ -385,11 +395,11 @@ public final class CombatCommit {
         }
 
         Tick withNextHit(float hit) {
-            return new Tick(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, hit, watched);
+            return new Tick(now, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, hit, watched, lingering);
         }
 
         Tick withNow(long at) {
-            return new Tick(at, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, watched);
+            return new Tick(at, health, x, z, foes, target, way, armed, trying, creeperRepeat, body, boxed, nextHit, watched, lingering);
         }
     }
 
@@ -922,7 +932,7 @@ public final class CombatCommit {
         // under the flee line with something melee on us the latch has no say: another fight at that hp is the one that kills
         // us, and the break counter is for the crowd. boxed or with something fast on us it still stays the cornered fight, see
         // runOrBox. a shooter out there or a mob we gave up on is not that, the latch exists for exactly those
-        if (reason == Why.LOW_HP && t.health() <= FLEE_HP && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
+        if (reason == Why.LOW_HP && (t.health() <= FLEE_HP || (t.lingering() && t.low())) && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
         return Why.NONE;
     }
 
@@ -940,7 +950,7 @@ public final class CombatCommit {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.creeperRepeat(),
-                t.body(), t.boxed(), t.nextHit(), t.watched());
+                t.body(), t.boxed(), t.nextHit(), t.watched(), t.lingering());
     }
 
     // ---- NONE
@@ -1010,6 +1020,7 @@ public final class CombatCommit {
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
         if (way == null || !t.armed() || !t.way().weapon() || t.low()) return Event.NONE;
+        if (t.lingering() && t.health() < LINGER_PICK_HP) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }
 
@@ -1174,7 +1185,8 @@ public final class CombatCommit {
     // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
     private static float lowHit(Tick t) {
         Foe target = t.target();
-        if (target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
+        // (one hit is the whole cost only when nothing keeps ticking after it: wither and fire do)
+        if (t.lingering() || target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
         for (Foe foe : t.foes()) {
             if (foe.id() == target.id()) continue;
             if (foe.shooting() || (foe.melee() && foe.distance() <= LOW_HP_RANGE)) return t.nextHit();
@@ -1252,7 +1264,7 @@ public final class CombatCommit {
     private static Tick withoutFoe(Tick t, int id) {
         List<Foe> foes = t.foes().stream().filter(foe -> foe.id() != id).toList();
         return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying(), t.creeperRepeat(),
-                t.body(), t.boxed(), t.nextHit(), t.watched());
+                t.body(), t.boxed(), t.nextHit(), t.watched(), t.lingering());
     }
 
     private static boolean anyDanger(Tick t) {
@@ -1345,6 +1357,8 @@ public final class CombatCommit {
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
         double release = why == Why.RIM ? CombatRules.RIM_RELEASE : WAY_RELEASE;
         if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > release && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
+        // a blaze drifted off after it hit us: it is only a fight in contact, chasing it along a ledge is how we get shot off
+        if (target.kind() == Kind.FLYER && target.distance() > CONTACT + FLYER_SLACK) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
         // after three seconds, only the stall rule below writes that one off)

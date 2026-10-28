@@ -16,6 +16,8 @@ public final class NetherTripRules {
     public static final int WALK_RANGE = 16;
     // a failed trip that is still in the nether walks home for this long before we hand the run back as it is
     public static final int HOME_SECONDS = 120;
+    // a short kit has nothing to do in the nether, so the walk home gets much longer before we let go of it
+    public static final int HOME_SHORT_SECONDS = 600;
     // a second death this close to the last pile is the same hazard, not a new pile
     public static final int SAME_SPOT_BLOCKS = 8;
     // the overworld stages run on their own clocks, the trip budget only starts at the nether (the pile does not age before that).
@@ -268,7 +270,8 @@ public final class NetherTripRules {
     public static Step next(Inputs in) {
         Stage st = in.stage();
         if (st == Stage.HOME) {
-            boolean back = in.dim() == Dimension.OVERWORLD || in.stageTicks() > in.limits().homeTicks();
+            long cap = in.kitShort() ? Math.max(in.limits().homeTicks(), HOME_SHORT_SECONDS * 20L) : in.limits().homeTicks();
+            boolean back = in.dim() == Dimension.OVERWORLD || in.stageTicks() > cap;
             return back ? over() : stay(st);
         }
         // the clock going way backwards is another world, not a trip with all its time left. a tick or two is just the

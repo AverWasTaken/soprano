@@ -109,8 +109,14 @@ public final class BlazeFightRules {
     // runGaveUp: the run stopped healing us (runStalled). then we are not running any more, only the fresh hp rules can send
     // us back, so 8 hp with nothing looking goes back to work instead of waiting for a 16 that never comes
     public static Mode decide(float health, boolean running, boolean runGaveUp, boolean threat, boolean haveTarget) {
+        return decide(health, running, runGaveUp, threat, haveTarget, false);
+    }
+
+    // burning only holds a run we are already in: 18 hp and still on fire is not recovered, walking back in alight just
+    // burns the rest off. it never starts a run on its own, and the give up still ends it
+    public static Mode decide(float health, boolean running, boolean runGaveUp, boolean threat, boolean haveTarget, boolean burning) {
         boolean leave = running && !runGaveUp
-                ? health < RECOVERED_HEALTH
+                ? health < RECOVERED_HEALTH || burning
                 : (health <= RUN_HEALTH && threat) || health <= PANIC_HEALTH;
         if (leave) return Mode.RUN;
         return haveTarget ? Mode.KILL : Mode.CAMP;

@@ -99,10 +99,11 @@ public class AngryClockTest {
         // the angry fight spent its 20 s: the loot walk does not hand it a fresh kill task
         assertFalse(PearlHuntTask.lootable(true, () -> false));
         // and the angry fight skips the shore ones too, whatever else is true of them
-        assertTrue(PearlHuntTask.fightable(true, false, () -> false));
-        assertFalse(PearlHuntTask.fightable(true, false, () -> true));
-        assertFalse(PearlHuntTask.fightable(false, false, () -> false));
-        assertFalse(PearlHuntTask.fightable(true, true, () -> false));
+        assertTrue(PearlHuntTask.fightable(true, false, () -> false, false));
+        assertFalse(PearlHuntTask.fightable(true, false, () -> true, false));
+        assertFalse(PearlHuntTask.fightable(false, false, () -> false, false));
+        assertFalse(PearlHuntTask.fightable(true, true, () -> false, false));
+        assertFalse(PearlHuntTask.fightable(true, false, () -> false, true));
     }
 
     @Test
