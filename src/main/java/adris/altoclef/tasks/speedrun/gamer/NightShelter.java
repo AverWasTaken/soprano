@@ -34,15 +34,16 @@ public final class NightShelter {
         return lead > 0 && tod >= NightSleep.EARLIEST_WINDOW - lead;
     }
 
-    // everything the branch can see. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
+    // everything the branch can see. tripNight = a nether or eyes leg that came home for food: the trip has no bed to use and
+    // was not just killed, so armor and a recent death are not asked. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
     // to regen, and the bed trip's tries have nothing to do with this
     public record Trigger(boolean windowOpen, boolean overworld, int armorPoints, boolean noBed, int depthBelowSky, boolean recoveryActive,
-                          boolean fighting, boolean busy, boolean usedThisNight, long ticksSinceDeath) {
+                          boolean fighting, boolean busy, boolean usedThisNight, long ticksSinceDeath, boolean tripNight) {
     }
 
     public static boolean wanted(Trigger t) {
-        return t.windowOpen() && t.overworld() && t.armorPoints() < ARMOR_LINE && t.noBed() && t.depthBelowSky() <= SURFACE_DEPTH
-                && !t.recoveryActive() && !t.fighting() && !t.busy() && !t.usedThisNight() && recentDeath(t.ticksSinceDeath());
+        return t.windowOpen() && t.overworld() && (t.tripNight() || t.armorPoints() < ARMOR_LINE) && t.noBed() && t.depthBelowSky() <= SURFACE_DEPTH
+                && !t.recoveryActive() && !t.fighting() && !t.busy() && !t.usedThisNight() && (t.tripNight() || recentDeath(t.ticksSinceDeath()));
     }
 
     // -1 = no death on record (or the clock went backwards, a relog)

@@ -127,12 +127,12 @@ public class NightSleepTest {
 
     @Test
     public void onlySomePhasesMayBeInterrupted() {
-        for (GamerPhase ok : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.EYES, GamerPhase.RETURN,
+        for (GamerPhase ok : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN,
                 GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN, GamerPhase.PORTAL}) {
             assertTrue(ok.name(), NightSleep.phaseAllowed(ok));
         }
-        // the nether, the spawn bed by the portal, the dragon, and the ends of a run (the portal decides for itself, nightHold)
-        for (GamerPhase no : new GamerPhase[]{GamerPhase.NETHER, GamerPhase.END_PREP, GamerPhase.DRAGON,
+        // the spawn bed by the portal, the dragon, and the ends of a run (the portal decides for itself, nightHold)
+        for (GamerPhase no : new GamerPhase[]{GamerPhase.END_PREP, GamerPhase.DRAGON,
                 GamerPhase.DONE, GamerPhase.STUCK}) {
             assertFalse(no.name(), NightSleep.phaseAllowed(no));
         }
