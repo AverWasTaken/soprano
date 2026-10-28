@@ -11,8 +11,8 @@ public class PearlHuntWalkTest {
         double best = Double.MAX_VALUE;
         double stall = 0;
         double dist = 600;
-        // 3 blocks every second for 150 s: the old flat clock would have quit at 150
-        for (int t = 1; t <= 150; t++) {
+        // 3 blocks every second for 190 s: the old flat clock would have quit at 150
+        for (int t = 1; t <= 190; t++) {
             dist -= 3;
             if (PearlHuntTask.walkProgressed(dist, best)) {
                 best = dist;
@@ -27,7 +27,7 @@ public class PearlHuntWalkTest {
     public void halfBlockCreepsDoNotCount() {
         assertTrue(PearlHuntTask.walkProgressed(100, 105));
         assertFalse(PearlHuntTask.walkProgressed(104.5, 105));
-        assertFalse(PearlHuntTask.walkProgressed(103, 105));
+        assertTrue(PearlHuntTask.walkProgressed(103, 105));
     }
 
     @Test

@@ -224,7 +224,7 @@ public class PearlHuntTask extends Task {
     }
 
     static boolean walkProgressed(double xz, double bestXZ) {
-        return xz < bestXZ - HOTSPOT_PROGRESS_BLOCKS;
+        return xz <= bestXZ - HOTSPOT_PROGRESS_BLOCKS;
     }
 
     // we got there once, nothing gave the walk up, and now we are well off the forest again
