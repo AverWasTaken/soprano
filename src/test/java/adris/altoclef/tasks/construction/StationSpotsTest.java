@@ -808,4 +808,73 @@ public class StationSpotsTest {
         double d = StationSpots.faceDistSq(me, new StationSpots.Spot(0, 65, 0, 0, 64, 0));
         assertEquals(1.5 * 1.5, d, 1e-9);
     }
+
+    // open water as far as the eye goes: no floor anywhere, then land strips where a test puts them. feet at (0,64,0), afloat
+    private static FakeWorld pool() {
+        return new FakeWorld(-1000);
+    }
+
+    private static void bank(FakeWorld w, int x0, int x1, int z0, int z1) {
+        for (int x = x0; x <= x1; x++) {
+            for (int z = z0; z <= z1; z++) {
+                w.put(x, 63, z, Kind.FULL);
+            }
+        }
+    }
+
+    private static StationSpots.Stance afloat() {
+        return new StationSpots.Stance(0, 64, 0, 0.5, 64 + STAND_EYE, 0.5);
+    }
+
+    @Test
+    public void shoreTenBlocksOffIsTheSwim() {
+        FakeWorld w = pool();
+        bank(w, 10, 14, -3, 3);
+        StationSpots.Stand s = StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).orElseThrow();
+        assertEquals(10, s.x());
+        assertEquals(0, s.z());
+        assertEquals(64, s.y());
+    }
+
+    @Test
+    public void noLandInRangeIsNoShore() {
+        FakeWorld w = pool();
+        bank(w, 40, 44, -3, 3);
+        assertTrue(StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).isEmpty());
+    }
+
+    @Test
+    public void theNearerOfTwoShoresWins() {
+        FakeWorld w = pool();
+        bank(w, 20, 24, -3, 3);
+        bank(w, -12, -8, -3, 3);
+        StationSpots.Stand s = StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).orElseThrow();
+        assertEquals(-8, s.x());
+    }
+
+    // a lone pillar is a stand but not a place to put a table. a real bank further out beats it
+    @Test
+    public void aBankWithFloorBesideBeatsALonePillar() {
+        FakeWorld w = pool();
+        w.put(5, 63, 0, Kind.FULL);
+        bank(w, 12, 16, -3, 3);
+        StationSpots.Stand s = StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).orElseThrow();
+        assertEquals(12, s.x());
+    }
+
+    @Test
+    public void aLonePillarBeatsNothing() {
+        FakeWorld w = pool();
+        w.put(5, 63, 0, Kind.FULL);
+        StationSpots.Stand s = StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).orElseThrow();
+        assertEquals(5, s.x());
+    }
+
+    // the radius is a circle, a corner of the square is further than it says
+    @Test
+    public void aCornerOfTheSquareIsOutOfRange() {
+        FakeWorld w = pool();
+        bank(w, 27, 29, 27, 29);
+        assertTrue(StationSpots.nearestShore(w, afloat(), StationSpots.SHORE_RADIUS).isEmpty());
+    }
 }

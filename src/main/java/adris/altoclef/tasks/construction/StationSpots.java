@@ -30,6 +30,9 @@ final class StationSpots {
     // standing point search for a relocation
     static final int MIN_MOVE = 2;
     static final int MAX_MOVE = 6;
+    // how far a swim to shore looks, and how far up or down from our feet a bank can sit
+    static final int SHORE_RADIUS = 32;
+    static final int SHORE_DY = 3;
     // a full ring of columns is ~160 and each costs a few hundred cell checks, once per relocation (twice a task at most).
     // this used to be 30, and the 30 nearest all look at the same floor we are already failing on
     static final int MAX_STANDPOINTS_TRIED = 200;
@@ -526,6 +529,47 @@ final class StationSpots {
             }
         }
         return Optional.empty();
+    }
+
+    // swimming with a table in the bag: the nearest dry stand within radius, straight line, no walk flood (baritone swims fine,
+    // the flood only steps on floors). one with floor beside it wins over a lone stand, since the pick after the swim needs
+    // somewhere to put the table. empty if the water goes on past radius
+    static Optional<Stand> nearestShore(Cells w, Stance me, int radius) {
+        Stand best = null;
+        Stand bestLone = null;
+        double bestD = Double.MAX_VALUE;
+        double bestLoneD = Double.MAX_VALUE;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                double flat = sq(dx) + sq(dz);
+                // a stand with floor beside it that close already wins, nothing in this column can beat it
+                if (flat >= bestD || flat > sq(radius)) {
+                    continue;
+                }
+                for (int dy = -SHORE_DY; dy <= SHORE_DY; dy++) {
+                    int x = me.feetX() + dx;
+                    int y = me.feetY() + dy;
+                    int z = me.feetZ() + dz;
+                    double d = flat + sq(dy);
+                    if (d >= bestD && d >= bestLoneD) {
+                        continue;
+                    }
+                    if (!w.standable(x, y, z)) {
+                        continue;
+                    }
+                    if (floorBeside(w, x, y, z)) {
+                        if (d < bestD) {
+                            bestD = d;
+                            best = new Stand(x, y, z);
+                        }
+                    } else if (d < bestLoneD) {
+                        bestLoneD = d;
+                        bestLone = new Stand(x, y, z);
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(best != null ? best : bestLone);
     }
 
     private static boolean floorBeside(Cells w, int x, int y, int z) {
