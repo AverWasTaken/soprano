@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.AbstractDoToEntityTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -14,15 +15,19 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.hoglin.Hoglin;
+import net.minecraft.world.entity.monster.piglin.PiglinBrute;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 
@@ -33,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 // pearls from endermen, in the dimension we are told to hunt in. in the nether it walks to the warped forest first when
@@ -65,6 +71,14 @@ public class PearlHuntTask extends Task {
     private static final double LEAVE_BLOCKS = 32;
     private static final long LEAVE_TICKS = 300;
 
+    // an enderman this close to a heavy hitter is not a loot target
+    private static final double HEAVY_SKIP_BLOCKS = 16;
+    // the tracker is keyed by exact class: the nether ones from FoeRules HEAVY that stand around bastions
+    private static final List<Class<? extends Entity>> HEAVY_TYPES = List.of(PiglinBrute.class, Hoglin.class);
+
+    // the planner's nearBastion in the nether, never in the overworld
+    private final BiPredicate<Integer, Integer> nearBastion;
+    private final Set<Integer> skipLogged = new HashSet<>();
     private final int pearlsTotal;
     private final Dimension dimension;
     private final Supplier<RunState.Pos> hotspot;
@@ -120,13 +134,18 @@ public class PearlHuntTask extends Task {
     }
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill) {
+        this(pearlsTotal, dimension, hotspot, onKill, (x, z) -> false);
+    }
+
+    public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill, BiPredicate<Integer, Integer> nearBastion) {
+        this.nearBastion = nearBastion;
         this.onKill = onKill;
         this.pearlsTotal = pearlsTotal;
         this.dimension = dimension;
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
         pearlTarget = new ItemTarget(Items.ENDER_PEARL, pearlsTotal);
-        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> avoid(man)), true, pearlTarget);
+        loot = new KillAndLootTask(Enderman.class, this::lootTarget, true, pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -339,6 +358,46 @@ public class PearlHuntTask extends Task {
         return onLavaShore(man) || lavaSpot.covers(man.getX(), man.getY(), man.getZ(), man.level().getGameTime());
     }
 
+    // loot filter only, not avoid(): an angry one already coming at us near a brute still has to be fought
+    private boolean lootTarget(Entity man) {
+        if (!lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            return false;
+        }
+        boolean skip = skipNearHeavy(man.getX(), man.getZ(), heavyPositions(AltoClef.getInstance()), nearBastion.test(man.getBlockX(), man.getBlockZ()));
+        if (skip && skipLogged.add(man.getId())) {
+            Debug.logInternal("pearl hunt: skipping enderman " + man.getId() + ", it stands by a brute or a bastion");
+        }
+        return !skip;
+    }
+
+    // the same HEAVY list the combat brain runs from (FoeRules), read off the tracker
+    private static List<double[]> heavyPositions(AltoClef mod) {
+        List<double[]> out = new ArrayList<>();
+        for (Class<? extends Entity> type : HEAVY_TYPES) {
+            for (Entity e : mod.getEntityTracker().getTrackedEntities(type)) {
+                if (e.isAlive() && FoeRules.isHeavy(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath())) {
+                    out.add(new double[]{e.getX(), e.getZ()});
+                }
+            }
+        }
+        return out;
+    }
+
+    // an enderman parked by a brute or inside a known bastion is bait: we run from them, then the chase walks us right back
+    static boolean skipNearHeavy(double manX, double manZ, List<double[]> heavyXZ, boolean nearBastion) {
+        if (nearBastion) {
+            return true;
+        }
+        for (double[] h : heavyXZ) {
+            double dx = h[0] - manX;
+            double dz = h[1] - manZ;
+            if (dx * dx + dz * dz <= HEAVY_SKIP_BLOCKS * HEAVY_SKIP_BLOCKS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // a pearl lying close by comes before the hotspot walk and the recovery wait, the loot task below is the only other thing that
     // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
     // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
@@ -373,7 +432,7 @@ public class PearlHuntTask extends Task {
 
     private boolean anyLootable(AltoClef mod) {
         for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (man.isAlive() && lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            if (man.isAlive() && lootTarget(man)) {
                 return true;
             }
         }

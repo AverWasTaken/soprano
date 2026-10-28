@@ -1357,7 +1357,7 @@ public class NetherPhase implements PhaseHandler {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"));
+                    () -> ctx.progress("enderman down"), planner::nearBastion);
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
