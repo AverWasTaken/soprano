@@ -13,7 +13,9 @@ public class GamerConfig {
     // (6 moved the sweep spacing default 9 -> 14, a saved 9 is the old default and goes along, see GamerConfigs.migrate)
     // (7 swapped the stone and iron axes for swords, the sword is the weapon now)
     // (8 moved the spare shields default 2 -> 3, a saved 2 is the old default and goes along, see GamerConfigs.migrate)
-    public static final int VERSION = 8;
+    // (9 moved the pearl hunt window 10 -> 15 minutes, a saved 10 is the old default and goes along, see GamerConfigs.migrate)
+    // (10 moved the End beds 8 -> 5 and dropped the wool_beds stock-up, a saved 8 is the old default and goes along)
+    public static final int VERSION = 10;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;

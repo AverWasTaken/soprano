@@ -42,7 +42,7 @@ public class CombatCommitShotTest {
         assertEquals(Event.RUN_START, c.step(tick(6, skeleton(12, 40, true), skeleton(7, 12, 40, true))));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(CombatCommit.Why.SHOT, c.why());
-        assertEquals("combat: [overworld] RUN from 1 skeleton (hp 6, it is shooting)",
+        assertEquals("combat: [overworld] RUN from 1 skeleton (hp 6, it is shooting) [SHOT]",
                 CombatLog.line(Dimension.OVERWORLD, Event.RUN_START, c.why(), false, "skeleton", "it", "1 skeleton", 6, 0));
     }
 

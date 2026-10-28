@@ -15,7 +15,7 @@ public class NightShelterTest {
 
     // night, overworld, armor 0, no bed, on the surface, no recovery, no fight, free, unused, died two minutes ago
     private static Trigger base() {
-        return new Trigger(true, true, 0, true, 0, false, false, false, false, 2400);
+        return new Trigger(true, true, 0, true, 0, false, false, false, false, 2400, false);
     }
 
     private static Trigger with(Trigger t, java.util.function.UnaryOperator<TriggerBuilder> f) {
@@ -24,7 +24,7 @@ public class NightShelterTest {
 
     // records have no withers, a tiny mutable copy keeps the cases short
     private static final class TriggerBuilder {
-        boolean window, overworld, noBed, recovery, fighting, busy, used;
+        boolean window, overworld, noBed, recovery, fighting, busy, used, trip;
         int armor, depth;
         long since;
 
@@ -39,16 +39,56 @@ public class NightShelterTest {
             busy = t.busy();
             used = t.usedThisNight();
             since = t.ticksSinceDeath();
+            trip = t.tripNight();
         }
 
         Trigger build() {
-            return new Trigger(window, overworld, armor, noBed, depth, recovery, fighting, busy, used, since);
+            return new Trigger(window, overworld, armor, noBed, depth, recovery, fighting, busy, used, since, trip);
         }
     }
 
     @Test
     public void aDeathTonightWithNoArmorAndNoBedOnTheSurfaceHides() {
         assertTrue(NightShelter.wanted(base()));
+    }
+
+    // a nether leg home for food at dusk: no armor line, no death, but the rest still applies. the engine decides what noBed means
+    // there (no bed at all, or a bed keepsSpawnBed will not let it use), the trigger only takes the answer
+    @Test
+    public void aTripNightHidesWithNoDeathAndFullArmor() {
+        assertTrue(NightShelter.wanted(with(base(), b -> {
+            b.trip = true;
+            b.since = -1;
+            b.armor = 15;
+            return b;
+        })));
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.trip = true;
+            b.since = -1;
+            b.armor = 15;
+            b.noBed = false;
+            return b;
+        })));
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.trip = true;
+            b.since = -1;
+            b.armor = 15;
+            b.used = true;
+            return b;
+        })));
+    }
+
+    @Test
+    public void noBedTonightIsNoBedOrASpawnBedWeKeep() {
+        GamerPhase n = GamerPhase.NETHER;
+        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.NONE, false));
+        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, true));
+        assertTrue(NightShelter.noBedTonight(GamerPhase.EYES, NightSleep.BedSource.CRAFT, true));
+        // the spawn bed is gone: sleep in the bag bed, no hole
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, false));
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.CRAFT, false));
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.FOUND, true));
+        assertFalse(NightShelter.noBedTonight(GamerPhase.GATHER, NightSleep.BedSource.BAG, true));
     }
 
     @Test
@@ -119,7 +159,7 @@ public class NightShelterTest {
     @Test
     public void lowHealthAndASpentBedTripDoNotBlockIt() {
         assertTrue(NightShelter.wanted(base()));
-        assertEquals(10, Trigger.class.getRecordComponents().length);
+        assertEquals(11, Trigger.class.getRecordComponents().length);
         for (var c : Trigger.class.getRecordComponents()) {
             assertFalse(c.getName().toLowerCase().contains("health"));
             assertFalse(c.getName().toLowerCase().contains("spent"));

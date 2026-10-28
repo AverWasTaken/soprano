@@ -233,6 +233,12 @@ public class NetherPhase implements PhaseHandler {
         return GamerPhase.NETHER;
     }
 
+    // only a food trip home may be cut by a night. a fresh portal at dusk or a respawn walk still goes on into the nether
+    @Override
+    public boolean nightHold() {
+        return !foodTrip;
+    }
+
     @Override
     public String hud() {
         return GamerPhase.NETHER.hud();
@@ -1357,7 +1363,7 @@ public class NetherPhase implements PhaseHandler {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"));
+                    () -> ctx.progress("enderman down"), planner::nearBastion);
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);

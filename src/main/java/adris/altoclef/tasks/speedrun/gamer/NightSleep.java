@@ -87,11 +87,12 @@ public final class NightSleep {
     }
 
     // the phases a night may cut into. the portal is let through and decides for itself (PhaseHandler.nightHold: lava being cast
-    // must not be stretched, but looking for a spot is just walking), the nether has no beds that work, the end prep sets the
-    // spawn bed by the portal and a night bed would move it, and the dragon is in the end
+    // must not be stretched, but looking for a spot is just walking), the nether is let through too (the night branch only runs in
+    // the overworld, so only the home half of a food trip gets night handling, and keepsSpawnBed guards the bed by the portal),
+    // the end prep sets the spawn bed by the portal and a night bed would move it, and the dragon is in the end
     public static boolean phaseAllowed(GamerPhase phase) {
         return switch (phase) {
-            case GATHER, IRON, PORTAL, EYES, RETURN, LOCATE, ROOM, OPEN -> true;
+            case GATHER, IRON, PORTAL, NETHER, EYES, RETURN, LOCATE, ROOM, OPEN -> true;
             default -> false;
         };
     }

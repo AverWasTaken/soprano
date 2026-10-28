@@ -34,6 +34,7 @@ public class FakeFacts implements GamerFacts {
     public boolean diamondHuntGaveUp;
     // the gold dig ran out of time, and a gold ore is in the loaded chunks near us
     public boolean goldHuntGaveUp;
+    public boolean woolHuntGaveUp;
     public boolean goldOreKnown;
     // the station a running cook committed to
     public String cookStation;
@@ -183,6 +184,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean goldHuntGaveUp() {
         return goldHuntGaveUp;
+    }
+
+    @Override
+    public boolean woolHuntGaveUp() {
+        return woolHuntGaveUp;
     }
 
     @Override

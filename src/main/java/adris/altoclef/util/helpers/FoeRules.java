@@ -136,6 +136,11 @@ public final class FoeRules {
         return type.equals("ender_dragon") || (type.equals("enderman") && calm);
     }
 
+    // the registry path of something that lands 8 to 13 in one swing, for callers that only care about that one kind
+    public static boolean isHeavy(String type) {
+        return kindOf(Dimension.NETHER, type) == Kind.HEAVY;
+    }
+
     public static Kind kindOf(Dimension dimension, String type) {
         if (UNTOUCHABLE.contains(type)) return Kind.UNTOUCHABLE;
         if (HEAVY.contains(type)) return Kind.HEAVY;

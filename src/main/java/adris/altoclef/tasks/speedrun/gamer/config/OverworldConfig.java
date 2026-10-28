@@ -66,6 +66,9 @@ public class OverworldConfig {
     // raw gold for the piglin helmet, dug in IRON when an ore is already in the loaded chunks. gives up after this many minutes of
     // digging. a plain scalar, an old saved config just gets 3
     public double goldHuntMinutes = 3;
+    // the sheep chase for the beds gives up after this many minutes of it. the end prep then crafts what the wool in the bag allows.
+    // a plain scalar too
+    public double woolHuntMinutes = 3;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;
@@ -204,7 +207,7 @@ public class OverworldConfig {
     // targetFoodUnits, "wool_beds" = extra beds worth of wool, "build_blocks" = over portalBuildBlocks, "log" = logs to hold.
     // a kit list too: bump GamerConfig.VERSION when the default changes
     public List<KitItem> smeltExtras = new ArrayList<>(List.of(
-            new KitItem("food", 30), new KitItem("wool_beds", 3), new KitItem("build_blocks", 32), new KitItem("log", 8)));
+            new KitItem("food", 30), new KitItem("build_blocks", 32), new KitItem("log", 8)));
 
     // iron golem hunt (the iron need only): 100 hp, 3 to 5 ingots, and it cannot hit a player whose feet are above its
     // head, so we stack a pillar next to it and poke it from there. see GolemRules for the vanilla numbers

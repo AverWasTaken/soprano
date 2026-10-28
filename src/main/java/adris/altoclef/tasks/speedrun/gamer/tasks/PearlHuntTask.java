@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.AbstractDoToEntityTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -14,15 +15,19 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.hoglin.Hoglin;
+import net.minecraft.world.entity.monster.piglin.PiglinBrute;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 
@@ -33,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 // pearls from endermen, in the dimension we are told to hunt in. in the nether it walks to the warped forest first when
@@ -65,6 +71,14 @@ public class PearlHuntTask extends Task {
     private static final double LEAVE_BLOCKS = 32;
     private static final long LEAVE_TICKS = 300;
 
+    // an enderman this close to a heavy hitter is not a loot target
+    private static final double HEAVY_SKIP_BLOCKS = 16;
+    // the tracker is keyed by exact class: the nether ones from FoeRules HEAVY that stand around bastions
+    private static final List<Class<? extends Entity>> HEAVY_TYPES = List.of(PiglinBrute.class, Hoglin.class);
+
+    // the planner's nearBastion in the nether, never in the overworld
+    private final BiPredicate<Integer, Integer> nearBastion;
+    private final Set<Integer> skipLogged = new HashSet<>();
     private final int pearlsTotal;
     private final Dimension dimension;
     private final Supplier<RunState.Pos> hotspot;
@@ -102,7 +116,7 @@ public class PearlHuntTask extends Task {
     // latched: its isEqual compares the danger blocks, a rebuild per tick would restart it every tick
     private RunAwayFromPositionTask away;
     // ticks spent stepping away in a row; a shore with nowhere to flee to must not hold us in "Backing off" forever
-    private AwayCount awayCount = new AwayCount(0, Long.MIN_VALUE / 2);
+    private AwayCount awayCount = AwayCount.NONE;
     // where lava kept us stuck: endermen near it are skipped for a few minutes (see LavaSpot) and we walk off it once
     private final LavaSpot lavaSpot = new LavaSpot();
     private final LavaStrikes lavaStrikes = new LavaStrikes();
@@ -120,13 +134,18 @@ public class PearlHuntTask extends Task {
     }
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill) {
+        this(pearlsTotal, dimension, hotspot, onKill, (x, z) -> false);
+    }
+
+    public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill, BiPredicate<Integer, Integer> nearBastion) {
+        this.nearBastion = nearBastion;
         this.onKill = onKill;
         this.pearlsTotal = pearlsTotal;
         this.dimension = dimension;
         this.hotspot = hotspot;
         // an enderman on a lava shore is not worth the walk, the bot ends up standing at the lava with nowhere to go
         pearlTarget = new ItemTarget(Items.ENDER_PEARL, pearlsTotal);
-        loot = new KillAndLootTask(Enderman.class, man -> lootable(angrySpent.givenUp(man.getId()), () -> avoid(man)), true, pearlTarget);
+        loot = new KillAndLootTask(Enderman.class, this::lootTarget, true, pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -339,6 +358,46 @@ public class PearlHuntTask extends Task {
         return onLavaShore(man) || lavaSpot.covers(man.getX(), man.getY(), man.getZ(), man.level().getGameTime());
     }
 
+    // loot filter only, not avoid(): an angry one already coming at us near a brute still has to be fought
+    private boolean lootTarget(Entity man) {
+        if (!lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            return false;
+        }
+        boolean skip = skipNearHeavy(man.getX(), man.getZ(), heavyPositions(AltoClef.getInstance()), nearBastion.test(man.getBlockX(), man.getBlockZ()));
+        if (skip && skipLogged.add(man.getId())) {
+            Debug.logInternal("pearl hunt: skipping enderman " + man.getId() + ", it stands by a brute or a bastion");
+        }
+        return !skip;
+    }
+
+    // the same HEAVY list the combat brain runs from (FoeRules), read off the tracker
+    private static List<double[]> heavyPositions(AltoClef mod) {
+        List<double[]> out = new ArrayList<>();
+        for (Class<? extends Entity> type : HEAVY_TYPES) {
+            for (Entity e : mod.getEntityTracker().getTrackedEntities(type)) {
+                if (e.isAlive() && FoeRules.isHeavy(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath())) {
+                    out.add(new double[]{e.getX(), e.getZ()});
+                }
+            }
+        }
+        return out;
+    }
+
+    // an enderman parked by a brute or inside a known bastion is bait: we run from them, then the chase walks us right back
+    static boolean skipNearHeavy(double manX, double manZ, List<double[]> heavyXZ, boolean nearBastion) {
+        if (nearBastion) {
+            return true;
+        }
+        for (double[] h : heavyXZ) {
+            double dx = h[0] - manX;
+            double dz = h[1] - manZ;
+            if (dx * dx + dz * dz <= HEAVY_SKIP_BLOCKS * HEAVY_SKIP_BLOCKS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // a pearl lying close by comes before the hotspot walk and the recovery wait, the loot task below is the only other thing that
     // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
     // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
@@ -373,22 +432,29 @@ public class PearlHuntTask extends Task {
 
     private boolean anyLootable(AltoClef mod) {
         for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (man.isAlive() && lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            if (man.isAlive() && lootTarget(man)) {
                 return true;
             }
         }
         return false;
     }
 
-    // ticks spent fleeing and the game time of the last one. the count has a short memory (AWAY_CALM_RESET_TICKS) so a back off
-    // that flips with the lava distance still adds up to the give up, and it is read off the clock so the ticks spent fighting
-    // or walking instead count as calm too
-    record AwayCount(int ticks, long lastFlee) {
+    // a back off streak: the game time of its first flee and of the last one. the streak has a short memory (AWAY_CALM_RESET_TICKS)
+    // so a back off that flips with the lava distance is still one streak, and it is read off the clock so the ticks spent
+    // fighting or walking instead count as calm too. the length is wall time since the first flee, not the flee ticks in it:
+    // a flip flees a few ticks out of every twenty, and counting only those takes minutes to get anywhere
+    record AwayCount(long first, long lastFlee) {
+        static final AwayCount NONE = new AwayCount(Long.MAX_VALUE / 2, Long.MIN_VALUE / 2);
+
         AwayCount step(long now, boolean fleeing) {
             if (fleeing) {
-                return new AwayCount(ticks + 1, now);
+                return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(now, now) : new AwayCount(first, now);
             }
-            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? new AwayCount(0, now) : this;
+            return now - lastFlee >= AWAY_CALM_RESET_TICKS ? NONE : this;
+        }
+
+        int ticks() {
+            return lastFlee < first ? 0 : (int) Math.min(Integer.MAX_VALUE, lastFlee - first + 1);
         }
     }
 
@@ -445,7 +511,7 @@ public class PearlHuntTask extends Task {
     }
 
     // exposed lava (nothing solid right on top of it) from one below the middle up, inside r. under a floor it is just scenery
-    static List<BlockPos> exposedLava(Level level, BlockPos at, int r) {
+    public static List<BlockPos> exposedLava(Level level, BlockPos at, int r) {
         List<BlockPos> out = new ArrayList<>();
         for (int x = -r; x <= r; x++) {
             for (int y = -1; y <= r; y++) {

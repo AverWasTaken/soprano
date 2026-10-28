@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -19,6 +20,7 @@ public class LocatePhase implements PhaseHandler {
     private LocateStrongholdTask task;
     // the walk to the stronghold is the longest stretch with no food need of its own, the floor sends us hunting when the bag runs low
     private final FoodFloor food = new FoodFloor();
+    private boolean hopelessSaid;
 
     @Override
     public GamerPhase phase() {
@@ -45,11 +47,18 @@ public class LocatePhase implements PhaseHandler {
 
     @Override
     public Optional<GamerPhase> regressTo(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return StrongholdRules.regressForEyes(facts, state);
+        Optional<GamerPhase> back = StrongholdRules.regressForEyes(facts, state);
+        // polled every tick, said once per visit (the cooldown in PhaseRules decides when it actually goes)
+        if (back.isPresent() && !hopelessSaid) {
+            hopelessSaid = true;
+            Debug.logInternal(StrongholdRules.hopelessLine(facts, state));
+        }
+        return back;
     }
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
+        hopelessSaid = false;
         task = null;
         food.reset();
     }

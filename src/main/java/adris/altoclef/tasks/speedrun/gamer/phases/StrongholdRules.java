@@ -36,6 +36,15 @@ public final class StrongholdRules {
         return total < HOPELESS_TOTAL ? Optional.of(GamerPhase.NETHER) : Optional.empty();
     }
 
+    // the numbers behind a regressForEyes, for the log
+    public static String hopelessLine(GamerFacts facts, RunState state) {
+        int held = facts.count(Items.ENDER_EYE);
+        int craftable = craftableEyes(facts);
+        return "eyes: hopeless, going back to the nether (held " + held + " + frames " + state.framesFilled + " + craftable "
+                + craftable + " + flight " + IN_FLIGHT + " = " + (held + state.framesFilled + craftable + IN_FLIGHT)
+                + " < " + HOPELESS_TOTAL + ")";
+    }
+
     // OPEN: short of eyes for the frames that are still empty
     public static boolean starved(GamerFacts facts, RunState state) {
         if (state.endPortalOpened) {

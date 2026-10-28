@@ -393,6 +393,7 @@ public class LocateStrongholdTask extends Task {
         }
         // persisted so a relog or an interrupt between the throw and the pickup still knows an eye is out there
         ctx.state().eyeBaseline = mod.getItemStorage().getItemCount(Items.ENDER_EYE);
+        Debug.logInternal(throwLine(mod));
         observer = new EyeThrowObserver(mod.getPlayer().getX(), mod.getPlayer().getZ(), ticks(mod));
         Minecraft.getInstance().gameMode.useItem(mod.getPlayer(), InteractionHand.MAIN_HAND);
         enter(mod, Stage.OBSERVE);
@@ -462,9 +463,10 @@ public class LocateStrongholdTask extends Task {
         double waited = seconds(mod) - stageSince;
         int baseline = Math.max(1, ctx.state().eyeBaseline);
         if (pickupTask != null) {
-            if (_pickupTimer.elapsed() || mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline) {
+            boolean back = mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline;
+            if (_pickupTimer.elapsed() || back) {
                 pickupTask = null;
-                return endCollect(mod);
+                return endCollect(mod, baseline, back ? "back" : "timed out");
             }
             return pickupTask;
         }
@@ -485,11 +487,21 @@ public class LocateStrongholdTask extends Task {
             _pickupTimer.reset();
             return pickupTask;
         }
-        return endCollect(mod);
+        boolean back = mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline;
+        return endCollect(mod, baseline, back ? "back" : "shattered or never seen");
+    }
+
+    // one line per throw: what we held going in, which throw it is, and where the guess stands
+    private String throwLine(AltoClef mod) {
+        String est = estimator.estimate().map(e -> " est=" + Math.round(e.x()) + "," + Math.round(e.z()) + " dist="
+                + Math.round(Math.hypot(e.x() - mod.getPlayer().getX(), e.z() - mod.getPlayer().getZ()))).orElse(" est=none");
+        return "eyes: throw #" + (ledger.counted() + 1) + " held=" + ctx.state().eyeBaseline + est;
     }
 
     // the eye is back, or it shattered, or we gave up on it: nothing left to collect
-    private Task endCollect(AltoClef mod) {
+    private Task endCollect(AltoClef mod, int baseline, String how) {
+        Debug.logInternal("eyes: collect over, " + how + " (held " + mod.getItemStorage().getItemCount(Items.ENDER_EYE)
+                + ", before the throw " + baseline + ")");
         ctx.state().eyeBaseline = 0;
         enter(mod, Stage.DECIDE);
         return null;

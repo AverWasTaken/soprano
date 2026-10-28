@@ -49,6 +49,14 @@ public final class GamerConfigs {
         if (from < 8 && c.overworld != null && c.overworld.netherSpareShields == 2) {
             c.overworld.netherSpareShields = new GamerConfig().overworld.netherSpareShields;
         }
+        // and the pearl hunt window: 10 was the default until the window was widened for slow lava hunts
+        if (from < 9 && c.nether != null && c.nether.huntWanderMinutes == 10) {
+            c.nether.huntWanderMinutes = new GamerConfig().nether.huntWanderMinutes;
+        }
+        // and the End beds: 8 was the default until the sheep hunt got a clock, 5 is what the dragon fight really uses
+        if (from < 10 && c.end != null && c.end.beds == 8) {
+            c.end.beds = new GamerConfig().end.beds;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

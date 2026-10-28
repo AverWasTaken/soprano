@@ -202,7 +202,7 @@ public final class SmeltFiller {
                 }
                 case "wool_beds" -> {
                     int missing = KitPlanner.woolShortfall(f, endBeds + extra.count);
-                    if (nearSurface && missing > 0) {
+                    if (nearSurface && missing > 0 && !f.woolHuntGaveUp()) {
                         out.add(new KitNeed("wool", f.count(ItemHelper.WOOL) + missing));
                     }
                 }

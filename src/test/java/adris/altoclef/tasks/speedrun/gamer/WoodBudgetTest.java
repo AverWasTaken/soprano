@@ -85,6 +85,17 @@ public class WoodBudgetTest {
     }
 
     @Test
+    public void aGivenUpWoolChaseOnlyOwesPlanksForBedsTheWoolCanMake() {
+        FakeFacts f = new FakeFacts();
+        f.woolHuntGaveUp = true;
+        assertEquals(0, WoodBudget.bedPlanksOwed(f, BEDS));
+        f.give(Items.WOOL.white(), 7);
+        assertEquals(6, WoodBudget.bedPlanksOwed(f, BEDS));
+        f.give(Items.WOOL.red(), 60);
+        assertEquals(3 * BEDS, WoodBudget.bedPlanksOwed(f, BEDS));
+    }
+
+    @Test
     public void spareWoodIsWhatIsHeldBeyondTheKeep() {
         // 14 logs is exactly the budget with the two planks in hand, 6 more are fuel: a log and a plank are 1.5 smelts apiece
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 2);
