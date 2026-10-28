@@ -23,6 +23,7 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -275,18 +276,25 @@ public class RecoverItemsTask extends Task {
     }
 
     // the angry ones near the pile, if the world has loaded them (from far away it hasn't, they show up as we get closer
-    // and the gate takes it from there)
+    // and the gate takes it from there). creepers count asleep too, but an idle one only when it is close or can see us (RecoverRules.threatensAt)
     private List<Entity> threatsAtPile(AltoClef mod) {
         List<Entity> out = new ArrayList<>();
         try {
-            for (Entity entity : mod.getEntityTracker().getHostiles()) {
-                if (!(entity instanceof Mob mob) || !EntityHelper.isAngryAtPlayer(mod, mob)) continue;
-                if (RecoverRules.threatens(mob.getX() - (_deathPos.getX() + 0.5), mob.getY() - _deathPos.getY(),
-                        mob.getZ() - (_deathPos.getZ() + 0.5))) {
+            List<Entity> candidates = new ArrayList<>(mod.getEntityTracker().getHostiles());
+            // getHostiles only holds the angry ones, so the quiet creepers come straight from the tracker
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!candidates.contains(creeper)) candidates.add(creeper);
+            }
+            for (Entity entity : candidates) {
+                if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
+                if (!RecoverRules.isThreat(mob instanceof Creeper, EntityHelper.isAngryAtPlayer(mod, mob))) continue;
+                boolean aggressive = EntityHelper.isAngryAtPlayer(mod, mob);
+                if (RecoverRules.threatensAt(aggressive, mob.hasLineOfSight(mod.getPlayer()), mob.getX() - (_deathPos.getX() + 0.5),
+                        mob.getY() - _deathPos.getY(), mob.getZ() - (_deathPos.getZ() + 0.5))) {
                     out.add(mob);
                 }
             }
-        } catch (ConcurrentModificationException ignored) {
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException ignored) {
             // the tracker rebuilds its lists on another thread, an empty look this tick just means one more tick of walking
         }
         return out;

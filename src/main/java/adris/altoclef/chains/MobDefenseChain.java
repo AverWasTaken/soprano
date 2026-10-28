@@ -64,9 +64,11 @@ import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -98,6 +100,11 @@ public class MobDefenseChain extends SingleTaskChain {
     // the cell over our head is solid (we put it there, or it always was)
     private boolean _capPlaced;
     private boolean _capAbove;
+    // the wall beside us (CreeperCap.besideCell): the cell picked for this step, kept once picked so the block landing in it
+    // does not make the wall look done-and-forgotten
+    private BlockPos _capBeside;
+    // CreeperEscape found nowhere to run, as of this tick's stepCreepers
+    private boolean _creeperNoHeading;
     // sneak while clicking, same reason as PlaceStationTask: a chest or a table in the wall opens instead of taking the block
     // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
     // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
@@ -331,7 +338,8 @@ public class MobDefenseChain extends SingleTaskChain {
             // a block over our head first, when the creeper is up the shaft with us. it takes the wheel (nothing else may swap
             // the pickaxe back in under the click), and gives up to the shield once its share of the fuse is gone or a click
             // is refused
-            if (_capAbove && !_capDone && CreeperCap.inWindow(GameClock.since(_capSince, mod.getWorld().getGameTime())) && capCell(mod)) {
+            if ((_capAbove || _capBeside != null) && !_capDone
+                    && CreeperCap.inWindow(GameClock.since(_capSince, mod.getWorld().getGameTime())) && placeCap(mod)) {
                 setTask(new IdleTask());
                 _killAura.stopShielding(mod);
                 stopShielding(mod);
@@ -340,7 +348,8 @@ public class MobDefenseChain extends SingleTaskChain {
             dropCapSneak(mod);
             // capped: the wheel stays ours and goes nowhere. the step's own task would walk
             // straight through the block we just put up
-            boolean capped = _capPlaced;
+            // (a wall beside us is no door in the way: with a way out open the step runs, it does not sit behind a block)
+            boolean capped = _capPlaced && (_capBeside == null || _creeperNoHeading);
             if (_creeperStep.cornered()) {
                 if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
@@ -653,17 +662,27 @@ public class MobDefenseChain extends SingleTaskChain {
     public boolean creeperBoxedIn() {
         // (the snapshot does not run with mob defense off, so a step frozen mid way must not hold the food chain hostage)
         return Baritone.settings().altoMobDefense.value && _creeperStep.active()
-                && (_creeperStep.cornered() || (_capAbove && !_capDone));
+                && (_creeperStep.cornered() || ((_capAbove || _capBeside != null) && !_capDone));
     }
 
     // one tick of putting a block in the cell over our head, clicked against the shaft wall beside it (or the roof). true =
     // still at it (equipping, aiming, or just clicked and waiting to see it land), false = nothing more to do here: it is there,
     // there is nothing to place or nothing to click, or the click was refused. same click as PlaceStationTask.aim
-    private boolean capCell(AltoClef mod) {
+    private boolean placeCap(AltoClef mod) {
+        if (_capBeside != null) return placeCell(mod, _capBeside, BESIDE_SUPPORT);
+        LocalPlayer player = mod.getPlayer();
+        // the cell over the top of the head, not feet + 2: standing on a slab the body reaches into that one
+        return placeCell(mod, BlockPos.containing(player.getX(), player.getBoundingBox().maxY, player.getZ()).above(), CAP_SUPPORT);
+    }
+
+    // the cap clicks the shaft walls and then the roof. the wall beside us goes on the floor first: in a one wide tunnel the
+    // side walls are grazing clicks that never pass the ray check, and the floor's top face one block ahead is in plain view
+    private static final Direction[] CAP_SUPPORT = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
+    private static final Direction[] BESIDE_SUPPORT = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
+
+    private boolean placeCell(AltoClef mod, BlockPos cell, Direction[] supportOrder) {
         LocalPlayer player = mod.getPlayer();
         Level level = mod.getWorld();
-        // the cell over the top of the head, not feet + 2: standing on a slab the body reaches into that one
-        BlockPos cell = BlockPos.containing(player.getX(), player.getBoundingBox().maxY, player.getZ()).above();
         if (!level.getBlockState(cell).canBeReplaced()) {
             _capDone = true;
             _capPlaced = true;
@@ -677,7 +696,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // which neighbour of the cell has a sturdy, dry face to click: the four shaft walls, then the roof
         Direction clickFace = null;
         BlockPos support = null;
-        for (Direction d : new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP}) {
+        for (Direction d : supportOrder) {
             BlockPos n = cell.relative(d);
             Direction face = d.getOpposite();
             if (level.getFluidState(n).isEmpty() && level.getBlockState(n).isFaceSturdy(level, n, face)) {
@@ -775,6 +794,7 @@ public class MobDefenseChain extends SingleTaskChain {
             _capSince = Long.MIN_VALUE;
             _capDone = false;
             _capPlaced = false;
+            _capBeside = null;
             _capCreeper = _creeperStep.active() ? _creeperStep.creeperId() : -1;
             dropCapSneak(mod);
         }
@@ -784,11 +804,35 @@ public class MobDefenseChain extends SingleTaskChain {
             _capAbove = held != null && CreeperCap.creeperAbove(true, held.getY() - player.getY(),
                     Math.hypot(held.getX() - player.getX(), held.getZ() - player.getZ()));
         }
+        _creeperNoHeading = noHeading;
+        // a way out opened before the block went up: nobody needs the wall
+        if (!noHeading && !_capPlaced) _capBeside = null;
+        // no way out and the creeper down the tunnel with us: a wall beside us, picked once per step
+        if (_creeperStep.active() && noHeading && !_capAbove && _capBeside == null && !_capDone) {
+            Entity held = mod.getWorld().getEntity(_creeperStep.creeperId());
+            _capBeside = held == null ? null : besideTarget(mod, held);
+        }
         // the cap's share of the fuse counts from the first tick there is something to cap (we may have been in the air
         // for the start of the step, and then there was no answer to give)
-        if (_capAbove && _capSince == Long.MIN_VALUE) _capSince = now;
+        if ((_capAbove || _capBeside != null) && _capSince == Long.MIN_VALUE) _capSince = now;
         // out of time: the shield has it, and the food chain gets its hands back if there is no shield
         if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(GameClock.since(_capSince, now))) _capDone = true;
+    }
+
+    // the cell for the wall beside us, or null when there is no point: only a cell a block can still go in, with nobody
+    // standing in it. whether there is anything to click on is placeCell's problem
+    private BlockPos besideTarget(AltoClef mod, Entity creeper) {
+        LocalPlayer player = mod.getPlayer();
+        Level level = mod.getWorld();
+        int[] off = CreeperCap.besideCell(true, creeper.getX() - player.getX(), player.getY(), creeper.getY(),
+                creeper.getZ() - player.getZ());
+        if (off == null) return null;
+        BlockPos cell = player.blockPosition().offset(off[0], off[1], off[2]);
+        if (!level.getBlockState(cell).canBeReplaced()
+                || !level.isUnobstructed(Blocks.STONE.defaultBlockState(), cell, CollisionContext.of(player))) {
+            return null;
+        }
+        return cell;
     }
 
     // the same question CreeperStepTask asks before it sprints: is there anywhere to run. asked about the creeper the step
