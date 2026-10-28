@@ -262,7 +262,7 @@ public class PearlHuntTask extends Task {
 
     // the cheap-then-dear enderman check the nook and the phases share: one in range and in sight
     public static boolean endermanNear(AltoClef mod) {
-        return EndermanNook.latchSees(nearestEnderman(mod, null, null));
+        return EndermanNook.latchSees(nearestEnderman(mod, null, null, WorldHelper.getCurrentDimension() == Dimension.NETHER));
     }
 
     // the angry ones we watched last tick that are dead now: those are kills
@@ -348,7 +348,7 @@ public class PearlHuntTask extends Task {
         if (lootId >= 0) {
             lavaStrikes.pursue(lootId);
         }
-        if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod))) {
+        if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod, lootId))) {
             // no nook to do it from: lava or fire means step away, low hp means wait while it heals
             List<BlockPos> lava = exposedLava(mod.getWorld(), mod.getPlayer().blockPosition(), EndermanNook.AGGRO_LAVA_GAP);
             EndermanNook.Stance stance = EndermanNook.stance(!lava.isEmpty(), mod.getPlayer().isOnFire(), mod.getPlayer().getHealth(),
@@ -382,7 +382,8 @@ public class PearlHuntTask extends Task {
         }
         // time spent as the loot target counts toward the same give up as the angry fight, an enderman the walk cannot reach
         // would otherwise bounce between this and the hotspot walk (the latch sees it, drops, sees it) for minutes
-        if (lootId >= 0) {
+        // (not for one the kill task is about to drop for being far below, losing it is not a spent budget)
+        if (lootId >= 0 && !(mod.getWorld().getEntity(lootId) instanceof Enderman man && farBelow(man, true))) {
             angrySpent.tick(lootId, ANGRY_SECONDS);
         }
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
@@ -483,9 +484,10 @@ public class PearlHuntTask extends Task {
         return endermanFound && anyLootable;
     }
 
-    private boolean anyLootable(AltoClef mod) {
+    // the one the kill walk is on (pursuingId) is judged on the keep line, same as the kill task does
+    private boolean anyLootable(AltoClef mod, int pursuingId) {
         for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
-            if (man.isAlive() && lootTarget(man, false)) {
+            if (man.isAlive() && lootTarget(man, man.getId() == pursuingId)) {
                 return true;
             }
         }
@@ -532,7 +534,7 @@ public class PearlHuntTask extends Task {
             nookRetryAt = gameTime + NOOK_RETRY_TICKS;
         }
         if (nook == null) {
-            if (!EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
+            if (!EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent, dimension == Dimension.NETHER)) || nookFails >= NOOK_TRIES || gameTime < nookRetryAt) {
                 return null;
             }
             nook = new NookHuntTask(nookFight);
@@ -614,13 +616,13 @@ public class PearlHuntTask extends Task {
     }
 
     // distance to the nearest tracked enderman we have line of sight to, infinity for none (see EndermanNook.nearestSeen)
-    private double nearestEnderman(AltoClef mod, AngryClock nookGaveUp, AngryClock angryGaveUp) {
+    private static double nearestEnderman(AltoClef mod, AngryClock nookGaveUp, AngryClock angryGaveUp, boolean nether) {
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
         double[] dist = new double[men.size()];
         for (int i = 0; i < dist.length; i++) {
             Enderman man = men.get(i);
             double d = man.distanceTo(mod.getPlayer());
-            boolean farBelow = farBelow(man, false);
+            boolean farBelow = tooFarBelow(man.getY() - mod.getPlayer().getY(), false, nether);
             // (the cheap distance first, the ray is the dear part and the latch does not care past its range)
             // (one the nook gave up on would keep re-arming the latch and the nook with it)
             // (and one far below in the nether, we would never take it)
@@ -674,7 +676,7 @@ public class PearlHuntTask extends Task {
     private Task walkToHotspot(AltoClef mod) {
         walkHeld = false;
         RunState.Pos spot = hotspot.get();
-        boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent)), System.currentTimeMillis() / 1000.0);
+        boolean endermanHere = endermanLatch.update(EndermanNook.latchSees(nearestEnderman(mod, nookFight, angrySpent, dimension == Dimension.NETHER)), System.currentTimeMillis() / 1000.0);
         if (spot == null) {
             return null;
         }
