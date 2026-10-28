@@ -62,6 +62,27 @@ public final class EndermanNook {
         return !burning && health >= AGGRO_MIN_HP && lavaGap > AGGRO_LAVA_GAP && angryNow == 0 && targetDistance >= STARE_MIN;
     }
 
+    // how far a calm one can be and still be worth a stare, and how long one stare gets before it counts as ignored
+    public static final double STARE_RANGE = 48;
+    public static final int STARE_TICKS = 100;
+    // vanilla (Enderman$EndermanLookForPlayerGoal): an angry enderman only teleports toward its target from further than this,
+    // closer in it walks, and a walk does not cross lava
+    public static final double TELEPORT_TOWARDS_RANGE = 16;
+
+    // staring a calm enderman down from where we stand (lava by the foe, so the walk in is off). the bait rules of the nook
+    // (alive, calm, in sight, in range) plus mayAggro. across lava it only answers when it can teleport to us, so inside
+    // TELEPORT_TOWARDS_RANGE with lava between us the stare is wasted
+    public static boolean stareWorthwhile(boolean burning, float health, boolean ourLavaClear, int angryNow, double distance,
+                                          boolean alive, boolean creepy, boolean sees, boolean lavaBetween) {
+        if (!alive || creepy || !sees || distance > STARE_RANGE) {
+            return false;
+        }
+        if (!mayAggro(burning, health, ourLavaClear ? Double.POSITIVE_INFINITY : 0, angryNow, distance)) {
+            return false;
+        }
+        return distance > TELEPORT_TOWARDS_RANGE || !lavaBetween;
+    }
+
     // the angry one to deal with: the nearest inside the range, -1 for nobody. dead and given up ones come in as NaN
     public static int nearestAngry(double[] distances) {
         int best = -1;

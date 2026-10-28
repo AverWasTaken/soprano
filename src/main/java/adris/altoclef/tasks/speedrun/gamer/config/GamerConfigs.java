@@ -49,6 +49,10 @@ public final class GamerConfigs {
         if (from < 8 && c.overworld != null && c.overworld.netherSpareShields == 2) {
             c.overworld.netherSpareShields = new GamerConfig().overworld.netherSpareShields;
         }
+        // and the pearl hunt window: 10 was the default until pearls turned out to come 6-7 minutes apart by the lava
+        if (from < 9 && c.nether != null && c.nether.huntWanderMinutes == 10) {
+            c.nether.huntWanderMinutes = new GamerConfig().nether.huntWanderMinutes;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;
