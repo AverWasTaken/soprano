@@ -50,4 +50,20 @@ public final class BucketFillRules {
         if (!roomStuck) return Fill.MAKE_ROOM;
         return lava ? Fill.HOLD : Fill.GO;
     }
+
+    // MAKE_ROOM for this long and the room task is not getting anywhere (a throw that lands in pickup range comes back
+    // after its 40 tick delay), so stop waiting on it
+    public static final int ROOM_GIVE_UP_TICKS = 200;
+    // a gap this long without MAKE_ROOM is a real break, shorter ones are just the free slot a throw leaves for a tick
+    public static final int ROOM_GAP_TICKS = 40;
+
+    // since = tick this stretch of MAKE_ROOM began, now = this tick
+    public static boolean roomTimedOut(long since, long now) {
+        return now - since >= ROOM_GIVE_UP_TICKS;
+    }
+
+    // true when the stretch last seen at `last` is over, so a MAKE_ROOM at `now` starts a fresh one
+    public static boolean roomStretchBroke(long last, long now) {
+        return now - last >= ROOM_GAP_TICKS;
+    }
 }

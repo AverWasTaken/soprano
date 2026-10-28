@@ -95,6 +95,10 @@ public class CollectBucketLiquidTask extends ResourceTask {
     // when the current hold started (-1 = not holding), and when we started looking down for the spare bucket throw
     private int _holdSince = -1;
     private int _aimedSince = -1;
+    // when this stretch of MAKE_ROOM began and the last tick it showed up. a throw frees a slot for a tick or two, so a
+    // flicker must not restart the clock, only a gap of a whole pickup delay does
+    private int _makeRoomSince = -1;
+    private int _lastMakeRoom = -1;
     // sources the stream climb has already handed over
     private final HashSet<BlockPos> _climbed = new HashSet<>();
     // sources skipped because the block over them is too slow to break, so the line is said once and the ban handed out once
@@ -155,6 +159,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
         _loggedNoRoom = false;
         _holdSince = -1;
         _aimedSince = -1;
+        _makeRoomSince = -1;
+        _lastMakeRoom = -1;
     }
 
 
@@ -476,6 +482,18 @@ public class CollectBucketLiquidTask extends ResourceTask {
             _noRoom = true;
         }
         BucketFillRules.Fill fill = BucketFillRules.plan(bucketStacks, freeSlot, _noRoom, _toCollect == Blocks.LAVA);
+        if (fill == BucketFillRules.Fill.MAKE_ROOM) {
+            // the room task can spin for minutes if what it throws keeps coming back, so give it a cap
+            int now = WorldHelper.getTicks();
+            if (_lastMakeRoom < 0 || BucketFillRules.roomStretchBroke(_lastMakeRoom, now)) {
+                _makeRoomSince = now;
+            }
+            _lastMakeRoom = now;
+            if (BucketFillRules.roomTimedOut(_makeRoomSince, now)) {
+                _noRoom = true;
+                fill = BucketFillRules.plan(bucketStacks, freeSlot, true, _toCollect == Blocks.LAVA);
+            }
+        }
         if (_noRoom && !_loggedNoRoom) {
             _loggedNoRoom = true;
             if (fill == BucketFillRules.Fill.HOLD) {

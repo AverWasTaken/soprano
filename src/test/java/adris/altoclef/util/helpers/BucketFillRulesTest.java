@@ -104,4 +104,53 @@ public class BucketFillRulesTest {
         assertEquals(0, BucketFillRules.spares(0));
         assertEquals(0, BucketFillRules.spares(-3));
     }
+
+    // same bookkeeping the bucket task does each tick MAKE_ROOM shows up
+    private static long since;
+    private static long last;
+
+    private static boolean makeRoomAt(long now) {
+        if (last < 0 || BucketFillRules.roomStretchBroke(last, now)) {
+            since = now;
+        }
+        last = now;
+        return BucketFillRules.roomTimedOut(since, now);
+    }
+
+    @Test
+    public void aSteadyStretchTimesOutAtTheCap() {
+        since = -1;
+        last = -1;
+        for (long t = 0; t < BucketFillRules.ROOM_GIVE_UP_TICKS; t++) {
+            assertFalse(makeRoomAt(t));
+        }
+        assertTrue(makeRoomAt(BucketFillRules.ROOM_GIVE_UP_TICKS));
+    }
+
+    @Test
+    public void briefFlickersDoNotRestartTheClock() {
+        since = -1;
+        last = -1;
+        boolean out = false;
+        for (long t = 0; t <= BucketFillRules.ROOM_GIVE_UP_TICKS; t++) {
+            // two GO ticks out of every 40
+            if (t % 40 == 10 || t % 40 == 11) continue;
+            out = makeRoomAt(t);
+        }
+        assertTrue(out);
+    }
+
+    @Test
+    public void aLongGapRestartsTheClock() {
+        since = -1;
+        last = -1;
+        for (long t = 0; t < 150; t++) {
+            makeRoomAt(t);
+        }
+        // 40 ticks of nothing, then it is back
+        for (long t = 190; t < 190 + BucketFillRules.ROOM_GIVE_UP_TICKS; t++) {
+            assertFalse(makeRoomAt(t));
+        }
+        assertTrue(makeRoomAt(190 + BucketFillRules.ROOM_GIVE_UP_TICKS));
+    }
 }

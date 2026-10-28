@@ -4,20 +4,35 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerType;
 import adris.altoclef.util.helpers.ItemHelper;
-import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.util.helpers.ThrowAim;
 import adris.altoclef.util.slots.Slot;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
 public class EnsureFreeInventorySlotTask extends Task {
 
     private boolean _stuck = false;
+    // where the next throw points, picked once so a tunnel's two equal ends can't flip us back and forth. cleared only once
+    // the cursor is really empty (a click can be refused during the slot handler's move delay)
+    private boolean _hasAim = false;
+    private float _aimYaw;
+    private int _aimSince;
 
     @Override
     protected void onStart(AltoClef mod) {
         _stuck = false;
+        _hasAim = false;
+    }
+
+    private void pickAim(AltoClef mod) {
+        if (_hasAim) return;
+        _hasAim = true;
+        _aimYaw = ThrowAim.pickYaw(mod, ThreadLocalRandom.current());
+        _aimSince = WorldHelper.getTicks();
     }
 
     @Override
@@ -32,21 +47,41 @@ public class EnsureFreeInventorySlotTask extends Task {
         FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), ItemHelper.canDropStack(mod, cursorStack),
                 garbage.isPresent(), containerSlot.isPresent());
         _stuck = action == FreeSlotPlan.Action.STUCK;
+        // an empty cursor means whatever we threw is gone (a refused click leaves the stack in hand, so no re-pick there)
+        if (cursorStack.isEmpty()) {
+            _hasAim = false;
+        }
         switch (action) {
             case CLICK_GARBAGE -> {
                 setDebugState("Picking up garbage");
+                pickAim(mod);
                 mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
             }
             case THROW_CURSOR -> {
                 setDebugState("Throwing the held stack");
-                LookHelper.randomOrientation(mod);
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                // a 1x1 pocket has no run to throw along, so the stack still comes back there. the bucket task has a
+                // backstop for that
+                pickAim(mod);
+                // what the server last heard from us, not the camera: the click goes out ahead of this tick's rotation packet,
+                // and baritone's free look can send one angle and put another on the camera
+                var player = mod.getPlayer();
+                var sent = mod.getClientBaritone().getLookBehavior().serverRotation();
+                float sentYaw = sent.map(r -> r.getYaw()).orElse(player.getYRot());
+                float sentPitch = sent.map(r -> r.getPitch()).orElse(player.getXRot());
+                boolean aligned = ThrowAim.isAligned(sentYaw, sentPitch, _aimYaw, ThrowAim.PITCH);
+                if (ThrowAim.shouldThrow(aligned, WorldHelper.getTicks() - _aimSince)) {
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                }
             }
             case PUT_BACK -> {
                 setDebugState("Putting the held stack back");
                 mod.getSlotHandler().clickSlot(containerSlot.get(), 0, ContainerInput.PICKUP);
             }
             default -> setDebugState("All items are protected.");
+        }
+        // held every tick, something else (baritone's look) may have turned us since
+        if (_hasAim) {
+            mod.getInputControls().forceLook(_aimYaw, ThrowAim.PITCH);
         }
         return null;
     }
