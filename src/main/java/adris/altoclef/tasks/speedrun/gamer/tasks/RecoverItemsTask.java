@@ -231,7 +231,7 @@ public class RecoverItemsTask extends Task {
         // this doesn't, the drop just gets rebuilt every tick until the chase writes it off
         static boolean refuses(ItemEntity drop) {
             return ItemPickupRules.lavaBlocksPickup(drop)
-                    || (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.isPickupSafe(drop));
+                    || (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.worthSwimming(drop) && !ItemPickupRules.isPickupSafe(drop));
         }
 
         private boolean _stalled;

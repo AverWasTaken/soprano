@@ -196,4 +196,11 @@ public class ItemPickupRulesTest {
     public void aDropWithNoRoomAndNothingToThrowIsGivenUp() {
         assertEquals(ItemPickupRules.Room.GIVE_UP, ItemPickupRules.room(false, false));
     }
+
+    @Test
+    public void onlyEyesAreWorthAWetPickup() {
+        assertTrue(ItemPickupRules.worthSwimming("ender_eye"));
+        assertFalse(ItemPickupRules.worthSwimming("ender_pearl"));
+        assertFalse(ItemPickupRules.worthSwimming("cobblestone"));
+    }
 }

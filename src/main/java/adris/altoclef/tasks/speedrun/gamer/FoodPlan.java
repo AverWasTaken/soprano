@@ -211,6 +211,11 @@ public final class FoodPlan {
         return pending;
     }
 
+    // the open furnace or smoker screen's share of bag (FoodPlan.inStation), 0 once a job is recorded for that station
+    public int station() {
+        return station;
+    }
+
     public int rawLeftOut() {
         return rawLeftOut;
     }
