@@ -681,6 +681,11 @@ public final class CombatCommit {
     // with a cube bouncing out at five blocks and the same tick's low hp rule started a fresh run with a fresh grace
     private boolean runLatch;
     private long latchClearSince = -1;
+    // times the latch let a low hp or crowd run through since it last fully cleared. one: a pack behind us does not get to eat
+    // us one zombie at a time, but a second turn after that run is final, so run, turn, run, turn cannot flap
+    private int latchBreaks;
+    // the latch came from a turn on a chase (hitThrough, the cap). a corner, a box or a fast mob made it for a reason, those stay final
+    private boolean latchChased;
     // hits landed on us this run after the grace, and per foe the tick of the last one we counted: one hit seen for a hundred
     // ticks is still one hit, the next swing from the same mob is a new one
     private int runHits;
@@ -806,6 +811,8 @@ public final class CombatCommit {
         endedFirst = Event.NONE;
         runLatch = false;
         latchClearSince = -1;
+        latchBreaks = 0;
+        latchChased = false;
         farSince = -1;
         losRun = false;
         noSightSince = -1;
@@ -898,12 +905,20 @@ public final class CombatCommit {
             latchClearSince = t.now();
         } else if (t.now() - latchClearSince >= RUN_CLEAR_TICKS) {
             runLatch = false;
+            latchBreaks = 0;
+            latchChased = false;
         }
     }
 
-    // a run reason the latch lets through: the warden and the heavy hitters always, the rest only once the latch is off
-    private Why unlatched(Why reason) {
-        return runLatch && reason != Why.HEAVY ? Why.NONE : reason;
+    // a run reason the latch lets through: the warden and the heavy hitters always, the rest only once the latch is off. low hp
+    // and crowd get one break per latch, unless we are boxed or something fast is on us (those stay the fight, see runOrBox)
+    private Why unlatched(Why reason, Tick t) {
+        if (!runLatch || reason == Why.HEAVY) return reason;
+        if ((reason == Why.LOW_HP || reason == Why.CROWD) && latchChased && latchBreaks == 0 && !t.boxed() && fastTarget(t) == null) {
+            latchBreaks++;
+            return reason;
+        }
+        return Why.NONE;
     }
 
     // what idle would have seen next tick: no fight target (there is none with nothing committed), and not the target if it
@@ -923,7 +938,7 @@ public final class CombatCommit {
         boolean cooling = coolingDown(t.now());
         // danger is "anything that bad within 8", ignored or not, cooldown or not: leaving is not a fight with that one mob.
         // low hp in the cooldown wants it on top of us or a fresh hit, see trigger
-        Why run = unlatched(runReason(t, cooling));
+        Why run = unlatched(runReason(t, cooling), t);
         if (run != Why.NONE) return runOrBox(t, run);
         // cooldown or not: it is not something hitting us again, it is the creeper step going round in circles. a committed
         // fight asks the same thing at its top, the fight walking us back to the creeper is how the circle keeps going
@@ -931,7 +946,7 @@ public final class CombatCommit {
         // healing up: whatever comes back near is a run again, before it is a fight and whatever the cooldown says. we are
         // standing here because we are hurt, and trading blows at 10 hp is how the last run started
         if (recover.on() && endermanAbout(t) == null) {
-            Why again = unlatched(rerun(t));
+            Why again = unlatched(rerun(t), t);
             if (again != Why.NONE) return runOrBox(t, again);
         }
         // the fight is only for one we have not given up on, or one that has hit us since. with nothing in hand better than a
@@ -1272,6 +1287,13 @@ public final class CombatCommit {
         // there is nowhere to bail to, so a cornered fight never asks
         // a fight we turned around for is out in the open though: the warden or a heavy walking up is still a run
         Why bail = !cornered ? runReason(t, false, lowHit(t)) : (why == Why.CHASED || fastCorner) && anyDanger(t) ? Why.HEAVY : Why.NONE;
+        // the fight we turned on a chase is the one cornered fight that may still bail, once (unlatched counts it): a real corner
+        // (box, fast mob, no room) is never CHASED, and the enderman's own rules stay out of it. the kill itself is not a bail,
+        // targetGone chains to the next one or ends it
+        if (cornered && bail == Why.NONE && target != null && why == Why.CHASED && !boxCorner && !fastCorner && endermanAbout(t) == null) {
+            Why again = runReason(t, false, lowHit(t));
+            if (again == Why.LOW_HP || again == Why.CROWD) bail = again;
+        }
         // the witch we picked over the zombies is not walked away from at 11 hp for being a witch (that is how it lobs for a
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
         // (only the part the witch itself causes: a second skeleton or a crowd still ends it, one skeleton is the shooter fight)
@@ -1281,7 +1303,7 @@ public final class CombatCommit {
             if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false, t.nextHit(), true);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
         }
-        bail = unlatched(bail);
+        bail = unlatched(bail, t);
         if (bail != Why.NONE) {
             // boxed in, a crowd or low hp is no reason to leave: there is no leaving. this fight is the cornered one from here.
             // the same goes for something fast that has hit us and is close: it comes along on the run
@@ -1292,6 +1314,7 @@ public final class CombatCommit {
             boxCorner = t.boxed();
             fastCorner = !t.boxed();
             runLatch = true;
+            latchChased = false;
             latchClearSince = -1;
             if (why != Why.CHASED) why = Why.CORNERED;
         }
@@ -1495,6 +1518,7 @@ public final class CombatCommit {
         }
         if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
             runLatch = true;
+            latchChased = event == Event.RUN_CHASED_FIGHT;
             latchClearSince = -1;
         }
         contacted = false;
