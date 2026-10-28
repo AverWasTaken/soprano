@@ -49,6 +49,14 @@ public class KillAndLootTask extends ResourceTask {
         _killTask = dropWhenFalse ? new KillEntitiesTask(shouldKill, shouldKill, _toKill) : new KillEntitiesTask(shouldKill, _toKill);
     }
 
+    // picking and keeping can differ (a looser line for the one we are already on, so a target on the edge does not flip)
+    public KillAndLootTask(Class<?> toKill, Predicate<Entity> shouldKill, Predicate<Entity> keepChasing, ItemTarget... itemTargets) {
+        super(itemTargets.clone());
+        _toKill = toKill;
+        _onlyId = -1;
+        _killTask = new KillEntitiesTask(shouldKill, keepChasing, _toKill);
+    }
+
     // this animal and no other
     public KillAndLootTask(Entity target, ItemTarget... itemTargets) {
         super(itemTargets.clone());
