@@ -1185,6 +1185,25 @@ public class CombatCommitTest {
     }
 
     @Test
+    public void aBlazeFightEndsOnceTheBlazeDriftsOffAndKeepsGoingWhileItStays() {
+        CombatCommit c = fightOn(blaze(1, 2, 3));
+        Foe near = blaze(1, 2, 3);
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, 20, near, near)));
+        assertEquals(Mode.FIGHT, c.mode());
+        Foe far = blaze(1, 6, 3);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(NOW + 2, 20, far, far)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aNonFlyerThatBacksOffToSixBlocksIsStillFought() {
+        CombatCommit c = fightOn(zombie(1, 2, 3));
+        Foe far = zombie(1, 6, 3);
+        assertEquals(Event.NONE, c.step(tick(NOW + 1, 20, far, far)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
     public void aFlyerOutOfReachIsNotAReasonToChainAFight() {
         CombatCommit c = fightOn(zombie(1, 2, 0));
         // the zombie dies, a blaze that hit us is at eight blocks: no chain, the fight is over
