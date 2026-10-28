@@ -24,7 +24,7 @@ public class PearlHuntAwayTest {
     @Test
     public void aSparseFlipReachesTheGiveUpOnWallTime() {
         PearlHuntTask.AwayCount c = fresh();
-        // 4 flee ticks every 20, the log's shape: 300 flee ticks used to take 1500
+        // 4 flee ticks every 20: counting only the flee ticks would take 1500 ticks to reach 300
         int giveUpAt = -1;
         for (int t = 0; t < 600 && giveUpAt < 0; t++) {
             c = c.step(t, t % 20 < 4);
