@@ -83,6 +83,8 @@ public final class CombatCommit {
     public static final double WAY_PROGRESS = 1;
     // an in-the-way fight is over once it is this far off (and not hitting us), the path is clear again
     public static final double WAY_RELEASE = 4;
+    // a flyer fight lets go this far past contact, so a blaze bobbing at the edge does not flip it on and off
+    public static final double FLYER_SLACK = 1.5;
     // baritone drops the path for a tick or two between giving up on a place and the next search. that is not "we stopped
     // wanting to move", so the boxed clock only starts over after this long without a path
     public static final long WAY_GAP_TICKS = 10;
@@ -1345,6 +1347,8 @@ public final class CombatCommit {
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
         double release = why == Why.RIM ? CombatRules.RIM_RELEASE : WAY_RELEASE;
         if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > release && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
+        // a blaze drifted off after it hit us: it is only a fight in contact, chasing it along a ledge is how we get shot off
+        if (target.kind() == Kind.FLYER && target.distance() > CONTACT + FLYER_SLACK) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
         // after three seconds, only the stall rule below writes that one off)
