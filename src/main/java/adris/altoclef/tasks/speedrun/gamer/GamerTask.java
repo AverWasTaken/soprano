@@ -1325,7 +1325,7 @@ public class GamerTask extends Task {
             return nightTrip;
         }
         // not time yet, or not allowed to go: the bed gets made ready for when it is
-        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, inPortal || (busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE),
+        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE && !NightSleep.keepsSpawnBed(state.phase, NightSleep.BedSource.BAG, spawnBedStands(mod)), inPortal || (busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE),
                 fighting, hurt, spent, windowOpen);
         Task prep = nightPrep.tick(mod, gate, () -> nightBedReady(mod, leftover));
         sayNight(mod, why, busy, null);
@@ -1377,15 +1377,19 @@ public class GamerTask extends Task {
         boolean dusk = NightShelter.dark(windowOpen, mod.getWorld().getOverworldClockTime(), 0);
         // only a fight that is really on counts, the heal-up hold after one is the very case for a hole
         boolean inFight = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
-        NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && facts.count(ItemHelper.BED) == 0,
+        // a nether or eyes leg home for food has no bed it may use: no armor or death needed, the hole is the answer
+        boolean tripNight = state.phase == GamerPhase.NETHER || state.phase == GamerPhase.EYES;
+        NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && (tripNight || facts.count(ItemHelper.BED) == 0),
                 SmeltSurface.depthBelowSky(mod), recover != null, inFight, busy != NightSleep.Busy.NONE || WorldHelper.isStandingInPortal(mod),
-                shelterOnce.used(night), sinceDeath);
+                shelterOnce.used(night), sinceDeath, tripNight);
         if (!NightShelter.wanted(t) || gameTime - shelterLookAt < 20) {
             return null;
         }
         shelterLookAt = gameTime;
-        boolean noBed = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
-                BedCraft.usableWood(mod)) == NightSleep.BedSource.NONE;
+        NightSleep.BedSource source = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
+                BedCraft.usableWood(mod));
+        // a bed that keepsSpawnBed would not let it use is no bed for tonight
+        boolean noBed = NightShelter.noBedTonight(state.phase, source, spawnBedStands(mod));
         BlockPos spot = noBed ? ShelterTask.pick(mod, shelterFailedNight == night ? shelterFailedSpot : null) : null;
         if (spot == null) {
             return null;
