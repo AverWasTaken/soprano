@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
+import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
@@ -56,6 +57,23 @@ public final class EndGear {
     // and PhaseMachine resets the attempt to 1 on every move, so the deaths are what says "we already tried this"
     public static boolean relaxed(int attempt, int endDeaths) {
         return attempt >= 2 || endDeaths >= 1;
+    }
+
+    // the beds the prep asks for. once the sheep chase gave up (WoolHunt) it takes what the bag can make, never more than cfg.beds.
+    // with beds already held it takes just those: the bed collector counts a held bed of another colour towards one colour's target
+    // and would go back out for sheep. the dragon fight falls back to the sword when the beds run out
+    public static int bedsRequired(GamerFacts facts, EndConfig cfg, boolean woolGaveUp) {
+        if (!woolGaveUp) {
+            return cfg.beds;
+        }
+        int held = facts.count(ItemHelper.BED);
+        return held > 0 ? Math.min(cfg.beds, held) : Math.min(cfg.beds, KitPlanner.usableWool(facts) / 3);
+    }
+
+    // the spawn bed rides on a spare. after the chase gave up there is no wool to make one, so only a bed beyond the required ones
+    // counts (nothing is crafted for it)
+    public static boolean spawnBedAffordable(GamerFacts facts, int bedsRequired, boolean woolGaveUp) {
+        return !woolGaveUp || facts.count(ItemHelper.BED) > bedsRequired;
     }
 
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)

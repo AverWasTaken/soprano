@@ -123,7 +123,7 @@ public class EndPrepPhase implements PhaseHandler {
         giveUpSpawnWhenSlow(ctx, cfg);
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
-        int required = relaxed(ctx) ? 0 : cfg.beds;
+        int required = relaxed(ctx) ? 0 : EndGear.bedsRequired(ctx.facts(), cfg, state.woolHuntGaveUp);
         if (state.deaths.size() != _bucketDeaths) {
             resetBucket(state.deaths.size());
         }
@@ -163,8 +163,9 @@ public class EndPrepPhase implements PhaseHandler {
     // beds, then the spawn bed. returns null when both are done (or given up on)
     private Task bedStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
         RunState state = ctx.state();
-        boolean wantSpawn = EndGear.wantSpawnBed(state, cfg) && !relaxed(ctx);
-        int required = relaxed(ctx) ? 0 : cfg.beds;
+        int required = relaxed(ctx) ? 0 : EndGear.bedsRequired(ctx.facts(), cfg, state.woolHuntGaveUp);
+        boolean wantSpawn = EndGear.wantSpawnBed(state, cfg) && !relaxed(ctx)
+                && EndGear.spawnBedAffordable(ctx.facts(), required, state.woolHuntGaveUp);
         int lacking = EndGear.bedShortfall(ctx.facts(), state, cfg, required, wantSpawn);
         if (lacking > 0) {
             // the catalogue counts what we hold, so ask for the total

@@ -173,6 +173,11 @@ public interface GamerFacts {
         return false;
     }
 
+    // the sheep chase for the beds ran out of time this run (RunState.woolHuntGaveUp), same deal again
+    default boolean woolHuntGaveUp() {
+        return false;
+    }
+
     // a gold ore sits in the loaded chunks near us (GoldHunt.RADIUS). the plan only asks for raw gold when this is true, because
     // with no ore known the mining task would just wander
     default boolean goldOreKnown() {

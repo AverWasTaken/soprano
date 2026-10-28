@@ -370,7 +370,9 @@ public record WoodBudget(
     }
 
     static int bedPlanksOwed(GamerFacts f, int endBeds) {
-        return 3 * Math.max(0, endBeds - f.count(ItemHelper.BED));
+        // the sheep chase gave up: only the beds the wool we hold can still make need planks
+        int beds = f.woolHuntGaveUp() ? Math.min(endBeds, f.count(ItemHelper.BED) + KitPlanner.usableWool(f) / 3) : endBeds;
+        return 3 * Math.max(0, beds - f.count(ItemHelper.BED));
     }
 
     // the first trip to the trees: just the table and the axe, so the axe is in hand for the real batch
