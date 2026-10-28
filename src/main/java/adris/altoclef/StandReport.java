@@ -4,6 +4,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.Lines;
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.process.IBaritoneProcess;
@@ -18,6 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
 
 import java.lang.reflect.Field;
@@ -69,6 +71,22 @@ final class StandReport {
                 keys(baritone, player), held(mc.options), player.isCrouching(), mc.gui.screen() == null ? null : mc.gui.screen().getClass().getSimpleName(), using(player),
                 player.onGround(), player.isInWater(), calc(pb), chain(taskChain), taskChain == null ? null : leaf(taskChain.getTasks()),
                 Lines.lastDebug(lastDebug, lastDebugAgo)));
+    }
+
+    // the lava entry line: what was driving when we hit the lava, so a death in it can be pinned on a goal or a task
+    static String lava(AltoClef mod, Baritone baritone, LocalPlayer player, String dimension) {
+        PathingBehavior pb = baritone.getPathingBehavior();
+        PathExecutor exec = pb.getCurrent();
+        IPath path = exec == null ? null : exec.getPath();
+        TaskChain taskChain = mod.getTaskRunner().getCurrentTaskChain();
+        return "lava: entered at " + at(player.getBlockX(), player.getBlockY(), player.getBlockZ()) + " [" + dimension + "]"
+                + " task=" + (taskChain == null ? null : leaf(taskChain.getTasks()))
+                + " goal=" + pb.getGoal()
+                + " move=" + move(exec, path, exec == null ? 0 : exec.getPosition())
+                + " swimLava=" + AltoClefSettings.getInstance().canSwimThroughLava()
+                + " onFire=" + player.isOnFire()
+                + " fireRes=" + player.hasEffect(MobEffects.FIRE_RESISTANCE)
+                + " hp=" + Math.round(player.getHealth());
     }
 
     private static String move(PathExecutor exec, IPath path, int index) {

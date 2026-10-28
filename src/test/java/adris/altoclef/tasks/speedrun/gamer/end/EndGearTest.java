@@ -350,4 +350,15 @@ public class EndGearTest {
         assertNull(EndGear.nextPickup(f, cfg, item -> item == Items.IRON_PICKAXE || item == Items.WATER_BUCKET
                 || item == Items.BED.white() || item == Items.IRON_HELMET || item == Items.DIAMOND_HELMET));
     }
+
+    @Test
+    public void theGateNamesTheFirstGapInPhaseOrder() {
+        assertEquals("none", EndGear.gate(new EndGear.Gap(0, false, false, false, 0, false, List.of())));
+        assertEquals("beds", EndGear.gate(new EndGear.Gap(1, true, true, true, 20, true, List.of(Items.IRON_HELMET))));
+        assertEquals("weapon", EndGear.gate(new EndGear.Gap(0, true, true, true, 20, true, List.of())));
+        assertEquals("pickaxe", EndGear.gate(new EndGear.Gap(0, false, false, true, 20, true, List.of())));
+        assertEquals("blocks", EndGear.gate(new EndGear.Gap(0, false, false, false, 20, true, List.of(Items.IRON_HELMET))));
+        assertEquals("armor", EndGear.gate(new EndGear.Gap(0, false, false, false, 0, true, List.of(Items.IRON_HELMET))));
+        assertEquals("food", EndGear.gate(new EndGear.Gap(0, false, false, false, 0, true, List.of())));
+    }
 }

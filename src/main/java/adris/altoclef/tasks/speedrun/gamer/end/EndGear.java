@@ -40,6 +40,18 @@ public final class EndGear {
         }
     }
 
+    // which gap the prep is working on, in the order the phase goes through them (beds, then gearStep's order). "none" = all there
+    public static String gate(Gap gap) {
+        if (gap.beds() > 0) return "beds";
+        if (gap.weapon()) return "weapon";
+        if (gap.waterBucket()) return "water_bucket";
+        if (gap.pickaxe()) return "pickaxe";
+        if (gap.buildBlocks() > 0) return "blocks";
+        if (!gap.armorToWear().isEmpty()) return "armor";
+        if (gap.food()) return "food";
+        return "none";
+    }
+
     // a second try goes with what it has: a stall retry bumps the attempt, but dying in the End regresses DRAGON to END_PREP
     // and PhaseMachine resets the attempt to 1 on every move, so the deaths are what says "we already tried this"
     public static boolean relaxed(int attempt, int endDeaths) {

@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.chains.MLGBucketFallChain;
 import adris.altoclef.tasks.DoToClosestBlockTask;
@@ -10,6 +11,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -51,6 +53,8 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _toPortal;
     private BlockPos _toPortalAt;
     private String _hudState;
+    // the gap the last gate line named, so a line goes out only when it changes
+    private String _lastGate;
     // the water bucket errand, per attempt: ticks the step ran, the pond it is on, and whether it gave up (see EndGear.wantsWater).
     // onEnter resets it, and so does a new death (the overworld death does not re-enter the phase)
     private int _bucketTicks;
@@ -83,6 +87,7 @@ public class EndPrepPhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         ensureTasks();
+        _lastGate = null;
         // the task keeps its "spawn is set" flag from the last visit, a death in the End means it may be gone
         _setSpawn.resetSleep();
         _spawnNoted = false;
@@ -123,6 +128,7 @@ public class EndPrepPhase implements PhaseHandler {
             resetBucket(state.deaths.size());
         }
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
+        noteGate(mod, ctx, gap);
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
@@ -130,6 +136,24 @@ public class EndPrepPhase implements PhaseHandler {
         // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
         ctx.walkOnEndPortal(step == null);
         return step != null ? step : walkIn();
+    }
+
+    // a line when the gap we are working on changes, with the numbers the gate went by (not every tick)
+    private void noteGate(AltoClef mod, GamerContext ctx, EndGear.Gap gap) {
+        String gate = EndGear.gate(gap);
+        // a block collection that already started runs past the gap (blocksStep), so it is still the step
+        if ((gate.equals("armor") || gate.equals("food") || gate.equals("none")) && _buildBlocks != null && _buildBlocks.isActive()
+                && !_buildBlocks.isFinished(mod)) {
+            gate = "blocks";
+        }
+        if (gate.equals(_lastGate)) {
+            return;
+        }
+        _lastGate = gate;
+        Debug.logInternal("endprep: gate " + gate + " (beds short " + gap.beds() + ", blocks to get " + gap.buildBlocks() + ", food "
+                + FoodTripRules.units(ctx.food()) + " units / " + ctx.food().held() + " held" + (gap.food() ? " SHORT" : "")
+                + ", weapon " + (gap.weapon() ? "missing" : "ok") + ", pickaxe " + (gap.pickaxe() ? "missing" : "ok")
+                + ", armor to wear " + gap.armorToWear().size() + ", bucket " + (gap.waterBucket() ? "missing" : "ok") + ")");
     }
 
     private static boolean relaxed(GamerContext ctx) {

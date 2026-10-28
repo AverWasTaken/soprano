@@ -132,7 +132,7 @@ public class WitchHitTest {
         assertEquals(Event.RUN_START, c.step(tick(gaveUp + 20, null, lobber(8, 2))));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(CombatCommit.Why.LOBBER, c.why());
-        assertEquals("combat: [overworld] RUN from witch (can't reach it)",
+        assertEquals("combat: [overworld] RUN from witch (can't reach it) [LOBBER]",
                 CombatLog.line(Dimension.OVERWORLD, Event.RUN_START, c.why(), false, "witch", "it", "1 witch", 20, 0));
     }
 
