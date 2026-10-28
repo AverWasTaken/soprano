@@ -128,7 +128,7 @@ public class EndPrepPhase implements PhaseHandler {
             resetBucket(state.deaths.size());
         }
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
-        noteGate(ctx, gap);
+        noteGate(mod, ctx, gap);
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
@@ -139,8 +139,13 @@ public class EndPrepPhase implements PhaseHandler {
     }
 
     // a line when the gap we are working on changes, with the numbers the gate went by (not every tick)
-    private void noteGate(GamerContext ctx, EndGear.Gap gap) {
+    private void noteGate(AltoClef mod, GamerContext ctx, EndGear.Gap gap) {
         String gate = EndGear.gate(gap);
+        // a block collection that already started runs past the gap (blocksStep), so it is still the step
+        if ((gate.equals("armor") || gate.equals("food") || gate.equals("none")) && _buildBlocks != null && _buildBlocks.isActive()
+                && !_buildBlocks.isFinished(mod)) {
+            gate = "blocks";
+        }
         if (gate.equals(_lastGate)) {
             return;
         }

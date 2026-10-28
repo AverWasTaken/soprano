@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -22,6 +23,7 @@ import java.util.Optional;
 // dig down at the start chunk, walk the chunk spiral, find the 12 frames. when the spiral is dry once, the rays are
 // thrown away and LOCATE runs again from a spot 150 blocks sideways (the regress is just "no strongholdStart")
 public class RoomPhase implements PhaseHandler {
+    private boolean hopelessSaid;
     private StrongholdRoomSearchTask task;
     private boolean keepTask;
     private int movingRetries;
@@ -60,11 +62,18 @@ public class RoomPhase implements PhaseHandler {
         if (state.strongholdStart == null && state.endPortalCenter == null) {
             return Optional.of(GamerPhase.LOCATE);
         }
-        return StrongholdRules.regressForEyes(facts, state);
+        Optional<GamerPhase> back = StrongholdRules.regressForEyes(facts, state);
+        // polled every tick, said once per visit
+        if (back.isPresent() && !hopelessSaid) {
+            hopelessSaid = true;
+            Debug.logInternal(StrongholdRules.hopelessLine(facts, state));
+        }
+        return back;
     }
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
+        hopelessSaid = false;
         // a retry because the spiral is still working keeps the task: a fresh one walks back to the start chunk and forgets
         // the level it searches at. anything else (first entry, a regress back here) starts clean
         if (keepTask && task != null) {

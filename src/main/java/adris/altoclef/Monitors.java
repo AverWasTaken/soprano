@@ -148,7 +148,8 @@ public final class Monitors {
             return;
         }
         DamageSource source = player.hurtTime > 0 ? player.getLastDamageSource() : null;
-        boolean lava = player.isInLava() || (source != null && source.is(DamageTypes.LAVA));
+        // only standing in it keeps the latch held: a lava hit that lingers after we climbed out must not eat the re-arm count
+        boolean lava = player.isInLava() || (lavaLatch.armed() && source != null && source.is(DamageTypes.LAVA));
         if (lavaLatch.tick(lava)) {
             Debug.logInternal(StandReport.lava(mod, mod.getClientBaritone(), player, WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT)));
         }

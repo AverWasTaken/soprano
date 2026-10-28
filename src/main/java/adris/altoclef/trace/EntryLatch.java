@@ -12,6 +12,11 @@ public final class EntryLatch {
         this.gap = gap;
     }
 
+    // true when the next active tick would count as an entry
+    public boolean armed() {
+        return armed;
+    }
+
     // true on the tick that counts as a fresh entry
     public boolean tick(boolean active) {
         if (active) {

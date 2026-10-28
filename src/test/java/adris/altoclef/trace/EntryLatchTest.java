@@ -43,4 +43,15 @@ public class EntryLatchTest {
             assertFalse(l.tick(false));
         }
     }
+
+    @Test
+    public void armedSaysWhetherTheNextEntryCounts() {
+        EntryLatch l = new EntryLatch(2);
+        assertTrue(l.armed());
+        l.tick(true);
+        assertFalse(l.armed());
+        l.tick(false);
+        l.tick(false);
+        assertTrue(l.armed());
+    }
 }
