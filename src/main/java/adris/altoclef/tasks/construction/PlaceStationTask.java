@@ -144,7 +144,8 @@ public class PlaceStationTask extends Task {
         StationSpots.Stance stance = stance(mod);
         Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance, _bans, _carved, why);
         if (spot.isEmpty()) {
-            _attempt.noSpot(mod.getPlayer().onGround());
+            // onGround is never true in deep water, a steady swim has to count or the ladder never starts
+            _attempt.noSpot(mod.getPlayer().onGround() || mod.getPlayer().isInWater());
             // once per streak, the picks that follow ask the same question
             if (_attempt.noSpotTicks() == 1 || _attempt.phase() != StationAttempt.Phase.PICK) {
                 Debug.logInternal("station spots: no spot around " + mod.getPlayer().blockPosition().toShortString() + ": " + why.summary());
@@ -257,13 +258,20 @@ public class PlaceStationTask extends Task {
     private Task relocate(AltoClef mod) {
         mod.getInputControls().release(Input.SNEAK);
         if (_walk == null) {
-            Optional<StationSpots.Stand> stand = StationSpots.standpoint(new World(mod), stance(mod), _bans, sneakEyeHeight(mod));
+            World world = new World(mod);
+            LocalPlayer player = mod.getPlayer();
+            // afloat, no floor to walk from: swim to the nearest bank first, the pick runs again from there
+            boolean swimming = player.isInWater() && !player.onGround();
+            Optional<StationSpots.Stand> shore = swimming ? StationSpots.nearestShore(world, stance(mod), StationSpots.SHORE_RADIUS) : Optional.empty();
+            Optional<StationSpots.Stand> stand = shore.isPresent() ? shore
+                    : StationSpots.standpoint(world, stance(mod), _bans, sneakEyeHeight(mod));
             if (stand.isEmpty()) {
                 _attempt.noStandpoint();
                 return null;
             }
             BlockPos at = new BlockPos(stand.get().x(), stand.get().y(), stand.get().z());
-            Debug.logInternal("station: walking to a better patch at " + at.toShortString() + " (move " + _attempt.relocations() + ")");
+            Debug.logInternal(shore.isPresent() ? "station: in water, swimming to shore at " + at.toShortString()
+                    : "station: walking to a better patch at " + at.toShortString() + " (move " + _attempt.relocations() + ")");
             _carved = null;
             _walk = new GetToBlockTask(at);
             _walkTimer.reset();
