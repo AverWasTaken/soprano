@@ -932,7 +932,7 @@ public final class CombatCommit {
         // under the flee line with something melee on us the latch has no say: another fight at that hp is the one that kills
         // us, and the break counter is for the crowd. boxed or with something fast on us it still stays the cornered fight, see
         // runOrBox. a shooter out there or a mob we gave up on is not that, the latch exists for exactly those
-        if (reason == Why.LOW_HP && t.health() <= FLEE_HP && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
+        if (reason == Why.LOW_HP && (t.health() <= FLEE_HP || (t.lingering() && t.low())) && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
         return Why.NONE;
     }
 
