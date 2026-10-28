@@ -293,7 +293,7 @@ public class RecoverItemsTask extends Task {
                     out.add(mob);
                 }
             }
-        } catch (ConcurrentModificationException ignored) {
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException ignored) {
             // the tracker rebuilds its lists on another thread, an empty look this tick just means one more tick of walking
         }
         return out;

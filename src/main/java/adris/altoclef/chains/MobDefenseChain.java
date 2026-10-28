@@ -103,6 +103,8 @@ public class MobDefenseChain extends SingleTaskChain {
     // the wall beside us (CreeperCap.besideCell): the cell picked for this step, kept once picked so the block landing in it
     // does not make the wall look done-and-forgotten
     private BlockPos _capBeside;
+    // CreeperEscape found nowhere to run, as of this tick's stepCreepers
+    private boolean _creeperNoHeading;
     // sneak while clicking, same reason as PlaceStationTask: a chest or a table in the wall opens instead of taking the block
     // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
     // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
@@ -346,7 +348,8 @@ public class MobDefenseChain extends SingleTaskChain {
             dropCapSneak(mod);
             // capped: the wheel stays ours and goes nowhere. the step's own task would walk
             // straight through the block we just put up
-            boolean capped = _capPlaced;
+            // (a wall beside us is no door in the way: with a way out open the step runs, it does not sit behind a block)
+            boolean capped = _capPlaced && (_capBeside == null || _creeperNoHeading);
             if (_creeperStep.cornered()) {
                 if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
@@ -675,7 +678,7 @@ public class MobDefenseChain extends SingleTaskChain {
     // the cap clicks the shaft walls and then the roof. the wall beside us goes on the floor first: in a one wide tunnel the
     // side walls are grazing clicks that never pass the ray check, and the floor's top face one block ahead is in plain view
     private static final Direction[] CAP_SUPPORT = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
-    private static final Direction[] BESIDE_SUPPORT = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+    private static final Direction[] BESIDE_SUPPORT = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
 
     private boolean placeCell(AltoClef mod, BlockPos cell, Direction[] supportOrder) {
         LocalPlayer player = mod.getPlayer();
@@ -801,6 +804,9 @@ public class MobDefenseChain extends SingleTaskChain {
             _capAbove = held != null && CreeperCap.creeperAbove(true, held.getY() - player.getY(),
                     Math.hypot(held.getX() - player.getX(), held.getZ() - player.getZ()));
         }
+        _creeperNoHeading = noHeading;
+        // a way out opened before the block went up: nobody needs the wall
+        if (!noHeading && !_capPlaced) _capBeside = null;
         // no way out and the creeper down the tunnel with us: a wall beside us, picked once per step
         if (_creeperStep.active() && noHeading && !_capAbove && _capBeside == null && !_capDone) {
             Entity held = mod.getWorld().getEntity(_creeperStep.creeperId());
