@@ -92,6 +92,16 @@ public class FoodTripRulesTest {
         assertEquals(108 - gap, FoodTripRules.units(plan));
     }
     @Test
+    public void meatLoadingIntoAnOpenSmokerDoesNotEndTheTrip() {
+        // 8 in the bag, 136 of raw meat in the screen already inside held, nothing recorded yet
+        int units = FoodTripRules.bagOnly(144, 0, 136);
+        assertEquals(8, units);
+        assertTrue(FoodTripRules.tripFoodShort(units, 70));
+        // once the job is recorded the share is pending instead (station reads 0), same answer
+        assertEquals(8, FoodTripRules.bagOnly(144, 136, 0));
+    }
+
+    @Test
     public void noPortalStays() {
         assertFalse(FoodTripRules.goHome(0, 0, false, false, 0));
     }

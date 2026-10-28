@@ -551,7 +551,7 @@ public class EntityTracker extends Tracker {
         long pos = drop.blockPosition().asLong();
         PickupVerdict verdict = _pickupVerdicts.get(drop.getId());
         if (verdict == null || verdict.pos() != pos || now - verdict.tick() >= PICKUP_RECHECK_TICKS) {
-            verdict = new PickupVerdict(pos, now, allowWetDrops || ItemPickupRules.isPickupSafe(drop), ItemPickupRules.lavaBlocksPickup(drop));
+            verdict = new PickupVerdict(pos, now, allowWetDrops || ItemPickupRules.worthSwimming(drop) || ItemPickupRules.isPickupSafe(drop), ItemPickupRules.lavaBlocksPickup(drop));
         }
         verdicts.put(drop.getId(), verdict);
         return verdict;
