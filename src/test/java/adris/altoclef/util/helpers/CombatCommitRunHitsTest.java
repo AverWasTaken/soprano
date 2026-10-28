@@ -166,16 +166,29 @@ public class CombatCommitRunHitsTest {
         Foe hangingBack = zombie(1, 5, stall - NOW);
         assertEquals(Event.FIGHT_STALLED, c.step(tick(stall, 20, 0, true, hangingBack, hangingBack)));
         assertTrue(c.isIgnored(1));
-        // after the cooldown, hurt with another zombie near: a run
+        // after the cooldown, a crowd with it in the picture again: a run
         long run = stall + CombatCommit.COOLDOWN;
-        assertEquals(Event.RUN_START, c.step(tick(run, 7, 0, true, null, zombie(2, 5, NEVER), zombie(1, 6, run - NOW))));
+        assertEquals(Event.RUN_START, c.step(tick(run, 20, 0, true, null, zombie(2, 2.4, NEVER), zombie(3, 2.6, NEVER), zombie(4, 2.8, NEVER), zombie(1, 6, run - NOW))));
         // zombie 1 catches up and stays on us biting. it hit us since we gave up on it, so it is news, and the hits
         // add up to the turn
         long bite = run + 1;
-        Event seen = walk(c, bite, bite + 100, 7, true, 0, now -> new Foe[]{zombie(1, 2, since(now, bite, bite + GRACE + 2, bite + GRACE + 15)), zombie(2, 5, NEVER)});
+        Event seen = walk(c, bite, bite + 100, 20, true, 0, now -> new Foe[]{zombie(1, 2, since(now, bite, bite + GRACE + 2, bite + GRACE + 15)), zombie(2, 2.4, NEVER), zombie(3, 2.6, NEVER), zombie(4, 2.8, NEVER)});
         assertEquals(Event.RUN_CHASED_FIGHT, seen);
         assertEquals(1, c.targetId());
         assertEquals(Why.CHASED, c.why());
+    }
+
+    @Test
+    public void aLowHpRunHitTwiceStaysARun() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 7, 0, true, null, zombie(1, 2, 0))));
+        assertEquals(Why.LOW_HP, c.why());
+        long first = NOW + GRACE + 10;
+        long second = first + 30;
+        // the same two hits that turn a healthy run round: hurt, turning round is the fight that ends us
+        assertEquals(Event.NONE, walk(c, NOW + 1, NOW + 300, 7, true, 0,
+                now -> new Foe[]{zombie(1, bounce(now, NOW), since(now, first, second))}));
+        assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
