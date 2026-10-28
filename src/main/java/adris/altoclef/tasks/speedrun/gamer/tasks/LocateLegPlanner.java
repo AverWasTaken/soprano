@@ -27,6 +27,15 @@ public final class LocateLegPlanner {
         return baseline > 0 && eyesHeld < baseline && (flying || dropNearby);
     }
 
+    // the eye item needs this long after the entity vanishes to fall into the tracker's grounded window
+    public static final double DROP_SETTLE_SECONDS = 3.0;
+
+    // keep waiting for the drop: the eye is gone, not seen on the ground yet, and not gone for too long.
+    // NaN sinceGone fails the < and stops the wait, so callers stamp the gone time first
+    static boolean settleWait(boolean flying, double sinceGone, boolean dropSeen) {
+        return !flying && !dropSeen && sinceGone < DROP_SETTLE_SECONDS;
+    }
+
     // where to go after a throw that gave no bearing: toward the guess if we have one (progress at least), else
     // along the ring tangent like a second attempt. never the same spot
     public static double[] forcedWalkTarget(double px, double pz, boolean hasEstimate, double estX, double estZ) {
