@@ -311,8 +311,14 @@ public class NetherTripRulesTest {
         Step back = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.OVERWORLD, 99999, 100, 0, false, 300, false, 0, true, 0, LIMITS));
         assertNull(back.stage());
         assertNull(back.giveUp());
-        Step tired = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2401, 0, false, 300, false, 0, true, 0, LIMITS));
+        Step tired = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2401, 0, false, 300, false, 0, false, 0, LIMITS));
         assertNull(tired.stage());
+    }
+
+    @Test
+    public void aShortKitGetsALongWalkHome() {
+        assertEquals(Stage.HOME, NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2401, 0, false, 300, false, 0, true, 0, LIMITS)).stage());
+        assertNull(NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 12001, 0, false, 300, false, 0, true, 0, LIMITS)).stage());
     }
 
     // ---- a whole trip, stage by stage
