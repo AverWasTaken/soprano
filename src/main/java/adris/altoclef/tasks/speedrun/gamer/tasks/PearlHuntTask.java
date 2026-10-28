@@ -383,7 +383,7 @@ public class PearlHuntTask extends Task {
     // a back off streak: the game time of its first flee and of the last one. the streak has a short memory (AWAY_CALM_RESET_TICKS)
     // so a back off that flips with the lava distance is still one streak, and it is read off the clock so the ticks spent
     // fighting or walking instead count as calm too. the length is wall time since the first flee, not the flee ticks in it:
-    // a flip flee is 3-5 ticks every 20 or so, and counting only those took minutes to get anywhere
+    // a flip flees a few ticks out of every twenty, and counting only those takes minutes to get anywhere
     record AwayCount(long first, long lastFlee) {
         static final AwayCount NONE = new AwayCount(Long.MAX_VALUE / 2, Long.MIN_VALUE / 2);
 

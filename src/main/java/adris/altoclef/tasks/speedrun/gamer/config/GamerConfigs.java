@@ -49,7 +49,7 @@ public final class GamerConfigs {
         if (from < 8 && c.overworld != null && c.overworld.netherSpareShields == 2) {
             c.overworld.netherSpareShields = new GamerConfig().overworld.netherSpareShields;
         }
-        // and the pearl hunt window: 10 was the default until pearls turned out to come 6-7 minutes apart by the lava
+        // and the pearl hunt window: 10 was the default until the window was widened for slow lava hunts
         if (from < 9 && c.nether != null && c.nether.huntWanderMinutes == 10) {
             c.nether.huntWanderMinutes = new GamerConfig().nether.huntWanderMinutes;
         }
