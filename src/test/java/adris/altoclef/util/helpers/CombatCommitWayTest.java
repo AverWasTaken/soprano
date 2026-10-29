@@ -147,8 +147,37 @@ public class CombatCommitWayTest {
         c.step(tick(0, List.of(zombie(1.5)), null, inWay(1)));
         assertEquals(Event.NONE, c.step(tick(1, List.of(zombie(3.9)), zombie(3.9), pathing(64))));
         assertEquals(Mode.FIGHT, c.mode());
-        assertEquals(Event.FIGHT_CLEARED, c.step(tick(2, List.of(zombie(4.5)), zombie(4.5), pathing(64))));
+        // (a melee foe has to stay out there, see the hold test)
+        long t = 2;
+        for (; t < 2 + CombatCommit.WAY_RELEASE_TICKS; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, List.of(zombie(4.5)), zombie(4.5), pathing(64))));
+        }
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(t, List.of(zombie(4.5)), zombie(4.5), pathing(64))));
         assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aKnockbackBlipPastTheLineDoesNotEndTheFight() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(0, List.of(zombie(1.5)), null, inWay(1)));
+        // our own swing pushes it out for a few ticks, then it is back on us
+        long t = 1;
+        for (; t < 10; t++) assertEquals(Event.NONE, c.step(tick(t, List.of(zombie(4.5)), zombie(4.5), pathing(64))));
+        assertEquals(Event.NONE, c.step(tick(t++, List.of(zombie(2)), zombie(2), pathing(64))));
+        // and the clock starts over: another stretch shorter than the hold is still a fight
+        for (long end = t + CombatCommit.WAY_RELEASE_TICKS - 1; t < end; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, List.of(zombie(4.5)), zombie(4.5), pathing(64))));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aShooterWayFightStillLetsGoAtOnce() {
+        // the hold is for melee foes. a shooter (a sniper fight is PINNED, but the same target kind) keeps the old line
+        CombatCommit c = new CombatCommit();
+        c.step(tick(0, List.of(zombie(1.5)), null, inWay(1)));
+        Foe skeleton = new Foe(1, 4.5, true, false, NEVER);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, List.of(skeleton), skeleton, pathing(64))));
     }
 
     @Test
@@ -171,10 +200,11 @@ public class CombatCommitWayTest {
     public void stillInTheWayRightAfterACooldownStartsAgain() {
         CombatCommit c = new CombatCommit();
         c.step(tick(0, List.of(zombie(1.5)), null, inWay(1)));
-        c.step(tick(1, List.of(zombie(5)), zombie(5), pathing(64)));
+        long t = 1;
+        for (; t <= 1 + CombatCommit.WAY_RELEASE_TICKS; t++) c.step(tick(t, List.of(zombie(5)), zombie(5), pathing(64)));
         assertEquals(Mode.NONE, c.mode());
         // the cooldown is on, but a mob back in the way is a path that cannot go on
-        assertEquals(Event.FIGHT_START, c.step(tick(2, List.of(zombie(2)), null, inWay(1))));
+        assertEquals(Event.FIGHT_START, c.step(tick(t, List.of(zombie(2)), null, inWay(1))));
     }
 
     @Test
