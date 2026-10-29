@@ -88,6 +88,8 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         // an interrupt (a fall, a lava escape) restarts this same object and cancels baritone's path: the gap belongs to the
         // path that just got cancelled, so the first ask afterwards always goes through
         _lastIssue = Long.MIN_VALUE / 2;
+        // (a swim to the bank cut short: the cached goal is that bank, drop it so the run goal comes back)
+        if (_toShore) _cachedGoal = null;
         _toShore = false;
     }
 
