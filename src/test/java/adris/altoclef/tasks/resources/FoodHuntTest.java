@@ -44,6 +44,13 @@ public class FoodHuntTest {
     }
 
     @Test
+    public void aRabbitIsWorthTheWalkWhenItIsTheOnlyMeat() {
+        assertEquals(1, pick(-1, false, c(1, Kind.RABBIT, 20)));
+        // but a chicken the same distance is more meat
+        assertEquals(2, pick(-1, false, c(1, Kind.RABBIT, 10), c(2, Kind.CHICKEN, 10)));
+    }
+
+    @Test
     public void nearSheepBeatsFarPig() {
         // the bug report itself: the old rule took the pig regardless
         assertEquals(2, pick(-1, false, c(1, Kind.PIG, 80), c(2, Kind.SHEEP, 5)));
