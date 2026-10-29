@@ -129,6 +129,14 @@ public final class DeathRules {
         return n;
     }
 
+    // how far we walk for a pile worth it (eyes, a kit, iron, a week of food). the plain reach is for a bag that held little,
+    // a pile like this is the run itself and worth a long walk. a reach of 0 stays 0
+    public static final int RICH_REACH = 3000;
+
+    public static int reachFor(Worth worth, int foodLine, int reach) {
+        return reach > 0 && worth != null && worth.rich(foodLine) ? Math.max(reach, RICH_REACH) : reach;
+    }
+
     // null = go back for it, else why not, in the words the log gets. a null `worth` is a bag we never got to see: go.
     // dying again at the pile we were going back for is the loop to stop, however rich the new one is, and so is a spot that
     // already killed us KILLS_AT_A_SPOT times. one old death there is fine: a pile recovered in between is not a loop

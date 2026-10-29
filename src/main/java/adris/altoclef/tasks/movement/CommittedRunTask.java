@@ -3,13 +3,17 @@ package adris.altoclef.tasks.movement;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.baritone.GoalCommittedRun;
+import adris.altoclef.util.baritone.SnapshotGoal;
 import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.tasks.construction.PlaceStationTask;
 import baritone.api.pathing.goals.Goal;
+import baritone.api.pathing.goals.GoalBlock;
 import baritone.pathing.movement.CliffAvoidance;
 import baritone.utils.BlockStateInterface;
 import java.util.List;
 import java.util.function.Supplier;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 
 // the run CombatCommit asked for. it never finishes on its own: the commitment knows when 24 blocks and two quiet seconds
@@ -31,6 +35,8 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     private final double _originZ;
     private final Supplier<List<Entity>> _crowd;
     private long _lastIssue = Long.MIN_VALUE / 2;
+    // the goal in hand is the swim to the bank, not the run (see pickGoal)
+    private boolean _toShore;
 
     public CommittedRunTask(double originX, double originZ, Supplier<List<Entity>> crowd) {
         // no wander: standing at the goal waiting out the quiet seconds is not "failed to make progress"
@@ -44,6 +50,10 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     protected Goal newGoal(AltoClef mod) {
         // run NOW, not after the user's path finishes its segment
         cancelPath(mod);
+        return runGoal(mod);
+    }
+
+    private Goal runGoal(AltoClef mod) {
         // the goal is asked from the pathfinder thread, so it gets thread safe copies of the loaded chunks (remade by refresh)
         return new GoalCommittedRun(_originX, _originZ, CombatCommit.RUN_DISTANCE, CROWD_CLEAR, _crowd,
                 () -> CliffAvoidance.of(new BlockStateInterface(mod.getClientBaritone().getPlayerContext(), true)));
@@ -62,6 +72,11 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         }
     }
 
+    // in the water with nothing under us (wading on the bottom walks out on its own)
+    static boolean afloat(boolean inWater, boolean onGround) {
+        return inWater && !onGround;
+    }
+
     // standing on something, swimming or on a ladder: nothing to fall out of
     static boolean mayCancelHard(boolean onGround, boolean inWater, boolean onClimbable) {
         return onGround || inWater || onClimbable;
@@ -73,6 +88,7 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         // an interrupt (a fall, a lava escape) restarts this same object and cancels baritone's path: the gap belongs to the
         // path that just got cancelled, so the first ask afterwards always goes through
         _lastIssue = Long.MIN_VALUE / 2;
+        _toShore = false;
     }
 
     @Override
@@ -80,7 +96,27 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         long now = mod.getWorld().getGameTime();
         if (!mayReissue(now, _lastIssue)) return false;
         _lastIssue = now;
+        pickGoal(mod);
         return true;
+    }
+
+    // the goal is cached for the whole task, so the bank is swapped in here, on the reissue ticks. afloat: 24 blocks of open ocean is
+    // the same drowned a bit further off and they swim faster than we do, so the bank is the way out (they follow up the beach,
+    // but then it is a mob on land and the usual rules are back). back on our feet the run goal comes back
+    private void pickGoal(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (afloat(player.isInWater(), player.onGround())) {
+            java.util.Optional<BlockPos> shore = PlaceStationTask.shoreNear(mod);
+            if (shore.isPresent()) {
+                _cachedGoal = new GoalBlock(shore.get());
+                _toShore = true;
+            }
+        } else if (_toShore) {
+            _toShore = false;
+            Goal run = runGoal(mod);
+            if (run instanceof SnapshotGoal snapshot) snapshot.refresh();
+            _cachedGoal = run;
+        }
     }
 
     // the very first issue goes through (nothing was handed over yet), after that one per gap. a clock that went backwards

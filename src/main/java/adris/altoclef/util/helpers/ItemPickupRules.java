@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -125,10 +126,16 @@ public final class ItemPickupRules {
         };
     }
 
-    // eyes of ender are the one drop worth a swim: they are what the stronghold hunt runs on, and losing one costs a trip back
-    // to the Nether. thrown over open ocean they land well off a bridge, where no dry spot is within reach
+    // what a swim is worth: the eyes are what the stronghold hunt runs on (thrown over open ocean they land well off a bridge,
+    // where no dry spot is within reach), and the rest is a death pile that sank or a kit nobody remakes in a minute. the pickup
+    // water watchdog still drops any of these that we are not getting closer to
+    private static final Set<String> SWIM_FOR = Set.of(
+            "ender_eye", "ender_pearl", "blaze_rod", "diamond_pickaxe", "iron_sword", "diamond_sword", "shield", "water_bucket",
+            "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",
+            "diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots");
+
     public static boolean worthSwimming(String itemPath) {
-        return "ender_eye".equals(itemPath);
+        return SWIM_FOR.contains(itemPath);
     }
 
     public static boolean worthSwimming(ItemEntity drop) {

@@ -55,6 +55,24 @@ public class CombatCommitShotTest {
     }
 
     @Test
+    public void aShooterInTheWaterIsNotASniper() {
+        assertEquals(true, skeleton(12, 40, true).sniper());
+        assertEquals(false, skeleton(12, 40, true).withWet(true).sniper());
+    }
+
+    @Test
+    public void aLoneShooterInTheWaterIsNoPinnedFightAtFullHp() {
+        assertEquals(Event.NONE, new CombatCommit().step(tick(20, skeleton(12, 40, true).withWet(true))));
+    }
+
+    @Test
+    public void hurtAndShotAtByOneInTheWaterIsARun() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(6, skeleton(12, 40, true).withWet(true))));
+        assertEquals(CombatCommit.Why.SHOT, c.why());
+    }
+
+    @Test
     public void anArrowThatLandedTwoHundredTicksAgoIsNotShooting() {
         assertEquals(Event.NONE, new CombatCommit().step(tick(6, skeleton(12, 200, true))));
         assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(6, skeleton(12, CombatCommit.SHOT_MEMORY, true))));
