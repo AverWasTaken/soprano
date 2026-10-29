@@ -192,6 +192,24 @@ public class BlazeFightRulesTest {
     }
 
     @Test
+    public void aBlazeInSwingingRangeKeepsTheKillAfterARun() {
+        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 16.9f, 1.5));
+        assertFalse(BlazeFightRules.healAfterRun(1000, 990, 16.9f, BlazeFightRules.LATCH_SKIP_BLAZE_RANGE));
+        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 16.9f, BlazeFightRules.LATCH_SKIP_BLAZE_RANGE + 0.1));
+        assertTrue(BlazeFightRules.healAfterRun(1000, 990, 16.9f, Double.POSITIVE_INFINITY));
+    }
+
+    @Test
+    public void twoWitherSkeletonsAreEnoughForAZone() {
+        java.util.List<double[]> two = java.util.List.of(new double[]{0, 0}, new double[]{4, 2});
+        assertTrue(BlazeFightRules.packCenter(two) == null);
+        double[] c = BlazeFightRules.packCenter(two, BlazeFightRules.ZONE_PACK_SIZE);
+        assertEquals(2, c[0], 1e-9);
+        assertEquals(1, c[1], 1e-9);
+        assertTrue(BlazeFightRules.packCenter(java.util.List.of(new double[]{0, 0}), BlazeFightRules.ZONE_PACK_SIZE) == null);
+    }
+
+    @Test
     public void threeWitherSkeletonsMakeAPack() {
         assertFalse(BlazeFightRules.packNear(0));
         assertFalse(BlazeFightRules.packNear(2));

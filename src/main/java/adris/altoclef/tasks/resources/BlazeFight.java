@@ -102,7 +102,8 @@ final class BlazeFight {
         // a run mob defense made also leaves us hurt: wait it out here like our own run, it is the same latch
         if (!running && mod.getMobDefenseChain() != null) {
             long runEnd = mod.getMobDefenseChain().lastCombatRunEnd();
-            if (runEnd != armedFromRun && BlazeFightRules.healAfterRun(now, runEnd, health)) {
+            double blazeDistance = target == null ? Double.POSITIVE_INFINITY : player.distanceTo(target);
+            if (runEnd != armedFromRun && BlazeFightRules.healAfterRun(now, runEnd, health, blazeDistance)) {
                 running = true;
                 armedFromRun = runEnd;
             }
