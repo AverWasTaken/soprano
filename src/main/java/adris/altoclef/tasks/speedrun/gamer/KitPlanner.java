@@ -58,8 +58,10 @@ public final class KitPlanner {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food, wood));
         addRefill(out, food);
         // food sits last here, so a hungry bag walks past every pig on its way to the next log. one loaded close by leads, up to
-        // the floor and no further: the rest of the refill stays where it was
-        if (food.held() < food.floor() && f.preyNear()) {
+        // the floor and no further: the rest of the refill stays where it was. not before the axe though, punching eight cows
+        // to death with bare hands while the first tree waits is a bad look and a slow one
+        boolean axeOwed = out.stream().anyMatch(n -> isAxe(n.catalogueName()));
+        if (food.held() < food.floor() && f.preyNear() && !axeOwed) {
             out.add(0, new KitNeed(KitNeed.FOOD, food.floor()));
         }
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the

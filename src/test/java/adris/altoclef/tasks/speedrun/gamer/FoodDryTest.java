@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.ItemFixture;
+import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -116,12 +117,24 @@ public class FoodDryTest {
     @Test
     public void gatherPutsFoodFirstOnlyWithPreyAround() {
         OverworldConfig cfg = new OverworldConfig();
-        FakeFacts bag = new FakeFacts();
+        FakeFacts bag = new FakeFacts().give(Items.WOODEN_AXE, 1);
         assertFalse(foodFirst(KitPlanner.gather(bag, cfg, 8)));
         bag.preyNear = true;
         List<KitNeed> needs = KitPlanner.gather(bag, cfg, 8);
         assertTrue(foodFirst(needs));
         assertEquals(cfg.minHeldFoodUnits, needs.get(0).count());
+    }
+
+    @Test
+    public void gatherLeavesThePreyAloneUntilTheAxeIsMade() {
+        OverworldConfig cfg = new OverworldConfig();
+        FakeFacts bag = new FakeFacts();
+        bag.preyNear = true;
+        List<KitNeed> needs = KitPlanner.gather(bag, cfg, 8);
+        assertFalse(foodFirst(needs));
+        assertEquals("log", needs.get(0).catalogueName());
+        bag.give(Items.WOODEN_AXE, 1);
+        assertTrue(foodFirst(KitPlanner.gather(bag, cfg, 8)));
     }
 
     @Test
@@ -147,7 +160,7 @@ public class FoodDryTest {
     @Test
     public void gatherKeepsFoodFirstWhileTheKillsDropsAreHeld() {
         OverworldConfig cfg = new OverworldConfig();
-        FakeFacts bag = new FakeFacts();
+        FakeFacts bag = new FakeFacts().give(Items.WOODEN_AXE, 1);
         long seenAt = 1000;
         // last animal dies at 1050: the scan says no, the hold says yes, so the food head survives until the meat is in the bag
         bag.preyNear = FoodDry.preyHeld(seenAt, 1050);
@@ -163,7 +176,7 @@ public class FoodDryTest {
         assertTrue(FoodDry.preyKept(false, 1000, late, true));
         assertTrue(FoodDry.preyKept(true, 1000, late, false));
         OverworldConfig cfg = new OverworldConfig();
-        FakeFacts bag = new FakeFacts();
+        FakeFacts bag = new FakeFacts().give(Items.WOODEN_AXE, 1);
         bag.preyNear = FoodDry.preyKept(false, 1000, late, true);
         assertTrue(foodFirst(KitPlanner.gather(bag, cfg, 8)));
         bag.preyNear = FoodDry.preyKept(false, 1000, late, false);
