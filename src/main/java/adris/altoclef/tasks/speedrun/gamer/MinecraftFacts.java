@@ -167,7 +167,7 @@ public final class MinecraftFacts implements GamerFacts {
         if (seen) {
             preySeenAt = gameTime;
         }
-        preyNear = seen || FoodDry.preyHeld(preySeenAt, gameTime);
+        preyNear = FoodDry.preyKept(seen, preySeenAt, gameTime, CollectFoodTask.lootPending());
         if (state != null) {
             String line = FoodDry.tick(state, CollectFoodTask.searching(), preyNear, gameTime);
             if (line != null) {
