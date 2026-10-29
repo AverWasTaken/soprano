@@ -32,7 +32,7 @@ public class BlazeDisengageTask extends Task {
         // used to go wrong, and the aura swinging at one six blocks off pauses the path that gets us out of its sight
         mod.getBehaviour().addMobDefenseExclusion(entity -> entity instanceof Blaze);
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
-        mod.getBehaviour().avoidBlockPlacing(pos -> fight.noPlacing());
+        mod.getBehaviour().avoidBlockPlacing(fight::noPlacing);
         if (startTick == Long.MIN_VALUE) {
             startTick = mod.getWorld().getGameTime();
             // the caller starts this because one is looking, so the calm clock counts from now and not from never

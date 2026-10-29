@@ -126,7 +126,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // the ones next to us are for it
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
         // no bridging or pillaring while fighting or running, see BlazeFight.noPlacing
-        mod.getBehaviour().avoidBlockPlacing(pos -> _fight.noPlacing());
+        mod.getBehaviour().avoidBlockPlacing(_fight::noPlacing);
         // the base class pushed our behaviour level and pops it on stop. the pack closets and where we died lately are walls for
         // the walk in (the player and the spawner being inside one still keeps it open, see RunZones)
         noteZoneInputs(mod);

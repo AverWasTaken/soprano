@@ -16,6 +16,7 @@ import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
+import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -33,6 +34,8 @@ public class GatherPhase implements PhaseHandler {
     private final PrepSupport support = new PrepSupport(false, benches);
     // the smoker the food cooks in (the same watch IRON uses for its furnace, it does not care what is cooking)
     private final FurnaceWatch furnaces = new FurnaceWatch(benches);
+    // the climb out of a mine before the log step, the smelt's climb with a different reason (SmeltSurface.logTick)
+    private final SmeltSurface surface = new SmeltSurface();
     // the need we are in the middle of while the food cooks, a different first need is the boundary where we turn around
     private KitNeed committed;
     // the stricter "that need is over" a far smoker waits for (FurnacePlan.COLLECT_CUT_IN)
@@ -100,6 +103,8 @@ public class GatherPhase implements PhaseHandler {
     @Override
     public void onRespawn() {
         furnaces.respawned();
+        // a climb that finished (or half finished) before the death says nothing about the bed we woke up in
+        surface.reset();
     }
 
     @Override
@@ -107,6 +112,7 @@ public class GatherPhase implements PhaseHandler {
         runner.reset();
         support.onEnter(mod);
         furnaces.newPhase();
+        surface.reset();
         committed = null;
         needEnd.reset();
         hudState = null;
@@ -146,6 +152,11 @@ public class GatherPhase implements PhaseHandler {
         if (side != null) {
             hudState = support.hud();
             return side;
+        }
+        Task up = surface.logTick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
+        if (up != null) {
+            hudState = surface.hud();
+            return up;
         }
         Task task = runner.run(ctx, needs);
         hudState = runner.hud();
@@ -189,6 +200,11 @@ public class GatherPhase implements PhaseHandler {
         }
         if (head == null) {
             return null;
+        }
+        Task up = surface.logTick(mod, ctx, head);
+        if (up != null) {
+            hudState = surface.hud();
+            return up;
         }
         committed = head;
         needEnd.working(head, f.gameTime());
