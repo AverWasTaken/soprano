@@ -72,9 +72,9 @@ public final class NetherTripRules {
 
     // the nether walk stands still to heal: hurt, no shooter has a line on us (a standing target is a dead one), and the
     // minute is not used up. holding = we are already standing for it, which keeps going to HEAL_TO instead of flip-flopping
-    // at the line every time a heart comes back
-    public static boolean walkHold(float health, boolean shooterSees, boolean holding, long heldTicks) {
-        if (shooterSees || heldTicks >= WALK_HEAL_SECONDS * 20L) {
+    // at the line every time a heart comes back. no regen (hungry, nothing to eat) means standing heals nothing, so it walks
+    public static boolean walkHold(float health, boolean shooterSees, boolean canRegen, boolean holding, long heldTicks) {
+        if (shooterSees || !canRegen || heldTicks >= WALK_HEAL_SECONDS * 20L) {
             return false;
         }
         return health < (holding ? HEAL_TO : WALK_HEAL_BELOW);
@@ -237,13 +237,22 @@ public final class NetherTripRules {
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                          double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
                          boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit, boolean hasSword,
-                         long stillTicks) {
+                         long stillTicks, boolean canRegen) {
+        // healing is possible: the shape every test that does not care about it uses
+        public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
+                      double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
+                      boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit, boolean hasSword,
+                      long stillTicks) {
+            this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
+                    toWear, limits, hasPick, stuckTicks, foodUnits, health, ticksSinceHit, hasSword, stillTicks, true);
+        }
+
         // a sword (or an axe) in the bag, and not standing still: nothing to say about either
         public Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
                       double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits,
                       boolean hasPick, long stuckTicks, int foodUnits, float health, long ticksSinceHit) {
             this(stage, dim, tripTicks, stageTicks, buildBlocks, homeGone, pileDistance, recoverFinished, itemsGained, kitShort,
-                    toWear, limits, hasPick, stuckTicks, foodUnits, health, ticksSinceHit, true, 0);
+                    toWear, limits, hasPick, stuckTicks, foodUnits, health, ticksSinceHit, true, 0, true);
         }
 
         // the common shape: a pick in the bag and a walk that is going fine
@@ -355,7 +364,8 @@ public final class NetherTripRules {
         if (in.health() >= HEAL_TO) {
             return new Step(Stage.PORTAL, null, false);
         }
-        if (in.stageTicks() > HEAL_SECONDS * 20L) {
+        // nothing to heal with: the minute would be spent standing, so decide now
+        if (!in.canRegen() || in.stageTicks() > HEAL_SECONDS * 20L) {
             return in.health() < GO_HP ? giveUp(in, "too hurt to go back") : new Step(Stage.PORTAL, null, false);
         }
         return stay(Stage.HEAL);

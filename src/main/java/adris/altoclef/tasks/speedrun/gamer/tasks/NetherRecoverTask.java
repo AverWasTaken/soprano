@@ -18,6 +18,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.Stage;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -199,7 +200,11 @@ public class NetherRecoverTask extends Task {
         return new NetherTripRules.Inputs(stage, facts.dimension(), NetherTripRules.netherTicks(trip.netherTick, now),
                 now - trip.stageTick, facts.buildBlocks(), homeGone, dist, finished, gained,
                 NetherRegress.kitShort(facts, cfg.get()), toWear, limits, hasPick, stuckTicks(mod, stage, now), facts.foodUnits(),
-                mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod), hasWeapon(mod), stillTicks(mod, stage, now));
+                mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod), hasWeapon(mod), stillTicks(mod, stage, now), canRegen(mod));
+    }
+
+    private static boolean canRegen(AltoClef mod) {
+        return CombatRules.canRegen(mod.getPlayer().getFoodData().getFoodLevel(), mod.getFoodChain().hasHealFood());
     }
 
     // a sword or an axe in hand or in the bag (a pickaxe swings, but the fights down there want a real weapon)
@@ -377,7 +382,7 @@ public class NetherRecoverTask extends Task {
     // is not walking, so the budget is paid back for it the way a dig's is
     private boolean walkHolds(AltoClef mod, RunState.NetherTrip trip) {
         long t = facts.gameTime();
-        boolean hold = NetherTripRules.walkHold(mod.getPlayer().getHealth(), shooterSees(mod), holding, heldTicks);
+        boolean hold = NetherTripRules.walkHold(mod.getPlayer().getHealth(), shooterSees(mod), canRegen(mod), holding, heldTicks);
         if (hold) {
             digging = false;
             long gap = NetherTripRules.restockCredit(lastHoldTick, t);

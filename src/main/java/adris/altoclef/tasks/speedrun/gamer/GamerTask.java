@@ -1222,8 +1222,8 @@ public class GamerTask extends Task {
     private boolean recoverHeals() {
         long t = facts.gameTime();
         boolean hold = recoverWalking() && RecoverRules.walkHold(mod.getPlayer().getHealth(), NetherRecoverTask.shooterSees(mod),
-                mod.getFoodChain().ticksSinceBodyHit(mod), mod.getPlayer().getFoodData().getFoodLevel() >= CombatRules.REGEN_HUNGER
-                        || mod.getFoodChain().hasHealFood(), recoverHolding, recoverHeldTicks);
+                mod.getFoodChain().ticksSinceBodyHit(mod), CombatRules.canRegen(mod.getPlayer().getFoodData().getFoodLevel(),
+                        mod.getFoodChain().hasHealFood()), recoverHolding, recoverHeldTicks);
         if (hold) {
             long gap = recoverHolding ? Math.max(0, Math.min(t - recoverHoldTick, 2)) : 0;
             recoverHeldTicks += gap;
