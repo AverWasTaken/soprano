@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import net.minecraft.world.phys.AABB;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -51,19 +52,80 @@ public class SwordSwingTest {
 
     @Test
     public void aCalmNeutralBesideTheTargetSwingsEarlyUnderTheSweepLine() {
-        assertTrue(SwordSwing.charged(0.8, true));
+        assertTrue(SwordSwing.charged(0.6, true));
         assertTrue(SwordSwing.charged(0.85, true));
-        assertFalse(SwordSwing.charged(0.7, true));
+        assertFalse(SwordSwing.charged(0.5, true));
         // the sweep needs more than 0.9, the early swing stays under it
         assertTrue(SwordSwing.CALM_SWING_SCALE < 0.9);
     }
 
     @Test
     public void withoutACalmNeutralOnlyFullChargeSwings() {
-        assertFalse(SwordSwing.charged(0.8, false));
+        assertFalse(SwordSwing.charged(0.6, false));
         assertFalse(SwordSwing.charged(0.99, false));
         assertTrue(SwordSwing.charged(1, false));
         assertTrue(SwordSwing.charged(1, true));
+    }
+
+    @Test
+    public void theEarlyWindowIsFourTicksOfTheSwordCharge() {
+        // a sword's scale reads 0.60 0.68 0.76 0.84 before it passes the sweep line, and every one of them swings early
+        int window = 0;
+        for (int tick = 0; tick < 12; tick++) {
+            double scale = (tick + 0.5) / 12.5;
+            if (scale <= SwordSwing.SWEEP_SCALE && SwordSwing.charged(scale, true)) {
+                window++;
+            }
+        }
+        assertEquals(4, window);
+    }
+
+    @Test
+    public void onlyAChargedStandingSwingSweeps() {
+        assertTrue(SwordSwing.wouldSweep(1, true, false, 0, 0.1));
+        assertTrue(SwordSwing.wouldSweep(0.95, true, false, 0, 0.1));
+        // 0.9 itself is not over the line
+        assertFalse(SwordSwing.wouldSweep(0.9, true, false, 0, 0.1));
+        assertFalse(SwordSwing.wouldSweep(0.84, true, false, 0, 0.1));
+        assertFalse(SwordSwing.wouldSweep(1, false, false, 0, 0.1));
+        assertFalse(SwordSwing.wouldSweep(1, true, true, 0, 0.1));
+    }
+
+    @Test
+    public void movingFasterThanTwoAndAHalfTimesWalkSpeedDoesNotSweep() {
+        double limit = 0.1 * 2.5;
+        assertTrue(SwordSwing.wouldSweep(1, true, false, limit * limit - 0.0001, 0.1));
+        assertFalse(SwordSwing.wouldSweep(1, true, false, limit * limit, 0.1));
+        assertFalse(SwordSwing.wouldSweep(1, true, false, 1, 0.1));
+    }
+
+    @Test
+    public void theSweepBoxIsTheTargetsBoxGrownOneSideways() {
+        AABB target = new AABB(0, 0, 0, 0.6, 1.95, 0.6);
+        // beside it, a hair under 1 block off its edge: inside
+        assertTrue(SwordSwing.inSweepBox(target, new AABB(1.5, 0, 0, 2.1, 1.95, 0.6), 4));
+        // 2 blocks off its edge: outside
+        assertFalse(SwordSwing.inSweepBox(target, new AABB(2.7, 0, 0, 3.3, 1.95, 0.6), 4));
+        // grown a quarter up and down only: a mob standing a block over its head is not
+        assertFalse(SwordSwing.inSweepBox(target, new AABB(0, 2.5, 0, 0.6, 4.4, 0.6), 4));
+        assertTrue(SwordSwing.inSweepBox(target, new AABB(0, 2.1, 0, 0.6, 4.0, 0.6), 4));
+    }
+
+    @Test
+    public void theSweepBoxOnlyReachesThreeBlocksFromUs() {
+        AABB target = new AABB(0, 0, 0, 0.6, 1.95, 0.6);
+        AABB next = new AABB(0.7, 0, 0, 1.3, 1.95, 0.6);
+        assertTrue(SwordSwing.inSweepBox(target, next, 8.9));
+        assertFalse(SwordSwing.inSweepBox(target, next, 9));
+    }
+
+    @Test
+    public void theSweepHoldGivesUpAfterTwentyTicks() {
+        assertTrue(SwordSwing.holdSweep(true, 0));
+        assertTrue(SwordSwing.holdSweep(true, SwordSwing.SWEEP_VETO_TICKS));
+        assertFalse(SwordSwing.holdSweep(true, SwordSwing.SWEEP_VETO_TICKS + 1));
+        // nothing calm in the box: never a hold
+        assertFalse(SwordSwing.holdSweep(false, 0));
     }
 
     @Test

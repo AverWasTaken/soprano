@@ -802,14 +802,15 @@ final class CombatBrain {
         return mob.getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED;
     }
 
-    // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.
+    // a line to us, asked of every shooter in the tracker (FOE_RANGE): the in-the-way pick wants to know about one that has not hit
+    // us yet, a skeleton in the open is the case. the ray is the costly bit, but there are never many shooters in 16 blocks.
     // "shooter" is the same word the Foe gets (a blaze is one, though it is not a ranged attack mob by class)
     private static boolean sees(Dimension dimension, Mob mob, long sinceHit, LocalPlayer player) {
         // a brute is the odd one: melee, but the run wants to know it sees us before it has hit anything
         if (dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")) {
             return mob.distanceTo(player) <= CombatCommit.BRUTE_RUN_RANGE && mob.hasLineOfSight(player);
         }
-        if (sinceHit > CombatCommit.HIT_MEMORY || mob instanceof Creeper) return false;
+        if (mob instanceof Creeper) return false;
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         return FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind) && mob.hasLineOfSight(player);
     }

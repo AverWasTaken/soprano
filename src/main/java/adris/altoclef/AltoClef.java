@@ -204,6 +204,7 @@ public class AltoClef {
             _miscBlockTracker.tick();
             tickBans();
             PhantomScoops.tick(this);
+            _extraController.tickHurtWatch();
 
             _trackerManager.tick();
             _blockTracker.preTickTask();
