@@ -91,7 +91,8 @@ public final class FoeRules {
         // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;
         Kind kind = kindOf(dimension, c.type());
-        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap(), c.sight(), c.sinceHitBefore());
+        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap(), c.sight(), c.sinceHitBefore())
+                .withBrute(c.type().equals("piglin_brute"));
     }
 
     // a shooter a task kept for itself (the rods task's blazes) that hit us lately and has a line on us. never a foe, so it
