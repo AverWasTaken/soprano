@@ -118,6 +118,32 @@ public final class NetherComplexGrid {
         return back.isPresent() ? back : fresh;
     }
 
+    // same pick, but only cells within `rings` (chebyshev) of the leash point's cell exist. the far cells are dropped before the
+    // pick, not after, so a far cell can never beat a near one that is still unvisited. empty = nothing left inside the leash
+    public static Optional<Cell> nextCellWithin(int blockX, int blockZ, Set<String> visitedKeys, Set<String> deferredKeys,
+                                                Point portal, Point leash, int rings) {
+        Cell centre = cellOf(leash.x(), leash.z());
+        java.util.function.Predicate<Cell> inside = c -> inLeash(c, centre, rings);
+        Set<String> waiting = new HashSet<>();
+        for (String key : deferredKeys) {
+            if (inside.test(Cell.parse(key))) waiting.add(key);
+        }
+        Set<String> taken = new HashSet<>(visitedKeys);
+        taken.addAll(deferredKeys);
+        Optional<Cell> fresh = nearestFree(blockX, blockZ, taken, inside, centre);
+        if (waiting.isEmpty()) {
+            return fresh;
+        }
+        if (portal == null || freshNear(portal, taken)) {
+            return fresh.isPresent() ? fresh : nearestAmong(blockX, blockZ, waiting);
+        }
+        return nearestAmong(blockX, blockZ, waiting);
+    }
+
+    public static boolean inLeash(Cell c, Cell centre, int rings) {
+        return Math.max(Math.abs(c.cx() - centre.cx()), Math.abs(c.cz() - centre.cz())) <= rings;
+    }
+
     // how many rings around the portal's own cell count as "close" for the deferred pick
     public static final int FRESH_RINGS = 2;
 
@@ -150,9 +176,18 @@ public final class NetherComplexGrid {
     }
 
     private static Optional<Cell> nearestFree(int blockX, int blockZ, Set<String> visitedKeys) {
+        return nearestFree(blockX, blockZ, visitedKeys, null, null);
+    }
+
+    private static Optional<Cell> nearestFree(int blockX, int blockZ, Set<String> visitedKeys,
+                                              java.util.function.Predicate<Cell> allowed, Cell leashCentre) {
         Cell home = cellOf(blockX, blockZ);
         // ring k holds 8k cells so by ring visited.size() something is free, that is the hard stop
         int limit = visitedKeys.size() + 1;
+        if (allowed != null) {
+            // the free cells are all inside the leash, so the scan only has to reach the far side of it
+            limit = Math.max(Math.abs(home.cx() - leashCentre.cx()), Math.abs(home.cz() - leashCentre.cz())) + 2;
+        }
         Cell best = null;
         long bestD = Long.MAX_VALUE;
         for (int k = 0; k <= limit; k++) {
@@ -162,7 +197,7 @@ public final class NetherComplexGrid {
                     break;
                 }
                 Cell c = new Cell(home.cx() + cur[0], home.cz() + cur[1]);
-                if (visitedKeys.contains(c.key())) {
+                if (visitedKeys.contains(c.key()) || (allowed != null && !allowed.test(c))) {
                     continue;
                 }
                 Point mid = cellCentre(c);

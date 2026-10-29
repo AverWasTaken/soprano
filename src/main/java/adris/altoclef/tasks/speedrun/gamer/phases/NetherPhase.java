@@ -162,6 +162,8 @@ public class NetherPhase implements PhaseHandler {
     // would come back and go straight home again)
     private boolean tripBlocks;
     private double foodTripStart;
+    // when the trip left the nether (foodTripStart is re-stamped once we are up top): the whole trip is paused out of the rods budget
+    private double tripLeftAt;
     private boolean foodTripUp;
     // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
     private long tripEndedTick = -1;
@@ -350,6 +352,7 @@ public class NetherPhase implements PhaseHandler {
             tripBlocks = keptBlocks;
             foodTripUp = true;
             foodTripStart = ctx.secondsInPhase();
+            tripLeftAt = foodTripStart;
             tripSeconds = FoodTripRules.seconds(FoodFloor.foodShort(ctx), tripBlocks && FoodFloor.blocksShort(ctx));
             tripStartUnits = FoodTripRules.units(ctx.food());
             foodPickup.reset();
@@ -466,6 +469,8 @@ public class NetherPhase implements PhaseHandler {
                 }
                 foodTrip = false;
                 foodTripUp = false;
+                // the minutes spent at home are not the rods step's fault
+                rodsWatch.pause(ctx.secondsInPhase() - tripLeftAt);
                 // a bag that just got filled should not start the next trip off the first dip (the under-floor bypass still can)
                 tripEndedTick = ctx.facts().gameTime();
                 foodFloor.reset();
@@ -624,6 +629,7 @@ public class NetherPhase implements PhaseHandler {
             lastTripUnits = -1;
             tripResumed = false;
             foodTripStart = now;
+            tripLeftAt = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
             homeMark = null;
             homeLastTick = tick;
@@ -648,6 +654,7 @@ public class NetherPhase implements PhaseHandler {
             // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
             // taken from the budget, and the next try has to earn its own start
             foodTrip = false;
+            rodsWatch.pause(now - tripLeftAt);
             tripEndedTick = tick;
             return null;
         }

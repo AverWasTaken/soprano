@@ -130,4 +130,19 @@ public class RodsWatchTest {
         assertEquals(Verdict.KEEP_GOING, RodsWatch.afterNoWay(true));
         assertEquals(Verdict.GIVE_UP_SPAWNER, RodsWatch.afterNoWay(false));
     }
+
+    @Test
+    public void aPauseMovesTheBudgetEndButNotTheDryTimer() {
+        // budget 1000, dry 300
+        RodsWatch w = new RodsWatch(100000, 300, 1000);
+        w.update(0, 0, false, true);
+        w.pause(600);
+        // 1000 would have been the end of the budget, the pause pushed it to 1600
+        assertEquals(Verdict.GIVE_UP_SPAWNER, w.update(300, 0, false, true));
+        RodsWatch b = new RodsWatch(100000, 100000, 1000);
+        b.update(0, 0, false, false);
+        b.pause(600);
+        assertEquals(Verdict.KEEP_GOING, b.update(1599, 0, false, false));
+        assertEquals(Verdict.GIVE_UP_RODS, b.update(1600, 0, false, false));
+    }
 }
