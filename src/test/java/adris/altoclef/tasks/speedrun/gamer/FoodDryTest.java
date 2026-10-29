@@ -157,6 +157,20 @@ public class FoodDryTest {
     }
 
     @Test
+    public void lootStillOnItsWayKeepsPreyAfterTheHoldRunsOut() {
+        long late = 1000 + FoodDry.PREY_HOLD_TICKS + 40;
+        assertFalse(FoodDry.preyKept(false, 1000, late, false));
+        assertTrue(FoodDry.preyKept(false, 1000, late, true));
+        assertTrue(FoodDry.preyKept(true, 1000, late, false));
+        OverworldConfig cfg = new OverworldConfig();
+        FakeFacts bag = new FakeFacts();
+        bag.preyNear = FoodDry.preyKept(false, 1000, late, true);
+        assertTrue(foodFirst(KitPlanner.gather(bag, cfg, 8)));
+        bag.preyNear = FoodDry.preyKept(false, 1000, late, false);
+        assertFalse(foodFirst(KitPlanner.gather(bag, cfg, 8)));
+    }
+
+    @Test
     public void planHungryLeadsWithFoodUnlessTheSpellIsOn() {
         OverworldConfig cfg = new OverworldConfig();
         FakeFacts bag = new FakeFacts();

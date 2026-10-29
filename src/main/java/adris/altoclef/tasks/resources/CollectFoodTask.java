@@ -102,6 +102,14 @@ public class CollectFoodTask extends Task {
     private static volatile long lastSearchMs = 0;
     private static final long SEARCH_FRESH_MS = 3000;
 
+    // the last time a kill's loot was still on its way (lootComing). the gamer keeps food at the front while this is fresh, or the
+    // head would switch to the starter with the meat on the ground (same wall clock idea as searching)
+    private static volatile long lastLootMs = 0;
+
+    public static boolean lootPending() {
+        return System.currentTimeMillis() - lastLootMs < SEARCH_FRESH_MS;
+    }
+
     // read only: true while the task is out wandering for food with no animal, crop or hay to go after
     public static boolean searching() {
         return System.currentTimeMillis() - lastSearchMs < SEARCH_FRESH_MS;
@@ -495,7 +503,11 @@ public class CollectFoodTask extends Task {
     // the hunted animal is dead but the loot of the kill is still on its way or lying there: the hunt is not over (see
     // KillAndLootTask.awaitingDrop)
     private boolean lootComing(AltoClef mod) {
-        return _huntTask instanceof KillAndLootTask kill && kill.awaitingDrop(mod);
+        boolean coming = _huntTask instanceof KillAndLootTask kill && kill.awaitingDrop(mod);
+        if (coming) {
+            lastLootMs = System.currentTimeMillis();
+        }
+        return coming;
     }
 
     private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, double maxRange) {
