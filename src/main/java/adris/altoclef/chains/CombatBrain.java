@@ -723,7 +723,7 @@ final class CombatBrain {
         boolean barred = dimension == Dimension.END || mod.getBehaviour().hasMobDefenseExclusion();
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
-                food != null && food.isTryingToEat());
+                food != null && food.isTryingToEat(), lingering(player));
     }
 
     // the blaze or skeleton whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it

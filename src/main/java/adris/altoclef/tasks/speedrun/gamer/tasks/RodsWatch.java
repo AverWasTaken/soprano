@@ -67,6 +67,14 @@ public final class RodsWatch {
         return now - Math.max(campSince, lastGain) >= campSeconds ? Verdict.GIVE_UP_SPAWNER : Verdict.KEEP_GOING;
     }
 
+    // time spent on a food trip does not count against the budget. only the budget moves: the dry and camp timers exist for
+    // blazes that keep us busy, and a gap in the fighting still counts toward those
+    public void pause(double seconds) {
+        if (!Double.isNaN(startedAt) && seconds > 0) {
+            startedAt += seconds;
+        }
+    }
+
     // a spawner we cannot get to was banned on its own. another one known = go there, the fortress it sits in is not the
     // spawner's fault. none = the whole fortress goes, nothing else is left to try in it
     public static Verdict afterNoWay(boolean otherSpawnerKnown) {
