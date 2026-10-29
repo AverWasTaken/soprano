@@ -6,7 +6,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.chicken.Chicken;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.pig.Pig;
-import net.minecraft.world.entity.animal.rabbit.Rabbit;
 import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.phys.Vec3;
 
@@ -29,7 +28,8 @@ public final class PreyScan {
     // an edible, unbanned animal loaded within `radius` blocks (FoodHunt.distance, so a cow up a cliff counts for more than a cow along)
     public static boolean near(AltoClef mod, double radius) {
         var me = mod.getPlayer().position();
-        for (Class<? extends Entity> kind : List.of(Pig.class, Cow.class, Chicken.class, Sheep.class, Rabbit.class)) {
+        // no rabbits here: the food task still eats one it finds, but one hopping by is not worth dropping the plan for
+        for (Class<? extends Entity> kind : List.of(Pig.class, Cow.class, Chicken.class, Sheep.class)) {
             // every animal gets the radius check, not just the euclidean closest: the cow straight above us is closest and
             // out of range while the one on level ground further off is the meal
             if (anyInRange(new ArrayList<>(mod.getEntityTracker().getTrackedEntities(kind)), e -> e.position().subtract(me), radius,

@@ -34,6 +34,7 @@ public final class SmeltSurface {
 
     public void reset() {
         climbing = false;
+        woodFirst = UNSET;
         settled[0] = settled[1] = settled[2] = false;
         gaveUp[0] = gaveUp[1] = gaveUp[2] = false;
         climb = null;
@@ -193,9 +194,9 @@ public final class SmeltSurface {
     public Task logTick(AltoClef mod, GamerContext ctx, KitNeed head) {
         boolean log = head != null && "log".equals(head.catalogueName());
         if (!log) {
-            // another need has the head, the next log step gets a fresh go
+            // another need has the head, the next log step may have to climb again. a give up sticks though: food taking the
+            // head every time a pig wanders by used to wipe it and the climb never got to give up
             settled[WOOD] = false;
-            gaveUp[WOOD] = false;
         }
         boolean over = ctx.facts().dimension() == Dimension.OVERWORLD;
         Why why = logsWhy(over, head, depthBelowSky(mod));
@@ -226,6 +227,7 @@ public final class SmeltSurface {
         if (climbing ? step == Climb.ARRIVED : !wantsUp(false, depth)) {
             if (climbing) {
                 settled[kind] = true;
+                if (kind == WOOD) woodFirst = UNSET;
                 ctx.log(pick(why, "up at the surface, smelting here", "up at the surface, cooking here", "up at the surface, chopping here"));
             }
             climbing = false;
@@ -235,7 +237,9 @@ public final class SmeltSurface {
         }
         if (!climbing) {
             climbing = true;
-            climbSince = now;
+            // a wood climb cut short by a food detour picks its clock back up, the give up caps the whole effort
+            if (kind == WOOD && woodFirst == UNSET) woodFirst = now;
+            climbSince = kind == WOOD ? woodFirst : now;
             bestDepth = depth;
             climbY = surface;
             climb = new GetToYTask(surface);
@@ -264,6 +268,10 @@ public final class SmeltSurface {
         }
         return climb;
     }
+
+    private static final long UNSET = Long.MIN_VALUE;
+    // when the first leg of the current wood climb started, UNSET when none is owed
+    private long woodFirst = UNSET;
 
     private static int kindOf(Why why) {
         return why == Why.IRON ? IRON : why == Why.COOK ? COOK : WOOD;
