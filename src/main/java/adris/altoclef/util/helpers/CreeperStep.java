@@ -176,8 +176,10 @@ public final class CreeperStep {
         for (Seen s : creepers) {
             if (!triggers(s) || _capped.contains(s.id())) continue;
             // a run is already taking us away from everything, creepers included. stopping it to step is the step and the run
-            // trading the wheel, so only when the run's own path is about to walk into a lit one
-            if (mode == CombatCommit.Mode.RUN && !s.pathNear()) continue;
+            // trading the wheel, so only when the run's own path is about to walk into a lit one, or one is already hissing
+            // inside TRIGGER. the path check only looks ahead, and a creeper only lights within three blocks, so beside or
+            // behind us it was never "on the path" and the run jogged on through the blast
+            if (mode == CombatCommit.Mode.RUN && !s.pathNear() && !(s.lit() && s.distance() <= TRIGGER)) continue;
             // the lit one first, it is the one with a clock on it
             if (pick == null || (s.lit() && !pick.lit()) || (s.lit() == pick.lit() && s.distance() < pick.distance())) pick = s;
         }

@@ -104,18 +104,28 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
         if (!_raw) return false;
         Entity creeper = mod.getWorld().getEntity(_creeperId);
         if (creeper == null) {
+            sprintOver(mod, "creeper gone", -1);
             endRaw(mod);
             return false;
         }
         double litDistance = nearestLit(mod, mod.getPlayer());
         if (!CreeperStep.rawGoing(mod.getWorld().getGameTime() - _startTick, mod.getPlayer().distanceTo(creeper), litDistance)) {
+            sprintOver(mod, "clear or out of time", mod.getPlayer().distanceTo(creeper));
             endRaw(mod);
             return false;
         }
         // no safe heading: let go, standing still and waiting on the path is better than the wrong way
         if (steer(mod, creeper)) return true;
+        sprintOver(mod, "lost the heading", mod.getPlayer().distanceTo(creeper));
         endRaw(mod);
         return false;
+    }
+
+    // why the hand sprint stopped. a step that hands over to the path while still inside the blast is the one we want to read
+    // about later, food in there because under 7 hunger the sprint key does nothing
+    private void sprintOver(AltoClef mod, String why, double distance) {
+        Debug.logInternal(String.format(java.util.Locale.ROOT, "[combat] creeper sprint over: %s, %.1f from it, %d ticks in, hunger %d",
+                why, distance, mod.getWorld().getGameTime() - _startTick, mod.getPlayer().getFoodData().getFoodLevel()));
     }
 
     // one tick of sprinting away by hand. false = no heading is safe (the keys are let go)
