@@ -90,6 +90,11 @@ public final class CombatRules {
         return health < HURT_HEALTH && hunger < REGEN_HUNGER;
     }
 
+    // standing still only heals if the bar is high enough or there is something to eat that does it
+    public static boolean canRegen(int hunger, boolean healFood) {
+        return hunger >= REGEN_HUNGER || healFood;
+    }
+
     public static boolean desperateMeal(float health, int hunger) {
         return health <= DESPERATE_HEALTH && hunger < 20;
     }

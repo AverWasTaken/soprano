@@ -89,7 +89,10 @@ public class PlayerInteractionFixChain extends TaskChain {
 
         // Unpress shift (it gets stuck for some reason???)
         if (mod.getInputControls().isHeldDown(Input.SNEAK)) {
-            if (_shiftDepressTimeout.elapsed()) {
+            if (mod.getInputControls().isHeldBy(Input.SNEAK, WorldSurvivalChain.MAGMA_SNEAK)) {
+                // the magma sneak is held on purpose for as long as the floor hurts, one tick of this letting go is a burn
+                _shiftDepressTimeout.reset();
+            } else if (_shiftDepressTimeout.elapsed()) {
                 mod.getInputControls().release(Input.SNEAK);
             }
         } else {

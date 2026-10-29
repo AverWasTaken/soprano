@@ -129,7 +129,7 @@ public final class SmeltSurface {
         return why(head, next, rawIron, ingots, pending, rawMeat, cookRunning, false);
     }
 
-    // `earlyBatch` = the head is the early batch, the pick, chestplate, shield and shears (EarlyIronPick.isEarlyBatch). it is smelted
+    // `earlyBatch` = the head is the early batch, a stage of the chestplate and shield or the pick and shears (EarlyIronPick.isEarlyBatch). it is smelted
     // right where the ore is, so a small iron head reads as "all the ore is in" and without this it climbed out of the mine for it, once
     // from the plain loop and once while some other job (a smoker) was cooking
     public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat, boolean cookRunning,

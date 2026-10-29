@@ -142,6 +142,41 @@ public final class CliffAvoidance {
         };
     }
 
+    // lava one cell to either side of (x, y, z) across the heading, at feet or the cell under. plain drops don't count, this is
+    // for "a stumble here ends in lava" and not for "there is a cliff" (that's columnUnsafe)
+    public static boolean lavaBeside(Cells cells, int x, int y, int z, int dirX, int dirZ) {
+        // perpendicular to a unit heading is the same two numbers swapped
+        int sx = dirZ;
+        int sz = dirX;
+        for (int dy = 0; dy >= -1; dy--) {
+            if (cells.at(x + sx, y + dy, z + sz) == Cell.LAVA || cells.at(x - sx, y + dy, z - sz) == Cell.LAVA) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a traverse is on a lava shore if either end has lava beside it. the sprint decision asks this
+    public static boolean traverseByLava(Cells cells, int x, int y, int z, int destX, int destZ) {
+        int dirX = Integer.signum(destX - x);
+        int dirZ = Integer.signum(destZ - z);
+        return lavaBeside(cells, x, y, z, dirX, dirZ) || lavaBeside(cells, destX, y, destZ, dirX, dirZ);
+    }
+
+    // a diagonal has no single side, so any lava touching either end (3x3, feet or under) counts
+    public static boolean diagonalByLava(Cells cells, int x, int y, int z, int destX, int destY, int destZ) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dy = 0; dy >= -1; dy--) {
+                    if (cells.at(x + dx, y + dy, z + dz) == Cell.LAVA || cells.at(destX + dx, destY + dy, destZ + dz) == Cell.LAVA) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // scanColumn's meaning over Cells: something we could stand in at y with lava below, or nothing to land on within DEPTH
     public static boolean columnUnsafe(Cells cells, int x, int y, int z) {
         Cell here = cells.at(x, y, z);

@@ -717,4 +717,63 @@ public class NetherSweepPlannerTest {
         assertTrue(planner.isGivenUp(pos(500 + 150, 500)));
         assertFalse(planner.isGivenUp(pos(500 + 400, 500)));
     }
+
+    @Test
+    public void theWarpedSweepStaysWithinOneRingOfThePortalAndFailsPastIt() {
+        state.netherPortal = pos(0, 0);
+        // the cells on the leash (ROW only has cz 0, so cx 0 and 1) are done, ring two and out are all that is left
+        state.visitedCells.add("0,0");
+        state.visitedCells.add("1,0");
+        Action a = planner.step(Goal.WARPED, 0, 0, 0);
+        assertEquals(Kind.FAIL, a.kind());
+        assertEquals("warped sweep: past the portal leash", a.why());
+    }
+
+    @Test
+    public void theWarpedSweepStillTakesTheNearCellsAndTheFortressSweepIsNotLeashed() {
+        state.netherPortal = pos(0, 0);
+        assertEquals(Kind.GOTO, planner.step(Goal.WARPED, 0, 0, 0).kind());
+        assertTrue(planner.cellsStarted(Goal.WARPED) == 1);
+
+        NetherSweepPlanner far = new NetherSweepPlanner(state, cfg, ROW, 12);
+        state.visitedCells.add("0,0");
+        state.visitedCells.add("1,0");
+        Action f = far.step(Goal.FORTRESS, 0, 0, 0);
+        assertEquals(Kind.GOTO, f.kind());
+        assertEquals(2000, f.x());
+    }
+
+    @Test
+    public void theRealGridLeashNeverPicksARingTwoCell() {
+        Point portal = new Point(0, 0);
+        Cell home = NetherComplexGrid.cellOf(0, 0);
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        // player far out east: the plain pick would go for the cells next to it
+        for (int i = 0; i < 9; i++) {
+            Optional<Cell> c = NetherComplexGrid.nextCellWithin(5000, 0, visited, Set.of(), portal, portal, 1);
+            assertTrue(c.isPresent());
+            assertTrue(NetherComplexGrid.inLeash(c.get(), home, 1));
+            visited.add(c.get().key());
+        }
+        assertTrue(NetherComplexGrid.nextCellWithin(5000, 0, visited, Set.of(), portal, portal, 1).isEmpty());
+    }
+
+    @Test
+    public void aFortressCellPastTheLeashIsLetGoWhenTheGoalFlipsToWarped() {
+        state.netherPortal = pos(0, 0);
+        state.visitedCells.add("0,0");
+        state.visitedCells.add("1,0");
+        // the fortress sweep is walking cell 2,0 (ring two)
+        assertEquals(2000, planner.step(Goal.FORTRESS, 0, 0, 0).x());
+        Action a = planner.step(Goal.WARPED, 0, 0, 1);
+        assertEquals(Kind.FAIL, a.kind());
+        assertFalse(state.visitedCells.contains("2,0"));
+    }
+
+    @Test
+    public void aBlockNearAKnownBastionIsKnownAndAFarOneIsNot() {
+        planner.report(Sight.BASTION, pos(250, 0));
+        assertTrue(planner.isKnownBastion(pos(250 + 63, 0)));
+        assertFalse(planner.isKnownBastion(pos(250 + 65, 0)));
+    }
 }

@@ -41,10 +41,14 @@ public final class RecoverHold {
 
     // what the body and the bag say, for the hold. healFood: the food chain's pick passes the heal meal's filter (no chorus,
     // no raw chicken, no rotten flesh). barred: a task that fights on its own terms has mob defense excluded (golem, dragon,
-    // blaze rods), or we are in the end. eating: a bite is under way
-    public record Body(int hunger, boolean healFood, boolean barred, boolean eating) {
+    // blaze rods), or we are in the end. eating: a bite is under way. lingering: wither, poison or fire is still ticking
+    public record Body(int hunger, boolean healFood, boolean barred, boolean eating, boolean lingering) {
         // nobody said: no hold. the chain always says, the machine's own tests mostly do not care
-        public static final Body NONE = new Body(20, false, true, false);
+        public static final Body NONE = new Body(20, false, true, false, false);
+
+        public Body(int hunger, boolean healFood, boolean barred, boolean eating) {
+            this(hunger, healFood, barred, eating, false);
+        }
 
         // regen can happen: the bar is already at the regen line, or there is something decent to eat
         public boolean canRegen() {
@@ -54,9 +58,14 @@ public final class RecoverHold {
 
     // a commitment of this kind ended at this hp: is that a hold
     public static boolean wants(CombatCommit.Mode ended, float health) {
+        return wants(ended, health, false);
+    }
+
+    // a fight that ends at 8.5 with wither still ticking is not a won fight, the next tick it is 7. lingering holds it too
+    public static boolean wants(CombatCommit.Mode ended, float health, boolean lingering) {
         return switch (ended) {
             case RUN -> health < RUN_BELOW;
-            case FIGHT -> health <= FIGHT_AT;
+            case FIGHT -> health <= FIGHT_AT || (lingering && health < DONE_AT);
             default -> false;
         };
     }
@@ -100,7 +109,7 @@ public final class RecoverHold {
         }
         // (a dead player is not recovering, whatever else ended on the same tick)
         if (health <= 0) return;
-        if (on || !wants(mode, health) || !mayStart(body)) return;
+        if (on || !wants(mode, health, body.lingering()) || !mayStart(body)) return;
         on = true;
         startTick = now;
         stallTicks = 0;
@@ -126,7 +135,8 @@ public final class RecoverHold {
             skipNextEnd = committed;
             return;
         }
-        if (committed || gained) {
+        // (wither drains while we wait, so hp not rising says nothing until the effect is gone. the cap above still ends it)
+        if (committed || gained || body.lingering()) {
             stallTicks = 0;
         } else if (!body.eating()) {
             stallTicks += dt;

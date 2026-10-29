@@ -158,6 +158,33 @@ public class FurnacePlanTest {
     }
 
     @Test
+    public void theEarlyIronBatchIsStoodAtWhenItIsAlmostDoneNoTripNeeded() {
+        long now = 1000;
+        Moment early = new Moment(true, false, false, NOBODY, false, true, away(5), "wool", false, true);
+        Plan soon = FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS)), early, now, null);
+        assertEquals(Call.STAND_BY, one(soon).call());
+        assertEquals(Why.EARLY_IRON, one(soon).why());
+        // past the cap, far off, or not the early iron: left alone like always
+        assertEquals(Call.LEAVE, one(FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS + 1)), early, now, null)).call());
+        Moment farOff = new Moment(true, false, false, NOBODY, false, true, away(100), "wool", false, true);
+        assertEquals(Call.LEAVE, one(FurnacePlan.plan(List.of(furnace(now + 300)), farOff, now, null)).call());
+        Moment plain = new Moment(true, false, false, NOBODY, false, true, away(5), "wool", false, false);
+        assertEquals(Call.LEAVE, one(FurnacePlan.plan(List.of(furnace(now + 300)), plain, now, null)).call());
+    }
+
+    @Test
+    public void theNightWaitsOnlyForEarlyIronThatIsCloseAndNearlyOrJustDone() {
+        long now = 5000;
+        assertTrue(FurnacePlan.earlyIronNear(furnace(now + 400), away(5), now));
+        assertTrue(FurnacePlan.earlyIronNear(furnace(now - 100), away(5), now));
+        assertFalse(FurnacePlan.earlyIronNear(furnace(now + 601), away(5), now));
+        assertFalse(FurnacePlan.earlyIronNear(furnace(now + 400), away(100), now));
+        assertFalse(FurnacePlan.earlyIronNear(furnace(now + 400), null, now));
+        assertFalse(FurnacePlan.earlyIronNear(furnace(now - FurnacePlan.PATIENCE_TICKS), away(5), now));
+        assertFalse(FurnacePlan.earlyIronNear(smoker(now + 400), away(5), now));
+    }
+
+    @Test
     public void aStandByThatRanOutItsCapIsNotStartedAgain() {
         long now = 1000;
         RunState.FurnaceJob job = furnace(now + 100);

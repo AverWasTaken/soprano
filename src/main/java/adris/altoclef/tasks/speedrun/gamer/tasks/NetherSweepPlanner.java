@@ -61,6 +61,30 @@ public final class NetherSweepPlanner {
             return deferred.stream().sorted().findFirst().map(Cell::parse);
         }
 
+        // same pick with the cells beyond `rings` of the leash point dropped first. the default asks the plain pick again with
+        // each far answer marked spent, which is fine for fakes that are finite
+        default Optional<Cell> nextCellWithin(int playerX, int playerZ, Set<String> visited, Set<String> deferred, Point portal,
+                                              Point leash, int rings) {
+            Cell centre = NetherComplexGrid.cellOf(leash.x(), leash.z());
+            Set<String> spent = new HashSet<>(visited);
+            Set<String> waiting = new HashSet<>();
+            for (String key : deferred) {
+                if (NetherComplexGrid.inLeash(Cell.parse(key), centre, rings)) {
+                    waiting.add(key);
+                } else {
+                    spent.add(key);
+                }
+            }
+            for (int i = 0; i < 10000; i++) {
+                Optional<Cell> pick = nextCell(playerX, playerZ, spent, waiting, portal);
+                if (pick.isEmpty() || NetherComplexGrid.inLeash(pick.get(), centre, rings)) {
+                    return pick;
+                }
+                spent.add(pick.get().key());
+            }
+            return Optional.empty();
+        }
+
         // the order for a revisit: start far from where we got wedged
         default List<Point> waypointsAwayFrom(Cell cell, int spacingChunks, int fromX, int fromZ) {
             return waypoints(cell, spacingChunks, fromX, fromZ);
@@ -81,6 +105,12 @@ public final class NetherSweepPlanner {
         @Override
         public Optional<Cell> nextCell(int playerX, int playerZ, Set<String> visited, Set<String> deferred, Point portal) {
             return NetherComplexGrid.nextCell(playerX, playerZ, visited, deferred, portal);
+        }
+
+        @Override
+        public Optional<Cell> nextCellWithin(int playerX, int playerZ, Set<String> visited, Set<String> deferred, Point portal,
+                                             Point leash, int rings) {
+            return NetherComplexGrid.nextCellWithin(playerX, playerZ, visited, deferred, portal, leash, rings);
         }
 
         @Override
@@ -129,6 +159,9 @@ public final class NetherSweepPlanner {
     private final RunState state;
     private final NetherConfig cfg;
     private final Grid grid;
+    // how many cells out from the portal's own cell the warped sweep may walk (chebyshev)
+    public static final int WARPED_LEASH_RINGS = 1;
+
     private final int maxCells;
 
     private Cell cell;
@@ -272,6 +305,11 @@ public final class NetherSweepPlanner {
         return nearAny(state.fortressExhausted, pos, EXHAUSTED_BLOCKS);
     }
 
+    // a block of a bastion we already know: reporting it does nothing, so the scan should not spend its look on it
+    public boolean isKnownBastion(RunState.Pos pos) {
+        return nearAny(state.bastion, pos, SAME_STRUCTURE_BLOCKS);
+    }
+
     private boolean reportBastion(RunState.Pos pos, String key) {
         // a fortress and a bastion never share a cell, so a "bastion" block in a fortress cell is something else
         // (a ruined portal, a blackstone blob) and must not make us avoid the fortress we want
@@ -367,6 +405,13 @@ public final class NetherSweepPlanner {
         if (goalMet(goal)) {
             return new Action(Kind.FOUND, px, pz, "found");
         }
+        // a cell the fortress sweep left half walked can be past the leash by the time the goal flips to the warped forest. it is
+        // not visited (the fortress sweep may still want it), just not ours to walk
+        if (goal == Goal.WARPED && cell != null && state.netherPortal != null
+                && !NetherComplexGrid.inLeash(cell, NetherComplexGrid.cellOf(state.netherPortal.x, state.netherPortal.z), WARPED_LEASH_RINGS)) {
+            cell = null;
+            pocketDropped = false;
+        }
         // every pass of this loop either returns or finishes a cell. a finished cell is visited or deferred, a deferred one is never a
         // fresh pick and its revisit ends visited, so it ends
         while (true) {
@@ -424,9 +469,15 @@ public final class NetherSweepPlanner {
             }
         }
         RunState.Pos home = state.netherPortal;
-        Optional<Cell> next = grid.nextCell(px, pz, spent, waiting, home == null ? null : new Point(home.x, home.z));
+        Point portal = home == null ? null : new Point(home.x, home.z);
+        // the warped forest search walks cells nearest the player, so every pick pulled it farther out. a miss falls through to
+        // a forest-less pearl hunt anyway, so it stays near the portal (the fortress is not leashed, it really is far)
+        boolean leashed = goal == Goal.WARPED && portal != null;
+        Optional<Cell> next = leashed
+                ? grid.nextCellWithin(px, pz, spent, waiting, portal, portal, WARPED_LEASH_RINGS)
+                : grid.nextCell(px, pz, spent, waiting, portal);
         if (next.isEmpty()) {
-            return new Action(Kind.FAIL, px, pz, "ran out of cells");
+            return new Action(Kind.FAIL, px, pz, leashed ? "warped sweep: past the portal leash" : "ran out of cells");
         }
         cell = next.get();
         cellStartX = px;

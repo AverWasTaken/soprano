@@ -211,4 +211,39 @@ public class CombatCommitTakeoverTest {
         hold.ended(NOW, Mode.FIGHT, 0, CAN_HEAL);
         assertFalse(hold.on());
     }
+
+    private static final RecoverHold.Body CAN_HEAL_HURTING = new RecoverHold.Body(20, true, false, false, true);
+
+    @Test
+    public void aFightEndedAtEightAndAHalfWithWitherOnStartsAHold() {
+        RecoverHold hold = new RecoverHold();
+        hold.ended(NOW, Mode.FIGHT, 8.5f, CAN_HEAL_HURTING);
+        assertTrue(hold.on());
+    }
+
+    @Test
+    public void theSameFightWithNothingLingeringIsAWonFight() {
+        RecoverHold hold = new RecoverHold();
+        hold.ended(NOW, Mode.FIGHT, 8.5f, CAN_HEAL);
+        assertFalse(hold.on());
+    }
+
+    @Test
+    public void lingeringPausesTheStallClockButNotTheCap() {
+        RecoverHold hold = new RecoverHold();
+        hold.ended(NOW, Mode.FIGHT, 8.5f, CAN_HEAL_HURTING);
+        // hp only goes down, a whole stall window and then some
+        long t = NOW + RecoverHold.STALL_TICKS * 2;
+        hold.update(t, 7f, false, CAN_HEAL_HURTING);
+        assertTrue(hold.on());
+        assertEquals(0, hold.stallTicks());
+        // effect gone, clock runs again
+        hold.update(t + RecoverHold.STALL_TICKS, 7f, false, CAN_HEAL);
+        assertFalse(hold.on());
+
+        RecoverHold capped = new RecoverHold();
+        capped.ended(NOW, Mode.FIGHT, 8.5f, CAN_HEAL_HURTING);
+        capped.update(NOW + RecoverHold.CAP_TICKS, 7f, false, CAN_HEAL_HURTING);
+        assertFalse(capped.on());
+    }
 }

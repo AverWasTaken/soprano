@@ -40,7 +40,19 @@ public final class BlazeFightRules {
     // food, hunger too low to regen). waiting for 18 hp then is waiting for ever
     public static final long RUN_GIVE_UP_TICKS = 600;
 
+    // this many wither skeletons together is a pack, and a pack ends a rods run. 3 can still be fought, 5 cannot
+    public static final int PACK_SIZE = 3;
+    // a blaze with a pack this close is not worth going for, walking up to it is walking into them
+    public static final double PACK_BLAZE_RADIUS = 10;
+    // a pack this close to the spawner means the camp spot is theirs, we wait for it to leave or the watch gives the spawner up
+    public static final double PACK_SPAWNER_RADIUS = 12;
+
     private BlazeFightRules() {
+    }
+
+    // enough wither skeletons around one spot to call it a pack
+    public static boolean packNear(int witherSkeletons) {
+        return witherSkeletons >= PACK_SIZE;
     }
 
     public enum Mode {

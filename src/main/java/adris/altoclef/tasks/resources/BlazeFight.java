@@ -14,9 +14,12 @@ import java.util.List;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -49,6 +52,8 @@ final class BlazeFight {
     private Blaze target;
     private boolean targetTracked;
     private boolean targetInReach;
+    // the target sits by a wither skeleton pack as of the last scan, so it is dropped
+    private boolean packDrop;
     private long outOfReachSince = Long.MIN_VALUE;
     private double range = BlazeFightRules.PICK_RANGE;
     // read off the pathfinder thread. fighting and running never place blocks: pillaring up at a hovering blaze is how we ended
@@ -109,7 +114,7 @@ final class BlazeFight {
         noPlacing = mode != Mode.CAMP;
         watchRun(now, health);
         lastHealth = health;
-        logChange(health);
+        logChange(mod, health);
         return switch (mode) {
             case CAMP -> null;
             case KILL -> new KillEntityTask(target);
@@ -135,10 +140,27 @@ final class BlazeFight {
                 if (hostile instanceof Blaze || !hostile.isAlive() || player.distanceTo(hostile) > RUN_CROWD_RADIUS) continue;
                 if (EntityHelper.isAngryAtPlayer(mod, hostile)) others.add(hostile);
             }
+            // the hostile list only holds the ones that noticed us, a pack that has not is still a place not to run to
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (skeleton.isAlive() && player.distanceTo(skeleton) <= RUN_CROWD_RADIUS && !others.contains(skeleton)) others.add(skeleton);
+            }
         } catch (java.util.ConcurrentModificationException ignored) {
             // the tracker rebuilds on another thread sometimes, we get the crowd again next tick
         }
         return merge(blazes, others);
+    }
+
+    // live wither skeletons within radius of a spot. 0 when the tracker is mid rebuild, we ask again next tick
+    static int witherSkeletonsNear(AltoClef mod, Vec3 at, double radius) {
+        int count = 0;
+        try {
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (skeleton.isAlive() && skeleton.position().distanceTo(at) <= radius) count++;
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // the tracker rebuilds on another thread sometimes
+        }
+        return count;
     }
 
     static <T> List<T> merge(List<? extends T> blazes, List<? extends T> others) {
@@ -162,12 +184,25 @@ final class BlazeFight {
         runGaveUp = BlazeFightRules.runGaveUpNext(runGaveUp, mode == Mode.RUN, rose, stalled);
     }
 
-    private void logChange(float health) {
+    // where the run starts and who is in it, so a run into unseen skeletons can be told from a run into nothing
+    private String runDetail(AltoClef mod, float health) {
+        LocalPlayer player = mod.getPlayer();
+        StringBuilder crowd = new StringBuilder();
+        for (Entity e : runCrowd(mod)) {
+            if (crowd.length() > 0) crowd.append(", ");
+            crowd.append(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath()).append(' ').append(Math.round(player.distanceTo(e)));
+        }
+        return "rods: running at " + String.format(java.util.Locale.ROOT, "%.1f", health) + " hp from " + player.blockPosition().toShortString()
+                + ", " + RUN_DISTANCE + " block run, crowd [" + crowd + "], burning " + player.isOnFire()
+                + ", wither " + player.hasEffect(MobEffects.WITHER);
+    }
+
+    private void logChange(AltoClef mod, float health) {
         if (mode == loggedMode) return;
         loggedMode = mode;
         switch (mode) {
             case KILL -> Debug.logInternal("rods: going after a blaze (" + candidates.size() + " in reach)");
-            case RUN -> Debug.logInternal("rods: running at " + (int) health + " hp");
+            case RUN -> Debug.logInternal(runDetail(mod, health));
             case CAMP -> Debug.logInternal("rods: all quiet, back to camping");
         }
     }
@@ -184,6 +219,7 @@ final class BlazeFight {
         }
         threats.clear();
         candidates.clear();
+        packDrop = false;
         around = 0;
         targetTracked = false;
         targetInReach = false;
@@ -191,7 +227,12 @@ final class BlazeFight {
             if (!blaze.isAlive()) continue;
             double distance = player.distanceTo(blaze);
             boolean inReach = false;
-            if (distance <= range) {
+            // a blaze hovering over a wither skeleton pack is theirs, not ours
+            // the one we are already after is checked at any distance, so it can't drift out of pick range and keep us walking at a pack
+            boolean packed = (distance <= range || blaze == target)
+                    && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS));
+            if (packed && blaze == target) packDrop = true;
+            if (distance <= range && !packed) {
                 around++;
                 Floor floor = floorUnder(mod.getWorld(), blaze);
                 inReach = BlazeFightRules.isReachable(floor.height(), floor.lava(), distance, range, blaze == target)
@@ -219,7 +260,7 @@ final class BlazeFight {
                 outOfReachSince = now;
             }
             long outFor = outOfReachSince == Long.MIN_VALUE ? 0 : now - outOfReachSince;
-            if (!BlazeFightRules.keepTarget(target.isAlive(), targetTracked, outFor)) target = null;
+            if (packDrop || !BlazeFightRules.keepTarget(target.isAlive(), targetTracked, outFor)) target = null;
         }
         if (target != null) return;
         outOfReachSince = Long.MIN_VALUE;

@@ -1222,8 +1222,8 @@ public class GamerTask extends Task {
     private boolean recoverHeals() {
         long t = facts.gameTime();
         boolean hold = recoverWalking() && RecoverRules.walkHold(mod.getPlayer().getHealth(), NetherRecoverTask.shooterSees(mod),
-                mod.getFoodChain().ticksSinceBodyHit(mod), mod.getPlayer().getFoodData().getFoodLevel() >= CombatRules.REGEN_HUNGER
-                        || mod.getFoodChain().hasHealFood(), recoverHolding, recoverHeldTicks);
+                mod.getFoodChain().ticksSinceBodyHit(mod), CombatRules.canRegen(mod.getPlayer().getFoodData().getFoodLevel(),
+                        mod.getFoodChain().hasHealFood()), recoverHolding, recoverHeldTicks);
         if (hold) {
             long gap = recoverHolding ? Math.max(0, Math.min(t - recoverHoldTick, 2)) : 0;
             recoverHeldTicks += gap;
@@ -1289,7 +1289,7 @@ public class GamerTask extends Task {
         boolean leftover = leftoverNightBed(mod);
         boolean windowOpen = !mod.getWorld().isBrightOutside();
         // the evening's own tasks open screens (a table, the inventory), which are not a reason to stop them halfway
-        NightSleep.Busy busy = nightBusy(nightPrep.running());
+        NightSleep.Busy busy = nightBusy(mod, nightPrep.running());
         boolean fighting = nightFighting(mod);
         // before decide on purpose: low health and a spent bed trip answer QUIET/LOW_HEALTH there, and neither is a reason to
         // stay out on the surface with no armor
@@ -1455,7 +1455,7 @@ public class GamerTask extends Task {
     // what may not be interrupted for a night (NightSleep.busy has the reasoning): phases that must not be cut into, a station
     // coming down that is being driven, ore going into a furnace, the first iron's load, a screen that is up. the evening's own
     // tasks open screens, so while one runs a screen does not count
-    private NightSleep.Busy nightBusy(boolean ownScreens) {
+    private NightSleep.Busy nightBusy(AltoClef mod, boolean ownScreens) {
         boolean pickup = false;
         for (Bench b : state.benches) {
             pickup |= WorkbenchRules.inFlight(b, facts.gameTime());
@@ -1464,7 +1464,22 @@ public class GamerTask extends Task {
         boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
         PhaseHandler h = machine.current();
         boolean phaseHolds = h != null && h.phase() == state.phase && h.nightHold();
-        return NightSleep.busy(tripHiding || NightSleep.phaseAllowed(state.phase), !tripHiding && phaseHolds, pickup, loading, facts.earlyLoadInFlight(), screenUp);
+        return NightSleep.busy(tripHiding || NightSleep.phaseAllowed(state.phase), !tripHiding && phaseHolds, pickup, loading, facts.earlyLoadInFlight(),
+                earlyCollect(mod), screenUp);
+    }
+
+    // the early iron is about to come out of a furnace we are standing near: the armor is worth the half minute, the bed is not going anywhere
+    private boolean earlyCollect(AltoClef mod) {
+        if (!EarlyIronPick.collectNow(facts, cfg.overworld)) {
+            return false;
+        }
+        RunState.Pos me = FurnaceWatch.where(mod);
+        for (RunState.FurnaceJob job : facts.furnaceJobs()) {
+            if (FurnacePlan.earlyIronNear(job, me, facts.gameTime())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night

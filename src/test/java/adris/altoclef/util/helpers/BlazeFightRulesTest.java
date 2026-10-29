@@ -190,4 +190,12 @@ public class BlazeFightRulesTest {
         assertFalse(BlazeFightRules.healAfterRun(1000, Long.MIN_VALUE / 2, 10));
         assertFalse(BlazeFightRules.healAfterRun(1000, 2000, 10));
     }
+
+    @Test
+    public void threeWitherSkeletonsMakeAPack() {
+        assertFalse(BlazeFightRules.packNear(0));
+        assertFalse(BlazeFightRules.packNear(2));
+        assertTrue(BlazeFightRules.packNear(3));
+        assertTrue(BlazeFightRules.packNear(5));
+    }
 }

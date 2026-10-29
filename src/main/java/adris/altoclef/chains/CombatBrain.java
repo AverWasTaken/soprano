@@ -61,6 +61,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
@@ -109,6 +110,7 @@ final class CombatBrain {
     private long _stanceLogAt = Long.MIN_VALUE / 2;
     private float _lastHealth = -1;
     private DamageSource _lastSource;
+    private long _lastHurtAt = Long.MIN_VALUE / 2;
     // the blaze or skeleton whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
     private DamageSource _shotSeen;
     private Mob _shooter;
@@ -227,6 +229,7 @@ final class CombatBrain {
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
         _lastSource = null;
+        _lastHurtAt = Long.MIN_VALUE / 2;
         _shotSeen = null;
         _shooter = null;
         _shooterAt = Long.MIN_VALUE / 2;
@@ -294,6 +297,10 @@ final class CombatBrain {
         List<Mob> out = new ArrayList<>();
         try {
             out.addAll(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+            // wither skeletons that have not noticed us are not foes, but a run must not steer into them either
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (!out.contains(skeleton)) out.add(skeleton);
+            }
         } catch (ConcurrentModificationException ignored) {
             // one tick of stale blazes is fine
         }
@@ -374,6 +381,8 @@ final class CombatBrain {
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
+            String note = _commit.takeNote();
+            if (note != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + note);
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -572,8 +581,12 @@ final class CombatBrain {
         _lastHealth = hp;
         if (before < 0 || hp >= before) return;
         DamageSource source = player.getLastDamageSource();
-        if (source != null && source == _lastSource) return;
+        // wither and fire hand back the same cached source every tick, so "new object" hid all of their damage. a source with
+        // no attacker gets a line at most every STANCE_LOG_GAP ticks instead
+        long now = mod.getWorld().getGameTime();
+        if (source != null && source == _lastSource && (source.getEntity() != null || now - _lastHurtAt < STANCE_LOG_GAP)) return;
         _lastSource = source;
+        _lastHurtAt = now;
         String who = null;
         String how = null;
         if (source != null) {
@@ -723,7 +736,7 @@ final class CombatBrain {
         boolean barred = dimension == Dimension.END || mod.getBehaviour().hasMobDefenseExclusion();
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
-                food != null && food.isTryingToEat());
+                food != null && food.isTryingToEat(), lingering(player));
     }
 
     // the blaze or skeleton whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it
@@ -765,7 +778,7 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)), mob);
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")), mob);
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
@@ -787,6 +800,10 @@ final class CombatBrain {
     // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.
     // "shooter" is the same word the Foe gets (a blaze is one, though it is not a ranged attack mob by class)
     private static boolean sees(Dimension dimension, Mob mob, long sinceHit, LocalPlayer player) {
+        // a brute is the odd one: melee, but the run wants to know it sees us before it has hit anything
+        if (dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")) {
+            return mob.distanceTo(player) <= CombatCommit.BRUTE_RUN_RANGE && mob.hasLineOfSight(player);
+        }
         if (sinceHit > CombatCommit.HIT_MEMORY || mob instanceof Creeper) return false;
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         return FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind) && mob.hasLineOfSight(player);
