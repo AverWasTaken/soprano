@@ -15,7 +15,7 @@ public class NightShelterTest {
 
     // night, overworld, armor 0, no bed, on the surface, no recovery, no fight, free, unused, died two minutes ago
     private static Trigger base() {
-        return new Trigger(true, true, 0, true, 0, false, false, false, false, 2400, false);
+        return new Trigger(true, true, 0, true, 0, false, false, false, false, 2400, false, 20f, 20, false);
     }
 
     private static Trigger with(Trigger t, java.util.function.UnaryOperator<TriggerBuilder> f) {
@@ -25,7 +25,9 @@ public class NightShelterTest {
     // records have no withers, a tiny mutable copy keeps the cases short
     private static final class TriggerBuilder {
         boolean window, overworld, noBed, recovery, fighting, busy, used, trip;
-        int armor, depth;
+        int armor, depth, hunger;
+        float health;
+        boolean healFood;
         long since;
 
         TriggerBuilder(Trigger t) {
@@ -40,10 +42,13 @@ public class NightShelterTest {
             used = t.usedThisNight();
             since = t.ticksSinceDeath();
             trip = t.tripNight();
+            health = t.health();
+            hunger = t.hunger();
+            healFood = t.healFood();
         }
 
         Trigger build() {
-            return new Trigger(window, overworld, armor, noBed, depth, recovery, fighting, busy, used, since, trip);
+            return new Trigger(window, overworld, armor, noBed, depth, recovery, fighting, busy, used, since, trip, health, hunger, healFood);
         }
     }
 
@@ -155,15 +160,74 @@ public class NightShelterTest {
         })));
     }
 
-    // low health and a spent bed trip are not inputs at all: the answer for them is the base answer
+    // a spent bed trip is not an input at all: the answer for it is the base answer
     @Test
-    public void lowHealthAndASpentBedTripDoNotBlockIt() {
+    public void aSpentBedTripDoesNotBlockIt() {
         assertTrue(NightShelter.wanted(base()));
-        assertEquals(11, Trigger.class.getRecordComponents().length);
         for (var c : Trigger.class.getRecordComponents()) {
-            assertFalse(c.getName().toLowerCase().contains("health"));
             assertFalse(c.getName().toLowerCase().contains("spent"));
         }
+    }
+
+    // no death on record, but hurt with a belly too empty to regen and no food to fix it
+    @Test
+    public void hurtWithNothingToHealWithHidesWithoutADeath() {
+        assertTrue(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 8;
+            b.hunger = 4;
+            return b;
+        })));
+        // at the line or above with an empty belly: not hurt enough
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 19;
+            b.hunger = 4;
+            return b;
+        })));
+        // hp 19 with a full belly: regens on its own
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 19;
+            b.hunger = 20;
+            return b;
+        })));
+        // hurt but fed: it will regen on its own
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 10;
+            b.hunger = 18;
+            return b;
+        })));
+        // hurt and hungry but carrying food
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 8;
+            b.hunger = 4;
+            b.healFood = true;
+            return b;
+        })));
+        // the rest of the gates still apply
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 8;
+            b.hunger = 4;
+            b.armor = NightShelter.ARMOR_LINE;
+            return b;
+        })));
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 8;
+            b.hunger = 4;
+            b.noBed = false;
+            return b;
+        })));
+    }
+
+    @Test
+    public void failCountsNamesWhatEachColumnMissed() {
+        String s = NightShelter.failCounts(List.of(col(good(), 5), col(good(), 0), good()));
+        assertTrue(s, s.startsWith("no column: 3 looked at, 1 not diggable, 0 no floor, 0 fluid floor, 0 fluid near, 1 open walls"));
     }
 
     @Test
