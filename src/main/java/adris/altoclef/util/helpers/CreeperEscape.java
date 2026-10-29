@@ -57,6 +57,32 @@ public final class CreeperEscape {
     // "away" is from the nearest one and the fan goes round from there, but a heading is only as good as the closest creeper it
     // leaves us beside: two on opposite sides score the sidestep best, and a second one behind the first is never run into
     public static Heading choose(double px, double py, double pz, List<At> creepers, Cells cells) {
+        return pick(px, py, pz, creepers, List.of(), cells);
+    }
+
+    // same, but a heading that runs at some other mob (a zombie standing where "away" points) is passed over. when that leaves
+    // nothing the creeper only answer stands: a bad heading is still better than no sprint at all, the creeper is the one that
+    // explodes
+    public static Heading choose(double px, double py, double pz, List<At> creepers, List<At> others, Cells cells) {
+        Heading h = pick(px, py, pz, creepers, others, cells);
+        return h != null || others.isEmpty() ? h : pick(px, py, pz, creepers, List.of(), cells);
+    }
+
+    // a mob this close and this much in front of a heading is something we would run into
+    static final double OTHER_RANGE = 10;
+    static final double OTHER_CONE_COS = Math.cos(Math.toRadians(45));
+
+    private static boolean intoOther(double px, double pz, double dx, double dz, List<At> others) {
+        for (At o : others) {
+            double d = Math.hypot(o.x() - px, o.z() - pz);
+            if (d < 1e-3 || d > OTHER_RANGE) continue;
+            // 45 itself counts: a sidestep that brushes past a zombie is still a sidestep next to a zombie
+            if (((o.x() - px) * dx + (o.z() - pz) * dz) / d >= OTHER_CONE_COS - 1e-6) return true;
+        }
+        return false;
+    }
+
+    private static Heading pick(double px, double py, double pz, List<At> creepers, List<At> others, Cells cells) {
         At nearest = null;
         double away = Double.POSITIVE_INFINITY;
         for (At c : creepers) {
@@ -83,7 +109,7 @@ public final class CreeperEscape {
             // (strictly better only, so straight on wins a tie and the fan order stays the tiebreak)
             if (score <= bestScore + 1e-6) continue;
             int jump = runway(px, py, pz, dx, dz, cells);
-            if (jump >= 0) {
+            if (jump >= 0 && !intoOther(px, pz, dx, dz, others)) {
                 best = new Heading(degrees, dx, dz, jump == 1);
                 bestScore = score;
             }

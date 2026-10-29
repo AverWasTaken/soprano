@@ -114,6 +114,7 @@ public final class FurnacePlan {
         IDLE_DUE("due, and there is nothing else to do"),
         FAR_BUSY("due, but we are far off and busy, collecting after"),
         FAR_TRIP("a long trip is next, so this batch is seen to first"),
+        EARLY_IRON("the early iron is nearly done, the armor is worth the wait"),
         IDLE_WAIT("nothing else to do, waiting it out"),
         QUICK("a smoker is quick, waiting for it instead of mining"),
         TOO_LONG("not due, and too long a batch to stand at, working it like a furnace"),
@@ -150,16 +151,23 @@ public final class FurnacePlan {
     //   me: where we stand, null = no idea (everything counts as close, the old behaviour). doing: what the far line says we are on
     //   farTrip: the need we are about to start is a long walk away (WorkbenchRules.farTrip), so a job that finishes soon is worth
     //   waiting for before we go: left behind it would sit done and cost a walk back
+    //   earlyIron: the iron on the stove is the early batch the plan is waiting on (EarlyIronPick.collectNow). a pick or armor that
+    //   is seconds from done is worth standing for like a far trip is, the walk back to a batch left done is the dear part
     public record Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
-                         boolean mayStandBy, RunState.Pos me, String doing, boolean farTrip) {
+                         boolean mayStandBy, RunState.Pos me, String doing, boolean farTrip, boolean earlyIron) {
+        public Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
+                      boolean mayStandBy, RunState.Pos me, String doing, boolean farTrip) {
+            this(fillerLeft, atBoundary, headDone, waitsOn, stockUp, mayStandBy, me, doing, farTrip, false);
+        }
+
         public Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
                       boolean mayStandBy, RunState.Pos me, String doing) {
-            this(fillerLeft, atBoundary, headDone, waitsOn, stockUp, mayStandBy, me, doing, false);
+            this(fillerLeft, atBoundary, headDone, waitsOn, stockUp, mayStandBy, me, doing, false, false);
         }
 
         // the short form the tests grew up on: one interrupt for every job, and nowhere in particular
         public Moment(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, boolean mayStandBy) {
-            this(fillerLeft, atBoundary, atBoundary, job -> interrupt, stockUp, mayStandBy, null, null, false);
+            this(fillerLeft, atBoundary, atBoundary, job -> interrupt, stockUp, mayStandBy, null, null, false, false);
         }
     }
 
@@ -218,6 +226,13 @@ public final class FurnacePlan {
             }
         }
         return false;
+    }
+
+    // an iron job we are close to that is done or done within the stand-by cap: the early batch's last half minute. one that has sat
+    // done for the patience is a pickup that is not happening, and the night stops waiting for it
+    public static boolean earlyIronNear(RunState.FurnaceJob job, RunState.Pos me, long now) {
+        return "iron_ingot".equals(job.output) && me != null && close(job, me) && job.doneTick - now <= STAND_BY_CAP_TICKS
+                && now - job.doneTick < PATIENCE_TICKS;
     }
 
     // is `me` within COLLECT_CUT_IN of the job. no idea where we are counts as close, that is how it always was
@@ -447,8 +462,12 @@ public final class FurnacePlan {
             // the expensive part, so one that finishes within the stand-by cap is waited for. a job that already stood out a visit
             // without anything coming out (stalls) or a smoker that used its quick budget is not: both are re-stamped with a fresh
             // half minute, and standing again would just be the same wait twice
-            boolean waitFirst = close && m.farTrip() && job.doneTick - now <= STAND_BY_CAP_TICKS && job.stalls == 0 && !job.track.standSeen;
-            v = waitFirst ? verdict(job, Call.STAND_BY, Why.FAR_TRIP)
+            // the early iron batch gets the same treatment with no trip needed: its output is the armor, and a bot that walks off
+            // to mine leaves the ingots done in the furnace while the night and the mobs eat the walk back
+            boolean early = m.earlyIron() && "iron_ingot".equals(job.output);
+            boolean waitFirst = close && (m.farTrip() || early) && job.doneTick - now <= STAND_BY_CAP_TICKS && job.stalls == 0
+                    && !job.track.standSeen;
+            v = waitFirst ? verdict(job, Call.STAND_BY, m.farTrip() ? Why.FAR_TRIP : Why.EARLY_IRON)
                     : verdict(job, Call.LEAVE, tooLong(job) ? Why.TOO_LONG : Why.COOKING);
         } else {
             v = dueCall(job, m, close);

@@ -353,8 +353,8 @@ public final class KitPlanner {
                 moveToFront(crafts, out, name);
             }
         } else if (EarlyIronPick.due(f, cfg, ingots)) {
-            // enough raw iron for the pick, the chestplate, the shield and the shears (whichever are owed): smelt just those, the
-            // big batch is what comes after (and is in the list as well)
+            // enough raw iron for the next early stage (chestplate and shield, then pick and shears, whichever are owed): smelt
+            // just those, the big batch is what comes after (and is in the list as well)
             out.add(EarlyIronPick.need(f, cfg));
         }
         // ingots cooking in a furnace we loaded count as held, or the bot would go mining a second batch while the first one cooks
@@ -576,6 +576,11 @@ public final class KitPlanner {
             if (best > worn) {
                 out.add(options[best]);
             }
+        }
+        // a shield in the bag goes to the offhand with the armor: nothing else puts it there until an arrow or a creeper is
+        // already on us, and by then the swap is a click war with the fight (armorEquipped reads the offhand too)
+        if (f.count(Items.SHIELD) > 0 && !f.armorEquipped(Items.SHIELD)) {
+            out.add(Items.SHIELD);
         }
         PiglinGold.addToEquip(f, out);
         return out;
