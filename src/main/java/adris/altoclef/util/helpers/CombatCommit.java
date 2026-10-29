@@ -140,6 +140,8 @@ public final class CombatCommit {
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
     // skeleton that steps out past the range): the meal is 1.6 s and one arrow in it is 4
     public static final long SHOT_LATCH = 60;
+    // a shot this fresh (two seconds) breaks the run latch for the low hp rule: the latch is for fights that ended, not for arrows
+    public static final long SHOT_FRESH = 40;
 
     // the bail line moves with how hard we are being hit: leave when a hit like the last big one would put us at or under
     // FLEE_HP, not when we are already there. the biggest single drop in the last NEXT_HIT_WINDOW ticks (capped, a fall or a
@@ -956,7 +958,27 @@ public final class CombatCommit {
         // healing up and a melee mob is walking over: it has not hit us yet, so it is not "on us", but the fight that set the latch
         // is long over and the next one at this hp is the one that kills us
         if (reason == Why.LOW_HP && recover.on() && !t.boxed() && fastTarget(t) == null && meleeNear(t, RecoverHold.RERUN_RANGE)) return reason;
+        // a shooter with a line that hit us a moment ago is not the fight that set the latch: standing in its sights is how the
+        // meal turns into a funeral. only in the idle heal hold (a fight keeps its latch, recovery stays on through one). boxed or with
+        // something fast on us it stays the cornered fight, same as above
+        if (mode == Mode.NONE && recover.on() && (reason == Why.LOW_HP || reason == Why.SHOT) && !t.boxed() && fastTarget(t) == null && shotJustNow(t)) return reason;
         return Why.NONE;
+    }
+
+    // a ranged foe with a line to us that landed a hit within SHOT_FRESH ticks, one we have not given up on
+    private boolean shotJustNow(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.shooting() && foe.sinceHit() <= SHOT_FRESH && !gaveUpOn(foe, t.now())) return true;
+        }
+        return false;
+    }
+
+    // a ranged foe in FOE_RANGE with a line to us, hit yet or not: the path fight we pick is not one to start in its sights
+    private boolean seenByShooter(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.ranged() && !foe.creeper() && foe.sight() && foe.distance() <= FOE_RANGE && !gaveUpOn(foe, t.now())) return true;
+        }
+        return false;
     }
 
     // a melee foe we have not given up on within range
@@ -1089,7 +1111,8 @@ public final class CombatCommit {
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
-        if (way == null || !t.armed() || !t.way().weapon() || t.low()) return Event.NONE;
+        // (and not with a shooter that has a line on us: the walk to the thing in the way is a walk in its sights)
+        if (way == null || !t.armed() || !t.way().weapon() || t.low() || seenByShooter(t)) return Event.NONE;
         if (t.lingering() && t.health() < LINGER_PICK_HP) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }

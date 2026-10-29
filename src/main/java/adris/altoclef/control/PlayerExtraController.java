@@ -32,6 +32,9 @@ import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -118,6 +121,10 @@ public class PlayerExtraController {
             return false;
         }
         _lastSwingTick = now;
+        _swingAt = now;
+        _swingScale = chargeScale();
+        _swingTargetId = entity.getId();
+        _swingBox = entity.getBoundingBox();
         // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
         _mod.getEntityTracker().noteProvoked(entity);
         logPiglinsBeside(entity, now);
@@ -198,8 +205,9 @@ public class PlayerExtraController {
     public boolean swingNow(Entity entity) {
         // same no-sweep rule as swordSwing: a calm neutral next to the target gets the early swing, a full one would sweep it
         // and the stall breaker is the swing that fires most in a fight that is biting us
+        // (it clears sprint right before the swing, so the veto reads the swing as a standing one)
         boolean ready = swordInHand() && entity instanceof LivingEntity target
-                ? SwordSwing.charged(chargeScale(), calmNeutralBeside(target)) : attackReady();
+                ? swordReady(target, false) : attackReady();
         if (!ready) {
             return false;
         }
@@ -307,6 +315,10 @@ public class PlayerExtraController {
         // clicking it is
         if (stepping || LegacyCombat.active() || !(entity instanceof LivingEntity target)) {
             _crit.reset();
+            // the step owns sprint and the keys, the sweep rule is still ours
+            if (stepping && !LegacyCombat.active() && swordInHand() && entity instanceof LivingEntity stepTarget) {
+                return plainSwing(player, entity, swordReady(stepTarget, true));
+            }
             return plainSwing(player, entity);
         }
         // a sword is paced by the charge and sweeps, no hop (see SwordSwing)
@@ -373,14 +385,14 @@ public class PlayerExtraController {
     // sprinting when this call began, the stop packet has not gone out yet and the swing waits a tick for it
     private boolean swordSwing(LocalPlayer player, LivingEntity target) {
         boolean wasSprinting = player.isSprinting();
-        boolean calm = calmNeutralBeside(target);
+        boolean calm = calmBeside(target).near();
         boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calm);
         if (lock) {
             _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
             player.setSprinting(false);
         }
         // a neutral mob beside the target and the sweep would anger it: swing early, under the 0.9 a sweep needs (SwordSwing)
-        boolean ready = SwordSwing.charged(chargeScale(), calm);
+        boolean ready = swordReady(target, true);
         if (!SwordSwing.swing(ready, lock, !wasSprinting)) {
             return false;
         }
@@ -392,15 +404,101 @@ public class PlayerExtraController {
         return LegacyCombat.active() ? 1 : _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL);
     }
 
+    // calm neutral mobs near the target: near is within a block or two (the early swing, SwordSwing.charged), inBox is inside the
+    // vanilla sweep box, the ones a swing at full charge would really hit (SwordSwing.inSweepBox)
+    private record Beside(boolean near, boolean inBox) {
+    }
+
     // a neutral mob nobody has poked within a block or two of the target: the sweep would hit it and start a fight we did not
     // pick. we swing early then (SwordSwing.charged), and leave sprint alone: a sprint hit can't sweep either
-    private boolean calmNeutralBeside(LivingEntity target) {
-        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, target.getBoundingBox().inflate(2))) {
+    private Beside calmBeside(LivingEntity target) {
+        boolean near = false;
+        boolean inBox = false;
+        AABB box = target.getBoundingBox();
+        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, box.inflate(2))) {
             if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)) {
-                return true;
+                near = true;
+                inBox |= SwordSwing.inSweepBox(box, mob.getBoundingBox(), _mod.getPlayer().distanceToSqr(mob));
             }
         }
-        return false;
+        return new Beside(near, inBox);
+    }
+
+    // the shared gate for every sword swing (melee, the stall breaker and the aura all end up here): charged enough, and not a
+    // swing that would sweep a calm neutral mob. the early window is only four ticks, an aim that misses all of them lands here
+    // at full charge, so the precise check holds that swing for SWEEP_VETO_TICKS (the mob wandering off, or us getting bored,
+    // ends it)
+    private boolean swordReady(LivingEntity target, boolean sprintCounts) {
+        LocalPlayer player = _mod.getPlayer();
+        Beside beside = calmBeside(target);
+        double scale = chargeScale();
+        if (!SwordSwing.charged(scale, beside.near())) {
+            return false;
+        }
+        long now = gameTime();
+        boolean sweeps = beside.inBox() && SwordSwing.wouldSweep(scale, player.onGround(), sprintCounts && player.isSprinting(),
+                player.getKnownMovement().horizontalDistanceSqr(), player.getSpeed());
+        if (!sweeps) {
+            _sweepHeldSince = -1;
+            return true;
+        }
+        // a gap of more than a couple of ticks is a different hold
+        // (or the clock went backwards: a new world keeps this controller)
+        if (_sweepHeldSince < 0 || now - _sweepHeldLast > 2 || now < _sweepHeldLast) {
+            _sweepHeldSince = now;
+            Debug.logInternal("swing: holding a full charge swing at " + BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).getPath()
+                    + ", a calm neutral is inside the sweep box");
+        }
+        _sweepHeldLast = now;
+        boolean hold = SwordSwing.holdSweep(true, now - _sweepHeldSince);
+        if (!hold && now - _sweepHeldSince == SwordSwing.SWEEP_VETO_TICKS + 1) {
+            Debug.logInternal("swing: held " + SwordSwing.SWEEP_VETO_TICKS + " ticks, swinging anyway");
+        }
+        return !hold;
+    }
+
+    private long _sweepHeldSince = -1;
+    private long _sweepHeldLast = Long.MIN_VALUE / 2;
+
+    // what the last swing that went out looked like, for the damage watch below
+    private long _swingAt = Long.MIN_VALUE / 2;
+    private double _swingScale;
+    private int _swingTargetId = -1;
+    private AABB _swingBox;
+
+    // neutral mobs that took damage from us: who, how charged our last swing was, and whether the victim was the target or sat in
+    // its sweep box. the client has the damage event's source (LivingEntity.handleDamageEvent sets lastDamageSource and hurtTime),
+    // so this answers "which swing angered it". called every tick from the mod tick, once per mob per second
+    private final java.util.Map<Integer, Long> _hurtLogged = new java.util.HashMap<>();
+
+    public void tickHurtWatch() {
+        LocalPlayer player = _mod.getPlayer();
+        if (player == null || _mod.getWorld() == null) {
+            return;
+        }
+        long now = gameTime();
+        _hurtLogged.values().removeIf(at -> now - at > 200);
+        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, player.getBoundingBox().inflate(8))) {
+            if (!(mob instanceof ZombifiedPiglin || mob instanceof Piglin || mob instanceof Enderman) || mob.hurtTime < 9) {
+                continue;
+            }
+            Long was = _hurtLogged.get(mob.getId());
+            if (was != null && now - was < 20) {
+                continue;
+            }
+            DamageSource source = mob.getLastDamageSource();
+            if (source == null || source.getEntity() != player) {
+                continue;
+            }
+            _hurtLogged.put(mob.getId(), now);
+            boolean target = mob.getId() == _swingTargetId;
+            boolean inBox = !target && _swingBox != null && SwordSwing.inSweepBox(_swingBox, mob.getBoundingBox(), player.distanceToSqr(mob));
+            Debug.logInternal("hurt by us: " + BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath() + " #" + mob.getId() + ", "
+                    + String.format("%.1f", player.distanceTo(mob)) + " away, "
+                    + (target ? "the target" : inBox ? "NOT the target, inside the sweep box now" : "NOT the target, outside the sweep box now")
+                    + ", last swing " + (now - _swingAt) + " ticks ago at charge " + String.format("%.2f", _swingScale)
+                    + ", sprinting " + player.isSprinting() + ", angry now " + mob.isAggressive());
+        }
     }
 
     // what the machine said, once per change and not per tick, so the play log shows which veto is still keeping the bot
