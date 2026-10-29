@@ -133,6 +133,8 @@ public final class CombatCommit {
 
     // the tracker only lists hostiles closer than this, and it is how far a sniper can be and still pin us down
     public static final double FOE_RANGE = 16;
+    // a piglin brute with a line on us this close is a run before its first swing (8 to 13 is most of the bar)
+    public static final double BRUTE_RUN_RANGE = 12;
     // a shooter with a line to us that hit us this lately counts as near for the low hp rule, whatever the distance
     public static final long SHOT_MEMORY = 100;
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
@@ -237,10 +239,16 @@ public final class CombatCommit {
     // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                       boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
-                      boolean knocker) {
+                      boolean knocker, boolean brute) {
+        public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
+                   boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
+                   boolean knocker) {
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false);
+        }
+
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
@@ -249,16 +257,21 @@ public final class CombatCommit {
         }
 
         public Foe withFast(boolean fast) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
         }
 
         // knocker: a melee hit of its shoves us (cubes of any size, an angry zombified piglin), see CombatRules.rimKnocker
         public Foe withKnocker(boolean knocker) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
+        }
+
+        // brute: a piglin brute, the one heavy hitter we run from before it swings (see bruteComing)
+        public Foe withBrute(boolean brute) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
         }
 
         public Foe withSplit(String splitType, boolean splits, double x, double y, double z) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -1015,6 +1028,11 @@ public final class CombatCommit {
                 ranFrom.put(heavy.id(), t.now());
                 return startRun(t, Why.HEAVY, Event.RUN_START);
             }
+            Foe brute = bruteComing(t);
+            if (brute != null) {
+                ranFrom.put(brute.id(), t.now());
+                return startRun(t, Why.HEAVY, Event.RUN_START);
+            }
         }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
@@ -1166,6 +1184,22 @@ public final class CombatCommit {
             Long ran = ranFrom.get(foe.id());
             if (ran != null && t.now() >= ran && t.now() - ran < RunZones.EXPIRY_TICKS) continue;
             return foe;
+        }
+        return null;
+    }
+
+    // a brute that has a line on us inside BRUTE_RUN_RANGE, at any hp: the first hit is 8 or more, so waiting for contact is
+    // the whole mistake. hoglins are left out on purpose, they wander crimson forests and a 12 block rule there is a jog.
+    // not the same brute twice inside the zone expiry, RunZones keeps the sweep off it
+    static boolean bruteRun(Foe foe, Map<Integer, Long> ranFrom, long now) {
+        if (!foe.brute() || !foe.sight() || foe.distance() > BRUTE_RUN_RANGE) return false;
+        Long ran = ranFrom.get(foe.id());
+        return ran == null || now < ran || now - ran >= RunZones.EXPIRY_TICKS;
+    }
+
+    private Foe bruteComing(Tick t) {
+        for (Foe foe : candidates(t)) {
+            if (bruteRun(foe, ranFrom, t.now())) return foe;
         }
         return null;
     }

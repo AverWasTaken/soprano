@@ -305,6 +305,11 @@ public final class NetherSweepPlanner {
         return nearAny(state.fortressExhausted, pos, EXHAUSTED_BLOCKS);
     }
 
+    // a block of a bastion we already know: reporting it does nothing, so the scan should not spend its look on it
+    public boolean isKnownBastion(RunState.Pos pos) {
+        return nearAny(state.bastion, pos, SAME_STRUCTURE_BLOCKS);
+    }
+
     private boolean reportBastion(RunState.Pos pos, String key) {
         // a fortress and a bastion never share a cell, so a "bastion" block in a fortress cell is something else
         // (a ruined portal, a blackstone blob) and must not make us avoid the fortress we want

@@ -769,4 +769,11 @@ public class NetherSweepPlannerTest {
         assertEquals(Kind.FAIL, a.kind());
         assertFalse(state.visitedCells.contains("2,0"));
     }
+
+    @Test
+    public void aBlockNearAKnownBastionIsKnownAndAFarOneIsNot() {
+        planner.report(Sight.BASTION, pos(250, 0));
+        assertTrue(planner.isKnownBastion(pos(250 + 63, 0)));
+        assertFalse(planner.isKnownBastion(pos(250 + 65, 0)));
+    }
 }

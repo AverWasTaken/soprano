@@ -1076,19 +1076,39 @@ public class NetherPhase implements PhaseHandler {
             case BASTION -> BASTION;
             case WARPED -> WARPED;
         };
-        boolean xray = sight == Sight.FORTRESS;
+        boolean xray = sight != Sight.WARPED;
         List<BlockPos> known = mod.getBlockTracker().getKnownLocations(blocks);
-        if (xray) {
+        // the cluster count wants every block, known bastion or not: a few of them can sit on the near side of the 64 line
+        List<BlockPos> all = known;
+        if (sight == Sight.FORTRESS) {
             known = known.stream().filter(p -> !planner.isGivenUp(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
+        } else if (sight == Sight.BASTION) {
+            // the blocks of a bastion we know are always the nearest, they would eat the whole candidate list
+            known = known.stream().filter(p -> !planner.isKnownBastion(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
         }
         List<BlockPos> near = StrongholdScan.nearest(known, mod.getPlayer().blockPosition(), SCAN_CANDIDATES);
         for (BlockPos p : near) {
             BlockState state = mod.getWorld().getBlockState(p);
-            if (isOneOf(state, blocks) && (xray || SeenFilter.isSeen(mod, p))) {
+            if (isOneOf(state, blocks) && (xray || SeenFilter.isSeen(mod, p)) && (sight != Sight.BASTION || bastionCluster(all, p))) {
                 return Optional.of(new RunState.Pos(p.getX(), p.getY(), p.getZ()));
             }
         }
         return Optional.empty();
+    }
+
+    // a bastion is hundreds of these blocks, a ruined portal or a blackstone blob a handful. only a crowd is a bastion
+    static final int BASTION_MIN_BLOCKS = 20;
+    static final int BASTION_CLUSTER_RADIUS = 16;
+
+    static boolean bastionCluster(List<BlockPos> known, BlockPos at) {
+        int count = 0;
+        for (BlockPos p : known) {
+            if (Math.abs(p.getX() - at.getX()) <= BASTION_CLUSTER_RADIUS && Math.abs(p.getY() - at.getY()) <= BASTION_CLUSTER_RADIUS
+                    && Math.abs(p.getZ() - at.getZ()) <= BASTION_CLUSTER_RADIUS && ++count >= BASTION_MIN_BLOCKS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isOneOf(BlockState state, Block[] blocks) {
