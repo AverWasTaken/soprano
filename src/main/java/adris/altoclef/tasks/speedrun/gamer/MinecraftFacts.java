@@ -88,6 +88,8 @@ public final class MinecraftFacts implements GamerFacts {
     // an edible animal is loaded close by (PreyScan), looked at every few ticks and with a bigger line to leave than to arrive
     private boolean preyNear;
     private long preyLookAt = Long.MIN_VALUE;
+    // last look that really saw one, so a kill's drops are not abandoned the tick the animal is gone (FoodDry.preyHeld)
+    private long preySeenAt = Long.MIN_VALUE;
     private static final int PREY_LOOK_TICKS = 10;
     private int fingerprint;
     private int x;
@@ -151,6 +153,7 @@ public final class MinecraftFacts implements GamerFacts {
         if (dimension != Dimension.OVERWORLD) {
             preyNear = false;
             preyLookAt = Long.MIN_VALUE;
+            preySeenAt = Long.MIN_VALUE;
             if (state != null) {
                 state.foodSearchSince = -1;
             }
@@ -160,7 +163,11 @@ public final class MinecraftFacts implements GamerFacts {
             return;
         }
         preyLookAt = gameTime;
-        preyNear = PreyScan.near(mod, preyNear ? FoodDry.LEAVE : FoodDry.NEAR);
+        boolean seen = PreyScan.near(mod, preyNear ? FoodDry.LEAVE : FoodDry.NEAR);
+        if (seen) {
+            preySeenAt = gameTime;
+        }
+        preyNear = seen || FoodDry.preyHeld(preySeenAt, gameTime);
         if (state != null) {
             String line = FoodDry.tick(state, CollectFoodTask.searching(), preyNear, gameTime);
             if (line != null) {
