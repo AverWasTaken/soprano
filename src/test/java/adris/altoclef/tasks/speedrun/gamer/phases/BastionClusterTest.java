@@ -25,6 +25,17 @@ public class BastionClusterTest {
         assertTrue(NetherPhase.bastionCluster(blocks(20, 0), new BlockPos(0, 60, 0)));
     }
 
+    // the cluster is counted over every known block, a known bastion's near edge included
+    @Test
+    public void blocksOnTheNearSideOfAKnownBastionStillCount() {
+        List<BlockPos> all = new ArrayList<>();
+        all.add(new BlockPos(63, 60, 0));
+        for (int i = 0; i < 19; i++) {
+            all.add(new BlockPos(65 + i % 5, 60 + i / 5, 0));
+        }
+        assertTrue(NetherPhase.bastionCluster(all, new BlockPos(65, 60, 0)));
+    }
+
     @Test
     public void blocksFarFromTheCandidateDoNotCount() {
         List<BlockPos> known = blocks(19, 0);

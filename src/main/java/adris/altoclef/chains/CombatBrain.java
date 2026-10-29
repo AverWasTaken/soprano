@@ -770,7 +770,7 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(typeOf(mob).equals("piglin_brute")), mob);
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")), mob);
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
@@ -793,7 +793,7 @@ final class CombatBrain {
     // "shooter" is the same word the Foe gets (a blaze is one, though it is not a ranged attack mob by class)
     private static boolean sees(Dimension dimension, Mob mob, long sinceHit, LocalPlayer player) {
         // a brute is the odd one: melee, but the run wants to know it sees us before it has hit anything
-        if (typeOf(mob).equals("piglin_brute")) {
+        if (dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")) {
             return mob.distanceTo(player) <= CombatCommit.BRUTE_RUN_RANGE && mob.hasLineOfSight(player);
         }
         if (sinceHit > CombatCommit.HIT_MEMORY || mob instanceof Creeper) return false;

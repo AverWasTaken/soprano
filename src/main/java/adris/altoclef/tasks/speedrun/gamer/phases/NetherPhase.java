@@ -1078,13 +1078,14 @@ public class NetherPhase implements PhaseHandler {
         };
         boolean xray = sight != Sight.WARPED;
         List<BlockPos> known = mod.getBlockTracker().getKnownLocations(blocks);
+        // the cluster count wants every block, known bastion or not: a few of them can sit on the near side of the 64 line
+        List<BlockPos> all = known;
         if (sight == Sight.FORTRESS) {
             known = known.stream().filter(p -> !planner.isGivenUp(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
         } else if (sight == Sight.BASTION) {
             // the blocks of a bastion we know are always the nearest, they would eat the whole candidate list
             known = known.stream().filter(p -> !planner.isKnownBastion(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
         }
-        List<BlockPos> all = known;
         List<BlockPos> near = StrongholdScan.nearest(known, mod.getPlayer().blockPosition(), SCAN_CANDIDATES);
         for (BlockPos p : near) {
             BlockState state = mod.getWorld().getBlockState(p);

@@ -8,6 +8,7 @@ import adris.altoclef.util.helpers.CombatCommit.Kind;
 import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatCommit.Tick;
 import adris.altoclef.util.helpers.CombatCommit.Why;
+import baritone.api.utils.Dimension;
 import java.util.List;
 import org.junit.Test;
 
@@ -56,5 +57,12 @@ public class CombatCommitBruteTest {
         assertEquals(Event.NONE, c.step(tick(500, 24, List.of(brute(10, true)))));
         // past the expiry it is a fresh brute again
         assertEquals(Event.RUN_START, c.step(tick(RunZones.EXPIRY_TICKS + 10, 24, List.of(brute(10, true)))));
+    }
+
+    @Test
+    public void onlyTheNetherMarksABrute() {
+        FoeRules.Candidate c = new FoeRules.Candidate("piglin_brute", 3, 5, () -> false, () -> true, () -> true, NEVER, 0, false, false);
+        org.junit.Assert.assertTrue(FoeRules.accept(Dimension.NETHER, c).brute());
+        org.junit.Assert.assertFalse(FoeRules.accept(Dimension.OVERWORLD, c).brute());
     }
 }

@@ -241,6 +241,12 @@ public final class CombatCommit {
                       boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
                       boolean knocker, boolean brute) {
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
+                   boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
+                   boolean knocker) {
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false);
+        }
+
+        public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast) {
             this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false);
         }
