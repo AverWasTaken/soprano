@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -121,6 +122,13 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
         // If we have a blaze spawner, stand next to it in the open and let them come.
         if (_foundBlazeSpawner != null) {
+            // a wither skeleton pack at the spawner: hold where we are, the rods watch counts it as dud time and moves us on
+            // if they never leave. walking in is how the last two runs ended
+            if (BlazeFightRules.packNear(BlazeFight.witherSkeletonsNear(mod, Vec3.atCenterOf(_foundBlazeSpawner), BlazeFightRules.PACK_SPAWNER_RADIUS))) {
+                setDebugState("wither skeletons at the spawner, waiting");
+                _camping = true;
+                return null;
+            }
             if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
                 setDebugState("Going to blaze spawner");
                 _toSpawner = true;
