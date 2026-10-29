@@ -194,6 +194,23 @@ public class ShelterTask extends Task {
 
     // the blocks we may put over our head: the throwaway list first, then the usual suspects. never anything that falls (sand and
     // gravel are on the throwaway list and would land on us), and the list is checked against the bag by the caller
+    // filled on first use in a world: tags are only bound once one is loaded, and a unit test loading this class must not
+    // touch the registry at all
+    private static java.util.List<Item> _wood = java.util.List.of();
+
+    private static java.util.List<Item> woodCaps() {
+        if (!_wood.isEmpty()) return _wood;
+        java.util.List<Item> wood = new java.util.ArrayList<>();
+        for (Item item : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+            net.minecraft.world.item.ItemStack stack = item.getDefaultInstance();
+            if (stack.is(net.minecraft.tags.ItemTags.PLANKS) || stack.is(net.minecraft.tags.ItemTags.LOGS)) {
+                wood.add(item);
+            }
+        }
+        _wood = wood;
+        return wood;
+    }
+
     private static Item[] capItems(AltoClef mod) {
         Set<Item> out = new LinkedHashSet<>();
         for (Item item : AltoSettings.getThrowawayItems(mod, true)) {
@@ -205,6 +222,9 @@ public class ShelterTask extends Task {
         out.add(Items.COBBLESTONE);
         out.add(Items.NETHERRACK);
         out.add(Items.COBBLED_DEEPSLATE);
+        // planks and logs last: a fresh respawn digging into snow gets nothing to put back over its head, but there is
+        // almost always some wood in the bag by night one. better a roof of planks than no hole at all
+        out.addAll(woodCaps());
         return out.toArray(new Item[0]);
     }
 
