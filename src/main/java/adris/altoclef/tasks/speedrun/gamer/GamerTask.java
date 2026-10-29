@@ -1110,7 +1110,7 @@ public class GamerTask extends Task {
         // the same number the recovery decides on, and who told us about it
         double blocks = flatBlocksTo(deathPos);
         Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
-                + " " + Math.round(blocks) + " blocks away (recovery goes up to " + cfg.death.recoverReach
+                + " " + Math.round(blocks) + " blocks away (recovery goes up to " + DeathRules.reachFor(worth, cfg.overworld.refillStartFoodUnits, cfg.death.recoverReach)
                 + ", seen by " + seenBy.name().toLowerCase(Locale.ROOT).replace('_', ' ') + ")");
         // all read before this death goes in the book and before the old recovery is dropped. only this run's deaths count
         // for a spot, a hand restart is a clean slate
@@ -1155,7 +1155,8 @@ public class GamerTask extends Task {
         }
         // same night the shelter uses, with a minute of walking ahead of it counted (the shelter is blocked while we recover)
         boolean darkAndBare = darkAndBare(mod);
-        String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
+        String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks,
+                DeathRules.reachFor(worth, cfg.overworld.refillStartFoodUnits, cfg.death.recoverReach), worth,
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));

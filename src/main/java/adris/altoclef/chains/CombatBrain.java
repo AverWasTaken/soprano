@@ -530,7 +530,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(withSplit(foe.withFast(fast(mob)), mob));
+                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)), mob));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -778,7 +778,12 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")), mob);
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")).withWet(wet(mob, player)), mob);
+    }
+
+    // it is in the water, or we are afloat with no floor (wading with our feet on the bottom is still a fight we can take)
+    static boolean wet(Mob mob, LocalPlayer player) {
+        return mob.isInWater() || (player.isInWater() && !player.onGround());
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died

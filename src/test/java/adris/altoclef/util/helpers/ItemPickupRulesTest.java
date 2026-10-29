@@ -198,9 +198,13 @@ public class ItemPickupRulesTest {
     }
 
     @Test
-    public void onlyEyesAreWorthAWetPickup() {
-        assertTrue(ItemPickupRules.worthSwimming("ender_eye"));
-        assertFalse(ItemPickupRules.worthSwimming("ender_pearl"));
-        assertFalse(ItemPickupRules.worthSwimming("cobblestone"));
+    public void onlyTheValuablesAreWorthAWetPickup() {
+        for (String item : new String[]{"ender_eye", "ender_pearl", "blaze_rod", "diamond_pickaxe", "iron_sword", "diamond_sword", "shield",
+                "water_bucket", "iron_chestplate", "iron_boots", "diamond_helmet", "diamond_leggings"}) {
+            assertTrue(item, ItemPickupRules.worthSwimming(item));
+        }
+        for (String item : new String[]{"cobblestone", "stone_pickaxe", "wooden_sword", "bucket", "bread", "iron_ingot", "leather_helmet"}) {
+            assertFalse(item, ItemPickupRules.worthSwimming(item));
+        }
     }
 }
