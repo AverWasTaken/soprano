@@ -23,6 +23,7 @@ import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.CliffAvoidance;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
@@ -33,6 +34,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -50,6 +52,8 @@ public class MovementDiagonal extends Movement {
 
     // edging around a corner needs steering fixes and bleeds momentum, an open diagonal doesn't, so only the edging ones pay
     private static final double CORNER_EDGING_PENALTY = 1.2;
+
+    private Boolean lavaShore;
 
     public MovementDiagonal(IBaritone baritone, BetterBlockPos start, Direction dir1, Direction dir2, int dy) {
         this(baritone, start, start.relative(dir1), start.relative(dir2), dir2, dy);
@@ -347,7 +351,17 @@ public class MovementDiagonal extends Movement {
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) && !Baritone.settings().sprintInWater.value) {
             return false;
         }
-        return cornersOpen(new BlockStateInterface(ctx));
+        BlockStateInterface bsi = new BlockStateInterface(ctx);
+        return cornersOpen(bsi) && !onLavaShore(bsi);
+    }
+
+    // same idea as MovementTraverse.onLavaShore, once per movement
+    private boolean onLavaShore(BlockStateInterface bsi) {
+        if (lavaShore == null) {
+            lavaShore = ctx.world().dimension() == Level.NETHER
+                    && CliffAvoidance.diagonalByLava(CliffAvoidance.of(bsi), src.x, src.y, src.z, dest.x, dest.z);
+        }
+        return lavaShore;
     }
 
     // the two corner columns, feet and head. a sprint round the corner would clip any of them, so the sprint is only on when all
