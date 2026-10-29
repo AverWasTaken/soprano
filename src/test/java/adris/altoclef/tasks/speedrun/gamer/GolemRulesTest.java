@@ -261,4 +261,37 @@ public class GolemRulesTest {
         // dead or gone: nothing to be afraid of
         assertTrue(GolemRules.safeToComeDown(false, true, 2, 0, calm, 24));
     }
+
+    @Test
+    public void aStepBesideThePillarRaisesTheGroundTheGolemCanReach() {
+        double nan = Double.NaN;
+        // golem on 80, one side has a block-high step (top at 81): build for 81
+        assertEquals(81.0, GolemRules.groundBeside(80, new double[]{nan, 81, nan}), 1e-9);
+        // nothing beside it: its own ground
+        assertEquals(80.0, GolemRules.groundBeside(80, new double[]{nan, nan}), 1e-9);
+        // a two high wall is not a step, it cannot stand there
+        assertEquals(80.0, GolemRules.groundBeside(80, new double[]{82}), 1e-9);
+        // a slab is a half step and counts
+        assertEquals(80.5, GolemRules.groundBeside(80, new double[]{80.5, nan}), 1e-9);
+        // a lower side never lowers it
+        assertEquals(80.0, GolemRules.groundBeside(80, new double[]{79}), 1e-9);
+        // already mid hop onto the step (81.07): the next step up from 81 counts, the one after does not
+        assertEquals(82.0, GolemRules.groundBeside(81.07, new double[]{81, 82, 83}), 1e-9);
+    }
+
+    @Test
+    public void thePillarForTheStepKeepsTheLowSideGolemInReach() {
+        double golemLow = 80;
+        double ground = GolemRules.groundBeside(golemLow, new double[]{81});
+        // feet start at 80: three blocks of pillar would be 83, the step wants 84
+        int blocks = GolemRules.blocksToRaise(80, ground, MARGIN, 5);
+        assertEquals(4, blocks);
+        double feet = 80 + blocks;
+        // a golem that stepped up (feet 81) cannot reach us, one that stayed low is still inside our reach, side and diagonal
+        assertFalse(GolemRules.golemCanHitUs(feet, ground));
+        double eyeY = feet + GolemRules.EYE_HEIGHT;
+        // standing against the pillar block (center 1.2 away, 0.5 + 0.7), the one place it can be on the low side
+        assertTrue(GolemRules.inReachOfGolem(0, eyeY, 0, 1.2, golemLow, 0, RANGE));
+        assertTrue(GolemRules.inReachOfGolem(0, eyeY, 0, 1.2, ground, 0, RANGE));
+    }
 }

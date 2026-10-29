@@ -42,4 +42,13 @@ public class CommittedRunTaskTest {
         assertTrue(CommittedRunTask.mayCancelHard(false, true, false));
         assertTrue(CommittedRunTask.mayCancelHard(false, false, true));
     }
+
+    @Test
+    public void onlyAfloatMeansSwimToTheBank() {
+        assertTrue(CommittedRunTask.afloat(true, false));
+        // wading with the bottom under us walks out by itself
+        assertFalse(CommittedRunTask.afloat(true, true));
+        assertFalse(CommittedRunTask.afloat(false, false));
+        assertFalse(CommittedRunTask.afloat(false, true));
+    }
 }

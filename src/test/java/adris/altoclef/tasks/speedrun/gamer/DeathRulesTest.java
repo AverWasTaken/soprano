@@ -233,4 +233,35 @@ public class DeathRulesTest {
     public void tooFarSaysFurtherEvenAtNight() {
         assertTrue(night(1001, bag(0, 0, true, 10, false), true).contains("further than"));
     }
+
+    @Test
+    public void aRichPileGetsTheLongReach() {
+        assertEquals(3000, DeathRules.reachFor(rich(), FOOD_LINE, 1000));
+        assertEquals(3000, DeathRules.reachFor(bag(0, 0, false, 0, true), FOOD_LINE, 1000));
+    }
+
+    @Test
+    public void aPoorOrUnseenPileKeepsThePlainReach() {
+        assertEquals(1000, DeathRules.reachFor(bag(0, 0, true, 6, false), FOOD_LINE, 1000));
+        assertEquals(1000, DeathRules.reachFor(null, FOOD_LINE, 1000));
+    }
+
+    @Test
+    public void aReachSetHigherOrToZeroIsRespected() {
+        assertEquals(5000, DeathRules.reachFor(rich(), FOOD_LINE, 5000));
+        assertEquals(0, DeathRules.reachFor(rich(), FOOD_LINE, 0));
+    }
+
+    @Test
+    public void theLongReachWalksTo1271ButNotPast3000() {
+        int reach = DeathRules.reachFor(rich(), FOOD_LINE, 1000);
+        assertNull(DeathRules.refuse(true, 1271, reach, rich(), FOOD_LINE, 0, false, false));
+        assertTrue(DeathRules.refuse(true, 3001, reach, rich(), FOOD_LINE, 0, false, false).contains("further than"));
+    }
+
+    @Test
+    public void diedAtThePileStillStopsTheRetryLoopForARichPile() {
+        assertEquals("it killed us on the way back for the last pile",
+                DeathRules.refuse(true, 1271, 3000, rich(), FOOD_LINE, 0, true, false));
+    }
 }

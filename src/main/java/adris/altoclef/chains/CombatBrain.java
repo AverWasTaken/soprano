@@ -12,6 +12,7 @@ import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
+import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
@@ -405,7 +406,17 @@ final class CombatBrain {
                 // zones mean nothing in another dimension)
                 if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
                         && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
-                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now);
+                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now, RunZones.RADIUS);
+                }
+                // a run from a crowd or low hp next to a wither pack: the spawner walk keeps off the pack's closet too
+                if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN
+                        && (_commit.why() == CombatCommit.Why.CROWD || _commit.why() == CombatCommit.Why.LOW_HP)
+                        && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
+                    double[] pack = CollectBlazeRodsTask.witherPackCenter(mod, new Vec3(_commit.originX(), player.getY(), _commit.originZ()), BlazeFightRules.PACK_SPAWNER_RADIUS);
+                    if (pack != null) {
+                        RunZones.INSTANCE.add(pack[0], pack[1], now, RunZones.PACK_RADIUS);
+                        Debug.logInternal("zone: wither pack at " + Math.round(pack[0]) + "," + Math.round(pack[1]) + " r" + (int) RunZones.PACK_RADIUS);
+                    }
                 }
                 // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
                 if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
@@ -530,7 +541,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(withSplit(foe.withFast(fast(mob)), mob));
+                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)), mob));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -648,7 +659,7 @@ final class CombatBrain {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
             // (a sniper that is shooting us is a fight we would start, so it wants to know too)
-            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting()) || witherClose(foe)) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = bagCandidates(mod);
@@ -658,9 +669,14 @@ final class CombatBrain {
     // the bag is only walked when something is in contact: that is the only time an in the way fight can start
     private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT) return hasWeapon(mod);
+            if (foe.distance() <= CombatCommit.CONTACT || witherClose(foe)) return hasWeapon(mod);
         }
         return true;
+    }
+
+    // the wither skeleton start rule picks its fight from out here, so the bag gets asked before it does
+    private static boolean witherClose(Foe foe) {
+        return foe.wither() && foe.sight() && foe.distance() <= CombatCommit.WITHER_START_RANGE;
     }
 
     // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
@@ -778,7 +794,13 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")), mob);
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute"))
+                .withWither(dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")).withWet(wet(mob, player)), mob);
+    }
+
+    // it is in the water, or we are afloat with no floor (wading with our feet on the bottom is still a fight we can take)
+    static boolean wet(Mob mob, LocalPlayer player) {
+        return mob.isInWater() || (player.isInWater() && !player.onGround());
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
@@ -797,14 +819,19 @@ final class CombatBrain {
         return mob.getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED;
     }
 
-    // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.
+    // a line to us, asked of every shooter in the tracker (FOE_RANGE): the in-the-way pick wants to know about one that has not hit
+    // us yet, a skeleton in the open is the case. the ray is the costly bit, but there are never many shooters in 16 blocks.
     // "shooter" is the same word the Foe gets (a blaze is one, though it is not a ranged attack mob by class)
     private static boolean sees(Dimension dimension, Mob mob, long sinceHit, LocalPlayer player) {
         // a brute is the odd one: melee, but the run wants to know it sees us before it has hit anything
         if (dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")) {
             return mob.distanceTo(player) <= CombatCommit.BRUTE_RUN_RANGE && mob.hasLineOfSight(player);
         }
-        if (sinceHit > CombatCommit.HIT_MEMORY || mob instanceof Creeper) return false;
+        // and the wither skeleton: not a shooter, but the start rule (witherComing) wants its line when it is close
+        if (dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")) {
+            return mob.distanceTo(player) <= CombatCommit.WITHER_START_RANGE && mob.hasLineOfSight(player);
+        }
+        if (mob instanceof Creeper) return false;
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         return FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind) && mob.hasLineOfSight(player);
     }

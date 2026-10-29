@@ -55,6 +55,18 @@ public final class BlazeFightRules {
         return witherSkeletons >= PACK_SIZE;
     }
 
+    // the middle of a pack ({x, z}), null when the skeletons in the list are not enough to call it one
+    public static double[] packCenter(java.util.List<double[]> spots) {
+        if (!packNear(spots.size())) return null;
+        double x = 0;
+        double z = 0;
+        for (double[] spot : spots) {
+            x += spot[0];
+            z += spot[1];
+        }
+        return new double[]{x / spots.size(), z / spots.size()};
+    }
+
     public enum Mode {
         // nothing is in reach, wait by the spawner
         CAMP,

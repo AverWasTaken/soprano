@@ -92,14 +92,16 @@ public final class FoeRules {
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;
         Kind kind = kindOf(dimension, c.type());
         return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap(), c.sight(), c.sinceHitBefore())
-                .withBrute(dimension == Dimension.NETHER && c.type().equals("piglin_brute"));
+                .withBrute(dimension == Dimension.NETHER && c.type().equals("piglin_brute"))
+                .withWither(dimension == Dimension.NETHER && c.type().equals("wither_skeleton"));
     }
 
     // a shooter a task kept for itself (the rods task's blazes) that hit us lately and has a line on us. never a foe, so it
     // never makes a crowd, a hit or a run, but it is still shooting at us: the heal meal and the run bite must not sit down
     // in front of it. sight is only ever true for a shooter that hit us within HIT_MEMORY (CombatBrain.sees)
     public static boolean excludedShooterOnUs(Dimension dimension, Candidate c) {
-        if (!c.sight() || c.distance() > CombatRules.SHOOTER_RANGE || neverAFoe(dimension, c.type())) return false;
+        // (a wither skeleton's sight is for the start rule, it is a swordsman and not a shooter on us)
+        if (!c.sight() || c.distance() > CombatRules.SHOOTER_RANGE || c.type().equals("wither_skeleton") || neverAFoe(dimension, c.type())) return false;
         return c.excluded().getAsBoolean();
     }
 

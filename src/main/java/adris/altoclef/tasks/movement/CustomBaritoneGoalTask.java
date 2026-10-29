@@ -6,6 +6,7 @@ import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.PortalExit;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.pathing.goals.Goal;
@@ -98,8 +99,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         if (WorldHelper.isInNetherPortal(mod)) {
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 setDebugState("Getting out from nether portal");
-                mod.getInputControls().hold(Input.SNEAK);
-                mod.getInputControls().hold(Input.MOVE_FORWARD);
+                PortalExit.step(mod);
                 return null;
             }
             mod.getInputControls().release(Input.SNEAK);

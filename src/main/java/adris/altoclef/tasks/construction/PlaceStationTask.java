@@ -422,6 +422,13 @@ public class PlaceStationTask extends Task {
     }
 
     // where we stand and where the eye will be once we are sneaking (we sneak the whole time we place)
+    // the nearest dry stand when we are afloat, for anything else that has to get out of the water (the combat run). empty on
+    // land or when the water goes on past the shore radius
+    public static java.util.Optional<BlockPos> shoreNear(AltoClef mod) {
+        return StationSpots.nearestShore(new World(mod), stance(mod), StationSpots.SHORE_RADIUS)
+                .map(stand -> new BlockPos(stand.x(), stand.y(), stand.z()));
+    }
+
     private static StationSpots.Stance stance(AltoClef mod) {
         LocalPlayer p = mod.getPlayer();
         BlockPos feet = p.blockPosition();

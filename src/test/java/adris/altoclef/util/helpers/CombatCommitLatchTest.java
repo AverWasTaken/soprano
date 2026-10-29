@@ -218,6 +218,50 @@ public class CombatCommitLatchTest {
         assertEquals(Event.FIGHT_START, c.step(new Tick(later, 8, 0, 0, List.of(biter), null, Way.NONE, true, false, false, canHeal, true)));
     }
 
+    // a crossbow piglin out there with a line, the meal under way and the latch still on from the fight before it
+    private static Foe crossbow(long sinceHit) {
+        return new Foe(9, 7, true, false, sinceHit, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+    }
+
+    private static Event holdWith(Foe shooter) {
+        CombatCommit c = breakSpentFight();
+        Body canHeal = new Body(20, true, false, false);
+        long dead = NOW + 2 * CAP + 2;
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 5, 0, 0, List.of(), null, Way.NONE, false, false, false, canHeal)));
+        assertTrue(c.recovering());
+        return c.step(new Tick(dead + 2, 5, 0, 0, List.of(shooter), null, Way.NONE, false, false, false, canHeal));
+    }
+
+    @Test
+    public void aShotThatJustLandedBreaksTheLatchInTheHealUpHold() {
+        assertEquals(Event.RUN_START, holdWith(crossbow(10)));
+    }
+
+    @Test
+    public void anOldShotLeavesTheLatchOnInTheHealUpHold() {
+        assertEquals(Event.NONE, holdWith(crossbow(CombatCommit.SHOT_FRESH + 20)));
+    }
+
+    @Test
+    public void aShooterWithoutALineDoesNotBreakTheLatch() {
+        Foe blind = new Foe(9, 7, true, false, 10, Kind.NORMAL, Double.POSITIVE_INFINITY, false, NEVER);
+        assertEquals(Event.NONE, holdWith(blind));
+    }
+
+    @Test
+    public void noInTheWayPickWhileAShooterHasALineOnUs() {
+        Foe z = zombie(1, 2, NEVER);
+        Way sword = new Way(Set.of(1), true, 0, true);
+        Foe skeleton = new Foe(9, 12, true, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.NONE, c.step(new Tick(NOW, 20, 0, 0, List.of(z, skeleton), null, sword, true)));
+        // the same shooter out of its range, or with the line gone, is the old pick
+        Foe far = new Foe(9, CombatCommit.FOE_RANGE + 2, true, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER);
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(new Tick(NOW, 20, 0, 0, List.of(z, far), null, sword, true)));
+        Foe blind = new Foe(9, 12, true, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, false, NEVER);
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(new Tick(NOW, 20, 0, 0, List.of(z, blind), null, sword, true)));
+    }
+
     @Test
     public void noNoteWhileNothingHappens() {
         assertEquals(null, new CombatCommit().takeNote());

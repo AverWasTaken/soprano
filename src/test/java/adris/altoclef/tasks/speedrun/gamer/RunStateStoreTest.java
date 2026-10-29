@@ -104,6 +104,7 @@ public class RunStateStoreTest {
         s.netherTrip = new RunState.NetherTrip(new RunState.Pos(-12, 34, 56), "WALK", 4000);
         s.netherTrip.stageTick = 4800;
         s.lastTripPile = new RunState.Pos(-12, 34, 56);
+        s.deferredPile = new RunState.Pos(-300, 40, 210);
         s.dragonDead = true;
         return s;
     }
@@ -158,6 +159,7 @@ public class RunStateStoreTest {
         assertEquals(4000L, out.netherTrip.startTick);
         assertEquals(4800L, out.netherTrip.stageTick);
         assertEquals(new RunState.Pos(-12, 34, 56), out.lastTripPile);
+        assertEquals(new RunState.Pos(-300, 40, 210), out.deferredPile);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
         assertEquals(2, out.deathsThisPhase);

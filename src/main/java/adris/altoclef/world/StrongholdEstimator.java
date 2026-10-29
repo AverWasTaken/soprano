@@ -164,6 +164,11 @@ public final class StrongholdEstimator {
         }
         double range = Math.hypot(fit.x - playerX, fit.z - playerZ);
         if (range > FAR) {
+            // already snapped onto a start chunk: more rays from out here add nothing, they just burn eyes. walk, and let
+            // the close path below do the one on-the-spot dive throw
+            if (fit.est.snapped() && fit.used >= 2) {
+                return new Advice(Step.WALK, fit.snapX, fit.snapZ, "estimate is snapped, walking there without more throws");
+            }
             if (walkedSinceLastThrow >= Math.max(FAR_MIN_WALK, FAR_WALK_FRACTION * range)) {
                 return throwOrWalk(last, playerX, playerZ, fit.x, fit.z, "walked far enough for a new baseline");
             }

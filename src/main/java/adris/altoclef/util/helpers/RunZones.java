@@ -10,6 +10,8 @@ public final class RunZones {
 
     // the bastion zones are already 48 wide, a wall much fatter than this is a path that never exists
     public static final double RADIUS = 24;
+    // a wither pack is a closet, not a bastion
+    public static final double PACK_RADIUS = 12;
     // game ticks. three minutes is long enough for the hoglins to wander off and short enough that the zone is not forever
     public static final long EXPIRY_TICKS = 3 * 60 * 20L;
     // two runs from the same spot are one zone, a new one just refreshes the clock
@@ -18,20 +20,36 @@ public final class RunZones {
 
     public static final RunZones INSTANCE = new RunZones();
 
-    private record Zone(double x, double z, long at) {
+    private record Zone(double x, double z, long at, double radius) {
     }
 
     private volatile List<Zone> zones = List.of();
 
-    public void add(double x, double z, long now) {
+    // every zone carries its own radius, the bastion ones are fat and a pack of skeletons is not
+    public void add(double x, double z, long now, double radius) {
         List<Zone> next = new ArrayList<>();
         for (Zone zone : zones) {
             // (the clock going backwards is another world, nothing from the old one means anything)
             if (zone.at > now || now - zone.at >= EXPIRY_TICKS) continue;
-            if (Math.hypot(zone.x - x, zone.z - z) <= SAME_SPOT) continue;
+            if (Math.hypot(zone.x - x, zone.z - z) <= SAME_SPOT) {
+                // the same spot again: the fatter of the two radii wins, a pack zone must not shrink a bastion one
+                radius = Math.max(radius, zone.radius);
+                continue;
+            }
             next.add(zone);
         }
-        next.add(new Zone(x, z, now));
+        next.add(new Zone(x, z, now, radius));
+        while (next.size() > MAX) next.remove(0);
+        zones = List.copyOf(next);
+    }
+
+    // swaps the whole list in one go, for a source that is rebuilt from scratch every so often (no empty gap for the other
+    // thread to see). spots are {x, z}, all stamped now, so they live as long as the source keeps listing them
+    public void replaceAll(List<double[]> spots, long now, double radius) {
+        List<Zone> next = new ArrayList<>();
+        for (double[] spot : spots) {
+            next.add(new Zone(spot[0], spot[1], now, radius));
+        }
         while (next.size() > MAX) next.remove(0);
         zones = List.copyOf(next);
     }
@@ -69,6 +87,6 @@ public final class RunZones {
         double dx = zone.x - x;
         double dz = zone.z - z;
         // (NaN fails the compare, so a goal nobody knows about is never inside)
-        return dx * dx + dz * dz < RADIUS * RADIUS;
+        return dx * dx + dz * dz < zone.radius * zone.radius;
     }
 }

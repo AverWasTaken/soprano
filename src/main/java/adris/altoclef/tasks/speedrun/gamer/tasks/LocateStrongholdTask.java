@@ -52,7 +52,9 @@ public class LocateStrongholdTask extends Task {
     private LocateLegPlanner.Leg leg;
     private Stage stage = Stage.DECIDE;
     private Task legTask;
-    private Task pickupTask;
+    private PickupDroppedItemTask pickupTask;
+    // where the eye was the last tick we saw it, for the per throw log line. null = never seen
+    private double[] lastEyePos;
     private double legX;
     private double legZ;
     private boolean legIsArrive;
@@ -187,13 +189,20 @@ public class LocateStrongholdTask extends Task {
     // a frame in line of sight on the way (a lucky ravine, a library window): the room phase can take it from here
     private boolean framesSeenOnTheWay(AltoClef mod) {
         List<int[]> frames = StrongholdScan.seenFrames(mod);
+        boolean seen = !frames.isEmpty();
+        if (!seen) {
+            // loaded but behind a wall still counts, same trust as #goto end_portal_frame
+            frames = StrongholdScan.knownFrames(mod, mod.getPlayer().getX(), mod.getPlayer().getZ());
+        }
         if (frames.isEmpty()) {
             return false;
         }
         int[] f = frames.get(0);
         ctx.state().strongholdStart = new RunState.Pos(f[0], f[1], f[2]);
         ctx.save();
-        ctx.log("saw an end portal frame, going straight for it");
+        ctx.log(seen ? "saw an end portal frame, going straight for it"
+                : "an end portal frame is loaded " + Math.round(Math.hypot(f[0] - mod.getPlayer().getX(), f[2] - mod.getPlayer().getZ()))
+                + " blocks away, going straight for it");
         done = true;
         return true;
     }
@@ -394,6 +403,7 @@ public class LocateStrongholdTask extends Task {
         // persisted so a relog or an interrupt between the throw and the pickup still knows an eye is out there
         ctx.state().eyeBaseline = mod.getItemStorage().getItemCount(Items.ENDER_EYE);
         Debug.logInternal(throwLine(mod));
+        lastEyePos = null;
         observer = new EyeThrowObserver(mod.getPlayer().getX(), mod.getPlayer().getZ(), ticks(mod));
         Minecraft.getInstance().gameMode.useItem(mod.getPlayer(), InteractionHand.MAIN_HAND);
         enter(mod, Stage.OBSERVE);
@@ -404,10 +414,15 @@ public class LocateStrongholdTask extends Task {
         step = "Following the eyes";
         setDebugState("Watching the eye", step);
         Optional<Entity> eye = mod.getEntityTracker().getClosestEntity(EyeOfEnder.class);
+        eye.ifPresent(e -> lastEyePos = new double[]{e.getX(), e.getY(), e.getZ()});
         EyeThrowObserver.Result r = eye.isPresent()
                 ? observer.observe(ticks(mod), true, eye.get().getX(), eye.get().getY(), eye.get().getZ())
                 : observer.observe(ticks(mod), false, 0, 0, 0);
-        switch (interruptStreak.book(r.outcome())) {
+        EyeThrowObserver.Outcome booked = interruptStreak.book(r.outcome());
+        if (booked != EyeThrowObserver.Outcome.PENDING) {
+            Debug.logInternal("eyes: observed " + booked + " (" + r.why() + "), last eye pos " + describePos(lastEyePos));
+        }
+        switch (booked) {
             case PENDING -> {
             }
             case INTERRUPTED -> {
@@ -464,9 +479,10 @@ public class LocateStrongholdTask extends Task {
         int baseline = Math.max(1, ctx.state().eyeBaseline);
         if (pickupTask != null) {
             boolean back = mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline;
-            if (_pickupTimer.elapsed() || back) {
+            String gaveUp = pickupTask.gaveUpReason();
+            if (_pickupTimer.elapsed() || back || gaveUp != null) {
                 pickupTask = null;
-                return endCollect(mod, baseline, back ? "back" : "timed out");
+                return endCollect(mod, baseline, back ? "back" : gaveUp != null ? "gave up, " + gaveUp : "timed out");
             }
             return pickupTask;
         }
@@ -484,10 +500,13 @@ public class LocateStrongholdTask extends Task {
         }
         if (mod.getItemStorage().getItemCount(Items.ENDER_EYE) < baseline && nearDrop(mod)) {
             pickupTask = new PickupDroppedItemTask(Items.ENDER_EYE, baseline);
+            Debug.logInternal("eyes: drop at " + describePos(mod.getEntityTracker().getClosestItemDrop(Items.ENDER_EYE)
+                    .map(d -> new double[]{d.getX(), d.getY(), d.getZ()}).orElse(null)) + ", walking to it");
             _pickupTimer.reset();
             return pickupTask;
         }
         boolean back = mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline;
+        Debug.logInternal("eyes: drop " + (back ? "already picked up" : "none within " + (int) PICKUP_RANGE));
         return endCollect(mod, baseline, back ? "back" : "shattered or never seen");
     }
 
@@ -507,7 +526,12 @@ public class LocateStrongholdTask extends Task {
         return null;
     }
 
-    private boolean nearDrop(AltoClef mod) {        return mod.getEntityTracker().getClosestItemDrop(Items.ENDER_EYE)
+    private static String describePos(double[] p) {
+        return p == null ? "none" : Math.round(p[0]) + "," + Math.round(p[1]) + "," + Math.round(p[2]);
+    }
+
+    private boolean nearDrop(AltoClef mod) {
+        return mod.getEntityTracker().getClosestItemDrop(Items.ENDER_EYE)
                 .map(e -> e.distanceTo(mod.getPlayer()) <= PICKUP_RANGE).orElse(false);
     }
 

@@ -10,6 +10,7 @@ import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.BlazeDisengageTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
+import adris.altoclef.tasks.speedrun.gamer.DeathZones;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
@@ -1210,7 +1211,7 @@ public class NetherPhase implements PhaseHandler {
             return findStep(ctx, findFortress, "Looking for a fortress");
         }
         if (rodsTask == null || rodsTaskTarget != rodsNeed) {
-            rodsTask = new CollectBlazeRodsTask(rodsNeed);
+            rodsTask = new CollectBlazeRodsTask(rodsNeed, () -> DeathZones.spots(ctx.state().deaths, ctx.facts().gameTime()));
             rodsTaskTarget = rodsNeed;
         }
         boolean camping = rodsTask.isCampingSpawner();

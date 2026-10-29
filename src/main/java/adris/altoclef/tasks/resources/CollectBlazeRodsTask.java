@@ -10,9 +10,13 @@ import adris.altoclef.tasks.movement.SearchChunkForBlockTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
+import adris.altoclef.tasks.speedrun.gamer.DeathZones;
 import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.RunZones;
 import adris.altoclef.util.helpers.WorldHelper;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.monster.Blaze;
@@ -35,9 +39,42 @@ public class CollectBlazeRodsTask extends ResourceTask {
     // true on ticks where the walk to the spawner is what we are doing (not the fight, not the camp, not the fire)
     private boolean _toSpawner;
 
+    // nether death spots, asked on the main thread (the gamer hands in its death book, a bare task has none)
+    private final Supplier<List<double[]>> _deathSpots;
+    private final RunZones _deathZones = new RunZones();
+    // what the path predicate sees, from baritone's thread: where we stand, the game clock and the spawner we walk to
+    // (NaN = none). written every tick, same idea as FindNetherStructureTask
+    private volatile int _zoneX;
+    private volatile int _zoneZ;
+    private volatile long _zoneNow;
+    private volatile double _goalX = Double.NaN;
+    private volatile double _goalZ = Double.NaN;
+    // the zones are nether coordinates, the overworld walk to the portal must not see them as walls
+    private volatile boolean _zoneNether;
+
     public CollectBlazeRodsTask(int count) {
+        this(count, List::of);
+    }
+
+    public CollectBlazeRodsTask(int count, Supplier<List<double[]>> deathSpots) {
         super(Items.BLAZE_ROD, count);
         _count = count;
+        _deathSpots = deathSpots;
+    }
+
+    // the middle of the wither pack around a spot, null when there is no pack there
+    public static double[] witherPackCenter(AltoClef mod, Vec3 at, double radius) {
+        return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius));
+    }
+
+    private void noteZoneInputs(AltoClef mod) {
+        _zoneX = mod.getPlayer().blockPosition().getX();
+        _zoneZ = mod.getPlayer().blockPosition().getZ();
+        _zoneNow = mod.getWorld().getGameTime();
+        _zoneNether = WorldHelper.getCurrentDimension() == Dimension.NETHER;
+        _goalX = _foundBlazeSpawner == null ? Double.NaN : _foundBlazeSpawner.getX();
+        _goalZ = _foundBlazeSpawner == null ? Double.NaN : _foundBlazeSpawner.getZ();
+        _deathZones.replaceAll(_deathSpots.get(), _zoneNow, DeathZones.RADIUS);
     }
 
     public boolean isCampingSpawner() {
@@ -90,12 +127,19 @@ public class CollectBlazeRodsTask extends ResourceTask {
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
         // no bridging or pillaring while fighting or running, see BlazeFight.noPlacing
         mod.getBehaviour().avoidBlockPlacing(pos -> _fight.noPlacing());
+        // the base class pushed our behaviour level and pops it on stop. the pack closets and where we died lately are walls for
+        // the walk in (the player and the spawner being inside one still keeps it open, see RunZones)
+        noteZoneInputs(mod);
+        mod.getBehaviour().avoidWalkingThrough(p -> _zoneNether
+                && (RunZones.INSTANCE.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)
+                || _deathZones.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)));
     }
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
         _camping = false;
         _toSpawner = false;
+        noteZoneInputs(mod);
         // the fight only sets this on ticks it runs, the walk to the nether or a rod pickup should not inherit it
         _fight.idle();
         // We must go to the nether.
@@ -105,6 +149,8 @@ public class CollectBlazeRodsTask extends ResourceTask {
         }
         // the spawner is what starts the dry timer, finding one only between fights meant a long fight never found it
         pickSpawner(mod);
+        // (again: the goal the walk is judged against is the spawner we just picked, not last tick's)
+        noteZoneInputs(mod);
         // blazes first: kill the one we picked, run when it goes badly. null is "nobody to fight"
         Task fight = _fight.tick(mod);
         if (fight != null) {
@@ -130,7 +176,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 return null;
             }
             if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
-                setDebugState("Going to blaze spawner");
+                setDebugState("Going to blaze spawner (" + (RunZones.INSTANCE.active(_zoneNow) + _deathZones.active(_zoneNow)) + " zones)");
                 _toSpawner = true;
                 return new GetToBlockTask(_foundBlazeSpawner.above(), false);
             }

@@ -135,11 +135,20 @@ public final class CombatCommit {
     public static final double FOE_RANGE = 16;
     // a piglin brute with a line on us this close is a run before its first swing (8 to 13 is most of the bar)
     public static final double BRUTE_RUN_RANGE = 12;
+    // a wither skeleton with a line on us this close is a fight to start in the Nether, whatever else has a line on us: it is the
+    // swordsman that walks up while the blazes shoot, and a path fight that waits for it is how we get hit from both sides
+    // (not past WAY_RELEASE: a start further out than the release line would clear after the hold and start again, forever)
+    public static final double WITHER_START_RANGE = WAY_RELEASE;
+    // an in-the-way fight on a melee foe lets go only after the foe stood past WAY_RELEASE this long without hitting us. our own
+    // swing knocks it back a block or two, and one tick out there is not the path being clear
+    public static final long WAY_RELEASE_TICKS = 30;
     // a shooter with a line to us that hit us this lately counts as near for the low hp rule, whatever the distance
     public static final long SHOT_MEMORY = 100;
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
     // skeleton that steps out past the range): the meal is 1.6 s and one arrow in it is 4
     public static final long SHOT_LATCH = 60;
+    // a shot this fresh (two seconds) breaks the run latch for the low hp rule: the latch is for fights that ended, not for arrows
+    public static final long SHOT_FRESH = 40;
 
     // the bail line moves with how hard we are being hit: leave when a hit like the last big one would put us at or under
     // FLEE_HP, not when we are already there. the biggest single drop in the last NEXT_HIT_WINDOW ticks (capped, a fall or a
@@ -239,16 +248,16 @@ public final class CombatCommit {
     // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                       boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
-                      boolean knocker, boolean brute) {
+                      boolean knocker, boolean brute, boolean wet, boolean wither) {
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
                    boolean knocker) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false, false, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false, false, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
@@ -257,21 +266,31 @@ public final class CombatCommit {
         }
 
         public Foe withFast(boolean fast) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
         }
 
         // knocker: a melee hit of its shoves us (cubes of any size, an angry zombified piglin), see CombatRules.rimKnocker
         public Foe withKnocker(boolean knocker) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
         }
 
         // brute: a piglin brute, the one heavy hitter we run from before it swings (see bruteComing)
         public Foe withBrute(boolean brute) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+        }
+
+        // wither: a wither skeleton, the fortress swordsman we start on when it comes within WITHER_START_RANGE (see witherComing)
+        public Foe withWither(boolean wither) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+        }
+
+        // wet: it, or we, are in the water. a trident drowned in the sea is not a skeleton on a ledge, see sniper
+        public Foe withWet(boolean wet) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
         }
 
         public Foe withSplit(String splitType, boolean splits, double x, double y, double z) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -314,9 +333,11 @@ public final class CombatCommit {
             return sinceHit <= FRESH;
         }
 
-        // a plain bow-and-arrow sort of shooter: no lobber (own rule), no hoverer, nothing we only run from
+        // a plain bow-and-arrow sort of shooter: no lobber (own rule), no hoverer, nothing we only run from. none of them in the
+        // water: nobody walks up to a skeleton by swimming, and a trident drowned out there swims faster than we do, so the
+        // hp runs stay on (the lone sniper exemption would pin us in a fight we cannot take)
         public boolean sniper() {
-            return ranged && !creeper && kind == Kind.NORMAL;
+            return ranged && !creeper && kind == Kind.NORMAL && !wet;
         }
 
         // it shot us lately and still has a line: at low hp that is as good as standing next to us
@@ -692,6 +713,8 @@ public final class CombatCommit {
     private double bestDistance;
     private long progressAt;
     private long farSince = -1;
+    // when a melee in-the-way target first stood past WAY_RELEASE, -1 while it is close or has hit us
+    private long releaseSince = -1;
 
     // run bookkeeping
     private long clearSince = -1;
@@ -837,6 +860,7 @@ public final class CombatCommit {
         latchBreaks = 0;
         latchChased = false;
         farSince = -1;
+        releaseSince = -1;
         losRun = false;
         noSightSince = -1;
         clearSince = -1;
@@ -949,7 +973,27 @@ public final class CombatCommit {
         // healing up and a melee mob is walking over: it has not hit us yet, so it is not "on us", but the fight that set the latch
         // is long over and the next one at this hp is the one that kills us
         if (reason == Why.LOW_HP && recover.on() && !t.boxed() && fastTarget(t) == null && meleeNear(t, RecoverHold.RERUN_RANGE)) return reason;
+        // a shooter with a line that hit us a moment ago is not the fight that set the latch: standing in its sights is how the
+        // meal turns into a funeral. only in the idle heal hold (a fight keeps its latch, recovery stays on through one). boxed or with
+        // something fast on us it stays the cornered fight, same as above
+        if (mode == Mode.NONE && recover.on() && (reason == Why.LOW_HP || reason == Why.SHOT) && !t.boxed() && fastTarget(t) == null && shotJustNow(t)) return reason;
         return Why.NONE;
+    }
+
+    // a ranged foe with a line to us that landed a hit within SHOT_FRESH ticks, one we have not given up on
+    private boolean shotJustNow(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.shooting() && foe.sinceHit() <= SHOT_FRESH && !gaveUpOn(foe, t.now())) return true;
+        }
+        return false;
+    }
+
+    // a ranged foe in FOE_RANGE with a line to us, hit yet or not: the path fight we pick is not one to start in its sights
+    private boolean seenByShooter(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.ranged() && !foe.creeper() && foe.sight() && foe.distance() <= FOE_RANGE && !gaveUpOn(foe, t.now())) return true;
+        }
+        return false;
     }
 
     // a melee foe we have not given up on within range
@@ -1079,10 +1123,15 @@ public final class CombatCommit {
                 return startRun(t, Why.HEAVY, Event.RUN_START);
             }
         }
+        // a wither skeleton close with a line on us: one target, hit it first. outside the cooldown and past the shooter-sight gate
+        // below (a fortress always has a blaze looking at us), because its walk to us is the thing that costs the hp
+        Foe wither = witherComing(t);
+        if (wither != null) return startFight(t, wither, Why.IN_WAY, Event.FIGHT_START, false);
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
-        if (way == null || !t.armed() || !t.way().weapon() || t.low()) return Event.NONE;
+        // (and not with a shooter that has a line on us: the walk to the thing in the way is a walk in its sights)
+        if (way == null || !t.armed() || !t.way().weapon() || t.low() || seenByShooter(t)) return Event.NONE;
         if (t.lingering() && t.health() < LINGER_PICK_HP) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }
@@ -1247,6 +1296,18 @@ public final class CombatCommit {
             if (bruteRun(foe, ranFrom, t.now())) return foe;
         }
         return null;
+    }
+
+    // an aware wither skeleton with a line on us inside WITHER_START_RANGE (4), when we have a sword or an axe in hand and are not low.
+    // the Nether only (the foe is only marked there): everywhere else mobs are still ignored by default
+    private Foe witherComing(Tick t) {
+        if (!t.armed() || !t.way().weapon() || t.low()) return null;
+        Foe best = null;
+        for (Foe foe : candidates(t)) {
+            if (!foe.wither() || !foe.sight() || foe.distance() > WITHER_START_RANGE || gaveUpOn(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     private static double sq(double v) {
@@ -1435,7 +1496,16 @@ public final class CombatCommit {
         // goes by the normal rules below)
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
         double release = why == Why.RIM ? CombatRules.RIM_RELEASE : WAY_RELEASE;
-        if ((why == Why.IN_WAY || why == Why.RIM) && target.distance() > release && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
+        boolean past = (why == Why.IN_WAY || why == Why.RIM) && target.distance() > release && !target.hitUs();
+        // (a melee foe has to stay out there for WAY_RELEASE_TICKS: our own swing knocks it a block past the line for a tick)
+        if (past && why == Why.IN_WAY && target.melee()) {
+            if (releaseSince < 0) releaseSince = t.now();
+            if (t.now() - releaseSince >= WAY_RELEASE_TICKS) return end(t, Event.FIGHT_CLEARED);
+        } else if (past) {
+            return end(t, Event.FIGHT_CLEARED);
+        } else {
+            releaseSince = -1;
+        }
         // a blaze drifted off after it hit us: it is only a fight in contact, chasing it along a ledge is how we get shot off
         if (target.kind() == Kind.FLYER && target.distance() > CONTACT + FLYER_SLACK) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
@@ -1639,6 +1709,7 @@ public final class CombatCommit {
         bestDistance = foe.distance();
         progressAt = t.now();
         farSince = -1;
+        releaseSince = -1;
         wayBoxSince = -1;
         return event;
     }
@@ -1885,6 +1956,7 @@ public final class CombatCommit {
         targetId = -1;
         cornered = false;
         farSince = -1;
+        releaseSince = -1;
         clearSince = -1;
         clearRunHits();
         cornerSince = -1;
