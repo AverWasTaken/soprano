@@ -214,7 +214,8 @@ final class BlazeFight {
             double distance = player.distanceTo(blaze);
             boolean inReach = false;
             // a blaze hovering over a wither skeleton pack is theirs, not ours
-            boolean packed = distance <= range
+            // the one we are already after is checked at any distance, so it can't drift out of pick range and keep us walking at a pack
+            boolean packed = (distance <= range || blaze == target)
                     && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS));
             if (packed && blaze == target) packDrop = true;
             if (distance <= range && !packed) {
