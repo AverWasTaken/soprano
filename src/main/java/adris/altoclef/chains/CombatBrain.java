@@ -648,7 +648,7 @@ final class CombatBrain {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
             // (a sniper that is shooting us is a fight we would start, so it wants to know too)
-            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting()) || witherClose(foe)) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = bagCandidates(mod);
@@ -658,9 +658,14 @@ final class CombatBrain {
     // the bag is only walked when something is in contact: that is the only time an in the way fight can start
     private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT) return hasWeapon(mod);
+            if (foe.distance() <= CombatCommit.CONTACT || witherClose(foe)) return hasWeapon(mod);
         }
         return true;
+    }
+
+    // the wither skeleton start rule picks its fight from out here, so the bag gets asked before it does
+    private static boolean witherClose(Foe foe) {
+        return foe.wither() && foe.sight() && foe.distance() <= CombatCommit.WITHER_START_RANGE;
     }
 
     // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
@@ -778,7 +783,8 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")).withWet(wet(mob, player)), mob);
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute"))
+                .withWither(dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")).withWet(wet(mob, player)), mob);
     }
 
     // it is in the water, or we are afloat with no floor (wading with our feet on the bottom is still a fight we can take)
@@ -809,6 +815,10 @@ final class CombatBrain {
         // a brute is the odd one: melee, but the run wants to know it sees us before it has hit anything
         if (dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute")) {
             return mob.distanceTo(player) <= CombatCommit.BRUTE_RUN_RANGE && mob.hasLineOfSight(player);
+        }
+        // and the wither skeleton: not a shooter, but the start rule (witherComing) wants its line when it is close
+        if (dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")) {
+            return mob.distanceTo(player) <= CombatCommit.WITHER_START_RANGE && mob.hasLineOfSight(player);
         }
         if (mob instanceof Creeper) return false;
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
