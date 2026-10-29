@@ -24,6 +24,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
+import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.EscapeRun;
@@ -149,6 +150,8 @@ public class GamerTask extends Task {
     private DeathRules.Worth worth;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
+    // the walk back out of a nether we should not be in (WrongDimension)
+    private Task homeward;
     // last tick the trip sat out a night hide, for the stage clock's credit. tripHiding lets the night branch run in the nether
     // phase for that one call
     private long tripHideTick = Long.MIN_VALUE;
@@ -916,6 +919,19 @@ public class GamerTask extends Task {
             autosave(now);
             return night;
         }
+        // nobody asked for the nether and the phase is an overworld one: back through the portal we are most likely standing in
+        if (WrongDimension.fires(state.phase, facts.dimension())) {
+            if (homeward == null) {
+                Debug.logInternal("in the nether during " + state.phase + " with no trip that wants it, heading back through a portal");
+                homeward = new EnterNetherPortalTask(Dimension.OVERWORLD);
+            }
+            machine.observe();
+            machine.holdClocks();
+            setDebugState("Wrong dimension, going home.", "Heading home");
+            autosave(now);
+            return homeward;
+        }
+        homeward = null;
         Task child = machine.tick(mod);
         if (!machine.ended()) {
             child = sweepBenches(mod, child);
