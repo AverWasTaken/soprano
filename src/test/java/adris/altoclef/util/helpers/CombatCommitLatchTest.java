@@ -189,6 +189,40 @@ public class CombatCommitLatchTest {
         assertEquals(Why.LOW_HP, c.why());
     }
 
+    // the latch said none to a zombie that had not hit us yet (meleeOnUs wants contact or a hit), so the hold stood there at hp 8
+    // with it walking over. in the hold anything melee inside the rerun range is a run
+    @Test
+    public void theHealUpHoldRunsFromAZombieThatHasNotHitUsYetUnderTheLatch() {
+        CombatCommit c = breakSpentFight();
+        Body canHeal = new Body(20, true, false, false);
+        long dead = NOW + 2 * CAP + 2;
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 8, 0, 0, List.of(), null, Way.NONE, true, false, false, canHeal)));
+        assertTrue(c.recovering());
+        long walk = dead + 2;
+        Foe walker = zombie(9, 6, NEVER);
+        assertEquals(Event.RUN_START, c.step(new Tick(walk, 8, 0, 0, List.of(walker), null, Way.NONE, true, false, false, canHeal)));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    // boxed there is no run to take instead, so an old hit still starts the cornered fight: the fresh-only gate is for the
+    // ones that can walk away
+    @Test
+    public void aBoxedHealUpHoldStillFightsAZombieThatHitUsAWhileAgo() {
+        CombatCommit c = chasedFight();
+        Body canHeal = new Body(20, true, false, false);
+        long dead = NOW + CAP + 1;
+        assertEquals(Event.FIGHT_DEAD, c.step(new Tick(dead, 8, 0, 0, List.of(), null, Way.NONE, true, false, false, canHeal)));
+        assertTrue(c.recovering());
+        long later = dead + CombatCommit.COOLDOWN + 1;
+        Foe biter = zombie(9, 2, 20);
+        assertEquals(Event.FIGHT_START, c.step(new Tick(later, 8, 0, 0, List.of(biter), null, Way.NONE, true, false, false, canHeal, true)));
+    }
+
+    @Test
+    public void noNoteWhileNothingHappens() {
+        assertEquals(null, new CombatCommit().takeNote());
+    }
+
     @Test
     public void aLowHpCapStartsAFreshRunNotAFight() {
         CombatCommit c = new CombatCommit();

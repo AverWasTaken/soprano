@@ -946,7 +946,46 @@ public final class CombatCommit {
         // us, and the break counter is for the crowd. boxed or with something fast on us it still stays the cornered fight, see
         // runOrBox. a shooter out there or a mob we gave up on is not that, the latch exists for exactly those
         if (reason == Why.LOW_HP && (t.health() <= FLEE_HP || (t.lingering() && t.low())) && !t.boxed() && fastTarget(t) == null && meleeOnUs(t)) return reason;
+        // healing up and a melee mob is walking over: it has not hit us yet, so it is not "on us", but the fight that set the latch
+        // is long over and the next one at this hp is the one that kills us
+        if (reason == Why.LOW_HP && recover.on() && !t.boxed() && fastTarget(t) == null && meleeNear(t, RecoverHold.RERUN_RANGE)) return reason;
         return Why.NONE;
+    }
+
+    // a melee foe we have not given up on within range
+    private boolean meleeNear(Tick t, double range) {
+        for (Foe foe : t.foes()) {
+            if (foe.melee() && foe.distance() <= range && !gaveUpOn(foe, t.now()) && !stillIgnored(foe, t.now())) return true;
+        }
+        return false;
+    }
+
+    // the heal hold has a mob close and nothing decided: one line per IDLE_NOTE_GAP ticks saying what each gate thought, taken
+    // by the brain (this class has no logger)
+    private static final long IDLE_NOTE_GAP = 40;
+    private long idleNoteAt = Long.MIN_VALUE / 2;
+    private String idleNote;
+
+    public String takeNote() {
+        String note = idleNote;
+        idleNote = null;
+        return note;
+    }
+
+    private void noteIdle(Tick t, boolean cooling) {
+        if (t.now() - idleNoteAt < IDLE_NOTE_GAP) return;
+        Foe nearest = null;
+        for (Foe foe : t.foes()) {
+            if (foe.distance() <= 8 && (nearest == null || foe.distance() < nearest.distance())) nearest = foe;
+        }
+        if (nearest == null) return;
+        idleNoteAt = t.now();
+        Foe fast = fastTarget(t);
+        idleNote = "heal hold, " + String.format(java.util.Locale.ROOT, "%.1f", nearest.distance()) + " from foe #" + nearest.id()
+                + (nearest.melee() ? " (melee" : " (ranged") + (nearest.hitUs() ? ", has hit us" : "") + (nearest.fresh() ? ", fresh" : "")
+                + "), hp " + String.format(java.util.Locale.ROOT, "%.1f", t.health()) + ", boxed " + t.boxed() + ", runLatch " + runLatch
+                + ", latchBreaks " + latchBreaks + ", fastTarget " + (fast == null ? "none" : "#" + fast.id()) + ", ignored " + ignored.keySet()
+                + ", meleeOnUs " + meleeOnUs(t) + ", reason " + runReason(t, cooling) + " / rerun " + rerun(t);
     }
 
     private static boolean meleeOnUs(Tick t) {
@@ -992,7 +1031,13 @@ public final class CombatCommit {
         // one about to swing counts too: the shield needs 5 ticks to come up and its first hit would land before that
         Foe close = endermanClose(t);
         if (close != null) return startFight(t, close, Why.HIT, Event.FIGHT_START, false);
-        Foe hit = hitInContact(candidates(t), cooling);
+        if (recover.on()) noteIdle(t, cooling);
+        // healing up under the flee line with the run rules saying run (the latch is what kept it from starting), an old hit is
+        // not a reason to start swinging: only one that hit us just now is. boxed, something fast, or an enderman or shooter
+        // making rerun say anything but LOW_HP means no run to take instead, so the old hit still fights
+        boolean freshHitsOnly = cooling || (recover.on() && t.health() <= FLEE_HP && !t.boxed() && fastTarget(t) == null
+                && rerun(t) == Why.LOW_HP && endermanAbout(t) == null);
+        Foe hit = hitInContact(candidates(t), freshHitsOnly);
         if (hit != null) {
             // (no run for these while an enderman is about: it follows, so a swing at what is on us is the better trade)
             boolean enderAbout = endermanAbout(t) != null;

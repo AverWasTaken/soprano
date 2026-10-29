@@ -36,6 +36,7 @@ public class InputControls {
     // tracked as "unowned": those are never let go of by anybody's stop, only by a plain release
     private final Map<Input, Set<Object>> _owners = new EnumMap<>(Input.class);
     private final Set<Input> _unowned = EnumSet.noneOf(Input.class);
+    private final Map<Input, Object> _pins = new EnumMap<>(Input.class);
 
     public InputControls() {
         this(new GameKeys());
@@ -121,9 +122,28 @@ public class InputControls {
         _keys.setDown(input, true);
     }
 
-    // unconditional: the key goes up and every claim on it is gone, owned or not
+    // a key a survival rule needs held no matter who lets go (a dozen tasks release sneak by hand every tick they run). the
+    // pin outlives plain releases, only unpin lifts it
+    public void pin(Input input, Object owner) {
+        _pins.put(input, owner);
+        hold(input, owner);
+    }
+
+    public void unpin(Input input, Object owner) {
+        if (_pins.get(input) == owner) {
+            _pins.remove(input);
+        }
+        releaseOwnedBy(owner);
+    }
+
+    // unconditional: the key goes up and every claim on it is gone, owned or not (a pinned key stays down, see pin)
     public void release(Input input) {
         forget(input);
+        Object pinned = _pins.get(input);
+        if (pinned != null) {
+            claim(input, pinned);
+            return;
+        }
         _keys.setDown(input, false);
     }
 
@@ -157,6 +177,12 @@ public class InputControls {
     private void forget(Input input) {
         _unowned.remove(input);
         _owners.remove(input);
+    }
+
+    // true when this owner has a claim on the key (the key itself may be held by others too)
+    public boolean isHeldBy(Input input, Object owner) {
+        Set<Object> holders = _owners.get(input);
+        return holders != null && holders.contains(owner);
     }
 
     public boolean isHeldDown(Input input) {
