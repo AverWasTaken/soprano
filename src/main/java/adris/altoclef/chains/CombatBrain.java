@@ -61,6 +61,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.item.ItemStack;
@@ -294,6 +295,10 @@ final class CombatBrain {
         List<Mob> out = new ArrayList<>();
         try {
             out.addAll(mod.getEntityTracker().getTrackedEntities(Blaze.class));
+            // wither skeletons that have not noticed us are not foes, but a run must not steer into them either
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (!out.contains(skeleton)) out.add(skeleton);
+            }
         } catch (ConcurrentModificationException ignored) {
             // one tick of stale blazes is fine
         }
