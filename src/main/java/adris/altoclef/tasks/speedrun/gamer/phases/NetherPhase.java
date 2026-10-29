@@ -271,7 +271,7 @@ public class NetherPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return EyeMath.canLeaveNether(facts, cfg, state.framesFilled, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
+        return EyeMath.canLeaveNether(facts, cfg, state, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
     }
 
     static boolean budgetOver(GamerFacts facts, RunState state, GamerConfig cfg) {
@@ -292,7 +292,7 @@ public class NetherPhase implements PhaseHandler {
     // the budget or the stall timer fired: leave with the floor if we have it, else try again, else give up
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), ctx.state().framesFilled, true)) {
+        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), ctx.state(), true)) {
             return Timeout.SKIP;
         }
         return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
@@ -1125,7 +1125,7 @@ public class NetherPhase implements PhaseHandler {
     private static boolean pearlsNext(GamerContext ctx) {
         GamerFacts f = ctx.facts();
         int eyes = EyeMath.eyes(f);
-        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled);
+        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state());
         boolean rodsDone = f.count(Items.BLAZE_ROD) >= EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER)) || ctx.state().netherRodsGaveUp;
         return rodsDone && f.count(Items.ENDER_PEARL) < EyeMath.pearlsNeeded(goal, eyes);
     }
@@ -1135,7 +1135,7 @@ public class NetherPhase implements PhaseHandler {
         RunState s = ctx.state();
         GamerConfig cfg = ctx.cfg();
         int eyes = EyeMath.eyes(f);
-        int goal = EyeMath.targetGoal(cfg, s.framesFilled);
+        int goal = EyeMath.targetGoal(cfg, s);
         int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
         // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
@@ -1172,7 +1172,7 @@ public class NetherPhase implements PhaseHandler {
     // taking the wheel with three blazes still shooting is the same death
     private Task disengageStep(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
-        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled);
+        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state());
         int rodsNeed = EyeMath.rodsNeeded(goal, EyeMath.eyes(f), f.count(Items.BLAZE_POWDER));
         if (f.count(Items.BLAZE_ROD) < rodsNeed) {
             // short of rods again (or still collecting): the next batch gets its own walk away

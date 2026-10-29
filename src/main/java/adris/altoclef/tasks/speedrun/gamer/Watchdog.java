@@ -46,6 +46,11 @@ public final class Watchdog {
         lastProgress += seconds;
     }
 
+    // the budget alone stands still for this long, a walk the handler said does not count (PhaseHandler.holdsBudget)
+    public void pauseBudget(double seconds) {
+        attemptStart += seconds;
+    }
+
     // only the stall timer forgives this much (another chain had the wheel). capped at now, forgiving can never be
     // better than a real progress call
     public void excuse(double nowSeconds, double seconds) {

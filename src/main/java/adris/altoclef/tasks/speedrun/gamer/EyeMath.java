@@ -34,14 +34,33 @@ public final class EyeMath {
     }
 
     // the bag only has to cover the frames that are still empty. an OPEN that filled 5 and ran dry sends us back for 7
-    // more, not for another 14 it would sit out the whole budget hunting. the spare (target - floor) stays on top
+    // more, not for another 14 it would sit out the whole budget hunting. the spare (target - 12) stays on top
     public static int targetGoal(GamerConfig cfg, int framesFilled) {
-        int spare = Math.max(0, cfg.targetEyes - cfg.floorEyes);
+        int spare = Math.max(0, cfg.targetEyes - FrameGeometry.FRAME_COUNT);
         return Math.min(cfg.targetEyes, emptyFrames(framesFilled) + spare);
     }
 
+    // the floor keeps the spare it asks for above 12 (floorEyes 13 = one spare), or the first trip would cap it back to 12
     public static int floorGoal(GamerConfig cfg, int framesFilled) {
-        return Math.min(cfg.floorEyes, emptyFrames(framesFilled));
+        int empty = emptyFrames(framesFilled);
+        if (empty == 0) {
+            return 0;
+        }
+        return Math.min(cfg.floorEyes, empty + Math.max(0, cfg.floorEyes - FrameGeometry.FRAME_COUNT));
+    }
+
+    // OPEN read the ring and sent us back once: the ring is known now, the empty frames are exactly what is left to fill
+    // and the stronghold throws are done, so no spare rides on top of either goal
+    public static boolean ringKnown(RunState state) {
+        return state.openRead && state.netherRevisits >= 1;
+    }
+
+    public static int targetGoal(GamerConfig cfg, RunState state) {
+        return ringKnown(state) ? emptyFrames(state.framesFilled) : targetGoal(cfg, state.framesFilled);
+    }
+
+    public static int floorGoal(GamerConfig cfg, RunState state) {
+        return ringKnown(state) ? emptyFrames(state.framesFilled) : floorGoal(cfg, state.framesFilled);
     }
 
     private static int emptyFrames(int framesFilled) {
@@ -57,6 +76,13 @@ public final class EyeMath {
         return budgetOver && enoughFor(floorGoal(cfg, framesFilled), f);
     }
 
+    public static boolean canLeaveNether(GamerFacts f, GamerConfig cfg, RunState state, boolean budgetOver) {
+        if (enoughFor(targetGoal(cfg, state), f)) {
+            return true;
+        }
+        return budgetOver && enoughFor(floorGoal(cfg, state), f);
+    }
+
     // eyes phase exit: the target, or the floor with nothing left to craft from
     public static boolean eyesDone(GamerFacts f, GamerConfig cfg, int framesFilled) {
         int eyes = eyes(f);
@@ -64,6 +90,14 @@ public final class EyeMath {
             return true;
         }
         return eyes >= floorGoal(cfg, framesFilled) && craftableNow(f) == 0;
+    }
+
+    public static boolean eyesDone(GamerFacts f, GamerConfig cfg, RunState state) {
+        int eyes = eyes(f);
+        if (eyes >= targetGoal(cfg, state)) {
+            return true;
+        }
+        return eyes >= floorGoal(cfg, state) && craftableNow(f) == 0;
     }
 
     public static int craftableNow(GamerFacts f) {

@@ -8,13 +8,18 @@ import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
+import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FillPortalFramesTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.world.FrameGeometry;
+import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +31,18 @@ public class OpenPhase implements PhaseHandler {
     private int craftTarget = -1;
     private boolean readAll;
     private Task toRing;
+    // the walk to the ring is not the budget's business (the ring can be a thousand blocks from the portal), see holdsBudget
+    private boolean walking;
+    private boolean readLogged;
+    // the overworld pearl top-up (OpenTopUp): the hunt, the surface spot over the ring it works from, the last enderman seen
+    private PearlHuntTask hunt;
+    private int huntTotal;
+    private boolean huntOn;
+    private static final long CLIMB_TICKS = 90 * 20;
+    private static final int CLIMB_DEPTH = 6;
+    private Task climb;
+    private long climbStart = -1;
+    private long endermanSeenAt = -1;
     private String hudState = "Opening the End portal";
 
     @Override
@@ -62,8 +79,33 @@ public class OpenPhase implements PhaseHandler {
         craftTarget = -1;
         readAll = false;
         toRing = null;
+        walking = false;
+        readLogged = false;
+        hunt = null;
+        huntOn = false;
+        climb = null;
+        climbStart = -1;
+        endermanSeenAt = -1;
         // a stamp from the last visit would read as eyes missing for ages
         ctx.state().openNoEyesSince = 0;
+    }
+
+    @Override
+    public void onExit(AltoClef mod, GamerContext ctx) {
+        walking = false;
+        huntOn = false;
+    }
+
+    // the walk back to the ring after a nether trip, and the pearl hunt, have their own limits (the stall timer, OpenTopUp.CAP_TICKS)
+    @Override
+    public boolean holdsBudget() {
+        return walking || huntOn;
+    }
+
+    // a night must not send us to bed in the middle of the hunt, night is when the endermen are about
+    @Override
+    public boolean nightHold() {
+        return huntOn;
     }
 
     @Override
@@ -76,7 +118,17 @@ public class OpenPhase implements PhaseHandler {
         int[] centre = {state.endPortalCenter.x, state.endPortalCenter.y, state.endPortalCenter.z};
         boolean loaded = refresh(mod, ctx, centre);
         readAll |= loaded;
+        walking = !loaded;
         hudState = "Putting in Eyes of Ender (" + state.framesFilled + " of " + FrameGeometry.FRAME_COUNT + ")";
+        // before the open check: a ring that was already open on arrival still counts as read
+        if (loaded && !readLogged) {
+            GamerFacts f = ctx.facts();
+            readLogged = true;
+            state.openRead = true;
+            ctx.log("open: read the ring, frames filled " + state.framesFilled + ", eyes held " + f.count(Items.ENDER_EYE)
+                    + ", craftable " + StrongholdRules.craftableEyes(f) + ", needed " + (FrameGeometry.FRAME_COUNT - state.framesFilled));
+            ctx.save();
+        }
         if (state.endPortalOpened) {
             StrongholdScan.swordAfterEye(mod);
             return null;
@@ -85,6 +137,10 @@ public class OpenPhase implements PhaseHandler {
         // framesFilled starts at 0, so until one full read of the ring "short of eyes" is a guess
         if (readAll) {
             trackShortage(facts, state);
+        }
+        Task topUp = loaded ? topUp(mod, ctx, facts, centre) : null;
+        if (topUp != null) {
+            return topUp;
         }
         if (readAll && StrongholdRules.starvedForGood(facts, state)) {
             ctx.fail("not enough Eyes of Ender for the empty frames and no way to make more");
@@ -138,6 +194,70 @@ public class OpenPhase implements PhaseHandler {
             ctx.save();
         }
         return true;
+    }
+
+    // a few pearls short with the powder in the bag: hunt endermen on the surface over the ring instead of the nether trip.
+    // one hunt per run, it ends when the frames are covered or OpenTopUp.over says so, and then the regress rule has its say
+    private Task topUp(AltoClef mod, GamerContext ctx, GamerFacts facts, int[] centre) {
+        RunState state = ctx.state();
+        huntOn = false;
+        if (state.openTopUpDone || state.endPortalOpened) {
+            return null;
+        }
+        int need = FrameGeometry.FRAME_COUNT - state.framesFilled;
+        int eyes = facts.count(Items.ENDER_EYE);
+        int pearls = facts.count(Items.ENDER_PEARL);
+        long now = facts.gameTime();
+        if (!OpenTopUp.running(state)) {
+            int hold = OpenTopUp.pearlsToHold(need, eyes, pearls, facts.count(Items.BLAZE_POWDER), facts.count(Items.BLAZE_ROD));
+            if (hold == 0) {
+                return null;
+            }
+            state.openTopUpStart = Math.max(1, now);
+            ctx.log("open: short " + (need - eyes - StrongholdRules.craftableEyes(facts)) + " eyes with the powder for them, hunting endermen up top (eyes "
+                    + eyes + ", pearls " + pearls + ", powder " + facts.count(Items.BLAZE_POWDER) + ", rods " + facts.count(Items.BLAZE_ROD) + ")");
+            ctx.save();
+        }
+        if (endermanSeenAt < 0 || mod.getEntityTracker().entityFound(Enderman.class)) {
+            endermanSeenAt = now;
+        }
+        String ending = null;
+        if (!StrongholdRules.starved(facts, state)) {
+            ending = "the frames are covered";
+        } else if (OpenTopUp.over(now - state.openTopUpStart, mod.getWorld().isBrightOutside(), now - endermanSeenAt)) {
+            ending = "gave up";
+        }
+        if (ending != null) {
+            state.openTopUpDone = true;
+            ctx.log("open: pearl top-up over, " + ending + " (eyes " + eyes + ", pearls " + pearls + ", took " + (now - state.openTopUpStart) / 20 + " s)");
+            ctx.save();
+            return null;
+        }
+        huntOn = true;
+        // pearls that came in become eyes right away, the hunt only chases what is still missing
+        int craftable = StrongholdRules.craftableEyes(facts);
+        if (craftable > 0) {
+            return craft(mod, eyes + Math.min(craftable, need - eyes));
+        }
+        // the stronghold is underground, endermen are not: climb to the sky over the ring first (the hunt's own walk only
+        // counts flat distance as progress), with a clock so a blocked climb does not eat the whole top-up
+        if (climbStart < 0) {
+            climbStart = now;
+        }
+        if (now - climbStart < CLIMB_TICKS && SmeltSurface.depthBelowSky(mod) > CLIMB_DEPTH) {
+            if (climb == null) {
+                int y = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, centre[0], centre[2]);
+                climb = new GetWithinRangeOfBlockTask(new BlockPos(centre[0], y, centre[2]), 3);
+            }
+            hudState = "Climbing out to hunt endermen";
+            return climb;
+        }
+        if (hunt == null || huntTotal != need - eyes) {
+            huntTotal = need - eyes;
+            hunt = new PearlHuntTask(huntTotal, Dimension.OVERWORLD, () -> null, () -> ctx.progress("enderman down"));
+        }
+        hudState = hunt.step();
+        return hunt;
     }
 
     // pure rule needs a start time for the shortage, this keeps it (0 = no shortage)

@@ -277,6 +277,29 @@ public class StrongholdPhasesTest {
     }
 
     @Test
+    public void openWaitsOutThePearlTopUpBeforeRegressing() {
+        RunState s = new RunState();
+        s.framesFilled = 10;
+        Facts f = new Facts();
+        s.openNoEyesSince = f.time;
+        f.time += 1000;
+        s.openTopUpStart = f.time;
+        assertEquals(Optional.empty(), open.regressTo(f, s, cfg));
+        // it ended (covered or gave up): the usual rule has its say again
+        s.openTopUpDone = true;
+        assertEquals(Optional.of(GamerPhase.NETHER), open.regressTo(f, s, cfg));
+        // and after the revisit it is not a reason to fail while the hunt runs
+        RunState r = new RunState();
+        r.framesFilled = 10;
+        r.netherRevisits = 1;
+        r.openNoEyesSince = 1;
+        r.openTopUpStart = 5;
+        assertFalse(StrongholdRules.starvedForGood(f, r));
+        r.openTopUpDone = true;
+        assertTrue(StrongholdRules.starvedForGood(f, r));
+    }
+
+    @Test
     public void openGivesUpForGoodAfterTheNetherRevisit() {
         RunState s = new RunState();
         s.framesFilled = 10;

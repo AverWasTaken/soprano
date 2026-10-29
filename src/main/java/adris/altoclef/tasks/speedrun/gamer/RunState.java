@@ -67,6 +67,11 @@ public class RunState {
     public Pos endPortalCenter;
     public int framesFilled;
     public boolean endPortalOpened;
+    // OPEN has read all 12 frames at least once, so framesFilled is a real count and not the zero it starts as
+    public boolean openRead;
+    // game time the overworld pearl top-up began (0 = it has not), and whether it is over. one per run, see OpenTopUp
+    public long openTopUpStart;
+    public boolean openTopUpDone;
     public Pos spawnBed;
     // where the game says we respawn (a bed's foot), from the "Respawn point set" line and not from what we think we did.
     // null = the world spawn. an old save has no key and reads null, which just means we place one again (see Respawn)

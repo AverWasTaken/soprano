@@ -28,6 +28,17 @@ public class WatchdogTest {
     }
 
     @Test
+    public void pausingTheBudgetLeavesTheStallTimerRunning() {
+        Watchdog w = new Watchdog();
+        w.reset(0);
+        // a 10 minute walk the handler asked us not to bill: the 6 minute budget is untouched, the stall timer is not
+        w.pauseBudget(600);
+        assertTrue(w.check(700, 6, 0).ok());
+        assertEquals(Watchdog.Result.BUDGET, w.check(961, 6, 0).result());
+        assertEquals(Watchdog.Result.STALL, w.check(121, 6, 120).result());
+    }
+
+    @Test
     public void stallRunsOutWithoutProgress() {
         Watchdog w = new Watchdog();
         w.reset(0);
