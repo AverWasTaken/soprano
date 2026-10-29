@@ -671,7 +671,7 @@ public class IronPhase implements PhaseHandler {
         boolean extraFood = stockUp && !FoodGate.refillHead(needs, ctx.food());
         return new FurnacePlan.Moment(head != null, boundary, done,
                 job -> (pick && "iron_ingot".equals(job.output)) || FurnacePlan.feeds(head, job, hungry, extraFood), stockUp, true,
-                FurnaceWatch.where(mod), doing(head), farTrip(mod, head));
+                FurnaceWatch.where(mod), doing(head), farTrip(mod, head), pick);
     }
 
     // the head need is a long walk from where the furnaces are (we stand next to them when this matters). only asked for the need

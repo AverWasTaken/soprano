@@ -7,6 +7,7 @@ import adris.altoclef.util.baritone.GoalRunAwayFromEntities;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CreeperEscape;
 import adris.altoclef.util.helpers.CreeperStep;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.utils.input.Input;
@@ -21,6 +22,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -125,7 +127,7 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
             return true;
         }
         CreeperEscape.Heading heading = CreeperEscape.choose(player.getX(), player.getY(), player.getZ(), threats(mod, creeper),
-                cells(mod.getWorld()));
+                others(mod), cells(mod.getWorld()));
         if (!_rawLogged) {
             _rawLogged = true;
             Debug.logInternal(heading == null
@@ -177,6 +179,22 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
                 }
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
+            // see nearestLit
+        }
+        return out;
+    }
+
+    // everything else hostile the sprint should not run at: the zombie standing right where "away" points. creepers are threats()
+    // business, an enderman only counts once it is angry (running at a calm one is how they get angry)
+    public static List<CreeperEscape.At> others(AltoClef mod) {
+        List<CreeperEscape.At> out = new ArrayList<>();
+        try {
+            for (Entity e : mod.getEntityTracker().getHostiles()) {
+                if (e == null || !e.isAlive() || e instanceof Creeper) continue;
+                if (e instanceof Enderman && !EntityHelper.isAngryAtPlayer(mod, e)) continue;
+                out.add(new CreeperEscape.At(e.getX(), e.getZ()));
+            }
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException ex) {
             // see nearestLit
         }
         return out;

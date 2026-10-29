@@ -216,8 +216,8 @@ public class HeadLatchTest {
     // mid move and the latch let go of it (it is not owed any more), so the head was the 39 need
     @Test
     public void theEarlyBatchStaysTheHeadWhileItsOreIsMidMove() {
-        // the default kit owes all four early items: pick 3, chestplate 8, shield 1, shears 2
-        KitNeed early = new KitNeed("iron_ingot", 14);
+        // the default kit owes all four early items, the first stage is the chestplate 8 and the shield 1
+        KitNeed early = new KitNeed("iron_ingot", 9);
         FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         moving.foodUnits = 70;

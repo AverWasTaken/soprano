@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.Map;
 public class FakeFacts implements GamerFacts {
     public final Map<Item, Integer> items = new HashMap<>();
     public final java.util.Set<Item> worn = new java.util.HashSet<>();
+    public boolean offhandShield = true;
     // picks in the bag that are too worn to count (see KitPlanner.wornOut), held but not in items
     public final Map<Item, Integer> spent = new HashMap<>();
     public Dimension dimension = Dimension.OVERWORLD;
@@ -113,7 +115,8 @@ public class FakeFacts implements GamerFacts {
 
     @Override
     public boolean armorEquipped(Item item) {
-        return worn.contains(item);
+        // every kit these tests build has its shield already in the offhand, the ones about the swap turn it off
+        return worn.contains(item) || (offhandShield && item == Items.SHIELD);
     }
 
     @Override

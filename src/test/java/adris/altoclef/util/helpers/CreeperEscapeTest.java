@@ -64,6 +64,37 @@ public class CreeperEscapeTest {
         assertFalse(h.jump());
     }
 
+    private static final List<CreeperEscape.At> CREEPER = List.of(new CreeperEscape.At(-2.5, 0.5));
+
+    @Test
+    public void aZombieStraightAwayTurnsTheHeadingToASide() {
+        List<CreeperEscape.At> zombie = List.of(new CreeperEscape.At(4.5, 0.5));
+        Heading h = CreeperEscape.choose(0.5, 64, 0.5, CREEPER, zombie, new FakeWorld());
+        assertNotNull(h);
+        // 0 and both 45s are within 45 degrees of the zombie, so it is a 90
+        assertEquals(90, Math.abs(h.degrees()));
+        // far off it is nobody's business
+        Heading far = CreeperEscape.choose(0.5, 64, 0.5, CREEPER, List.of(new CreeperEscape.At(30.5, 0.5)), new FakeWorld());
+        assertEquals(0, far.degrees());
+    }
+
+    @Test
+    public void mobsOnEveryHeadingKeepTheCreeperOnlyAnswer() {
+        List<CreeperEscape.At> ring = List.of(new CreeperEscape.At(4.5, 0.5), new CreeperEscape.At(0.5 + 4 * Math.cos(Math.PI / 4), 0.5 + 4 * Math.sin(Math.PI / 4)),
+                new CreeperEscape.At(0.5 + 4 * Math.cos(Math.PI / 4), 0.5 - 4 * Math.sin(Math.PI / 4)), new CreeperEscape.At(0.5, 4.5), new CreeperEscape.At(0.5, -3.5));
+        Heading h = CreeperEscape.choose(0.5, 64, 0.5, CREEPER, ring, new FakeWorld());
+        Heading old = CreeperEscape.choose(0.5, 64, 0.5, CREEPER, new FakeWorld());
+        assertNotNull(h);
+        assertEquals(old, h);
+    }
+
+    @Test
+    public void noOtherMobsIsTheOldAnswer() {
+        Cells lava = new FakeWorld().set(1, 63, 0, Kind.DANGER);
+        assertEquals(CreeperEscape.choose(0.5, 64, 0.5, CREEPER, lava), CreeperEscape.choose(0.5, 64, 0.5, CREEPER, List.of(), lava));
+        assertEquals(run(new FakeWorld()), CreeperEscape.choose(0.5, 64, 0.5, CREEPER, List.of(), new FakeWorld()));
+    }
+
     @Test
     public void yawFollowsMinecraftsConvention() {
         // 0 faces +z, 90 faces -x, so +x is -90 and -z is 180

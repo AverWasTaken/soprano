@@ -230,7 +230,7 @@ public final class NightSleep {
     // ---- what may not be interrupted
 
     public enum Busy {
-        NONE, PHASE, PHASE_HOLD, PICKUP, LOAD, EARLY_LOAD, SCREEN
+        NONE, PHASE, PHASE_HOLD, PICKUP, LOAD, EARLY_LOAD, EARLY_COLLECT, SCREEN
     }
 
     // the things a night trip waits for, in the order they are asked. each is a thing that is physically happening right now
@@ -245,6 +245,12 @@ public final class NightSleep {
     // `phaseHolds` is an allowed phase asking to finish what it is doing first. not PHASE on purpose: PHASE turns the evening's bed
     // prep off, a hold only stops the trip and the prep keeps getting the bed ready
     public static Busy busy(boolean phaseOk, boolean phaseHolds, boolean pickupInFlight, boolean smeltLoading, boolean earlyLoad, boolean screenUp) {
+        return busy(phaseOk, phaseHolds, pickupInFlight, smeltLoading, earlyLoad, false, screenUp);
+    }
+
+    // `earlyCollect`: the early iron is seconds from done and the furnace is right here, the bed waits for the pickup
+    public static Busy busy(boolean phaseOk, boolean phaseHolds, boolean pickupInFlight, boolean smeltLoading, boolean earlyLoad,
+                            boolean earlyCollect, boolean screenUp) {
         if (!phaseOk) {
             return Busy.PHASE;
         }
@@ -259,6 +265,9 @@ public final class NightSleep {
         }
         if (earlyLoad) {
             return Busy.EARLY_LOAD;
+        }
+        if (earlyCollect) {
+            return Busy.EARLY_COLLECT;
         }
         return screenUp ? Busy.SCREEN : Busy.NONE;
     }

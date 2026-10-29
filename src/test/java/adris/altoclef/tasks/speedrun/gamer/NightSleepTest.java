@@ -530,6 +530,10 @@ public class NightSleepTest {
         assertEquals(NightSleep.Busy.PHASE, NightSleep.busy(false, true, false, false, false, false));
         // and a hold comes before the smaller things
         assertEquals(NightSleep.Busy.PHASE_HOLD, NightSleep.busy(true, true, true, true, true, true));
+        // the early iron seconds from done waits the bed, but a load or a pickup in flight still goes first
+        assertEquals(NightSleep.Busy.EARLY_COLLECT, NightSleep.busy(true, false, false, false, false, true, true));
+        assertEquals(NightSleep.Busy.EARLY_LOAD, NightSleep.busy(true, false, false, false, true, true, true));
+        assertEquals(NightSleep.Busy.SCREEN, NightSleep.busy(true, false, false, false, false, false, true));
     }
 
     @Test

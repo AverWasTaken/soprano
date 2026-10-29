@@ -14,10 +14,14 @@ import java.util.Set;
 // the name stuck from when it was only the pick. pure (facts in, answers out) so the trigger is testable, the planner and
 // IronPhase ask these
 public final class EarlyIronPick {
-    // what the early batch makes, in the order its ingots go out. the pick first, it mines everything after. then the chestplate,
-    // 6 of iron's 15 armor points in one craft. then the shield (1 ingot) and the shears (2, sheared sheep give 1 to 3 wool and
-    // stay alive for the next one, a killed one gives 1)
-    static final List<String> ITEMS = List.of("iron_pickaxe", "iron_chestplate", "shield", "shears");
+    // what the early batch makes, in two stages. armor first: the stone pick mines iron fine, it is the chestplate (6 of iron's
+    // 15 armor points in one craft) and the shield that keep us alive while we dig. 3 chest ingots no longer make an instant pick
+    // and that is ok. stage two is the pick and the shears (2, sheared sheep give 1 to 3 wool and stay alive for the next one, a
+    // killed one gives 1). the stages fire one after the other, see batch
+    private static final List<List<String>> STAGES = List.of(
+            List.of("iron_chestplate", "shield"), List.of("iron_pickaxe", "shears"));
+    // all of it in ingot order, stage one then stage two
+    static final List<String> ITEMS = List.of("iron_chestplate", "shield", "iron_pickaxe", "shears");
     // a shield is 6 planks and a log is 4 of them
     private static final int SHIELD_PLANKS = 6;
 
@@ -47,18 +51,25 @@ public final class EarlyIronPick {
         return !owed(f, cfg).isEmpty();
     }
 
-    // how many ingots the early batch is: the sum of the early items still owed. 14 on a fresh run, 9 for the chestplate and
-    // shield a death took off a bot that kept its pick
+    // how many ingots the early batch is: a running total over the stages that stops at the first stage the ingots in the bag do
+    // not cover. 9 on a fresh run (chestplate and shield), then 5 for the pick and shears once those are crafted. a shield that
+    // waits on planks costs 1 and then the stage two total is 6, so the pick is not stuck behind a wood trip. same function for
+    // need() and the head check, so isEarlyBatch stays right
     public static int batch(GamerFacts f, OverworldConfig cfg) {
-        return cost(owed(f, cfg));
-    }
-
-    private static int cost(List<String> items) {
-        int ingots = 0;
-        for (String item : items) {
-            ingots += KitPlanner.ingotCost(item);
+        List<String> owed = owed(f, cfg);
+        int ingots = f.count(Items.IRON_INGOT);
+        int cum = 0;
+        for (List<String> stage : STAGES) {
+            for (String item : stage) {
+                if (owed.contains(item)) {
+                    cum += KitPlanner.ingotCost(item);
+                }
+            }
+            if (cum > ingots) {
+                return cum;
+            }
         }
-        return ingots;
+        return cum;
     }
 
     // time to put the early batch in. pending ingots count: one early job at a time, it does not fire again while those cook,

@@ -21,7 +21,9 @@ public class EarlyIronPickTest {
     private static final int TOTAL = 12;
     // the default kit, all four early items owed: pick 3, chestplate 8, shield 1, shears 2
     private static final int FULL = 39;
+    // both stages together, and the first one on its own (chestplate and shield)
     private static final int EARLY = 14;
+    private static final int STAGE1 = 9;
     private OverworldConfig cfg;
 
     @BeforeClass
@@ -304,21 +306,53 @@ public class EarlyIronPickTest {
         assertEquals(-1, state.earlyLoadTick);
     }
 
-    // ---- the whole early kit: the pick, the chestplate, the shield and the shears out of the first 14 ore
+    // ---- the whole early kit: the chestplate and shield out of the first 9 ore, the pick and shears out of the next 5
 
     @Test
-    public void aFreshRunsEarlyBatchIsFourteen() {
+    public void aFreshRunsEarlyBatchIsTheArmorStage() {
         OverworldConfig kit = full();
-        assertEquals(EARLY, EarlyIronPick.batch(mining(), kit));
-        assertFalse(EarlyIronPick.due(mining().give(Items.RAW_IRON, EARLY - 1), kit, FULL));
-        FakeFacts f = mining().give(Items.RAW_IRON, EARLY);
+        assertEquals(STAGE1, EarlyIronPick.batch(mining(), kit));
+        assertFalse(EarlyIronPick.due(mining().give(Items.RAW_IRON, STAGE1 - 1), kit, FULL));
+        FakeFacts f = mining().give(Items.RAW_IRON, STAGE1);
         assertTrue(EarlyIronPick.due(f, kit, KitPlanner.ingotsNeeded(f, kit)));
         List<KitNeed> plan = KitPlanner.plan(f, kit, BEDS);
-        assertEquals(new KitNeed("iron_ingot", EARLY), plan.get(0));
+        assertEquals(new KitNeed("iron_ingot", STAGE1), plan.get(0));
         // the shared need still sees the whole kit, nothing counted twice
         assertEquals(new KitNeed("iron_ingot", FULL), plan.get(1));
         assertTrue(EarlyIronPick.isEarlyBatch(plan.get(0), f, kit));
         assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 3), f, kit));
+    }
+
+    @Test
+    public void theSecondStageFiresOnItsOwnOnceTheArmorIsCrafted() {
+        OverworldConfig kit = full();
+        // chestplate made, the shield is waiting on wood and its ingot is still in the bag: the pick and shears are 5 more raw,
+        // not stuck behind the shield
+        FakeFacts f = mining().give(Items.IRON_CHESTPLATE, 1).give(Items.IRON_INGOT, 1);
+        assertEquals(List.of("shield", "iron_pickaxe", "shears"), EarlyIronPick.owed(f, kit));
+        assertTrue(EarlyIronPick.front(f, kit).isEmpty());
+        assertEquals(6, EarlyIronPick.batch(f, kit));
+        assertFalse(EarlyIronPick.due(f.give(Items.RAW_IRON, 4), kit, KitPlanner.ingotsNeeded(f, kit)));
+        f.give(Items.RAW_IRON, 1);
+        assertTrue(EarlyIronPick.due(f, kit, KitPlanner.ingotsNeeded(f, kit)));
+        assertEquals(new KitNeed("iron_ingot", 6), KitPlanner.plan(f, kit, BEDS).get(0));
+        // both armor pieces made, the bag empty: stage two on its own is 5
+        FakeFacts armored = mining().give(Items.IRON_CHESTPLATE, 1).give(Items.SHIELD, 1);
+        assertEquals(5, EarlyIronPick.batch(armored, kit));
+        assertFalse(EarlyIronPick.due(armored.give(Items.RAW_IRON, 4), kit, KitPlanner.ingotsNeeded(armored, kit)));
+        armored.give(Items.RAW_IRON, 1);
+        assertTrue(EarlyIronPick.due(armored, kit, KitPlanner.ingotsNeeded(armored, kit)));
+    }
+
+    @Test
+    public void aRespawnedBotThatKeptItsPickStillGetsTheArmorStage() {
+        OverworldConfig kit = full();
+        FakeFacts f = mining().give(Items.IRON_PICKAXE, 1).give(Items.SHEARS, 1);
+        assertEquals(STAGE1, EarlyIronPick.batch(f, kit));
+        assertFalse(EarlyIronPick.due(f.give(Items.RAW_IRON, STAGE1 - 1), kit, KitPlanner.ingotsNeeded(f, kit)));
+        f.give(Items.RAW_IRON, 1);
+        assertTrue(EarlyIronPick.due(f, kit, KitPlanner.ingotsNeeded(f, kit)));
+        assertEquals(new KitNeed("iron_ingot", STAGE1), KitPlanner.plan(f, kit, BEDS).get(0));
     }
 
     @Test
@@ -362,7 +396,8 @@ public class EarlyIronPickTest {
         FakeFacts f = mining().give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 8);
         assertEquals(List.of("diamond_chestplate"), DiamondSpend.choose(f, kit));
         assertEquals(List.of("shield", "shears"), EarlyIronPick.owed(f, kit));
-        assertEquals(3, EarlyIronPick.batch(f, kit));
+        // the shield is stage one, the shears ride behind it
+        assertEquals(1, EarlyIronPick.batch(f, kit));
         // 11 is the pick and the chestplate: no early pick either (takesThePick, same rule)
         FakeFacts rich = mining().give(Items.DIAMOND, 11);
         assertEquals(List.of("shield", "shears"), EarlyIronPick.owed(rich, kit));
@@ -385,24 +420,24 @@ public class EarlyIronPickTest {
     }
 
     @Test
-    public void theEarlyCraftsGoFirstPickThenChestplateThenShieldThenShears() {
+    public void theEarlyCraftsGoFirstChestplateThenShieldThenPickThenShears() {
         OverworldConfig kit = full();
         FakeFacts out = mining().give(Items.IRON_INGOT, EARLY).give(Items.OAK_PLANKS, 6);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears"), EarlyIronPick.front(out, kit));
+        assertEquals(List.of("iron_chestplate", "shield", "iron_pickaxe", "shears"), EarlyIronPick.front(out, kit));
         List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears", "iron_ingot"), names(plan).subList(0, 5));
+        assertEquals(List.of("iron_chestplate", "shield", "iron_pickaxe", "shears", "iron_ingot"), names(plan).subList(0, 5));
         // a log is four planks, two of them are the shield
         FakeFacts logs = mining().give(Items.IRON_INGOT, EARLY).give(Items.OAK_LOG, 2);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears"), EarlyIronPick.front(logs, kit));
+        assertEquals(List.of("iron_chestplate", "shield", "iron_pickaxe", "shears"), EarlyIronPick.front(logs, kit));
     }
 
     @Test
     public void noPlanksMeansTheShieldWaitsAndTheRestGoAhead() {
         OverworldConfig kit = full();
         FakeFacts out = mining().give(Items.IRON_INGOT, EARLY);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shears"), EarlyIronPick.front(out, kit));
+        assertEquals(List.of("iron_chestplate", "iron_pickaxe", "shears"), EarlyIronPick.front(out, kit));
         List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shears", "iron_ingot"), names(plan).subList(0, 4));
+        assertEquals(List.of("iron_chestplate", "iron_pickaxe", "shears", "iron_ingot"), names(plan).subList(0, 4));
         // the shield is still in the plan, behind the mining like any other craft
         assertTrue(names(plan).indexOf("shield") > names(plan).indexOf("iron_ingot"));
     }
@@ -410,10 +445,13 @@ public class EarlyIronPickTest {
     @Test
     public void aShortBagNeverSpendsAnEarlierItemsIngots() {
         OverworldConfig kit = full();
-        // pick owed, two ingots: those are the pick's, not the shears'
+        // chestplate owed, two ingots: those are the chestplate's, not the shears'
         assertTrue(EarlyIronPick.front(mining().give(Items.IRON_INGOT, 2), kit).isEmpty());
-        // three: the pick, the chestplate waits for its eight
-        assertEquals(List.of("iron_pickaxe"), EarlyIronPick.front(mining().give(Items.IRON_INGOT, 3).give(Items.OAK_PLANKS, 6), kit));
+        // three: the chestplate owes eight and goes first, nothing behind it jumps the queue
+        assertTrue(EarlyIronPick.front(mining().give(Items.IRON_INGOT, 3).give(Items.OAK_PLANKS, 6), kit).isEmpty());
+        // the chestplate held, the shield and pick owed: the shield takes its one, the pick waits for its three
+        assertEquals(List.of("shield"), EarlyIronPick.front(
+                mining().give(Items.IRON_CHESTPLATE, 1).give(Items.IRON_INGOT, 2).give(Items.OAK_PLANKS, 6), kit));
         // the pick held, the chestplate owed, two ingots: nothing jumps the chestplate
         assertTrue(EarlyIronPick.front(mining().give(Items.IRON_PICKAXE, 1).give(Items.IRON_INGOT, 2), kit).isEmpty());
         // the chestplate held too: the shears get their two
@@ -461,10 +499,10 @@ public class EarlyIronPickTest {
         OverworldConfig kit = full();
         kit.netherSpareShields = 2;
         FakeFacts out = mining().give(Items.IRON_INGOT, EARLY).give(Items.OAK_PLANKS, 6);
-        assertEquals(List.of("iron_pickaxe", "iron_chestplate", "shield", "shears"), EarlyIronPick.front(out, kit));
+        assertEquals(List.of("iron_chestplate", "shield", "iron_pickaxe", "shears"), EarlyIronPick.front(out, kit));
         assertEquals(EARLY, EarlyIronPick.batch(out, kit));
         List<KitNeed> plan = KitPlanner.plan(out, kit, BEDS);
-        assertEquals(new KitNeed("shield", 1), plan.get(2));
+        assertEquals(new KitNeed("shield", 1), plan.get(1));
         // the spares wait until the first one exists
         assertEquals(1, plan.stream().filter(n -> n.catalogueName().equals("shield")).count());
         // one shield in hand and the early shield is done, the spares are not early work
