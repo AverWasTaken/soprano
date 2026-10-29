@@ -43,6 +43,7 @@ public final class NetherTripRules {
     // and with the hearts to survive the first volley on the other side. regen without food is slow, so the wait is capped
     public static final float HEAL_TO = 18;
     public static final int HEAL_SECONDS = 60;
+    public static final long HEAL_REGEN_GRACE_TICKS = 20;
     // when the heal minute runs out, under this the trip does not go: walking into the nether at 5 hp with no food is just a
     // second death. between this and HEAL_TO it goes anyway, the wait was only ever for comfort
     public static final float GO_HP = 14;
@@ -364,8 +365,9 @@ public final class NetherTripRules {
         if (in.health() >= HEAL_TO) {
             return new Step(Stage.PORTAL, null, false);
         }
-        // nothing to heal with: the minute would be spent standing, so decide now
-        if (!in.canRegen() || in.stageTicks() > HEAL_SECONDS * 20L) {
+        // nothing to heal with: the minute would be spent standing, so decide. the food answer is cached and trails a fresh
+        // pickup by a few ticks, so the first second of the stage does not get to give up on it
+        if ((!in.canRegen() && in.stageTicks() > HEAL_REGEN_GRACE_TICKS) || in.stageTicks() > HEAL_SECONDS * 20L) {
             return in.health() < GO_HP ? giveUp(in, "too hurt to go back") : new Step(Stage.PORTAL, null, false);
         }
         return stay(Stage.HEAL);

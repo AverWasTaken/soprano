@@ -639,7 +639,7 @@ public class NetherTripRulesTest {
     }
 
     private static Inputs healNoRegen(float hp) {
-        return new Inputs(Stage.HEAL, Dimension.OVERWORLD, 0, 20, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 0, hp,
+        return new Inputs(Stage.HEAL, Dimension.OVERWORLD, 0, 40, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 0, hp,
                 Long.MAX_VALUE, true, 0, false);
     }
 
@@ -651,6 +651,14 @@ public class NetherTripRulesTest {
         Step hurt = NetherTripRules.next(healNoRegen(13));
         assertEquals("too hurt to go back", hurt.giveUp());
         assertNull(hurt.stage());
+    }
+
+    @Test
+    public void healGivesTheFoodAnswerASecondToCatchUpBeforeLeaving() {
+        Inputs fresh = new Inputs(Stage.HEAL, Dimension.OVERWORLD, 0, 10, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 0, 13,
+                Long.MAX_VALUE, true, 0, false);
+        assertEquals(Stage.HEAL, NetherTripRules.next(fresh).stage());
+        assertNull(NetherTripRules.next(fresh).giveUp());
     }
 
     @Test
