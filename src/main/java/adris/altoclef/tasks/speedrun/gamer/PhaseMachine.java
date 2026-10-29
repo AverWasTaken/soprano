@@ -57,6 +57,8 @@ public final class PhaseMachine implements GamerContext {
     private PhaseHandler entered;
     // the level's game time can read 0 for a few ticks after a dimension change, the machine's clock never goes back
     private double lastNow;
+    // when a handler last asked to hold the budget (holdBudgetIfAsked), -1 when it is not asking
+    private double budgetHeldAt = -1;
     // when the death recovery last held the clocks, -1 when it is not running
     private double heldAt = -1;
 
@@ -162,6 +164,7 @@ public final class PhaseMachine implements GamerContext {
     }
 
     private void resetWatch() {
+        budgetHeldAt = -1;
         GamerFacts f = host.facts();
         watchdog.reset(now());
         lastFingerprint = f.inventoryFingerprint();
@@ -195,6 +198,8 @@ public final class PhaseMachine implements GamerContext {
         double now = now();
         giveBackHeldTime(now);
         heldAt = now;
+        // the full hold gives the time back by itself, the budget only hold must not count the same stretch twice
+        budgetHeldAt = -1;
     }
 
     // the recovery lost the wheel for a while: what it held so far is given back, the rest is the caller's to excuse
@@ -283,6 +288,7 @@ public final class PhaseMachine implements GamerContext {
             return null;
         }
         observe();
+        holdBudgetIfAsked();
         checkWatchdog();
         if (ended()) {
             return null;
@@ -303,6 +309,19 @@ public final class PhaseMachine implements GamerContext {
             handlerThrew(h, e);
             return null;
         }
+    }
+
+    // the handler's long walk does not eat the budget: the time since the last tick that asked is handed back to the budget
+    // clock (and the saved phase start, a relog reads that one), the stall timer keeps running
+    private void holdBudgetIfAsked() {
+        double now = now();
+        if (budgetHeldAt >= 0 && now > budgetHeldAt) {
+            // capped: a gap this long is another chain having the wheel, and that already costs the phase what it costs
+            long ticks = Math.round(Math.min(now - budgetHeldAt, 5) * 20);
+            host.state().phaseEnteredGameTime += ticks;
+            watchdog.pauseBudget(ticks / 20.0);
+        }
+        budgetHeldAt = current().holdsBudget() ? now : -1;
     }
 
     private void checkWatchdog() {

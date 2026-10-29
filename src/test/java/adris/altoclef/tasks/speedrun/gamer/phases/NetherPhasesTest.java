@@ -105,7 +105,7 @@ public class NetherPhasesTest {
 
     @Test
     public void netherAcceptsTheFloorOnlyOnceTheBudgetIsNearlyOver() {
-        FakeFacts floor = bag(6, 0, 12, 0);
+        FakeFacts floor = bag(7, 0, 13, 0);
         state.phaseEnteredGameTime = 1000;
         floor.gameTime = 1000 + 20 * 60 * 39;
         assertFalse(nether.isDone(floor, state, cfg));
@@ -113,14 +113,14 @@ public class NetherPhasesTest {
         floor.gameTime = 1000 + 20 * (40 * 60 - 20);
         assertTrue(nether.isDone(floor, state, cfg));
         // still under the floor: no
-        FakeFacts under = bag(6, 0, 11, 0);
+        FakeFacts under = bag(7, 0, 12, 0);
         under.gameTime = floor.gameTime;
         assertFalse(nether.isDone(under, state, cfg));
     }
 
     @Test
     public void unsetPhaseClockNeverCountsAsBudgetOver() {
-        FakeFacts floor = bag(6, 0, 12, 0);
+        FakeFacts floor = bag(7, 0, 13, 0);
         floor.gameTime = 10_000_000;
         state.phaseEnteredGameTime = 0;
         assertFalse(nether.isDone(floor, state, cfg));
@@ -128,17 +128,17 @@ public class NetherPhasesTest {
 
     @Test
     public void givingUpOnRodsAcceptsTheFloor() {
-        FakeFacts floor = bag(6, 0, 12, 0);
+        FakeFacts floor = bag(7, 0, 13, 0);
         assertFalse(nether.isDone(floor, state, cfg));
         state.netherRodsGaveUp = true;
         assertTrue(nether.isDone(floor, state, cfg));
         // but never below it
-        assertFalse(nether.isDone(bag(5, 0, 12, 0), state, cfg));
+        assertFalse(nether.isDone(bag(6, 0, 13, 0), state, cfg));
     }
 
     @Test
     public void timeoutLeavesWithTheFloorElseRetriesThenGivesUp() {
-        assertEquals(Timeout.SKIP, nether.onTimeout(ctx(bag(6, 0, 12, 0)), 1, "slow"));
+        assertEquals(Timeout.SKIP, nether.onTimeout(ctx(bag(7, 0, 13, 0)), 1, "slow"));
         assertEquals(Timeout.RETRY, nether.onTimeout(ctx(bag(2, 0, 3, 0)), 1, "slow"));
         assertEquals(Timeout.STUCK, nether.onTimeout(ctx(bag(2, 0, 3, 0)), cfg.maxAttempts, "slow"));
     }
@@ -150,40 +150,52 @@ public class NetherPhasesTest {
         state.netherRevisits = 1;
         assertTrue(nether.isDone(bag(5, 0, 9, 0), state, cfg));
         assertFalse(nether.isDone(bag(4, 0, 9, 0), state, cfg));
-        // the floor (7) when the budget or the rods run out
-        FakeFacts seven = bag(4, 0, 7, 0);
-        assertFalse(nether.isDone(seven, state, cfg));
+        // the floor (7 empty + the 1 spare) when the budget or the rods run out
+        FakeFacts eight = bag(4, 0, 8, 0);
+        assertFalse(nether.isDone(eight, state, cfg));
         state.netherRodsGaveUp = true;
-        assertTrue(nether.isDone(seven, state, cfg));
-        assertEquals(Timeout.SKIP, nether.onTimeout(ctx(bag(4, 0, 7, 0)), 1, "slow"));
-        assertEquals(Timeout.RETRY, nether.onTimeout(ctx(bag(3, 0, 6, 0)), 1, "slow"));
+        assertTrue(nether.isDone(eight, state, cfg));
+        assertEquals(Timeout.SKIP, nether.onTimeout(ctx(bag(4, 0, 8, 0)), 1, "slow"));
+        assertEquals(Timeout.RETRY, nether.onTimeout(ctx(bag(3, 0, 7, 0)), 1, "slow"));
+    }
+
+    @Test
+    public void aRevisitAfterARealReadOfTheRingWantsNoSpare() {
+        // OPEN read 5 of 12 and the bag was short: the way back needs exactly the 7 empty frames
+        state.framesFilled = 5;
+        state.netherRevisits = 1;
+        state.openRead = true;
+        assertTrue(nether.isDone(bag(4, 0, 7, 0), state, cfg));
+        assertFalse(nether.isDone(bag(3, 0, 7, 0), state, cfg));
+        assertFalse(nether.isDone(bag(4, 0, 6, 0), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 0, 7), state, cfg));
     }
 
     @Test
     public void eyesPhaseAgreesAboutTheEmptyFrames() {
         state.framesFilled = 5;
         assertTrue(eyes.isDone(bag(0, 0, 0, 9), state, cfg));
-        assertTrue(eyes.isDone(bag(0, 0, 2, 7), state, cfg));
-        assertFalse(eyes.isDone(bag(0, 0, 0, 6), state, cfg));
-        // 7 eyes' worth in the bag is enough to stay, 6 sends us back (once)
-        assertTrue(eyes.regressTo(bag(4, 0, 7, 0), state, cfg).isEmpty());
-        assertEquals(java.util.Optional.of(GamerPhase.NETHER), eyes.regressTo(bag(3, 0, 6, 0), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 2, 8), state, cfg));
+        assertFalse(eyes.isDone(bag(0, 0, 0, 7), state, cfg));
+        // 8 eyes' worth in the bag is enough to stay, 7 sends us back (once)
+        assertTrue(eyes.regressTo(bag(4, 0, 8, 0), state, cfg).isEmpty());
+        assertEquals(java.util.Optional.of(GamerPhase.NETHER), eyes.regressTo(bag(3, 0, 7, 0), state, cfg));
     }
 
     @Test
     public void eyesDoneAtTargetOrFloorWithNothingLeft() {
         assertTrue(eyes.isDone(bag(0, 0, 0, 14), state, cfg));
         assertFalse(eyes.isDone(bag(7, 0, 14, 0), state, cfg));
-        assertTrue(eyes.isDone(bag(0, 0, 2, 12), state, cfg));
-        assertFalse(eyes.isDone(bag(1, 0, 2, 12), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 2, 13), state, cfg));
+        assertFalse(eyes.isDone(bag(1, 0, 2, 13), state, cfg));
     }
 
     @Test
     public void eyesRegressToTheNetherOnceWhenTheBagCannotMakeTheFloor() {
         assertEquals(java.util.Optional.of(GamerPhase.NETHER), eyes.regressTo(bag(1, 0, 5, 2), state, cfg));
         // enough potential: stay
-        assertTrue(eyes.regressTo(bag(6, 0, 12, 0), state, cfg).isEmpty());
-        assertTrue(eyes.regressTo(bag(0, 0, 0, 12), state, cfg).isEmpty());
+        assertTrue(eyes.regressTo(bag(7, 0, 13, 0), state, cfg).isEmpty());
+        assertTrue(eyes.regressTo(bag(0, 0, 0, 13), state, cfg).isEmpty());
         // already used the one allowed trip
         state.netherRevisits = 1;
         assertTrue(eyes.regressTo(bag(1, 0, 5, 2), state, cfg).isEmpty());

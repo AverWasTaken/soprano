@@ -74,19 +74,20 @@ public class EyeMathTest {
 
     @Test
     public void budgetOverAcceptsTheFloor() {
-        FakeFacts floor = bag(6, 0, 12, 0);
+        FakeFacts floor = bag(7, 0, 13, 0);
         assertFalse(EyeMath.canLeaveNether(floor, cfg, 0, false));
         assertTrue(EyeMath.canLeaveNether(floor, cfg, 0, true));
         // below the floor the budget does not help
-        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 11, 0), cfg, 0, true));
-        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 12, 0), cfg, 0, true));
-        assertEquals(12, cfg.floorEyes);
+        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 12, 0), cfg, 0, true));
+        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 13, 0), cfg, 0, true));
+        assertEquals(13, cfg.floorEyes);
     }
 
     @Test
     public void floorCountsPearlsPlusEyes() {
-        // 3 eyes made already, 9 pearls, 5 rods = 10 powder: eyes 3 + 9 pearls = 12, powder 3 + 10 = 13
-        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 3), cfg, 0, true));
+        // 3 eyes made already, 10 pearls, 5 rods = 10 powder: eyes 3 + 10 pearls = 13, powder 3 + 10 = 13
+        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 10, 3), cfg, 0, true));
+        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 9, 3), cfg, 0, true));
     }
 
     @Test
@@ -94,21 +95,22 @@ public class EyeMathTest {
         assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 14), cfg, 0));
         assertFalse(EyeMath.eyesDone(bag(7, 0, 14, 0), cfg, 0));
         // at the floor with something left to craft: keep crafting up to the target
-        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 12), cfg, 0));
+        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 13), cfg, 0));
         // at the floor with nothing left to craft from: done
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 3, 12), cfg, 0));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 3, 13), cfg, 0));
         assertTrue(EyeMath.eyesDone(bag(2, 0, 0, 13), cfg, 0));
         // under the floor, even with nothing to craft, it is not done
-        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 11), cfg, 0));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 12), cfg, 0));
     }
 
     @Test
     public void goalsShrinkWithTheFramesAlreadyFilled() {
         assertEquals(14, EyeMath.targetGoal(cfg, 0));
-        assertEquals(12, EyeMath.floorGoal(cfg, 0));
-        // 5 of 12 in: 7 empty, the spare (target - floor = 2) rides on top
+        // the floor keeps its one spare on the first trip (floorEyes 13), it would be capped to 12 without that
+        assertEquals(13, EyeMath.floorGoal(cfg, 0));
+        // 5 of 12 in: 7 empty, the spare (target - 12 = 2, floor - 12 = 1) rides on top
         assertEquals(9, EyeMath.targetGoal(cfg, 5));
-        assertEquals(7, EyeMath.floorGoal(cfg, 5));
+        assertEquals(8, EyeMath.floorGoal(cfg, 5));
         // never negative, never above the configured numbers
         assertEquals(2, EyeMath.targetGoal(cfg, 12));
         assertEquals(0, EyeMath.floorGoal(cfg, 12));
@@ -120,32 +122,67 @@ public class EyeMathTest {
         // the audit scenario: OPEN ran out at 5/12, 7 more are enough (9 with the spare)
         assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 5, false));
         assertFalse(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 0, false));
-        // 7 is the floor for that state: only once the budget is nearly over
-        FakeFacts seven = bag(4, 0, 7, 0);
-        assertFalse(EyeMath.canLeaveNether(seven, cfg, 5, false));
-        assertTrue(EyeMath.canLeaveNether(seven, cfg, 5, true));
-        assertFalse(EyeMath.canLeaveNether(bag(3, 0, 7, 0), cfg, 5, true));
+        // 8 is the floor for that state: only once the budget is nearly over
+        FakeFacts eight = bag(4, 0, 8, 0);
+        assertFalse(EyeMath.canLeaveNether(eight, cfg, 5, false));
+        assertTrue(EyeMath.canLeaveNether(eight, cfg, 5, true));
+        assertFalse(EyeMath.canLeaveNether(bag(3, 0, 8, 0), cfg, 5, true));
     }
 
     @Test
     public void eyesPhaseUsesTheSameGoals() {
         assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 5));
         assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 0));
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 7), cfg, 5));
-        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 6), cfg, 5));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 8), cfg, 5));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 7), cfg, 5));
         // floor with something left to craft keeps crafting
-        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 7), cfg, 5));
+        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 8), cfg, 5));
     }
 
     @Test
     public void goalsAgreeWithTheOpenStarvedRule() {
-        // OPEN calls it starved below (12 - filled) eyes, and the nether floor leaves with exactly that many
+        // OPEN calls it starved below (12 - filled) eyes, and the nether floor leaves with those plus the one spare
         for (int filled = 0; filled < 12; filled++) {
             int need = 12 - filled;
-            assertEquals(need, EyeMath.floorGoal(cfg, filled));
-            assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, need), cfg, filled, true));
-            assertFalse(EyeMath.canLeaveNether(bag(0, 0, 0, need - 1), cfg, filled, true));
+            assertEquals(need + 1, EyeMath.floorGoal(cfg, filled));
+            assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, need + 1), cfg, filled, true));
+            assertFalse(EyeMath.canLeaveNether(bag(0, 0, 0, need), cfg, filled, true));
         }
+    }
+
+    private static RunState revisit(int filled, boolean read) {
+        RunState s = new RunState();
+        s.framesFilled = filled;
+        s.netherRevisits = 1;
+        s.openRead = read;
+        return s;
+    }
+
+    @Test
+    public void aRevisitAfterARealReadWantsExactlyTheEmptyFrames() {
+        // 5 of 12 in and OPEN really read it: 7 empty, no spare on the target, no spare on the floor
+        RunState s = revisit(5, true);
+        assertEquals(7, EyeMath.targetGoal(cfg, s));
+        assertEquals(7, EyeMath.floorGoal(cfg, s));
+        assertTrue(EyeMath.canLeaveNether(bag(4, 0, 7, 0), cfg, s, false));
+        assertFalse(EyeMath.canLeaveNether(bag(4, 0, 6, 0), cfg, s, false));
+        // held eyes count toward it
+        assertTrue(EyeMath.canLeaveNether(bag(2, 0, 4, 3), cfg, s, false));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 7), cfg, s));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 6), cfg, s));
+    }
+
+    @Test
+    public void aRevisitThatNeverReadTheRingKeepsTheSpare() {
+        // LOCATE/ROOM sent us back (hopeless): framesFilled is the unread zero, no exact goal
+        RunState noRead = revisit(0, false);
+        assertEquals(14, EyeMath.targetGoal(cfg, noRead));
+        assertEquals(13, EyeMath.floorGoal(cfg, noRead));
+        // a read ring on the first trip is not a revisit yet
+        RunState first = revisit(5, true);
+        first.netherRevisits = 0;
+        assertEquals(9, EyeMath.targetGoal(cfg, first));
+        assertEquals(8, EyeMath.floorGoal(cfg, first));
     }
 
     @Test

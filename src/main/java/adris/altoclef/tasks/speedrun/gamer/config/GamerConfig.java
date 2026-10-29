@@ -15,7 +15,8 @@ public class GamerConfig {
     // (8 moved the spare shields default 2 -> 3, a saved 2 is the old default and goes along, see GamerConfigs.migrate)
     // (9 moved the pearl hunt window 10 -> 15 minutes, a saved 10 is the old default and goes along, see GamerConfigs.migrate)
     // (10 moved the End beds 8 -> 5 and dropped the wool_beds stock-up, a saved 8 is the old default and goes along)
-    public static final int VERSION = 10;
+    // (11 moved the floor eyes 12 -> 13, one spare for the first trip, a saved 12 is the old default and goes along)
+    public static final int VERSION = 11;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;
@@ -26,8 +27,9 @@ public class GamerConfig {
     // eyes of ender: craft this many in the nether, the portal needs 12 minus the ~1.2 that are pre filled,
     // and every throw loses an eye one time in five
     public int targetEyes = 14;
-    // leave the nether / start the stronghold with at least this many when the pearl budget ran out
-    public int floorEyes = 12;
+    // leave the nether / start the stronghold with at least this many when the pearl budget ran out. 12 fills the ring
+    // with nothing to spare, one more covers the odd lost throw
+    public int floorEyes = 13;
 
     public Budgets budgets = new Budgets();
     public Death death = new Death();

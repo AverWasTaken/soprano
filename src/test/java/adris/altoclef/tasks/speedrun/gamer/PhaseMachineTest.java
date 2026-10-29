@@ -455,6 +455,46 @@ public class PhaseMachineTest {
     }
 
     @Test
+    public void aHandlerThatHoldsTheBudgetKeepsItButNotTheStallTimer() {
+        start();
+        FakeHandler g = h(GamerPhase.GATHER);
+        g.holdsBudget = true;
+        // 20 minutes of one second ticks walking, gather has 8: the budget never bites
+        for (int i = 0; i < 1200; i++) {
+            host.facts.seconds(1);
+            machine.progress();
+            machine.tick(null);
+        }
+        assertEquals(1, machine.attempt());
+        // it stops asking and the clock runs again from where it was parked
+        g.holdsBudget = false;
+        tickAfter(1);
+        assertEquals(1, machine.attempt());
+        // the stall timer was never held
+        g.stall = 120;
+        tickAfter(121);
+        assertEquals(2, host.state.attemptsOf(GamerPhase.GATHER));
+    }
+
+    @Test
+    public void aBudgetHoldAndARecoveryHoldDoNotCreditTheSameStretchTwice() {
+        start();
+        h(GamerPhase.GATHER).holdsBudget = true;
+        h(GamerPhase.GATHER).stall = 0;
+        host.facts.seconds(1);
+        machine.tick(null);
+        long entered = host.state.phaseEnteredGameTime;
+        for (int i = 0; i < 10; i++) {
+            host.facts.seconds(1);
+            machine.holdClocks();
+        }
+        host.facts.seconds(1);
+        machine.tick(null);
+        // 10 held seconds given back once, the tick after the recovery adds nothing for the same stretch
+        assertEquals(entered + 10 * 20, host.state.phaseEnteredGameTime);
+    }
+
+    @Test
     public void aRecoveryThatLostTheWheelStopsGivingTimeBack() {
         start();
         long enteredBefore = host.state.phaseEnteredGameTime;

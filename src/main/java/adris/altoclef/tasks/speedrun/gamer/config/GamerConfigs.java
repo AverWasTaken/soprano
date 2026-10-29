@@ -57,6 +57,10 @@ public final class GamerConfigs {
         if (from < 10 && c.end != null && c.end.beds == 8) {
             c.end.beds = new GamerConfig().end.beds;
         }
+        // and the floor eyes: 12 was the default until it got a spare for the lost throws
+        if (from < 11 && c.floorEyes == 12) {
+            c.floorEyes = new GamerConfig().floorEyes;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

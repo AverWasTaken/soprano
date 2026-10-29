@@ -328,6 +328,18 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysTwelveFloorEyesGetsTheSpare() throws IOException {
+        write("{\"version\": 10, \"floorEyes\": 12}");
+        assertEquals(13, GamerConfigs.load().floorEyes);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 10, \"floorEyes\": 11}");
+        assertEquals(11, GamerConfigs.load().floorEyes);
+        // and a current file that says 12 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"floorEyes\": 12}");
+        assertEquals(12, GamerConfigs.load().floorEyes);
+    }
+
+    @Test
     public void anOldFileThatStillSaysEightEndBedsGetsTheNewDefault() throws IOException {
         write("{\"version\": 9, \"end\": {\"beds\": 8}}");
         assertEquals(5, GamerConfigs.load().end.beds);
@@ -372,7 +384,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 10;
+    private static final int PINNED_VERSION = 11;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

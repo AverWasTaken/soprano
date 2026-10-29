@@ -78,6 +78,12 @@ public interface PhaseHandler {
     default void onExit(AltoClef mod, GamerContext ctx) {
     }
 
+    // true = the budget clock stands still right now (the stall timer does not). for a long walk or a capped side job that
+    // has its own limit, so the phase budget is spent on the work and not on getting there
+    default boolean holdsBudget() {
+        return false;
+    }
+
     // seconds without progress before the watchdog times the phase out. 0 = never (waiting phases, they still have a budget)
     default double stallSeconds() {
         return 120;
