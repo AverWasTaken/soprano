@@ -110,6 +110,7 @@ final class CombatBrain {
     private long _stanceLogAt = Long.MIN_VALUE / 2;
     private float _lastHealth = -1;
     private DamageSource _lastSource;
+    private long _lastHurtAt = Long.MIN_VALUE / 2;
     // the blaze or skeleton whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
     private DamageSource _shotSeen;
     private Mob _shooter;
@@ -228,6 +229,7 @@ final class CombatBrain {
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
         _lastSource = null;
+        _lastHurtAt = Long.MIN_VALUE / 2;
         _shotSeen = null;
         _shooter = null;
         _shooterAt = Long.MIN_VALUE / 2;
@@ -379,6 +381,8 @@ final class CombatBrain {
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
+            String note = _commit.takeNote();
+            if (note != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + note);
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -577,8 +581,12 @@ final class CombatBrain {
         _lastHealth = hp;
         if (before < 0 || hp >= before) return;
         DamageSource source = player.getLastDamageSource();
-        if (source != null && source == _lastSource) return;
+        // wither and fire hand back the same cached source every tick, so "new object" hid all of their damage. a source with
+        // no attacker gets a line at most every STANCE_LOG_GAP ticks instead
+        long now = mod.getWorld().getGameTime();
+        if (source != null && source == _lastSource && (source.getEntity() != null || now - _lastHurtAt < STANCE_LOG_GAP)) return;
         _lastSource = source;
+        _lastHurtAt = now;
         String who = null;
         String how = null;
         if (source != null) {

@@ -14,6 +14,7 @@ import java.util.List;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
@@ -113,7 +114,7 @@ final class BlazeFight {
         noPlacing = mode != Mode.CAMP;
         watchRun(now, health);
         lastHealth = health;
-        logChange(health);
+        logChange(mod, health);
         return switch (mode) {
             case CAMP -> null;
             case KILL -> new KillEntityTask(target);
@@ -183,12 +184,25 @@ final class BlazeFight {
         runGaveUp = BlazeFightRules.runGaveUpNext(runGaveUp, mode == Mode.RUN, rose, stalled);
     }
 
-    private void logChange(float health) {
+    // where the run starts and who is in it, so a run into unseen skeletons can be told from a run into nothing
+    private String runDetail(AltoClef mod, float health) {
+        LocalPlayer player = mod.getPlayer();
+        StringBuilder crowd = new StringBuilder();
+        for (Entity e : runCrowd(mod)) {
+            if (crowd.length() > 0) crowd.append(", ");
+            crowd.append(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath()).append(' ').append(Math.round(player.distanceTo(e)));
+        }
+        return "rods: running at " + String.format(java.util.Locale.ROOT, "%.1f", health) + " hp from " + player.blockPosition().toShortString()
+                + ", " + RUN_DISTANCE + " block run, crowd [" + crowd + "], burning " + player.isOnFire()
+                + ", wither " + player.hasEffect(MobEffects.WITHER);
+    }
+
+    private void logChange(AltoClef mod, float health) {
         if (mode == loggedMode) return;
         loggedMode = mode;
         switch (mode) {
             case KILL -> Debug.logInternal("rods: going after a blaze (" + candidates.size() + " in reach)");
-            case RUN -> Debug.logInternal("rods: running at " + (int) health + " hp");
+            case RUN -> Debug.logInternal(runDetail(mod, health));
             case CAMP -> Debug.logInternal("rods: all quiet, back to camping");
         }
     }

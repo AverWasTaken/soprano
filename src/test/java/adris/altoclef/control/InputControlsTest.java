@@ -82,6 +82,47 @@ public class InputControlsTest {
         assertTrue(controls.isHeldDown(Input.CLICK_RIGHT));
     }
 
+    // the magma sneak lets go on its own name and the shield's sneak stays down
+    @Test
+    public void aSneakOwnerLettingGoLeavesTheShieldsSneak() {
+        Object magma = new Object();
+        Object shield = new Object();
+        controls.hold(Input.SNEAK, shield);
+        controls.hold(Input.SNEAK, magma);
+        assertTrue(controls.isHeldBy(Input.SNEAK, magma));
+        controls.releaseOwnedBy(magma);
+        assertFalse(controls.isHeldBy(Input.SNEAK, magma));
+        assertTrue(controls.isHeldBy(Input.SNEAK, shield));
+        assertTrue(controls.isHeldDown(Input.SNEAK));
+    }
+
+    // mining tasks release sneak by hand every tick: a pinned sneak rides it out and only the unpin lifts it
+    @Test
+    public void aPinnedKeySurvivesAPlainRelease() {
+        Object magma = new Object();
+        controls.pin(Input.SNEAK, magma);
+        controls.release(Input.SNEAK);
+        assertTrue(controls.isHeldDown(Input.SNEAK));
+        assertTrue(controls.isHeldBy(Input.SNEAK, magma));
+        controls.unpin(Input.SNEAK, magma);
+        assertFalse(controls.isHeldDown(Input.SNEAK));
+        // and a plain release works as it always did again
+        controls.hold(Input.SNEAK);
+        controls.release(Input.SNEAK);
+        assertFalse(controls.isHeldDown(Input.SNEAK));
+    }
+
+    @Test
+    public void unpinningLeavesAnotherOwnersSneak() {
+        Object magma = new Object();
+        Object shield = new Object();
+        controls.hold(Input.SNEAK, shield);
+        controls.pin(Input.SNEAK, magma);
+        controls.unpin(Input.SNEAK, magma);
+        assertTrue(controls.isHeldDown(Input.SNEAK));
+        assertTrue(controls.isHeldBy(Input.SNEAK, shield));
+    }
+
     // and the food chain's plain release still wins over every shield, eating needs the use key
     @Test
     public void aPlainReleaseLiftsEveryOwner() {

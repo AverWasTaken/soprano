@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.control.InputControls;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
@@ -39,6 +40,10 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private boolean _wasAvoidingDrowning;
     private TimerGame _portalStuckTimer = new TimerGame(5);
 
+    // our name on the sneak key, so letting go never lifts the shield's hold and the fix chain knows to leave it be
+    static final Object MAGMA_SNEAK = new Object();
+    private InputControls _magmaKeys;
+
     private BlockPos _extinguishWaterPosition;
     // the block and face the dunk clicked, the pickup clicks the same ones
     private BlockPos _extinguishHit;
@@ -58,10 +63,16 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
     @Override
     public float getPriority(AltoClef mod) {
-        if (!AltoClef.inGame()) return Float.NEGATIVE_INFINITY;
+        if (!AltoClef.inGame()) {
+            letGoOfMagmaSneak();
+            return Float.NEGATIVE_INFINITY;
+        }
 
         // Drowning
         handleDrowning(mod);
+
+        // magma only burns what is not sneaking, so a bot stuck standing on it keeps its shift down
+        handleMagmaSneak(mod);
 
         // Lava Escape
         if (isInLavaOhShit(mod) && mod.getBehaviour().shouldEscapeLava()) {
@@ -141,6 +152,31 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         return Float.NEGATIVE_INFINITY;
+    }
+
+    // pure so it can be tested: on the ground, on magma, and nobody walking us anywhere
+    static boolean magmaSneakNow(boolean onGround, boolean onMagma, boolean pathing) {
+        return onGround && onMagma && !pathing;
+    }
+
+    private void handleMagmaSneak(AltoClef mod) {
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        boolean onMagma = mod.getWorld().getBlockState(mod.getPlayer().getOnPos()).is(Blocks.MAGMA_BLOCK);
+        // (a search still thinking is not a walk: we are standing here until the path actually starts)
+        if (magmaSneakNow(mod.getPlayer().onGround(), onMagma, pathing.isPathing())) {
+            _magmaKeys = mod.getInputControls();
+            // pinned: mining and placing tasks let go of sneak by hand every tick they run, and one tick up is a burn
+            _magmaKeys.pin(Input.SNEAK, MAGMA_SNEAK);
+        } else {
+            letGoOfMagmaSneak();
+        }
+    }
+
+    private void letGoOfMagmaSneak() {
+        if (_magmaKeys != null) {
+            _magmaKeys.unpin(Input.SNEAK, MAGMA_SNEAK);
+            _magmaKeys = null;
+        }
     }
 
     // distance to the closest enderman that is angry at us, infinity for none
@@ -297,6 +333,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
     @Override
     protected void onStop(AltoClef mod) {
+        letGoOfMagmaSneak();
         super.onStop(mod);
     }
 }
