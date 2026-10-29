@@ -178,6 +178,19 @@ public class NightShelterTest {
             b.hunger = 4;
             return b;
         })));
+        // a heart or three down with an empty belly is every first night, not a reason to hide
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 16;
+            b.hunger = 4;
+            return b;
+        })));
+        assertTrue(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = NightShelter.HURT_AT;
+            b.hunger = 4;
+            return b;
+        })));
         // at the line or above with an empty belly: not hurt enough
         assertFalse(NightShelter.wanted(with(base(), b -> {
             b.since = -1;

@@ -52,10 +52,12 @@ public final class NightShelter {
                 && (t.tripNight() || recentDeath(t.ticksSinceDeath()) || hurtNoHeal(t.health(), t.hunger(), t.healFood()));
     }
 
-    // hurt, no armor, and nothing to heal with (an empty belly does not regen): a night outside like that is a second death
-    // waiting to happen, so it counts like a death did. same food question RecoverHold's body asks
+    // really hurt, no armor, and nothing to heal with (an empty belly does not regen): a night outside like that is a second
+    // death waiting to happen, so it counts like a death did. one heart down is every first night, that is not it
+    public static final float HURT_AT = 12;
+
     public static boolean hurtNoHeal(float health, int hunger, boolean healFood) {
-        return health < RecoverHold.DONE_AT && !CombatRules.canRegen(hunger, healFood);
+        return health <= HURT_AT && !CombatRules.canRegen(hunger, healFood);
     }
 
     // why no column made the cut: how many of the candidates fail each check, for the log line when the hole has nowhere to go
