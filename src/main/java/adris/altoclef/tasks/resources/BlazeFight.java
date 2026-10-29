@@ -163,6 +163,19 @@ final class BlazeFight {
         return count;
     }
 
+    // x/z of every live wither skeleton within radius of a spot, same tracker rules as witherSkeletonsNear
+    static List<double[]> witherSkeletonSpots(AltoClef mod, Vec3 at, double radius) {
+        List<double[]> spots = new ArrayList<>();
+        try {
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (skeleton.isAlive() && skeleton.position().distanceTo(at) <= radius) spots.add(new double[]{skeleton.getX(), skeleton.getZ()});
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // the tracker rebuilds on another thread sometimes
+        }
+        return spots;
+    }
+
     static <T> List<T> merge(List<? extends T> blazes, List<? extends T> others) {
         List<T> all = new ArrayList<>(blazes);
         all.addAll(others);

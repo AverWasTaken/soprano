@@ -12,6 +12,7 @@ import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
+import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BoxRules;
 import adris.altoclef.util.helpers.CombatCommit;
@@ -405,7 +406,17 @@ final class CombatBrain {
                 // zones mean nothing in another dimension)
                 if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.HEAVY
                         && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
-                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now);
+                    RunZones.INSTANCE.add(_commit.originX(), _commit.originZ(), now, RunZones.RADIUS);
+                }
+                // a run from a crowd or low hp next to a wither pack: the spawner walk keeps off the pack's closet too
+                if (dimension == Dimension.NETHER && _commit.mode() == Mode.RUN
+                        && (_commit.why() == CombatCommit.Why.CROWD || _commit.why() == CombatCommit.Why.LOW_HP)
+                        && (event == Event.RUN_START || event == Event.FIGHT_TO_RUN)) {
+                    double[] pack = CollectBlazeRodsTask.witherPackCenter(mod, new Vec3(_commit.originX(), player.getY(), _commit.originZ()), BlazeFightRules.PACK_SPAWNER_RADIUS);
+                    if (pack != null) {
+                        RunZones.INSTANCE.add(pack[0], pack[1], now, RunZones.PACK_RADIUS);
+                        Debug.logInternal("zone: wither pack at " + Math.round(pack[0]) + "," + Math.round(pack[1]) + " r" + (int) RunZones.PACK_RADIUS);
+                    }
                 }
                 // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
                 if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
