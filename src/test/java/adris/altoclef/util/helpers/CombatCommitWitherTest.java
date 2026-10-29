@@ -13,7 +13,7 @@ import baritone.api.utils.Dimension;
 import java.util.List;
 import org.junit.Test;
 
-// an aware wither skeleton with a line on us inside 5 blocks is a fight we start in the Nether, blazes watching or not
+// an aware wither skeleton with a line on us inside 4 blocks is a fight we start in the Nether, blazes watching or not
 public class CombatCommitWitherTest {
 
     private static final long NEVER = CombatCommit.NEVER;
@@ -33,7 +33,7 @@ public class CombatCommitWitherTest {
     @Test
     public void startsOnAWitherSkeletonWithALineWhileABlazeWatches() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(wither(1, 4.5, true), blaze()), null, true)));
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(wither(1, 3.5, true), blaze()), null, true)));
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(Why.IN_WAY, c.why());
         assertEquals(1, c.targetId());
@@ -53,7 +53,7 @@ public class CombatCommitWitherTest {
 
     @Test
     public void notBeyondFiveBlocksNotWithoutALineNotBareHanded() {
-        assertEquals(Event.NONE, new CombatCommit().step(tick(0, 20, List.of(wither(1, 5.5, true)), null, true)));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(0, 20, List.of(wither(1, 4.5, true)), null, true)));
         assertEquals(Event.NONE, new CombatCommit().step(tick(0, 20, List.of(wither(1, 4, false)), null, true)));
         assertEquals(Event.NONE, new CombatCommit().step(tick(0, 20, List.of(wither(1, 4, true)), null, false)));
     }
@@ -83,6 +83,20 @@ public class CombatCommitWitherTest {
         FoeRules.Candidate c = new FoeRules.Candidate("wither_skeleton", 3, 5, () -> false, () -> true, () -> true, NEVER, 0, false, false);
         org.junit.Assert.assertTrue(FoeRules.accept(Dimension.NETHER, c).wither());
         org.junit.Assert.assertFalse(FoeRules.accept(Dimension.OVERWORLD, c).wither());
+    }
+
+    @Test
+    public void oneThatStaysJustPastTheLineClearsOnceAndIsNotPickedAgain() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(0, 20, List.of(wither(1, 3, true)), null, true));
+        Foe far = wither(1, 4.5, true);
+        Event end = Event.NONE;
+        long t = 1;
+        for (; t < 100 && end == Event.NONE; t++) end = c.step(tick(t, 20, List.of(far), far, true));
+        assertEquals(Event.FIGHT_CLEARED, end);
+        for (long stop = t + CombatCommit.STALL_TICKS * 2; t < stop; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(far), null, true)));
+        }
     }
 
     @Test

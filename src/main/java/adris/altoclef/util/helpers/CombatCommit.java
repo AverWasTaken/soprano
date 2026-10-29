@@ -137,7 +137,8 @@ public final class CombatCommit {
     public static final double BRUTE_RUN_RANGE = 12;
     // a wither skeleton with a line on us this close is a fight to start in the Nether, whatever else has a line on us: it is the
     // swordsman that walks up while the blazes shoot, and a path fight that waits for it is how we get hit from both sides
-    public static final double WITHER_START_RANGE = 5;
+    // (not past WAY_RELEASE: a start further out than the release line would clear after the hold and start again, forever)
+    public static final double WITHER_START_RANGE = WAY_RELEASE;
     // an in-the-way fight on a melee foe lets go only after the foe stood past WAY_RELEASE this long without hitting us. our own
     // swing knocks it back a block or two, and one tick out there is not the path being clear
     public static final long WAY_RELEASE_TICKS = 30;
@@ -1297,7 +1298,7 @@ public final class CombatCommit {
         return null;
     }
 
-    // an aware wither skeleton with a line on us inside WITHER_START_RANGE, when we have a sword or an axe in hand and are not low.
+    // an aware wither skeleton with a line on us inside WITHER_START_RANGE (4), when we have a sword or an axe in hand and are not low.
     // the Nether only (the foe is only marked there): everywhere else mobs are still ignored by default
     private Foe witherComing(Tick t) {
         if (!t.armed() || !t.way().weapon() || t.low()) return null;

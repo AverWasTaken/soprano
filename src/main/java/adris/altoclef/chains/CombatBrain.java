@@ -648,7 +648,7 @@ final class CombatBrain {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
             // (a sniper that is shooting us is a fight we would start, so it wants to know too)
-            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting())) asked = true;
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting()) || witherClose(foe)) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = bagCandidates(mod);
@@ -658,9 +658,14 @@ final class CombatBrain {
     // the bag is only walked when something is in contact: that is the only time an in the way fight can start
     private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT) return hasWeapon(mod);
+            if (foe.distance() <= CombatCommit.CONTACT || witherClose(foe)) return hasWeapon(mod);
         }
         return true;
+    }
+
+    // the wither skeleton start rule picks its fight from out here, so the bag gets asked before it does
+    private static boolean witherClose(Foe foe) {
+        return foe.wither() && foe.sight() && foe.distance() <= CombatCommit.WITHER_START_RANGE;
     }
 
     // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
