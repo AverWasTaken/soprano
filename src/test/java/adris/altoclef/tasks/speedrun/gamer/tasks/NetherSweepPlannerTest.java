@@ -757,4 +757,16 @@ public class NetherSweepPlannerTest {
         }
         assertTrue(NetherComplexGrid.nextCellWithin(5000, 0, visited, Set.of(), portal, portal, 1).isEmpty());
     }
+
+    @Test
+    public void aFortressCellPastTheLeashIsLetGoWhenTheGoalFlipsToWarped() {
+        state.netherPortal = pos(0, 0);
+        state.visitedCells.add("0,0");
+        state.visitedCells.add("1,0");
+        // the fortress sweep is walking cell 2,0 (ring two)
+        assertEquals(2000, planner.step(Goal.FORTRESS, 0, 0, 0).x());
+        Action a = planner.step(Goal.WARPED, 0, 0, 1);
+        assertEquals(Kind.FAIL, a.kind());
+        assertFalse(state.visitedCells.contains("2,0"));
+    }
 }

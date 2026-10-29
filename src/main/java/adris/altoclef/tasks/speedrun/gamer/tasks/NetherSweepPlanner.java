@@ -400,6 +400,13 @@ public final class NetherSweepPlanner {
         if (goalMet(goal)) {
             return new Action(Kind.FOUND, px, pz, "found");
         }
+        // a cell the fortress sweep left half walked can be past the leash by the time the goal flips to the warped forest. it is
+        // not visited (the fortress sweep may still want it), just not ours to walk
+        if (goal == Goal.WARPED && cell != null && state.netherPortal != null
+                && !NetherComplexGrid.inLeash(cell, NetherComplexGrid.cellOf(state.netherPortal.x, state.netherPortal.z), WARPED_LEASH_RINGS)) {
+            cell = null;
+            pocketDropped = false;
+        }
         // every pass of this loop either returns or finishes a cell. a finished cell is visited or deferred, a deferred one is never a
         // fresh pick and its revisit ends visited, so it ends
         while (true) {

@@ -654,6 +654,7 @@ public class NetherPhase implements PhaseHandler {
             // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
             // taken from the budget, and the next try has to earn its own start
             foodTrip = false;
+            rodsWatch.pause(now - tripLeftAt);
             tripEndedTick = tick;
             return null;
         }
