@@ -27,6 +27,7 @@ import baritone.api.utils.RotationUtils;
 import baritone.api.utils.VecUtils;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.CliffAvoidance;
 import baritone.pathing.movement.GodBridge;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
@@ -39,6 +40,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -68,6 +70,8 @@ public class MovementTraverse extends Movement {
 
     private God god = God.UNDECIDED;
     private boolean godClicked;
+    // a movement's src and dest never change, so the lava scan is once per movement and not once per tick
+    private Boolean lavaShore;
 
     public MovementTraverse(IBaritone baritone, BetterBlockPos from, BetterBlockPos to) {
         super(baritone, from, to, new BetterBlockPos[]{to.above(), to}, to.below());
@@ -79,6 +83,7 @@ public class MovementTraverse extends Movement {
         wasTheBridgeBlockAlwaysThere = true;
         god = God.UNDECIDED;
         godClicked = false;
+        lavaShore = null;
     }
 
     @Override
@@ -213,6 +218,15 @@ public class MovementTraverse extends Movement {
 
     // feet below the cell we're traversing to, the ledge or the next surface cell after we sank. forward into a wall is what
     // triggers the hop
+    // sprinting only ever looked straight ahead, so a hit or a bit of drift beside lava went in sideways. walk those
+    public boolean onLavaShore() {
+        if (lavaShore == null) {
+            lavaShore = ctx.world().dimension() == Level.NETHER
+                    && CliffAvoidance.traverseByLava(CliffAvoidance.of(new BlockStateInterface(ctx)), src.x, src.y, src.z, dest.x, dest.z);
+        }
+        return lavaShore;
+    }
+
     static boolean pushesForwardWhileRising(boolean inLava, int feetY, int destY) {
         return inLava && feetY < destY;
     }
@@ -272,7 +286,7 @@ public class MovementTraverse extends Movement {
 
             return state.setTarget(new MovementState.MovementTarget(new Rotation(yawToDest, pitchToBreak), true))
                     .setInput(Input.MOVE_FORWARD, true)
-                    .setInput(Input.SPRINT, true);
+                    .setInput(Input.SPRINT, !onLavaShore());
         }
 
         Block fd = BlockStateInterface.get(ctx, src.below()).getBlock();
@@ -339,7 +353,7 @@ public class MovementTraverse extends Movement {
             BlockPos into = dest.subtract(src).offset(dest);
             BlockState intoBelow = BlockStateInterface.get(ctx, into);
             BlockState intoAbove = BlockStateInterface.get(ctx, into.above());
-            if (wasTheBridgeBlockAlwaysThere && (!MovementHelper.isLiquid(ctx, feet) || Baritone.settings().sprintInWater.value) && (!MovementHelper.avoidWalkingInto(intoBelow) || MovementHelper.isWater(intoBelow)) && !MovementHelper.avoidWalkingInto(intoAbove)) {
+            if (wasTheBridgeBlockAlwaysThere && (!MovementHelper.isLiquid(ctx, feet) || Baritone.settings().sprintInWater.value) && (!MovementHelper.avoidWalkingInto(intoBelow) || MovementHelper.isWater(intoBelow)) && !MovementHelper.avoidWalkingInto(intoAbove) && !onLavaShore()) {
                 state.setInput(Input.SPRINT, true);
             }
 

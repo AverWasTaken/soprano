@@ -520,6 +520,9 @@ public class PathExecutor implements IPathExecutor, Helper {
             if (!(next instanceof MovementTraverse || next instanceof MovementDiagonal)) {
                 return false;
             }
+            if (next instanceof MovementTraverse ? ((MovementTraverse) next).onLavaShore() : ((MovementDiagonal) next).onLavaShore(bsi)) {
+                return false; // the shortcut sprints every node it covers, the lava shore veto has to hold there too
+            }
             next.resetBlockCache();
             return next.toBreak(bsi).isEmpty() && next.toPlace(bsi).isEmpty() && next.toWalkInto(bsi).isEmpty()
                     && clearSmoothingColumn(bsi, next.getSrc()) && clearSmoothingColumn(bsi, next.getDest());
