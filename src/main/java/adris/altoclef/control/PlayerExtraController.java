@@ -13,6 +13,8 @@ import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.SwordSwing;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
 import baritone.behavior.CombatAim;
 import baritone.behavior.LegacyCombat;
 import net.minecraft.world.item.Item;
@@ -30,6 +32,7 @@ import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -117,12 +120,36 @@ public class PlayerExtraController {
         _lastSwingTick = now;
         // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
         _mod.getEntityTracker().noteProvoked(entity);
+        logPiglinsBeside(entity, now);
         LegacyCombat.hit(_mod.getController(), _mod.getPlayer(), entity, InteractionHand.MAIN_HAND);
         if (legacy) {
             combat().clicker().clicked(now);
         }
         _swings++;
         return true;
+    }
+
+    // zombified piglins snap angry mid fight in the nether and we never knew which swing did it. one line per swing with one near, at most
+    // every 10 ticks, so a sweep can be told from a stray hit
+    private long _lastPiglinLog = -100;
+
+    private void logPiglinsBeside(Entity target, long now) {
+        if (now - _lastPiglinLog < 10 || WorldHelper.getCurrentDimension() != Dimension.NETHER) {
+            return;
+        }
+        LocalPlayer player = _mod.getPlayer();
+        StringBuilder near = new StringBuilder();
+        for (ZombifiedPiglin z : _mod.getWorld().getEntitiesOfClass(ZombifiedPiglin.class, player.getBoundingBox().inflate(4))) {
+            if (player.distanceTo(z) <= 4) {
+                near.append(near.length() == 0 ? "" : ", ").append(String.format("%.1f", player.distanceTo(z))).append(z == target ? " (target)" : "")
+                        .append(z.isAggressive() ? " angry" : " calm");
+            }
+        }
+        if (near.length() > 0) {
+            _lastPiglinLog = now;
+            Debug.logInternal("swing: at " + BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).getPath() + ", charge "
+                    + String.format("%.2f", chargeScale()) + ", zombified piglins within 4: " + near);
+        }
     }
 
     // a mob only gets hit when the crosshair the server knows about is on it (CombatAim.onTarget). crystals and ghast balls

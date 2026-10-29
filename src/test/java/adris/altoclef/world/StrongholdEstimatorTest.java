@@ -678,6 +678,25 @@ public class StrongholdEstimatorTest {
     }
 
     @Test
+    public void snappedEstimateFarOutWalksWithoutThrowingNoMatterHowFarWeWalked() {
+        StrongholdEstimator e = tight();
+        assertTrue(get(e).snapped());
+        for (double walked : new double[]{0, 150, 400, 5000}) {
+            Advice a = e.advise(TX + 1000, TZ, walked);
+            assertEquals(Step.WALK, a.step());
+            assertEquals(TX, a.x(), 1.0);
+            assertEquals(TZ, a.z(), 1.0);
+        }
+    }
+
+    @Test
+    public void snappedEstimateStillDoesTheDiveThrowOnTheSpot() {
+        StrongholdEstimator e = tight();
+        assertEquals(Step.WALK, e.advise(TX + 151, TZ, 1000).step());
+        assertEquals(Step.THROW, e.advise(TX + 5, TZ - 4, 30).step());
+    }
+
+    @Test
     public void standingOnATightEstimateThrowsToTestForTheDive() {
         StrongholdEstimator e = tight();
         assertEquals(Step.THROW, e.advise(TX + 5, TZ - 4, 30).step());
