@@ -175,6 +175,7 @@ public class GamerTask extends Task {
     private long screenSince = -1;
     private long loadSince = -1;
     private final NightSleep.Said nightSaid = new NightSleep.Said();
+    private final NightSleep.Said shelterNoHoleSaid = new NightSleep.Said();
     // the hole for the night after a death with no armor and no bed (NightShelter), its own once per night flag, and the look throttle
     private ShelterTask shelter;
     private final NightShelter.Once shelterOnce = new NightShelter.Once();
@@ -1449,7 +1450,8 @@ public class GamerTask extends Task {
         boolean tripNight = state.phase == GamerPhase.NETHER || state.phase == GamerPhase.EYES;
         NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && (tripNight || facts.count(ItemHelper.BED) == 0),
                 SmeltSurface.depthBelowSky(mod), recover != null, inFight, busy != NightSleep.Busy.NONE || WorldHelper.isStandingInPortal(mod),
-                shelterOnce.used(night), sinceDeath, tripNight);
+                shelterOnce.used(night), sinceDeath, tripNight, mod.getPlayer().getHealth(), mod.getPlayer().getFoodData().getFoodLevel(),
+                mod.getFoodChain().hasHealFood());
         if (!NightShelter.wanted(t) || gameTime - shelterLookAt < 20) {
             return null;
         }
@@ -1458,8 +1460,17 @@ public class GamerTask extends Task {
                 BedCraft.usableWood(mod));
         // a bed that keepsSpawnBed would not let it use is no bed for tonight
         boolean noBed = NightShelter.noBedTonight(state.phase, source, spawnBedStands(mod));
-        BlockPos spot = noBed ? ShelterTask.pick(mod, shelterFailedNight == night ? shelterFailedSpot : null) : null;
+        BlockPos skipSpot = shelterFailedNight == night ? shelterFailedSpot : null;
+        BlockPos spot = noBed ? ShelterTask.pick(mod, skipSpot) : null;
         if (spot == null) {
+            // (the depth gate is already inside wanted, so the reasons left are the ground and the columns)
+            if (noBed) {
+                String why = ShelterTask.whyNoColumn(mod, skipSpot);
+                // the counts shift as we walk, so the key is the text with the nonzero numbers blanked: it says again when the failing mix changes
+                if (shelterNoHoleSaid.worthSaying(why.replaceAll("[1-9]\\d*", "N"), gameTime, 0)) {
+                    Debug.logInternal("night: shelter wanted, no hole (" + why + ")");
+                }
+            }
             return null;
         }
         shelterOnce.mark(night);

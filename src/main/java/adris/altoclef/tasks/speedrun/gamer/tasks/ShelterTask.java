@@ -108,13 +108,30 @@ public class ShelterTask extends Task {
         if (player == null || !player.onGround()) {
             return null;
         }
+        List<BlockPos> spots = new ArrayList<>();
+        List<NightShelter.Column> columns = new ArrayList<>();
+        scan(mod, player, skip, spots, columns);
+        int at = NightShelter.pickColumn(columns);
+        return at < 0 ? null : spots.get(at);
+    }
+
+    // the log line for a pick that came back empty: not standing on the ground, or the counts of what each column failed on
+    public static String whyNoColumn(AltoClef mod, BlockPos skip) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null || !player.onGround()) {
+            return "not on ground";
+        }
+        List<NightShelter.Column> columns = new ArrayList<>();
+        scan(mod, player, skip, new ArrayList<>(), columns);
+        return NightShelter.failCounts(columns);
+    }
+
+    private static void scan(AltoClef mod, LocalPlayer player, BlockPos skip, List<BlockPos> spots, List<NightShelter.Column> columns) {
         Level level = mod.getWorld();
         BlockPos feet = player.blockPosition();
         boolean havePick = havePick(mod);
         Item[] caps = capItems(mod);
         int bag = mod.getItemStorage().getItemCount(caps);
-        List<BlockPos> spots = new ArrayList<>();
-        List<NightShelter.Column> columns = new ArrayList<>();
         for (int ring = 0; ring <= REACH; ring++) {
             for (int dx = -ring; dx <= ring; dx++) {
                 for (int dz = -ring; dz <= ring; dz++) {
@@ -130,8 +147,6 @@ public class ShelterTask extends Task {
                 }
             }
         }
-        int at = NightShelter.pickColumn(columns);
-        return at < 0 ? null : spots.get(at);
     }
 
     private static NightShelter.Column look(Level level, BlockPos spot, boolean havePick, int bag) {
