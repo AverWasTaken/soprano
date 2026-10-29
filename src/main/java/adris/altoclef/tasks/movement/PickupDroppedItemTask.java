@@ -52,8 +52,10 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     private AltoClef _mod;
     private boolean _collectingPickaxeForThisResource = false;
     private ItemEntity _currentDrop = null;
+    // set once we ban/skip a drop, so a parent on a clock can stop waiting instead of wandering until its timer runs out
+    private String _gaveUpReason = null;
 
-    public PickupDroppedItemTask(ItemTarget[] itemTargets, boolean freeInventoryIfFull) {
+    public PickupDroppedItemTask(ItemTarget[]itemTargets, boolean freeInventoryIfFull) {
         _itemTargets = itemTargets;
         _freeInventoryIfFull = freeInventoryIfFull;
     }
@@ -114,6 +116,11 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         return new SafeRandomShimmyTask();
     }
 
+    // null until a drop got banned or skipped ("water" / "unreachable")
+    public String gaveUpReason() {
+        return _gaveUpReason;
+    }
+
     public boolean isCollectingPickaxeForThis() {
         return _collectingPickaxeForThisResource;
     }
@@ -126,6 +133,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     // virtual. the search to the drop came back empty twice. the stock answer is the global no path ban
     protected void noPathToDrop(AltoClef mod, ItemEntity drop) {
+        _gaveUpReason = "no path";
         BanPolicy.noPath(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
     }
 
@@ -141,6 +149,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         _progressChecker.reset();
         stuckCheck.reset();
         _waterWatchdog.reset();
+        _gaveUpReason = null;
     }
 
     @Override
@@ -181,6 +190,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 && _waterWatchdog.update(_currentDrop, mod.getPlayer().isInWater(), mod.getPlayer().distanceTo(_currentDrop), WorldHelper.getTicks())) {
             Debug.logInternal("Giving up on " + _currentDrop.getItem().getItem().getDescriptionId() + ", in water and not getting closer");
             BanPolicy.wetDrop(mod.getBans(), _currentDrop.getId(), EntityTracker.describe(_currentDrop));
+            _gaveUpReason = "water";
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             _currentDrop = null;
             _waterWatchdog.reset();
@@ -214,6 +224,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 Debug.logMessage("Failed to pick up drop, suggesting it's unreachable.");
                 // the strike stays too, the fourth one is the longer ban
                 gaveUpOnDrop(mod, _currentDrop);
+                _gaveUpReason = "unreachable";
                 mod.getEntityTracker().requestEntityUnreachable(_currentDrop);
                 _progressChecker.reset();
                 return _wanderTask;
@@ -313,6 +324,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 if (room == ItemPickupRules.Room.MAKE_ROOM) {
                     // the drop would be the next thing thrown, so making room for it is a loop with extra steps. same skip as the death pile
                     if (!fits && StorageHelper.garbageView(_mod).dropIsNext(itemEntity.getItem())) {
+                        _gaveUpReason = "no room";
                         BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
                         _currentDrop = null;
                         _progressChecker.reset();
@@ -322,6 +334,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 }
                 if (room == ItemPickupRules.Room.GIVE_UP) {
                     Debug.logMessage("Giving up on " + itemEntity.getItem().getItem().getDescriptionId() + ", the bag is full of things we keep.");
+                    _gaveUpReason = "no room";
                     BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
                     _currentDrop = null;
                     _progressChecker.reset();
