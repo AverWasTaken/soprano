@@ -55,7 +55,28 @@ public final class NetherTripRules {
     public static final float ABORT_HP = 8;
     public static final long ABORT_HIT_TICKS = 200;
 
+    // a pile further than this (flat) from the home portal is not a naked walk: the respawn kit has no armor and the last
+    // naked trips that far all died on the way. the pile waits (it does not age unloaded) for a kit that is whole
+    public static final int DEFER_BLOCKS = 64;
+    // a deferred pile this close to where we stand in the nether is worth the walk with the kit on, further is not on the way
+    public static final int DEFERRED_REACH_BLOCKS = 300;
+
     private NetherTripRules() {
+    }
+
+    // the pile is too far out to walk to naked
+    public static boolean defers(double pileFlatDistanceFromHome) {
+        return pileFlatDistanceFromHome > DEFER_BLOCKS;
+    }
+
+    // in the nether with the kit on and a deferred pile in reach: this is the trip we put off
+    public static boolean startsDeferred(Dimension now, boolean kitShort, double flatDistanceToPile) {
+        return now == Dimension.NETHER && !kitShort && flatDistanceToPile <= DEFERRED_REACH_BLOCKS;
+    }
+
+    // in the nether with the kit on and the pile out of reach: it is not coming up on this trip, forget it
+    public static boolean dropsDeferred(Dimension now, boolean kitShort, double flatDistanceToPile) {
+        return now == Dimension.NETHER && !kitShort && flatDistanceToPile > DEFERRED_REACH_BLOCKS;
     }
 
     // the overworld food of ours (a smoker we loaded before the nether) is picked up once, in the stages after the gear and before
@@ -399,8 +420,9 @@ public final class NetherTripRules {
         if (in.pileDistance() <= ARRIVE_BLOCKS) {
             return new Step(Stage.RECOVER, null, false);
         }
+        // giveUp only walks home when the kit is gone, a geared trip (a deferred one) just ends where it stands
         if (walkAbort(in.health(), in.ticksSinceHit())) {
-            return new Step(Stage.HOME, "too hurt to keep walking", false);
+            return giveUp(in, "too hurt to keep walking");
         }
         if (in.stuckTicks() > WALK_PROGRESS_SECONDS * 20L || in.stillTicks() > WALK_STILL_SECONDS * 20L) {
             return giveUp(in, "no closer to the pile");

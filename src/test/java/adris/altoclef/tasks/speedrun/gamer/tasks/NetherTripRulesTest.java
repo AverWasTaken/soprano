@@ -671,6 +671,48 @@ public class NetherTripRulesTest {
     }
 
     @Test
+    public void aGearedTripThatAbortsJustEndsInsteadOfWalkingHome() {
+        Inputs hurt = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, false, 0, LIMITS, true, 0, 0, 8,
+                100);
+        Step step = NetherTripRules.next(hurt);
+        assertNull(step.stage());
+        assertEquals("too hurt to keep walking", step.giveUp());
+    }
+
+    @Test
+    public void aGearedTripThatGivesUpNeverWalksHome() {
+        Inputs stuck = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, false, 0, LIMITS, true,
+                NetherTripRules.WALK_PROGRESS_SECONDS * 20L + 1);
+        Step step = NetherTripRules.next(stuck);
+        assertNull(step.stage());
+        assertEquals("no closer to the pile", step.giveUp());
+    }
+
+    @Test
+    public void farPilesWaitAndNearOnesGo() {
+        assertFalse(NetherTripRules.defers(NetherTripRules.DEFER_BLOCKS));
+        assertTrue(NetherTripRules.defers(NetherTripRules.DEFER_BLOCKS + 1));
+        assertFalse(NetherTripRules.defers(0));
+    }
+
+    @Test
+    public void aDeferredPileStartsOnlyInTheNetherWithTheKitOnAndInReach() {
+        assertTrue(NetherTripRules.startsDeferred(Dimension.NETHER, false, 120));
+        assertTrue(NetherTripRules.startsDeferred(Dimension.NETHER, false, NetherTripRules.DEFERRED_REACH_BLOCKS));
+        assertFalse(NetherTripRules.startsDeferred(Dimension.NETHER, true, 120));
+        assertFalse(NetherTripRules.startsDeferred(Dimension.OVERWORLD, false, 120));
+        assertFalse(NetherTripRules.startsDeferred(Dimension.NETHER, false, NetherTripRules.DEFERRED_REACH_BLOCKS + 1));
+    }
+
+    @Test
+    public void aDeferredPileOutOfReachIsDroppedOnlyWithTheKitOnInTheNether() {
+        assertTrue(NetherTripRules.dropsDeferred(Dimension.NETHER, false, NetherTripRules.DEFERRED_REACH_BLOCKS + 1));
+        assertFalse(NetherTripRules.dropsDeferred(Dimension.NETHER, false, 120));
+        assertFalse(NetherTripRules.dropsDeferred(Dimension.NETHER, true, 5000));
+        assertFalse(NetherTripRules.dropsDeferred(Dimension.OVERWORLD, false, 5000));
+    }
+
+    @Test
     public void lowWithNobodyHittingUsLatelyKeepsWalking() {
         Inputs quiet = new Inputs(Stage.WALK, Dimension.NETHER, 2000, 100, 24, false, 300, false, 0, true, 0, LIMITS, true, 0, 0, 8,
                 NetherTripRules.ABORT_HIT_TICKS + 1);

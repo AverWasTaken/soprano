@@ -292,6 +292,8 @@ public class RunState {
     // the pile the last trip went for, whatever came of it: one trip per pile, so a death on the way or a failed trip falls
     // back to the rebuild and the same pile never gets a second one
     public Pos lastTripPile;
+    // a nether pile too far from home to walk to naked: it waits for the first time we stand in the nether with the kit on
+    public Pos deferredPile;
 
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
