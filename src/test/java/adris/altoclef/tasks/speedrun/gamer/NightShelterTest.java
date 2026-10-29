@@ -178,6 +178,13 @@ public class NightShelterTest {
             b.hunger = 4;
             return b;
         })));
+        // at the line or above with an empty belly: not hurt enough
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.since = -1;
+            b.health = 19;
+            b.hunger = 4;
+            return b;
+        })));
         // hp 19 with a full belly: regens on its own
         assertFalse(NightShelter.wanted(with(base(), b -> {
             b.since = -1;
