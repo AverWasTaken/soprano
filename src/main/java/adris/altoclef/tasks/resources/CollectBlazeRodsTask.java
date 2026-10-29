@@ -64,7 +64,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // the middle of the wither pack around a spot, null when there is no pack there
     public static double[] witherPackCenter(AltoClef mod, Vec3 at, double radius) {
-        return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius));
+        return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius), BlazeFightRules.ZONE_PACK_SIZE);
     }
 
     private void noteZoneInputs(AltoClef mod) {
