@@ -37,6 +37,9 @@ public class FakeFacts implements GamerFacts {
     // the gold dig ran out of time, and a gold ore is in the loaded chunks near us
     public boolean goldHuntGaveUp;
     public boolean woolHuntGaveUp;
+    // an edible animal is loaded close by, and the dry spell latch (FoodDry)
+    public boolean preyNear;
+    public boolean foodDryLatched;
     public boolean goldOreKnown;
     // the station a running cook committed to
     public String cookStation;
@@ -187,6 +190,16 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean goldHuntGaveUp() {
         return goldHuntGaveUp;
+    }
+
+    @Override
+    public boolean preyNear() {
+        return preyNear;
+    }
+
+    @Override
+    public boolean foodDryLatched() {
+        return foodDryLatched;
     }
 
     @Override

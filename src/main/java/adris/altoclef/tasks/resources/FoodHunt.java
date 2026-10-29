@@ -17,7 +17,9 @@ public final class FoodHunt {
         PIG(8, 2.0),
         COW(8, 2.0),
         CHICKEN(6, 1.0),
-        SHEEP(6, 1.5);
+        SHEEP(6, 1.5),
+        // 5 cooked, but a rabbit drops 0-1 raw. 1.0 is generous on purpose: it is the only meat in a desert or a snowfield
+        RABBIT(5, 1.0);
 
         final double units;
 

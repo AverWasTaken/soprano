@@ -259,6 +259,11 @@ public class RunState {
     public transient boolean foodRefilling;
     // the game tick a trip first looked due with no trip on, -1 when it does not (FoodPlan.latched waits REFILL_CONFIRM_TICKS on it)
     public transient long foodDueSince = -1;
+    // the dry spell (FoodDry): since when the food task has been searching with no animal loaded (-1 = not searching), whether the
+    // latch is on and the game tick it runs to. transient: a relog starts the search over, which is the safe side
+    public transient long foodSearchSince = -1;
+    public transient boolean foodDryOn;
+    public transient long foodDryUntil;
     // build blocks (BuildBlocks): the target of a refill under way (0 = none), how many fresh ones this phase entry has started (the base need, and the stock-up on top of it apart),
     // and whether the cap's line was said. transient: a relog counts again from nothing, the bag says whether one is needed
     public transient int buildRefill;
