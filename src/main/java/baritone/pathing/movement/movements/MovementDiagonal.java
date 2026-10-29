@@ -55,6 +55,12 @@ public class MovementDiagonal extends Movement {
 
     private Boolean lavaShore;
 
+    @Override
+    public void reset() {
+        super.reset();
+        lavaShore = null;
+    }
+
     public MovementDiagonal(IBaritone baritone, BetterBlockPos start, Direction dir1, Direction dir2, int dy) {
         this(baritone, start, start.relative(dir1), start.relative(dir2), dir2, dy);
         // super(start, start.offset(dir1).offset(dir2), new BlockPos[]{start.offset(dir1), start.offset(dir1).up(), start.offset(dir2), start.offset(dir2).up(), start.offset(dir1).offset(dir2), start.offset(dir1).offset(dir2).up()}, new BlockPos[]{start.offset(dir1).offset(dir2).down()});
@@ -356,10 +362,10 @@ public class MovementDiagonal extends Movement {
     }
 
     // same idea as MovementTraverse.onLavaShore, once per movement
-    private boolean onLavaShore(BlockStateInterface bsi) {
+    public boolean onLavaShore(BlockStateInterface bsi) {
         if (lavaShore == null) {
             lavaShore = ctx.world().dimension() == Level.NETHER
-                    && CliffAvoidance.diagonalByLava(CliffAvoidance.of(bsi), src.x, src.y, src.z, dest.x, dest.z);
+                    && CliffAvoidance.diagonalByLava(CliffAvoidance.of(bsi), src.x, src.y, src.z, dest.x, dest.y, dest.z);
         }
         return lavaShore;
     }

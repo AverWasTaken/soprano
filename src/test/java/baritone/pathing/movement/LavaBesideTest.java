@@ -91,8 +91,15 @@ public class LavaBesideTest {
 
     @Test
     public void diagonalSeesLavaAroundEitherEnd() {
-        assertTrue(CliffAvoidance.diagonalByLava(world(lava(-1, -1, 0)), 0, 0, 0, 1, 1));
-        assertTrue(CliffAvoidance.diagonalByLava(world(lava(2, 0, 2)), 0, 0, 0, 1, 1));
-        assertFalse(CliffAvoidance.diagonalByLava(world(lava(4, 0, 4)), 0, 0, 0, 1, 1));
+        assertTrue(CliffAvoidance.diagonalByLava(world(lava(-1, -1, 0)), 0, 0, 0, 1, 0, 1));
+        assertTrue(CliffAvoidance.diagonalByLava(world(lava(2, 0, 2)), 0, 0, 0, 1, 0, 1));
+        assertFalse(CliffAvoidance.diagonalByLava(world(lava(4, 0, 4)), 0, 0, 0, 1, 0, 1));
+    }
+
+    @Test
+    public void diagonalChecksTheDestAtItsOwnHeight() {
+        // descending diagonal (0,64,0) to (1,63,1), lava beside the dest at its feet-1
+        assertTrue(CliffAvoidance.diagonalByLava(world(lava(2, 62, 1)), 0, 64, 0, 1, 63, 1));
+        assertFalse(CliffAvoidance.diagonalByLava(world(lava(2, 62, 1)), 0, 64, 0, 1, 64, 1));
     }
 }

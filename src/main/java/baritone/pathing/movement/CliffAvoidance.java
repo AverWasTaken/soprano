@@ -164,11 +164,11 @@ public final class CliffAvoidance {
     }
 
     // a diagonal has no single side, so any lava touching either end (3x3, feet or under) counts
-    public static boolean diagonalByLava(Cells cells, int x, int y, int z, int destX, int destZ) {
+    public static boolean diagonalByLava(Cells cells, int x, int y, int z, int destX, int destY, int destZ) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 for (int dy = 0; dy >= -1; dy--) {
-                    if (cells.at(x + dx, y + dy, z + dz) == Cell.LAVA || cells.at(destX + dx, y + dy, destZ + dz) == Cell.LAVA) {
+                    if (cells.at(x + dx, y + dy, z + dz) == Cell.LAVA || cells.at(destX + dx, destY + dy, destZ + dz) == Cell.LAVA) {
                         return true;
                     }
                 }

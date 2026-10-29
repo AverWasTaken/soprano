@@ -83,6 +83,7 @@ public class MovementTraverse extends Movement {
         wasTheBridgeBlockAlwaysThere = true;
         god = God.UNDECIDED;
         godClicked = false;
+        lavaShore = null;
     }
 
     @Override
@@ -218,7 +219,7 @@ public class MovementTraverse extends Movement {
     // feet below the cell we're traversing to, the ledge or the next surface cell after we sank. forward into a wall is what
     // triggers the hop
     // sprinting only ever looked straight ahead, so a hit or a bit of drift beside lava went in sideways. walk those
-    private boolean onLavaShore() {
+    public boolean onLavaShore() {
         if (lavaShore == null) {
             lavaShore = ctx.world().dimension() == Level.NETHER
                     && CliffAvoidance.traverseByLava(CliffAvoidance.of(new BlockStateInterface(ctx)), src.x, src.y, src.z, dest.x, dest.z);
@@ -285,7 +286,7 @@ public class MovementTraverse extends Movement {
 
             return state.setTarget(new MovementState.MovementTarget(new Rotation(yawToDest, pitchToBreak), true))
                     .setInput(Input.MOVE_FORWARD, true)
-                    .setInput(Input.SPRINT, true);
+                    .setInput(Input.SPRINT, !onLavaShore());
         }
 
         Block fd = BlockStateInterface.get(ctx, src.below()).getBlock();
