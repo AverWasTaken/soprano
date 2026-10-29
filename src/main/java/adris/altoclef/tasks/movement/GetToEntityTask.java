@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.baritone.GoalFollowEntity;
+import adris.altoclef.util.helpers.PortalExit;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.ui.HudText;
@@ -111,8 +112,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         if (WorldHelper.isInNetherPortal(mod)) {
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 setDebugState("Getting out from nether portal");
-                mod.getInputControls().hold(Input.SNEAK);
-                mod.getInputControls().hold(Input.MOVE_FORWARD);
+                PortalExit.step(mod);
                 return null;
             } else {
                 mod.getInputControls().release(Input.SNEAK);

@@ -15,6 +15,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.PhantomScoops;
+import adris.altoclef.util.helpers.PortalExit;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
@@ -300,8 +301,7 @@ public class InteractWithBlockTask extends Task {
         if (WorldHelper.isInNetherPortal(mod)) {
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 setDebugState("Getting out from nether portal");
-                mod.getInputControls().hold(Input.SNEAK);
-                mod.getInputControls().hold(Input.MOVE_FORWARD);
+                PortalExit.step(mod);
                 return null;
             } else {
                 mod.getInputControls().release(Input.SNEAK);
