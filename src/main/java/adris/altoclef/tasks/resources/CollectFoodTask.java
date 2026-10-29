@@ -99,7 +99,7 @@ public class CollectFoodTask extends Task {
 
     // the last time the task fell through to "Searching..." (wall clock, the ticks above stand still while another task runs).
     // the gamer reads it to tell a dry spell from a hunt that is just slow (FoodDry)
-    private static volatile long lastSearchMs = Long.MIN_VALUE;
+    private static volatile long lastSearchMs = 0;
     private static final long SEARCH_FRESH_MS = 3000;
 
     // read only: true while the task is out wandering for food with no animal, crop or hay to go after
@@ -394,7 +394,10 @@ public class CollectFoodTask extends Task {
 
         // Look for food.
         setDebugState("Searching...");
-        lastSearchMs = System.currentTimeMillis();
+        // (only a real search: with enough food in hand and the smoker busy this is just waiting, not a dry spell)
+        if (potentialFood < _unitsNeeded) {
+            lastSearchMs = System.currentTimeMillis();
+        }
         return new TimeoutWanderTask();
     }
 

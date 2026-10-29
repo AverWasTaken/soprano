@@ -72,6 +72,11 @@ public class FoodDryTest {
     }
 
     @Test
+    public void neverSearchedIsNotSearching() {
+        assertFalse(adris.altoclef.tasks.resources.CollectFoodTask.searching());
+    }
+
+    @Test
     public void aClockThatWentBackwardsDoesNotHoldTheLatch() {
         RunState s = new RunState();
         s.foodDryOn = true;

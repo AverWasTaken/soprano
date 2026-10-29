@@ -151,6 +151,9 @@ public final class MinecraftFacts implements GamerFacts {
         if (dimension != Dimension.OVERWORLD) {
             preyNear = false;
             preyLookAt = Long.MIN_VALUE;
+            if (state != null) {
+                state.foodSearchSince = -1;
+            }
             return;
         }
         if (gameTime < preyLookAt + PREY_LOOK_TICKS && gameTime >= preyLookAt) {
