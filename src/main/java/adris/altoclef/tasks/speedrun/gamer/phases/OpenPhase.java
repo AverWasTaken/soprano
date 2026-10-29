@@ -138,7 +138,8 @@ public class OpenPhase implements PhaseHandler {
         if (readAll) {
             trackShortage(facts, state);
         }
-        Task topUp = loaded ? topUp(mod, ctx, facts, centre) : null;
+        // a hunt that is running goes on when the ring chunks unload (it wanders), framesFilled is the last full read
+        Task topUp = loaded || OpenTopUp.running(state) ? topUp(mod, ctx, facts, centre) : null;
         if (topUp != null) {
             return topUp;
         }
