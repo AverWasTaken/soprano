@@ -609,26 +609,56 @@ public class NetherTripRulesTest {
 
     @Test
     public void theWalkHoldsToHealWhenHurtAndNobodyShoots() {
-        assertTrue(NetherTripRules.walkHold(11, false, false, 0));
-        assertFalse(NetherTripRules.walkHold(12, false, false, 0));
+        assertTrue(NetherTripRules.walkHold(11, false, true, false, 0));
+        assertFalse(NetherTripRules.walkHold(12, false, true, false, 0));
     }
 
     @Test
     public void aShooterWithALineIsNoPlaceToStandStill() {
-        assertFalse(NetherTripRules.walkHold(4, true, false, 0));
-        assertFalse(NetherTripRules.walkHold(4, true, true, 100));
+        assertFalse(NetherTripRules.walkHold(4, true, true, false, 0));
+        assertFalse(NetherTripRules.walkHold(4, true, true, true, 100));
     }
 
     @Test
     public void aHoldKeepsGoingToEighteenInsteadOfFlickingAtTwelve() {
-        assertTrue(NetherTripRules.walkHold(15, false, true, 100));
-        assertFalse(NetherTripRules.walkHold(18, false, true, 100));
+        assertTrue(NetherTripRules.walkHold(15, false, true, true, 100));
+        assertFalse(NetherTripRules.walkHold(18, false, true, true, 100));
     }
 
     @Test
     public void theWalkHoldIsCappedAtAMinuteForTheWholeTrip() {
-        assertTrue(NetherTripRules.walkHold(3, false, true, 20 * 60 - 1));
-        assertFalse(NetherTripRules.walkHold(3, false, true, 20 * 60));
+        assertTrue(NetherTripRules.walkHold(3, false, true, true, 20 * 60 - 1));
+        assertFalse(NetherTripRules.walkHold(3, false, true, true, 20 * 60));
+    }
+
+    @Test
+    public void theWalkDoesNotStandStillWhenNothingCanHealUs() {
+        assertFalse(NetherTripRules.walkHold(6, false, false, false, 0));
+        assertFalse(NetherTripRules.walkHold(6, false, false, true, 100));
+        assertTrue(NetherTripRules.walkHold(6, false, true, false, 0));
+    }
+
+    private static Inputs healNoRegen(float hp) {
+        return new Inputs(Stage.HEAL, Dimension.OVERWORLD, 0, 40, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 0, hp,
+                Long.MAX_VALUE, true, 0, false);
+    }
+
+    @Test
+    public void healWithNothingToHealWithLeavesAtOnce() {
+        Step go = NetherTripRules.next(healNoRegen(14));
+        assertEquals(Stage.PORTAL, go.stage());
+        assertNull(go.giveUp());
+        Step hurt = NetherTripRules.next(healNoRegen(13));
+        assertEquals("too hurt to go back", hurt.giveUp());
+        assertNull(hurt.stage());
+    }
+
+    @Test
+    public void healGivesTheFoodAnswerASecondToCatchUpBeforeLeaving() {
+        Inputs fresh = new Inputs(Stage.HEAL, Dimension.OVERWORLD, 0, 10, 24, false, 500, false, 0, true, 0, LIMITS, true, 0, 0, 13,
+                Long.MAX_VALUE, true, 0, false);
+        assertEquals(Stage.HEAL, NetherTripRules.next(fresh).stage());
+        assertNull(NetherTripRules.next(fresh).giveUp());
     }
 
     @Test
