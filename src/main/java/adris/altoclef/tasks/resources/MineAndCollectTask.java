@@ -11,6 +11,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.Bans;
 import adris.altoclef.trackers.EntityTracker;
+import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.FloatingBlock;
@@ -1217,6 +1218,10 @@ public class MineAndCollectTask extends ResourceTask {
         private boolean askForDirt(AltoClef mod, BlockPos stuck) {
             // nether stems: no dirt down there, the trip would wander a minute and lock every high log out for five
             if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
+                return false;
+            }
+            // down a mine the tower goes nowhere, the gamer climbs out first (SmeltSurface.logTick)
+            if (!TreeChop.dirtDepthOk(SmeltSurface.depthBelowSky(mod), SmeltSurface.GO_UP_DEPTH)) {
                 return false;
             }
             int now = WorldHelper.getTicks();
