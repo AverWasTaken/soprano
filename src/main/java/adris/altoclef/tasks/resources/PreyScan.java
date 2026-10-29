@@ -8,6 +8,12 @@ import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.pig.Pig;
 import net.minecraft.world.entity.animal.rabbit.Rabbit;
 import net.minecraft.world.entity.animal.sheep.Sheep;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 // the "is there anything to hunt around here" question, asked from outside the food task (the planner wants it before it
 // decides to start one). same edible test the hunt uses, so the answer never says yes to something the hunt would refuse
@@ -23,15 +29,28 @@ public final class PreyScan {
     // an edible, unbanned animal loaded within `radius` blocks (FoodHunt.distance, so a cow up a cliff counts for more than a cow along)
     public static boolean near(AltoClef mod, double radius) {
         var me = mod.getPlayer().position();
-        for (Class<?> kind : new Class<?>[]{Pig.class, Cow.class, Chicken.class, Sheep.class, Rabbit.class}) {
-            var closest = mod.getEntityTracker().getClosestEntity(PreyScan::edible, kind);
-            if (closest.isPresent() && mod.getEntityTracker().isEntityReachable(closest.get())) {
-                var at = closest.get().position();
-                if (FoodHunt.distance(at.x - me.x, at.y - me.y, at.z - me.z) <= radius) {
-                    return true;
-                }
+        for (Class<? extends Entity> kind : List.of(Pig.class, Cow.class, Chicken.class, Sheep.class, Rabbit.class)) {
+            // every animal gets the radius check, not just the euclidean closest: the cow straight above us is closest and
+            // out of range while the one on level ground further off is the meal
+            if (anyInRange(new ArrayList<>(mod.getEntityTracker().getTrackedEntities(kind)), e -> e.position().subtract(me), radius,
+                    e -> edible(e) && e.isAlive() && mod.getEntityTracker().isEntityReachable(e))) {
+                return true;
             }
         }
         return false;
+    }
+
+    // any one of them qualifies and is in range: the whole list gets asked, not just whoever is closest as the crow flies
+    static <T> boolean anyInRange(List<T> all, Function<T, Vec3> offset, double radius, Predicate<T> ok) {
+        for (T t : all) {
+            if (inRange(offset.apply(t), radius) && ok.test(t)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean inRange(Vec3 offset, double radius) {
+        return FoodHunt.distance(offset.x, offset.y, offset.z) <= radius;
     }
 }

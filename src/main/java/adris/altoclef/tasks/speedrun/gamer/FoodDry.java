@@ -19,6 +19,20 @@ public final class FoodDry {
     public static final double NEAR = 24;
     public static final double LEAVE = 32;
 
+    // an animal that just stopped being there is most likely a kill, and its meat is on the ground. prey stays "near" this
+    // long so food keeps the head through the pickup instead of the last pig's drops getting left for the starter
+    static final long PREY_HOLD_TICKS = 5 * 20;
+
+    // `seenAt` is the last tick prey was really loaded (Long.MIN_VALUE for never)
+    static boolean preyHeld(long seenAt, long now) {
+        return seenAt != Long.MIN_VALUE && now >= seenAt && now - seenAt < PREY_HOLD_TICKS;
+    }
+
+    // what the planner sees: prey in sight, just gone (a kill), or the food task still waiting on or walking to the loot
+    static boolean preyKept(boolean seen, long seenAt, long now, boolean lootPending) {
+        return seen || preyHeld(seenAt, now) || lootPending;
+    }
+
     // one look per tick. returns a log line when the spell starts or ends, null otherwise
     static String tick(RunState s, boolean searching, boolean prey, long now) {
         if (s.foodDryOn) {
