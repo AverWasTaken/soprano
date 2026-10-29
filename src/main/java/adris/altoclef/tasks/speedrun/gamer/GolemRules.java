@@ -27,6 +27,23 @@ public final class GolemRules {
         return golemFeetY + GOLEM_HEIGHT + margin;
     }
 
+    // a golem walks up one block without thinking about it
+    public static final double STEP_UP = 1.0;
+
+    // the feet height the golem could be standing at right beside the pillar: where it is now, or the highest ground a step
+    // up from there on one of the sides (NaN = no step on that side). the pillar is built for that one, because a golem that
+    // steps up next to a pillar made for the low side gets its head over our feet and the hit lands before ours does
+    public static double groundBeside(double golemFeetY, double[] sideSurfaces) {
+        double limit = Math.floor(golemFeetY + 1.0e-3) + STEP_UP + 1.0e-3;
+        double best = golemFeetY;
+        for (double top : sideSurfaces) {
+            if (top > best && top <= limit) {
+                best = top;
+            }
+        }
+        return best;
+    }
+
     // how many blocks to put under us so we end up on safeFeetY. 0 = already high enough. -1 = more than we want to
     // stack. feet are an integer (standing on a block) so the answer is a ceil, with a hair of slack for float noise
     public static int blocksToRaise(double ourFeetY, double golemFeetY, double margin, int maxBlocks) {

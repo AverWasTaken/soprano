@@ -849,6 +849,7 @@ public class GamerTask extends Task {
             // (and so did the hole: a death in it is a respawn up top, the new body starts from the recovery)
             dropShelter();
         }
+        startDeferredTrip();
         // a naked respawn at night hides first, the trip picks up where it was once the night is over. only when the night branch
         // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does. a hole or bed
         // trip already going is seen through to the end, dawn or not
@@ -1205,6 +1206,8 @@ public class GamerTask extends Task {
         if (!NetherTripRules.applies(deathDimension, facts.dimension())) {
             return;
         }
+        // a new nether pile is the one that matters, an older deferred one is stale
+        state.deferredPile = null;
         String where = deathPos.getX() + " " + deathPos.getY() + " " + deathPos.getZ();
         String why = NetherTripRules.refuse(deathCause, state.overworldPortal != null,
                 cfg.death.netherRecover && cfg.death.netherTripSeconds > 0, false,
@@ -1215,10 +1218,58 @@ public class GamerTask extends Task {
             return;
         }
         RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
+        double far = flatBlocksFromHome(pile);
+        if (NetherTripRules.defers(far)) {
+            // naked and that far out is how the last few trips died, so the pile waits for a kit and the rebuild runs
+            state.deferredPile = pile;
+            host.save();
+            host.say("nether death at " + where + ", " + (int) far + " blocks from the portal, too far to walk naked: "
+                    + "deferring the pile until the kit is back, rebuilding");
+            return;
+        }
         state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.BLOCKS.name(), facts.gameTime());
         state.lastTripPile = pile;
         host.save();
         host.say("nether death at " + where + ", going back for it");
+    }
+
+    // how far a nether pile is from the nether side of the home portal, flat. the overworld portal over eight when the nether
+    // side was never recorded. no portal known at all reads as zero (refuse already turned that death down)
+    private double flatBlocksFromHome(RunState.Pos pile) {
+        double hx;
+        double hz;
+        if (state.netherPortal != null) {
+            hx = state.netherPortal.x;
+            hz = state.netherPortal.z;
+        } else if (state.overworldPortal != null) {
+            hx = state.overworldPortal.x / 8.0;
+            hz = state.overworldPortal.z / 8.0;
+        } else {
+            return 0;
+        }
+        return Math.hypot(pile.x - hx, pile.z - hz);
+    }
+
+    // the pile we put off, once we stand in the nether with the kit on: start the trip at the walk. a pile out of reach is let go
+    private void startDeferredTrip() {
+        RunState.Pos pile = state.deferredPile;
+        if (pile == null || state.netherTrip != null || facts.dimension() != Dimension.NETHER) {
+            return;
+        }
+        boolean kitShort = NetherRegress.kitShort(facts, cfg);
+        double far = Math.hypot(pile.x - facts.x(), pile.z - facts.z());
+        if (NetherTripRules.dropsDeferred(facts.dimension(), kitShort, far)) {
+            state.deferredPile = null;
+            host.save();
+            host.say("deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far + " blocks away, letting it go");
+        } else if (NetherTripRules.startsDeferred(facts.dimension(), kitShort, far)) {
+            state.deferredPile = null;
+            state.lastTripPile = pile;
+            state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.WALK.name(), facts.gameTime());
+            host.save();
+            host.say("kit is on and the deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far
+                    + " blocks away, going for it");
+        }
     }
 
     // flat, height does not make a walk longer

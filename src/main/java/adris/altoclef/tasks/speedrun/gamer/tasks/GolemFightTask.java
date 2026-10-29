@@ -78,6 +78,8 @@ public final class GolemFightTask extends Task {
     private int hits;
     private int outOfReachTicks;
     private int repillars;
+    // the safe feet height the pillar task was last given, so a higher step showing up later restarts it
+    private double pillarSafe;
     private int repositions;
     private int lootBase;
     private long missingSince = -1;
@@ -317,7 +319,8 @@ public final class GolemFightTask extends Task {
 
     private Task pillar(AltoClef mod, LocalPlayer player, IronGolem g, long now) {
         hud = "Pillaring up next to an iron golem";
-        double safe = GolemRules.safeFeetY(g.getY(), cfg.golemSafeMargin);
+        double ground = golemGround(mod, player, g);
+        double safe = GolemRules.safeFeetY(ground, cfg.golemSafeMargin);
         if (player.onGround() && player.getY() >= safe - 1.0e-6) {
             if (fightSince < 0) {
                 fightSince = now;
@@ -334,8 +337,13 @@ public final class GolemFightTask extends Task {
             quit(GolemRules.Abort.PILLAR_STUCK, now, "pillar went nowhere");
             return null;
         }
+        // the golem found a higher step since the pillar task was given its target: ask again from where we stand
+        if (subtask != null && safe > pillarSafe + 0.5) {
+            subtask = null;
+        }
         if (subtask == null) {
-            int need = GolemRules.blocksToRaise(player.getY(), g.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar);
+            int need = GolemRules.blocksToRaise(player.getY(), golemGround(mod, player, g), cfg.golemSafeMargin,
+                    cfg.golemMaxPillar);
             int have = ctx.facts().buildBlocks();
             adris.altoclef.Debug.logInternal("golem: pillar wants " + need + " blocks, buildBlocks " + have
                     + " (us y=" + player.getY() + " golem y=" + g.getY() + ")");
@@ -355,14 +363,54 @@ public final class GolemFightTask extends Task {
                 return null;
             }
             BlockPos here = player.blockPosition();
+            pillarSafe = safe;
             subtask = new PillarHereTask(here.above(Math.max(need, 1)));
         }
         return subtask;
     }
 
+    // where the golem's feet could be right next to our column: its own ground, or a step (a block or a slab) up on any of the 8
+    // sides it can walk up. built for the low side only, the pillar gets a golem that steps up and hits us before we hit it
+    private double golemGround(AltoClef mod, LocalPlayer player, IronGolem g) {
+        var level = mod.getWorld();
+        BlockPos here = player.blockPosition();
+        int stepY = (int) Math.floor(g.getY() + 1.0e-3);
+        double[] sides = new double[8];
+        int n = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                sides[n++] = footing(level, new BlockPos(here.getX() + dx, stepY, here.getZ() + dz));
+            }
+        }
+        return GolemRules.groundBeside(g.getY(), sides);
+    }
+
+    // the height a golem would stand at on this block, NaN when it is not a footing: nothing to stand on, or no room for a
+    // 2.7 tall golem above the real top (a slab is a half block step, a ceiling can take the room away)
+    private static double footing(net.minecraft.world.level.Level level, BlockPos at) {
+        if (!level.hasChunkAt(at)) {
+            return Double.NaN;
+        }
+        var shape = level.getBlockState(at).getCollisionShape(level, at);
+        if (shape.isEmpty()) {
+            return Double.NaN;
+        }
+        double top = at.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
+        for (int up = 1; up <= 3; up++) {
+            BlockPos cell = at.above(up);
+            if (!level.getBlockState(cell).getCollisionShape(level, cell).isEmpty()) {
+                return Double.NaN;
+            }
+        }
+        return top;
+    }
+
     private Task fight(AltoClef mod, LocalPlayer player, IronGolem g, long now) {
         hud = "Fighting an iron golem from a pillar";
-        if (GolemRules.golemCanHitUs(player.getY(), g.getY()) && player.onGround()) {
+        if (GolemRules.golemCanHitUs(player.getY(), golemGround(mod, player, g)) && player.onGround()) {
             // it walked onto higher ground (or we are standing lower than we thought). one more block, a couple of times
             if (repillars < MAX_REPILLARS) {
                 repillars++;
