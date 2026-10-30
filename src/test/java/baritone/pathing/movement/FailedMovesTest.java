@@ -147,4 +147,34 @@ public class FailedMovesTest {
         assertFalse(FailedMoves.forgives(true, false));
         assertFalse(FailedMoves.forgives(false, false));
     }
+
+    @Test
+    public void aFailingCellKeepsAllItsExitsWarm() {
+        FailedMoves fails = new FailedMoves();
+        fails.record(SRC, DEST, OVERWORLD, 0);
+        fails.record(SRC, OTHER, OVERWORLD, 20_000);
+        // DEST was due to expire at 30s, but its sibling failing at 20s keeps it (and its count) alive
+        assertEquals(FailedMoves.FIRST, penalty(fails.snapshot(OVERWORLD, 40_000), SRC, DEST), 0);
+        assertEquals(2, fails.exitsFrom(SRC, OVERWORLD, 40_000));
+        fails.record(SRC, DEST, OVERWORLD, 45_000);
+        assertEquals(FailedMoves.SECOND, penalty(fails.snapshot(OVERWORLD, 45_000), SRC, DEST), 0);
+    }
+
+    @Test
+    public void anExpiredSiblingStaysDead() {
+        FailedMoves fails = new FailedMoves();
+        fails.record(SRC, DEST, OVERWORLD, 0);
+        fails.record(SRC, OTHER, OVERWORLD, 40_000);
+        assertEquals(0, penalty(fails.snapshot(OVERWORLD, 40_000), SRC, DEST), 0);
+        assertEquals(1, fails.exitsFrom(SRC, OVERWORLD, 40_000));
+    }
+
+    @Test
+    public void exitsAreCountedPerCell() {
+        FailedMoves fails = new FailedMoves();
+        fails.record(SRC, DEST, OVERWORLD, 0);
+        fails.record(DEST, SRC, OVERWORLD, 0);
+        assertEquals(1, fails.exitsFrom(SRC, OVERWORLD, 0));
+        assertEquals(0, fails.exitsFrom(SRC, NETHER, 0));
+    }
 }

@@ -73,6 +73,7 @@ public abstract class Movement implements IMovement, MovementHelper {
     private Boolean calculatedWhileLoaded;
 
     private final SwimStall swimStall = new SwimStall();
+    private final SwimEscape swimEscape = new SwimEscape();
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
@@ -140,7 +141,9 @@ public abstract class Movement implements IMovement, MovementHelper {
         ctx.player().getAbilities().flying = false;
         currentState = updateState(currentState);
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) || ctx.player().isInWater()) {
-            if (shouldSwim()) {
+            if (standUpToEscape()) {
+                swimStall.reset();
+            } else if (shouldSwim()) {
                 // sprint is what enters and keeps the swim state. vanilla only STARTS sprinting from
                 // the key while on the ground or eye-underwater, and actively cancels it at the water
                 // surface (which is exactly where we used to bob), so arm the flag ourselves.
@@ -383,6 +386,25 @@ public abstract class Movement implements IMovement, MovementHelper {
         }
     }
 
+    // the cell keeps failing whichever way out we pick, so stop swimming and stand up for a moment, see SwimEscape
+    private boolean standUpToEscape() {
+        if (currentState.getStatus() != MovementStatus.RUNNING || !ctx.player().isInWater()) {
+            return false;
+        }
+        PathingBehavior pb = (PathingBehavior) baritone.getPathingBehavior();
+        int exits = pb.failedMoves().exitsFrom(src, ctx.world(), System.currentTimeMillis());
+        if (!swimEscape.tick(exits)) {
+            return false;
+        }
+        if (swimEscape.began()) {
+            logDirect("swim: " + exits + " exits from " + src + " failed, standing up to get out");
+        }
+        currentState.setInput(Input.SPRINT, false);
+        ctx.player().setSprinting(false);
+        currentState.setInput(Input.JUMP, true);
+        return true;
+    }
+
     // feeds SwimStall. horizontal moves only, a pillar or a downward in water has no distance to dest worth watching
     private void watchSwimStall(boolean floating) {
         if (dest.x == src.x && dest.z == src.z) {
@@ -428,8 +450,8 @@ public abstract class Movement implements IMovement, MovementHelper {
         System.out.println("[swimprobe] " + src + " -> " + dest + " feetY=" + feetY + " flat=" + flat + " up=" + up + " wasDiving=" + wasDiving
                 + " floating=" + floating + " pose=" + ctx.player().getPose() + " swimming=" + ctx.player().isSwimming()
                 + " inWater=" + ctx.player().isInWater() + " underWater=" + ctx.player().isUnderWater() + " onGround=" + ctx.player().onGround()
-                + " box=" + box.minY + ".." + box.maxY + " dest+1=" + blockName(dest.above(1)) + " dest+2=" + blockName(dest.above(2))
-                + " src+2=" + blockName(src.above(2)) + " branch=" + swimStall.lastGiveUp);
+                + " box=" + box.minY + ".." + box.maxY + " src+1=" + blockName(src.above(1)) + " dest+1=" + blockName(dest.above(1)) + " dest+2=" + blockName(dest.above(2))
+                + " src+2=" + blockName(src.above(2)) + " sprinting=" + ctx.player().isSprinting() + " move=" + getClass().getSimpleName() + " branch=" + swimStall.lastGiveUp);
     }
 
     private String blockName(BlockPos pos) {
