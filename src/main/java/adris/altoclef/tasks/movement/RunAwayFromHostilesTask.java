@@ -4,6 +4,10 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.baritone.GoalRunAwayFromCrowd;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.LavaShore;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
+import baritone.pathing.movement.CliffAvoidance;
 import baritone.api.pathing.goals.Goal;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,8 +53,23 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
     @Override
     protected Goal newGoal(AltoClef mod) {
         // We want to run away NOW
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        boolean nether = WorldHelper.getCurrentDimension() == Dimension.NETHER;
+        if (forceCancels(nether, nether && onNetherEdge(mod))) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        }
         return new GoalRunAwayFromHostiles(mod, _distanceToRun);
+    }
+
+    // a cancel drops every key for the replan ticks, and that is exactly when a knock travels furthest. on a nether rim the
+    // path we are on keeps walking until the new one is ready
+    static boolean forceCancels(boolean nether, boolean edgeNear) {
+        return !(nether && edgeNear);
+    }
+
+    private static boolean onNetherEdge(AltoClef mod) {
+        var player = mod.getPlayer();
+        return mod.getClientBaritone().bsi != null
+                && LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
     }
 
     @Override

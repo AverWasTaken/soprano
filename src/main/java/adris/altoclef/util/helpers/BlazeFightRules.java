@@ -160,4 +160,12 @@ public final class BlazeFightRules {
         if (leave) return Mode.RUN;
         return haveTarget ? Mode.KILL : Mode.CAMP;
     }
+
+    // the camp spot gets one bounded step inland off a lava rim or ledge, same budget idea as the heal hold's step
+    public static final int CAMP_STEP_TICKS = 100;
+
+    // step while there is a cell to go to, we are not in it yet, and the budget is not spent
+    public static boolean wantsCampStep(boolean haveCell, boolean arrived, int ticksUsed) {
+        return haveCell && !arrived && ticksUsed < CAMP_STEP_TICKS;
+    }
 }
