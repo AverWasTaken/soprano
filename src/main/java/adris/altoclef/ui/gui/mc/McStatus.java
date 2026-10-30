@@ -105,4 +105,16 @@ final class McStatus implements StatusAccess {
         Result r = new McCommands().run("stop");
         return r.ok() ? Result.ok("Stopped", "stop") : r;
     }
+
+    @Override
+    public Result freecam() {
+        try {
+            String msg = baritone.utils.FreeCam.toggle();
+            baritone.api.utils.Helper.HELPER.logDirect(msg);
+            return Result.ok(msg, "#freecam");
+        } catch (Throwable t) {
+            Safe.report("free cam", t);
+            return Result.fail("Could not start the free cam. Try #freecam in chat.");
+        }
+    }
 }

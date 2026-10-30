@@ -17,6 +17,8 @@
 
 package baritone.behavior;
 
+import baritone.utils.ChunkGens;
+import baritone.utils.LagMeter;
 import baritone.Baritone;
 import baritone.api.behavior.IPathingBehavior;
 import baritone.api.event.events.*;
@@ -163,7 +165,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             return;
         }
 
+        long lm0 = LagMeter.start();
         FallFloor.tick(ctx.player());
+        noteForFallLog();
+        LagMeter.stop("pb.fallFloor", lm0);
+        long lm1 = LagMeter.start();
         {
             baritone.cache.WorldData wd = baritone.getWorldProvider().getCurrentWorld();
             net.minecraft.client.player.LocalPlayer p = ctx.player();
@@ -175,6 +181,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 logDebug("Route memory: " + e);
             }
         }
+        LagMeter.stop("pb.routeMemory", lm1);
         // the background jump searches go nearest the player first, path or no path
         NeoSearches.focus(ctx.player().getX(), ctx.player().getY(), ctx.player().getZ());
         if (FallFloor.generation() != fallFloorSeen) {
@@ -192,9 +199,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         } else {
             sprintTelemetry.off();
         }
+        long lm2 = LagMeter.start();
         baritone.getPathingControlManager().preTick();
+        LagMeter.stop("pb.preTick", lm2);
         PathExecutor ticked = current;
+        long lm3 = LagMeter.start();
         tickPath();
+        LagMeter.stop("pb.tickPath", lm3);
         treadWater();
         if (telemetry) {
             // an executor that finished or cancelled this tick is gone from `current`, its last word on sprint still counts
@@ -202,6 +213,59 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
         ticksElapsedSoFar++;
         dispatchEvents();
+    }
+
+    // what we were doing the last couple of seconds, a tick at a time: when a fall puts us back, it goes to the log (chat
+    // too with chatDebug), so a fall with a path worked out says which movement it was and how it went wrong
+    private final String[] fallLog = new String[40];
+    private int fallLogAt;
+    private int fallsSeen = -1;
+
+    private void noteForFallLog() {
+        int falls = FallFloor.falls();
+        if (fallsSeen >= 0 && falls != fallsSeen) {
+            StringBuilder sb = new StringBuilder(FallFloor.steppedOffLately() ? "[fall] put back (stepped off on purpose, no way on). the last moves before it (oldest first):"
+                    : "[fall] put back. the last moves before it (oldest first):");
+            String last = null;
+            int same = 0;
+            for (int i = 0; i < fallLog.length; i++) {
+                String e = fallLog[(fallLogAt + i) % fallLog.length];
+                if (e == null) {
+                    continue;
+                }
+                if (e.equals(last)) {
+                    same++;
+                    continue;
+                }
+                if (same > 0) {
+                    sb.append(" x").append(same + 1);
+                }
+                sb.append("\n  ").append(e);
+                last = e;
+                same = 0;
+            }
+            if (same > 0) {
+                sb.append(" x").append(same + 1);
+            }
+            System.out.println(sb);
+            if (Baritone.settings().chatDebug.value) {
+                logDebug(sb.toString().replace("\n  ", " | "));
+            }
+            java.util.Arrays.fill(fallLog, null);
+        }
+        fallsSeen = falls;
+        net.minecraft.client.player.LocalPlayer p = ctx.player();
+        PathExecutor ex = current;
+        String what;
+        if (ex == null) {
+            what = inProgress != null ? "searching" : "no path";
+        } else {
+            int pos = ex.getPosition();
+            baritone.api.pathing.movement.IMovement m = pos < ex.getPath().movements().size() ? ex.getPath().movements().get(pos) : null;
+            what = m == null ? "path end" : m.getClass().getSimpleName() + " " + m.getSrc() + " -> " + m.getDest();
+        }
+        fallLog[fallLogAt] = what + (p.onGround() ? " (on the ground at y " + Math.round(p.getY() * 10) / 10.0 + ")" : " (in the air)");
+        fallLogAt = (fallLogAt + 1) % fallLog.length;
     }
 
     @Override
@@ -250,8 +314,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             cancelRequested = false;
             baritone.getInputOverrideHandler().clearAllKeys();
         }
+        long lmw = LagMeter.start();
         synchronized (pathPlanLock) {
             synchronized (pathCalcLock) {
+                LagMeter.stop("pb.lockWait", lmw);
                 if (inProgress != null) {
                     // we are calculating
                     // are we calculating the right thing though? 🤔
@@ -396,12 +462,23 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         this.goal = goal;
     }
 
+    private long contextMadeTick = -1_000_000L;
+    private long contextLoads = -1;
+    private static final int CONTEXT_TICKS = 20;
+
     public boolean secretInternalSetGoalAndPath(PathingCommand command) {
         secretInternalSetGoal(command.goal);
         if (command instanceof PathingCommandContext) {
             context = ((PathingCommandContext) command).desiredCalcContext;
-        } else {
+            contextMadeTick = -1_000_000L;
+        } else if (context == null || tickCount - contextMadeTick >= CONTEXT_TICKS || contextLoads != ChunkGens.loads()
+                || context.world != ctx.world()) {
+            // a process asks every tick (REVALIDATE), and a new context every tick is a copy of the chunk table and a fresh
+            // jump cache: every jump the executor checks simulated again, every tick. one a second does (and a new one the
+            // moment a chunk comes or goes)
             context = new CalculationContext(baritone, true);
+            contextMadeTick = tickCount;
+            contextLoads = ChunkGens.loads();
         }
         if (goal == null) {
             return false;
@@ -969,16 +1046,20 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             BetterBlockPos a = previous.positions().get(previous.positions().size() - 2), b = previous.positions().get(previous.positions().size() - 1);
             context.startArrival = TungstenJumps.carrySector(context, a.x, a.y, a.z, b.x, b.y, b.z);
         }
-        // the way along a trail we've been along before, see RouteMemory
-        context.routeGuide = goal instanceof IGoalRenderPos ? RouteMemory.guide(new BetterBlockPos(start), new BetterBlockPos(((IGoalRenderPos) goal).getGoalPos())) : null;
-        context.trailFloors = null;
-        if (context.routeGuide != null) {
-            favoring.favorAll(context.routeGuide.index().keySet(), ROUTE_FAVOR);
-            context.trailFloors = RouteMemory.floors(context.routeGuide, context);
-        } else if (Baritone.settings().useRouteMemory.value) {
-            context.trailFloors = RouteMemory.floorsNear(start.getX(), start.getZ());
-        }
         AStarPathFinder finder = new AStarPathFinder(realStart, start.getX(), start.getY(), start.getZ(), transformed, favoring, context);
+        // the way along a trail we've been along before, see RouteMemory. put together on the search's thread, before it
+        // starts: tens of ms with a few trails to join up, which was a stutter of the game's every time a search began
+        context.routeGuide = null;
+        context.trailFloors = null;
+        finder.beforeSearch = () -> {
+            context.routeGuide = goal instanceof IGoalRenderPos ? RouteMemory.guide(new BetterBlockPos(start), new BetterBlockPos(((IGoalRenderPos) goal).getGoalPos())) : null;
+            if (context.routeGuide != null) {
+                favoring.favorAll(context.routeGuide.index().keySet(), ROUTE_FAVOR);
+                context.trailFloors = RouteMemory.floors(context.routeGuide, context);
+            } else if (Baritone.settings().useRouteMemory.value) {
+                context.trailFloors = RouteMemory.floorsNear(start.getX(), start.getZ());
+            }
+        };
         finder.keepAbove(goal); // the goal as asked for: a far one keeps its height for this even when the search drops it
         return finder;
 

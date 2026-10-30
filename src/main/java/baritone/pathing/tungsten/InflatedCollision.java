@@ -30,7 +30,14 @@ public final class InflatedCollision implements CollisionProvider {
     private final double margin, floorMargin;
     // feet cells of the lower and the higher end of the jump
     private final int minFeetY, maxFeetY;
-    private final BoxList scratch = new BoxList(), above = new BoxList();
+    private final BoxList scratch = new BoxList(), above = new BoxList(), built = new BoxList();
+    // each cell's fattened boxes, worked out the first time the search asks (a search asks about the same few hundred
+    // cells millions of times). an instance is one search's, on one thread
+    private final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<double[]> cells = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
+    private static final double[] EMPTY = new double[0];
+    // and when the world is a snapshot (a background search's always is), straight by its cell index instead
+    private final SnapshotCollision snap;
+    private final double[][] dense;
 
     public InflatedCollision(CollisionProvider world, double margin, int minFeetY, int maxFeetY) {
         this(world, margin, margin, minFeetY, maxFeetY);
@@ -42,10 +49,61 @@ public final class InflatedCollision implements CollisionProvider {
         this.floorMargin = floorMargin;
         this.minFeetY = minFeetY;
         this.maxFeetY = maxFeetY;
+        this.snap = world instanceof SnapshotCollision sc ? sc : null;
+        this.dense = snap == null ? null : new double[snap.cellCount()][];
+    }
+
+    @Override
+    public double[] boxArray(int x, int y, int z) {
+        if (snap != null) {
+            int i = snap.cellIndex(x, y, z);
+            if (i < 0) {
+                return EMPTY;
+            }
+            double[] a = dense[i];
+            if (a == null) {
+                built.clear();
+                compute(x, y, z, built);
+                dense[i] = a = toArray(built);
+            }
+            return a;
+        }
+        long k = net.minecraft.core.BlockPos.asLong(x, y, z);
+        double[] a = cells.get(k);
+        if (a == null) {
+            built.clear();
+            compute(x, y, z, built);
+            a = toArray(built);
+            if (cells.size() > 200_000) {
+                cells.clear();
+            }
+            cells.put(k, a);
+        }
+        return a;
+    }
+
+    private static double[] toArray(BoxList b) {
+        if (b.size() == 0) {
+            return EMPTY;
+        }
+        double[] a = new double[b.size() * 6];
+        for (int i = 0; i < b.size(); i++) {
+            for (int c = 0; c < 6; c++) {
+                a[i * 6 + c] = b.get(i, c);
+            }
+        }
+        return a;
     }
 
     @Override
     public void boxes(int x, int y, int z, BoxList out) {
+        double[] a = boxArray(x, y, z);
+        for (int o = 0; o < a.length; o += 6) {
+            out.add(a[o], a[o + 1], a[o + 2], a[o + 3], a[o + 4], a[o + 5]);
+        }
+    }
+
+    private void compute(int x, int y, int z, BoxList out) {
         scratch.clear();
         world.boxes(x, y, z, scratch);
         if (scratch.size() == 0) {

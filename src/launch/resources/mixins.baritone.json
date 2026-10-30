@@ -33,6 +33,7 @@
     "MixinEntity",
     "MixinEntityRenderManager",
     "MixinFireworkRocketEntity",
+    "MixinFreeCamMouse",
     "MixinItemStack",
     "MixinKeyboardHandler",
     "MixinLivingEntity",

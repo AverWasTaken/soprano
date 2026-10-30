@@ -17,6 +17,7 @@
 
 package baritone.pathing.path;
 
+import baritone.utils.LagMeter;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
@@ -384,6 +385,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             costEstimateIndex = pathPosition;
             // do this only once, when the movement starts, and deliberately get the cost as cached when this path was calculated, not the cost as it is right now
             currentMovementOriginalCostEstimate = movement.getCost();
+            long lt0 = LagMeter.start();
             for (int i = 1; i < Baritone.settings().costVerificationLookahead.value && pathPosition + i < path.length() - 1; i++) {
                 if (((Movement) path.movements().get(pathPosition + i)).calculateCost(behavior.secretInternalGetCalculationContext()) >= ActionCosts.COST_INF && canCancel) {
                     logDebug("Something has changed in the world and a future movement has become impossible. Cancelling.");
@@ -391,8 +393,18 @@ public class PathExecutor implements IPathExecutor, Helper {
                     return true;
                 }
             }
+            LagMeter.stop("exec.costLookahead", lt0);
         }
-        double currentCost = movement.recalculateCost(behavior.secretInternalGetCalculationContext());
+        long lt1 = LagMeter.start();
+        // what it costs now is only acted on when it's safe to cancel; and a jump's is a sim (or several), so once a
+        // second is plenty to see a block placed in its way, not every tick
+        double currentCost;
+        if (!canCancel || movement instanceof MovementTungsten && ticksOnCurrent % 20 != 0) {
+            currentCost = movement.getCost(behavior.secretInternalGetCalculationContext());
+        } else {
+            currentCost = movement.recalculateCost(behavior.secretInternalGetCalculationContext());
+        }
+        LagMeter.stop("exec.recost." + movement.getClass().getSimpleName(), lt1);
         if (currentCost >= ActionCosts.COST_INF && canCancel) {
             logDebug("Something has changed in the world and this movement has become impossible. Cancelling.");
             cancel();
@@ -422,7 +434,9 @@ public class PathExecutor implements IPathExecutor, Helper {
             // a jump that comes down where the next jump can go from without stopping carries its speed into it
             ((MovementTungsten) movement).next(pathPosition + 1 < path.movements().size() ? path.movements().get(pathPosition + 1) : null);
         }
+        long lt2 = LagMeter.start();
         MovementStatus movementStatus = movement.update();
+        LagMeter.stop("exec.update." + movement.getClass().getSimpleName(), lt2);
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
             rememberFailure(movement, false);
@@ -445,7 +459,9 @@ public class PathExecutor implements IPathExecutor, Helper {
                 cornerSteering(movement, bsi);
             }
             handedOff = false;
+            long lt3 = LagMeter.start();
             boolean sprint = shouldSprintNextTick();
+            LagMeter.stop("exec.sprintCheck", lt3);
             if (handedOff) {
                 // a skip gave the tick to the next movement's frame. that frame set sprint for the tick, ran the movement timer
                 // and counted the tick on its own, and when we wrote our answer over its answer vanilla and the flag disagreed

@@ -26,6 +26,9 @@ public abstract class MixinMoveCamera {
     @Shadow
     protected abstract void setRotation(float yRot, float xRot);
 
+    @Shadow
+    public abstract float getCameraEntityPartialTicks(DeltaTracker deltaTracker);
+
     @Inject(
             method = "update",
             at = @At(
@@ -37,6 +40,10 @@ public abstract class MixinMoveCamera {
     private void soprano$moveCamera(final DeltaTracker deltaTracker, final CallbackInfo ci) {
         try {
             double[] pose = MoveSession.pose();
+            if (pose == null) {
+                // the spectator camera (#freecam)
+                pose = baritone.utils.FreeCam.pose(getCameraEntityPartialTicks(deltaTracker));
+            }
             if (pose == null) {
                 return;
             }

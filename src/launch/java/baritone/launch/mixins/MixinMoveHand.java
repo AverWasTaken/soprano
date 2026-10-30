@@ -21,7 +21,7 @@ public class MixinMoveHand {
     )
     private void soprano$hideHand(final CameraRenderState camera, final PlayerRenderState player, final GpuTextureView target,
                                   final CallbackInfo ci) {
-        if (MoveSession.cameraOn()) {
+        if (MoveSession.cameraOn() || baritone.utils.FreeCam.on()) {
             ci.cancel();
         }
     }

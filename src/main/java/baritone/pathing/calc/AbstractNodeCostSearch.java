@@ -148,12 +148,18 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         return Math.min(deadline, startTime + normalTimeout);
     }
 
+    // run on the search's own thread before it starts: the setup that's too slow for the game thread (the route guide)
+    public Runnable beforeSearch;
+
     @Override
     public synchronized PathCalculationResult calculate(long primaryTimeout, long failureTimeout) {
         if (isFinished) {
             throw new IllegalStateException("Path finder cannot be reused!");
         }
         cancelRequested = false;
+        if (beforeSearch != null) {
+            beforeSearch.run();
+        }
         context.claimSearchCaches();
         try {
             IPath path = calculate0(primaryTimeout, failureTimeout).map(IPath::postProcess).orElse(null);

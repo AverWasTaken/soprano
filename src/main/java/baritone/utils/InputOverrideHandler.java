@@ -125,6 +125,8 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
                 ctx.player().input = new KeyboardInput(ctx.minecraft().options);
             }
         }
+        // the spectator camera: the player stands still for whatever keys fly it, unless the bot's driving
+        FreeCam.tick();
         // only set it if it was previously incorrect
         // gotta do it this way, or else it constantly thinks you're beginning a double tap W sprint lol
     }

@@ -33,6 +33,11 @@ public final class GuiHotkey {
                 return false;
             }
             Settings s = Baritone.settings();
+            if (s.freecamKey.value >= 0 && key == s.freecamKey.value && mc.gui.screen() == null && mc.player != null) {
+                String msg = baritone.utils.FreeCam.toggle();
+                baritone.api.utils.Helper.HELPER.logDirect(msg);
+                return true;
+            }
             KeyBind bind = new KeyBind(s.guiKey.value);
             bind.enabled = s.guiKeyEnabled.value;
             if (!bind.opens(key, mc.gui.screen() != null) || !canOpen(mc)) {

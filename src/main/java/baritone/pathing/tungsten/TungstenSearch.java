@@ -97,6 +97,11 @@ public final class TungstenSearch {
 
     private TungstenSearch() {}
 
+    // a background search's way of being called off when nobody wants its answer any more (the player gone somewhere
+    // else): asked by every search on this thread that wasn't given its own (NeoSearches sets it per job, so the searches
+    // inside Ledges and HopChain see it too). null for never
+    public static final ThreadLocal<BooleanSupplier> CANCELLED = new ThreadLocal<>();
+
     // search from start's state to standing still on the landing. budget is sim ticks (a few microseconds each). cancelled is
     // checked every so often, null for never. null if nothing turned up in the budget
     public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled) {
@@ -122,6 +127,9 @@ public final class TungstenSearch {
     public static Plan search(PlayerSim start, Landing land, Region region, long budget, BooleanSupplier cancelled, double startPeakY,
                               double[] via, boolean walkOnly) {
         Heuristic h = via == null ? new Heuristic(land, Double.NaN, Double.NaN, 0, 0, 0) : Heuristic.via(start, land, via[0], via[1]);
+        if (cancelled == null) {
+            cancelled = CANCELLED.get();
+        }
         PlayerSim cursor = start.copy();
         PlayerSim probe = start.copy();
         long before = PlayerSim.ticks();

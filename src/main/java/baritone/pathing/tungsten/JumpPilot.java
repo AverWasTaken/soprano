@@ -17,6 +17,7 @@
 
 package baritone.pathing.tungsten;
 
+import baritone.utils.LagMeter;
 import baritone.pathing.sim.BoxList;
 import baritone.pathing.sim.PlayerSim;
 import net.minecraft.util.Mth;
@@ -109,7 +110,10 @@ public final class JumpPilot {
             return false;
         }
         lastWork += " flow";
-        return flow.test(live);
+        long lt = LagMeter.start();
+        boolean r = flow.test(live);
+        LagMeter.stop("pilot.flow", lt);
+        return r;
     }
 
     public boolean flew() {
@@ -191,6 +195,21 @@ public final class JumpPilot {
         return best;
     }
 
+    // off the plan's state for this tick but on one of the next two: moves planAt on to it and says so
+    private boolean skipAhead(SimState now, TungstenSearch.Plan plan) {
+        double eps = FALLBACK_EPS;
+        if (now.distance(plan.states().get(planAt)) < eps) {
+            return false; // on the plan, the usual way
+        }
+        for (int ahead = 1; ahead <= 2 && planAt + ahead < plan.ticks(); ahead++) {
+            if (now.distance(plan.states().get(planAt + ahead)) < eps) {
+                planAt += ahead;
+                return true;
+            }
+        }
+        return false;
+    }
+
     public Decision tick(PlayerSim live) {
         lastWork = "";
         if (live.onGround) {
@@ -212,6 +231,13 @@ public final class JumpPilot {
                 if (land.reached(now, JumpPolicy.STILL * 2)) {
                     return new Decision(Status.DONE, null, null);
                 }
+            } else if (tracking && !live.onGround && skipAhead(now, plan)) {
+                // a tick or two ahead of the plan: the jump went a tick early (the move before pressed it, or the edge
+                // rule did). the same flight, just sooner: carry on from where it's got to instead of dropping the plan
+                // (Hell's drop over the lava: off the plan on tick 1, the rule couldn't save it, and in we went)
+                PlayerSim.Controls k = track(live, plan, planAt);
+                planAt++;
+                return Decision.press(k);
             } else if (now.distance(plan.states().get(planAt)) < (onFallback || tracking ? FALLBACK_EPS : PLAN_EPS) && (tracking || !leavesEarly(live, plan, planAt))) {
                 PlayerSim.Controls k = tracking ? track(live, plan, planAt) : plan.keys().get(planAt);
                 planAt++;
@@ -252,14 +278,18 @@ public final class JumpPilot {
             memo.neo = JumpPolicy.blocked(live.world(), startX, Double.isNaN(groundY) ? live.y : groundY, startZ, land.centerX(), land.y(), land.centerZ());
             // already down: the rule's AIR looks at the touchdown (the fall, which block) first thing and moves on to SETTLE
         }
+        long ltd = LagMeter.start();
         PlayerSim.Controls keys = JumpPolicy.decide(live, live.copy(), land, JumpPolicy.Variant.EDGE, memo);
+        LagMeter.stop("pilot.airDecide", ltd);
         switch (memo.phase) {
             case DONE:
                 return new Decision(Status.DONE, null, null);
             case FAILED:
                 if (!live.onGround) {
                     // the rule has lost it. a short search from right here, a flight only has a few ticks left in it
+                    long ltr = LagMeter.start();
                     TungstenSearch.Plan rescue = TungstenSearch.search(live, land, region(live, land), AIR_SEARCH_BUDGET, null, memo.peakY);
+                    LagMeter.stop("pilot.rescue", ltr);
                     if (rescue != null && rescue.ticks() > 0) {
                         memo.phase = JumpPolicy.Phase.AIR;
                         memo.airTicks = 0;
@@ -320,8 +350,10 @@ public final class JumpPilot {
         if (!(fallback != null && ruleRefused)) {
             lastWork += " robust";
         }
+        long lt = LagMeter.start();
         JumpPolicy.Rollout r = fallback != null && ruleRefused ? null
                 : JumpPolicy.robust(live, land, first, fallback != null ? JumpPolicy.AIM_ERRORS.length : 0);
+        LagMeter.stop("pilot.robust", lt);
         if (r == null) {
             ruleRefused = true;
             return stage(live);
@@ -391,6 +423,15 @@ public final class JumpPilot {
     private static final int FINE_YAWS = 16, FINE_COAST = 10, FINE_GIVE_UP = 30;
 
     private PlayerSim.Controls fineStage(PlayerSim live) {
+        long lt = LagMeter.start();
+        try {
+            return fineStage0(live);
+        } finally {
+            LagMeter.stop("pilot.fineStage", lt);
+        }
+    }
+
+    private PlayerSim.Controls fineStage0(PlayerSim live) {
         lastWork += " fine-stage";
         List<PlayerSim.Controls> options = new ArrayList<>(FINE_YAWS + 1), seconds = new ArrayList<>(FINE_YAWS / 2 + 1);
         options.add(Keys.release(Keys.yaw(startX - live.x, startZ - live.z)));
@@ -442,6 +483,15 @@ public final class JumpPilot {
 
     // the plan flown from this state, tracked the way it will be for real, lands
     private boolean tracksFrom(PlayerSim live, TungstenSearch.Plan p) {
+        long lt = LagMeter.start();
+        try {
+            return tracksFrom0(live, p);
+        } finally {
+            LagMeter.stop("pilot.tracksFrom", lt);
+        }
+    }
+
+    private boolean tracksFrom0(PlayerSim live, TungstenSearch.Plan p) {
         lastWork += " tracks-from";
         PlayerSim probe = live.copy();
         int jumpAt = jumpIn(p, 0);

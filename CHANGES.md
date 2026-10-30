@@ -16,6 +16,7 @@ Everything below is off by default unless it says otherwise. Turn things on in g
 - **Pathfinder performance.** More movements per second, and the cache buffers get reused instead of reallocated.
 - **Movement timings** (`recordMovementTimings`, off by default). Measures how many ticks every movement really takes against what the planner said, and keeps a small capped file of it. `#timings` shows which movements are mispriced the most. It only measures, nothing changes how paths are planned.
 - **Asks before collecting blocks** (`askToGatherForPath`, on by default). On a trip you started (`goto`, `come`, a waypoint, click to go), when it can't get there without blocks you don't have it asks "may I collect some so I can continue?" in chat with clickable Yes and No. It also asks when a route that needs blocks or a stone pickaxe is at least 30% and 30 seconds faster, counting the time to collect them. Once per trip, and the answer holds for the whole trip.
+- **Free cam** (`#freecam`, F6, or the Free cam button in the gui). Fly a camera round the bot to watch it from any angle while it plays. It follows the bot by default (`#freecam follow` to leave it in place), and the hand and crosshair are hidden while it's on.
 - **Chat prefix.** Messages say `[Soprano]`.
 
 The new stuff is new, so expect rough edges. [USAGE.md](USAGE.md) lists the settings that go with these. [FEATURES.md](FEATURES.md) has the full list of what the pathfinder can do. Bug reports and feedback are welcome.

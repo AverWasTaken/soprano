@@ -184,6 +184,24 @@ public final class FallFloor {
     }
 
     // every tick, with the player
+    // falls that got us put back, since the game started (PathingBehavior logs what it was doing when one happens)
+    private static int falls;
+
+    public static int falls() {
+        return falls;
+    }
+
+    // the last time the bot stepped off on purpose to be put back (System.currentTimeMillis), for the fall log
+    private static volatile long steppedOffAt;
+
+    public static void steppedOff() {
+        steppedOffAt = System.currentTimeMillis();
+    }
+
+    public static boolean steppedOffLately() {
+        return System.currentTimeMillis() - steppedOffAt < 15_000;
+    }
+
     public static void tick(LocalPlayer p) {
         if (p == null) {
             return;
@@ -224,6 +242,7 @@ public final class FallFloor {
                 }
             }
             if (teleported && !settling && fell) {
+                falls++;
                 if (lowBlock != null) {
                     // came down on lowBlock and got put back: standing on that, that low, is what does it
                     int feet = (int) Math.floor(lowY + 0.1251);

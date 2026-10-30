@@ -182,6 +182,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                     dropFrom = ctx.player().position();
                     stillSince = 0;
                     logDirect("No way on from here: stepping off to be put back on the course (" + dropRetries + " of " + DROP_RETRIES + ")");
+                    FallFloor.steppedOff();
+                    RouteMemory.deadEnd(ctx.playerFeet());
                     this.state = State.DROPPING;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
                 }
@@ -245,7 +247,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         if (p == null || this.goal == null) {
             return false;
         }
-        long now = System.currentTimeMillis();
+        // (game time: a minute of the game, however fast or slow it runs)
+        long now = ctx.world() == null ? 0 : ctx.world().getGameTime() * 50;
         double h = this.goal.heuristic(ctx.playerFeet());
         if (stillSince == 0 || p.position().distanceToSqr(stillAt) > 64) {
             // (somewhere else now: a jump on, a put back)

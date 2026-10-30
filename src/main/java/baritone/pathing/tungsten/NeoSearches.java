@@ -70,15 +70,13 @@ public final class NeoSearches {
     private static final Map<Key, Object> RESULTS = new ConcurrentHashMap<>();
     private static final List<Job> QUEUE = new ArrayList<>();
     private static int workers;
-    // one thread, at the lowest priority: these are seconds of work each, and the game needs the cores more
-    private static final int MAX_WORKERS = 1;
+    // at the lowest priority: these are seconds of work each, and the game needs the cores more. one on a small machine,
+    // up to three where there are cores to spare (the game uses two or three; each worker more is that much sooner a jump
+    // the path is waiting on gets worked out)
+    private static final int MAX_WORKERS = Math.max(1, Math.min(3, Runtime.getRuntime().availableProcessors() / 2 - 1));
     // a job further than this from the player when its turn comes is dropped (asked again if a path gets near it again):
     // a long #goto asks about every wall along the way, and working them all out up front is minutes of a busy core
     private static final double MAX_JOB_DISTANCE = 48;
-    // the blocks' hash per src and dest, worked out at most this often: A* asks about the same pair over and over
-    private static final long HASH_MS = 3000;
-    private record Hashed(long hash, long at) {}
-    private static final Map<Long, Hashed> HASHES = new ConcurrentHashMap<>();
     // where the player is: the jobs nearest it go first, they're the ones a path is about to want
     private static volatile double focusX = Double.NaN, focusY = Double.NaN, focusZ = Double.NaN;
 
@@ -137,18 +135,13 @@ public final class NeoSearches {
                 ? TungstenSearch.Region.around(src.x + 0.5, src.z + 0.5, src.x + 0.5, src.z + 0.5, src.y - 6, Ledges.REACH + 1)
                 : region(src, land);
         long srcKey = BetterBlockPos.longHash(src), destKey = BetterBlockPos.longHash(land.x(), land.y(), land.z());
-        long pair = srcKey * 31 + destKey, now = System.currentTimeMillis();
-        Hashed hashed = HASHES.get(pair);
+        // what the answer depends on is the blocks round the jump: the same while none of their chunks has changed
+        // (ChunkGens), a few lookups instead of reading and hashing every one of them each time A* asks (which was most of
+        // what A* spent its time on)
+        long gen = baritone.utils.ChunkGens.of(Mth.floor(region.minX()) - 2, Mth.floor(region.minZ()) - 2,
+                Mth.floor(region.maxX()) + 2, Mth.floor(region.maxZ()) + 2);
         SnapshotCollision snap = null;
-        if (hashed == null || now - hashed.at() > HASH_MS) {
-            // (just the hash: a whole snapshot each time only to hash it was most of what A* threw away)
-            hashed = new Hashed(snapshotHash(world, src, land, region), now);
-            if (HASHES.size() > 20_000) {
-                HASHES.clear();
-            }
-            HASHES.put(pair, hashed);
-        }
-        Key key = new Key(srcKey, destKey, hashed.hash(), kind);
+        Key key = new Key(srcKey, destKey, gen, kind);
         Object known = RESULTS.get(key);
         if (known instanceof TungstenSearch.Plan plan) {
             return plan;
@@ -160,6 +153,11 @@ public final class NeoSearches {
             // still being worked out: say so again, so whoever is waiting on it knows it's still worth waiting for
             PendingTables.missed(key, () -> RESULTS.get(key) != PENDING);
             return WAIT;
+        }
+        if (!roomFor(src, land, kind)) {
+            // the queue's full of jobs nearer the player than this one: not now (no copy of the blocks for it, no place in
+            // the queue to be thrown out of a moment later). whoever asks again when it's nearer gets it queued
+            return null;
         }
         if (RESULTS.putIfAbsent(key, PENDING) == null) {
             PendingTables.missed(key, () -> RESULTS.get(key) != PENDING);
@@ -221,43 +219,69 @@ public final class NeoSearches {
         int best = 0;
         double bestD = first ? Double.MAX_VALUE : -Double.MAX_VALUE;
         for (int i = 0; i < QUEUE.size(); i++) {
-            BetterBlockPos s = QUEUE.get(i).src();
-            double dx = s.x + 0.5 - focusX, dy = s.y - focusY, dz = s.z + 0.5 - focusZ;
-            // a combo (two neos in one flight) only matters when the second one can't go from standing on the pad,
-            // so it waits until the single ones are done, and then it may not be needed at all
-            // and the ones going away from the player (onwards) before the ones coming back towards it: a path
-            // forwards needs the first kind, the second kind is A* looking behind itself
-            Landing l = QUEUE.get(i).land();
-            double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
-            boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
-            // near the player first, a ledge chain as if it were ten blocks further off (they're the way when nothing
-            // else is, and a lot more of them get asked about), going back as if thirty
-            boolean far = Double.isNaN(dx + dy + dz);
-            Long failed = FAILED_MS.get(BetterBlockPos.longHash(l.x(), l.y(), l.z()));
-            double d = (failed == null ? 0 : failed / FAILED_MS_PER_SQ_BLOCK) + (QUEUE.get(i).combo() ? 1.0E9 : 0) + (far ? i + (QUEUE.get(i).kind() == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
-                    : dx * dx + dy * dy + dz * dz + (QUEUE.get(i).kind() == LEDGES ? 100 : 0) + (back ? 900 : 0));
-            if (QUEUE.get(i).kind() == LEAP && !far && !back) {
-                // a leap along the remembered way (somebody went that way) near us: before the rest, it's the way on.
-                // not one coming back towards us: that's A* looking behind itself along the trail, and a chess level's
-                // dozens of those held up the jump on for minutes. (as if a quarter as far, not first wherever it is: the
-                // leaps all along the level ahead held up the one jump off the block we were standing on for minutes)
-                d = d / 16 - 30;
-                // (and it's only the hop chains now, a fraction of a second each, see work: the full search waits, LEAP_FULL.
-                // so every hop chain in twenty blocks or so goes before the rest: on Chess (harder) the one off the wool
-                // waited eight minutes behind the searches round wherever the bot had wandered off to)
-            }
-            if (QUEUE.get(i).kind() == LEAP_FULL) {
-                d += 50; // (after the leaps' hop chains near us, see work)
-            }
-            if (!far && dx * dx + dy * dy + dz * dz < 1 && QUEUE.get(i).kind() != LEDGES && !QUEUE.get(i).combo()) {
-                d -= 20; // from where we're standing: what the path is waiting on right now
-            }
+            Job j = QUEUE.get(i);
+            double d = priority(j.src(), j.land(), j.kind(), i);
             if (first ? d < bestD : d >= bestD) {
                 bestD = d;
                 best = i;
             }
         }
         return best;
+    }
+
+    // lower goes first
+    private static double priority(BetterBlockPos s, Landing l, int kind, int i) {
+        double dx = s.x + 0.5 - focusX, dy = s.y - focusY, dz = s.z + 0.5 - focusZ;
+        // a combo (two neos in one flight) only matters when the second one can't go from standing on the pad,
+        // so it waits until the single ones are done, and then it may not be needed at all
+        // and the ones going away from the player (onwards) before the ones coming back towards it: a path
+        // forwards needs the first kind, the second kind is A* looking behind itself
+        double lx = l.centerX() - focusX, lz = l.centerZ() - focusZ;
+        boolean back = !Double.isNaN(dx + dz) && lx * lx + lz * lz < dx * dx + dz * dz;
+        // near the player first, a ledge chain as if it were ten blocks further off (they're the way when nothing
+        // else is, and a lot more of them get asked about), going back as if thirty
+        boolean far = Double.isNaN(dx + dy + dz);
+        Long failed = FAILED_MS.get(BetterBlockPos.longHash(l.x(), l.y(), l.z()));
+        double d = (failed == null ? 0 : failed / FAILED_MS_PER_SQ_BLOCK) + (kind == COMBO ? 1.0E9 : 0) + (far ? i + (kind == LEDGES ? 1.0E6 : 0) + (back ? 1.0E7 : 0)
+                : dx * dx + dy * dy + dz * dz + (kind == LEDGES ? 100 : 0) + (back ? 900 : 0));
+        if (kind == LEAP && !far && !back) {
+            // a leap along the remembered way (somebody went that way) near us: before the rest, it's the way on.
+            // not one coming back towards us: that's A* looking behind itself along the trail, and a chess level's
+            // dozens of those held up the jump on for minutes. (as if a quarter as far, not first wherever it is: the
+            // leaps all along the level ahead held up the one jump off the block we were standing on for minutes)
+            d = d / 16 - 30;
+            // (and it's only the hop chains now, a fraction of a second each, see work: the full search waits, LEAP_FULL.
+            // so every hop chain in twenty blocks or so goes before the rest: on Chess (harder) the one off the wool
+            // waited eight minutes behind the searches round wherever the bot had wandered off to)
+        }
+        if (kind == LEAP_FULL) {
+            d += 50; // (after the leaps' hop chains near us, see work)
+        }
+        if (!far && dx * dx + dy * dy + dz * dz < 1 && kind != LEDGES && kind != COMBO) {
+            d -= 20; // from where we're standing: what the path is waiting on right now
+        }
+        return d;
+    }
+
+    // the player's too far from the job's start for it to be wanted now
+    private static boolean gone(Job job) {
+        double fx = job.src().x + 0.5 - focusX, fz = job.src().z + 0.5 - focusZ;
+        return !Double.isNaN(fx + fz) && fx * fx + fz * fz > MAX_JOB_DISTANCE * MAX_JOB_DISTANCE;
+    }
+
+    // whether a new job would get a place in the queue: there's room, or it goes before the last one there
+    private static boolean roomFor(BetterBlockPos src, Landing land, int kind) {
+        synchronized (QUEUE) {
+            if (QUEUE.size() < MAX_QUEUE) {
+                return true;
+            }
+            double worst = -Double.MAX_VALUE;
+            for (int i = 0; i < QUEUE.size(); i++) {
+                Job j = QUEUE.get(i);
+                worst = Math.max(worst, priority(j.src(), j.land(), j.kind(), i));
+            }
+            return priority(src, land, kind, QUEUE.size()) < worst;
+        }
     }
 
     private static void work() {
@@ -271,11 +295,14 @@ public final class NeoSearches {
                 int best = pick(true);
                 job = QUEUE.remove(best);
             }
-            double fx = job.src().x + 0.5 - focusX, fz = job.src().z + 0.5 - focusZ;
-            if (!Double.isNaN(fx + fz) && fx * fx + fz * fz > MAX_JOB_DISTANCE * MAX_JOB_DISTANCE) {
+            if (gone(job)) {
                 RESULTS.remove(job.key()); // not now: whoever asks again when it's nearer gets it queued again
                 continue;
             }
+            // and called off part way when the player goes somewhere else: a search round a wall four hundred blocks back
+            // went on for eighteen seconds while the neo the path was waiting on sat behind it
+            final Job running = job;
+            TungstenSearch.CANCELLED.set(() -> gone(running));
             TungstenSearch.Plan plan = null;
             long t0 = System.currentTimeMillis();
             if (job.kind() == LEAP) {
@@ -288,6 +315,7 @@ public final class NeoSearches {
                 } catch (Throwable t) {
                     // (as below)
                 }
+                TungstenSearch.CANCELLED.remove();
                 if (hop == null) {
                     synchronized (QUEUE) {
                         QUEUE.add(new Job(job.key(), job.world(), job.src(), job.floorY(), job.land(), job.region(), job.via(), LEAP_FULL));
@@ -311,6 +339,11 @@ public final class NeoSearches {
             if (LOG) {
                 System.out.println("[neo search] " + (job.kind() == LEDGES ? "(ledges) " : "") + job.src() + " -> " + job.land() + ": " + (plan == null ? "none" : plan.ticks() + " ticks")
                         + " in " + (System.currentTimeMillis() - t0) + " ms, " + QUEUE.size() + " queued");
+            }
+            TungstenSearch.CANCELLED.remove();
+            if (plan == null && gone(job)) {
+                RESULTS.remove(job.key());
+                continue;
             }
             if (plan == null) {
                 FAILED_MS.merge(BetterBlockPos.longHash(job.land().x(), job.land().y(), job.land().z()), System.currentTimeMillis() - t0, Long::sum);

@@ -19,7 +19,7 @@ public class MixinMoveHud {
             cancellable = true
     )
     private void soprano$hideCrosshair(final GuiGraphicsExtractor graphics, final DeltaTracker deltaTracker, final CallbackInfo ci) {
-        if (MoveSession.cameraOn()) {
+        if (MoveSession.cameraOn() || baritone.utils.FreeCam.on()) {
             ci.cancel();
         }
     }

@@ -31,6 +31,8 @@ public class Shell extends Widget implements ShellContext {
     private final KeyCapture keyCapture;
     private final Segmented appearance;
     private final Button stop;
+    // the spectator camera (#freecam): closes the gui and flies
+    private final Button freecam;
     private final Toast toast;
     private final List<Widget> kids = new ArrayList<>();
     private final FadeCanvas fade = new FadeCanvas();
@@ -144,6 +146,7 @@ public class Shell extends Widget implements ShellContext {
             }
         });
         stop = new Button(theme, "Stop", Button.Kind.GHOST, Icon.STOP, this::stopClicked);
+        freecam = new Button(theme, "Free cam", Button.Kind.GHOST, Icon.EYE, this::freecamClicked);
         toast = new Toast(theme);
 
         kids.add(contents.length > 0 ? contents[0] : new Blank(theme));
@@ -151,6 +154,7 @@ public class Shell extends Widget implements ShellContext {
         kids.add(keyCapture);
         kids.add(appearance);
         kids.add(stop);
+        kids.add(freecam);
 
         if (!this.tabs.isEmpty()) {
             Tab first = this.tabs.get(0);
@@ -429,6 +433,8 @@ public class Shell extends Widget implements ShellContext {
         int sh = theme.px(28);
         int sbw = stop.preferredWidth();
         stop.setBounds(x + w - theme.px(Theme.PAD + Theme.SPACE_3) - sbw, y + h - statusH + (statusH - sh) / 2, sbw, sh);
+        int fbw = freecam.preferredWidth();
+        freecam.setBounds(stop.x() - theme.px(Theme.GAP) - fbw, stop.y(), fbw, sh);
         barY.snap(tabRowY(active) + tabRowH() / 2f);
     }
 
@@ -532,6 +538,24 @@ public class Shell extends Widget implements ShellContext {
         }
         if (r != null) {
             toast.show(r);
+        }
+    }
+
+    private void freecamClicked() {
+        Result r;
+        try {
+            r = status.freecam();
+        } catch (Throwable e) {
+            Safe.report("status freecam", e);
+            r = Result.fail("Could not start the free cam. Try #freecam in chat.");
+        }
+        if (r != null && !r.ok()) {
+            toast.show(r);
+            return;
+        }
+        // on: out of the gui and into the camera (the chat says how it flies)
+        if (onCloseRequest != null) {
+            Safe.run("close for free cam", onCloseRequest);
         }
     }
 
@@ -815,7 +839,7 @@ public class Shell extends Widget implements ShellContext {
         g.icon(Icon.RING, x + pad, iy, is, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 1f - bv));
         g.icon(Icon.DOT, x + pad, iy, is, Theme.fade(theme.color(Theme.ACCENT), bv));
 
-        float right = stop.x() - theme.px(Theme.GAP);
+        float right = freecam.x() - theme.px(Theme.GAP);
         String phase = activity.gamerPhase();
         if (phase != null) {
             float pw = phaseW + theme.px(16);
@@ -844,6 +868,7 @@ public class Shell extends Widget implements ShellContext {
                 g.text(d, dx + dotW + theme.px(6), baselineIn(g, theme.small, top + 1, statusH - 1), theme.small, theme.color(Theme.TEXT_2));
             }
         }
+        freecam.draw(g, f);
         stop.draw(g, f);
     }
 
@@ -1037,6 +1062,7 @@ public class Shell extends Widget implements ShellContext {
         }
         kids.get(0).collectFocusable(out);
         appearance.collectFocusable(out);
+        freecam.collectFocusable(out);
         stop.collectFocusable(out);
     }
 

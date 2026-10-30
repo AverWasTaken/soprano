@@ -71,6 +71,34 @@ public final class RouteMemory {
     public static synchronized void newGoal() {
         ASKED_FROM.clear();
     }
+
+    // where the bot has stood with no way on and had to step off to be put back, this time in this world: a trail that goes
+    // through one is a way to a dead end, whoever laid it (Chess (harder)'s recording goes from stop 2 down onto the floor
+    // under the course, where you fell: followed from anywhere but the black wool, that's where the bot went, and stood there
+    // a minute, and was put back, and went there again)
+    private static final it.unimi.dsi.fastutil.longs.LongOpenHashSet DEAD_ENDS = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+
+    public static synchronized void deadEnd(BetterBlockPos at) {
+        if (at != null && DEAD_ENDS.add(net.minecraft.core.BlockPos.asLong(at.x, at.y, at.z))) {
+            GUIDES.clear();
+        }
+    }
+
+    private static boolean throughDeadEnd(LongArrayList cells, int from, int to) {
+        if (DEAD_ENDS.isEmpty()) {
+            return false;
+        }
+        for (int i = from; i <= to; i++) {
+            long c = cells.getLong(i);
+            int x = net.minecraft.core.BlockPos.getX(c), y = net.minecraft.core.BlockPos.getY(c), z = net.minecraft.core.BlockPos.getZ(c);
+            for (long d : DEAD_ENDS) {
+                if (near(d, x, y, z, 1)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     private static Object world;
     private static Path file;
     private static boolean dirty;
@@ -256,8 +284,23 @@ public final class RouteMemory {
             }
             current = new Trail();
             TRAILS.add(current);
-            while (TRAILS.size() > MAX_TRAILS) {
-                TRAILS.remove(0);
+            // the oldest of the bot's own runs go: never one learned from a recording. (the oldest of all went, and they're
+            // the first in the file: after a few dozen runs of its own the bot had forgotten six levels' recordings, and
+            // Desert didn't get off its start)
+            int own = 0;
+            for (Trail t : TRAILS) {
+                if (!t.learned) {
+                    own++;
+                }
+            }
+            for (int i = 0; own > MAX_TRAILS && i < TRAILS.size(); ) {
+                Trail t = TRAILS.get(i);
+                if (!t.learned && t != current) {
+                    TRAILS.remove(i);
+                    own--;
+                } else {
+                    i++;
+                }
             }
         }
 
@@ -271,17 +314,38 @@ public final class RouteMemory {
 
     // every tick, with the player, where the cells are (playerFeet: a slab or a head counts as the cell over it), whether
     // they're on the ground, and the world's Baritone folder (null: none, nothing kept)
-    public static synchronized void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded) {
+    public static void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded) {
         tick(level, worldDir, x, y, z, feet, grounded, false);
     }
 
-    public static synchronized void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded, boolean floating) {
+    // a tick's step, kept back while a search thread is in here putting a guide together (tens of ms, and the game thread
+    // waited on it: the biggest of the stutters left). game thread only
+    private record Step(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded, boolean floating) {}
+    private static final java.util.ArrayDeque<Step> STEPS = new java.util.ArrayDeque<>();
+    // how many threads are in (or waiting to get into) one of the slow parts
+    private static final java.util.concurrent.atomic.AtomicInteger BUSY = new java.util.concurrent.atomic.AtomicInteger();
+
+    public static void tick(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded, boolean floating) {
+        STEPS.add(new Step(level, worldDir, x, y, z, feet, grounded, floating));
+        if (BUSY.get() > 0 && STEPS.size() < 100) {
+            return; // next tick, or the one after: the trail's the same, a tick or two later
+        }
+        synchronized (RouteMemory.class) {
+            Step st;
+            while ((st = STEPS.poll()) != null) {
+                tick0(st.level(), st.worldDir(), st.x(), st.y(), st.z(), st.feet(), st.grounded(), st.floating());
+            }
+        }
+    }
+
+    private static void tick0(Object level, Path worldDir, double x, double y, double z, BetterBlockPos feet, boolean grounded, boolean floating) {
         if (level != world) {
             save();
             world = level;
             load(worldDir == null ? null : worldDir.resolve("routes.json"));
             live = new Layer();
             ASKED_FROM.clear();
+            DEAD_ENDS.clear();
         }
         live.step(x, y, z, feet.x, feet.y, feet.z, grounded, floating);
         if (++ticks % SAVE_TICKS == 0) {
@@ -320,6 +384,7 @@ public final class RouteMemory {
         }
         t.learned = true; // (a routes.json's trail checked offline: the recording's, as a rule)
         TRAILS.add(t);
+        GUIDES.clear();
         trailVersion++;
     }
 
@@ -558,10 +623,41 @@ public final class RouteMemory {
         }
     }
 
-    public static synchronized Guide guide(BetterBlockPos start, BetterBlockPos goal) {
+    // the last few guides worked out, for a couple of seconds: planning ahead asks for one from the same spot to the same goal
+    // again and again, and putting one together (the joins especially) is tens of ms of the game thread
+    private record Memo(Guide guide, long at, int asked) {}
+    private static final java.util.Map<Long, Memo> GUIDES = new java.util.HashMap<>();
+    private static final long GUIDE_MEMO_MS = 2000;
+
+    public static Guide guide(BetterBlockPos start, BetterBlockPos goal) {
         if (!Baritone.settings().useRouteMemory.value) {
             return null;
         }
+        BUSY.incrementAndGet();
+        try {
+            return guideLocked(start, goal);
+        } finally {
+            BUSY.decrementAndGet();
+        }
+    }
+
+    private static synchronized Guide guideLocked(BetterBlockPos start, BetterBlockPos goal) {
+        long k = net.minecraft.core.BlockPos.asLong(start.x, start.y, start.z) * 31 + net.minecraft.core.BlockPos.asLong(goal.x, goal.y, goal.z);
+        int asked = ASKED_FROM.get(net.minecraft.core.BlockPos.asLong(start.x, start.y, start.z));
+        long now = System.currentTimeMillis();
+        Memo m = GUIDES.get(k);
+        if (m != null && now - m.at() < GUIDE_MEMO_MS && m.asked() == asked) {
+            return m.guide();
+        }
+        if (GUIDES.size() > 64) {
+            GUIDES.clear();
+        }
+        Guide made = guide0(start, goal);
+        GUIDES.put(k, new Memo(made, now, asked));
+        return made;
+    }
+
+    private static Guide guide0(BetterBlockPos start, BetterBlockPos goal) {
         // the ways learned from recordings first (somebody went that way on purpose), then the ones the bot's own runs left
         // (which go wherever it wandered: a dead end it tried, the way round it took when it couldn't do a jump)
         // (a learned one that gets there; else whatever does, the bot's own runs' too; else the learned one that stops short)
@@ -623,6 +719,9 @@ public final class RouteMemory {
                 }
             }
             if (end - s < MIN_GUIDE) {
+                continue;
+            }
+            if (throughDeadEnd(cells, s, end)) {
                 continue;
             }
             if (!reaches) {
@@ -788,13 +887,18 @@ public final class RouteMemory {
     private static it.unimi.dsi.fastutil.longs.LongOpenHashSet[] pairSets() {
         it.unimi.dsi.fastutil.longs.LongOpenHashSet[] p = PAIR_SETS;
         if (pairsFor != trailVersion) {
-            synchronized (RouteMemory.class) {
-                if (pairsFor != trailVersion) {
-                    PAIR_SETS = p = pairs();
-                    pairsFor = trailVersion;
-                } else {
-                    p = PAIR_SETS;
+            BUSY.incrementAndGet();
+            try {
+                synchronized (RouteMemory.class) {
+                    if (pairsFor != trailVersion) {
+                        PAIR_SETS = p = pairs();
+                        pairsFor = trailVersion;
+                    } else {
+                        p = PAIR_SETS;
+                    }
                 }
+            } finally {
+                BUSY.decrementAndGet();
             }
         }
         return p;
@@ -864,6 +968,7 @@ public final class RouteMemory {
 
     public static synchronized void forget() {
         TRAILS.clear();
+        GUIDES.clear();
         JUMPS.clear();
         JUMP_NAMES.clear();
         live = new Layer();
@@ -876,8 +981,15 @@ public final class RouteMemory {
     }
 
     private static void load(Path f) {
+        // (a write still on its way from the last save is what we'd be reading: wait for it)
+        try {
+            WRITER.submit(() -> { }).get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // (no file then, or the old one: a route not loaded is a route learned again)
+        }
         trailVersion++;
         TRAILS.clear();
+        GUIDES.clear();
         JUMPS.clear();
         JUMP_NAMES.clear();
         file = f;
@@ -903,6 +1015,7 @@ public final class RouteMemory {
                     }
                     t.learned = learned.contains(TRAILS.size());
                     TRAILS.add(t);
+        GUIDES.clear();
                 }
             }
             if (o.has("jumps")) {
@@ -951,9 +1064,23 @@ public final class RouteMemory {
         for (Map.Entry<Long, int[]> e : JUMPS.entrySet()) {
             String name = JUMP_NAMES.get(e.getKey());
             if (name != null) {
-                jumps.put(name, e.getValue());
+                jumps.put(name, e.getValue().clone());
             }
         }
+        // (the copy above is all the game thread does: turning it into json and writing it is tens of ms, a stutter every
+        // thirty seconds, so that goes on a thread of its own, one write at a time in the order they were asked for)
+        Path target = file;
+        WRITER.execute(() -> write(target, trails, learnedAt, jumps));
+    }
+
+    private static final java.util.concurrent.ExecutorService WRITER = new java.util.concurrent.ThreadPoolExecutor(0, 1, 5,
+            java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<>(), r -> {
+        Thread t = new Thread(r, "Soprano routes writer");
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
+
+    private static void write(Path file, List<int[]> trails, List<Integer> learnedAt, Map<String, int[]> jumps) {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");

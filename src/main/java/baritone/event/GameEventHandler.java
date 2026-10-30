@@ -27,6 +27,8 @@ import baritone.api.utils.Pair;
 import baritone.cache.CachedChunk;
 import baritone.cache.WorldProvider;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ChunkGens;
+import baritone.utils.LagMeter;
 import baritone.utils.PathRenderer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -62,17 +64,42 @@ public final class GameEventHandler implements IEventBus, Helper {
         } else {
             baritone.bsi = null;
         }
-        listeners.forEach(l -> l.onTick(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onTick(event);
+            LagMeter.stop(name(l) + ".tick", t0);
+        }
     }
 
     @Override
     public void onPostTick(TickEvent event) {
-        listeners.forEach(l -> l.onPostTick(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onPostTick(event);
+            LagMeter.stop(name(l) + ".post", t0);
+        }
+        LagMeter.endTick();
     }
 
     @Override
     public final void onPlayerUpdate(PlayerUpdateEvent event) {
-        listeners.forEach(l -> l.onPlayerUpdate(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onPlayerUpdate(event);
+            LagMeter.stop(name(l) + ".update", t0);
+        }
+    }
+
+    private static final ClassValue<String> NAMES = new ClassValue<>() {
+        @Override
+        protected String computeValue(Class<?> c) {
+            String n = c.getSimpleName();
+            return n.isEmpty() ? c.getName().replaceAll(".*\\.", "") : n;
+        }
+    };
+
+    private static String name(IGameEventListener l) {
+        return NAMES.get(l.getClass());
     }
 
     @Override
@@ -87,6 +114,7 @@ public final class GameEventHandler implements IEventBus, Helper {
 
     @Override
     public void onChunkEvent(ChunkEvent event) {
+        ChunkGens.loaded(event.getX(), event.getZ());
         EventState state = event.getState();
         ChunkEvent.Type type = event.getType();
 
@@ -112,6 +140,7 @@ public final class GameEventHandler implements IEventBus, Helper {
 
     @Override
     public void onBlockChange(BlockChangeEvent event) {
+        ChunkGens.blockChanged(event.getChunkPos().x(), event.getChunkPos().z());
         if (Baritone.settings().repackOnAnyBlockChange.value) {
             final boolean keepingTrackOf = event.getBlocks().stream()
                     .map(Pair::second).map(BlockState::getBlock)
@@ -133,12 +162,17 @@ public final class GameEventHandler implements IEventBus, Helper {
     public final void onRenderPass(RenderEvent event) {
         // before the listeners, which is who draws with it
         PathRenderer.setProjection(event.getProjectionMatrix());
-        listeners.forEach(l -> l.onRenderPass(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onRenderPass(event);
+            LagMeter.stop(name(l) + ".render", t0);
+        }
     }
 
     @Override
     public final void onWorldEvent(WorldEvent event) {
         WorldProvider cache = baritone.getWorldProvider();
+        ChunkGens.newWorld();
 
         if (event.getState() == EventState.POST) {
             cache.closeWorld();
@@ -162,12 +196,20 @@ public final class GameEventHandler implements IEventBus, Helper {
 
     @Override
     public void onPlayerRotationMove(RotationMoveEvent event) {
-        listeners.forEach(l -> l.onPlayerRotationMove(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onPlayerRotationMove(event);
+            LagMeter.stop(name(l) + ".rotmove", t0);
+        }
     }
 
     @Override
     public void onPlayerSprintState(SprintStateEvent event) {
-        listeners.forEach(l -> l.onPlayerSprintState(event));
+        for (IGameEventListener l : listeners) {
+            long t0 = LagMeter.start();
+            l.onPlayerSprintState(event);
+            LagMeter.stop(name(l) + ".sprint", t0);
+        }
     }
 
     @Override

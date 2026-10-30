@@ -75,12 +75,29 @@ public class BlockStateInterface {
         this(ctx, false);
     }
 
+    // the copy of the loaded chunks' table, made again only when a chunk has come or gone (ChunkGens): copying it builds a
+    // whole new ClientChunkCache (its light engine and all), and the game thread did that two or three times a tick. a
+    // copy is never written to after it's made, so whoever has one can share it
+    private static ClientChunkCache copy;
+    private static Object copyOf;
+    private static long copyLoads = -1;
+
+    private static ClientChunkCache sharedCopy(Level world) {
+        long loads = ChunkGens.loads();
+        if (copy == null || copyOf != world.getChunkSource() || copyLoads != loads) {
+            copy = ((IClientChunkProvider) world.getChunkSource()).createThreadSafeCopy();
+            copyOf = world.getChunkSource();
+            copyLoads = loads;
+        }
+        return copy;
+    }
+
     public BlockStateInterface(IPlayerContext ctx, boolean copyLoadedChunks) {
         this.world = ctx.world();
         this.worldBorder = new BetterWorldBorder(world.getWorldBorder());
         this.worldData = (WorldData) ctx.worldData();
         if (copyLoadedChunks) {
-            this.provider = ((IClientChunkProvider) world.getChunkSource()).createThreadSafeCopy();
+            this.provider = sharedCopy(world);
         } else {
             this.provider = (ClientChunkCache) world.getChunkSource();
         }

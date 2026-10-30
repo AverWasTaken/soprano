@@ -73,6 +73,7 @@ public final class DefaultCommands {
                 new ElytraCommand(baritone),
                 new TungstenCommand(baritone),
                 new RecordCommand(baritone),
+                new FreeCamCommand(baritone),
                 new RoutesCommand(baritone),
                 new GuiCommand(baritone)
         ));

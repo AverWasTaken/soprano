@@ -72,6 +72,17 @@ public class NeoSearchTest {
         assertEquals(what + "\n" + fails, 0, fails.length());
     }
 
+    // the triple neo the way the double one goes: from right behind the wall, a run up along the line behind it, round a
+    // wall three thick onto the block four on, level
+    static ArrayWorld behindTripleNeo(Landing[] land, int runway) {
+        ArrayWorld w = new ArrayWorld(40, 80, 40);
+        w.fill(SX - runway, SY, SZ, SX, SY, SZ, ArrayWorld.STONE);
+        w.fill(SX + 1, SY - 2, SZ - 3, SX + 3, SY + 3, SZ, ArrayWorld.STONE);
+        w.set(SX + 4, SY, SZ, ArrayWorld.STONE);
+        land[0] = new Landing(SX + 4, SY + 1, SZ);
+        return w;
+    }
+
     @Test
     public void roundAWallThreeThickOneDown() {
         Landing[] land = new Landing[1];

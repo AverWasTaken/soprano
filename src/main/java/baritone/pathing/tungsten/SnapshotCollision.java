@@ -143,6 +143,15 @@ public final class SnapshotCollision implements CollisionProvider {
         return ((x - x0) * sy + (y - y0)) * sz + (z - z0);
     }
 
+    // for a wrapper keeping something per cell (InflatedCollision): the cell's index, -1 outside, and how many there are
+    public int cellIndex(int x, int y, int z) {
+        return at(x, y, z);
+    }
+
+    public int cellCount() {
+        return kind.length;
+    }
+
     private int at(int x, int y, int z) {
         if (x < x0 || y < y0 || z < z0 || x >= x0 + sx || y >= y0 + sy || z >= z0 + sz) {
             return -1;

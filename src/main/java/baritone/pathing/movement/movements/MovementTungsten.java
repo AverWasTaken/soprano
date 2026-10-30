@@ -87,6 +87,8 @@ public class MovementTungsten extends Movement implements CurvedMovement {
     private CompletableFuture<TungstenSearch.Plan> searching;
     private boolean searched;
     private int waitTicks, stuckTicks;
+    // ticks spent holding on to a ladder we've just caught (see DONE)
+    private int gripTicks;
     // stood on the ground at some point since this movement started (see the climb up onto src in updateState)
     private boolean stoodOn;
 
@@ -173,7 +175,7 @@ public class MovementTungsten extends Movement implements CurvedMovement {
         }
         searching = null;
         searched = false;
-        waitTicks = stuckTicks = 0;
+        waitTicks = stuckTicks = gripTicks = 0;
         stoodOn = false;
     }
 
@@ -271,6 +273,21 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             state.setInput(Input.JUMP, true);
             return state;
         }
+        if (land.water() && player.isInWater() && Mth.floor(player.getX()) == dest.x && Mth.floor(player.getZ()) == dest.z
+                && Landing.feetY(player.getY()) <= dest.y && Landing.feetY(player.getY()) >= dest.y - (land.low() ? 2 : 1)) {
+            // in the water column it was aiming for: that's it, the swim on out of it is the next movement's. (bobbing at
+            // the top of a hanging column of water waiting for the rule to agree took two minutes a go on Desert)
+            RouteMemory.jumped(src, dest, true);
+            return state.setStatus(MovementStatus.SUCCESS);
+        }
+        if (gripTicks > 0) {
+            // holding on to the ladder we caught (see DONE): until it's stopped us, a few ticks at most
+            if (player.onClimbable() && player.getDeltaMovement().y < -0.01 && gripTicks++ < 5) {
+                return state.setInput(Input.SNEAK, true);
+            }
+            RouteMemory.jumped(src, dest, true);
+            return state.setStatus(MovementStatus.SUCCESS);
+        }
         PlayerSim sim = bsi == null ? null : LiveSim.of(player, liveWorld);
         if (sim == null) {
             // somewhere the sim doesn't model: a potion, sneaking, using an item, water. nothing to steer with
@@ -299,6 +316,13 @@ public class MovementTungsten extends Movement implements CurvedMovement {
             case PRESS:
                 return press(state, d.keys());
             case DONE:
+                if (land.grab() && player.onClimbable() && player.getDeltaMovement().y < -0.05) {
+                    // caught the ladder still coming down fast: the ladder only slows a fall, and a one block ladder is gone
+                    // out of the bottom of in a tick or two (Hell's, over the lava: three falls in a row there). sneak holds us
+                    // on it, then the next movement climbs
+                    gripTicks = 1;
+                    return state.setInput(Input.SNEAK, true);
+                }
                 if (pilot.flew()) {
                     RouteMemory.jumped(src, dest, true);
                 }

@@ -77,6 +77,7 @@ Once it's placed you can also type `#build <file>` in chat and it builds at the 
 - `proc` to view miscellaneous information about the process currently controlling Soprano
 - `version` to get the version of Soprano you're running
 - `gui` (or `clickgui`) to open the click gui, same as pressing right shift in a world
+- `freecam` (or `spectate`) to fly a camera round the bot while it plays, same as F6 or the gui's Free cam button. WASD flies, space and shift go up and down, sprint goes faster, the scroll wheel sets the speed and the mouse looks. The bot and the player keep going underneath. `freecam follow` switches between following the bot (the default: the camera keeps its place relative to the player) and staying put in the world. The same key or command again comes back
 
 ## Maintenance
 
@@ -126,6 +127,8 @@ All off by default unless it says otherwise.
 - `sprintThroughCorners` (on by default, keeps sprinting through turns of 60 degrees or less and starts turning a fraction of a block early so the corner gets cut instead of clipped. Both of these stay off in the nether, near lava, at 6 health or less and next to anything placing blocks or breaking something slower than an instant break)
 - `checkForUpdates` (on by default. When the title screen first opens it asks GitHub once whether a newer Soprano release is out for your Minecraft version, and the title screen offers to update. Nothing is downloaded until you click update. The new jar is checked (size, checksum, loader, Minecraft version) and swapped in after you close the game, so the next launch runs it. Off stops the check, an update that was already downloaded still gets finished)
 - `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
+- `freecamKey` (295, F6: the GLFW key code that turns the free cam on and off, see `#freecam`. -1 unbinds it)
+- `lagLogMs` (0, off: when above 0, any game tick where the bot spends more than this many ms on the game thread is written to the log with the parts that took the time, so a stutter says what caused it. The `SOPRANO_LAG_LOG` environment variable does the same)
 - `guiKey` (344, right shift: the GLFW key code that opens the click gui, which does everything a chat command does with buttons. -1 unbinds it and `#gui` still works. The gui's Settings tab has a key capture control for it. Minecraft 26.3 reads keys through SDL instead of GLFW, but the setting stays in GLFW numbers on every version and the gui converts, so one settings file works on both) and `guiKeyEnabled` (on by default, turns the key off without unbinding it)
 - `guiDarkMode` (on by default, uses the dark appearance. The sidebar's Light and Dark buttons save your choice) and `guiAnimations` (on by default, animates transitions and scrolling. Turn off for reduced motion)
 - `guiMenus` (on by default, Soprano draws its own boot screen and title screen: the curve logo with a progress bar while the game loads, then a big wordmark over the blurred panorama with a dock of buttons that grow under the mouse. Off brings back the vanilla screens, for when another mod restyles them. The title screen switches the next time it opens)

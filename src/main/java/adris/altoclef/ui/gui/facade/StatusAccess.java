@@ -15,4 +15,9 @@ public interface StatusAccess {
 
     // same calls as #stop
     Result stop();
+
+    // same as #freecam: the spectator camera on (or off)
+    default Result freecam() {
+        return Result.fail("No free cam here.");
+    }
 }

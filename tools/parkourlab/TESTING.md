@@ -1,10 +1,68 @@
-# Parkour Lab v7 (bot v15)
+# Parkour Lab v7 (bot v16)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v15 (same course, v7)
+## What's new in bot v16 (same course, v7)
+
+**Search speed and lag**
+
+- **The jump searches don't re-read the world every time they're asked.** A* asked for a background jump search's answer with a hash of every block round the jump, and that hashing was most of what A* spent its time on. Now each chunk has a change counter (bumped when it loads, unloads or a block in it changes), and an answer is good while its chunks' counters are the same. A* went from about 9 to between 50 and 500 nodes a second on the levels.
+- **A background search the player has left behind is called off.** One round a wall 400 blocks back ran for 18 seconds while the neo the path was waiting on sat behind it. Searches more than 48 blocks from the player stop part way now.
+- **A full search queue isn't copied into.** A job that would only be thrown out again doesn't take a copy of the blocks round it.
+- **Up to three search threads** on a machine with the cores for it (one on a small one).
+- **The game thread does less each tick:**
+  - the chunk table is copied only when a chunk loads or unloads, not every tick;
+  - the planner's settings are built once a second;
+  - a jump's cost is worked out again once a second, not every tick;
+  - the remembered route is put together on the search thread, not the game's;
+  - routes.json is written on a thread of its own;
+  - the game thread no longer waits on a search that's reading the routes.
+  
+  On Candy, ticks where the bot took more than 10 ms went from 56 to 7.
+- **`lagLogMs`** (off by default): any tick where the bot spends more than that many ms on the game thread is logged with the parts that took the time.
+
+**Fewer stupid falls**
+
+- **Every fall is logged with what the bot was doing**: the movements of the last two seconds, on the ground or in the air, and whether it stepped off on purpose because there was no way on. Look for `[fall]` in the log (in chat too with `chatDebug`).
+- **Recordings are never forgotten.** With more than 64 trails the oldest went, and the recordings are the oldest. After a few dozen of its own runs the bot had forgotten six levels' recordings, and Desert didn't get off its start. Now only the bot's own runs get dropped.
+- **Dead ends.** Where the bot had to step off to be put back, no remembered way through there is followed again that session. This is what was happening with the stair jump on Chess (harder) when you weren't standing on the black wool. From anywhere else on stop 2, the recording's way went down onto the floor under the course, where you'd fallen. The bot stood there, was put back, and went there again.
+- **One block ladders caught mid fall** (Hell, over the lava): the bot holds sneak until the ladder has stopped it. It used to slide out of the bottom of the ladder, three times in a row.
+- **A jump that went a tick early** carries on with the plan from where it's got to, instead of dropping the plan in mid air (Hell's drop over the lava).
+- **Into a hanging water column** (Desert): in the column is landed. It used to bob at the top for two minutes waiting to be done.
+
+**Free cam**
+
+- `#freecam` (or `#spectate`), the **F6** key (`freecamKey`), or the **Free cam** button in the gui's status strip.
+- Fly with WASD, space and shift; sprint to go faster; scroll to set the speed. The bot keeps playing.
+- It follows the bot by default: `#freecam follow` leaves it where it is instead.
+- The same again turns it off. Dying or leaving the world turns it off too.
+
+**Triple neos.** A level triple neo from right behind the wall isn't possible in vanilla physics. The neo table has none, and the full search from a running start (0.28 to 0.36 blocks a tick) found every double neo in about 2 s and no triple in 6 s of searching. The two that are possible are both supported:
+- one down, from behind;
+- level, from the block beside the wall after a run up (section 15).
+
+If you can do a level one from behind, a recording of it would show what the sim is missing.
+
+**Instant neos (not in this one).** The neos from the table always start from standing on the run up's start spot. A neo straight off a run needs the run to be on the side lane a couple of blocks before the wall, and the table's model doesn't plan that. I tried it and backed it out: it never found a jump from the centre lane, and it cost up to 100 ms a tick looking. That's the next big one. On Candy the bot already runs and jumps without stopping (about 7 standing ticks in a 24 s run).
+
+**How v16 did** (`#goto` the finish from the start, a fresh client each set of runs):
+
+| | result |
+|---|---|
+| Chess | done: 45 s / 0 falls, 112 s / 1, 120 s / 0 (v15: 161 s / 1) |
+| Aqua | done: 42 s / 0, 38 s / 0 (v15: 40 s) |
+| Candy | done: 24 s / 0, twice; 27 s with the release jar |
+| Hell | done: 128 s / 1, 161 s / 3, 330 s / 6 (v15: 196 s / 2) |
+| Chess (hard) | done: 101 s / 1 fall (v15: 125 s / 1) |
+| Chess (harder) | done: 445 s, 3 falls, all three stepping off on purpose. Another run got to stop 8 in the 10 minutes. Stops 7 to 8 (the ladder round the tower) are still the slow bit, 1 to 2.5 minutes |
+| Endurance | checkpoint 38 of 43 in the 10 minutes, 17 falls (mostly coming down off a landing) |
+| Desert | checkpoint 3 of 8. Past the water columns now, then stuck before 4 |
+| Dam | checkpoint 6 in 268 s (v15: 179 to 194 s) |
+| Lab 4 Neos / 17 Combo / 16 Neo chains | 10 s / 0, 14 s / 0 (v5: 85 s / 3), 98 to 178 s |
+
+## What was new in bot v15 (same course, v7)
 
 - **Chess (harder) all the way**, with your recording of the gap after stop 2 (`chh-gap`): the bot runs off the black wool, clips the corner of the quartz and hops straight on onto the stair, the way you did.
 - **A recording of just the hard bit joins onto the level's.** A trail that stops short (yours from stop 2 to stop 4) is followed and then the way goes on along whichever trail crosses it and gets to the finish (the level's own recording, past where you flew). Up to three trails in a row. The ones learned from recordings go first; the bot's own runs only when no learned way gets there.
