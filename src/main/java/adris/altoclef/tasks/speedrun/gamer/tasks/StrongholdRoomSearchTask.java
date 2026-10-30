@@ -20,9 +20,11 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -51,6 +53,7 @@ public class StrongholdRoomSearchTask extends Task {
     private static final double SAVE_EVERY_SECONDS = 15;
     private static final double HINT_SECONDS = 40;
     private static final int APPROACH_RANGE = 4;
+    private static final double NO_DRY_RETRY_SECONDS = 30;
 
     private final GamerContext ctx;
 
@@ -88,7 +91,7 @@ public class StrongholdRoomSearchTask extends Task {
     private static final int CORRIDOR_GOAL_RANGE = 2;
     // set while the leg in progress is a walk to a corridor cell instead of a chunk's middle
     private BlockPos corridorGoal;
-    private final RoomCoverage.Visited visitedCells = new RoomCoverage.Visited();
+    private RoomCoverage.Visited visitedCells = new RoomCoverage.Visited();
     private int timedOutInLeg;
     private int noPathStreak;
     // chunks that ended on no path while the cascade guard was on. not picked again, but they are not skipped either: a new
@@ -97,6 +100,12 @@ public class StrongholdRoomSearchTask extends Task {
     private Task hintTask;
     private BlockPos hintPos;
     private Task approachTask;
+    // times a far-off frame sent us to dry land to dig down instead of walking at it, and whether there was no such land to find
+    private int retargets;
+    private double noDryUntil;
+    // closest we have been to the ring this approach, and when: the walk is stuck if it has not got closer in a while
+    private double approachBest;
+    private double approachBestAt;
     private final SilverfishSpawnerBreaker spawnerBreaker = new SilverfishSpawnerBreaker();
     private int lastDigY = Integer.MAX_VALUE;
     // task time, like the chunk timer: a fight or a night trip in the middle of the dig is not the dig being slow
@@ -158,7 +167,11 @@ public class StrongholdRoomSearchTask extends Task {
         bricksSeen = false;
         startedAt = seconds(mod);
         lastSave = startedAt;
-        enter(mod, ctx.state().endPortalCenter != null ? Stage.APPROACH : Stage.TO_START);
+        if (ctx.state().endPortalCenter != null) {
+            routeToRing(mod);
+        } else {
+            enter(mod, Stage.TO_START);
+        }
     }
 
     @Override
@@ -249,6 +262,10 @@ public class StrongholdRoomSearchTask extends Task {
             watch = new RoomCoverage.DigWatch(digEntryY, timeOnTaskSeconds());
             segmentY = RoomCoverage.firstSegmentY(digEntryY, cfg.digFloorY);
         }
+        if (next == Stage.APPROACH) {
+            approachBest = Double.MAX_VALUE;
+            approachBestAt = seconds(mod);
+        }
         stage = next;
         stageSince = seconds(mod);
     }
@@ -281,10 +298,15 @@ public class StrongholdRoomSearchTask extends Task {
     }
 
     // frames the client has loaded count, line of sight or not (the user's call, a #goto end_portal_frame): the dig brings their
-    // chunks in range and then we just go. centre if three agree, straight to APPROACH from any stage, a hint if fewer
+    // chunks in range and then we just go. centre if three agree, APPROACH from any stage once we are near it (far off it is dry
+    // land and a dig first, see retarget), a hint if fewer
     private void checkFrames(AltoClef mod) {
         RunState state = ctx.state();
         if (state.endPortalCenter != null) {
+            // asked again every tick, nothing latches: the walk and the dig down are what get us near
+            if (stage != Stage.APPROACH && !far(mod, centreOf())) {
+                enter(mod, Stage.APPROACH);
+            }
             return;
         }
         RunState.Pos est = state.strongholdStart;
@@ -300,13 +322,113 @@ public class StrongholdRoomSearchTask extends Task {
                 ctx.progress("portal ring found");
                 ctx.log("found the end portal room at " + c[0] + ", " + c[2]);
                 ctx.save();
-                enter(mod, Stage.APPROACH);
+                routeToRing(mod);
             } else if (stage != Stage.HINT && stage != Stage.APPROACH && !hintGivenUp) {
                 hintPos = nearestFrame(mod, frames);
+                if (far(mod, new int[]{hintPos.getX(), hintPos.getY(), hintPos.getZ()})
+                        && (retargets > 0 || retarget(mod, hintPos.getX(), hintPos.getY(), hintPos.getZ(), hintPos.getX(), hintPos.getZ()))) {
+                    // already on the way down to it
+                    return;
+                }
                 hintTask = new GetWithinRangeOfBlockTask(hintPos, APPROACH_RANGE);
                 enter(mod, Stage.HINT);
             }
         }
+    }
+
+    // the straight walk is only for a ring that is near. one across an ocean or over a mountain is not walkable, the dig from dry
+    // land is (no dry land found: the straight walk for a while, the shore chunks may just not be loaded yet)
+    private boolean far(AltoClef mod, int[] at) {
+        return seconds(mod) >= noDryUntil && !RoomRetarget.near(mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ(), at[0], at[1], at[2]);
+    }
+
+    private void routeToRing(AltoClef mod) {
+        int[] c = centreOf();
+        if (far(mod, c) && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
+            return;
+        }
+        enter(mod, Stage.APPROACH);
+    }
+
+    // a frame we cannot walk to: do the usual dry land walk and dig down from the nearest dry column to it instead. cx/cz is the ring
+    // middle (the lava pool is under it) or the frame itself while the ring is not known. false = capped or no dry land, the caller
+    // keeps the straight walk
+    private boolean retarget(AltoClef mod, int fx, int fy, int fz, int cx, int cz) {
+        if (retargets >= RoomRetarget.MAX_RETARGETS) {
+            return false;
+        }
+        RoomRetarget.Probe probe = probe(mod);
+        Optional<int[]> column = RoomRetarget.pickColumn(probe, fx, fz, cx, cz);
+        if (column.isEmpty()) {
+            noDryUntil = seconds(mod) + NO_DRY_RETRY_SECONDS;
+            ctx.log("room: no dry land within " + RoomRetarget.SEARCH_RADIUS + " of the frame at " + fx + ", " + fy + ", " + fz
+                    + ", walking straight at it");
+            return false;
+        }
+        int[] xz = column.get();
+        ctx.log("room: frame at " + fx + ", " + fy + ", " + fz + " is "
+                + Math.round(Math.hypot(fx - mod.getPlayer().getX(), fz - mod.getPlayer().getZ())) + " away and "
+                + Math.round(mod.getPlayer().getY() - fy) + " below, digging down from dry land at " + xz[0] + ", " + xz[1]);
+        resetForRetarget(new RunState.Pos(xz[0], probe.topY(xz[0], xz[1]) + 1, xz[1]));
+        ctx.save();
+        enter(mod, Stage.TO_START);
+        return true;
+    }
+
+    // a new start is a new search: nothing learned at the old one (level, chunks, held legs) carries over
+    void resetForRetarget(RunState.Pos start) {
+        retargets++;
+        RunState state = ctx.state();
+        state.strongholdStart = start;
+        state.roomChunksVisited.clear();
+        workY = Double.NaN;
+        workFromBricks = false;
+        bricksSeen = false;
+        hintGivenUp = false;
+        hintTask = null;
+        hintPos = null;
+        approachTask = null;
+        retriedSkipped = false;
+        chunksReached = 0;
+        skippedChunks.clear();
+        heldChunks.clear();
+        visitedCells = new RoomCoverage.Visited();
+        noPathStreak = 0;
+        timedOutInLeg = 0;
+        noPath.disarm();
+        stall.reset();
+        lastDigY = Integer.MAX_VALUE;
+        dropLeg();
+    }
+
+    int retargets() {
+        return retargets;
+    }
+
+    private static RoomRetarget.Probe probe(AltoClef mod) {
+        Level level = mod.getWorld();
+        return new RoomRetarget.Probe() {
+            @Override
+            public boolean loaded(int x, int z) {
+                return mod.getChunkTracker().isChunkLoaded(new BlockPos(x, 0, z));
+            }
+
+            @Override
+            public int topY(int x, int z) {
+                return level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+            }
+
+            @Override
+            public boolean solid(int x, int y, int z) {
+                BlockPos p = new BlockPos(x, y, z);
+                return level.getBlockState(p).isFaceSturdy(level, p, Direction.UP);
+            }
+
+            @Override
+            public boolean fluid(int x, int y, int z) {
+                return !level.getFluidState(new BlockPos(x, y, z)).isEmpty();
+            }
+        };
     }
 
     // bricks: are we inside yet. frames counted here are the ones we SEE, not the loaded ones: a loaded ring counted as seen would
@@ -757,6 +879,16 @@ public class StrongholdRoomSearchTask extends Task {
         setDebugState("Approaching the end portal", step);
         if (approachTask == null) {
             approachTask = new GetWithinRangeOfBlockTask(new BlockPos(centreOf()[0], centreOf()[1], centreOf()[2]), APPROACH_RANGE);
+        }
+        // a ring we cannot get closer to (ocean in the way) is not worth waiting out: go down from dry land instead
+        int[] c = centreOf();
+        double d = Math.sqrt(mod.getPlayer().distanceToSqr(c[0], c[1], c[2]));
+        if (RoomRetarget.progressed(approachBest, d)) {
+            approachBest = d;
+            approachBestAt = seconds(mod);
+        } else if (seconds(mod) - approachBestAt >= RoomRetarget.PROGRESS_SECONDS && far(mod, c)
+                && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
+            return null;
         }
         if (seconds(mod) - stageSince >= cfg.approachSeconds) {
             Debug.logMessage("taking the frames we have not seen as given, the ring is rigid");
