@@ -875,6 +875,10 @@ public class PathExecutor implements IPathExecutor, Helper {
             return no("allowSprint off or food");
         }
         IMovement current = path.movements().get(pathPosition);
+        if (current instanceof Movement && ((Movement) current).standingUp()) {
+            // the swim escape wants us upright, the ascend/stair rules below would turn sprint right back on
+            return no("standing up out of water");
+        }
 
         if (ExperimentalMovement.sprintJumping(ctx.world()) && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
                 && (flight = SprintJump.plan(ctx, path, pathPosition)) != null) {
