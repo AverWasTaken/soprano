@@ -28,32 +28,38 @@ public final class SwordSwing {
     // the vanilla line: fullStrengthAttack is a scale over this
     public static final double SWEEP_SCALE = 0.9;
 
-    // how long the sweep veto holds a full charge swing before it gives up and swings anyway, so a piglin that never leaves does
-    // not freeze the fight
-    public static final long SWEEP_VETO_TICKS = 20;
-
-    // this swing would sweep: over the 0.9 line, on the ground, not a sprint hit (crits are off the table on the ground) and not
-    // moving faster than 2.5x our walk speed (horizontalSpeedSq is the known movement's, speed the attribute, both as vanilla reads
-    // them). the sword is the caller's business
-    public static boolean wouldSweep(double scale, boolean onGround, boolean sprintHit, double horizontalSpeedSq, double speed) {
-        double limit = speed * 2.5;
-        return scale > SWEEP_SCALE && onGround && !sprintHit && horizontalSpeedSq < limit * limit;
-    }
-
     // Player.doSweepAttack: everything alive in the target's box grown by (1, 0.25, 1) and within 3 of us (squared, under 9)
     public static boolean inSweepBox(AABB target, AABB victim, double distanceSqToUs) {
         return target.inflate(1.0, 0.25, 1.0).intersects(victim) && distanceSqToUs < 9.0;
     }
 
-    // hold the swing: it would sweep a calm neutral mob, and we have not held it for too long yet
-    public static boolean holdSweep(boolean sweepsCalmMob, long heldTicks) {
-        return sweepsCalmMob && heldTicks <= SWEEP_VETO_TICKS;
+    // "a calm neutral is near", deliberately fatter than the vanilla sweep box. the client's positions lag the server's, so a
+    // mob the exact box calls outside got swept anyway. within 3 of us and inside the target's box grown (1.5, 0.75, 1.5)
+    public static boolean calmNear(AABB target, AABB victim, double distanceSqToUs) {
+        return target.inflate(1.5, 0.75, 1.5).intersects(victim) && distanceSqToUs < 9.0;
     }
 
-    // charged enough to swing. full charge normally, the early scale when a calm neutral mob stands beside the target. the
-    // crit and sprint hit exceptions to the sweep are no use here, the bot stands still and swings
+    // the item swap that resets the charge has to be seen by the server too: both packets landing in one server tick is no
+    // reset over there and the sweep comes back. the odd item stays in hand through this many ticks past the swap tick
+    public static final long RESET_HOLD_TICKS = 3;
+
+    // still holding the odd item from a swap at swappedAt
+    public static boolean resetHeld(long now, long swappedAt) {
+        return now >= swappedAt && now - swappedAt <= RESET_HOLD_TICKS;
+    }
+
+    // a calm neutral is near and the charge is over the sweep line: this swing must never go out, throw the charge away instead
+    public static boolean needsReset(double scale, boolean calmNeutralNear) {
+        return calmNeutralNear && scale > SWEEP_SCALE;
+    }
+
+    // charged enough to swing. full charge normally. with a calm neutral mob beside the target only the early window, from the
+    // early scale up to the sweep line: a full charge swing is never fine there, whatever the sprint and movement exemptions say
     public static boolean charged(double scale, boolean calmNeutralNearTarget) {
-        return scale >= 1 || (calmNeutralNearTarget && scale >= CALM_SWING_SCALE);
+        if (calmNeutralNearTarget) {
+            return scale >= CALM_SWING_SCALE && scale <= SWEEP_SCALE;
+        }
+        return scale >= 1;
     }
 
     // swing now: charged, and if we asked for sprint off it was already asked for on an earlier tick (the stop packet goes

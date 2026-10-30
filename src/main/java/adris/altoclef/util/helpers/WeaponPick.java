@@ -36,6 +36,19 @@ public final class WeaponPick {
         return best == null ? null : best.item();
     }
 
+    // same pick, but an axe wins over any sword when one is carried: a calm neutral mob is near the target and an axe swing
+    // never sweeps. null if there is no axe, the caller falls back to the plain pick
+    public static Item bestAxe(Iterable<Candidate> candidates) {
+        Candidate best = null;
+        for (Candidate c : candidates) {
+            if (c == null || !ItemHelper.isAxe(c.item()) || ToolWear.wornOut(c.damage(), c.maxDamage())) continue;
+            if (best == null || beats(c, best)) {
+                best = c;
+            }
+        }
+        return best == null ? null : best.item();
+    }
+
     // pickaxes, shovels and whatever else hits harder than a fist, the same ranking as the weapons (the harder hit, hand first
     // so ties never swap). a worn one is not on the list at all: every swing costs a tool two uses, and the last of the only
     // pickaxe is worth more than a fight we can run from
