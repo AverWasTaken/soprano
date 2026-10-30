@@ -423,6 +423,10 @@ public final class PhaseMachine implements GamerContext {
         if (target == GamerPhase.NETHER && target.ordinal() < s.phase.ordinal()) {
             s.netherRevisits++;
         }
+        if (target == GamerPhase.NETHER) {
+            // the rods give-up lives here and not in onEnter: a retry or a relog enters the handler again and must keep it
+            s.netherRodsGaveUp = false;
+        }
         s.phase = target;
         s.phaseAttempts.put(target.name(), 1);
         s.deathsThisPhase = 0;
