@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
@@ -10,9 +11,12 @@ import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
+import adris.altoclef.tasks.movement.StepOffTask;
+import adris.altoclef.tasks.speedrun.DragonBreathTracker;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BreathDodge;
 import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.DunkRules;
 import adris.altoclef.util.helpers.EntityHelper;
@@ -20,6 +24,7 @@ import adris.altoclef.util.helpers.EndermanWater;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import java.util.Optional;
@@ -51,6 +56,14 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private int _dunkAimTicks;
     private boolean _dunkGaveUp;
     private boolean _trackingWater;
+    // ticks spent fetching the dunk water back, the End gives up on it fast and everywhere else on a slow one
+    private int _pickupTicks;
+
+    // our own tracker (FoodChain has one too, each is cheap and caches per tick). one task per kind of dodge, dropped once
+    // out of the cloud: the run away goal freezes on the first cloud it saw
+    private final DragonBreathTracker _breath = new DragonBreathTracker();
+    private Task _breathTask;
+    private BreathDodge.Move _breathMove = BreathDodge.Move.NONE;
 
     public WorldSurvivalChain(TaskRunner runner) {
         super(runner);
@@ -99,6 +112,14 @@ public class WorldSurvivalChain extends SingleTaskChain {
             return 100;
         }
 
+        // standing in dragon breath burns through whatever else holds the wheel (below fire and the falls, above the pickup
+        // and the mob chains). the breath ticks damage every half second, a long walk to a bucket is not worth it
+        Task dodge = breathDodge(mod);
+        if (dodge != null) {
+            setTask(dodge);
+            return 85;
+        }
+
         // an angry enderman at the bottom of the health bar: water at our feet (see EndermanWater)
         double angryEnderman = nearestAngryEnderman(mod);
         boolean endermanDunk = EndermanWater.dunkNow(mod.getPlayer().getHealth(), angryEnderman,
@@ -119,12 +140,15 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 }
             } else if (EndermanWater.keepWater(angryEnderman) && _extinguishWaterPosition != null) {
                 // the water stays up while an angry enderman is about, it is the thing it is afraid of
-            } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockTracker().blockIsValid(_extinguishWaterPosition, Blocks.WATER)) {
+            } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockTracker().blockIsValid(_extinguishWaterPosition, Blocks.WATER) && !pickupGaveUp(mod)) {
                 // Pick up the water
-                setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), _extinguishFace, _extinguishHit, true));
+                InteractWithBlockTask pickup = new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), _extinguishFace, _extinguishHit, true);
+                // in the End the water is only worth a click from here, never a walk
+                setTask(WorldHelper.getCurrentDimension() == Dimension.END ? pickup.stayPut() : pickup);
                 return 60;
             } else {
                 _extinguishWaterPosition = null;
+                _pickupTicks = 0;
             }
         }
 
@@ -238,6 +262,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 mod.getClientBaritone().getLookBehavior().updateTarget(reach.get(), true);
                 if (aimedAt(mod, face) && mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET)) {
                     _extinguishWaterPosition = face.lands();
+                    _pickupTicks = 0;
                     _extinguishHit = face.hit();
                     _extinguishFace = face.face();
                     mod.getInputControls().tryPress(Input.CLICK_RIGHT);
@@ -253,6 +278,68 @@ public class WorldSurvivalChain extends SingleTaskChain {
             return 60;
         }
         return Float.NEGATIVE_INFINITY;
+    }
+
+    // the End has no water to refill from, so there the bucket only comes back when the water is a step away
+    private boolean pickupGaveUp(AltoClef mod) {
+        _pickupTicks++;
+        double distance = mod.getPlayer().position().distanceTo(WorldHelper.toVec3d(_extinguishWaterPosition));
+        return BreathDodge.pickupExpired(WorldHelper.getCurrentDimension() == Dimension.END, _pickupTicks / 20.0, distance);
+    }
+
+    // null when we are not in a cloud (or in the air, MLG owns that), else the task that gets us out of it
+    private Task breathDodge(AltoClef mod) {
+        _breath.updateBreath(mod);
+        boolean inCloud = false;
+        for (BlockPos in : WorldHelper.getBlocksTouchingPlayer(mod)) {
+            if (_breath.isTouchingDragonBreath(in)) {
+                inCloud = true;
+                break;
+            }
+        }
+        BlockPos feet = mod.getPlayer().blockPosition();
+        // the fire dunk (90) comes first when we can do it, a dodge would just hide it behind the 85
+        if (mod.getPlayer().isOnFire() && mod.getItemStorage().hasItem(Items.WATER_BUCKET) && !_dunkGaveUp
+                && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
+            return null;
+        }
+        BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet),
+                mod.getItemStorage().hasItem(Items.WATER_BUCKET));
+        // a drop is committed: sliding half a block along the pillar top would otherwise see the pillar as floor and swap
+        // it for a run before we ever fall
+        if (_breathMove == BreathDodge.Move.DROP && inCloud && mod.getPlayer().onGround()) {
+            move = BreathDodge.Move.DROP;
+        }
+        if (move != _breathMove) {
+            Debug.logMessage(move == BreathDodge.Move.NONE ? "dragon breath: out of the cloud at " + feet.toShortString()
+                    : "dragon breath: " + move + " at " + feet.toShortString());
+            _breathTask = null;
+            _breathMove = move;
+        }
+        if (move == BreathDodge.Move.NONE) {
+            return null;
+        }
+        // a finished run (a newer cloud over its goal) gets a fresh goal
+        if (_breathTask == null || _breathTask.isFinished(mod)) {
+            _breathTask = switch (move) {
+                case DROP -> new StepOffTask();
+                case DIG -> new DestroyBlockTask(feet.below());
+                default -> _breath.getRunAwayTask();
+            };
+        }
+        return _breathTask;
+    }
+
+    // somewhere to run to: floor under any cell in the 5x5 around us. a pillar top has none
+    private static boolean floorAround(AltoClef mod, BlockPos feet) {
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if ((dx != 0 || dz != 0) && WorldHelper.isSolid(mod, feet.offset(dx, -1, dz))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // the crosshair is on the block and the face we picked, anything else puts the water somewhere else
