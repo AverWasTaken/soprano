@@ -207,4 +207,12 @@ public class WeaponPickTest {
         // and a pick that is already in hand never moves it
         assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_AXE, 12, true));
     }
+
+    @Test
+    public void bestAxeSkipsTheSwordAndTheWornAxe() {
+        assertSame(Items.IRON_AXE, WeaponPick.bestAxe(List.of(fresh(Items.DIAMOND_SWORD), fresh(Items.IRON_AXE))));
+        assertSame(Items.STONE_AXE, WeaponPick.bestAxe(List.of(worn(Items.DIAMOND_AXE), fresh(Items.STONE_AXE))));
+        assertNull(WeaponPick.bestAxe(List.of(fresh(Items.DIAMOND_SWORD), worn(Items.IRON_AXE))));
+        assertNull(WeaponPick.bestAxe(List.of(fresh(Items.DIAMOND_SWORD))));
+    }
 }

@@ -17,7 +17,10 @@ import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import baritone.behavior.CombatAim;
 import baritone.behavior.LegacyCombat;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -112,7 +115,8 @@ public class PlayerExtraController {
 
     public boolean attack(Entity entity) {
         long now = gameTime();
-        if (now == _lastSwingTick || !canSwingAt(entity)) {
+        // the odd item is in hand to throw the charge away, nothing swings with it
+        if (now == _lastSwingTick || chargeResetActive() || !canSwingAt(entity)) {
             return false;
         }
         // pre 1.9 there is no cooldown to wait on, so everybody calls this every tick and the clicker is the pacing
@@ -205,9 +209,8 @@ public class PlayerExtraController {
     public boolean swingNow(Entity entity) {
         // same no-sweep rule as swordSwing: a calm neutral next to the target gets the early swing, a full one would sweep it
         // and the stall breaker is the swing that fires most in a fight that is biting us
-        // (it clears sprint right before the swing, so the veto reads the swing as a standing one)
         boolean ready = swordInHand() && entity instanceof LivingEntity target
-                ? swordReady(target, false) : attackReady();
+                ? swordReady(target) : attackReady();
         if (!ready) {
             return false;
         }
@@ -308,6 +311,9 @@ public class PlayerExtraController {
     // jump went out this tick. with altoJumpCrits off (or a target that can't crit) it is the plain rule: hit when the
     // cooldown is full and we are on the ground, falling, in water, or rising with no crit hop in flight
     public boolean melee(Entity entity) {
+        if (chargeResetActive()) {
+            return false;
+        }
         LocalPlayer player = _mod.getPlayer();
         // a creeper step owns the keys: no hop, no sprint cancel, no walking up. a plain swing is all that is left of the module
         boolean stepping = _mod.getMobDefenseChain().creeperStepActive();
@@ -317,7 +323,7 @@ public class PlayerExtraController {
             _crit.reset();
             // the step owns sprint and the keys, the sweep rule is still ours
             if (stepping && !LegacyCombat.active() && swordInHand() && entity instanceof LivingEntity stepTarget) {
-                return plainSwing(player, entity, swordReady(stepTarget, true));
+                return plainSwing(player, entity, swordReady(stepTarget));
             }
             return plainSwing(player, entity);
         }
@@ -385,14 +391,14 @@ public class PlayerExtraController {
     // sprinting when this call began, the stop packet has not gone out yet and the swing waits a tick for it
     private boolean swordSwing(LocalPlayer player, LivingEntity target) {
         boolean wasSprinting = player.isSprinting();
-        boolean calm = calmBeside(target).near();
+        boolean calm = calmBeside(target);
         boolean lock = SwordSwing.lockSprint(true, inKillReach(target), ticksToFull(), calm);
         if (lock) {
             _mod.getClientBaritone().getInputOverrideHandler().lockSprintOff();
             player.setSprinting(false);
         }
         // a neutral mob beside the target and the sweep would anger it: swing early, under the 0.9 a sweep needs (SwordSwing)
-        boolean ready = swordReady(target, true);
+        boolean ready = swordReady(target);
         if (!SwordSwing.swing(ready, lock, !wasSprinting)) {
             return false;
         }
@@ -404,61 +410,96 @@ public class PlayerExtraController {
         return LegacyCombat.active() ? 1 : _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL);
     }
 
-    // calm neutral mobs near the target: near is within a block or two (the early swing, SwordSwing.charged), inBox is inside the
-    // vanilla sweep box, the ones a swing at full charge would really hit (SwordSwing.inSweepBox)
-    private record Beside(boolean near, boolean inBox) {
+    // a neutral mob nobody has poked near the target (SwordSwing.calmNear): a full charge sword swing would sweep it and start a
+    // fight we did not pick. we swing early then (SwordSwing.charged), and leave sprint alone: a sprint hit can't sweep either
+    public boolean calmNeutralNear(Entity entity) {
+        return entity instanceof LivingEntity target && calmBeside(target);
     }
 
-    // a neutral mob nobody has poked within a block or two of the target: the sweep would hit it and start a fight we did not
-    // pick. we swing early then (SwordSwing.charged), and leave sprint alone: a sprint hit can't sweep either
-    private Beside calmBeside(LivingEntity target) {
-        boolean near = false;
-        boolean inBox = false;
+    private boolean calmBeside(LivingEntity target) {
         AABB box = target.getBoundingBox();
         for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, box.inflate(2))) {
-            if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)) {
-                near = true;
-                inBox |= SwordSwing.inSweepBox(box, mob.getBoundingBox(), _mod.getPlayer().distanceToSqr(mob));
+            if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)
+                    && SwordSwing.calmNear(box, mob.getBoundingBox(), _mod.getPlayer().distanceToSqr(mob))) {
+                return true;
             }
         }
-        return new Beside(near, inBox);
+        return false;
     }
 
-    // the shared gate for every sword swing (melee, the stall breaker and the aura all end up here): charged enough, and not a
-    // swing that would sweep a calm neutral mob. the early window is only four ticks, an aim that misses all of them lands here
-    // at full charge, so the precise check holds that swing for SWEEP_VETO_TICKS (the mob wandering off, or us getting bored,
-    // ends it)
-    private boolean swordReady(LivingEntity target, boolean sprintCounts) {
-        LocalPlayer player = _mod.getPlayer();
-        Beside beside = calmBeside(target);
+    // the shared gate for every sword swing (melee, the stall breaker and the aura all end up here): charged enough, and never a
+    // full charge swing with a calm neutral near. the early window is only four ticks, an aim that misses all of them lands past
+    // the sweep line, and then the charge gets thrown away (item swap) instead of held: a held swing is a sweep waiting for the
+    // mob to wander into the box, and there is no timeout that gives up and swings. no client movement exemptions either, the
+    // server's idea of where everyone stands is a tick or two off ours
+    private boolean swordReady(LivingEntity target) {
+        boolean calm = calmBeside(target);
         double scale = chargeScale();
-        if (!SwordSwing.charged(scale, beside.near())) {
+        if (SwordSwing.needsReset(scale, calm)) {
+            resetCharge();
             return false;
         }
-        long now = gameTime();
-        boolean sweeps = beside.inBox() && SwordSwing.wouldSweep(scale, player.onGround(), sprintCounts && player.isSprinting(),
-                player.getKnownMovement().horizontalDistanceSqr(), player.getSpeed());
-        if (!sweeps) {
-            _sweepHeldSince = -1;
-            return true;
-        }
-        // a gap of more than a couple of ticks is a different hold
-        // (or the clock went backwards: a new world keeps this controller)
-        if (_sweepHeldSince < 0 || now - _sweepHeldLast > 2 || now < _sweepHeldLast) {
-            _sweepHeldSince = now;
-            Debug.logInternal("swing: holding a full charge swing at " + BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).getPath()
-                    + ", a calm neutral is inside the sweep box");
-        }
-        _sweepHeldLast = now;
-        boolean hold = SwordSwing.holdSweep(true, now - _sweepHeldSince);
-        if (!hold && now - _sweepHeldSince == SwordSwing.SWEEP_VETO_TICKS + 1) {
-            Debug.logInternal("swing: held " + SwordSwing.SWEEP_VETO_TICKS + " ticks, swinging anyway");
-        }
-        return !hold;
+        return SwordSwing.charged(scale, calm);
     }
 
-    private long _sweepHeldSince = -1;
-    private long _sweepHeldLast = Long.MIN_VALUE / 2;
+    private long _resetAt = Long.MIN_VALUE / 2;
+
+    // an odd item went into the hand to throw the charge away and has to stay a few ticks, see SwordSwing.RESET_HOLD_TICKS.
+    // the weapon pick leaves the hand alone meanwhile
+    public boolean chargeResetActive() {
+        return SwordSwing.resetHeld(gameTime(), _resetAt);
+    }
+
+    // vanilla zeroes the charge when the held item changes type. an axe never sweeps so it is the better odd item (and nothing
+    // to hold, it stays), else any block, else anything that is not a sword
+    private void resetCharge() {
+        Item odd = resetItem();
+        if (odd == null) {
+            emptyHandReset();
+            return;
+        }
+        if (_mod.getSlotHandler().forceEquipItem(odd)) {
+            if (!ItemHelper.isAxe(odd)) {
+                _resetAt = gameTime();
+            }
+            Debug.logInternal("swing: calm neutral near and a full charge, swapped to " + BuiltInRegistries.ITEM.getKey(odd).getPath()
+                    + " to throw the charge away");
+        }
+    }
+
+    // nothing but swords and armor on us: park the hand on an empty hotbar slot instead. the weapon pick walks back to slot 1
+    private void emptyHandReset() {
+        Inventory inventory = _mod.getPlayer().getInventory();
+        for (int slot = 0; slot < 9; slot++) {
+            if (slot != inventory.getSelectedSlot() && inventory.getItem(slot).isEmpty()) {
+                inventory.setSelectedSlot(slot);
+                _resetAt = gameTime();
+                Debug.logInternal("swing: calm neutral near and a full charge, nothing to swap to, empty hand to throw the charge away");
+                return;
+            }
+        }
+        Debug.logInternal("swing: calm neutral near and a full charge, nothing to swap to, not swinging");
+    }
+
+    private Item resetItem() {
+        Item block = null;
+        Item other = null;
+        for (ItemStack stack : _mod.getItemStorage().getItemStacksPlayerInventory(false)) {
+            Item item = stack.getItem();
+            if (stack.isEmpty() || ItemHelper.isSword(item) || ItemHelper.isEquippable(item)) {
+                continue;
+            }
+            if (ItemHelper.isAxe(item)) {
+                return item;
+            }
+            if (block == null && item instanceof BlockItem) {
+                block = item;
+            } else if (other == null) {
+                other = item;
+            }
+        }
+        return block != null ? block : other;
+    }
 
     // what the last swing that went out looked like, for the damage watch below
     private long _swingAt = Long.MIN_VALUE / 2;
@@ -479,7 +520,7 @@ public class PlayerExtraController {
         long now = gameTime();
         _hurtLogged.values().removeIf(at -> now - at > 200);
         for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, player.getBoundingBox().inflate(8))) {
-            if (!(mob instanceof ZombifiedPiglin || mob instanceof Piglin || mob instanceof Enderman) || mob.hurtTime < 9) {
+            if (mob.hurtTime < 9) {
                 continue;
             }
             Long was = _hurtLogged.get(mob.getId());
@@ -492,6 +533,13 @@ public class PlayerExtraController {
             }
             _hurtLogged.put(mob.getId(), now);
             boolean target = mob.getId() == _swingTargetId;
+            // a sweep victim never went through attack(), the anger model has to hear about it from here
+            if (!target) {
+                _mod.getEntityTracker().noteProvoked(mob);
+            }
+            if (!(mob instanceof ZombifiedPiglin || mob instanceof Piglin || mob instanceof Enderman)) {
+                continue;
+            }
             boolean inBox = !target && _swingBox != null && SwordSwing.inSweepBox(_swingBox, mob.getBoundingBox(), player.distanceToSqr(mob));
             Debug.logInternal("hurt by us: " + BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath() + " #" + mob.getId() + ", "
                     + String.format("%.1f", player.distanceTo(mob)) + " away, "

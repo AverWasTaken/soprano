@@ -70,8 +70,12 @@ public class KillAura {
     }
 
     public static void equipWeapon(AltoClef mod) {
-        // same pick as the kill tasks use. this loop used to equip a sword per inventory sword, every call
-        AbstractKillEntityTask.equipWeapon(mod);
+        equipWeapon(mod, null);
+    }
+
+    // same pick as the kill tasks use. this loop used to equip a sword per inventory sword, every call
+    public static void equipWeapon(AltoClef mod, Entity target) {
+        AbstractKillEntityTask.equipWeapon(mod, false, target);
     }
 
     public void tickStart() {
@@ -262,7 +266,7 @@ public class KillAura {
         if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
         if (inFieldRange(mod, entity)) {
             mod.getControllerExtras().aimAt(entity, CombatAim.Priority.AURA);
-            equipWeapon(mod);
+            equipWeapon(mod, entity);
         }
     }
 
@@ -312,7 +316,7 @@ public class KillAura {
             }
             boolean canAttack;
             if (equipSword) {
-                equipWeapon(mod);
+                equipWeapon(mod, entity);
                 canAttack = true;
             } else {
                 // Equip non-tool
