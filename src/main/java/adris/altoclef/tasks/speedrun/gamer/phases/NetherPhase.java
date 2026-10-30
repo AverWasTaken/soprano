@@ -50,6 +50,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WearFromBag;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
@@ -163,6 +164,14 @@ public class NetherPhase implements PhaseHandler {
     // would come back and go straight home again)
     private boolean tripBlocks;
     private double foodTripStart;
+    // the trip's clocks run on game ticks: the phase clock stands still while holdsBudget is true, which is the whole trip
+    private long tripStartTick;
+    private long tripGainTick;
+    private int tripBestUnits;
+    // where this trip ends (FoodTripRules.tripEndUnits), 0 = the plan's stop
+    private int tripEndUnits;
+    // some part of a food trip is going on right now (the nether walk home, the overworld half, the walk back down)
+    private boolean tripAway;
     // when the trip left the nether (foodTripStart is re-stamped once we are up top): the whole trip is paused out of the rods budget
     private double tripLeftAt;
     private boolean foodTripUp;
@@ -234,6 +243,13 @@ public class NetherPhase implements PhaseHandler {
     @Override
     public GamerPhase phase() {
         return GamerPhase.NETHER;
+    }
+
+    // trips are not the nether's business: the walk home, the overworld half and the walk back have their own limits
+    // (stall, HARD_SECONDS), and they used to eat half of the 40 minutes and restart the phase
+    @Override
+    public boolean holdsBudget() {
+        return tripAway;
     }
 
     // only a food trip home may be cut by a night. a fresh portal at dusk or a respawn walk still goes on into the nether
@@ -341,7 +357,7 @@ public class NetherPhase implements PhaseHandler {
         lastUnsafeTick = -1;
         foodTripUp = false;
         lastTripUnits = -1;
-        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.foodShort(ctx) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.tripFoodShort(ctx, tripEndUnits) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
             // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
             // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
             tripResumed = true;
@@ -352,6 +368,9 @@ public class NetherPhase implements PhaseHandler {
             tripBlocks = keptBlocks;
             foodTripUp = true;
             foodTripStart = ctx.secondsInPhase();
+            tripStartTick = ctx.facts().gameTime();
+            tripGainTick = tripStartTick;
+            tripBestUnits = FoodTripRules.units(ctx.food());
             tripLeftAt = foodTripStart;
             tripSeconds = FoodTripRules.seconds(FoodFloor.foodShort(ctx), tripBlocks && FoodFloor.blocksShort(ctx));
             tripStartUnits = FoodTripRules.units(ctx.food());
@@ -429,6 +448,7 @@ public class NetherPhase implements PhaseHandler {
         noteRespawn(ctx);
         pickingUpFood = false;
         lastGameTime = ctx.facts().gameTime();
+        tripAway = foodTrip || ctx.facts().dimension() != Dimension.NETHER;
         if (ctx.facts().dimension() != Dimension.NETHER) {
             // a death or a trip home does not run onExit, the gold ore must not stay off limits in the overworld
             unguard(mod);
@@ -439,6 +459,9 @@ public class NetherPhase implements PhaseHandler {
                 if (!foodTripUp) {
                     foodTripUp = true;
                     foodTripStart = ctx.secondsInPhase();
+                    tripStartTick = ctx.facts().gameTime();
+                    tripGainTick = tripStartTick;
+                    tripBestUnits = FoodTripRules.units(ctx.food());
                     tripSeconds = FoodTripRules.seconds(FoodFloor.foodShort(ctx), tripBlocks && FoodFloor.blocksShort(ctx));
                     tripStartUnits = FoodTripRules.units(ctx.food());
                     foodPickup.reset();
@@ -450,6 +473,11 @@ public class NetherPhase implements PhaseHandler {
                 if (FoodTripRules.gained(lastTripUnits, units)) {
                     ctx.progress("food");
                 }
+                // the hold wants a new high, not the climb back from a meal (80 -> 72 -> 80 is no progress)
+                if (units > tripBestUnits) {
+                    tripBestUnits = units;
+                    tripGainTick = ctx.facts().gameTime();
+                }
                 lastTripUnits = units;
                 // what we cooked at home goes in the bag before anything is hunted for
                 Task cooked = foodPickup.tick(mod, ctx);
@@ -458,8 +486,10 @@ public class NetherPhase implements PhaseHandler {
                     hudState = foodPickup.hud() == null ? "Collecting the food we cooked" : foodPickup.hud();
                     return cooked;
                 }
-                Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
-                if (!FoodTripRules.tripOver(hunt != null, ctx.secondsInPhase() - foodTripStart, tripSeconds)) {
+                Task hunt = foodFloor.tickTrip(ctx, tripBlocks, tripEndUnits);
+                long gameNow = ctx.facts().gameTime();
+                if (!FoodTripRules.tripOver(hunt != null, GameClock.since(tripStartTick, gameNow) / 20.0, tripSeconds,
+                        GameClock.since(tripGainTick, gameNow) / 20.0)) {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
@@ -629,6 +659,8 @@ public class NetherPhase implements PhaseHandler {
             lastTripUnits = -1;
             tripResumed = false;
             foodTripStart = now;
+            tripStartTick = tick;
+            tripEndUnits = FoodTripRules.tripEndUnits(portalDistance, ctx.food().overworldMinimum(), ctx.food().tripEnd());
             tripLeftAt = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
             homeMark = null;
@@ -650,7 +682,7 @@ public class NetherPhase implements PhaseHandler {
         long tick = ctx.facts().gameTime();
         homeMark = FoodTripRules.advance(homeMark, portalDistance(mod, ctx), homeLastTick, tick, homeRestock.isActive());
         homeLastTick = tick;
-        if (FoodTripRules.walkOver(FoodTripRules.stalled(homeMark, tick), now - foodTripStart)) {
+        if (FoodTripRules.walkOver(FoodTripRules.stalled(homeMark, tick), GameClock.since(tripStartTick, tick) / 20.0)) {
             // the walk is stuck (the same lava with the same empty bag, say). the trip stays counted as used, nothing more is
             // taken from the budget, and the next try has to earn its own start
             foodTrip = false;

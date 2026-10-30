@@ -21,6 +21,13 @@ public final class DunkRules {
     private DunkRules() {
     }
 
+    // a dunk that gave up gets another go when something changed: we stand in a different cell, or we left the ground and came
+    // back down. a clock would hand the wheel back and forth with the walk out every second, and neither of these can repeat
+    // while we stand in one spot and fail
+    public static boolean retry(BlockPos gaveUpAt, BlockPos feet, boolean leftGround, boolean airborne) {
+        return !feet.equals(gaveUpAt) || leftGround && !airborne;
+    }
+
     // the floor under us and the four walls beside us, but only where the bucket really puts the water in our own cell.
     // vanilla puts it where the crosshair says, not where we asked, so every face goes through waterGoesTo. a wall of air
     // is no face (the ray goes through it), a floor of air means we're falling and there is nothing to dunk on

@@ -103,6 +103,23 @@ public final class FoodTripRules {
         return !stillShort || secondsOnTrip >= limit;
     }
 
+    // the clock does not cut a trip whose bag is still filling, same idea as the portal hold: a new high of food units inside the
+    // last RISING_SECONDS holds it. the cap is the hard stop for a trip that keeps nibbling forever
+    public static final double RISING_SECONDS = 120;
+    public static final double HARD_SECONDS = 900;
+
+    public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit, double secondsSinceGain) {
+        return !stillShort || secondsOnTrip >= HARD_SECONDS || secondsOnTrip >= limit && secondsSinceGain >= RISING_SECONDS;
+    }
+
+    // where a trip ends: twice the line that sent us home (so the bag is not back under it after one fight), never under the
+    // overworld minimum, never past the plan's own stop. the old stop (refillStop, 130) was out of reach inside the clock and
+    // the trips came back at 48 anyway. distance = nether side distance to the portal when the trip started
+    public static int tripEndUnits(double distToPortal, int overworldMinimum, int planEnd) {
+        int own = Math.max((int) Math.ceil(goHomeLine(distToPortal) * 2), overworldMinimum);
+        return Math.min(own, planEnd);
+    }
+
     // ---- the walk home (nether half of a trip)
 
     // the walk home ends when it stops getting closer, not on a flat clock: the best horizontal distance to the portal has to
