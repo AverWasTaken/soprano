@@ -164,6 +164,16 @@ public final class DeathRules {
         return null;
     }
 
+    // a rich pile still passes refuse() at night with no armor, but the walk is a bad bet in the dark with no armor: the pile waits for
+    // the dawn (or armor) instead of being dropped, items do not age while nobody has the chunk loaded
+    public static boolean waitsForDay(boolean darkAndBare, Worth worth, int foodLine) {
+        return darkAndBare && worth != null && worth.rich(foodLine);
+    }
+
+    public static String waiting(double blocks, Worth worth) {
+        return "death: night and no armor, the pile (" + Math.round(blocks) + " blocks, " + worth.words() + ") waits for the day";
+    }
+
     public static boolean sameSpot(double x1, double z1, double x2, double z2) {
         double dx = x1 - x2;
         double dz = z1 - z2;

@@ -111,9 +111,11 @@ public final class Respawn {
         return phase == GamerPhase.LOCATE || phase == GamerPhase.ROOM || phase == GamerPhase.OPEN;
     }
 
-    // the night bed becomes the spawn bed: remembered as ours for good, and the next night trip is not a pickup. true when it moved
-    public static boolean adoptNightBed(RunState state) {
-        if (!keepNightBed(state.phase, state)) {
+    // the night bed becomes the spawn bed: remembered as ours for good, and the next night trip is not a pickup. true when it moved.
+    // only when the bag already holds the beds the End needs without it: a bed left standing out here is one the dragon fight
+    // never sees (the END_PREP bed errand used to walk a thousand blocks back to our own)
+    public static boolean adoptNightBed(RunState state, int bagBeds, int needBeds) {
+        if (bagBeds < needBeds || !keepNightBed(state.phase, state)) {
             return false;
         }
         state.spawnBed = state.nightBed;

@@ -89,10 +89,11 @@ public final class NightSleep {
     // the phases a night may cut into. the portal is let through and decides for itself (PhaseHandler.nightHold: lava being cast
     // must not be stretched, but looking for a spot is just walking), the nether is let through too (the night branch only runs in
     // the overworld, so only the home half of a food trip gets night handling, and keepsSpawnBed guards the bed by the portal),
-    // the end prep sets the spawn bed by the portal and a night bed would move it, and the dragon is in the end
+    // the end prep is let through too (keepsSpawnBed guards the bed by the portal, and it holds the night itself once it only has the
+    // walk in left, the End has no night), and the dragon is in the end
     public static boolean phaseAllowed(GamerPhase phase) {
         return switch (phase) {
-            case GATHER, IRON, PORTAL, NETHER, EYES, RETURN, LOCATE, ROOM, OPEN -> true;
+            case GATHER, IRON, PORTAL, NETHER, EYES, RETURN, LOCATE, ROOM, OPEN, END_PREP -> true;
             default -> false;
         };
     }
@@ -129,10 +130,11 @@ public final class NightSleep {
     }
 
     // a placed bed (bag or craft) sleeps wherever we stand, and a nether or eyes leg that got home for food would move the respawn
-    // off the bed by the portal and then pick that bed up. so while the spawn bed is standing those phases leave the night alone.
+    // off the bed by the portal and then pick that bed up. so while the spawn bed is standing those phases leave the night alone
+    // (END_PREP: a night bed 200 blocks out must not move the respawn off the portal either).
     // a bed that is already standing close (FOUND) is never claimed or picked up, that one stays fine
     public static boolean keepsSpawnBed(GamerPhase phase, BedSource source, boolean spawnBedStands) {
-        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES)
+        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES || phase == GamerPhase.END_PREP)
                 && (source == BedSource.BAG || source == BedSource.CRAFT);
     }
 

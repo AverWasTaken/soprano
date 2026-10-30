@@ -104,11 +104,11 @@ public class RespawnTest {
             s.nightBed = pos(908, 66, 1605);
             Respawn.set(s, pos(908, 66, 1606), "OVERWORLD");
             assertTrue(Respawn.keepNightBed(phase, s));
-            assertTrue(Respawn.adoptNightBed(s));
+            assertTrue(Respawn.adoptNightBed(s, 5, 5));
             assertEquals(pos(908, 66, 1605), s.spawnBed);
             // the next night trip is a fresh decision and not a pickup
             assertNull(s.nightBed);
-            assertFalse(Respawn.adoptNightBed(s));
+            assertFalse(Respawn.adoptNightBed(s, 5, 5));
         }
     }
 
@@ -120,7 +120,7 @@ public class RespawnTest {
             s.phase = phase;
             s.nightBed = pos(1, 64, 1);
             Respawn.set(s, pos(1, 64, 1), "OVERWORLD");
-            assertFalse(Respawn.adoptNightBed(s));
+            assertFalse(Respawn.adoptNightBed(s, 5, 5));
             assertNotNull(s.nightBed);
         }
     }
@@ -131,10 +131,10 @@ public class RespawnTest {
         s.phase = GamerPhase.LOCATE;
         s.nightBed = pos(1, 64, 1);
         // no respawn known
-        assertFalse(Respawn.adoptNightBed(s));
+        assertFalse(Respawn.adoptNightBed(s, 5, 5));
         // respawn somewhere else
         Respawn.set(s, pos(500, 64, 500), "OVERWORLD");
-        assertFalse(Respawn.adoptNightBed(s));
+        assertFalse(Respawn.adoptNightBed(s, 5, 5));
         assertNotNull(s.nightBed);
     }
 
@@ -193,5 +193,18 @@ public class RespawnTest {
         // a respawn in another dimension holds nothing here
         Respawn.set(s, pos(130, 66, 90), "NETHER");
         assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+    }
+
+    @Test
+    public void aNightBedOnlyStaysUpWhenTheBagHasTheEndBedsWithoutIt() {
+        RunState s = new RunState();
+        s.phase = GamerPhase.LOCATE;
+        s.nightBed = pos(908, 66, 1605);
+        Respawn.set(s, pos(908, 66, 1606), "OVERWORLD");
+        // one short: the bed comes back into the bag, the spawn is not claimed
+        assertFalse(Respawn.adoptNightBed(s, 4, 5));
+        assertNotNull(s.nightBed);
+        assertNull(s.spawnBed);
+        assertTrue(Respawn.adoptNightBed(s, 5, 5));
     }
 }
