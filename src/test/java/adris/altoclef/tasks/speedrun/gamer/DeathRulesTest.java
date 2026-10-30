@@ -264,4 +264,14 @@ public class DeathRulesTest {
         assertEquals("it killed us on the way back for the last pile",
                 DeathRules.refuse(true, 1271, 3000, rich(), FOOD_LINE, 0, true, false));
     }
+
+    @Test
+    public void aRichPileAtNightWithNoArmorWaitsForTheDayInsteadOfBeingDropped() {
+        // refuse() still lets it through, waitsForDay is the extra say
+        assertNull(DeathRules.refuse(true, 1271, 3000, rich(), FOOD_LINE, 0, false, true));
+        assertTrue(DeathRules.waitsForDay(true, rich(), FOOD_LINE));
+        assertFalse(DeathRules.waitsForDay(false, rich(), FOOD_LINE));
+        assertFalse(DeathRules.waitsForDay(true, bag(0, 0, true, 6, false), FOOD_LINE));
+        assertFalse(DeathRules.waitsForDay(true, null, FOOD_LINE));
+    }
 }

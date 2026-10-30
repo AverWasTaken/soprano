@@ -89,6 +89,8 @@ public class NightSleepTask extends Task {
     private final BlockPos found;
     // an old bed of ours is standing: this trip only takes it back
     private final boolean cleanup;
+    // the beds the End wants in the bag, a night bed only stays up as the spawn bed when the bag has them without it
+    private final int endBeds;
 
     private Stage stage;
     private long stageSince;
@@ -143,7 +145,7 @@ public class NightSleepTask extends Task {
     private Subscription<GameOverlayEvent> overlayWatch;
 
     public NightSleepTask(RunState state, Supplier<OverworldConfig> cfg, NightSleep.Budget budget, IntSupplier buildBlocks,
-                          Consumer<String> say, Runnable save, BedSource source, BlockPos found) {
+                          Consumer<String> say, Runnable save, BedSource source, BlockPos found, int endBeds) {
         this.state = state;
         this.cfg = cfg;
         this.budget = budget;
@@ -153,6 +155,7 @@ public class NightSleepTask extends Task {
         this.source = source;
         this.found = found;
         this.cleanup = state.nightBed != null;
+        this.endBeds = endBeds;
     }
 
     // null once the trip is over. GamerTask hands this to mob defense every tick
@@ -322,7 +325,7 @@ public class NightSleepTask extends Task {
         // goes nowhere)
         StorageHelper.closeScreen();
         if (cleanup) {
-            if (Respawn.adoptNightBed(state)) {
+            if (Respawn.adoptNightBed(state, bedsInBag(mod), endBeds)) {
                 // the old bed is where we respawn and the stronghold is next: nothing to take back
                 save.run();
                 finish(now);
@@ -1061,7 +1064,7 @@ public class NightSleepTask extends Task {
     private void wrapUp(AltoClef mod, long now) {
         // the bed that holds our respawn on the way to the stronghold stays up: a death down there respawns at it and not at the
         // world spawn a thousand blocks away. it is the spawn bed from here on, so there is no pickup (Respawn has the rule)
-        if (Respawn.adoptNightBed(state)) {
+        if (Respawn.adoptNightBed(state, bedsInBag(mod), endBeds)) {
             save.run();
         }
         if (state.nightBed != null && stage != Stage.PICKUP) {

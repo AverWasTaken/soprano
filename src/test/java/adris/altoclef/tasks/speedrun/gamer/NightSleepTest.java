@@ -128,11 +128,11 @@ public class NightSleepTest {
     @Test
     public void onlySomePhasesMayBeInterrupted() {
         for (GamerPhase ok : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN,
-                GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN, GamerPhase.PORTAL}) {
+                GamerPhase.LOCATE, GamerPhase.ROOM, GamerPhase.OPEN, GamerPhase.PORTAL, GamerPhase.END_PREP}) {
             assertTrue(ok.name(), NightSleep.phaseAllowed(ok));
         }
-        // the spawn bed by the portal, the dragon, and the ends of a run (the portal decides for itself, nightHold)
-        for (GamerPhase no : new GamerPhase[]{GamerPhase.END_PREP, GamerPhase.DRAGON,
+        // the dragon, and the ends of a run (the portal and the end prep decide for themselves, nightHold)
+        for (GamerPhase no : new GamerPhase[]{GamerPhase.DRAGON,
                 GamerPhase.DONE, GamerPhase.STUCK}) {
             assertFalse(no.name(), NightSleep.phaseAllowed(no));
         }
@@ -740,6 +740,14 @@ public class NightSleepTest {
         // a bed already standing is never claimed, and the other legs sleep as before
         assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.FOUND, true));
         assertFalse(NightSleep.keepsSpawnBed(GamerPhase.LOCATE, NightSleep.BedSource.BAG, true));
+    }
+
+    @Test
+    public void theEndPrepKeepsThePortalSpawnBedToo() {
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.BAG, true));
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.CRAFT, true));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.BAG, false));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.FOUND, true));
     }
 
 }

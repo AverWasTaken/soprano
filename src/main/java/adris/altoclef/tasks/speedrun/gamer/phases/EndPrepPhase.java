@@ -9,12 +9,16 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
+import adris.altoclef.tasks.resources.CraftBedTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -23,6 +27,8 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.tasks.speedrun.gamer.end.EndRules;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WaterUpkeep;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -31,10 +37,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 // overworld, portal open. beds from the wool, a spawn bed by the portal, the gear gate (EndGear says what is missing,
 // counting what we left in the End), THEN walk into the portal. done = we are in the End: the gear being fine is not
@@ -52,6 +60,18 @@ public class EndPrepPhase implements PhaseHandler {
     private int _foodTarget;
     private Task _toPortal;
     private BlockPos _toPortalAt;
+    // when the spawn bed step began (seconds into the phase), -1 = not yet: its give-up clock runs from there (EndGear.spawnClockExpired)
+    private double _spawnStartedAt = -1;
+    // how far the errand this tick is from the portal, for the food-first rule
+    private double _errandBlocks;
+    // only the walk in is left (the End has no night), and a long walk back to the portal is not the phase budget's business
+    private boolean _walkingIn;
+    private boolean _farWalk;
+    // the bed errand found nothing in range and no wool this visit: the gate asks for what we hold from here
+    private boolean _bedsGaveUp;
+    // the bed mine task that was running, kept through the pickup of the bed it just broke (the lookup is empty by then)
+    private Task _bedMine;
+    private int _bedMineTail;
     private String _hudState;
     // the gap the last gate line named, so a line goes out only when it changes
     private String _lastGate;
@@ -91,6 +111,12 @@ public class EndPrepPhase implements PhaseHandler {
         // the task keeps its "spawn is set" flag from the last visit, a death in the End means it may be gone
         _setSpawn.resetSleep();
         _spawnNoted = false;
+        _spawnStartedAt = -1;
+        _walkingIn = false;
+        _farWalk = false;
+        _bedsGaveUp = false;
+        _bedMine = null;
+        _bedMineTail = 0;
         _hudState = null;
         resetBucket(ctx.state().deaths.size());
     }
@@ -99,7 +125,21 @@ public class EndPrepPhase implements PhaseHandler {
     // the task was stopped while interrupted (onExit never ran)
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
+        _walkingIn = false;
+        _farWalk = false;
         ctx.walkOnEndPortal(false);
+    }
+
+    // once the gate is clear all that is left is the walk in, and the End has no night: sleeping first would only cost time
+    @Override
+    public boolean nightHold() {
+        return _walkingIn;
+    }
+
+    // the walk back to the portal from far away is not what the budget is for (same as OpenPhase's walk to the ring)
+    @Override
+    public boolean holdsBudget() {
+        return _farWalk;
     }
 
     private void ensureTasks() {
@@ -114,6 +154,8 @@ public class EndPrepPhase implements PhaseHandler {
         ensureTasks();
         if (ctx.facts().dimension() != Dimension.OVERWORLD) {
             _hudState = null;
+            _walkingIn = false;
+            _farWalk = false;
             ctx.walkOnEndPortal(false);
             return null;
         }
@@ -123,16 +165,25 @@ public class EndPrepPhase implements PhaseHandler {
         giveUpSpawnWhenSlow(ctx, cfg);
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
-        int required = relaxed(ctx) ? 0 : EndGear.bedsRequired(ctx.facts(), cfg, state.woolHuntGaveUp);
+        int required = requiredBeds(ctx, cfg);
         if (state.deaths.size() != _bucketDeaths) {
             resetBucket(state.deaths.size());
         }
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
         noteGate(mod, ctx, gap);
+        BlockPos portal = portalCenter(mod, state);
+        _errandBlocks = portal == null ? 0 : Math.hypot(mod.getPlayer().getX() - portal.getX(), mod.getPlayer().getZ() - portal.getZ());
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
         }
+        // a far errand eats the food on the way, so the food floor comes first (the gear steps go on the same rule: far from the
+        // portal is far, whatever the errand)
+        if (step != null && step != _food && EndGear.foodFirst(gap.food(), _errandBlocks, cfg.farErrandBlocks)) {
+            step = foodStep(ctx);
+        }
+        _walkingIn = step == null;
+        _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
         // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
         ctx.walkOnEndPortal(step == null);
         return step != null ? step : walkIn();
@@ -156,31 +207,113 @@ public class EndPrepPhase implements PhaseHandler {
                 + ", armor to wear " + gap.armorToWear().size() + ", bucket " + (gap.waterBucket() ? "missing" : "ok") + ")");
     }
 
+    private int requiredBeds(GamerContext ctx, EndConfig cfg) {
+        if (relaxed(ctx)) {
+            return 0;
+        }
+        int required = EndGear.bedsRequired(ctx.facts(), cfg, ctx.state().woolHuntGaveUp);
+        return _bedsGaveUp ? Math.min(required, ctx.facts().count(ItemHelper.BED)) : required;
+    }
+
     private static boolean relaxed(GamerContext ctx) {
         return EndGear.relaxed(ctx.attempt(), EndRules.endDeaths(ctx.state()));
     }
 
-    // beds, then the spawn bed. returns null when both are done (or given up on)
+    // the spawn bed by the portal as soon as a bed is in the bag (the rest of the beds can wait, a death on a long errand should
+    // respawn here), then the beds. returns null when both are done (or given up on)
     private Task bedStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
         RunState state = ctx.state();
-        int required = relaxed(ctx) ? 0 : EndGear.bedsRequired(ctx.facts(), cfg, state.woolHuntGaveUp);
+        int required = requiredBeds(ctx, cfg);
         boolean wantSpawn = EndGear.wantSpawnBed(state, cfg) && !relaxed(ctx)
-                && EndGear.spawnBedAffordable(ctx.facts(), required, state.woolHuntGaveUp);
+                && EndGear.spawnBedAffordable(ctx.facts(), required, state.woolHuntGaveUp || _bedsGaveUp);
         int lacking = EndGear.bedShortfall(ctx.facts(), state, cfg, required, wantSpawn);
-        if (lacking > 0) {
-            // the catalogue counts what we hold, so ask for the total
-            int want = ctx.facts().count(ItemHelper.BED) + lacking;
-            _hudState = "Crafting beds";
-            return catalogue("bed", want, () -> TaskCatalogue.getItemTask("bed", want));
-        }
         // the click already moved our respawn, which is what wantSpawn reads: the task is still lying in the bed though, and it is
         // done when it says so
         boolean finishing = !wantSpawn && !_spawnNoted && !relaxed(ctx) && !state.spawnBedGaveUp && cfg.placeSpawnNearPortal
                 && _setSpawn.isActive() && !_setSpawn.isFinished(mod);
-        return wantSpawn || finishing ? spawnStep(mod, ctx, cfg) : null;
+        if (finishing || wantSpawn && (ctx.facts().count(ItemHelper.BED) > 0 || lacking <= 0)) {
+            return spawnStep(mod, ctx, cfg);
+        }
+        return lacking > 0 ? bedErrand(mod, ctx, cfg, lacking) : null;
+    }
+
+    // a bed near the portal gets broken, wool in the bag gets crafted, else we go with the beds we hold (the chase for sheep and
+    // the walk to a bed across the map are what ate the old budget)
+    private Task bedErrand(AltoClef mod, GamerContext ctx, EndConfig cfg, int lacking) {
+        int held = ctx.facts().count(ItemHelper.BED);
+        BlockPos portal = portalCenter(mod, ctx.state());
+        BlockPos bed = nearestBed(mod, portal, cfg.bedErrandRange);
+        int woolBeds = craftSafe(ctx.facts()) ? KitPlanner.usableWool(ctx.facts()) / 3 : 0;
+        EndGear.BedPlan plan = EndGear.bedPlan(bed != null, woolBeds);
+        // the bed we just broke is still on the floor: the lookup is empty but the pickup is not done (bounded, a drop that never
+        // shows up must not hold us)
+        if (plan != EndGear.BedPlan.MINE && _bedMine != null && _bedMine.isActive() && !_bedMine.isFinished(mod) && _bedMineTail++ < 400) {
+            return _bedMine;
+        }
+        switch (plan) {
+            case MINE -> {
+                _hudState = "Breaking a bed near the portal";
+                _bedMineTail = 0;
+                if (portal != null) {
+                    _errandBlocks = Math.max(_errandBlocks, Math.hypot(bed.getX() - portal.getX(), bed.getZ() - portal.getZ()));
+                }
+                int want = held + 1;
+                _bedMine = catalogue("bedmine", want, () -> new MineAndCollectTask(new ItemTarget(ItemHelper.BED, want), CollectBedTask.BEDS,
+                        MiningRequirement.HAND).onlyWhere(p -> bedOk(mod, p, portal, cfg.bedErrandRange)));
+                return _bedMine;
+            }
+            case CRAFT -> {
+                _hudState = "Crafting beds";
+                int want = held + Math.min(lacking, woolBeds);
+                return catalogue("bedcraft", want, () -> new CraftBedTask(want));
+            }
+            default -> {
+                // this visit only, the gate then asks for what we hold
+                _bedsGaveUp = true;
+                ctx.log("endprep: no bed within " + Math.round(cfg.bedErrandRange) + " blocks of the portal and no wool, going with " + held);
+                return null;
+            }
+        }
+    }
+
+    // CraftWithMatchingMaterialsTask asks for the target total in the colour of the majority wool, so a held bed of another colour
+    // makes it want a whole extra set of wool (and go and get it). only craft when the held beds match the wool
+    private static boolean craftSafe(adris.altoclef.tasks.speedrun.gamer.GamerFacts f) {
+        int held = f.count(ItemHelper.BED);
+        if (held == 0) {
+            return true;
+        }
+        ItemHelper.ColorfulItems best = null;
+        for (ItemHelper.ColorfulItems c : ItemHelper.getColorfulItems()) {
+            if (f.count(c.wool) >= 3 && (best == null || f.count(c.wool) > f.count(best.wool))) {
+                best = c;
+            }
+        }
+        return best != null && f.count(best.bed) == held;
+    }
+
+    private BlockPos nearestBed(AltoClef mod, BlockPos portal, double range) {
+        Predicate<BlockPos> ok = p -> bedOk(mod, p, portal, range) && WorldHelper.canBreak(mod, p);
+        return mod.getBlockTracker().getNearestTracking(ok, CollectBedTask.BEDS).orElse(null);
+    }
+
+    // the miner picks its own target, so it gets the same say as the lookup (a bed on copper is a trial chamber one,
+    // CollectBedTask blacklists those too)
+    private static boolean bedOk(AltoClef mod, BlockPos p, BlockPos portal, double range) {
+        return bedWorthIt(p, portal, range)
+                && !ArrayUtils.contains(ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS), mod.getWorld().getBlockState(p.below()).getBlock());
+    }
+
+    // not the bed we respawn at, and near the portal (no portal known = anywhere, as before)
+    private static boolean bedWorthIt(BlockPos p, BlockPos portal, double range) {
+        return !Respawn.isSpawnBed(p.getX(), p.getY(), p.getZ())
+                && (portal == null || EndGear.bedInRange(p.getX(), p.getZ(), portal.getX(), portal.getZ(), range));
     }
 
     private Task spawnStep(AltoClef mod, GamerContext ctx, EndConfig cfg) {
+        if (_spawnStartedAt < 0) {
+            _spawnStartedAt = ctx.secondsInPhase();
+        }
         BlockPos center = portalCenter(mod, ctx.state());
         if (center == null) {
             giveUpSpawn(ctx, "no portal to set the spawn near");
@@ -234,7 +367,7 @@ public class EndPrepPhase implements PhaseHandler {
     }
 
     private void giveUpSpawnWhenSlow(GamerContext ctx, EndConfig cfg) {
-        if (EndGear.wantSpawnBed(ctx.state(), cfg) && ctx.secondsInPhase() > cfg.spawnBedBudgetSeconds) {
+        if (EndGear.wantSpawnBed(ctx.state(), cfg) && EndGear.spawnClockExpired(ctx.secondsInPhase(), _spawnStartedAt, cfg.spawnBedBudgetSeconds)) {
             giveUpSpawn(ctx, "the spawn bed is taking too long");
         }
     }
@@ -278,19 +411,20 @@ public class EndPrepPhase implements PhaseHandler {
             _hudState = "Putting on armor";
             return _equip.computeIfAbsent(wear.get(0), piece -> new EquipArmorTask(piece));
         }
-        if (gap.food()) {
-            _hudState = "Getting food";
-            // the gate counts food we would eat, CollectFoodTask counts rotten flesh too, so a bag of junk makes it finish
-            // instantly while the gate stays short and we idle. FoodPlan adds the junk (the same call KitRunner.foodTarget makes),
-            // rebuilt only when the number moves
-            int target = ctx.food().endCollect();
-            if (_food == null || target != _foodTarget) {
-                _foodTarget = target;
-                _food = new CollectFoodTask(target);
-            }
-            return _food;
+        return gap.food() ? foodStep(ctx) : null;
+    }
+
+    private Task foodStep(GamerContext ctx) {
+        _hudState = "Getting food";
+        // the gate counts food we would eat, CollectFoodTask counts rotten flesh too, so a bag of junk makes it finish
+        // instantly while the gate stays short and we idle. FoodPlan adds the junk (the same call KitRunner.foodTarget makes),
+        // rebuilt only when the number moves
+        int target = ctx.food().endCollect();
+        if (_food == null || target != _foodTarget) {
+            _foodTarget = target;
+            _food = new CollectFoodTask(target);
         }
-        return null;
+        return _food;
     }
 
     private void resetBucket(int deaths) {

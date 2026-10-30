@@ -148,6 +148,9 @@ public class GamerTask extends Task {
     private BlockPos recoverPos;
     private Dimension recoverDimension;
     private DeathRules.Worth worth;
+    // a rich pile that waits for the day (DeathRules.waitsForDay): where, and in which dimension
+    private BlockPos waitingPile;
+    private Dimension waitingPileDimension;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
     // the walk back out of a nether we should not be in (WrongDimension)
@@ -628,7 +631,7 @@ public class GamerTask extends Task {
         if (respawnWatch != null) {
             respawnWatch.tick(mod.getWorld());
         }
-        if (nightTrip == null && Respawn.adoptNightBed(state)) {
+        if (nightTrip == null && Respawn.adoptNightBed(state, facts.count(ItemHelper.BED), cfg.end.beds)) {
             host.save();
         }
     }
@@ -851,6 +854,7 @@ public class GamerTask extends Task {
             dropShelter();
         }
         startDeferredTrip();
+        startWaitingPile();
         // a naked respawn at night hides first, the trip picks up where it was once the night is over. only when the night branch
         // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does. a hole or bed
         // trip already going is seen through to the end, dawn or not
@@ -1176,15 +1180,13 @@ public class GamerTask extends Task {
         String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks,
                 DeathRules.reachFor(worth, cfg.overworld.refillStartFoodUnits, cfg.death.recoverReach), worth,
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
-        if (why == null) {
-            host.say(DeathRules.going(blocks, worth));
-            recoverHolding = false;
-            recoverHeldTicks = 0;
-            recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
-                    () -> KitPlanner.toEquip(facts, cfg.overworld));
-            recoverPos = deathPos;
-            recoverDimension = deathDimension;
-            allowance = new RecoverRules.Allowance(deathGameTime / 20.0, cfg.death.recoverSeconds);
+        waitingPile = null;
+        if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits)) {
+            host.say(DeathRules.waiting(blocks, worth));
+            waitingPile = deathPos;
+            waitingPileDimension = deathDimension;
+        } else if (why == null) {
+            startRecovery(deathPos, blocks, deathGameTime);
         } else if (NetherTripRules.applies(deathDimension, facts.dimension())) {
             // the nether has its own trip and its own words
             if (!wasOnTrip) {
@@ -1193,6 +1195,34 @@ public class GamerTask extends Task {
         } else {
             host.say(DeathRules.leaving(why));
         }
+    }
+
+    private void startRecovery(BlockPos pile, double blocks, long sinceTicks) {
+        host.say(DeathRules.going(blocks, worth));
+        recoverHolding = false;
+        recoverHeldTicks = 0;
+        recover = new RecoverItemsTask(pile, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
+                () -> KitPlanner.toEquip(facts, cfg.overworld));
+        recoverPos = pile;
+        recoverDimension = deathDimension;
+        allowance = new RecoverRules.Allowance(sinceTicks / 20.0, cfg.death.recoverSeconds);
+    }
+
+    // the pile that waited out the night: day (or armor from the rebuild) and we go, same dimension or it is let go
+    private void startWaitingPile() {
+        if (waitingPile == null || recover != null || darkAndBare(mod)) {
+            return;
+        }
+        BlockPos pile = waitingPile;
+        Dimension where = waitingPileDimension;
+        waitingPile = null;
+        if (facts.dimension() != waitingPileDimension) {
+            host.say(DeathRules.leaving("the waiting pile is in another dimension now"));
+            return;
+        }
+        // (the allowance starts now, the night already ate the one from the death)
+        startRecovery(pile, flatBlocksTo(pile), facts.gameTime());
+        recoverDimension = where;
     }
 
     private boolean darkAndBare(AltoClef mod) {
@@ -1377,7 +1407,7 @@ public class GamerTask extends Task {
             BlockPos found = findNightBed(mod);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
                     BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
-            boolean keepSpawn = NightSleep.keepsSpawnBed(state.phase, source, spawnBedStands(mod));
+            boolean keepSpawn = NightSleep.keepsSpawnBed(state.phase, source, spawnBedHeld(mod));
             sayNight(mod, source == NightSleep.BedSource.NONE || keepSpawn ? NightSleep.Why.NO_BED : why, busy, source);
             if (source == NightSleep.BedSource.NONE || keepSpawn) {
                 // (a prep that was still going when the window opened is over, it does not get to keep its screens all night)
@@ -1394,7 +1424,7 @@ public class GamerTask extends Task {
             return nightTrip;
         }
         // not time yet, or not allowed to go: the bed gets made ready for when it is
-        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE && !NightSleep.keepsSpawnBed(state.phase, NightSleep.BedSource.BAG, spawnBedStands(mod)), inPortal || (busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE),
+        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE && !NightSleep.keepsSpawnBed(state.phase, NightSleep.BedSource.BAG, spawnBedHeld(mod)), inPortal || (busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE),
                 fighting, hurt, spent, windowOpen);
         Task prep = nightPrep.tick(mod, gate, () -> nightBedReady(mod, leftover));
         sayNight(mod, why, busy, null);
@@ -1403,6 +1433,11 @@ public class GamerTask extends Task {
         }
         nightPrepHolding = prep != null;
         return prep;
+    }
+
+    // the spawn bed the night rules protect. in END_PREP only one by the portal is worth it, any other is the thing the prep is fixing
+    private boolean spawnBedHeld(AltoClef mod) {
+        return spawnBedStands(mod) && (state.phase != GamerPhase.END_PREP || Respawn.coversPortal(state));
     }
 
     // the overworld respawn bed we know of is still standing where we put it (unloaded counts as still there)
@@ -1459,7 +1494,7 @@ public class GamerTask extends Task {
         NightSleep.BedSource source = NightSleep.bedSource(findNightBed(mod) != null, facts.count(ItemHelper.BED), BedCraft.bestWoolStack(mod),
                 BedCraft.usableWood(mod));
         // a bed that keepsSpawnBed would not let it use is no bed for tonight
-        boolean noBed = NightShelter.noBedTonight(state.phase, source, spawnBedStands(mod));
+        boolean noBed = NightShelter.noBedTonight(state.phase, source, spawnBedHeld(mod));
         BlockPos skipSpot = shelterFailedNight == night ? shelterFailedSpot : null;
         BlockPos spot = noBed ? ShelterTask.pick(mod, skipSpot) : null;
         if (spot == null) {
@@ -1521,7 +1556,7 @@ public class GamerTask extends Task {
         }
         nightPlayer = mod.getPlayer();
         nightPrep.drop();
-        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found);
+        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found, cfg.end.beds);
     }
 
     // blocks the pillar may really spend: the cobble the stone kit still eats is spoken for (updateStoneFloor) and placing never

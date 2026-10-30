@@ -384,4 +384,36 @@ public class EndGearTest {
         assertTrue(EndGear.spawnBedAffordable(new FakeFacts().with(Items.BED.white(), 5), 4, true));
         assertTrue(EndGear.spawnBedAffordable(new FakeFacts(), 5, false));
     }
+
+    @Test
+    public void theSpawnBedClockRunsFromItsOwnStep() {
+        // started at 400 s into the phase: 300 s later, not at the 300 s mark of the phase
+        assertFalse(EndGear.spawnClockExpired(500, 400, 300));
+        assertFalse(EndGear.spawnClockExpired(700, 400, 300));
+        assertTrue(EndGear.spawnClockExpired(701, 400, 300));
+        // never started: no clock yet
+        assertFalse(EndGear.spawnClockExpired(900, -1, 300));
+    }
+
+    @Test
+    public void aWorldBedIsOnlyWorthItNearThePortal() {
+        assertTrue(EndGear.bedInRange(200, 0, 0, 0, 250));
+        assertFalse(EndGear.bedInRange(900, 0, 0, 0, 250));
+        assertTrue(EndGear.bedInRange(180, 180, 0, 0, 260));
+    }
+
+    @Test
+    public void bedErrandPicksMineCraftOrGoesWithout() {
+        assertEquals(EndGear.BedPlan.MINE, EndGear.bedPlan(true, 0));
+        assertEquals(EndGear.BedPlan.MINE, EndGear.bedPlan(true, 4));
+        assertEquals(EndGear.BedPlan.CRAFT, EndGear.bedPlan(false, 1));
+        assertEquals(EndGear.BedPlan.GO_WITHOUT, EndGear.bedPlan(false, 0));
+    }
+
+    @Test
+    public void aFarErrandWantsFoodFirst() {
+        assertTrue(EndGear.foodFirst(true, 200, 150));
+        assertFalse(EndGear.foodFirst(true, 100, 150));
+        assertFalse(EndGear.foodFirst(false, 900, 150));
+    }
 }
