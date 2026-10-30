@@ -315,15 +315,19 @@ public class MovementTraverse extends Movement {
         BlockPos feet = ctx.playerFeet();
         if (feet.getY() != dest.getY() && !ladder) {
             logDebug("Wrong Y coordinate");
+            // a jump-held bob pops us clear of the lava for a few ticks, isInLava goes false and we used to idle up there
+            // until we sank again. lava in our cell or right under it is still the lava case
+            boolean inLava = ctx.player().isInLava() || (!ctx.player().onGround()
+                    && (MovementHelper.isLava(BlockStateInterface.get(ctx, feet)) || MovementHelper.isLava(BlockStateInterface.get(ctx, feet.below()))));
             if (feet.getY() < dest.getY()) {
-                if (pushesForwardWhileRising(ctx.player().isInLava(), feet.getY(), dest.getY())) {
+                if (pushesForwardWhileRising(inLava, feet.getY(), dest.getY())) {
                     // jump alone just bobs in place at the surface. vanilla hops 0.3 up out of a fluid when we're pressed
                     // against something we could stand on top of, so lean on the wall (water has Movement.update's bob)
                     MovementHelper.moveTowards(ctx, state, dest);
                 }
                 return state.setInput(Input.JUMP, true);
             }
-            if (!ctx.player().onGround() && pushesForwardWhileAbove(ctx.player().isInLava(), feet.getY(), dest.getY())) {
+            if (!ctx.player().onGround() && pushesForwardWhileAbove(inLava, feet.getY(), dest.getY())) {
                 MovementHelper.moveTowards(ctx, state, dest);
                 return state;
             }
