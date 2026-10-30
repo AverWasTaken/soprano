@@ -150,6 +150,12 @@ public final class CombatCommit {
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
     // skeleton that steps out past the range): the meal is 1.6 s and one arrow in it is 4
     public static final long SHOT_LATCH = 60;
+
+    // a ranged hit on us keeps the bite closed for SHOT_MEMORY ticks, however far off the shooter stood (past FOE_RANGE it is no foe
+    // at all, so nothing else would remember it)
+    public static long hitLatch(long until, long now) {
+        return Math.max(until, now + SHOT_MEMORY);
+    }
     // a shot this fresh (two seconds) breaks the run latch for the low hp rule: the latch is for fights that ended, not for arrows
     public static final long SHOT_FRESH = 40;
 
@@ -640,10 +646,13 @@ public final class CombatCommit {
         }
         // (at gapple hp a fight keeps the gapple stance below, that bite is the better one)
         if (mode == Mode.FIGHT && gapple && health <= FLEE_HP) fighting = true;
+        // a calm meal right after a ranged hit is the same arrow, hurt or not (the golden apple is still fine)
+        if (!fighting && mode == Mode.NONE && bite.shotAt() && health <= FLEE_HP && !gapple) return CombatRules.Stance.FLEE;
         if (!fighting) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple, hasFood);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
-        if (stance == CombatRules.Stance.EAT && mode != Mode.NONE) return CombatRules.Stance.FLEE;
+        // (and not right after a ranged hit either: a quick bite at hp 4 in a shooter's sight is the arrow that finishes the meal)
+        if (stance == CombatRules.Stance.EAT && (mode != Mode.NONE || bite.shotAt())) return CombatRules.Stance.FLEE;
         return stance;
     }
 

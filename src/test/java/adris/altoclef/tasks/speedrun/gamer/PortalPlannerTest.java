@@ -85,6 +85,16 @@ public class PortalPlannerTest {
         assertEquals(Method.CAST, PortalPlanner.onTimeout(Method.CAST, 2, 2, false, true, false).method());
     }
 
+    // the cast was landing obsidian when the clock ran out: the retry casts again instead of walking off to natural obsidian
+    @Test
+    public void aTimeoutWithCastProgressRetriesTheCast() {
+        PortalPlanner.TimeoutPlan rose = PortalPlanner.onTimeout(Method.CAST, 1, 2, false, false, true, true);
+        assertTrue(rose.retry());
+        assertEquals(Method.CAST, rose.method());
+        assertEquals(Method.OBSIDIAN, PortalPlanner.onTimeout(Method.CAST, 1, 2, false, false, true, false).method());
+        assertEquals(Method.OBSIDIAN, PortalPlanner.afterTimeout(Method.OBSIDIAN, false, true, true));
+    }
+
     @Test
     public void withoutAPoolStallTheAttemptsAreTheOldTwo() {
         assertTrue(PortalPlanner.onTimeout(Method.CAST, 1, 2, false, false, true).retry());

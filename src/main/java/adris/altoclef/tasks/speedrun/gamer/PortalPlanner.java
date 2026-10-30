@@ -67,10 +67,16 @@ public final class PortalPlanner {
     // being built says nothing about the cast (it never ran), so the pool hands over to it first. obsidian needs the diamond
     // pickaxe like decide says, and it is sticky once chosen
     public static Method afterTimeout(Method current, boolean poolWasRunning, boolean hasDiamondPickaxe) {
+        return afterTimeout(current, poolWasRunning, hasDiamondPickaxe, false);
+    }
+
+    // castRose = the obsidian count went up during the try that timed out. a lake that works is not dropped for a natural
+    // obsidian somewhere far off, the cast just gets its clock back
+    public static Method afterTimeout(Method current, boolean poolWasRunning, boolean hasDiamondPickaxe, boolean castRose) {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
-        return poolWasRunning || !hasDiamondPickaxe ? Method.CAST : Method.OBSIDIAN;
+        return poolWasRunning || castRose || !hasDiamondPickaxe ? Method.CAST : Method.OBSIDIAN;
     }
 
     // what a portal phase timeout turns into: another try (with which method) or the end. the engine counts every retry,
@@ -81,9 +87,14 @@ public final class PortalPlanner {
 
     public static TimeoutPlan onTimeout(Method current, int attempt, int maxAttempts, boolean poolWasRunning,
                                         boolean poolTimedOut, boolean hasDiamondPickaxe) {
+        return onTimeout(current, attempt, maxAttempts, poolWasRunning, poolTimedOut, hasDiamondPickaxe, false);
+    }
+
+    public static TimeoutPlan onTimeout(Method current, int attempt, int maxAttempts, boolean poolWasRunning,
+                                        boolean poolTimedOut, boolean hasDiamondPickaxe, boolean castRose) {
         boolean timedOut = poolTimedOut || poolWasRunning;
         boolean retry = attempt < maxAttempts + (timedOut ? 1 : 0);
-        Method next = retry && current == Method.CAST ? afterTimeout(current, poolWasRunning, hasDiamondPickaxe) : current;
+        Method next = retry && current == Method.CAST ? afterTimeout(current, poolWasRunning, hasDiamondPickaxe, castRose) : current;
         return new TimeoutPlan(retry, next, timedOut);
     }
 

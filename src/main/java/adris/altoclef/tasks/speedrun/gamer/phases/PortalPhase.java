@@ -29,6 +29,7 @@ import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalTask;
+import adris.altoclef.tasks.speedrun.gamer.portal.ObsidianHold;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
@@ -68,6 +69,9 @@ public class PortalPhase implements PhaseHandler {
     private BlockPos progressOrigin;
     private int bestCount;
     private long lastProgressTick = -1;
+    // the budget clock stands still while the obsidian count keeps setting new highs (see holdsBudget)
+    private final ObsidianHold obsidianHold = new ObsidianHold();
+    private boolean obsidianHolding;
     private DefaultGoToDimensionTask cast;
     private LPortalTask pool;
     private boolean poolFailed;
@@ -147,6 +151,8 @@ public class PortalPhase implements PhaseHandler {
         poolActive = false;
         fillUpSince = -1;
         resetCastClock();
+        obsidianHold.reset();
+        obsidianHolding = false;
         // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
         // leaving-the-dimension rule below takes the ore straight back out, forever. so it's off for this phase
         var async = Baritone.settings().altoAsyncSmelting;
@@ -205,6 +211,12 @@ public class PortalPhase implements PhaseHandler {
 
     // walking open ground for a spot is safe to leave for a night. everything after it is not: the build with a layout chosen, the
     // cast (its clocks run on game time and a trip would eat them), the obsidian way, and a lit portal about to be entered
+    // a cast that keeps landing obsidian is not out of time at 14 minutes. the stall timer still runs, and the hold has a cap
+    @Override
+    public boolean holdsBudget() {
+        return obsidianHolding;
+    }
+
     @Override
     public boolean nightHold() {
         return holdsNight(gateDone, poolActive && pool != null && !pool.failed() && pool.searching());
@@ -223,6 +235,7 @@ public class PortalPhase implements PhaseHandler {
         boolean portalExists = portal.isPresent();
         noteOverworldPortal(mod, ctx, portal);
         GamerFacts f = ctx.facts();
+        obsidianHolding = f.dimension() == Dimension.OVERWORLD && obsidianHold.step(obsidianTotal(mod, f), f.gameTime());
         // iron still cooking in the overworld is iron we are about to leave behind (an IRON phase that skipped itself on a
         // timeout can get us here). one last visit: take what is done, wait if it is nearly, pull the rest back out
         if (f.dimension() == Dimension.OVERWORLD) {
@@ -437,6 +450,12 @@ public class PortalPhase implements PhaseHandler {
         }
     }
 
+    // obsidian in the bag plus the cast's frame cells still standing
+    private int obsidianTotal(AltoClef mod, GamerFacts f) {
+        var task = cast == null ? null : cast.bucketPortalTask();
+        return f.count(Items.OBSIDIAN) + (task == null ? 0 : task.castCellsDone(mod));
+    }
+
     private void resetCastClock() {
         castStartTick = -1;
         progressOrigin = null;
@@ -474,7 +493,7 @@ public class PortalPhase implements PhaseHandler {
         boolean poolWasRunning = poolStarted && !poolFailed;
         boolean diamondPick = ctx.facts().count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
         PortalPlanner.TimeoutPlan plan = PortalPlanner.onTimeout(current, attempt, ctx.cfg().maxAttempts, poolWasRunning,
-                ctx.state().portalPoolTimedOut, diamondPick);
+                ctx.state().portalPoolTimedOut, diamondPick, obsidianHold.rose());
         if (!plan.retry()) {
             return Timeout.STUCK;
         }
@@ -483,6 +502,8 @@ public class PortalPhase implements PhaseHandler {
                 ctx.log("portal timed out on the lava pool (" + reason + "), trying the cast");
             } else if (plan.method() == Method.OBSIDIAN) {
                 ctx.log("portal timed out (" + reason + "), trying obsidian");
+            } else if (obsidianHold.rose()) {
+                ctx.log("portal timed out (" + reason + "), the cast was landing obsidian, casting again");
             } else {
                 ctx.log("portal timed out (" + reason + "), no diamond pickaxe for obsidian, casting again");
             }

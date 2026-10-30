@@ -540,7 +540,7 @@ final class CombatBrain {
         // (only the bite hears it, shotAt() stays the raw answer for the meals that ask the chain)
         boolean biteShot = shotAt;
         if (shotAt) {
-            _shotUntil = now + CombatCommit.SHOT_LATCH;
+            _shotUntil = Math.max(_shotUntil, now + CombatCommit.SHOT_LATCH);
         } else if (now <= _shotUntil) {
             biteShot = true;
         }
@@ -802,10 +802,14 @@ final class CombatBrain {
         DamageSource source = player.getLastDamageSource();
         if (source == null || source == _shotCounted) return;
         _shotCounted = source;
+        boolean ranged = source.getEntity() instanceof Mob mob && MobReachability.isRanged(mob);
         if (source.getDirectEntity() instanceof Projectile) {
             _shots++;
             _shotTick = now;
         }
+        // a shooter past FOE_RANGE is no foe, so shotAt never sees it and the 60 tick latch never starts: a trident from 18
+        // blocks hit us mid meal after the run ended. the hit itself keeps the bite closed for a full SHOT_MEMORY
+        if (ranged || source.getDirectEntity() instanceof Projectile) _shotUntil = CombatCommit.hitLatch(_shotUntil, now);
     }
 
     // the world's side of the perch for this tick, null when nothing is close enough to matter (and we are not on one already)
