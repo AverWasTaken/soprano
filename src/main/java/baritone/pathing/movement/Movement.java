@@ -73,7 +73,8 @@ public abstract class Movement implements IMovement, MovementHelper {
     private Boolean calculatedWhileLoaded;
 
     private final SwimStall swimStall = new SwimStall();
-    private final SwimEscape swimEscape = new SwimEscape();
+    private SwimEscape swimEscape = new SwimEscape();
+    private boolean standingUp;
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
@@ -388,6 +389,7 @@ public abstract class Movement implements IMovement, MovementHelper {
 
     // the cell keeps failing whichever way out we pick, so stop swimming and stand up for a moment, see SwimEscape
     private boolean standUpToEscape() {
+        standingUp = false;
         if (currentState.getStatus() != MovementStatus.RUNNING || !ctx.player().isInWater()) {
             return false;
         }
@@ -402,6 +404,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         currentState.setInput(Input.SPRINT, false);
         ctx.player().setSprinting(false);
         currentState.setInput(Input.JUMP, true);
+        standingUp = true;
         return true;
     }
 
@@ -664,6 +667,13 @@ public abstract class Movement implements IMovement, MovementHelper {
         waitingOnFall = false;
         heldForFall = false;
         swimStall.reset();
+        swimEscape = new SwimEscape();
+        standingUp = false;
+    }
+
+    // true on ticks the swim escape is holding us upright, PathExecutor must not turn sprint back on over it
+    public boolean standingUp() {
+        return standingUp;
     }
 
     /**
