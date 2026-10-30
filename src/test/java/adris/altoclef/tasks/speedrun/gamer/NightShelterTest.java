@@ -57,28 +57,39 @@ public class NightShelterTest {
         assertTrue(NightShelter.wanted(base()));
     }
 
-    // a nether leg home for food at dusk: no armor line, no death, but the rest still applies. the engine decides what noBed means
+    // a nether leg home for food at dusk: no death asked, the rest still applies. the engine decides what noBed means
     // there (no bed at all, or a bed keepsSpawnBed will not let it use), the trigger only takes the answer
     @Test
-    public void aTripNightHidesWithNoDeathAndFullArmor() {
+    public void aNakedTripNightHidesWithNoDeath() {
         assertTrue(NightShelter.wanted(with(base(), b -> {
             b.trip = true;
             b.since = -1;
-            b.armor = 15;
+            b.armor = 0;
             return b;
         })));
         assertFalse(NightShelter.wanted(with(base(), b -> {
             b.trip = true;
             b.since = -1;
-            b.armor = 15;
+            b.armor = 0;
             b.noBed = false;
             return b;
         })));
         assertFalse(NightShelter.wanted(with(base(), b -> {
             b.trip = true;
             b.since = -1;
-            b.armor = 15;
+            b.armor = 0;
             b.used = true;
+            return b;
+        })));
+    }
+
+    // a kitted trip walks through the night
+    @Test
+    public void anArmoredTripNightDoesNotHide() {
+        assertFalse(NightShelter.wanted(with(base(), b -> {
+            b.trip = true;
+            b.since = -1;
+            b.armor = 15;
             return b;
         })));
     }

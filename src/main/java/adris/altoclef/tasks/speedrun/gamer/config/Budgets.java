@@ -15,7 +15,7 @@ public class Budgets {
     public double room = 18;
     public double open = 6;
     public double endPrep = 12;
-    public double dragon = 25;
+    public double dragon = 10;
 
     public double minutes(GamerPhase phase) {
         return switch (phase) {

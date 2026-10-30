@@ -366,6 +366,30 @@ public class PhaseMachineTest {
     }
 
     @Test
+    public void theRodsGiveUpSurvivesARetryAndClearsOnAFreshNetherEntry() {
+        host.state.phase = GamerPhase.NETHER;
+        host.state.netherRodsGaveUp = true;
+        FakeHandler nether = h(GamerPhase.NETHER);
+        nether.tickThrows = new IllegalStateException("boom");
+        start();
+        machine.tick(null);
+        nether.tickThrows = null;
+        machine.tick(null);
+        // the retry entered the handler again and kept the flag
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2"), nether.events);
+        assertTrue(host.state.netherRodsGaveUp);
+        // coming back to the nether from a later phase is a fresh entry
+        host.state.phase = GamerPhase.LOCATE;
+        h(GamerPhase.LOCATE).regress = Optional.of(GamerPhase.NETHER);
+        h(GamerPhase.LOCATE).stall = 0;
+        machine.begin(null);
+        host.facts.seconds(100);
+        machine.tick(null);
+        assertEquals(GamerPhase.NETHER, host.state.phase);
+        assertFalse(host.state.netherRodsGaveUp);
+    }
+
+    @Test
     public void aThrowingHandlerIsAFailedAttemptNeverARethrow() {
         FakeHandler gather = h(GamerPhase.GATHER);
         gather.tickThrows = new IllegalStateException("boom");
