@@ -131,4 +131,12 @@ public class NoPathScopeTest {
         w.arm(9, 9);
         assertEquals(Verdict.TIMED_OUT, w.poll(10, 9, false));
     }
+
+    @Test
+    public void aFarTimedOutSearchGetsTheLongBanAtOnce() {
+        assertEquals(0, NoPathScope.strikesAllowed(NoPathScope.Verdict.TIMED_OUT, 200 * 200));
+        // near, or a search that proved it, keeps the two strikes
+        assertEquals(2, NoPathScope.strikesAllowed(NoPathScope.Verdict.TIMED_OUT, 30 * 30));
+        assertEquals(2, NoPathScope.strikesAllowed(NoPathScope.Verdict.EXHAUSTED, 200 * 200));
+    }
 }

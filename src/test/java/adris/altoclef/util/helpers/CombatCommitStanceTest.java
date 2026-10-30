@@ -13,6 +13,38 @@ public class CombatCommitStanceTest {
 
     private static final double NOBODY = Double.POSITIVE_INFINITY;
 
+    // the run ended "clear" with the shooter 18 blocks off (no foe at all): the hit alone keeps the heal-up meal closed for
+    // SHOT_MEMORY ticks, then it opens
+    @Test
+    public void aHitFromBeyondFoeRangeBlocksTheRecoveryMealForAHundredTicks() {
+        long until = CombatCommit.hitLatch(Long.MIN_VALUE / 2, 1000);
+        for (long now = 1000; now <= 1000 + CombatCommit.SHOT_MEMORY; now += 10) {
+            CombatCommit.Bite bite = new CombatCommit.Bite(now <= until, NOBODY, false);
+            assertEquals("tick " + now, Stance.FLEE, CombatCommit.stance(Mode.NONE, 4, NOBODY, false, false, bite, true));
+        }
+        long late = 1000 + CombatCommit.SHOT_MEMORY + 1;
+        CombatCommit.Bite open = new CombatCommit.Bite(late <= until, NOBODY, false);
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.NONE, 4, NOBODY, false, false, open, true));
+        // a second hit pushes the latch out, never pulls it in
+        assertEquals(1150 + CombatCommit.SHOT_MEMORY, CombatCommit.hitLatch(until, 1150));
+        assertEquals(until, CombatCommit.hitLatch(until, 1000));
+    }
+
+    // no recovery hold either: a hurt bot with nothing in sight still does not start a calm meal inside the latch
+    @Test
+    public void aCalmMealIsBlockedInsideTheLatchWhenHurt() {
+        CombatCommit.Bite shot = new CombatCommit.Bite(true, NOBODY, false);
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.NONE, 6, NOBODY, false, false, shot, false));
+        // healthy enough that nothing is on the line
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.NONE, 20, NOBODY, false, false, shot, false));
+    }
+
+    @Test
+    public void aGoldenAppleStaysAllowedWhileTheHitLatchIsOn() {
+        CombatCommit.Bite shot = new CombatCommit.Bite(true, NOBODY, false);
+        assertEquals(Stance.EAT_GAPPLE, CombatCommit.stance(Mode.NONE, 4, NOBODY, false, true, shot, true));
+    }
+
     @Test
     public void nobodyCommittedAndNothingWrongIsAMealtime() {
         assertEquals(Stance.CALM, CombatCommit.stance(Mode.NONE, 20, NOBODY, false, false));
