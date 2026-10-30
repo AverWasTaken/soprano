@@ -9,6 +9,7 @@ import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BlazeFightRules.Mode;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.RecoverHold;
 import adris.altoclef.util.helpers.RunZones;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,8 +17,11 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
 import net.minecraft.world.phys.Vec3;
@@ -44,6 +48,11 @@ final class BlazeFight {
     private long runIdleSince = Long.MIN_VALUE;
     private float lastHealth = Float.NaN;
     private boolean runGaveUp;
+    // the blaze or skeleton whose projectile hit us last, and when. a run with that thrower out of the crowd lists used to stop and
+    // stand still in its line of fire
+    private DamageSource shotSeen;
+    private Mob shooter;
+    private long shotAt = Long.MIN_VALUE / 2;
     // blazes with a line on us, and blazes we could walk under and hit, as of the last scan
     private final List<Blaze> threats = new ArrayList<>();
     private final List<Blaze> candidates = new ArrayList<>();
@@ -119,6 +128,7 @@ final class BlazeFight {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
         scan(mod, player);
+        noteShot(player, now);
         updateTarget(player, now);
         float health = player.getHealth();
         // hp going up is what the run waits for, so any rise means it is working again
@@ -148,6 +158,7 @@ final class BlazeFight {
             case KILL -> new KillEntityTask(target);
             // never stand still in a run: with no blaze on us the wither skeletons that kept chasing still count, only an empty
             // crowd (nobody at all) is sitting tight until the food chain and regen are done
+            // (a shot that landed lately keeps the thrower in that crowd, see runCrowd)
             case RUN -> {
                 List<Entity> crowd = runCrowd(mod);
                 yield crowd.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, () -> runCrowd(mod));
@@ -169,10 +180,27 @@ final class BlazeFight {
                 + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z) + ", " + (packClose ? "backing off" : "holding"));
     }
 
+    // projectile hits, every tick: the game hands a fresh source object per hit
+    private void noteShot(LocalPlayer player, long now) {
+        DamageSource source = player.getLastDamageSource();
+        if (source == null || source == shotSeen) return;
+        shotSeen = source;
+        if (source.getDirectEntity() instanceof Projectile && source.getEntity() instanceof Mob mob
+                && RecoverHold.rerunSource(BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath())) {
+            shooter = mob;
+            shotAt = now;
+        }
+    }
+
     // blazes close enough to matter plus whatever else is after us
     private List<Entity> runCrowd(AltoClef mod) {
         List<Entity> blazes = new ArrayList<>(threats);
         List<Entity> others = new ArrayList<>();
+        // the thing that shot us lately is still after us even when it is out of the lists below (past 20, or not angry on paper)
+        if (shooter != null && shooter.isAlive() && BlazeFightRules.shotLately(mod.getWorld().getGameTime(), shotAt)
+                && !blazes.contains(shooter)) {
+            others.add(shooter);
+        }
         try {
             LocalPlayer player = mod.getPlayer();
             for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {

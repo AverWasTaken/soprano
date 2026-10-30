@@ -1173,6 +1173,8 @@ public final class CombatCommit {
         // one re-perch near the last one, then the old rules
         if (t.now() - lastPerchAt < PerchRules.REPERCH_TICKS && Math.hypot(t.x() - lastPerchX, t.z() - lastPerchZ) < PerchRules.REPERCH_BLOCKS
                 && rePerches >= PerchRules.REPERCH_MAX) return 0;
+        // no room to build a pillar: the old rules
+        if (!PerchRules.roomToStart(t.foes())) return 0;
         boolean pressing = runHits >= 1;
         for (Foe foe : t.foes()) {
             if (foe.ranged() && !foe.creeper() && foe.sinceHit() <= PerchRules.SHOT_QUIET) return 0;

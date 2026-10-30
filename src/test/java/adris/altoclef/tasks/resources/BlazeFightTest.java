@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.BlazeFightRules;
 import java.util.List;
 import org.junit.Test;
 
@@ -42,5 +43,16 @@ public class BlazeFightTest {
     public void nothingIsBannedWhenNotFighting() {
         assertFalse(BlazeFight.placingBanned(false, 70, 68));
         assertFalse(BlazeFight.placingBanned(false, 67, 68));
+    }
+
+    // the run keeps its shooter in the crowd while a shot is fresh, so an empty crowd list does not stand us still under fire
+    @Test
+    public void aFreshShotKeepsTheRunGoingAndAnOldOneDoesNot() {
+        assertTrue(BlazeFightRules.shotLately(1000, 1000));
+        assertTrue(BlazeFightRules.shotLately(1000 + BlazeFightRules.RUN_SHOT_TICKS, 1000));
+        assertFalse(BlazeFightRules.shotLately(1001 + BlazeFightRules.RUN_SHOT_TICKS, 1000));
+        // never shot, and a clock that went backwards
+        assertFalse(BlazeFightRules.shotLately(1000, Long.MIN_VALUE / 2));
+        assertFalse(BlazeFightRules.shotLately(500, 1000));
     }
 }

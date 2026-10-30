@@ -69,6 +69,17 @@ public class CombatCommitPerchTest {
         return new Foe[]{piglin(1, 2, NEVER), piglin(2, 2.4, NEVER), piglin(3, 2.8, NEVER)};
     }
 
+    // the same three with the room the pillar needs to start
+    private static Foe[] farPack() {
+        return new Foe[]{piglin(1, 4, NEVER), piglin(2, 4.4, NEVER), piglin(3, 4.8, NEVER)};
+    }
+
+    // the crowd run starts with them on top of us (the old rules), the perch comes once we have a few blocks on them
+    private static Event perchStart(CombatCommit c, long now) {
+        assertEquals(Event.RUN_START, c.step(tick(now - 1, 20, pack())));
+        return c.step(tick(now, 20, farPack()));
+    }
+
     // ---- the numbers
 
     @Test
@@ -121,7 +132,7 @@ public class CombatCommitPerchTest {
     public void aRunThatStartsFromAFastPackPerchesInsteadOfJogging() {
         CombatCommit c = new CombatCommit();
         c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
-        assertEquals(Event.PERCH_START, c.step(tick(NOW, 20, pack())));
+        assertEquals(Event.PERCH_START, perchStart(c, NOW));
         assertEquals(Mode.FIGHT, c.mode());
         assertEquals(Why.PERCH, c.why());
         assertEquals(3, c.perchHeight());
@@ -144,7 +155,7 @@ public class CombatCommitPerchTest {
     public void thePiglinChaseStaysAPerchThroughTheHits() {
         CombatCommit c = new CombatCommit();
         c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
-        assertEquals(Event.PERCH_START, c.step(tick(NOW, 20, pack())));
+        assertEquals(Event.PERCH_START, perchStart(c, NOW));
         long[] hits = {0, 20, 220, 240};
         float hp = 20;
         for (long dt = 1; dt <= 280; dt++) {
@@ -195,20 +206,20 @@ public class CombatCommitPerchTest {
         assertEquals(Mode.RUN, c.mode());
     }
 
+    // hoglins are not a perch species any more (the brain gives them no height), so the old rules take over
     @Test
-    public void aHoglinInTheWayAtFullHpPerches() {
+    public void aHoglinInTheWayAtFullHpDoesNotPerch() {
         CombatCommit c = new CombatCommit();
-        c.perchFacts(facts(heights(HOGLIN, 1)));
-        Foe hog = hoglin(1, 2);
+        c.perchFacts(facts(heights(HOGLIN)));
+        Foe hog = hoglin(1, 5);
         Tick t = new Tick(NOW, 20, 0.5, 0.5, List.of(hog), null, new Way(Set.of(1), true, FEET), true, false);
-        assertEquals(Event.PERCH_START, c.step(t));
-        assertEquals(Why.PERCH, c.why());
-        assertEquals(2, c.perchHeight());
+        assertTrue(c.step(t) != Event.PERCH_START);
+        assertTrue(c.why() != Why.PERCH);
     }
 
-    // the cap with a hoglin 6 away at full hp: a perch, not the end of the run and not a plain fight
+    // the cap with a hoglin 6 away at full hp: no perch for a hoglin, the old cap rules
     @Test
-    public void theRunCapWithAMeleeChaserWithinEightPerches() {
+    public void theRunCapWithAHoglinWithinEightDoesNotPerch() {
         CombatCommit c = new CombatCommit();
         Foe hog = hoglin(1, 5);
         assertEquals(Event.RUN_START, c.step(tick(NOW, 7, hog)));
@@ -216,9 +227,36 @@ public class CombatCommitPerchTest {
             double x = (dt / 10) % 2 == 0 ? 0 : 2;
             assertEquals(Event.NONE, c.step(new Tick(NOW + dt, 7, x, 0, List.of(hog), null)));
         }
-        c.perchFacts(facts(heights(HOGLIN, 1)));
-        assertEquals(Event.PERCH_START, c.step(tick(NOW + CombatCommit.RUN_CAP, 20, hoglin(1, 6))));
-        assertEquals(Why.PERCH, c.why());
+        c.perchFacts(facts(heights(HOGLIN)));
+        assertTrue(c.step(tick(NOW + CombatCommit.RUN_CAP, 20, hoglin(1, 6))) != Event.PERCH_START);
+        assertTrue(c.why() != Why.PERCH);
+    }
+
+    @Test
+    public void aChaserAtOurElbowOrAFreshHitIsNoRoomToBuild() {
+        assertTrue(PerchRules.roomToStart(List.of(piglin(1, 4, NEVER), piglin(2, 7, NEVER))));
+        assertTrue(!PerchRules.roomToStart(List.of(piglin(1, 3.9, NEVER))));
+        assertTrue(!PerchRules.roomToStart(List.of(piglin(1, 5, PerchRules.START_QUIET))));
+        assertTrue(PerchRules.roomToStart(List.of(piglin(1, 5, PerchRules.START_QUIET + 1))));
+        // far ones do not count, and a shooter's hit is the shot rule's business
+        assertTrue(PerchRules.roomToStart(List.of(piglin(1, 12, 0), skeleton(9, 7, 0))));
+        CombatCommit c = new CombatCommit();
+        c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, piglin(1, 2, NEVER), piglin(2, 2.4, NEVER), piglin(3, 2.8, NEVER))));
+        // room but a swing landed ten ticks ago, then room and a quiet second
+        CombatCommit d = new CombatCommit();
+        d.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
+        assertEquals(Event.RUN_START, d.step(tick(NOW - 1, 20, pack())));
+        assertTrue(d.step(tick(NOW, 20, piglin(1, 5, 10), piglin(2, 4.4, NEVER), piglin(3, 4.8, NEVER))) != Event.PERCH_START);
+        CombatCommit e = new CombatCommit();
+        e.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
+        assertEquals(Event.PERCH_START, perchStart(e, NOW));
+    }
+
+    @Test
+    public void hoglinsZoglinsAndWitherSkeletonsAreNotPerchSpecies() {
+        for (String type : List.of("hoglin", "zoglin", "wither_skeleton")) assertTrue(type, !PerchRules.species(type));
+        for (String type : List.of("zombified_piglin", "zombie", "zombie_villager", "husk")) assertTrue(type, PerchRules.species(type));
     }
 
     @Test
@@ -244,7 +282,7 @@ public class CombatCommitPerchTest {
     private static CombatCommit perched() {
         CombatCommit c = new CombatCommit();
         c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
-        assertEquals(Event.PERCH_START, c.step(tick(NOW, 20, pack())));
+        assertEquals(Event.PERCH_START, perchStart(c, NOW));
         return c;
     }
 
@@ -355,7 +393,7 @@ public class CombatCommitPerchTest {
         c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
         long now = NOW;
         for (int round = 0; round < 3; round++) {
-            Event start = c.step(tick(now, 20, pack()));
+            Event start = perchStart(c, now);
             if (round < 2) {
                 assertEquals("round " + round, Event.PERCH_START, start);
                 c.perchFacts(on(FEET + 3, heights(PIGLIN, 1, 2, 3)));
@@ -365,7 +403,8 @@ public class CombatCommitPerchTest {
                 c.perchFacts(facts(heights(PIGLIN, 1, 2, 3)));
                 now = t + 200;
             } else {
-                assertEquals(Event.RUN_START, start);
+                assertTrue(!c.perching());
+                assertTrue(start != Event.PERCH_START);
             }
         }
     }
@@ -425,15 +464,16 @@ public class CombatCommitPerchTest {
         assertTrue(d.takePerchNote().startsWith("perch fail:"));
     }
 
-    // a fast piglin that hit us makes the fight stay put at the flee line, the perch comes first
+    // a fast piglin on us that just hit us is no room to build a pillar
     @Test
-    public void aFightThatWouldBailPerchesEvenWithAFastMobOnUs() {
+    public void aFightThatWouldBailWithAFastMobOnUsHasNoRoomToPerch() {
         CombatCommit c = new CombatCommit();
         c.perchFacts(facts(heights(PIGLIN, 1)));
         Foe hit = piglin(1, 2, 5);
         assertEquals(Event.FIGHT_START, c.step(new Tick(NOW, 20, 0.5, 0.5, List.of(hit), hit)));
-        assertEquals(Event.PERCH_START, c.step(new Tick(NOW + 1, 7, 0.5, 0.5, List.of(piglin(1, 2, 6)), piglin(1, 2, 6))));
-        assertEquals(Why.PERCH, c.why());
+        // it is on us and just hit us: no room to build, the old rules
+        assertTrue(c.step(new Tick(NOW + 1, 7, 0.5, 0.5, List.of(piglin(1, 2, 6)), piglin(1, 2, 6))) != Event.PERCH_START);
+        assertTrue(c.why() != Why.PERCH);
     }
 
     @Test
