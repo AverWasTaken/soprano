@@ -177,6 +177,13 @@ public class CollectBlazeRodsTask extends ResourceTask {
             return null;
         }
 
+        // a wither skeleton pack close to us: stop walking in (the fight already backed off if it was on top of us). counted as
+        // dud time like the spawner hold below, the rods watch moves us on if they never leave
+        if (_fight.packHere()) {
+            setDebugState("wither skeleton pack close, holding");
+            _camping = true;
+            return null;
+        }
         // If we have a blaze spawner, stand next to it in the open and let them come.
         if (_foundBlazeSpawner != null) {
             // a wither skeleton pack at the spawner: hold where we are, the rods watch counts it as dud time and moves us on

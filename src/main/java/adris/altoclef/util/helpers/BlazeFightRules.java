@@ -49,6 +49,13 @@ public final class BlazeFightRules {
     // a run from two of them is already enough to keep the spawner walk out of their closet. two still get fought when they
     // come at us, but walking back past them for a blaze was the fortress death
     public static final int ZONE_PACK_SIZE = 2;
+    // a pack this close to us (3D, off the tracker, aware of us or not) is one we do not walk into: the blaze target is dropped and
+    // the walk stops. fortress floors behind a wall count too, a fat radius is the point
+    public static final double PACK_PLAYER_RADIUS = 12;
+    // and this close it is already on top of us, so we back away first (the hold alone would stand in their reach)
+    public static final double PACK_BACKOFF_RADIUS = 8;
+    // how far the back off runs, it only has to get us out of the backoff radius with room to spare
+    public static final double PACK_BACKOFF_DISTANCE = 16;
     // a blaze this close is swinging range: running from it is giving it free shots, it flies faster than we walk
     public static final double LATCH_SKIP_BLAZE_RANGE = 4.5;
 

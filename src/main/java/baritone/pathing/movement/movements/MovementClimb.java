@@ -192,11 +192,27 @@ public class MovementClimb extends Movement {
                 ClimbJump.Shape shape = new ClimbJump.Shape(true, dist, dy, 0, kind, below, above, false, 0, wall == 1, r, s == 1);
                 ClimbJump.Result result = ClimbJump.lookupIfKnown(shape);
                 if (result != null && result.ok()) {
-                    return shape;
+                    // last, this runs on every node near a vine. every shape here misses the same way, so one answer is enough
+                    return missIsSurvivable(context, x, y, z, dir, dist, dy) ? shape : null;
                 }
             }
         }
         return null;
+    }
+
+    // a missed grab drops us down the gap columns (as grabShape walks them) or the vine's own column. none of them may end in
+    // lava or fire, or in nothing at all
+    private static boolean missIsSurvivable(CalculationContext context, int x, int y, int z, Direction dir, int dist, int dy) {
+        int dx = dir.getStepX(), dz = dir.getStepZ();
+        for (int k = 1; k <= dist; k++) {
+            int cx = x + dx * k, cz = z + dz * k;
+            // the vine column starts under the vine, the gap columns under our feet
+            int top = k == dist ? y + dy - 1 : y - 1;
+            if (!ClimbMiss.safeFloor(yy -> context.get(cx, yy, cz), top)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static final int[] LEAP_CLIMBS = {0, -1, 1, -2};

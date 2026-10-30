@@ -1365,7 +1365,15 @@ public final class CombatCommit {
         // a wither skeleton close with a line on us: one target, hit it first. outside the cooldown and past the shooter-sight gate
         // below (a fortress always has a blaze looking at us), because its walk to us is the thing that costs the hp
         Foe wither = witherComing(t);
-        if (wither != null) return startFight(t, wither, Why.IN_WAY, Event.FIGHT_START, false);
+        if (wither != null) {
+            // (wither or fire already ticking on us: a pick at this hp is the same one the generic way fight below refuses. a skeleton
+            // we turn down still walks up and hits us, so it is a run from it, once, instead of nothing)
+            if (t.lingering() && t.health() < LINGER_PICK_HP) {
+                ranFrom.put(wither.id(), t.now());
+                return startRun(t, Why.HEAVY, Event.RUN_START);
+            }
+            return startFight(t, wither, Why.IN_WAY, Event.FIGHT_START, false);
+        }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
@@ -1546,6 +1554,9 @@ public final class CombatCommit {
         Foe best = null;
         for (Foe foe : candidates(t)) {
             if (!foe.wither() || !foe.sight() || foe.distance() > WITHER_START_RANGE || gaveUpOn(foe, t.now())) continue;
+            // (one we already ran from is not run from twice inside the zone expiry, same as bruteRun)
+            Long ran = ranFrom.get(foe.id());
+            if (ran != null && t.now() >= ran && t.now() - ran < RunZones.EXPIRY_TICKS) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
         return best;

@@ -112,4 +112,21 @@ public class CombatCommitWitherTest {
         assertEquals(Event.NONE, c.step(tick(20, 20, List.of(back, blaze()), back, true)));
         assertEquals(Mode.FIGHT, c.mode());
     }
+
+    private static Tick lingeringTick(long now, float hp, boolean lingering, List<Foe> foes) {
+        return new Tick(now, hp, 0, 0, foes, null, Way.NONE, true, false, false, RecoverHold.Body.NONE, false, 0, false, lingering);
+    }
+
+    @Test
+    public void withWitherOrFireOnUsBelowTheLingerLineItIsARunNotAFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(lingeringTick(0, 15, true, List.of(wither(1, 3, true)))));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void theLingerLineIsTheSameOneTheWayFightUses() {
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(lingeringTick(0, CombatCommit.LINGER_PICK_HP, true, List.of(wither(1, 3, true)))));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(lingeringTick(0, 15, false, List.of(wither(1, 3, true)))));
+    }
 }
