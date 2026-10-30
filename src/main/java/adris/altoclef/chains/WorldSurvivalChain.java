@@ -10,12 +10,15 @@ import adris.altoclef.tasks.construction.PutOutFireTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
+import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
+import adris.altoclef.tasks.movement.StepIntoPortalTask;
 import adris.altoclef.tasks.movement.StepOffTask;
 import adris.altoclef.tasks.speedrun.DragonBreathTracker;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.ArrivalRules;
 import adris.altoclef.util.helpers.BreathDodge;
 import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.DunkRules;
@@ -44,6 +47,15 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private final TimerGame _wasInLavaTimer = new TimerGame(1);
     private boolean _wasAvoidingDrowning;
     private TimerGame _portalStuckTimer = new TimerGame(5);
+
+    // the first seconds after a dimension change (see ArrivalRules): the level we last saw, when it changed, and whether the
+    // arrival line went out. a step back into the portal latches so it can wait there for the teleport
+    private net.minecraft.world.level.Level _arrivalWorld;
+    private Dimension _arrivalDim;
+    private int _sinceArrival;
+    private boolean _arrivalLogged;
+    private boolean _stepBackLatched;
+    private long _lastStepBackMs;
 
     // our name on the sneak key, so letting go never lifts the shield's hold and the fix chain knows to leave it be
     static final Object MAGMA_SNEAK = new Object();
@@ -87,8 +99,19 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // magma only burns what is not sneaking, so a bot stuck standing on it keeps its shift down
         handleMagmaSneak(mod);
 
+        trackArrival(mod);
+        // before anything returns: the arrival line must go out even when a lava escape takes the wheel
+        boolean holding = arrivalHold(mod);
+
         // Lava Escape
-        if (isInLavaOhShit(mod) && mod.getBehaviour().shouldEscapeLava()) {
+        boolean lava = isInLavaOhShit(mod) && mod.getBehaviour().shouldEscapeLava();
+        // a portal that dropped us by lava is the safest way out, the other side is home
+        Task stepBack = portalStepBack(mod, lava);
+        if (stepBack != null) {
+            setTask(stepBack);
+            return 100;
+        }
+        if (lava) {
             setTask(new EscapeFromLavaTask());
             return 100;
         }
@@ -118,6 +141,13 @@ public class WorldSurvivalChain extends SingleTaskChain {
         if (dodge != null) {
             setTask(dodge);
             return 85;
+        }
+
+        // no chunks yet after a dimension change means the planner sees air where the lava is, so the user task waits until they
+        // land. under the fights (mob defense) and the fires above, over everything the user task does
+        if (holding) {
+            setTask(new IdleTask());
+            return 70;
         }
 
         // an angry enderman at the bottom of the health bar: water at our feet (see EndermanWater)
@@ -371,6 +401,72 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
     }
 
+    private void trackArrival(AltoClef mod) {
+        Dimension dim = WorldHelper.getCurrentDimension();
+        if (mod.getWorld() != _arrivalWorld || dim != _arrivalDim) {
+            _arrivalWorld = mod.getWorld();
+            _arrivalDim = dim;
+            _sinceArrival = 0;
+            _arrivalLogged = false;
+            _stepBackLatched = false;
+            // a fresh arrival gets a fresh five seconds in a portal, the old clock was for the other side
+            _portalStuckTimer.reset();
+        } else if (_sinceArrival < Integer.MAX_VALUE) {
+            _sinceArrival++;
+        }
+    }
+
+    private Task portalStepBack(AltoClef mod, boolean inLava) {
+        if (_arrivalDim != Dimension.NETHER) {
+            return null;
+        }
+        BlockPos portal = ArrivalRules.nearestPortal(mod.getPlayer().blockPosition(),
+                p -> mod.getWorld().getBlockState(p).is(Blocks.NETHER_PORTAL));
+        if (!ArrivalRules.stepBack(true, _sinceArrival, inLava, _stepBackLatched, portal != null)) {
+            _stepBackLatched = false;
+            return null;
+        }
+        if (!_stepBackLatched) {
+            long now = System.currentTimeMillis();
+            Debug.logInternal("arrival: lava next to the portal, stepping back in at " + portal.toShortString()
+                    + (now - _lastStepBackMs < ArrivalRules.REPEAT_MS ? " (again, the last one was " + (now - _lastStepBackMs) / 1000 + " s ago)" : ""));
+            _lastStepBackMs = now;
+        }
+        _stepBackLatched = true;
+        return new StepIntoPortalTask(portal);
+    }
+
+    // true while the ground around us has not arrived, once per arrival it also writes down what the box around us holds
+    private boolean arrivalHold(AltoClef mod) {
+        if (_arrivalLogged) {
+            return false;
+        }
+        BlockPos at = mod.getPlayer().blockPosition();
+        int r = ArrivalRules.LOOK_RADIUS;
+        boolean loaded = true;
+        for (int dx = -r; dx <= r && loaded; dx += 2 * r) {
+            for (int dz = -r; dz <= r && loaded; dz += 2 * r) {
+                loaded = mod.getWorld().getChunkSource().hasChunk((at.getX() + dx) >> 4, (at.getZ() + dz) >> 4);
+            }
+        }
+        if (ArrivalRules.hold(_sinceArrival, loaded)) {
+            return true;
+        }
+        _arrivalLogged = true;
+        if (_arrivalDim == Dimension.NETHER) {
+            int lava = 0;
+            int portal = 0;
+            for (BlockPos p : BlockPos.betweenClosed(at.offset(-r, -1, -r), at.offset(r, 1, r))) {
+                Block b = mod.getWorld().getBlockState(p).getBlock();
+                if (b == Blocks.LAVA) lava++;
+                else if (b == Blocks.NETHER_PORTAL) portal++;
+            }
+            Debug.logInternal("arrival: nether at " + at.toShortString() + ", 5x3x5 has lava " + lava + " portal " + portal
+                    + (loaded ? "" : " (chunks never all showed up)"));
+        }
+        return false;
+    }
+
     private boolean isInLavaOhShit(AltoClef mod) {
         if (mod.getPlayer().isInLava() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
             _wasInLavaTimer.reset();
@@ -396,7 +492,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     private boolean isStuckInNetherPortal(AltoClef mod) {
-        if (!WorldHelper.isInNetherPortal(mod)) return false;
+        if (!WorldHelper.isInNetherPortal(mod) || _stepBackLatched) return false;
         // nothing running means nobody asked us to be anywhere, so a player standing in a portal gets left alone
         Task userTask = mod.getUserTaskChain().getCurrentTask();
         return userTask != null && !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);

@@ -302,7 +302,6 @@ public class NetherPhase implements PhaseHandler {
     public void onEnter(AltoClef mod, GamerContext ctx) {
         RunState s = ctx.state();
         NetherConfig n = ctx.cfg().nether;
-        s.netherRodsGaveUp = false;
         planner = new NetherSweepPlanner(s, n);
         planner.setGround(new NetherGround(mod, () -> n.waypointShiftBlocks));
         planner.setLog(Debug::logInternal);
