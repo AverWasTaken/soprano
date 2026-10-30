@@ -6,6 +6,7 @@ import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.CursorWatch;
 import adris.altoclef.trace.DebugCollapse;
 import adris.altoclef.trace.EntryLatch;
+import adris.altoclef.trace.FallTrace;
 import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.MonitorErrors;
 import adris.altoclef.trace.StandWatch;
@@ -15,6 +16,10 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.DebugTap;
+import baritone.api.pathing.goals.Goal;
+import baritone.pathing.movement.Movement;
+import baritone.pathing.path.PathExecutor;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -44,6 +49,11 @@ public final class Monitors {
     private final StandWatch standWatch = new StandWatch();
     // 40 ticks out of the lava before the next dip gets its own line
     private final EntryLatch lavaLatch = new EntryLatch(40);
+    // the last 60 ticks of motion, dumped when a nether fall gets long or we land in lava
+    private final FallTrace fallTrace = new FallTrace();
+    private final BlockPos.MutableBlockPos underFeet = new BlockPos.MutableBlockPos();
+    private int lastHurtTime;
+    private boolean lavaEntered;
 
     // baritone's logDebug goes nowhere unless chatDebug is on, which is most of what it says about why it stopped. the
     // collapse is static because the tap is, and so is the tick it stamps lines with (the path threads log too)
@@ -109,14 +119,19 @@ public final class Monitors {
         } catch (RuntimeException e) {
             broke("stand", e);
         }
-        if (++cursorTicks < CURSOR_EVERY) {
-            return;
+        if (++cursorTicks >= CURSOR_EVERY) {
+            cursorTicks = 0;
+            try {
+                watchCursor();
+            } catch (RuntimeException e) {
+                broke("cursor", e);
+            }
         }
-        cursorTicks = 0;
+        // last of the watchers: a TRACE DUMP from the stand or cursor watch should not find its lead up pushed out by our lines
         try {
-            watchCursor();
+            watchFall(mod);
         } catch (RuntimeException e) {
-            broke("cursor", e);
+            broke("falltrace", e);
         }
     }
 
@@ -150,8 +165,59 @@ public final class Monitors {
         DamageSource source = player.hurtTime > 0 ? player.getLastDamageSource() : null;
         // only standing in it keeps the latch held: a lava hit that lingers after we climbed out must not eat the re-arm count
         boolean lava = player.isInLava() || (lavaLatch.armed() && source != null && source.is(DamageTypes.LAVA));
-        if (lavaLatch.tick(lava)) {
+        lavaEntered = lavaLatch.tick(lava);
+        if (lavaEntered) {
             Debug.logInternal(StandReport.lava(mod, mod.getClientBaritone(), player, WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT)));
+        }
+    }
+
+    // every tick is a few array writes. the lines only get built when a nether fall passes 4 blocks or the lava line just fired
+    private void watchFall(AltoClef mod) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return;
+        }
+        PathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
+        Movement movement = null;
+        if (current != null && current.getPath() != null) {
+            var movements = current.getPath().movements();
+            int at = current.getPosition();
+            if (at >= 0 && at < movements.size() && movements.get(at) instanceof Movement m) {
+                movement = m;
+            }
+        }
+        // hurtTime stays up for ten ticks, only the tick it starts is a hit
+        boolean hit = player.hurtTime > lastHurtTime;
+        lastHurtTime = player.hurtTime;
+        Entity attacker = null;
+        if (hit && player.getLastDamageSource() != null) {
+            attacker = player.getLastDamageSource().getEntity();
+        }
+        var move = player.getDeltaMovement();
+        if (attacker != null) {
+            // the knock itself shows in the ring over the next ticks, this is the who and where
+            Debug.logInternal(String.format(Locale.ROOT, "[falltrace] hit by %s at %.2f %.2f %.2f, we are at %.2f %.2f %.2f vel %.3f %.3f %.3f",
+                    BuiltInRegistries.ENTITY_TYPE.getKey(attacker.getType()).getPath(), attacker.getX(), attacker.getY(), attacker.getZ(), player.getX(), player.getY(), player.getZ(),
+                    move.x, move.y, move.z));
+        }
+        var input = player.input.keyPresses;
+        byte keys = (byte) ((input.forward() ? FallTrace.FORWARD : 0) | (input.backward() ? FallTrace.BACK : 0)
+                | (input.left() ? FallTrace.LEFT : 0) | (input.right() ? FallTrace.RIGHT : 0)
+                | (input.sprint() ? FallTrace.SPRINT : 0) | (input.jump() ? FallTrace.JUMP : 0));
+        Goal goal = mod.getClientBaritone().getPathingBehavior().getGoal();
+        fallTrace.push(player.getX(), player.getY(), player.getZ(), move.x, move.y, move.z, player.onGround(), (float) player.fallDistance, keys,
+                player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, goal,
+                hit, attacker == null ? -1 : attacker.getId(), attacker == null ? 0 : attacker.getX(), attacker == null ? 0 : attacker.getY(),
+                attacker == null ? 0 : attacker.getZ());
+        boolean nether = WorldHelper.getCurrentDimension() == baritone.api.utils.Dimension.NETHER;
+        if (fallTrace.falling(nether, (float) player.fallDistance) | lavaEntered) {
+            dumpFall();
+        }
+    }
+
+    private void dumpFall() {
+        for (int i = 0; i < fallTrace.size(); i++) {
+            Debug.logInternal(fallTrace.line(i, m -> m instanceof Movement mv ? mv.getClass().getSimpleName() + " " + mv.getSrc().toShortString() + "->" + mv.getDest().toShortString() : "none"));
         }
     }
 
