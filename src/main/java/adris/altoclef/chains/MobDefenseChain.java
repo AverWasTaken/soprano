@@ -313,7 +313,12 @@ public class MobDefenseChain extends SingleTaskChain {
 
         // Force field
         doForceField(mod);
-        _lavaGuard.tick(mod, _brain);
+        // a perch: the pillar top reads as a ledge over a drop, but nothing up there can knock us off it, so no leaning toward the foe
+        if (_brain.perching()) {
+            _lavaGuard.release(mod);
+        } else {
+            _lavaGuard.tick(mod, _brain);
+        }
 
         return commitPriority(mod);
     }
@@ -753,6 +758,20 @@ public class MobDefenseChain extends SingleTaskChain {
             _creeperStep.reset();
             _creeperPlayer = player;
             _creeperDimension = dimension;
+        }
+        // on a perch the step would walk us off the pillar (and a creeper that close is the perch's rules to call off), so it never
+        // starts and one that was running ends here, cap and all
+        if (_brain.perching()) {
+            _creeperStep.reset();
+            _capSince = Long.MIN_VALUE;
+            _capDone = false;
+            _capPlaced = false;
+            _capBeside = null;
+            _capCreeper = -1;
+            _capAbove = false;
+            _creeperNoHeading = false;
+            dropCapSneak(mod);
+            return;
         }
         CombatCommit.Mode mode = _brain.mode();
         boolean running = mode == CombatCommit.Mode.RUN;
