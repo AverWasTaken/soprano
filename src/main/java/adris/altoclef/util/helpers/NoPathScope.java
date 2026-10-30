@@ -22,7 +22,17 @@ public final class NoPathScope {
         EXHAUSTED
     }
 
+    // a block this far off that the search timed out on is not coming back in two minutes
+    public static final double FAR_SQ = 64.0 * 64.0;
+
     private NoPathScope() {
+    }
+
+    // strikes a no path block may have before the long ban. a timed out search to something far off gets it at once: walking
+    // toward it resets the strike count (the ban book counts a closer approach as a new try), so the same far block came back
+    // every couple of minutes
+    public static int strikesAllowed(Verdict verdict, double distSq) {
+        return verdict == Verdict.TIMED_OUT && distSq > FAR_SQ ? 0 : 2;
     }
 
     // baritone only counts empty searches (and, separately, the ones that ran out of nodes). this turns the two counters into

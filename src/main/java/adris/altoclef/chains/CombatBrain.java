@@ -540,7 +540,7 @@ final class CombatBrain {
         // (only the bite hears it, shotAt() stays the raw answer for the meals that ask the chain)
         boolean biteShot = shotAt;
         if (shotAt) {
-            _shotUntil = now + CombatCommit.SHOT_LATCH;
+            _shotUntil = Math.max(_shotUntil, now + CombatCommit.SHOT_LATCH);
         } else if (now <= _shotUntil) {
             biteShot = true;
         }
@@ -589,7 +589,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)), mob));
+                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)), mob, player));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -802,10 +802,14 @@ final class CombatBrain {
         DamageSource source = player.getLastDamageSource();
         if (source == null || source == _shotCounted) return;
         _shotCounted = source;
+        boolean ranged = source.getEntity() instanceof Mob mob && MobReachability.isRanged(mob);
         if (source.getDirectEntity() instanceof Projectile) {
             _shots++;
             _shotTick = now;
         }
+        // a shooter past FOE_RANGE is no foe, so shotAt never sees it and the 60 tick latch never starts: a trident from 18
+        // blocks hit us mid meal after the run ended. the hit itself keeps the bite closed for a full SHOT_MEMORY
+        if (ranged || source.getDirectEntity() instanceof Projectile) _shotUntil = CombatCommit.hitLatch(_shotUntil, now);
     }
 
     // the world's side of the perch for this tick, null when nothing is close enough to matter (and we are not on one already)
@@ -914,7 +918,7 @@ final class CombatBrain {
         long sinceHit = book.sinceHit(mob.getId(), now);
         return withSplit(new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
                 reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now), fast(mob)).withBrute(dimension == Dimension.NETHER && typeOf(mob).equals("piglin_brute"))
-                .withWither(dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")).withWet(wet(mob, player)), mob);
+                .withWither(dimension == Dimension.NETHER && typeOf(mob).equals("wither_skeleton")).withWet(wet(mob, player)), mob, player);
     }
 
     // it is in the water, or we are afloat with no floor (wading with our feet on the bottom is still a fight we can take)
@@ -923,11 +927,13 @@ final class CombatBrain {
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
-    private static Foe withSplit(Foe foe, Mob mob) {
+    // (a wither skeleton carries its height over us in y instead, the pack rule only wants to know about the ones on our floor)
+    private static Foe withSplit(Foe foe, Mob mob, LocalPlayer player) {
         String type = typeOf(mob);
         boolean cube = type.equals("slime") || type.equals("magma_cube");
         // a size 1 cube has 1 max health (size squared) and leaves nothing behind
         Foe out = cube ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
+        if (foe.wither()) out = out.withSplit(null, false, 0, mob.getY() - player.getY(), 0);
         // the ones whose hit shoves us, the rim rules ask for them (an angry piglin is only ever a foe once it is angry)
         return cube || type.equals("zombified_piglin") ? out.withKnocker(true) : out;
     }

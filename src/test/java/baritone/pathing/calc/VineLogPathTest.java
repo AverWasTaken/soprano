@@ -205,6 +205,12 @@ public class VineLogPathTest {
                 w.set(x, 63, z, Blocks.GRASS_BLOCK.defaultBlockState());
             }
         }
+        // a bottom to the pit: a missed grab into nothing is rejected now (ClimbMiss), and a pit is not a void
+        for (int x = -12; x < ledge; x++) {
+            for (int z = -12; z <= 12; z++) {
+                w.set(x, 49, z, Blocks.STONE.defaultBlockState());
+            }
+        }
         for (int y = 50; y <= 72; y++) {
             w.set(0, y, 0, Blocks.JUNGLE_LOG.defaultBlockState());
         }

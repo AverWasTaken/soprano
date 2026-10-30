@@ -27,6 +27,7 @@ public final class CombatCommit {
     public static final float FLEE_HP = CombatRules.FLEE_HEALTH;
     // under this hp, with wither or fire on us, we do not pick a path fight
     public static final float LINGER_PICK_HP = 16;
+    public static final double WITHER_PACK_RANGE = 10;
     // heavy hitters are run from at this hp instead (see CombatRules.HEAVY_FLEE_HEALTH for why it is its own number)
     public static final float HEAVY_FLEE_HP = CombatRules.HEAVY_FLEE_HEALTH;
     // at or below FLEE_HP anything angry this close is a reason to leave
@@ -149,6 +150,12 @@ public final class CombatCommit {
     // a shooter that was a reason not to eat stays one this long after it stops being (a line that flickers behind a tree, a
     // skeleton that steps out past the range): the meal is 1.6 s and one arrow in it is 4
     public static final long SHOT_LATCH = 60;
+
+    // a ranged hit on us keeps the bite closed for SHOT_MEMORY ticks, however far off the shooter stood (past FOE_RANGE it is no foe
+    // at all, so nothing else would remember it)
+    public static long hitLatch(long until, long now) {
+        return Math.max(until, now + SHOT_MEMORY);
+    }
     // a shot this fresh (two seconds) breaks the run latch for the low hp rule: the latch is for fights that ended, not for arrows
     public static final long SHOT_FRESH = 40;
 
@@ -639,10 +646,13 @@ public final class CombatCommit {
         }
         // (at gapple hp a fight keeps the gapple stance below, that bite is the better one)
         if (mode == Mode.FIGHT && gapple && health <= FLEE_HP) fighting = true;
+        // a calm meal right after a ranged hit is the same arrow, hurt or not (the golden apple is still fine)
+        if (!fighting && mode == Mode.NONE && bite.shotAt() && health <= FLEE_HP && !gapple) return CombatRules.Stance.FLEE;
         if (!fighting) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple, hasFood);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
-        if (stance == CombatRules.Stance.EAT && mode != Mode.NONE) return CombatRules.Stance.FLEE;
+        // (and not right after a ranged hit either: a quick bite at hp 4 in a shooter's sight is the arrow that finishes the meal)
+        if (stance == CombatRules.Stance.EAT && (mode != Mode.NONE || bite.shotAt())) return CombatRules.Stance.FLEE;
         return stance;
     }
 
@@ -1173,6 +1183,8 @@ public final class CombatCommit {
         // one re-perch near the last one, then the old rules
         if (t.now() - lastPerchAt < PerchRules.REPERCH_TICKS && Math.hypot(t.x() - lastPerchX, t.z() - lastPerchZ) < PerchRules.REPERCH_BLOCKS
                 && rePerches >= PerchRules.REPERCH_MAX) return 0;
+        // no room to build a pillar: the old rules
+        if (!PerchRules.roomToStart(t.foes())) return 0;
         boolean pressing = runHits >= 1;
         for (Foe foe : t.foes()) {
             if (foe.ranged() && !foe.creeper() && foe.sinceHit() <= PerchRules.SHOT_QUIET) return 0;
@@ -1365,7 +1377,15 @@ public final class CombatCommit {
         // a wither skeleton close with a line on us: one target, hit it first. outside the cooldown and past the shooter-sight gate
         // below (a fortress always has a blaze looking at us), because its walk to us is the thing that costs the hp
         Foe wither = witherComing(t);
-        if (wither != null) return startFight(t, wither, Why.IN_WAY, Event.FIGHT_START, false);
+        if (wither != null) {
+            // (hurt, or a pack of them on our floor: not a fight we pick. a skeleton we turn down still walks up and hits us, so it is
+            // a run from it, once, instead of nothing)
+            if (t.health() < LINGER_PICK_HP || otherWither(t, wither)) {
+                ranFrom.put(wither.id(), t.now());
+                return startRun(t, Why.HEAVY, Event.RUN_START);
+            }
+            return startFight(t, wither, Why.IN_WAY, Event.FIGHT_START, false);
+        }
         // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
         // (and not with a pickaxe either: the way fight is one we pick, it wants a sword or an axe)
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
@@ -1546,6 +1566,9 @@ public final class CombatCommit {
         Foe best = null;
         for (Foe foe : candidates(t)) {
             if (!foe.wither() || !foe.sight() || foe.distance() > WITHER_START_RANGE || gaveUpOn(foe, t.now())) continue;
+            // (one we already ran from is not run from twice inside the zone expiry, same as bruteRun)
+            Long ran = ranFrom.get(foe.id());
+            if (ran != null && t.now() >= ran && t.now() - ran < RunZones.EXPIRY_TICKS) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
         return best;
@@ -1564,8 +1587,19 @@ public final class CombatCommit {
     // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
     // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
     // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
+    // another wither skeleton within WITHER_PACK_RANGE of us, on our floor (the ones through the fortress floors do not count). a wither
+    // skeleton's y is its height over us, see CombatBrain.withSplit
+    private static boolean otherWither(Tick t, Foe self) {
+        for (Foe foe : t.foes()) {
+            if (foe.id() != self.id() && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
+        }
+        return false;
+    }
+
     private static float lowHit(Tick t) {
         Foe target = t.target();
+        // a lone wither skeleton is a fight we stay in: its hit is 4.5 and the bail at 12.5 hp is what turned our back on it
+        if (target != null && target.wither() && !otherWither(t, target)) return 0;
         // (one hit is the whole cost only when nothing keeps ticking after it: wither and fire do)
         if (t.lingering() || target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
         for (Foe foe : t.foes()) {

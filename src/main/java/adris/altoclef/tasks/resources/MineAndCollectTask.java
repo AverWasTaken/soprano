@@ -1491,8 +1491,11 @@ public class MineAndCollectTask extends ResourceTask {
             if (!vein.isEmpty()) {
                 BanPolicy.noPathVein(mod.getBans(), vein, stuck.getX(), stuck.getY(), stuck.getZ());
             }
-            // a strike either way, like the stall this replaces: a block that times out every time has to reach the long ban
-            mod.getBlockTracker().requestBlockUnreachable(stuck, 2, "no path to it");
+            // a strike either way, like the stall this replaces: a block that times out every time has to reach the long ban.
+            // a timed out search to something far off gets the long ban at once: walking toward it resets the strike count
+            // (the ban book counts a closer approach as a new try), so the same far block came back every couple of minutes
+            mod.getBlockTracker().requestBlockUnreachable(stuck,
+                    NoPathScope.strikesAllowed(verdict, mod.getPlayer().blockPosition().distSqr(stuck)), "no path to it");
             if (_logsOnly) {
                 // the stall used to be what counted a tree's strikes, and the pick relies on them to leave a canopy
                 giveUpTree(mod, stuck);
