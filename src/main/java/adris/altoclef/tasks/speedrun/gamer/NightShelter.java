@@ -1,8 +1,12 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.RecoverHold;
+
 // the narrow night shelter: a respawn with no armor and no bed at night is a skeleton snack on the surface, and a sealed hole in
-// the dirt for the rest of the night is the cheap answer. narrow on purpose (a recent death is part of the trigger): hiding on
-// every first night would make the run a scaredy cat. every decision is here, ShelterTask does the digging
+// the dirt for the rest of the night is the cheap answer. narrow on purpose (a recent death, or hurt with nothing to heal with,
+// is part of the trigger): hiding on every first night would make the run a scaredy cat, but half health, no food and no armor
+// is the exact state that dies twice outside. every decision is here, ShelterTask does the digging
 public final class NightShelter {
     // worn armor points under this and a night on the surface is worth hiding from (a full iron kit is 15, a chestplate alone 6)
     public static final int ARMOR_LINE = 6;
@@ -38,12 +42,38 @@ public final class NightShelter {
     // was not just killed, so armor and a recent death are not asked. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
     // to regen, and the bed trip's tries have nothing to do with this
     public record Trigger(boolean windowOpen, boolean overworld, int armorPoints, boolean noBed, int depthBelowSky, boolean recoveryActive,
-                          boolean fighting, boolean busy, boolean usedThisNight, long ticksSinceDeath, boolean tripNight) {
+                          boolean fighting, boolean busy, boolean usedThisNight, long ticksSinceDeath, boolean tripNight,
+                          float health, int hunger, boolean healFood) {
     }
 
     public static boolean wanted(Trigger t) {
         return t.windowOpen() && t.overworld() && (t.tripNight() || t.armorPoints() < ARMOR_LINE) && t.noBed() && t.depthBelowSky() <= SURFACE_DEPTH
-                && !t.recoveryActive() && !t.fighting() && !t.busy() && !t.usedThisNight() && (t.tripNight() || recentDeath(t.ticksSinceDeath()));
+                && !t.recoveryActive() && !t.fighting() && !t.busy() && !t.usedThisNight()
+                && (t.tripNight() || recentDeath(t.ticksSinceDeath()) || hurtNoHeal(t.health(), t.hunger(), t.healFood()));
+    }
+
+    // really hurt, no armor, and nothing to heal with (an empty belly does not regen): a night outside like that is a second
+    // death waiting to happen, so it counts like a death did. one heart down is every first night, that is not it
+    public static final float HURT_AT = 12;
+
+    public static boolean hurtNoHeal(float health, int hunger, boolean healFood) {
+        return health <= HURT_AT && !CombatRules.canRegen(hunger, healFood);
+    }
+
+    // why no column made the cut: how many of the candidates fail each check, for the log line when the hole has nowhere to go
+    public static String failCounts(java.util.List<Column> columns) {
+        int[] n = new int[8];
+        for (Column c : columns) {
+            n[0] += c.topDiggable() && c.midDiggable() && c.lowDiggable() ? 0 : 1;
+            n[1] += c.floorSolid() ? 0 : 1;
+            n[2] += c.floorFluid() ? 1 : 0;
+            n[3] += c.fluidNear() ? 1 : 0;
+            n[4] += c.wallsSolid() ? 0 : 1;
+            n[5] += c.openAbove() ? 0 : 1;
+            n[6] += c.capSupply() >= BLOCKS_NEEDED ? 0 : 1;
+        }
+        return "no column: " + columns.size() + " looked at, " + n[0] + " not diggable, " + n[1] + " no floor, " + n[2] + " fluid floor, "
+                + n[3] + " fluid near, " + n[4] + " open walls, " + n[5] + " no open sky, " + n[6] + " short on cap blocks";
     }
 
     // no bed for tonight: none to be had, or one the trip may not use because it would move the spawn bed (NightSleep.keepsSpawnBed)

@@ -160,4 +160,16 @@ public class TreeChopTest {
         // the other tree is not in the box, so with this one done it's the caller's global nearest
         assertTrue(MineAnchor.nearest(last, List.of(new BlockPos(5, 64, 0)), true, 0.5, 64.5, 0.5, at -> true).isEmpty());
     }
+
+    @Test
+    public void noDirtTripFromDeepDownAMine() {
+        assertFalse(TreeChop.dirtDepthOk(30, 8));
+        assertFalse(TreeChop.dirtDepthOk(9, 8));
+    }
+
+    @Test
+    public void dirtTripStillFineNearTheSurface() {
+        assertTrue(TreeChop.dirtDepthOk(8, 8));
+        assertTrue(TreeChop.dirtDepthOk(0, 8));
+    }
 }

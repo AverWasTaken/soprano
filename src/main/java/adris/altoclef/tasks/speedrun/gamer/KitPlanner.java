@@ -57,6 +57,13 @@ public final class KitPlanner {
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, WoodBudget wood) {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food, wood));
         addRefill(out, food);
+        // food sits last here, so a hungry bag walks past every pig on its way to the next log. one loaded close by leads, up to
+        // the floor and no further: the rest of the refill stays where it was. not before the axe though, punching eight cows
+        // to death with bare hands while the first tree waits is a bad look and a slow one
+        boolean axeOwed = out.stream().anyMatch(n -> isAxe(n.catalogueName()));
+        if (food.held() < food.floor() && f.preyNear() && !axeOwed) {
+            out.add(0, new KitNeed(KitNeed.FOOD, food.floor()));
+        }
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
         // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
         return out;
@@ -100,7 +107,8 @@ public final class KitPlanner {
         out.addAll(late);
         addFood(out, food, food.target());
         addCook(out, f, cfg, endBeds, wood);
-        return out;
+        // a dry spell (nothing to hunt for minutes): the next kit step goes first, unless an animal is right here (FoodDry)
+        return FoodDry.defers(f.foodDryLatched(), f.preyNear()) ? FoodDry.defer(out) : out;
     }
 
     // gathering: all the wood comes first, so nothing climbs out of a cave for one more log later. a small batch (table

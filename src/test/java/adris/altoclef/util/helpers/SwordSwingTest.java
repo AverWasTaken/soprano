@@ -54,6 +54,7 @@ public class SwordSwingTest {
     public void aCalmNeutralBesideTheTargetSwingsEarlyUnderTheSweepLine() {
         assertTrue(SwordSwing.charged(0.6, true));
         assertTrue(SwordSwing.charged(0.85, true));
+        assertTrue(SwordSwing.charged(0.9, true));
         assertFalse(SwordSwing.charged(0.5, true));
         // the sweep needs more than 0.9, the early swing stays under it
         assertTrue(SwordSwing.CALM_SWING_SCALE < 0.9);
@@ -64,7 +65,60 @@ public class SwordSwingTest {
         assertFalse(SwordSwing.charged(0.6, false));
         assertFalse(SwordSwing.charged(0.99, false));
         assertTrue(SwordSwing.charged(1, false));
-        assertTrue(SwordSwing.charged(1, true));
+    }
+
+    @Test
+    public void aFullChargeNeverSwingsBesideACalmNeutral() {
+        assertFalse(SwordSwing.charged(0.91, true));
+        assertFalse(SwordSwing.charged(1, true));
+    }
+
+    @Test
+    public void overTheSweepLineBesideACalmNeutralThrowsTheChargeAway() {
+        assertTrue(SwordSwing.needsReset(0.91, true));
+        assertTrue(SwordSwing.needsReset(1, true));
+        assertFalse(SwordSwing.needsReset(0.9, true));
+        assertFalse(SwordSwing.needsReset(0.6, true));
+        // nothing calm near: a full swing is the normal one
+        assertFalse(SwordSwing.needsReset(1, false));
+    }
+
+    @Test
+    public void aScaleNeverBothSwingsAndResetsBesideACalmNeutral() {
+        for (double scale = 0; scale <= 1.0001; scale += 0.01) {
+            boolean swing = SwordSwing.charged(scale, true);
+            boolean reset = SwordSwing.needsReset(scale, true);
+            assertFalse("scale " + scale, swing && reset);
+        }
+    }
+
+    @Test
+    public void theOddItemStaysInHandForThreeTicksPastTheSwap() {
+        long at = 100;
+        for (long now = at; now <= at + SwordSwing.RESET_HOLD_TICKS; now++) {
+            assertTrue("tick " + now, SwordSwing.resetHeld(now, at));
+        }
+        assertFalse(SwordSwing.resetHeld(at + SwordSwing.RESET_HOLD_TICKS + 1, at));
+        // the clock going backwards (a new world) is no hold
+        assertFalse(SwordSwing.resetHeld(at - 1, at));
+        assertTrue(SwordSwing.RESET_HOLD_TICKS >= 3);
+    }
+
+    @Test
+    public void aCalmNeutralIsNearInsideTheBoxGrownOneAndAHalfAndThreeBlocksOut() {
+        AABB target = new AABB(0, 0, 0, 0.6, 1.95, 0.6);
+        // 1.4 off the edge: past the vanilla sweep box (1.0), inside ours
+        AABB far = new AABB(2.0, 0, 0, 2.6, 1.95, 0.6);
+        assertFalse(SwordSwing.inSweepBox(target, far, 4));
+        assertTrue(SwordSwing.calmNear(target, far, 4));
+        // 1.6 off the edge: outside
+        assertFalse(SwordSwing.calmNear(target, new AABB(2.2, 0, 0, 2.8, 1.95, 0.6), 4));
+        // grown 0.75 up and down: a mob a block over its head is not near, half a block is
+        assertFalse(SwordSwing.calmNear(target, new AABB(0, 3.0, 0, 0.6, 4.9, 0.6), 4));
+        assertTrue(SwordSwing.calmNear(target, new AABB(0, 2.4, 0, 0.6, 4.3, 0.6), 4));
+        // more than 3 blocks from us: not near
+        assertTrue(SwordSwing.calmNear(target, far, 8.9));
+        assertFalse(SwordSwing.calmNear(target, far, 9));
     }
 
     @Test
@@ -78,25 +132,6 @@ public class SwordSwingTest {
             }
         }
         assertEquals(4, window);
-    }
-
-    @Test
-    public void onlyAChargedStandingSwingSweeps() {
-        assertTrue(SwordSwing.wouldSweep(1, true, false, 0, 0.1));
-        assertTrue(SwordSwing.wouldSweep(0.95, true, false, 0, 0.1));
-        // 0.9 itself is not over the line
-        assertFalse(SwordSwing.wouldSweep(0.9, true, false, 0, 0.1));
-        assertFalse(SwordSwing.wouldSweep(0.84, true, false, 0, 0.1));
-        assertFalse(SwordSwing.wouldSweep(1, false, false, 0, 0.1));
-        assertFalse(SwordSwing.wouldSweep(1, true, true, 0, 0.1));
-    }
-
-    @Test
-    public void movingFasterThanTwoAndAHalfTimesWalkSpeedDoesNotSweep() {
-        double limit = 0.1 * 2.5;
-        assertTrue(SwordSwing.wouldSweep(1, true, false, limit * limit - 0.0001, 0.1));
-        assertFalse(SwordSwing.wouldSweep(1, true, false, limit * limit, 0.1));
-        assertFalse(SwordSwing.wouldSweep(1, true, false, 1, 0.1));
     }
 
     @Test
@@ -117,15 +152,6 @@ public class SwordSwingTest {
         AABB next = new AABB(0.7, 0, 0, 1.3, 1.95, 0.6);
         assertTrue(SwordSwing.inSweepBox(target, next, 8.9));
         assertFalse(SwordSwing.inSweepBox(target, next, 9));
-    }
-
-    @Test
-    public void theSweepHoldGivesUpAfterTwentyTicks() {
-        assertTrue(SwordSwing.holdSweep(true, 0));
-        assertTrue(SwordSwing.holdSweep(true, SwordSwing.SWEEP_VETO_TICKS));
-        assertFalse(SwordSwing.holdSweep(true, SwordSwing.SWEEP_VETO_TICKS + 1));
-        // nothing calm in the box: never a hold
-        assertFalse(SwordSwing.holdSweep(false, 0));
     }
 
     @Test

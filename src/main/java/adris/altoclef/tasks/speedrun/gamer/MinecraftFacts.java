@@ -6,6 +6,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.DoStuffInContainerTask;
 import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.resources.CollectFoodTask;
+import adris.altoclef.tasks.resources.PreyScan;
 import adris.altoclef.trackers.SimpleChunkTracker;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -84,6 +85,12 @@ public final class MinecraftFacts implements GamerFacts {
     private long goldLookAt = Long.MIN_VALUE;
     private static final int GOLD_LOOK_TICKS = 40;
     private boolean bagFull;
+    // an edible animal is loaded close by (PreyScan), looked at every few ticks and with a bigger line to leave than to arrive
+    private boolean preyNear;
+    private long preyLookAt = Long.MIN_VALUE;
+    // last look that really saw one, so a kill's drops are not abandoned the tick the animal is gone (FoodDry.preyHeld)
+    private long preySeenAt = Long.MIN_VALUE;
+    private static final int PREY_LOOK_TICKS = 10;
     private int fingerprint;
     private int x;
     private int y;
@@ -142,6 +149,43 @@ public final class MinecraftFacts implements GamerFacts {
         }
     }
 
+    private void lookForPrey() {
+        if (dimension != Dimension.OVERWORLD) {
+            preyNear = false;
+            preyLookAt = Long.MIN_VALUE;
+            preySeenAt = Long.MIN_VALUE;
+            if (state != null) {
+                state.foodSearchSince = -1;
+            }
+            return;
+        }
+        if (gameTime < preyLookAt + PREY_LOOK_TICKS && gameTime >= preyLookAt) {
+            return;
+        }
+        preyLookAt = gameTime;
+        boolean seen = PreyScan.near(mod, preyNear ? FoodDry.LEAVE : FoodDry.NEAR);
+        if (seen) {
+            preySeenAt = gameTime;
+        }
+        preyNear = FoodDry.preyKept(seen, preySeenAt, gameTime, CollectFoodTask.lootPending());
+        if (state != null) {
+            String line = FoodDry.tick(state, CollectFoodTask.searching(), preyNear, gameTime);
+            if (line != null) {
+                Debug.logMessage(line);
+            }
+        }
+    }
+
+    @Override
+    public boolean preyNear() {
+        return preyNear;
+    }
+
+    @Override
+    public boolean foodDryLatched() {
+        return state != null && state.foodDryOn;
+    }
+
     // false when there is no player to read (loading screen), the old numbers stay
     public boolean refresh() {
         Player player = mod.getPlayer();
@@ -161,6 +205,7 @@ public final class MinecraftFacts implements GamerFacts {
         }
         countItems(player);
         lookForGold(player);
+        lookForPrey();
         // the junk scan only runs with every slot taken, which is rare
         bagFull = !mod.getItemStorage().hasEmptyInventorySlot() && StorageHelper.getJunkSlot(mod).isEmpty();
         if (state != null) {

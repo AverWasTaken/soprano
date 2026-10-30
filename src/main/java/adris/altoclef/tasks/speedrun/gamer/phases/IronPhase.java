@@ -8,6 +8,7 @@ import adris.altoclef.tasks.speedrun.gamer.BuildBlocks;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.DiamondHunt;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
+import adris.altoclef.tasks.speedrun.gamer.FoodDry;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
@@ -352,7 +353,8 @@ public class IronPhase implements PhaseHandler {
             tripJob = plan.pick().job();
         }
         boolean atScreen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
-        boolean starving = !atScreen && ctx.food().starving(tripJob);
+        // a dry spell is not starving: nothing to hunt for minutes, so the pick keeps swinging (FoodDry)
+        boolean starving = !atScreen && ctx.food().starving(tripJob) && !FoodDry.defers(ctx.facts().foodDryLatched(), ctx.facts().preyNear());
         IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
                 support.golemFighting(), starving, wearFirst(mod, ctx, needs));
         support.beginTick(mod, ctx);

@@ -56,9 +56,11 @@ final class BlazeFight {
     private boolean packDrop;
     private long outOfReachSince = Long.MIN_VALUE;
     private double range = BlazeFightRules.PICK_RANGE;
-    // read off the pathfinder thread. fighting and running never place blocks: pillaring up at a hovering blaze is how we ended
-    // up building next to one
+    // read off the pathfinder thread. fighting and running never place blocks at our feet or above: pillaring up at a hovering
+    // blaze is how we ended up building next to one
     private volatile boolean noPlacing;
+    // our feet y as of the last tick, for the height rule in noPlacing(pos)
+    private volatile int floorY = Integer.MIN_VALUE;
 
     // the rods are in: only blazes close by still matter
     void disengageOnly() {
@@ -76,6 +78,16 @@ final class BlazeFight {
 
     boolean noPlacing() {
         return noPlacing;
+    }
+
+    // the ban by height: below our feet is bridge and traverse territory and stays open, so a bridge we were halfway across
+    // still has a way off. feet level and up (pillar, ascend) is what builds us next to a blaze
+    boolean noPlacing(BlockPos pos) {
+        return placingBanned(noPlacing, pos.getY(), floorY);
+    }
+
+    static boolean placingBanned(boolean noPlacing, int placeY, int floorY) {
+        return noPlacing && placeY >= floorY;
     }
 
     // blazes we could hit right now, and every live blaze in range (that one is just for the hud)
@@ -102,7 +114,8 @@ final class BlazeFight {
         // a run mob defense made also leaves us hurt: wait it out here like our own run, it is the same latch
         if (!running && mod.getMobDefenseChain() != null) {
             long runEnd = mod.getMobDefenseChain().lastCombatRunEnd();
-            if (runEnd != armedFromRun && BlazeFightRules.healAfterRun(now, runEnd, health)) {
+            double blazeDistance = target == null ? Double.POSITIVE_INFINITY : player.distanceTo(target);
+            if (runEnd != armedFromRun && BlazeFightRules.healAfterRun(now, runEnd, health, blazeDistance)) {
                 running = true;
                 armedFromRun = runEnd;
             }
@@ -112,6 +125,7 @@ final class BlazeFight {
         running = next == Mode.RUN;
         mode = next;
         noPlacing = mode != Mode.CAMP;
+        floorY = player.getBlockY();
         watchRun(now, health);
         lastHealth = health;
         logChange(mod, health);

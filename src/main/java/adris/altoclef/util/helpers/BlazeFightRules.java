@@ -46,6 +46,11 @@ public final class BlazeFightRules {
     public static final double PACK_BLAZE_RADIUS = 10;
     // a pack this close to the spawner means the camp spot is theirs, we wait for it to leave or the watch gives the spawner up
     public static final double PACK_SPAWNER_RADIUS = 12;
+    // a run from two of them is already enough to keep the spawner walk out of their closet. two still get fought when they
+    // come at us, but walking back past them for a blaze was the fortress death
+    public static final int ZONE_PACK_SIZE = 2;
+    // a blaze this close is swinging range: running from it is giving it free shots, it flies faster than we walk
+    public static final double LATCH_SKIP_BLAZE_RANGE = 4.5;
 
     private BlazeFightRules() {
     }
@@ -57,7 +62,11 @@ public final class BlazeFightRules {
 
     // the middle of a pack ({x, z}), null when the skeletons in the list are not enough to call it one
     public static double[] packCenter(java.util.List<double[]> spots) {
-        if (!packNear(spots.size())) return null;
+        return packCenter(spots, PACK_SIZE);
+    }
+
+    public static double[] packCenter(java.util.List<double[]> spots, int min) {
+        if (spots.size() < min) return null;
         double x = 0;
         double z = 0;
         for (double[] spot : spots) {
@@ -117,6 +126,12 @@ public final class BlazeFightRules {
         return now >= runEnd && now - runEnd <= RUN_GIVE_UP_TICKS && health < RECOVERED_HEALTH;
     }
 
+    // same, but never with a blaze already in swinging range: the first hit after the run tipped us under 18 and the latch
+    // turned a kill into a run with the blaze a block away, three more hits for nothing
+    public static boolean healAfterRun(long now, long runEnd, float health, double blazeDistance) {
+        return blazeDistance > LATCH_SKIP_BLAZE_RANGE && healAfterRun(now, runEnd, health);
+    }
+
     public static boolean runStalled(long ticksWithoutHealing) {
         return ticksWithoutHealing >= RUN_GIVE_UP_TICKS;
     }
@@ -144,5 +159,13 @@ public final class BlazeFightRules {
                 : (health <= RUN_HEALTH && threat) || health <= PANIC_HEALTH;
         if (leave) return Mode.RUN;
         return haveTarget ? Mode.KILL : Mode.CAMP;
+    }
+
+    // the camp spot gets one bounded step inland off a lava rim or ledge, same budget idea as the heal hold's step
+    public static final int CAMP_STEP_TICKS = 100;
+
+    // step while there is a cell to go to, we are not in it yet, and the budget is not spent
+    public static boolean wantsCampStep(boolean haveCell, boolean arrived, int ticksUsed) {
+        return haveCell && !arrived && ticksUsed < CAMP_STEP_TICKS;
     }
 }

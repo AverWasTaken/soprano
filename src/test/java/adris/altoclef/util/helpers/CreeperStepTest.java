@@ -344,9 +344,15 @@ public class CreeperStepTest {
     @Test
     public void aRunOnlyStepsForItsOwnPathWalkingIntoOne() {
         CreeperStep step = new CreeperStep();
-        assertEquals(Event.NONE, step.step(0, lit(7, 2.5), false, Mode.RUN, true));
+        assertEquals(Event.NONE, step.step(0, lit(7, 5), false, Mode.RUN, true));
         assertFalse(step.active());
-        assertEquals(Event.START, step.step(1, List.of(new Seen(7, true, 2.5, true)), false, Mode.RUN, true));
+        assertEquals(Event.START, step.step(1, List.of(new Seen(7, true, 5, true)), false, Mode.RUN, true));
+    }
+
+    @Test
+    public void aRunStepsFromOneHissingBesideUs() {
+        // lit inside TRIGGER but off the path ahead: beside or behind us, the run alone walks through the blast
+        assertEquals(Event.START, new CreeperStep().step(0, lit(7, 2.5), false, Mode.RUN, true));
     }
 
     @Test

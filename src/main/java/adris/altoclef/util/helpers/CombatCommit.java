@@ -1,6 +1,8 @@
 package adris.altoclef.util.helpers;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -203,7 +205,9 @@ public final class CombatCommit {
         RIM,
         // a creeper we already stepped from back beside us again (CreeperStep.REPEAT_WINDOW): stepping a third time is the
         // loop, leaving is not
-        REPEAT_CREEPER
+        REPEAT_CREEPER,
+        // melee only chasers we cannot outrun, and a pillar under us they cannot reach over (PerchRules)
+        PERCH
     }
 
     public enum Event {
@@ -217,7 +221,9 @@ public final class CombatCommit {
         RUN_CLEAR, RUN_CAP, RUN_STUCK,
         RUN_TO_FIGHT,
         // the cap came with us still hurt and chased: a fight
-        RUN_CHASED_FIGHT
+        RUN_CHASED_FIGHT,
+        // the perch starts and ends. the words are the perch notes', not CombatLog's
+        PERCH_START, PERCH_END
     }
 
     // what sort of foe it is, which is the only thing the machine needs to know about a species
@@ -758,6 +764,31 @@ public final class CombatCommit {
     // since when the melee target has been out of reach (takeover)
     private long outReachSince = -1;
 
+    // the biggest hit taken since this chase started, kept across run renewals while the chasers overlap (chaseIds) and wiped once
+    // nothing is committed. nextHit alone forgets a 4 damage swing two seconds later, and the chase decisions are for the long game
+    private float runMaxHit;
+    private Set<Integer> chaseIds = new HashSet<>();
+    private Set<Integer> joiners = Set.of();
+
+    // the perch (PerchRules): the world's side of this tick, fed by the brain. null means no facts and no perch
+    private PerchRules.Facts perch;
+    private int perchH;
+    private double perchStartY;
+    private int perchColX;
+    private int perchColZ;
+    // since when we have been standing at the top of it, -1 while still building
+    private long perchTopSince = -1;
+    private long perchQuietSince = -1;
+    private long perchCapAt;
+    private int perchShotBase;
+    private String perchNote;
+    // a perch that failed (we got hit on top, knocked off, no pillar) is not tried again for a while, that is what the old rules are for
+    private long perchFailedAt = Long.MIN_VALUE / 2;
+    private long lastPerchAt = Long.MIN_VALUE / 2;
+    private double lastPerchX;
+    private double lastPerchZ;
+    private int rePerches;
+
     // the idle boxed-in window (inTheWay)
     private long wayBoxSince = -1;
     private long wayGapSince = -1;
@@ -806,6 +837,25 @@ public final class CombatCommit {
 
     public boolean noRoom() {
         return noRoom;
+    }
+
+    // the brain hands over the world's side of the perch every tick, right before step
+    public void perchFacts(PerchRules.Facts facts) {
+        this.perch = facts;
+    }
+
+    public boolean perching() {
+        return mode == Mode.FIGHT && why == Why.PERCH;
+    }
+
+    public int perchHeight() {
+        return perching() ? perchH : 0;
+    }
+
+    public String takePerchNote() {
+        String note = perchNote;
+        perchNote = null;
+        return note;
     }
 
     public double originX() {
@@ -877,6 +927,15 @@ public final class CombatCommit {
         wayGapSince = -1;
         ignored.clear();
         ranFrom.clear();
+        runMaxHit = 0;
+        chaseIds.clear();
+        joiners = Set.of();
+        perch = null;
+        perchH = 0;
+        perchNote = null;
+        perchFailedAt = Long.MIN_VALUE / 2;
+        lastPerchAt = Long.MIN_VALUE / 2;
+        rePerches = 0;
         lobberGaveUpAt = Long.MIN_VALUE / 2;
         sniperGaveUpAt = Long.MIN_VALUE / 2;
         atRange = false;
@@ -921,6 +980,15 @@ public final class CombatCommit {
         clockSkew = lastTick != Long.MIN_VALUE && t.now() < lastTick ? lastTick - t.now() : 0;
         if (clockSkew > 0) t = t.withNow(lastTick);
         t = t.withNextHit(watchHits(t));
+        if (mode != Mode.NONE) {
+            runMaxHit = Math.max(runMaxHit, t.nextHit());
+            // whoever joins the chase is part of it: the hit was theirs as much as the first lot's. a tick late on purpose, the ones
+            // that just turned up are not yet the ones that hurt us (the decisions below ask who overlaps)
+            chaseIds.addAll(joiners);
+            joiners = nearMelee(t);
+        } else {
+            joiners = Set.of();
+        }
         lastTick = t.now();
         endedFirst = Event.NONE;
         recover.update(t.now(), t.health(), mode != Mode.NONE, t.body());
@@ -932,11 +1000,17 @@ public final class CombatCommit {
             case RUN -> run(t);
             default -> idle(t);
         };
-        if (before == Mode.NONE || mode != Mode.NONE) return event;
+        if (before == Mode.NONE || mode != Mode.NONE) {
+            if (mode == Mode.NONE) clearChase();
+            return event;
+        }
         // it just ended. whatever idle would start next tick starts now: a tick of NONE in between is a tick of the chain
         // letting go of the wheel and the user task walking with the mob still on us
         Event next = idle(afterEnd(t, oldTarget));
-        if (next == Event.NONE) return event;
+        if (next == Event.NONE) {
+            if (mode == Mode.NONE) clearChase();
+            return event;
+        }
         endedFirst = event;
         return next;
     }
@@ -1049,6 +1123,169 @@ public final class CombatCommit {
                 t.body(), t.boxed(), t.nextHit(), t.watched(), t.lingering());
     }
 
+    // nothing is committed any more: the chase is over, its biggest hit goes with it
+    private void clearChase() {
+        runMaxHit = 0;
+        chaseIds.clear();
+        joiners = Set.of();
+    }
+
+    // a run or a fight starts: a new set of chasers is a new chase, the same ones keep the hit memory
+    private void noteChase(Tick t) {
+        Set<Integer> now = nearMelee(t);
+        if (now.isEmpty()) return;
+        if (!overlapsChase(now)) {
+            runMaxHit = 0;
+            chaseIds = now;
+        } else {
+            chaseIds.addAll(now);
+        }
+    }
+
+    private static Set<Integer> nearMelee(Tick t) {
+        Set<Integer> ids = new HashSet<>();
+        for (Foe foe : t.foes()) {
+            if (foe.melee() && foe.distance() <= LOW_HP_RANGE) ids.add(foe.id());
+        }
+        return ids;
+    }
+
+    private boolean overlapsChase(Set<Integer> now) {
+        return chaseIds.isEmpty() || !Collections.disjoint(chaseIds, now);
+    }
+
+    // low for the chase decisions (turning round on a chase, the cap): the worst hit of the whole chase, not just the last two seconds.
+    // only while the chasers are the ones that hit us, a fresh bunch has not hurt us yet
+    private boolean lowChase(Tick t) {
+        float memory = overlapsChase(nearMelee(t)) ? runMaxHit : 0;
+        return t.health() - Math.max(t.nextHit(), memory) <= FLEE_HP;
+    }
+
+    // ---- PERCH
+
+    // how tall a pillar to stack right here, 0 for not now. every chaser within 8 is a melee only perch species, at least one is heavy or
+    // fast (or a run hit us already), no shooter has hit us lately, and the spot works (PerchRules.perchHeight)
+    private int perchAt(Tick t) {
+        PerchRules.Facts f = perch;
+        if (f == null || t.now() - perchFailedAt < PerchRules.REPERCH_TICKS) return 0;
+        if (why == Why.REPEAT_CREEPER && mode == Mode.RUN) return 0;
+        if (t.now() - f.shotAt() <= PerchRules.SHOT_QUIET) return 0;
+        // one re-perch near the last one, then the old rules
+        if (t.now() - lastPerchAt < PerchRules.REPERCH_TICKS && Math.hypot(t.x() - lastPerchX, t.z() - lastPerchZ) < PerchRules.REPERCH_BLOCKS
+                && rePerches >= PerchRules.REPERCH_MAX) return 0;
+        boolean pressing = runHits >= 1;
+        for (Foe foe : t.foes()) {
+            if (foe.ranged() && !foe.creeper() && foe.sinceHit() <= PerchRules.SHOT_QUIET) return 0;
+            if (foe.distance() <= PerchRules.RANGE && (foe.kind() == Kind.HEAVY || foe.fast())) pressing = true;
+        }
+        return pressing ? PerchRules.perchHeight(f, t.foes()) : 0;
+    }
+
+    private Event startPerch(Tick t, int h, String trigger) {
+        PerchRules.Facts f = perch;
+        int chasers = 0;
+        for (Foe foe : t.foes()) {
+            if (foe.distance() <= PerchRules.RANGE) chasers++;
+        }
+        boolean again = t.now() - lastPerchAt < PerchRules.REPERCH_TICKS && Math.hypot(t.x() - lastPerchX, t.z() - lastPerchZ) < PerchRules.REPERCH_BLOCKS;
+        rePerches = again ? rePerches + 1 : 0;
+        lastPerchAt = t.now();
+        lastPerchX = t.x();
+        lastPerchZ = t.z();
+        // it stands in for a run, so ending hurt the hold uses the run's hp line
+        runLine = true;
+        boxCorner = false;
+        fastCorner = false;
+        noRoom = false;
+        contacted = false;
+        lobberPick = false;
+        atRange = false;
+        mode = Mode.FIGHT;
+        why = Why.PERCH;
+        targetId = -1;
+        cornered = false;
+        startTick = t.now();
+        farSince = -1;
+        releaseSince = -1;
+        wayBoxSince = -1;
+        outReachSince = -1;
+        perchH = h;
+        perchStartY = f.feetY();
+        perchColX = (int) Math.floor(t.x());
+        perchColZ = (int) Math.floor(t.z());
+        perchTopSince = -1;
+        perchQuietSince = -1;
+        perchCapAt = t.now() + PerchRules.CAP_TICKS;
+        perchShotBase = f.shots();
+        perchNote = "perch start: " + trigger + ", h " + h + ", chasers " + chasers + ", rim=" + t.way().rim();
+        return Event.PERCH_START;
+    }
+
+    private Event leavePerch(Tick t, String reason, boolean failed) {
+        if (failed) perchFailedAt = t.now();
+        perchNote = (failed ? "perch fail: " : "perch leave: ") + reason;
+        return end(t, Event.PERCH_END);
+    }
+
+    // the whole perch fight. it skips the target bookkeeping and every bail the fight has (each would end a perch in seconds): up here
+    // the foes cannot reach us, and what ends it is the short list below
+    private Event perch(Tick t) {
+        PerchRules.Facts f = perch;
+        if (f == null) return leavePerch(t, "no facts", true);
+        if (f.pillarFailed()) return leavePerch(t, "pillar went nowhere", true);
+        for (Foe foe : t.foes()) {
+            if (foe.kind() == Kind.UNTOUCHABLE && foe.danger(t.guardHealth())) return leavePerch(t, "something we only run from", true);
+        }
+        if (f.shots() - perchShotBase >= PerchRules.SHOTS_LEAVE) return leavePerch(t, "a shooter hit us twice", true);
+        // the creeper step is off up here and a blast at the foot of the pillar is not something we sit through
+        if (f.creeper4()) return leavePerch(t, "a creeper at the foot", true);
+        for (Foe foe : t.foes()) {
+            if (foe.creeper() && foe.distance() <= PerchRules.CAP_RANGE) return leavePerch(t, "a creeper at the foot", true);
+        }
+        boolean top = f.grounded() && f.feetY() >= perchStartY + perchH - 0.05;
+        if (top && perchTopSince < 0) {
+            perchTopSince = t.now();
+            perchColX = (int) Math.floor(t.x());
+            perchColZ = (int) Math.floor(t.z());
+        }
+        if (perchTopSince >= 0) {
+            // knocked off the column, or the column is shorter than it was
+            if ((int) Math.floor(t.x()) != perchColX || (int) Math.floor(t.z()) != perchColZ || f.feetY() < perchStartY + perchH - 1.5) {
+                return leavePerch(t, "knocked off the pillar", true);
+            }
+            // a melee hit that landed after we got to the top: the height was not enough
+            for (Foe foe : t.foes()) {
+                long at = t.now() - foe.sinceHit() - clockSkew;
+                if (foe.melee() && at > perchTopSince + 2) return leavePerch(t, "hit on top by foe #" + foe.id(), true);
+            }
+        }
+        double nearest = Double.POSITIVE_INFINITY;
+        for (Foe foe : t.foes()) {
+            if (foe.melee()) nearest = Math.min(nearest, foe.distance());
+        }
+        // (counted off the world when the brain did: the foe list loses a mob that cannot reach us, and one at the foot of the pillar cannot)
+        boolean near6 = f.near6() >= 0 ? f.near6() > 0 : nearest <= PerchRules.LEAVE_RANGE;
+        boolean near4 = f.near4() >= 0 ? f.near4() > 0 : nearest <= PerchRules.CAP_RANGE;
+        // nobody within 6 for a while: the anger ran out, the pillar did its job
+        if (!near6) {
+            if (perchQuietSince < 0) perchQuietSince = t.now();
+            if (t.now() - perchQuietSince >= PerchRules.QUIET_TICKS) {
+                return leavePerch(t, "nobody within " + (int) PerchRules.LEAVE_RANGE + " blocks", false);
+            }
+        } else {
+            perchQuietSince = -1;
+        }
+        if (t.now() >= perchCapAt) {
+            // something still at the foot is a reason to stay, not to climb down into it
+            if (near4) {
+                perchCapAt = t.now() + PerchRules.CAP_TICKS;
+            } else {
+                return leavePerch(t, "cap", false);
+            }
+        }
+        return Event.NONE;
+    }
+
     // ---- NONE
 
     private Event idle(Tick t) {
@@ -1114,6 +1351,8 @@ public final class CombatCommit {
         if (way == null && endermanAbout(t) == null) {
             Foe heavy = heavyInTheWay(t);
             if (heavy != null) {
+                int h = perchAt(t);
+                if (h > 0) return startPerch(t, h, "heavy in the way");
                 ranFrom.put(heavy.id(), t.now());
                 return startRun(t, Why.HEAVY, Event.RUN_START);
             }
@@ -1160,6 +1399,8 @@ public final class CombatCommit {
     // with the thing still hitting us, so it is the cornered fight straight away. the rest (heavy hitters, the warden, a creeper
     // that keeps coming back, a lobber) keep their run, the fight would only bail again
     private Event runOrBox(Tick t, Why reason) {
+        int h = perchAt(t);
+        if (h > 0) return startPerch(t, h, "run " + reason);
         if (reason == Why.CROWD || reason == Why.LOW_HP) {
             Foe on = t.boxed() ? boxedTarget(t) : null;
             if (on == null) on = fastTarget(t);
@@ -1436,6 +1677,7 @@ public final class CombatCommit {
     // ---- FIGHT
 
     private Event fight(Tick t) {
+        if (why == Why.PERCH) return perch(t);
         Foe target = t.target();
         // the box opened (the zombie in the only gap died, we got knocked out): no longer the cornered fight, so the bail rules
         // below are asked again
@@ -1470,6 +1712,9 @@ public final class CombatCommit {
         }
         bail = unlatched(bail, t);
         if (bail != Why.NONE) {
+            // (before the stay below: a fast mob that hit us makes the fight stay, and up on a pillar there is nothing to stay for)
+            int perchHeight = perchAt(t);
+            if (perchHeight > 0) return startPerch(t, perchHeight, "fight bail " + bail);
             // boxed in, a crowd or low hp is no reason to leave: there is no leaving. this fight is the cornered one from here.
             // the same goes for something fast that has hit us and is close: it comes along on the run
             boolean stay = (bail == Why.CROWD || bail == Why.LOW_HP) && (t.boxed() || fastTarget(t) != null);
@@ -1684,6 +1929,7 @@ public final class CombatCommit {
     private Event startFight(Tick t, Foe foe, Why reason, Event event, boolean boxedIn) {
         // a new fight with a mob we once gave up on is a clean slate with it (it hit us since, or we are boxed in with it)
         ignored.remove(foe.id());
+        noteChase(t);
         fastCorner = false;
         noRoom = false;
         outReachSince = -1;
@@ -1717,6 +1963,7 @@ public final class CombatCommit {
     // ---- RUN
 
     private Event startRun(Tick t, Why reason, Event event) {
+        noteChase(t);
         mode = Mode.RUN;
         why = reason;
         targetId = -1;
@@ -1768,6 +2015,9 @@ public final class CombatCommit {
         Foe ender = endermanToFight(t);
         // (a run from the warden or a heavy hitter is not ours to turn, it ends where it ends: that mob is still about once we are past 8)
         if (ender != null && why != Why.HEAVY && !anyDanger(t)) return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
+        // melee only things we cannot outrun: stack up right here instead of jogging (and instead of turning round on them later)
+        int perchH = perchAt(t);
+        if (perchH > 0) return startPerch(t, perchH, "run " + why);
         double fromOrigin = Math.hypot(t.x() - originX, t.z() - originZ);
         double nearest = Double.POSITIVE_INFINITY;
         for (Foe foe : t.foes()) {
@@ -1838,13 +2088,16 @@ public final class CombatCommit {
     // run with a fresh origin on the very next tick, forever. so turn around and fight, unless we are under the flee line:
     // there the fresh origin is the point, a new run of the same kind instead of a fight we would lose
     private Event capped(Tick t) {
+        // a melee chaser within 8 at the cap perches whatever chased() says: ending here is a run with a fresh origin, turning is a plain fight
+        int perchH = perchAt(t);
+        if (perchH > 0) return startPerch(t, perchH, "run cap");
         if (!chased(t)) return end(t, Event.RUN_CAP);
         Foe chaser = chaser(t);
         // nobody to turn on: the warden (danger starts the next run on the same step), or only a creeper at range or mobs we
         // gave up on (the run just ends, the cooldown waits for one of them to get on us or hit us)
         // and with danger about a fight would only bail again on the next step, so it is the next run straight away
         if (chaser == null || anyDanger(t) || creeperHolds(t)) return end(t, Event.RUN_CAP);
-        if (t.low() && !t.boxed() && fastTarget(t) == null) return startRun(t, Why.LOW_HP, Event.RUN_START);
+        if (lowChase(t) && !t.boxed() && fastTarget(t) == null) return startRun(t, Why.LOW_HP, Event.RUN_START);
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
     }
 
@@ -1864,7 +2117,8 @@ public final class CombatCommit {
         countRunHits(t);
         if (runHits < RUN_HITS || !t.armed() || anyDanger(t)) return Event.NONE;
         // hurt, turning round is the fight that ends us. the run keeps going, boxed in the corner rules still fight
-        if (t.low()) return Event.NONE;
+        // (the worst hit of the chase counts, not just the last two seconds of them)
+        if (lowChase(t)) return Event.NONE;
         Foe pick = hitPick(t);
         if (pick == null) return Event.NONE;
         return startFight(t, pick, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
@@ -1907,9 +2161,9 @@ public final class CombatCommit {
     }
 
     // still on our heels at the cap: hurt with something near, or a crowd that is still on us
-    private static boolean chased(Tick t) {
+    private boolean chased(Tick t) {
         if (crowded(t.health(), t.foes(), false)) return true;
-        if (!t.low()) return false;
+        if (!lowChase(t)) return false;
         for (Foe foe : t.foes()) {
             if (foe.distance() <= LOW_HP_RANGE) return true;
         }

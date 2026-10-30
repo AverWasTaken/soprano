@@ -146,4 +146,20 @@ public class SmeltSurfaceTest {
         assertTrue("surfaced for this batch", SmeltSurface.smeltSite(false, true, false, 1));
         assertTrue("the climb gave up, smelting down here", SmeltSurface.smeltSite(false, false, true, 30));
     }
+
+    @Test
+    public void aDeepLogStepClimbsFirst() {
+        KitNeed logs = new KitNeed("log", 13);
+        assertEquals(SmeltSurface.Why.WOOD, SmeltSurface.logsWhy(true, logs, SmeltSurface.GO_UP_DEPTH + 1));
+    }
+
+    @Test
+    public void aShallowLogStepOrAnotherNeedCarriesOn() {
+        KitNeed logs = new KitNeed("log", 13);
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.logsWhy(true, logs, SmeltSurface.GO_UP_DEPTH));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.logsWhy(true, new KitNeed("planks", 4), 30));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.logsWhy(true, null, 30));
+        // the nether has no sky to climb to
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.logsWhy(false, logs, 30));
+    }
 }

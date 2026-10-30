@@ -56,7 +56,7 @@ public final class StrongholdRules {
 
     // OPEN regress: only after the shortage has stood for a few seconds (openNoEyesSince is kept by the handler tick)
     public static Optional<GamerPhase> regressForOpen(GamerFacts facts, RunState state) {
-        if (state.netherRevisits >= 1 || state.openNoEyesSince == 0 || !starved(facts, state)) {
+        if (state.netherRevisits >= 1 || state.openNoEyesSince == 0 || !starved(facts, state) || OpenTopUp.running(state)) {
             return Optional.empty();
         }
         return facts.gameTime() - state.openNoEyesSince >= STARVED_GRACE_TICKS ? Optional.of(GamerPhase.NETHER) : Optional.empty();
@@ -64,7 +64,7 @@ public final class StrongholdRules {
 
     // true when the shortage stood long enough and a nether trip is no longer allowed: the handler fails the phase
     public static boolean starvedForGood(GamerFacts facts, RunState state) {
-        return state.netherRevisits >= 1 && state.openNoEyesSince != 0 && starved(facts, state)
+        return state.netherRevisits >= 1 && state.openNoEyesSince != 0 && starved(facts, state) && !OpenTopUp.running(state)
                 && facts.gameTime() - state.openNoEyesSince >= STARVED_GRACE_TICKS;
     }
 

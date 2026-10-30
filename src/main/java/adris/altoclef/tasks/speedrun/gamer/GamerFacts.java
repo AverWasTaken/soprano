@@ -173,6 +173,16 @@ public interface GamerFacts {
         return false;
     }
 
+    // an edible pig, cow, chicken, sheep or rabbit is loaded close by and reachable (PreyScan.near). false in a test that does not say
+    default boolean preyNear() {
+        return false;
+    }
+
+    // the dry spell latch is on (FoodDry): the food task searched for ages with nothing loaded, so food waits behind the next kit step
+    default boolean foodDryLatched() {
+        return false;
+    }
+
     // the sheep chase for the beds ran out of time this run (RunState.woolHuntGaveUp), same deal again
     default boolean woolHuntGaveUp() {
         return false;

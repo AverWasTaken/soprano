@@ -11,6 +11,7 @@ import adris.altoclef.tasks.speedrun.gamer.GolemRules;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.MobFooting;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import baritone.behavior.CombatAim;
@@ -42,6 +43,7 @@ public final class GolemFightTask extends Task {
     private static final double PILLAR_FROM = 2.5;
     private static final double APPROACH_TO = 2.0;
     private static final int MAX_REPILLARS = 2;
+    private static final int GOLEM_AIR = 3;
     // a dead golem's drops take a moment to show up
     private static final int DROPS_WAIT_TICKS = 40;
     private static final int LOOT_TICKS = 20 * 20;
@@ -372,40 +374,8 @@ public final class GolemFightTask extends Task {
     // where the golem's feet could be right next to our column: its own ground, or a step (a block or a slab) up on any of the 8
     // sides it can walk up. built for the low side only, the pillar gets a golem that steps up and hits us before we hit it
     private double golemGround(AltoClef mod, LocalPlayer player, IronGolem g) {
-        var level = mod.getWorld();
-        BlockPos here = player.blockPosition();
-        int stepY = (int) Math.floor(g.getY() + 1.0e-3);
-        double[] sides = new double[8];
-        int n = 0;
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (dx == 0 && dz == 0) {
-                    continue;
-                }
-                sides[n++] = footing(level, new BlockPos(here.getX() + dx, stepY, here.getZ() + dz));
-            }
-        }
-        return GolemRules.groundBeside(g.getY(), sides);
-    }
-
-    // the height a golem would stand at on this block, NaN when it is not a footing: nothing to stand on, or no room for a
-    // 2.7 tall golem above the real top (a slab is a half block step, a ceiling can take the room away)
-    private static double footing(net.minecraft.world.level.Level level, BlockPos at) {
-        if (!level.hasChunkAt(at)) {
-            return Double.NaN;
-        }
-        var shape = level.getBlockState(at).getCollisionShape(level, at);
-        if (shape.isEmpty()) {
-            return Double.NaN;
-        }
-        double top = at.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
-        for (int up = 1; up <= 3; up++) {
-            BlockPos cell = at.above(up);
-            if (!level.getBlockState(cell).getCollisionShape(level, cell).isEmpty()) {
-                return Double.NaN;
-            }
-        }
-        return top;
+        // a 2.7 tall golem needs 3 free cells above the step
+        return MobFooting.groundBeside(mod.getWorld(), player.blockPosition(), g.getY(), GOLEM_AIR);
     }
 
     private Task fight(AltoClef mod, LocalPlayer player, IronGolem g, long now) {
@@ -506,7 +476,7 @@ public final class GolemFightTask extends Task {
     }
 
     // sword if we have one, an axe if that is all there is. same swap rule as the kill tasks: swap now, swing next tick
-    private boolean equipWeapon(AltoClef mod) {
+    static boolean equipWeapon(AltoClef mod) {
         if (AbstractKillEntityTask.bestWeapon(mod) != null) {
             return AbstractKillEntityTask.equipWeapon(mod);
         }

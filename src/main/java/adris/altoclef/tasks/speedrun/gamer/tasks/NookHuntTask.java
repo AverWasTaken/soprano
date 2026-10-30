@@ -503,7 +503,7 @@ public class NookHuntTask extends Task {
             return null;
         }
         mod.getControllerExtras().aimAt(angry, CombatAim.Priority.KILL_TASK);
-        if (!AbstractKillEntityTask.equipWeapon(mod, true) && (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick())) {
+        if (!AbstractKillEntityTask.equipWeapon(mod, true, angry) && (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick())) {
             mod.getControllerExtras().melee(angry);
         }
         return null;

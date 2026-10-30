@@ -12,6 +12,9 @@ import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.tasks.speedrun.gamer.DeathZones;
 import adris.altoclef.util.helpers.BlazeFightRules;
+import adris.altoclef.util.helpers.LavaShore;
+import baritone.pathing.movement.CliffAvoidance;
+import baritone.pathing.movement.CliffAvoidance.Cells;
 import adris.altoclef.util.helpers.RunZones;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.List;
@@ -36,6 +39,9 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
     private boolean _camping;
+    // the cell we step to when the camp spot is a rim, and how many ticks that walk has had
+    private BlockPos _campStep;
+    private int _campStepTicks;
     // true on ticks where the walk to the spawner is what we are doing (not the fight, not the camp, not the fire)
     private boolean _toSpawner;
 
@@ -64,7 +70,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // the middle of the wither pack around a spot, null when there is no pack there
     public static double[] witherPackCenter(AltoClef mod, Vec3 at, double radius) {
-        return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius));
+        return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius), BlazeFightRules.ZONE_PACK_SIZE);
     }
 
     private void noteZoneInputs(AltoClef mod) {
@@ -126,7 +132,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // the ones next to us are for it
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
         // no bridging or pillaring while fighting or running, see BlazeFight.noPlacing
-        mod.getBehaviour().avoidBlockPlacing(pos -> _fight.noPlacing());
+        mod.getBehaviour().avoidBlockPlacing(_fight::noPlacing);
         // the base class pushed our behaviour level and pops it on stop. the pack closets and where we died lately are walls for
         // the walk in (the player and the spawner being inside one still keeps it open, see RunZones)
         noteZoneInputs(mod);
@@ -153,6 +159,11 @@ public class CollectBlazeRodsTask extends ResourceTask {
         noteZoneInputs(mod);
         // blazes first: kill the one we picked, run when it goes badly. null is "nobody to fight"
         Task fight = _fight.tick(mod);
+        if (_fight.mode() != BlazeFightRules.Mode.CAMP) {
+            // the fight moves us, the next camp spot is a new question
+            _campStep = null;
+            _campStepTicks = 0;
+        }
         if (fight != null) {
             setDebugState("Blaze fight: " + _fight.mode().name().toLowerCase());
             return fight;
@@ -175,7 +186,8 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 _camping = true;
                 return null;
             }
-            if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
+            // (the inland step may end past the camp radius, walking back to the spawner would undo it)
+            if (_campStep == null && !_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
                 setDebugState("Going to blaze spawner (" + (RunZones.INSTANCE.active(_zoneNow) + _deathZones.active(_zoneNow)) + " zones)");
                 _toSpawner = true;
                 return new GetToBlockTask(_foundBlazeSpawner.above(), false);
@@ -186,6 +198,12 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 setDebugState("Clearing fire around spawner to prevent loss of blaze rods.");
                 return new PutOutFireTask(nearestFire.get());
             }
+            // the camp spot may be a rim, one step inland first. no new mode, it is the same wait with a short walk in front
+            Task inland = stepInland(mod);
+            if (inland != null) {
+                setDebugState("Stepping off the edge before camping");
+                return inland;
+            }
             // nothing is in reach or we would be fighting it, so this is a dud spawner as far as the relocate timer goes
             setDebugState(_fight.around() > 0 ? "Waiting for the blazes to come in reach" : "Waiting near blaze spawner for blazes to spawn");
             _camping = true;
@@ -194,6 +212,31 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // We need to find our fortress.
         setDebugState("Searching for fortress/Traveling around fortress");
         return _searcher;
+    }
+
+    // one bounded step off a lava rim or ledge to the best neighbour cell, null when we are fine, there or out of budget
+    private Task stepInland(AltoClef mod) {
+        if (_campStepTicks >= BlazeFightRules.CAMP_STEP_TICKS || mod.getClientBaritone().bsi == null) return null;
+        var us = mod.getPlayer();
+        BlockPos here = us.blockPosition();
+        Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        if (_campStep == null) {
+            int[] s = LavaShore.edgeStep(cells, us.getX(), us.getY(), us.getZ());
+            if (s == null) {
+                // fine where we are, or nowhere better
+                _campStepTicks = BlazeFightRules.CAMP_STEP_TICKS;
+                return null;
+            }
+            _campStep = here.offset(s[0], 0, s[1]);
+        }
+        // in the block is not off the rim yet, the cell's near half can still be inside the edge radius
+        boolean arrived = here.equals(_campStep) && !LavaShore.edgeNear(cells, us.getX(), us.getY(), us.getZ());
+        if (!BlazeFightRules.wantsCampStep(true, arrived, _campStepTicks)) {
+            _campStepTicks = BlazeFightRules.CAMP_STEP_TICKS;
+            return null;
+        }
+        _campStepTicks++;
+        return new GetToBlockTask(_campStep);
     }
 
     private void pickSpawner(AltoClef mod) {

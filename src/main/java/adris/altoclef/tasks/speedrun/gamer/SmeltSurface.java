@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.GetToYTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
+import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -22,8 +23,8 @@ public final class SmeltSurface {
     private boolean climbing;
     // we already surfaced for this batch (one flag per thing waiting: the ore, the meat). coal or fuel underground must not
     // send us up again and again
-    private final boolean[] settled = new boolean[2];
-    private final boolean[] gaveUp = new boolean[2];
+    private final boolean[] settled = new boolean[3];
+    private final boolean[] gaveUp = new boolean[3];
     private long climbSince;
     private int bestDepth;
     private Task climb;
@@ -33,8 +34,9 @@ public final class SmeltSurface {
 
     public void reset() {
         climbing = false;
-        settled[0] = settled[1] = false;
-        gaveUp[0] = gaveUp[1] = false;
+        woodFirst = UNSET;
+        settled[0] = settled[1] = settled[2] = false;
+        gaveUp[0] = gaveUp[1] = gaveUp[2] = false;
         climb = null;
         climbY = Integer.MAX_VALUE;
     }
@@ -99,11 +101,18 @@ public final class SmeltSurface {
 
     // what is waiting for the surface
     public enum Why {
-        NONE, IRON, COOK
+        NONE, IRON, COOK, WOOD
     }
 
     private static final int IRON = 0;
     private static final int COOK = 1;
+    private static final int WOOD = 2;
+
+    // the gather's log step in the overworld, deep enough down that every tree is a canopy 30 blocks over our head. the climb
+    // below is the same one the smelt uses
+    public static Why logsWhy(boolean overworld, KitNeed head, int depth) {
+        return overworld && head != null && "log".equals(head.catalogueName()) && wantsUp(false, depth) ? Why.WOOD : Why.NONE;
+    }
 
     // the cook is at the front of the plan and there is raw meat for it to turn into dinner
     public static boolean cookDone(KitNeed head, int rawMeat) {
@@ -178,15 +187,38 @@ public final class SmeltSurface {
 
     // the task to run in front of the smelt (or the cook), null = carry on with the plan
     public Task tick(AltoClef mod, GamerContext ctx, KitNeed head, KitNeed next) {
+        return climb(mod, ctx, wanted(ctx, head, next));
+    }
+
+    // the gather's log step: up to the sky first when the log head finds us in a mine (respawn at a bed down a shaft, say)
+    public Task logTick(AltoClef mod, GamerContext ctx, KitNeed head) {
+        boolean log = head != null && "log".equals(head.catalogueName());
+        if (!log) {
+            // another need has the head, the next log step may have to climb again. a give up sticks though: food taking the
+            // head every time a pig wanders by used to wipe it and the climb never got to give up
+            settled[WOOD] = false;
+        }
+        boolean over = ctx.facts().dimension() == Dimension.OVERWORLD;
+        Why why = logsWhy(over, head, depthBelowSky(mod));
+        if (climbing && climbWhy == Why.WOOD && log && over) {
+            // already on the way: logsWhy is the start line, the climb's own arrival check ends it
+            why = Why.WOOD;
+        }
+        if (why != Why.NONE && (settled[WOOD] || gaveUp[WOOD])) {
+            why = Why.NONE;
+        }
+        return climb(mod, ctx, why);
+    }
+
+    private Task climb(AltoClef mod, GamerContext ctx, Why why) {
         GamerFacts f = ctx.facts();
-        Why why = wanted(ctx, head, next);
         if (why == Why.NONE) {
             climbing = false;
             climb = null;
             climbY = Integer.MAX_VALUE;
             return null;
         }
-        int kind = why == Why.IRON ? IRON : COOK;
+        int kind = kindOf(why);
         BlockPos feet = mod.getPlayer().blockPosition();
         int surface = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
         int depth = depth(surface, feet.getY());
@@ -195,7 +227,8 @@ public final class SmeltSurface {
         if (climbing ? step == Climb.ARRIVED : !wantsUp(false, depth)) {
             if (climbing) {
                 settled[kind] = true;
-                ctx.log(why == Why.IRON ? "up at the surface, smelting here" : "up at the surface, cooking here");
+                if (kind == WOOD) woodFirst = UNSET;
+                ctx.log(pick(why, "up at the surface, smelting here", "up at the surface, cooking here", "up at the surface, chopping here"));
             }
             climbing = false;
             climb = null;
@@ -204,13 +237,16 @@ public final class SmeltSurface {
         }
         if (!climbing) {
             climbing = true;
-            climbSince = now;
+            // a wood climb cut short by a food detour picks its clock back up, the give up caps the whole effort
+            if (kind == WOOD && woodFirst == UNSET) woodFirst = now;
+            climbSince = kind == WOOD ? woodFirst : now;
             bestDepth = depth;
             climbY = surface;
             climb = new GetToYTask(surface);
-            adris.altoclef.Debug.logInternal(why == Why.IRON
-                    ? "smelting: " + f.count(Items.RAW_IRON) + " raw iron in the bag and " + depth + " blocks under the surface, going up first"
-                    : "cooking: " + CookGate.raw(f) + " raw meat in the bag and " + depth + " blocks under the surface, going up first");
+            adris.altoclef.Debug.logInternal(pick(why,
+                    "smelting: " + f.count(Items.RAW_IRON) + " raw iron in the bag and " + depth + " blocks under the surface, going up first",
+                    "cooking: " + CookGate.raw(f) + " raw meat in the bag and " + depth + " blocks under the surface, going up first",
+                    "logs: " + depth + " blocks under the surface and every tree is a canopy from here, going up first"));
         } else if (step == Climb.RETARGET) {
             // the old y is met and we are still in a cave, aim for the sky over here instead (deeper than GO_UP_DEPTH, so
             // strictly above our feet). climbSince stays: the give up still caps the whole climb, not each leg of it
@@ -220,20 +256,32 @@ public final class SmeltSurface {
         climbWhy = why;
         if (depth < bestDepth) {
             bestDepth = depth;
-            ctx.progress(why == Why.IRON ? "heading up to smelt" : "heading up to cook");
+            ctx.progress(pick(why, "heading up to smelt", "heading up to cook", "heading up for logs"));
         }
         if (FurnacePlan.climbGaveUp(climbSince, now)) {
             gaveUp[kind] = true;
             climbing = false;
             climb = null;
             climbY = Integer.MAX_VALUE;
-            ctx.log(why == Why.IRON ? "could not get up to the surface, smelting down here" : "could not get up to the surface, cooking down here");
+            ctx.log(pick(why, "could not get up to the surface, smelting down here", "could not get up to the surface, cooking down here", "could not get up to the surface, chopping down here"));
             return null;
         }
         return climb;
     }
 
+    private static final long UNSET = Long.MIN_VALUE;
+    // when the first leg of the current wood climb started, UNSET when none is owed
+    private long woodFirst = UNSET;
+
+    private static int kindOf(Why why) {
+        return why == Why.IRON ? IRON : why == Why.COOK ? COOK : WOOD;
+    }
+
+    private static String pick(Why why, String iron, String cook, String wood) {
+        return why == Why.IRON ? iron : why == Why.COOK ? cook : wood;
+    }
+
     public String hud() {
-        return climbWhy == Why.COOK ? "Heading to the surface to cook" : "Heading to the surface to smelt";
+        return pick(climbWhy, "Heading to the surface to smelt", "Heading to the surface to cook", "Heading to the surface for logs");
     }
 }

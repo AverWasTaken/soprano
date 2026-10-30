@@ -79,6 +79,12 @@ public final class TreeChop {
         return leafUnder && dy > CANOPY_DROP;
     }
 
+    // deep in a mine every log is a canopy 30 blocks up and the dirt trip is a tower to nowhere (the 120 s watchdog ate a whole
+    // run on that), so the trip is only for a surface that is close. depth and line are blocks under the open sky
+    public static boolean dirtDepthOk(int depth, int shallowLine) {
+        return depth <= shallowLine;
+    }
+
     // baritone found no way to a log. with placing on and nothing to place, a tower is the way up and dirt is how we get
     // one, so the log is not given up on yet. a trip that already happened (or one that fell short, the lockout) means
     // the tower didn't help, and then it is banned like any other block

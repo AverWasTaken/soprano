@@ -26,12 +26,12 @@ import adris.altoclef.util.time.TimerGame;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.chicken.Chicken;
 import net.minecraft.world.entity.animal.fish.Cod;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.animal.pig.Pig;
 import net.minecraft.world.entity.animal.fish.Salmon;
+import net.minecraft.world.entity.animal.rabbit.Rabbit;
 import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Monster;
@@ -63,6 +63,7 @@ public class CollectFoodTask extends Task {
             new CookableFoodTarget("beef", Cow.class, FoodHunt.Kind.COW),
             new CookableFoodTarget("chicken", Chicken.class, FoodHunt.Kind.CHICKEN),
             new CookableFoodTarget("mutton", Sheep.class, FoodHunt.Kind.SHEEP),
+            new CookableFoodTarget("rabbit", Rabbit.class, FoodHunt.Kind.RABBIT),
             new CookableFoodTargetFish("cod", Cod.class),
             new CookableFoodTargetFish("salmon", Salmon.class)
     };
@@ -94,6 +95,24 @@ public class CollectFoodTask extends Task {
 
     public static long ticks() {
         return ticks;
+    }
+
+    // the last time the task fell through to "Searching..." (wall clock, the ticks above stand still while another task runs).
+    // the gamer reads it to tell a dry spell from a hunt that is just slow (FoodDry)
+    private static volatile long lastSearchMs = 0;
+    private static final long SEARCH_FRESH_MS = 3000;
+
+    // the last time a kill's loot was still on its way (lootComing). the gamer keeps food at the front while this is fresh, or the
+    // head would switch to the starter with the meat on the ground (same wall clock idea as searching)
+    private static volatile long lastLootMs = 0;
+
+    public static boolean lootPending() {
+        return System.currentTimeMillis() - lastLootMs < SEARCH_FRESH_MS;
+    }
+
+    // read only: true while the task is out wandering for food with no animal, crop or hay to go after
+    public static boolean searching() {
+        return System.currentTimeMillis() - lastSearchMs < SEARCH_FRESH_MS;
     }
 
     private final double _unitsNeeded;
@@ -383,6 +402,10 @@ public class CollectFoodTask extends Task {
 
         // Look for food.
         setDebugState("Searching...");
+        // (only a real search: with enough food in hand and the smoker busy this is just waiting, not a dry spell)
+        if (potentialFood < _unitsNeeded) {
+            lastSearchMs = System.currentTimeMillis();
+        }
         return new TimeoutWanderTask();
     }
 
@@ -480,7 +503,11 @@ public class CollectFoodTask extends Task {
     // the hunted animal is dead but the loot of the kill is still on its way or lying there: the hunt is not over (see
     // KillAndLootTask.awaitingDrop)
     private boolean lootComing(AltoClef mod) {
-        return _huntTask instanceof KillAndLootTask kill && kill.awaitingDrop(mod);
+        boolean coming = _huntTask instanceof KillAndLootTask kill && kill.awaitingDrop(mod);
+        if (coming) {
+            lastLootMs = System.currentTimeMillis();
+        }
+        return coming;
     }
 
     private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, double maxRange) {
@@ -596,7 +623,7 @@ public class CollectFoodTask extends Task {
 
     // not a baby (no meat), not carrying a passenger (chicken jockey, the blacklist in onTick only knows the closest one)
     private static boolean edible(Entity entity) {
-        return entity instanceof LivingEntity living && !living.isBaby() && !entity.isVehicle();
+        return PreyScan.edible(entity);
     }
 
     // the nearest animal of EVERY kind goes into the pot, plus the one we are already after (it might not be the nearest

@@ -65,16 +65,34 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
     // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
     public static boolean equipWeapon(AltoClef mod, boolean toolFallback) {
-        Item bestWeapon = bestWeapon(mod);
+        return equipWeapon(mod, toolFallback, null);
+    }
+
+    // target: who we are about to hit. a calm neutral mob near it means the axe, which never sweeps (the sword swing would)
+    public static boolean equipWeapon(AltoClef mod, boolean toolFallback, Entity target) {
+        // an odd item is in hand to throw the charge away, the sword comes back once it has been there long enough
+        if (mod.getControllerExtras().chargeResetActive()) {
+            return true;
+        }
+        Item axe = target != null && mod.getControllerExtras().calmNeutralNear(target) ? WeaponPick.bestAxe(candidates(mod)) : null;
+        Item bestWeapon = axe != null ? axe : bestWeapon(mod);
         if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
         logPick(mod, bestWeapon, equipedWeapon);
         // (the hand only moves once a swing landed or the charge is nearly empty: see WeaponPick.hold)
         long swings = mod.getControllerExtras().swings();
-        Item hold = WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks(), swings != _swingsAtSwap);
+        // the swap to the axe is the point: it throws the charge away, so the cooldown is no reason to hold the sword
+        Item hold = axe != null ? axe : WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks(), swings != _swingsAtSwap);
         if (hold != equipedWeapon) {
             _swingsAtSwap = swings;
-            mod.getSlotHandler().forceEquipItem(hold);
+            // the offhand counts as a candidate but the equip can't fetch from it. a failed axe falls back to the plain pick
+            // instead of asking for it every tick and never swinging
+            if (!mod.getSlotHandler().forceEquipItem(hold) && axe != null) {
+                Item plain = WeaponPick.hold(equipedWeapon, bestWeapon(mod), mod.getControllerExtras().chargedTicks(), true);
+                if (plain != equipedWeapon) {
+                    mod.getSlotHandler().forceEquipItem(plain);
+                }
+            }
             return true;
         }
         return false;
@@ -119,7 +137,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     protected Task onStalledSwing(AltoClef mod, Entity entity) {
         // the path was told to go but may be mid step, the head is ours anyway (see CombatAim.wantOverPath)
         mod.getControllerExtras().aimAtOverPath(entity);
-        if (!equipWeapon(mod, _toolFallback)) {
+        if (!equipWeapon(mod, _toolFallback, entity)) {
             mod.getControllerExtras().swingNow(entity);
         }
         return null;
@@ -131,7 +149,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         // swing is due, not start then
         mod.getControllerExtras().aimAt(entity, CombatAim.Priority.KILL_TASK);
         // Equip weapon
-        if (!equipWeapon(mod, _toolFallback)) {
+        if (!equipWeapon(mod, _toolFallback, entity)) {
             // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
             if (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick()) {
                 mod.getControllerExtras().melee(entity);

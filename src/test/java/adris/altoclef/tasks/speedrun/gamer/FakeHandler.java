@@ -16,6 +16,7 @@ public class FakeHandler implements PhaseHandler {
     public Optional<GamerPhase> regress = Optional.empty();
     public Timeout onTimeout = null;
     public double stall = 120;
+    public boolean holdsBudget;
     public RuntimeException tickThrows;
     public final List<String> events = new ArrayList<>();
     // when set, every event is also written here as "PHASE:event", to see the order across handlers and the host
@@ -41,6 +42,11 @@ public class FakeHandler implements PhaseHandler {
     public FakeHandler alwaysDone() {
         done = f -> true;
         return this;
+    }
+
+    @Override
+    public boolean holdsBudget() {
+        return holdsBudget;
     }
 
     @Override
