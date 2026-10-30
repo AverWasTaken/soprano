@@ -58,12 +58,27 @@ public final class PerchRules {
         }
     }
 
-    // melee only mobs that cannot be outrun (angry zombified piglins, hoglins) or are in the same boat as them
-    private static final Set<String> SPECIES = Set.of("zombified_piglin", "zombie", "zombie_villager", "husk", "hoglin", "zoglin",
-            "wither_skeleton");
+    // melee only mobs that cannot be outrun (angry zombified piglins) or are in the same boat as them. hoglins and zoglins knock us
+    // off the pillar column on every hit so it never gets a block down, and wither skeletons lose a sprint, so they run
+    private static final Set<String> SPECIES = Set.of("zombified_piglin", "zombie", "zombie_villager", "husk");
 
     public static boolean species(String type) {
         return SPECIES.contains(type);
+    }
+
+    // the pillar needs a few still ticks to stack (movement pillar only jumps when centred and standing), so a chaser at our
+    // elbow or a hit that landed a second ago means it will never finish
+    public static final double START_GAP = 4;
+    public static final long START_QUIET = 20;
+
+    // room to build: nobody that close, and no melee hit on us lately
+    public static boolean roomToStart(List<Foe> foes) {
+        for (Foe foe : foes) {
+            if (foe.distance() > RANGE) continue;
+            if (foe.distance() < START_GAP) return false;
+            if (!foe.ranged() && foe.sinceHit() <= START_QUIET) return false;
+        }
+        return true;
     }
 
     // how many blocks up we need to be: the tallest chaser's head plus the best step beside us plus a hair, whole blocks

@@ -105,6 +105,13 @@ public final class BlazeFightRules {
         return lineOfSight && distance <= SIGHT_RANGE;
     }
 
+    // a blaze or skeleton shot that landed this lately keeps a run going: an empty crowd is not a safe one while shots still land
+    public static final long RUN_SHOT_TICKS = 60;
+
+    public static boolean shotLately(long now, long shotAt) {
+        return now >= shotAt && now - shotAt <= RUN_SHOT_TICKS;
+    }
+
     // start disengaging: the rods are in, a blaze sees us, and we have not done this already for this batch of rods
     public static boolean disengageWanted(boolean rodsDone, boolean blazeSeesUs, boolean alreadyDone) {
         return rodsDone && blazeSeesUs && !alreadyDone;
