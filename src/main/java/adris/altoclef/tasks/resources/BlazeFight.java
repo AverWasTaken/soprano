@@ -9,6 +9,7 @@ import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.BlazeFightRules.Mode;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.RunZones;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.player.LocalPlayer;
@@ -54,6 +55,12 @@ final class BlazeFight {
     private boolean targetInReach;
     // the target sits by a wither skeleton pack as of the last scan, so it is dropped
     private boolean packDrop;
+    // a pack within PACK_PLAYER_RADIUS of us (packSize of them, around packCenter) and whether it is also inside the back off radius
+    private boolean packHere;
+    private boolean packClose;
+    private int packSize;
+    private double[] packCenter;
+    private boolean packLogged;
     private long outOfReachSince = Long.MIN_VALUE;
     private double range = BlazeFightRules.PICK_RANGE;
     // read off the pathfinder thread. fighting and running never place blocks at our feet or above: pillaring up at a hovering
@@ -103,6 +110,11 @@ final class BlazeFight {
         return runGaveUp;
     }
 
+    // a wither skeleton pack is within PACK_PLAYER_RADIUS of us as of the last scan: no blaze target, no walking in
+    boolean packHere() {
+        return packHere;
+    }
+
     Task tick(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
@@ -129,8 +141,10 @@ final class BlazeFight {
         watchRun(now, health);
         lastHealth = health;
         logChange(mod, health);
+        notePack(mod, now);
         return switch (mode) {
-            case CAMP -> null;
+            // (a pack on top of us gets a short run, a pack a bit further off is the caller's hold)
+            case CAMP -> packClose ? new RunAwayFromHostilesTask(BlazeFightRules.PACK_BACKOFF_DISTANCE, true, () -> runCrowd(mod)) : null;
             case KILL -> new KillEntityTask(target);
             // never stand still in a run: with no blaze on us the wither skeletons that kept chasing still count, only an empty
             // crowd (nobody at all) is sitting tight until the food chain and regen are done
@@ -139,6 +153,20 @@ final class BlazeFight {
                 yield crowd.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, () -> runCrowd(mod));
             }
         };
+    }
+
+    // one line and one zone per time the pack check trips, not per tick. the zone is what the next spawner walk routes round
+    private void notePack(AltoClef mod, long now) {
+        if (!packHere) {
+            packLogged = false;
+            return;
+        }
+        if (packLogged) return;
+        packLogged = true;
+        if (packCenter != null) RunZones.INSTANCE.add(packCenter[0], packCenter[1], now, RunZones.PACK_RADIUS);
+        Vec3 at = mod.getPlayer().position();
+        Debug.logInternal("pack: " + packSize + " wither skeletons within " + (int) BlazeFightRules.PACK_PLAYER_RADIUS + " at "
+                + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z) + ", " + (packClose ? "backing off" : "holding"));
     }
 
     // blazes close enough to matter plus whatever else is after us
@@ -247,6 +275,13 @@ final class BlazeFight {
         threats.clear();
         candidates.clear();
         packDrop = false;
+        // (the same pack check as for a blaze below, asked where we stand: the closet is the thing, not the blaze over it)
+        List<double[]> nearUs = witherSkeletonSpots(mod, player.position(), BlazeFightRules.PACK_PLAYER_RADIUS);
+        packHere = BlazeFightRules.packNear(nearUs.size());
+        packSize = nearUs.size();
+        packCenter = packHere ? BlazeFightRules.packCenter(nearUs) : null;
+        // (once the back off starts it runs until the pack is out of the hold radius too, else it stops at 8.1 blocks with them still on top of us)
+        packClose = packHere && (packClose || BlazeFightRules.packNear(witherSkeletonsNear(mod, player.position(), BlazeFightRules.PACK_BACKOFF_RADIUS)));
         around = 0;
         targetTracked = false;
         targetInReach = false;
@@ -256,8 +291,8 @@ final class BlazeFight {
             boolean inReach = false;
             // a blaze hovering over a wither skeleton pack is theirs, not ours
             // the one we are already after is checked at any distance, so it can't drift out of pick range and keep us walking at a pack
-            boolean packed = (distance <= range || blaze == target)
-                    && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS));
+            boolean packed = packHere || ((distance <= range || blaze == target)
+                    && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS)));
             if (packed && blaze == target) packDrop = true;
             if (distance <= range && !packed) {
                 around++;
