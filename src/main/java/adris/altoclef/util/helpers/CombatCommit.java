@@ -1584,18 +1584,23 @@ public final class CombatCommit {
         return runReason(t, freshOnly, t.nextHit());
     }
 
-    // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
-    // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
-    // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
     // another wither skeleton within WITHER_PACK_RANGE of us, on our floor (the ones through the fortress floors do not count). a wither
     // skeleton's y is its height over us, see CombatBrain.withSplit
     private static boolean otherWither(Tick t, Foe self) {
+        return witherNear(t, self.id());
+    }
+
+    // any wither skeleton on our floor in WITHER_PACK_RANGE, bar the one with this id (-1: none barred)
+    static boolean witherNear(Tick t, int notId) {
         for (Foe foe : t.foes()) {
-            if (foe.id() != self.id() && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
+            if (foe.id() != notId && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
         }
         return false;
     }
 
+    // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
+    // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
+    // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
     private static float lowHit(Tick t) {
         Foe target = t.target();
         // a lone wither skeleton is a fight we stay in: its hit is 4.5 and the bail at 12.5 hp is what turned our back on it
@@ -2048,7 +2053,11 @@ public final class CombatCommit {
         // an angry enderman about turns any run into the fight: it teleports onto us, nothing outruns it. the warden still wins
         Foe ender = endermanToFight(t);
         // (a run from the warden or a heavy hitter is not ours to turn, it ends where it ends: that mob is still about once we are past 8)
-        if (ender != null && why != Why.HEAVY && !anyDanger(t)) return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
+        // (nor while a wither skeleton is on our floor: standing still to swat the enderman is the wait it needs to walk up and
+        // hit twice, and the wither ticks are already eating the hp the fight would need)
+        if (ender != null && why != Why.HEAVY && !anyDanger(t) && !witherNear(t, -1)) {
+            return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
+        }
         // melee only things we cannot outrun: stack up right here instead of jogging (and instead of turning round on them later)
         int perchH = perchAt(t);
         if (perchH > 0) return startPerch(t, perchH, "run " + why);
