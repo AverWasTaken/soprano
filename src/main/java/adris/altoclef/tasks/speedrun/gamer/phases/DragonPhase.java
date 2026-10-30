@@ -20,6 +20,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
+import adris.altoclef.tasks.speedrun.gamer.end.DragonLogGate;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonStrat;
 import adris.altoclef.tasks.speedrun.gamer.end.EndDropCache;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
@@ -31,9 +32,11 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -74,6 +77,7 @@ public class DragonPhase implements PhaseHandler {
     private KillEnderDragonWithBedsTask _bedTask;
     private KillEnderDragonTask _swordTask;
     private DragonStrat _strat;
+    private final DragonLogGate _statusLog = new DragonLogGate();
 
     private boolean _wasInEnd;
     private boolean _onIsland;
@@ -200,6 +204,7 @@ public class DragonPhase implements PhaseHandler {
         _drops.load(state.endDrops);
         _drops.restartWait(seconds(ctx));
         _strat = null;
+        _statusLog.reset();
         // children are cached per item and remember how the last visit ended (a finished pickup stays finished), a death
         // and a second trip would otherwise reuse the corpses
         _pickups.clear();
@@ -217,7 +222,7 @@ public class DragonPhase implements PhaseHandler {
         double dt = Math.min(1, Math.max(0, now - _lastTick));
         _lastTick = now;
         boolean dead = updateDead(mod, ctx, now);
-        watchDragon(mod, ctx);
+        watchDragon(mod, ctx, now);
 
         Task step = breathStep(mod);
         if (step == null) {
@@ -250,16 +255,25 @@ public class DragonPhase implements PhaseHandler {
     }
 
     // progress for the watchdog: every dent in the dragon counts
-    private void watchDragon(AltoClef mod, GamerContext ctx) {
+    private void watchDragon(AltoClef mod, GamerContext ctx, double now) {
         Optional<Entity> dragon = mod.getEntityTracker().getClosestEntity(EnderDragon.class);
         if (dragon.isEmpty()) {
             return;
         }
-        double health = ((EnderDragon) dragon.get()).getHealth();
+        EnderDragon ed = (EnderDragon) dragon.get();
+        double health = ed.getHealth();
         if (_lastHealth >= 0 && health < _lastHealth - 0.5) {
             ctx.progress("hurt the dragon");
         }
         _lastHealth = health;
+        EnderDragonPhase<?> phase = ed.getPhaseManager().getCurrentPhase().getPhase();
+        if (_statusLog.shouldLog(now, phase)) {
+            // the fight was blind in the logs: nothing said how the dragon, the crystals or we were doing
+            LocalPlayer me = mod.getPlayer();
+            ctx.log(String.format("dragon: hp %.0f, phase %s, crystals %d, us hp %.1f food %d at %d %d %d, strat %s",
+                    health, phase, mod.getEntityTracker().getTrackedEntities(EndCrystal.class).size(), me.getHealth(),
+                    me.getFoodData().getFoodLevel(), me.getBlockX(), me.getBlockY(), me.getBlockZ(), _strat));
+        }
     }
 
     private Task breathStep(AltoClef mod) {
