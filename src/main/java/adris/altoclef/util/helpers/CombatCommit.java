@@ -27,6 +27,7 @@ public final class CombatCommit {
     public static final float FLEE_HP = CombatRules.FLEE_HEALTH;
     // under this hp, with wither or fire on us, we do not pick a path fight
     public static final float LINGER_PICK_HP = 16;
+    public static final double WITHER_PACK_RANGE = 10;
     // heavy hitters are run from at this hp instead (see CombatRules.HEAVY_FLEE_HEALTH for why it is its own number)
     public static final float HEAVY_FLEE_HP = CombatRules.HEAVY_FLEE_HEALTH;
     // at or below FLEE_HP anything angry this close is a reason to leave
@@ -1368,9 +1369,9 @@ public final class CombatCommit {
         // below (a fortress always has a blaze looking at us), because its walk to us is the thing that costs the hp
         Foe wither = witherComing(t);
         if (wither != null) {
-            // (wither or fire already ticking on us: a pick at this hp is the same one the generic way fight below refuses. a skeleton
-            // we turn down still walks up and hits us, so it is a run from it, once, instead of nothing)
-            if (t.lingering() && t.health() < LINGER_PICK_HP) {
+            // (hurt, or a pack of them on our floor: not a fight we pick. a skeleton we turn down still walks up and hits us, so it is
+            // a run from it, once, instead of nothing)
+            if (t.health() < LINGER_PICK_HP || otherWither(t, wither)) {
                 ranFrom.put(wither.id(), t.now());
                 return startRun(t, Why.HEAVY, Event.RUN_START);
             }
@@ -1577,8 +1578,19 @@ public final class CombatCommit {
     // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
     // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
     // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
+    // another wither skeleton within WITHER_PACK_RANGE of us, on our floor (the ones through the fortress floors do not count). a wither
+    // skeleton's y is its height over us, see CombatBrain.withSplit
+    private static boolean otherWither(Tick t, Foe self) {
+        for (Foe foe : t.foes()) {
+            if (foe.id() != self.id() && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
+        }
+        return false;
+    }
+
     private static float lowHit(Tick t) {
         Foe target = t.target();
+        // a lone wither skeleton is a fight we stay in: its hit is 4.5 and the bail at 12.5 hp is what turned our back on it
+        if (target != null && target.wither() && !otherWither(t, target)) return 0;
         // (one hit is the whole cost only when nothing keeps ticking after it: wither and fire do)
         if (t.lingering() || target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
         for (Foe foe : t.foes()) {

@@ -127,6 +127,70 @@ public class CombatCommitWitherTest {
     @Test
     public void theLingerLineIsTheSameOneTheWayFightUses() {
         assertEquals(Event.FIGHT_START, new CombatCommit().step(lingeringTick(0, CombatCommit.LINGER_PICK_HP, true, List.of(wither(1, 3, true)))));
-        assertEquals(Event.FIGHT_START, new CombatCommit().step(lingeringTick(0, 15, false, List.of(wither(1, 3, true)))));
+        // (and it is the same line with nothing ticking on us)
+        assertEquals(Event.RUN_START, new CombatCommit().step(lingeringTick(0, 15, false, List.of(wither(1, 3, true)))));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(lingeringTick(0, 16, false, List.of(wither(1, 3, true)))));
+    }
+
+    private static Foe witherAt(int id, double distance, double y) {
+        Foe f = wither(id, distance, true);
+        return new Foe(f.id(), f.distance(), false, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER, false, null, false, 0, y, 0,
+                false, false, false, true);
+    }
+
+    private static Tick fightTick(long now, float hp, List<Foe> foes, Foe target, boolean lingering) {
+        return new Tick(now, hp, 0, 0, foes, target, Way.NONE, true, false, false, RecoverHold.Body.NONE, false, 4.5f, false, lingering);
+    }
+
+    @Test
+    public void aPackOnOurFloorIsARunNotAFight() {
+        List<Foe> pack = List.of(witherAt(1, 3, 0), witherAt(2, 7, 1), witherAt(3, 9, 0));
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(0, 20, pack, null, true)));
+    }
+
+    @Test
+    public void aSkeletonTwoFloorsDownIsNotAPack() {
+        List<Foe> foes = List.of(witherAt(1, 3, 0), witherAt(2, 8, -6));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(0, 20, foes, null, true)));
+    }
+
+    @Test
+    public void heightIsReadOverUsNotOverTheTarget() {
+        // target 3 up and the other 3 down: 6 apart, but both inside 4 of our floor
+        List<Foe> foes = List.of(witherAt(1, 3, 3), witherAt(2, 6, -3));
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(0, 20, foes, null, true)));
+    }
+
+    @Test
+    public void aLoneSkeletonFightStaysPastTheProjectedFleeLine() {
+        CombatCommit c = new CombatCommit();
+        Foe w = witherAt(1, 3, 0);
+        c.step(tick(0, 20, List.of(w), null, true));
+        // 10.5 hp with a 4.5 hit coming is 6 projected: the old bail. real hp is above the line, so we stay
+        assertEquals(Event.NONE, c.step(fightTick(1, 10.5f, List.of(w), w, true)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aSecondSkeletonOnOurFloorStillBails() {
+        CombatCommit c = new CombatCommit();
+        Foe w = witherAt(1, 3, 0);
+        c.step(tick(0, 20, List.of(w), null, true));
+        Event e = c.step(fightTick(1, 10.5f, List.of(w, witherAt(2, 6, 0)), w, true));
+        org.junit.Assert.assertNotEquals(Mode.FIGHT, c.mode());
+        org.junit.Assert.assertNotEquals(Event.NONE, e);
+    }
+
+    @Test
+    public void aRefusedSkeletonThatHitsUsStartsTheHitFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(lingeringTick(0, 14, false, List.of(wither(1, 3, true)))));
+        // (the run plays out with nothing around)
+        long now = 1;
+        for (; now < 400 && c.mode() != Mode.NONE; now++) c.step(tick(now, 20, List.of(), null, true));
+        assertEquals(Mode.NONE, c.mode());
+        Foe hit = new Foe(1, 1.5, false, false, 0, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER).withWither(true);
+        assertEquals(Event.FIGHT_START, c.step(tick(now, 20, List.of(hit), null, true)));
+        assertEquals(Why.HIT, c.why());
     }
 }
