@@ -67,6 +67,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private Direction _extinguishFace = Direction.UP;
     private int _dunkAimTicks;
     private boolean _dunkGaveUp;
+    // where the dunk gave up and whether we have been off the ground since, see DunkRules.retry
+    private BlockPos _dunkGaveUpAt;
+    private boolean _dunkLeftGround;
     private boolean _trackingWater;
     // ticks spent fetching the dunk water back, the End gives up on it fast and everywhere else on a slow one
     private int _pickupTicks;
@@ -252,6 +255,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private void endBurn(AltoClef mod) {
         _dunkAimTicks = 0;
         _dunkGaveUp = false;
+        _dunkGaveUpAt = null;
+        _dunkLeftGround = false;
         if (_trackingWater) {
             _trackingWater = false;
             mod.getBlockTracker().stopTracking(Blocks.WATER);
@@ -273,6 +278,13 @@ public class WorldSurvivalChain extends SingleTaskChain {
         BlockPos feet = mod.getPlayer().blockPosition();
         // a click mid jump lands in the cell we were in, not the one we are in by the time it goes through
         boolean airborne = !mod.getPlayer().onGround() && !mod.getPlayer().onClimbable() && !mod.getPlayer().isInWater();
+        if (_dunkGaveUp) {
+            _dunkLeftGround |= airborne;
+            if (DunkRules.retry(_dunkGaveUpAt, feet, _dunkLeftGround, airborne)) {
+                _dunkGaveUp = false;
+                _dunkAimTicks = 0;
+            }
+        }
         if (airborne && !_dunkGaveUp) {
             return Float.NEGATIVE_INFINITY;
         }
@@ -284,6 +296,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 }
                 if (!DunkRules.keepAiming(_dunkAimTicks)) {
                     _dunkGaveUp = true;
+                    _dunkGaveUpAt = feet;
+                    _dunkLeftGround = false;
                     break;
                 }
                 _dunkAimTicks++;

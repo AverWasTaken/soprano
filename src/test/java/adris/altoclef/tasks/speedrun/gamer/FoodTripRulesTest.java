@@ -125,6 +125,32 @@ public class FoodTripRulesTest {
     }
 
     @Test
+    public void risingBagHoldsTheClockUntilTheHardCap() {
+        double limit = FoodTripRules.MAX_SECONDS;
+        // past the clock but the bag grew a minute ago: carry on
+        assertFalse(FoodTripRules.tripOver(true, limit + 30, limit, 60));
+        // nothing gained for two minutes: the clock cuts it
+        assertTrue(FoodTripRules.tripOver(true, limit + 30, limit, FoodTripRules.RISING_SECONDS));
+        // before the clock it is never cut, gains or not
+        assertFalse(FoodTripRules.tripOver(true, limit - 1, limit, 500));
+        // a bag that keeps nibbling still ends at the hard cap, and a full bag ends it at once
+        assertTrue(FoodTripRules.tripOver(true, FoodTripRules.HARD_SECONDS, limit, 0));
+        assertTrue(FoodTripRules.tripOver(false, 5, limit, 0));
+    }
+
+    @Test
+    public void tripEndsAtTwiceTheHomeLineNotTheRefillStop() {
+        // at the portal: 2 * 36 = 72, over the minimum of 70, under the plan's 130
+        assertEquals(72, FoodTripRules.tripEndUnits(0, 70, 130));
+        // far out the line moves with the walk: 2 * (36 + 400 / 40) = 92
+        assertEquals(92, FoodTripRules.tripEndUnits(400, 70, 130));
+        // never under the overworld minimum
+        assertEquals(90, FoodTripRules.tripEndUnits(0, 90, 130));
+        // never past what the plan itself would stop at (a full bag settles for the minimum)
+        assertEquals(70, FoodTripRules.tripEndUnits(400, 70, 70));
+    }
+
+    @Test
     public void emptyBagAndTwoDryDigsGoesHomeForBlocks() {
         assertTrue(FoodTripRules.goHomeForBlocks(0, 2, true, false, 0));
         assertTrue(FoodTripRules.goHomeForBlocks(FoodTripRules.BLOCKS_LOW - 1, 3, true, false, 0));
