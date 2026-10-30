@@ -41,6 +41,9 @@ public final class CombatLog {
             case RUN_CAP -> tag + "run over, " + CombatCommit.RUN_CAP / 20 + " s cap, " + blocks + " blocks";
             case RUN_STUCK -> tag + "run over, stuck " + blocks + " blocks from where it started";
             case RUN_CHASED_FIGHT -> tag + "chased too long, turning to fight " + target + " [" + why + "]";
+            // (the why, the height and the chasers are in the perch note that goes out right after)
+            case PERCH_START -> tag + "PERCH, stacking up out of reach (hp " + hp + ")";
+            case PERCH_END -> tag + "perch over";
         };
     }
 

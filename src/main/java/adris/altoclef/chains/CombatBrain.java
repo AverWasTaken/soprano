@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PerchTask;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Enderman;
@@ -27,6 +28,8 @@ import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.LavaShore;
+import adris.altoclef.util.helpers.MobFooting;
+import adris.altoclef.util.helpers.PerchRules;
 import baritone.pathing.movement.CliffAvoidance;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
@@ -48,6 +51,7 @@ import baritone.utils.BlockStateInterface;
 import net.minecraft.core.BlockPos;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -116,6 +120,13 @@ final class CombatBrain {
     private DamageSource _shotSeen;
     private Mob _shooter;
     private long _shooterAt = Long.MIN_VALUE / 2;
+    // projectile hits taken, counted every tick (rangedSource only runs in the hold) for the perch's "a shooter found us up here"
+    private DamageSource _shotCounted;
+    private int _shots;
+    private long _shotTick = PerchRules.Facts.NEVER;
+    // the perch task is the same object for the whole perch, a new one each tick would pillar from scratch every time
+    private PerchTask _perch;
+    private long _perchStart = Long.MIN_VALUE;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private final HealUpTask _healUp = new HealUpTask();
@@ -177,15 +188,21 @@ final class CombatBrain {
     // in a committed fight the flee line was already the machine's call (a cornered one never bails), so the aura keeps its
     // hands and its shield under it
     boolean auraFighting() {
-        return _commit.mode() == Mode.FIGHT;
+        return _commit.mode() == Mode.FIGHT && !_commit.perching();
     }
 
     // the id the aura should swing at while it is in reach, -1 when nothing is committed
     int fightTarget() {
-        return _commit.mode() == Mode.FIGHT ? _commit.targetId() : -1;
+        return _commit.mode() == Mode.FIGHT && !_commit.perching() ? _commit.targetId() : -1;
+    }
+
+    // the perch task swings for itself and nothing shields: the top of the pillar reads as a ledge but nothing can knock us off it
+    boolean perching() {
+        return _commit.perching();
     }
 
     boolean auraShield() {
+        if (_commit.perching()) return false;
         return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _fightShield) || _rim;
     }
 
@@ -234,6 +251,11 @@ final class CombatBrain {
         _shotSeen = null;
         _shooter = null;
         _shooterAt = Long.MIN_VALUE / 2;
+        _shotCounted = null;
+        _shots = 0;
+        _shotTick = PerchRules.Facts.NEVER;
+        _perch = null;
+        _perchStart = Long.MIN_VALUE;
         _run = null;
         _fight = null;
         _fightId = -1;
@@ -245,6 +267,18 @@ final class CombatBrain {
     Task wheelTask(AltoClef mod) {
         switch (_commit.mode()) {
             case FIGHT: {
+                // a perch has no target, its task stands where we are and swings at whatever is in reach. KillEntityTask would
+                // path to a target and walk us off the pillar
+                if (_commit.perching()) {
+                    if (_perch == null || _perchStart != _commit.startTick()) {
+                        _perch = new PerchTask(_commit.perchHeight());
+                        _perchStart = _commit.startTick();
+                    } else if (_perch.stopped()) {
+                        // a chain cut in and gave the wheel back: same column, it only starts over. a new one would stack h more from here
+                        _perch.reset();
+                    }
+                    return _perch;
+                }
                 Entity target = mod.getWorld().getEntity(_commit.targetId());
                 // the fight outlives a dead splitter for a moment (CombatCommit.SPLIT_WAIT_TICKS): stand, the children are coming
                 if (target == null || !target.isAlive()) return _splitHold;
@@ -276,6 +310,8 @@ final class CombatBrain {
 
     // the mob the lava guard leans toward: the fight's own target, else whatever hostile is in contact
     Entity lavaFoe(AltoClef mod) {
+        // (the top of a perch is an edge, but nothing is going to knock us off it)
+        if (_commit.perching()) return null;
         if (_commit.mode() == Mode.FIGHT) {
             Entity target = mod.getWorld().getEntity(_commit.targetId());
             if (target instanceof Mob mob && mob.isAlive() && mob.distanceTo(mod.getPlayer()) <= LAVA_FOE_RANGE) return mob;
@@ -328,9 +364,11 @@ final class CombatBrain {
             _swingAt.clear();
             _run = null;
             _fight = null;
+            _perch = null;
             _stance = CombatRules.Stance.CALM;
             return;
         }
+        countShots(player, now);
         EntityTracker tracker = mod.getEntityTracker();
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
@@ -379,11 +417,14 @@ final class CombatBrain {
         if (enabled) {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
+            _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
             String note = _commit.takeNote();
             if (note != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + note);
+            String perchNote = _commit.takePerchNote();
+            if (perchNote != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + perchNote);
             // the heal wait starts when the run (and the fight it may have turned into) is all over
             if (_commit.mode() == Mode.RUN) {
                 _ranSince = true;
@@ -392,7 +433,7 @@ final class CombatBrain {
                 _lastRunEnd = now;
             }
             // a fight that just started has its target in the world right now, which is the only chance to learn its name
-            if (_commit.mode() == Mode.FIGHT) {
+            if (_commit.mode() == Mode.FIGHT && !_commit.perching()) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
                 _fightName = _names.of(_commit.targetId());
             }
@@ -419,7 +460,8 @@ final class CombatBrain {
                     }
                 }
                 // a fight that took over from a run: the run's path is still alive, and CritTiming holds the opener while one is
-                if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT) {
+                // (the perch stands where we are, the run's path would walk us off before the pillar is up)
+                if (event == Event.RUN_TO_FIGHT || event == Event.RUN_CHASED_FIGHT || event == Event.PERCH_START) {
                     mod.getClientBaritone().getPathingBehavior().cancelEverything();
                 }
             }
@@ -434,6 +476,7 @@ final class CombatBrain {
         }
         if (_commit.mode() != Mode.RUN) _run = null;
         if (_commit.mode() != Mode.FIGHT) _fight = null;
+        if (!_commit.perching()) _perch = null;
 
         // running: a zombie that keeps pace with us is the one we are running from, not one that is stuck
         reach.setFleeing(_commit.mode() == Mode.RUN);
@@ -469,13 +512,13 @@ final class CombatBrain {
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
             if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
         }
-        if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
+        if (_commit.mode() == Mode.FIGHT && !_commit.perching()) _swingAt.add(_commit.targetId());
         // (the target can be missing from a hostile pass, and losing the shield for that restarts its 5 ticks)
         Foe fightFoe = target;
         List<Foe> shieldFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
-        _fightShield = _commit.mode() == Mode.FIGHT && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
+        _fightShield = _commit.mode() == Mode.FIGHT && !_commit.perching() && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
         // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
-        _rim = rim && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
@@ -484,6 +527,11 @@ final class CombatBrain {
             _commit.pauseCorner();
             _rim = true;
             _swingAt.add(rimRun.id());
+        }
+        // the perch task swings for itself, the aura would be a second hand on the same sword
+        if (_commit.perching()) {
+            _swingAt.clear();
+            _rimGuardId = -1;
         }
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
@@ -741,8 +789,79 @@ final class CombatBrain {
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
+        // a perch is a fight that may eat: "no meals mid fight" is for fights we cannot step out of, up here nothing reaches us. calm
+        // even at the flee line (that one is for runs and fights on the ground), a lit creeper is still a reason not to sit down
+        // (only once the pillar is up: a meal while stacking eats the placement clicks and the pillar gives up)
+        if (_commit.perching() && !creeperClose && _perch != null && _perch.onTop()) return CombatRules.Stance.CALM;
         return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite, _commit.recovering(),
                 mod.getFoodChain().hasFood());
+    }
+
+    // projectile hits, every tick. the game hands a fresh source object per hit and keeps it for a couple of seconds
+    private void countShots(LocalPlayer player, long now) {
+        DamageSource source = player.getLastDamageSource();
+        if (source == null || source == _shotCounted) return;
+        _shotCounted = source;
+        if (source.getDirectEntity() instanceof Projectile) {
+            _shots++;
+            _shotTick = now;
+        }
+    }
+
+    // the world's side of the perch for this tick, null when nothing is close enough to matter (and we are not on one already)
+    private PerchRules.Facts perchFacts(AltoClef mod, LocalPlayer player, List<Mob> mobs, List<Foe> foes, long now) {
+        boolean near = _commit.perching();
+        for (int i = 0; i < foes.size() && !near; i++) {
+            near = foes.get(i).distance() <= PerchRules.RANGE;
+        }
+        if (!near) return null;
+        Map<Integer, Double> heights = new HashMap<>();
+        double tallest = 0;
+        for (int i = 0; i < mobs.size(); i++) {
+            Mob mob = mobs.get(i);
+            if (foes.get(i).distance() > PerchRules.RANGE || !PerchRules.species(typeOf(mob))) continue;
+            double height = mob.getBbHeight();
+            heights.put(mob.getId(), height);
+            tallest = Math.max(tallest, height);
+        }
+        // the angry perch species near the pillar and any creeper, off the world: the foe list drops what cannot reach us
+        int near6 = 0;
+        int near4 = 0;
+        boolean creeper8 = false;
+        boolean creeper4 = false;
+        try {
+            for (Entity entity : mod.getEntityTracker().getHostiles()) {
+                if (!(entity instanceof Mob mob) || !mob.isAlive() || !PerchRules.species(typeOf(mob))) continue;
+                double d = mob.distanceTo(player);
+                if (d > PerchRules.LEAVE_RANGE || !EntityHelper.isAngryAtPlayer(mod, mob)) continue;
+                near6++;
+                if (d <= PerchRules.CAP_RANGE) near4++;
+            }
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive()) continue;
+                double d = creeper.distanceTo(player);
+                creeper8 |= d <= PerchRules.RANGE;
+                creeper4 |= d <= PerchRules.CAP_RANGE;
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // one tick of stale mobs is fine
+        }
+        var level = mod.getWorld();
+        BlockPos here = player.blockPosition();
+        double feetY = player.getY();
+        // the same step-beside-us math the golem fight uses, for the tallest chaser we have to clear
+        int cells = Math.max(2, (int) Math.ceil(tallest));
+        double rise = Math.max(0, MobFooting.groundBeside(level, here, feetY, cells) - feetY);
+        // free cells straight up from our feet cell, a few is plenty (h + 2 is the most anyone asks)
+        int air = 0;
+        while (air < 6) {
+            BlockPos cell = here.above(air);
+            var state = level.getBlockState(cell);
+            if (!state.getCollisionShape(level, cell).isEmpty() || !state.getFluidState().isEmpty()) break;
+            air++;
+        }
+        return new PerchRules.Facts(player.onGround(), feetY, rise, StorageHelper.getBuildingMaterialCount(mod), air,
+                mod.getFoodChain().hasFood(), _shots, _shotTick, _perch != null && _perch.failed(), heights, near6, near4, creeper8, creeper4);
     }
 
     // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
