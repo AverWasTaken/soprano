@@ -26,6 +26,8 @@ public class EndConfig {
     public int bedArmorPerAttempt = 4;
     // dragon fight attempts (a death sends us back to END_PREP) before the run is STUCK
     public int attempts = 3;
+    // nothing reads this since the bed went on the floor under the head (BedPairSearch picks the cells), kept so old
+    // config files still load
     public double dragonHeadCloseEnoughClickBedRange = 5.3;
     // exit portal not needed: chunk (0,0) loaded and the dragon entity gone this long = dead
     public double dragonGoneSeconds = 5;

@@ -238,8 +238,8 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
         return _heightPillarTask;
     }
 
-    // no pearl to get down with: stand 8 to 12 out from the fountain on the ground and let the bed task walk up to its spot
-    // when the dragon perches. no pillar, no hunting, an enderman is not worth leaving the fight for
+    // no pearl to get down with: stand on the ground ring around the fountain (8 to 12, the bed fight's 13.5 to 16 outside the
+    // wings) and let the bed task walk up to its stand once the perched dragon's yaw is frozen. no pillar, no hunting, an enderman is not worth leaving the fight for
     private Task groundTick(AltoClef mod) {
         double px = mod.getPlayer().getX();
         double pz = mod.getPlayer().getZ();

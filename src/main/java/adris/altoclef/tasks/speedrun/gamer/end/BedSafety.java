@@ -30,4 +30,27 @@ public final class BedSafety {
     public static boolean canClick(double health, double absorption, int armorPoints) {
         return health + absorption >= safePool(armorPoints);
     }
+
+    // the floor bed goes off a good 4.5 blocks from us with nothing in between, ~27 raw. canClick's numbers were for
+    // standing under the pillar top, so the click also asks this with the real distance: full iron still eats ~24 of it
+    public static boolean survives(double health, double absorption, double rawSelfDamage, int difficulty, double armor, double toughness) {
+        return health + absorption >= afterArmor(scaled(rawSelfDamage, difficulty), armor, toughness) + MARGIN;
+    }
+
+    // bed damage scales with difficulty for us (bad_respawn_point is "always"). 0 peaceful .. 3 hard, like Difficulty.getId
+    public static double scaled(double raw, int difficulty) {
+        return switch (difficulty) {
+            case 0 -> 0;
+            case 1 -> Math.min(raw / 2 + 1, raw);
+            case 3 -> raw * 1.5;
+            default -> raw;
+        };
+    }
+
+    // CombatRules.getDamageAfterAbsorb without the enchants: protection only ever makes this smaller, so it is the safe guess
+    public static double afterArmor(double damage, double armor, double toughness) {
+        double f = 2 + toughness / 4;
+        double kept = Math.max(armor * 0.2, Math.min(armor - damage / f, 20));
+        return damage * (1 - kept / 25);
+    }
 }
