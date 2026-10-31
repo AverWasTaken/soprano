@@ -97,10 +97,15 @@ public final class Updater {
     // the check runs once per session no matter how often the title screen opens. a reopen after a failed check gets
     // one more try though, the first one often lands before the wifi is up
     public void checkAsync() {
+        checkAsync(true);
+    }
+
+    // reopen is false for the resize inits of a title screen that's already up, those shouldn't spend the free retry
+    public void checkAsync(boolean reopen) {
         if (!started.compareAndSet(false, true)) {
             boolean again;
             synchronized (this) {
-                again = UpdateState.shouldAutoRetry(state, limited, autoRetried);
+                again = reopen && UpdateState.shouldAutoRetry(state, limited, autoRetried);
                 if (again) {
                     autoRetried = true;
                 }
