@@ -114,7 +114,23 @@ public class FoodTripRulesTest {
     @Test
     public void spentTripsStay() {
         assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS - 1));
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        // short of food but over the floor: the cap holds
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
+    }
+
+    @Test
+    public void anEmptyBagGoesHomePastTheCapUpToTheDryCap() {
+        assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS_DRY - 1));
+        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS_DRY));
+        // at the floor line itself it is not empty, so the plain cap applies
+        assertFalse(FoodTripRules.goHome(FoodTripRules.FLOOR_BASE, 0, true, false, FoodTripRules.MAX_TRIPS));
+    }
+
+    @Test
+    public void aTripThatGainedUnitsRefundsEvenWhenTheClockEndedIt() {
+        // the bag is the judge, not whether the hunt was still going: 10 -> 34 refunds
+        assertTrue(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 10, 34));
     }
 
     @Test
@@ -163,7 +179,7 @@ public class FoodTripRulesTest {
     @Test
     public void blockAndFoodTripsHaveSeparateBudgets() {
         // food spent, blocks fresh: the blocks trip still goes, and the other way round
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
         assertTrue(FoodTripRules.goHomeForBlocks(0, 2, true, false, 0));
         assertFalse(FoodTripRules.goHomeForBlocks(0, 2, true, false, FoodTripRules.MAX_TRIPS));
         assertTrue(FoodTripRules.goHome(0, 0, true, false, 0));
@@ -274,7 +290,7 @@ public class FoodTripRulesTest {
         }
         assertEquals(1, foodTrips);
         assertTrue(FoodTripRules.goHome(0, 0, true, false, foodTrips));
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, foodTrips + 1));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, foodTrips + 1));
     }
 
     @Test
@@ -347,6 +363,6 @@ public class FoodTripRulesTest {
         for (int trip = 0; trip < FoodTripRules.MAX_TRIPS; trip++) {
             assertTrue(FoodTripRules.goHome(5, 0, true, false, trip));
         }
-        assertFalse(FoodTripRules.goHome(5, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
     }
 }

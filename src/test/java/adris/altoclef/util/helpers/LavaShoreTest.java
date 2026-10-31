@@ -460,4 +460,35 @@ public class LavaShoreTest {
         assertFalse(LavaShore.rimFoe(false, false, true, true, 2, 3.5));
         assertFalse(LavaShore.rimFoe(false, false, false, false, 2, 3.5));
     }
+
+    @Test
+    public void campSpotSitsSixToEightOutWithALineToTheSpawner() {
+        int[] spot = LavaShore.campSpot(new World(), 0, 0, 0, 20, 0);
+        assertNotNull(spot);
+        double out = Math.hypot(spot[0], spot[2]);
+        assertTrue(out >= LavaShore.CAMP_MIN && out <= LavaShore.CAMP_MAX);
+    }
+
+    @Test
+    public void campSpotSkipsCellsBehindAWall() {
+        // a wall ring at 5 hides everything past it, so the only spots with a line are none
+        World w = new World();
+        for (int x = -5; x <= 5; x++) {
+            for (int z = -5; z <= 5; z++) {
+                if (Math.max(Math.abs(x), Math.abs(z)) == 5) {
+                    for (int y = 0; y <= 3; y++) {
+                        w.solid(x, y, z);
+                    }
+                }
+            }
+        }
+        assertNull(LavaShore.campSpot(w, 0, 0, 0, 20, 0));
+    }
+
+    @Test
+    public void campSpotPrefersTheOneNearestUs() {
+        int[] spot = LavaShore.campSpot(new World(), 0, 0, 0, 30, 0);
+        assertNotNull(spot);
+        assertTrue(spot[0] > 0);
+    }
 }

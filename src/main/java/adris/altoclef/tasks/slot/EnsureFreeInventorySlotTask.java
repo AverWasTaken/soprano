@@ -15,6 +15,17 @@ import net.minecraft.world.item.ItemStack;
 
 public class EnsureFreeInventorySlotTask extends Task {
 
+    // armor we would wear is coming in: with no garbage the lowest stack we do not hold dear goes (StorageHelper.getLastResortSlot)
+    private final boolean _lastResort;
+
+    public EnsureFreeInventorySlotTask() {
+        this(false);
+    }
+
+    public EnsureFreeInventorySlotTask(boolean lastResort) {
+        _lastResort = lastResort;
+    }
+
     private boolean _stuck = false;
     // where the next throw points, picked once so a tunnel's two equal ends can't flip us back and forth. cleared only once
     // the cursor is really empty (a click can be refused during the slot handler's move delay)
@@ -39,6 +50,9 @@ public class EnsureFreeInventorySlotTask extends Task {
     protected Task onTick(AltoClef mod) {
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
+        if (garbage.isEmpty() && _lastResort) {
+            garbage = StorageHelper.getLastResortSlot(mod);
+        }
         // only plain storage takes things back. a furnace input or a crafting grid would eat the stack (or hand it back
         // on close into a bag with no room), which is the loss this is here to stop
         boolean storageOpen = ContainerType.screenHandlerMatches(ContainerType.CHEST) || ContainerType.screenHandlerMatches(ContainerType.SHULKER);
@@ -100,7 +114,7 @@ public class EnsureFreeInventorySlotTask extends Task {
 
     @Override
     protected boolean isEqual(Task obj) {
-        return obj instanceof EnsureFreeInventorySlotTask;
+        return obj instanceof EnsureFreeInventorySlotTask t && t._lastResort == _lastResort;
     }
 
     @Override

@@ -150,6 +150,8 @@ public class NetherPhase implements PhaseHandler {
     // alone and the other way round
     private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
+    // refunds given this phase entry, so a trip that keeps coming back with a thin 12 units cannot restart for ever
+    private int tripRefunds;
     private int blockTrips;
     // the walk home: progress mark, last tick it ran, and its own dig for blocks (fresh per trip so an old cooldown does not carry)
     private FoodTripRules.Mark homeMark;
@@ -177,6 +179,7 @@ public class NetherPhase implements PhaseHandler {
     private boolean foodTripUp;
     // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
     private long tripEndedTick = -1;
+    private long lastNoTripLog = -1;
     // food units at the last look up top, so a gain pings the watchdog (-1 = no look yet)
     private int lastTripUnits = -1;
     // the live trip already came back from a watchdog retry once
@@ -350,6 +353,7 @@ public class NetherPhase implements PhaseHandler {
         // overworld half of a trip runs inside this phase, so coming back down never lands here
         if (FoodTripRules.countersReset(ctx.attempt())) {
             foodTrips = 0;
+            tripRefunds = 0;
             blockTrips = 0;
             tripEndedTick = -1;
             tripResumed = false;
@@ -493,9 +497,13 @@ public class NetherPhase implements PhaseHandler {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
-                // a trip that came back with food did its job, so the next dry spell gets its trips too
-                if (hunt == null && FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
+                // a trip that came back with food did its job, so the next dry spell gets its trips too. a hunt still going when the
+                // clock ran out counts as well: the bag is what says it worked, and a trip that gained plenty used to keep its
+                // spot on the cap. a few refunds per entry, a thin trip over and over is not a bag that is getting somewhere
+                if (tripRefunds < FoodTripRules.MAX_REFUNDS
+                        && FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
                     foodTrips = Math.max(0, foodTrips - 1);
+                    tripRefunds++;
                 }
                 foodTrip = false;
                 foodTripUp = false;
@@ -614,6 +622,17 @@ public class NetherPhase implements PhaseHandler {
         return false;
     }
 
+    // no trip with the bag under the floor is the one thing that must never be silent: one line per 30 s with every gate
+    private void logNoTrip(GamerContext ctx, long tick, int units, double portalDistance, boolean portalKnown, boolean deathTrip) {
+        if (!FoodTripRules.underFloor(units, portalDistance) || (lastNoTripLog >= 0 && GameClock.since(lastNoTripLog, tick) < 600)) {
+            return;
+        }
+        lastNoTripLog = tick;
+        ctx.log("nether: no food trip with " + units + " units: portalKnown=" + portalKnown + " deathTrip=" + deathTrip + " trips=" + foodTrips
+                + "/" + FoodTripRules.MAX_TRIPS + " dry=" + FoodTripRules.MAX_TRIPS_DRY + " cooling=" + FoodTripRules.coolingDown(tick, tripEndedTick)
+                + " dist=" + (int) portalDistance);
+    }
+
     // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
@@ -645,6 +664,7 @@ public class NetherPhase implements PhaseHandler {
                 why = FoodTripRules.Reason.BLOCKS;
             }
             if (why == null) {
+                logNoTrip(ctx, tick, units, portalDistance, portalKnown, deathTrip);
                 return null;
             }
             foodTrip = true;

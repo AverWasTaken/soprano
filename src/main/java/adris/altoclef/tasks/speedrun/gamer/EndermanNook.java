@@ -128,6 +128,10 @@ public final class EndermanNook {
     // low hp waits only while it is actually coming back; flat for this long and we hunt anyway
     public static final int HP_FLAT_TICKS = 600;
 
+    // at or under this hp the hunt never starts, rising or not: flat hp this low means nothing is healing us (no food, no regen),
+    // and hunting on from there is a shot or a hit from the end. the food trip is what moves us
+    public static final float NEVER_HUNT_HP = 6;
+
     public enum Stance { AWAY, WAIT, HUNT }
 
     // what the open-field hunt does before it starts one: lava or fire means move (standing still next to either is how a
@@ -135,6 +139,9 @@ public final class EndermanNook {
     public static Stance stance(boolean lavaNear, boolean burning, float health, boolean hpRisingRecently) {
         if (lavaNear || burning) {
             return Stance.AWAY;
+        }
+        if (health <= NEVER_HUNT_HP) {
+            return Stance.WAIT;
         }
         return health < AGGRO_MIN_HP && hpRisingRecently ? Stance.WAIT : Stance.HUNT;
     }

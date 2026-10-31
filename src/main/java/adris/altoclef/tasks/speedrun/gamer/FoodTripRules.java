@@ -19,6 +19,9 @@ public final class FoodTripRules {
     public static final float CALM_HEALTH = 14;
     // trips per nether phase entry. a world with no food in reach would otherwise ping pong forever
     public static final int MAX_TRIPS = 2;
+    // an empty bag out here (under the floor) is a death sentence, so past MAX_TRIPS it still goes home, up to this many. trips
+    // that left the bag short are the ones that ate the cap, the hunt up top just gets another go
+    public static final int MAX_TRIPS_DRY = 4;
     // the hunt up top gets this long, then we carry on with what we have. the walk home has no flat clock, see STALL_SECONDS
     public static final double MAX_SECONDS = 480;
 
@@ -44,7 +47,8 @@ public final class FoodTripRules {
 
     // no food in the bag at all is just the same line: nothing to eat means no regen once hunger drops, and the floor is far over that
     public static boolean goHome(double foodUnits, double distToPortal, boolean portalKnown, boolean deathTripLive, int tripsDone) {
-        return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && foodUnits < goHomeLine(distToPortal);
+        return portalKnown && !deathTripLive && foodUnits < goHomeLine(distToPortal)
+                && (tripsDone < MAX_TRIPS || (tripsDone < MAX_TRIPS_DRY && underFloor(foodUnits, distToPortal)));
     }
 
     public static boolean underFloor(double foodUnits, double distToPortal) {
@@ -205,6 +209,8 @@ public final class FoodTripRules {
     // so it does not count against MAX_TRIPS: the cap is for the world with no food in reach, not for a bot that keeps running dry
     // because the nether eats it. blocks trips and trips that came back empty handed stay counted
     public static final int TRIP_GAIN_UNITS = 12;
+    // refunds per nether phase entry
+    public static final int MAX_REFUNDS = 3;
 
     public static boolean refundsTrip(Reason reason, int unitsAtStart, int unitsAtEnd) {
         return reason == Reason.FOOD && unitsAtEnd - unitsAtStart >= TRIP_GAIN_UNITS;
