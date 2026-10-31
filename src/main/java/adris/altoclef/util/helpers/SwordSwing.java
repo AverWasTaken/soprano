@@ -48,6 +48,15 @@ public final class SwordSwing {
         return now >= swappedAt && now - swappedAt <= RESET_HOLD_TICKS;
     }
 
+    // a charge reset that cannot find anything to swap to (or park on) for this long swings anyway: a bot that never swings
+    // is worse than one that sweeps a calm mob, and the sweep box rules still pick the early window when the reset works
+    public static final long RESET_STUCK_TICKS = 40;
+
+    // stuckSince is the first tick the reset had no way out (-1: not stuck). the tick it starts is never a swing
+    public static boolean resetGaveUp(long now, long stuckSince) {
+        return stuckSince >= 0 && now - stuckSince >= RESET_STUCK_TICKS;
+    }
+
     // a calm neutral is near and the charge is over the sweep line: this swing must never go out, throw the charge away instead
     public static boolean needsReset(double scale, boolean calmNeutralNear) {
         return calmNeutralNear && scale > SWEEP_SCALE;

@@ -90,6 +90,16 @@ public final class WeaponPick {
         return inHand;
     }
 
+    // moves the hand to hold. a failed axe falls back to the plain pick. true only when an equip actually went through, so a
+    // failed one lets the caller swing with what is in hand instead of waiting on a swap that never works
+    public static boolean swapHand(java.util.function.Predicate<Item> equip, Item hold, Item inHand, boolean wasAxe,
+                                   java.util.function.Supplier<Item> plain) {
+        if (equip.test(hold)) return true;
+        if (!wasAxe) return false;
+        Item fallback = plain.get();
+        return fallback != null && fallback != inHand && equip.test(fallback);
+    }
+
     private static boolean beats(Candidate a, Candidate b) {
         boolean aWorn = ToolWear.wornOut(a.damage(), a.maxDamage());
         boolean bWorn = ToolWear.wornOut(b.damage(), b.maxDamage());

@@ -436,13 +436,33 @@ public class PlayerExtraController {
         boolean calm = calmBeside(target);
         double scale = chargeScale();
         if (SwordSwing.needsReset(scale, calm)) {
-            resetCharge();
+            if (resetCharge()) {
+                _resetStuckSince = -1;
+                return false;
+            }
+            // nothing to swap to or park on: wait a while for an item to show up, then swing (never on the first stuck tick)
+            long now = gameTime();
+            // (a clock that went backwards is a new world: start the wait over)
+            if (_resetStuckSince < 0 || _resetStuckSince > now) {
+                _resetStuckSince = now;
+                return false;
+            }
+            if (SwordSwing.resetGaveUp(now, _resetStuckSince)) {
+                // (and forget what the swap refused: the inventory may have moved since)
+                _resetFailed.clear();
+                _resetStuckSince = -1; // one swing per wait, the next full charge earns its own
+                return true;
+            }
             return false;
         }
+        _resetStuckSince = -1;
         return SwordSwing.charged(scale, calm);
     }
 
     private long _resetAt = Long.MIN_VALUE / 2;
+    private long _resetStuckSince = -1;
+    // odd items the swap would not take (offhand and friends), skipped until a reset works again
+    private final java.util.Set<Item> _resetFailed = new java.util.HashSet<>();
 
     // an odd item went into the hand to throw the charge away and has to stay a few ticks, see SwordSwing.RESET_HOLD_TICKS.
     // the weapon pick leaves the hand alone meanwhile
@@ -450,35 +470,39 @@ public class PlayerExtraController {
         return SwordSwing.resetHeld(gameTime(), _resetAt);
     }
 
-    // vanilla zeroes the charge when the held item changes type. an axe never sweeps so it is the better odd item (and nothing
-    // to hold, it stays), else any block, else anything that is not a sword
-    private void resetCharge() {
+    // vanilla zeroes the charge when the held item changes type. an axe never sweeps so it is the better odd item, else any
+    // block, else anything that is not a sword. true when the hand changed (or got parked), false when there was no way to
+    private boolean resetCharge() {
         Item odd = resetItem();
         if (odd == null) {
-            emptyHandReset();
-            return;
+            return emptyHandReset();
         }
         if (_mod.getSlotHandler().forceEquipItem(odd)) {
-            if (!ItemHelper.isAxe(odd)) {
-                _resetAt = gameTime();
-            }
+            // (the axe holds too: the callers without a target, the perch hit and the golem fight, swap straight back otherwise)
+            _resetAt = gameTime();
+            _resetFailed.clear();
             Debug.logInternal("swing: calm neutral near and a full charge, swapped to " + BuiltInRegistries.ITEM.getKey(odd).getPath()
                     + " to throw the charge away");
+            return true;
         }
+        // the swap can't reach it: remember, so the next pick tries something else
+        _resetFailed.add(odd);
+        return emptyHandReset();
     }
 
     // nothing but swords and armor on us: park the hand on an empty hotbar slot instead. the weapon pick walks back to slot 1
-    private void emptyHandReset() {
+    private boolean emptyHandReset() {
         Inventory inventory = _mod.getPlayer().getInventory();
         for (int slot = 0; slot < 9; slot++) {
             if (slot != inventory.getSelectedSlot() && inventory.getItem(slot).isEmpty()) {
                 inventory.setSelectedSlot(slot);
                 _resetAt = gameTime();
                 Debug.logInternal("swing: calm neutral near and a full charge, nothing to swap to, empty hand to throw the charge away");
-                return;
+                return true;
             }
         }
         Debug.logInternal("swing: calm neutral near and a full charge, nothing to swap to, not swinging");
+        return false;
     }
 
     private Item resetItem() {
@@ -486,7 +510,7 @@ public class PlayerExtraController {
         Item other = null;
         for (ItemStack stack : _mod.getItemStorage().getItemStacksPlayerInventory(false)) {
             Item item = stack.getItem();
-            if (stack.isEmpty() || ItemHelper.isSword(item) || ItemHelper.isEquippable(item)) {
+            if (stack.isEmpty() || ItemHelper.isSword(item) || ItemHelper.isEquippable(item) || _resetFailed.contains(item)) {
                 continue;
             }
             if (ItemHelper.isAxe(item)) {
