@@ -36,7 +36,7 @@ public class InputControls {
     // tracked as "unowned": those are never let go of by anybody's stop, only by a plain release
     private final Map<Input, Set<Object>> _owners = new EnumMap<>(Input.class);
     private final Set<Input> _unowned = EnumSet.noneOf(Input.class);
-    private final Map<Input, Object> _pins = new EnumMap<>(Input.class);
+    private final Map<Input, Set<Object>> _pins = new EnumMap<>(Input.class);
 
     public InputControls() {
         this(new GameKeys());
@@ -125,23 +125,41 @@ public class InputControls {
     // a key a survival rule needs held no matter who lets go (a dozen tasks release sneak by hand every tick they run). the
     // pin outlives plain releases, only unpin lifts it
     public void pin(Input input, Object owner) {
-        _pins.put(input, owner);
+        _pins.computeIfAbsent(input, k -> Collections.newSetFromMap(new IdentityHashMap<>())).add(owner);
         hold(input, owner);
     }
 
+    // only this owner's pin goes, another owner's pin on the same key keeps it down (magma sneak vs the edge brake)
     public void unpin(Input input, Object owner) {
-        if (_pins.get(input) == owner) {
-            _pins.remove(input);
+        Set<Object> pinners = _pins.get(input);
+        if (pinners != null) {
+            pinners.remove(owner);
+            if (pinners.isEmpty()) {
+                _pins.remove(input);
+            } else {
+                // a hold on a key the game let up wipes every claim (see hold), the pins that are left put theirs back
+                // so this owner going doesn't lift the key under them
+                for (Object pinner : pinners) {
+                    claim(input, pinner);
+                }
+            }
         }
         releaseOwnedBy(owner);
+    }
+
+    public boolean isPinnedBy(Input input, Object owner) {
+        Set<Object> pinners = _pins.get(input);
+        return pinners != null && pinners.contains(owner);
     }
 
     // unconditional: the key goes up and every claim on it is gone, owned or not (a pinned key stays down, see pin)
     public void release(Input input) {
         forget(input);
-        Object pinned = _pins.get(input);
-        if (pinned != null) {
-            claim(input, pinned);
+        Set<Object> pinned = _pins.get(input);
+        if (pinned != null && !pinned.isEmpty()) {
+            for (Object pinner : pinned) {
+                claim(input, pinner);
+            }
             return;
         }
         _keys.setDown(input, false);

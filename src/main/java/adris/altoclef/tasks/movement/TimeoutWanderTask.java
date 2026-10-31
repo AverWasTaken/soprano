@@ -144,7 +144,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        mod.getClientBaritone().getPathingBehavior().cancelWhenSafe();
         _origin = mod.getPlayer().position();
         // built here and not in the field initializers because the checkers read the game clock, and a wander has to be
         // constructible without a game so a test can hang one in a task tree
@@ -231,7 +231,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        mod.getClientBaritone().getPathingBehavior().cancelWhenSafe();
         if (isFinished(mod)) {
             if (_increaseRange) {
                 _wanderDistanceExtension += _distanceToWander;
