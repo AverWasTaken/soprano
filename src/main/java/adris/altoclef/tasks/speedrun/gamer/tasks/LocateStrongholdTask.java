@@ -106,6 +106,8 @@ public class LocateStrongholdTask extends Task {
         for (RunState.Ray r : state.strongholdRays) {
             estimator.addRay(new StrongholdEstimator.Ray(r.ox, r.oz, r.dx, r.dz, r.dived));
         }
+        // eyeThrows counts every throw, rays only the accepted ones: the gap is rejected throws the fit has to remember
+        estimator.restoreRejects(state.eyeThrows - state.strongholdRays.size());
         List<StrongholdEstimator.Ray> known = estimator.rays();
         if (!known.isEmpty()) {
             lastThrowX = known.get(known.size() - 1).ox();
@@ -234,7 +236,7 @@ public class LocateStrongholdTask extends Task {
             forceThrow = false;
             return beginThrow(mod);
         }
-        StrongholdEstimator.Advice a = estimator.advise(px, pz, walkedSinceThrow(px, pz));
+        StrongholdEstimator.Advice a = estimator.advise(px, pz, walkedSinceThrow(px, pz), mod.getItemStorage().getItemCount(Items.ENDER_EYE));
         switch (a.step()) {
             case THROW -> {
                 return beginThrow(mod);
@@ -340,7 +342,7 @@ public class LocateStrongholdTask extends Task {
         if (legIsRelocate) {
             return false;
         }
-        StrongholdEstimator.Advice a = estimator.advise(px, pz, walkedSinceThrow(px, pz));
+        StrongholdEstimator.Advice a = estimator.advise(px, pz, walkedSinceThrow(px, pz), mod.getItemStorage().getItemCount(Items.ENDER_EYE));
         if (a.step() == StrongholdEstimator.Step.WALK || a.step() == StrongholdEstimator.Step.ARRIVE) {
             return Math.hypot(a.x() - legX, a.z() - legZ) > 8;
         }
@@ -513,7 +515,8 @@ public class LocateStrongholdTask extends Task {
     // one line per throw: what we held going in, which throw it is, and where the guess stands
     private String throwLine(AltoClef mod) {
         String est = estimator.estimate().map(e -> " est=" + Math.round(e.x()) + "," + Math.round(e.z()) + " dist="
-                + Math.round(Math.hypot(e.x() - mod.getPlayer().getX(), e.z() - mod.getPlayer().getZ()))).orElse(" est=none");
+                + Math.round(Math.hypot(e.x() - mod.getPlayer().getX(), e.z() - mod.getPlayer().getZ()))
+                + " radius=" + Math.round(e.radius())).orElse(" est=none");
         return "eyes: throw #" + (ledger.counted() + 1) + " held=" + ctx.state().eyeBaseline + est;
     }
 

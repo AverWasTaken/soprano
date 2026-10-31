@@ -97,7 +97,9 @@ public class NetherPhasesTest {
 
     @Test
     public void netherIsDoneWithTheFullKit() {
-        assertTrue(nether.isDone(bag(7, 0, 14, 0), state, cfg));
+        assertTrue(nether.isDone(bag(8, 0, 14, 0), state, cfg));
+        // 7 rods is the floor, the exit waits for the spare one
+        assertFalse(nether.isDone(bag(7, 0, 14, 0), state, cfg));
         assertFalse(nether.isDone(bag(7, 0, 13, 0), state, cfg));
         assertFalse(nether.isDone(bag(6, 0, 14, 0), state, cfg));
         assertFalse(nether.isDone(bag(0, 0, 0, 0), state, cfg));
@@ -148,8 +150,9 @@ public class NetherPhasesTest {
         // OPEN filled 5 of 12 and ran dry: 7 empty frames + the 2 spare, not another 14
         state.framesFilled = 5;
         state.netherRevisits = 1;
-        assertTrue(nether.isDone(bag(5, 0, 9, 0), state, cfg));
-        assertFalse(nether.isDone(bag(4, 0, 9, 0), state, cfg));
+        // the ring was never read here, so the spare rod rides on top (6 rods, not 5)
+        assertTrue(nether.isDone(bag(6, 0, 9, 0), state, cfg));
+        assertFalse(nether.isDone(bag(5, 0, 9, 0), state, cfg));
         // the floor (7 empty + the 1 spare) when the budget or the rods run out
         FakeFacts eight = bag(4, 0, 8, 0);
         assertFalse(nether.isDone(eight, state, cfg));

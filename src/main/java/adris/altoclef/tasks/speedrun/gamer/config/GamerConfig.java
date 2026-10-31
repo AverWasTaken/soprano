@@ -30,6 +30,8 @@ public class GamerConfig {
     // leave the nether / start the stronghold with at least this many when the pearl budget ran out. 12 fills the ring
     // with nothing to spare, one more covers the odd lost throw
     public int floorEyes = 13;
+    // extra rods on top of the target while the ring is still unread: rods are nether only, pearls can be topped up up top
+    public int spareRods = 1;
 
     public Budgets budgets = new Budgets();
     public Death death = new Death();

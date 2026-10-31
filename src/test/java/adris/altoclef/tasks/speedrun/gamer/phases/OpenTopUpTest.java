@@ -20,6 +20,12 @@ public class OpenTopUpTest {
     }
 
     @Test
+    public void aSpareRodsPowderTurnsAOneEyeShortOpenIntoATopUp() {
+        // 9 eyes held, 10 empty frames, no pearls, the spare rod's 2 powder: hold 1 pearl
+        assertEquals(1, OpenTopUp.pearlsToHold(10, 9, 0, 2, 0));
+    }
+
+    @Test
     public void notATopUpWhenCoveredTooFarOffOrNoPowder() {
         // nothing short, or the bag can craft the rest
         assertEquals(0, OpenTopUp.pearlsToHold(10, 10, 0, 5, 0));
