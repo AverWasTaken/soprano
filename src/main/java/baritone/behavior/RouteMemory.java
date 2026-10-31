@@ -480,10 +480,14 @@ public final class RouteMemory {
             }
         }
         if (out == null) {
+            // no recording of this course: the bot's own trail. what it stood on is this search's floors, but not a course's
+            // for after (a run of the Lab's section 15 made the Sky tower's purpur, sixty blocks back, somewhere no path
+            // could land, and the full run stopped there)
             out = floorsMemo(g.whole(), ctx);
-        }
-        if (out == null) {
-            return null;
+            if (out != null) {
+                lastFloors = java.util.Set.of();
+            }
+            return out;
         }
         lastFloors = out;
         lastLow = low;
@@ -604,8 +608,12 @@ public final class RouteMemory {
     // what the trail we were last on stands on, if it's round x z (null if not): a search the trail's given up on (it kept
     // failing from here, GUIDE_TRIES) is still on that course, and the course is still glass but for the wool
     public static java.util.Set<net.minecraft.world.level.block.Block> floorsNear(double x, double z) {
-        return !lastFloors.isEmpty() && Math.abs(x - lastFloorsX) <= 128 && Math.abs(z - lastFloorsZ) <= 128 ? lastFloors : null;
+        return !lastFloors.isEmpty() && Math.abs(x - lastFloorsX) <= FLOORS_NEAR && Math.abs(z - lastFloorsZ) <= FLOORS_NEAR ? lastFloors : null;
     }
+
+    // how far from where the last recorded course's guide started its floors still count with no guide. (128 reached from
+    // Hell's row of the Lab's levels into the Lab itself)
+    static final int FLOORS_NEAR = 64;
 
     // the trail we're on (the last one planned along, if it's round x z) stands on block: so it isn't what puts us back
     public static boolean trailFloor(net.minecraft.world.level.block.Block block, double x, double z) {

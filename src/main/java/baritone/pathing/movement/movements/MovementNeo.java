@@ -29,6 +29,12 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.MovementState.MovementTarget;
+import baritone.utils.BlockStateInterface;
+import baritone.pathing.tungsten.SafeCollision;
+import baritone.pathing.tungsten.SnapshotCollision;
+import baritone.pathing.sim.PlayerSim;
+import baritone.pathing.sim.LiveSim;
+import baritone.pathing.tungsten.RunNeo;
 import baritone.utils.pathing.MutableMoveResult;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Direction;
@@ -49,13 +55,30 @@ public class MovementNeo extends Movement implements CurvedMovement {
     private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
 
     // cost rides along so the planner and calculateCost can only ever disagree if the table did
-    private record Shape(Direction side, int dist, int walls, int runway, boolean openBeyond, double cost) {}
+    private record Shape(Direction side, int dist, int walls, int runway, boolean openBeyond, double cost, boolean run) {
+        Shape(Direction side, int dist, int walls, int runway, boolean openBeyond, double cost) {
+            this(side, dist, walls, runway, openBeyond, cost, false);
+        }
+    }
+
+    // the triple neo from right behind the wall: off a run of bunny hops, see RunNeo. the runway it wants (counted further
+    // than the table's MAX_RUNWAY) and the most it looks for
+    static final int RUN_MIN_RUNWAY = 12, RUN_MAX_RUNWAY = 14;
+    private static final boolean RUN_LOG = System.getenv("SOPRANO_NEO_LOG") != null;
 
     private final Direction direction, side;
     private final int dist;
     // recalculateCost runs every tick and refreshes these, so someone placing a block mid run up changes the plan
     private int walls, runway;
     private boolean openBeyond;
+    // a running neo (Shape.run): the plan, worked out off the game thread, the copy of the blocks it plays against, and
+    // whether the run has started
+    private boolean run;
+    private RunNeo runNeo;
+    private java.util.concurrent.CompletableFuture<Boolean> runPlan;
+    private SnapshotCollision runWorld;
+    private boolean runGoing, runLanded;
+    private int runSettle;
     // jumped covers the hop too, so nobody cancels us mid air. hopping is the hop specifically: coming down from it on the
     // runway is the plan, not a bonk, and hopAir counts ticks it spent off the ground so a hop that never left isn't one
     private boolean jumped, hopping;
@@ -86,6 +109,14 @@ public class MovementNeo extends Movement implements CurvedMovement {
         jumped = hopping = running = false;
         hopAir = runTicks = failedRuns = stuckTicks = 0;
         flight = null;
+        runNeo = null;
+        if (runPlan != null) {
+            runPlan.cancel(true);
+        }
+        runPlan = null;
+        runWorld = null;
+        runGoing = runLanded = false;
+        runSettle = 0;
     }
 
     // where the table of run ups is kept between launches, see NeoJump.TABLE_VERSION. NeoJump doesn't know what a game
@@ -100,7 +131,9 @@ public class MovementNeo extends Movement implements CurvedMovement {
             // dest == src never matches anything in Path.runBackwards, and calculateCost can't find a dist 0 shape. so it's inert
             return new MovementNeo(context.getBaritone(), src, dir, dir.getClockWise(), 0, 0, 1, false);
         }
-        return new MovementNeo(context.getBaritone(), src, dir, shape.side(), shape.dist(), shape.walls(), shape.runway(), shape.openBeyond());
+        MovementNeo m = new MovementNeo(context.getBaritone(), src, dir, shape.side(), shape.dist(), shape.walls(), shape.runway(), shape.openBeyond());
+        m.run = shape.run();
+        return m;
     }
 
     public static void cost(CalculationContext context, int x, int y, int z, Direction dir, MutableMoveResult res) {
@@ -169,7 +202,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
         }
         // how much floor we have to run up on. the first cell that fails ends it, and no cells at all means no neo
         int runway = 0;
-        while (runway < NeoJump.MAX_RUNWAY) {
+        while (runway < RUN_MAX_RUNWAY) {
             int bx = x - dx * (runway + 1), bz = z - dz * (runway + 1);
             if (!plainFloor(context, bx, y - 1, bz) || !clear(context, bx, y, bz) || !clear(context, bx + sx, y, bz + sz)) {
                 break;
@@ -213,7 +246,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
         // whole thing doesn't work out, see if less of it does
         // and a shorter one can be cheaper too, nobody wants to walk six blocks back to hop when two would've done
         Shape best = null;
-        for (int r = runway; r >= 1; r--) {
+        for (int r = Math.min(runway, NeoJump.MAX_RUNWAY); r >= 1; r--) {
             NeoJump.Staging st = NeoJump.stagingIfKnown(dist, walls, r, openBeyond);
             if (st != null) {
                 double cost = cost(context, st);
@@ -221,6 +254,13 @@ public class MovementNeo extends Movement implements CurvedMovement {
                     best = new Shape(side, dist, walls, r, openBeyond, cost);
                 }
             }
+        }
+        if (best == null && dist == 4 && walls == 0b111 && runway >= RUN_MIN_RUNWAY && Baritone.settings().allowRunningNeos.value) {
+            // no standing start or run up gets round a wall three thick from right behind it. a run of hops does
+            // (RunNeo): back to the far end of the runway, hop along it and off the very edge
+            double back = runway - 0.5;
+            double ticks = back * WALK_ONE_BLOCK_COST + SNEAK_STRETCH * SNEAK_EXTRA + SETTLE_TICKS + back / 0.3 + FLIGHT_TICKS;
+            best = new Shape(side, dist, walls, runway, openBeyond, context.biasJump(ticks + 3 * context.jumpPenalty), true);
         }
         return best;
     }
@@ -261,6 +301,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
         walls = shape.walls();
         runway = shape.runway();
         openBeyond = shape.openBeyond();
+        run = shape.run();
         return shape.cost();
     }
 
@@ -282,7 +323,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
     @Override
     public boolean safeToCancel(MovementState state) {
         // shuffling around before the jump is fine to interrupt, the flight very much isn't
-        return state.getStatus() != MovementStatus.RUNNING || !jumped && ctx.player().onGround();
+        return state.getStatus() != MovementStatus.RUNNING || !jumped && !runGoing && ctx.player().onGround();
     }
 
     @Override
@@ -305,6 +346,9 @@ public class MovementNeo extends Movement implements CurvedMovement {
         }
         if (player.onGround() && feet.equals(dest)) {
             return state.setStatus(MovementStatus.SUCCESS);
+        }
+        if (run) {
+            return runUpdate(state, player, feet);
         }
         int dx = direction.getStepX(), dz = direction.getStepZ(), sx = side.getStepX(), sz = side.getStepZ();
         Vec3 pos = player.position().subtract(src.x + 0.5, 0, src.z + 0.5);
@@ -536,6 +580,109 @@ public class MovementNeo extends Movement implements CurvedMovement {
             return "can't neo without sprinting";
         }
         return null;
+    }
+
+    // the running neo (RunNeo): plan it off the game thread, walk to where the run starts, and play it closed loop
+    private MovementState runUpdate(MovementState state, LocalPlayer player, BetterBlockPos feet) {
+        int dx = direction.getStepX(), dz = direction.getStepZ(), sx = side.getStepX(), sz = side.getStepZ();
+        if (feet.y < src.y) {
+            logDebug("running neo: fell");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        if (runNeo == null) {
+            BlockStateInterface bsi = ((Baritone) baritone).bsi;
+            if (bsi == null) {
+                return state;
+            }
+            // the blocks round the whole thing, copied: the plan runs on another thread, and the rollouts every tick are
+            // quicker on a copy
+            int x0 = Math.min(src.x - dx * (runway + 1), dest.x + dx * 2), x1 = Math.max(src.x - dx * (runway + 1), dest.x + dx * 2);
+            int z0 = Math.min(src.z - dz * (runway + 1), dest.z + dz * 2), z1 = Math.max(src.z - dz * (runway + 1), dest.z + dz * 2);
+            runWorld = new SnapshotCollision(new SafeCollision(bsi),
+                    Math.min(x0, x0 + 3 * sx) - 2, src.y - 3, Math.min(z0, z0 + 3 * sz) - 2,
+                    Math.max(x1, x1 + 3 * sx) + 2, src.y + 4, Math.max(z1, z1 + 3 * sz) + 2);
+            runNeo = new RunNeo(runWorld, src.x, src.z, src.y, dx, dz, sx, sz, dist - 1);
+            RunNeo planning = runNeo;
+            int rw = runway;
+            runPlan = java.util.concurrent.CompletableFuture.supplyAsync(() -> planning.plan(rw));
+            logDebug("running neo: working out the run up");
+        }
+        if (!runPlan.isDone()) {
+            return state; // (a second or two)
+        }
+        if (!runPlan.getNow(false)) {
+            logDebug("running neo: no run of hops gets round from this runway");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        RunNeo rn = runNeo;
+        if (!runGoing) {
+            // over to where the run starts, and stood still on it (the plan is from standing there)
+            double tx = rn.worldX(rn.startU, RunNeo.lane()), tz = rn.worldZ(rn.startU, RunNeo.lane());
+            double ex = tx - player.getX(), ez = tz - player.getZ(), off = Math.sqrt(ex * ex + ez * ez);
+            Vec3 vel = player.getDeltaMovement();
+            double speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+            if (++stuckTicks > 400) {
+                logDebug("running neo: can't get to the start of the run");
+                return state.setStatus(MovementStatus.UNREACHABLE);
+            }
+            if (off < 0.04 && speed < 0.003) {
+                // facing along the run, sneak let go of, a tick to settle
+                state.setTarget(new MovementTarget(new Rotation(rn.heading(0), ctx.playerRotations().getPitch()), false));
+                if (++runSettle >= 3) {
+                    runGoing = true;
+                    stuckTicks = 0;
+                    logDebug(String.format("running neo: go (from %.2f, %d ticks before the first hop)", rn.startU, rn.waitTicks));
+                }
+                return state;
+            }
+            runSettle = 0;
+            if (off < SNEAK_STRETCH) {
+                state.setInput(Input.SNEAK, true);
+            }
+            if (off > 0.04 && !(off < 0.3 && speed > 0.05)) {
+                float yaw = (float) Math.toDegrees(Math.atan2(ez, ex)) - 90;
+                state.setTarget(new MovementTarget(new Rotation(yaw, ctx.playerRotations().getPitch()), false));
+                state.setInput(Input.MOVE_FORWARD, true);
+            }
+            return state;
+        }
+        // down past the wall: on the landing block (the box on it, the middle maybe not yet), then onto it properly
+        double u = rn.u(player.getX(), player.getZ()), v = rn.v(player.getX(), player.getZ());
+        if (player.onGround() && u > dist - 1.5) {
+            if (Math.abs(player.getY() - src.y) < 1.0E-3 && Math.abs(v) < 0.8) {
+                if (!runLanded) {
+                    runLanded = true;
+                    logDebug("running neo: landed");
+                }
+                MovementHelper.moveTowards(ctx, state, dest);
+                return state;
+            }
+            logDebug("running neo: came down somewhere else");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        PlayerSim live = LiveSim.of(player, runWorld);
+        if (live == null) {
+            return state; // (a sneak still on from the staging: gone next tick)
+        }
+        PlayerSim.Controls k = rn.decide(live);
+        if (RUN_LOG) {
+            System.out.printf("[running neo] u %.3f v %.3f y %.3f vel %.3f %.3f %.3f %s | %s%n", u, v, player.getY() - src.y,
+                    live.vx, live.vy, live.vz, player.onGround() ? "G" : "A", rn.lastWhy);
+        }
+        if (Baritone.settings().chatDebug.value && ++runTicks % 5 == 0) {
+            logDebug("running neo: " + rn.lastWhy);
+        }
+        state.setTarget(new MovementTarget(new Rotation(k.moveYaw(), ctx.playerRotations().getPitch()), false));
+        if (k.forward() > 0) {
+            state.setInput(Input.MOVE_FORWARD, true);
+        }
+        if (k.jump()) {
+            state.setInput(Input.JUMP, true);
+        }
+        if (k.sprint()) {
+            state.setInput(Input.SPRINT, true);
+        }
+        return state;
     }
 
     private void steer(MovementState state, double hu, double hv) {

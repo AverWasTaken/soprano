@@ -1,10 +1,33 @@
-# Parkour Lab v7 (bot v16)
+# Parkour Lab v8 (bot v17)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
-The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 820 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
+The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 890 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v16 (same course, v7)
+## What's new in bot v17 (course v8: section 15 has a new jump, everything after it is 21 blocks further east)
+
+**The triple neo from right behind the wall.** You were right, it's possible in vanilla. It takes momentum: no run up from standing gets round a wall three thick from behind, but a run of bunny hops does. The bot (`RunNeo`, `allowRunningNeos`, on with `allowNeos`) does it the way you described:
+- it hops along the runway, out towards its open side edge, every touchdown straight back up, so each hop keeps the jump's push on top of the speed the last flight carried;
+- the hops are timed (where it starts on the runway, and how many ticks it runs before the first hop) so the last one comes down right at the end, the box just out past the wall's side, and it jumps straight off the very edge;
+- in the air it presses into the side of the wall, which costs nothing and holds the line exactly on the wall's edge, and once past the end it turns in onto the block.
+
+The margins are small. Each tick the bot rolls the rest of the run out in the sim for a handful of choices (how close to the wall's side line the last touchdown goes, how hard it turns out on that tick, and in the air how hard it presses and when it turns in) and plays the best. It plans the start in about a second and a half on a background thread.
+
+In the sim with the aim wobbling the way LookBehavior wobbles it, it lands 20 out of 20 off a 12 to 14 block runway, but only 8 out of 20 off 10 or 11. So it's only offered with 12 or more blocks of runway behind the takeoff, a wall three thick, and the landing on the line.
+
+**Course v8:** section 15 (Triple neos) now ends with one from behind: a fourteen block runway (13 behind the takeoff block), in line with a wall three thick, the open side to the south. Every checkpoint from 16 on moved 21 blocks east (the table below has the new ones). Rebuild with `/function parkourlab:build`. I dropped the bot's own trails from routes.json that went through the part that moved.
+
+**Fewer wrong floors.** With no remembered way to follow, the planner kept the floors of the last trail it had followed for anything within 128 blocks, even when that trail was only one of its own runs. After a run of section 15, the Sky tower's purpur blocks 60 blocks back weren't somewhere it would land, and the full run stopped there. Now only a recording's floors carry over like that, and only within 64 blocks.
+
+**How v17 did:**
+
+| | result |
+|---|---|
+| Lab 15 Triple neos (with the new one) | 5 of 5: 21 to 33 s, 0 falls |
+| Lab, the whole course from one `#goto` | done, 567 s, 6 falls. Section 11 (ladder neos, 162 s, 3 falls) is still the slowest. 16 neo chains took 77 s. Two falls were on section 25's water blocks |
+| Unit test (RunNeoTest) | 20 of 20 landed off a 13 block runway, aim wobbling |
+
+## What was new in bot v16 (same course, v7)
 
 **Search speed and lag**
 
@@ -39,13 +62,7 @@ The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs eas
 - It follows the bot by default: `#freecam follow` leaves it where it is instead.
 - The same again turns it off. Dying or leaving the world turns it off too.
 
-**Triple neos.** A level triple neo from right behind the wall isn't possible in vanilla physics. The neo table has none, and the full search from a running start (0.28 to 0.36 blocks a tick) found every double neo in about 2 s and no triple in 6 s of searching. The two that are possible are both supported:
-- one down, from behind;
-- level, from the block beside the wall after a run up (section 15).
-
-If you can do a level one from behind, a recording of it would show what the sim is missing.
-
-**Instant neos (not in this one).** The neos from the table always start from standing on the run up's start spot. A neo straight off a run needs the run to be on the side lane a couple of blocks before the wall, and the table's model doesn't plan that. I tried it and backed it out: it never found a jump from the centre lane, and it cost up to 100 ms a tick looking. That's the next big one. On Candy the bot already runs and jumps without stopping (about 7 standing ticks in a 24 s run).
+**Triple neos.** (Wrong, see v17: I said a level triple neo from behind wasn't possible. It is, off a run of bunny hops, which the search from a running start never tried.)
 
 **How v16 did** (`#goto` the finish from the start, a fresh client each set of runs):
 
@@ -352,20 +369,20 @@ To test one section, teleport to its start checkpoint, then `#goto` the next one
 | 12 | Ice palace | `/function parkourlab:cp/11` | `#goto 1427 155 1021` |
 | 13 | Sky tower | `/function parkourlab:cp/12` | `#goto 1439 161 1021` |
 | 14 | Slime factory | `/function parkourlab:cp/13` | `#goto 1470 157 1021` |
-| 15 | Triple neos | `/function parkourlab:cp/14` | `#goto 1503 157 1021` |
-| 16 | Neo chains | `/function parkourlab:cp/15` | `#goto 1528 157 1021` |
-| 17 | Combo | `/function parkourlab:cp/16` | `#goto 1549 158 1021` |
-| 18 | Slime to ladder | `/function parkourlab:cp/17` | `#goto 1576 158 1021` |
-| 19 | Ice tunnel | `/function parkourlab:cp/18` | `#goto 1616 158 1021` |
-| 20 | CubeCraft | `/function parkourlab:cp/19` | `#goto 1621 159 992` |
-| 21 | Decorations (new) | `/function parkourlab:cp/20` | `#goto 1658 160 992` |
-| 22 | Pillars (new) | `/function parkourlab:cp/21` | `#goto 1684 160 992` |
-| 23 | Ladder tops (new) | `/function parkourlab:cp/22` | `#goto 1706 162 994` |
-| 24 | Soul sand (new) | `/function parkourlab:cp/23` | `#goto 1737 162 994` |
-| 25 | Water blocks (new) | `/function parkourlab:cp/24` | `#goto 1753 159 994` |
-| 26 | Finale | `/function parkourlab:cp/25` | `#goto 1869 163 992` |
+| 15 | Triple neos (now with the one from behind) | `/function parkourlab:cp/14` | `#goto 1524 157 1021` |
+| 16 | Neo chains | `/function parkourlab:cp/15` | `#goto 1549 157 1021` |
+| 17 | Combo | `/function parkourlab:cp/16` | `#goto 1570 158 1021` |
+| 18 | Slime to ladder | `/function parkourlab:cp/17` | `#goto 1597 158 1021` |
+| 19 | Ice tunnel | `/function parkourlab:cp/18` | `#goto 1637 158 1021` |
+| 20 | CubeCraft | `/function parkourlab:cp/19` | `#goto 1642 159 992` |
+| 21 | Decorations (new) | `/function parkourlab:cp/20` | `#goto 1679 160 992` |
+| 22 | Pillars (new) | `/function parkourlab:cp/21` | `#goto 1705 160 992` |
+| 23 | Ladder tops (new) | `/function parkourlab:cp/22` | `#goto 1727 162 994` |
+| 24 | Soul sand (new) | `/function parkourlab:cp/23` | `#goto 1758 162 994` |
+| 25 | Water blocks (new) | `/function parkourlab:cp/24` | `#goto 1774 159 994` |
+| 26 | Finale | `/function parkourlab:cp/25` | `#goto 1890 163 992` |
 
-Full run: `/function parkourlab:start`, then `#goto 1869 163 992`.
+Full run: `/function parkourlab:start`, then `#goto 1890 163 992`.
 
 ## What changed in the bot in v5
 

@@ -281,6 +281,13 @@ public final class Settings {
     public final Setting<Boolean> allowNeos = new Setting<>(false);
 
     /**
+     * With allowNeos, the triple neo from right behind the wall (a wall three thick, the landing on the block right after
+     * it, level): a run of bunny hops along a runway of 12 blocks or more, off the very edge, pressed along the wall's side.
+     * No standing start gets round one of those.
+     */
+    public final Setting<Boolean> allowRunningNeos = new Setting<>(true);
+
+    /**
      * Jump onto ladders and vines across a gap, and off of them again, instead of walking the long way round
      * <p>
      * Only actually takes effect if {@link #allowParkour} is also true. Grabbing is a sprint jump (or a plain jump for the

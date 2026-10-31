@@ -404,7 +404,8 @@ def build():
     # done is a run up of seven blocks along the row beside the wall's, off the side block at the wall's start, and a curve
     # in onto the block right behind the wall. once with the wall's end on the -z side of the run, once on the +z side
     c.start_section("Triple neos", "Level triple neos: a seven block run up along the side of a wall three thick, off the "
-                    "side block and round onto the block behind it. Once on each side.", "TUNGSTEN (searched neo)")
+                    "side block and round onto the block behind it, once on each side. Then one from right behind the "
+                    "wall: bunny hops along a fourteen block runway and off its very edge.", "TUNGSTEN (searched neo), RUNNING NEO")
     def wall(x0, x1, z0, z1, y):
         for wx in range(x0, x1 + 1):
             for wz in range(z0, z1 + 1):
@@ -418,9 +419,20 @@ def build():
         wz = z + side                            # the wall's row
         wall(x + 1, x + 3, min(wz, wz + 3 * side), max(wz, wz + 3 * side), y)
         c.jump(4, 0, side, block, kind="triple neo")
+    def behind_triple_neo(side, block):
+        # the other triple neo: from right behind the wall, the runway in line with it and the landing on that line too.
+        # no run up from standing gets round, it takes a run of bunny hops along the runway's side edge and a jump off
+        # the very edge of its end (side: the open side, the wall reaches three rows the other way)
+        c.jump(2, 0, 0, block)                   # onto the start of a fourteen block runway
+        c.walk(13, block)
+        x, y, z = c.cur
+        wall(x + 1, x + 3, min(z, z - 3 * side), max(z, z - 3 * side), y)
+        c.jump(4, 0, 0, block, kind="triple neo from behind, off a run of hops")
     triple_neo(1, "polished_deepslate")
     c.walk(2, "polished_deepslate")
     triple_neo(-1, "polished_deepslate")
+    c.walk(2, "polished_deepslate")
+    behind_triple_neo(1, "polished_deepslate")
     c.walk(2, "polished_deepslate")
     c.end_section(3, 0, 0, "15: Triple neos")
 
