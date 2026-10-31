@@ -20,12 +20,18 @@ package baritone.process;
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
+import baritone.api.utils.BetterBlockPos;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.Random;
 
 import static org.junit.Assert.assertEquals;
@@ -57,6 +63,76 @@ public class BuilderCreativeTest {
         assertEquals(Items.LAVA_BUCKET, BuilderProcess.creativeItem(Blocks.LAVA.defaultBlockState()));
         // flowing is the source's business
         assertNull(BuilderProcess.creativeItem(Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3)));
+    }
+
+    @Test
+    public void vinePlantsComeFromTheHeadItem() {
+        assertEquals(Items.GLOW_BERRIES, BuilderProcess.creativeItem(Blocks.CAVE_VINES_PLANT.defaultBlockState()));
+        assertEquals(Items.GLOW_BERRIES, BuilderProcess.creativeItem(Blocks.CAVE_VINES.defaultBlockState()));
+        assertEquals(Items.WEEPING_VINES, BuilderProcess.creativeItem(Blocks.WEEPING_VINES_PLANT.defaultBlockState()));
+        assertEquals(Items.WEEPING_VINES, BuilderProcess.creativeItem(Blocks.WEEPING_VINES.defaultBlockState()));
+        assertEquals(Items.TWISTING_VINES, BuilderProcess.creativeItem(Blocks.TWISTING_VINES_PLANT.defaultBlockState()));
+        assertEquals(Items.TWISTING_VINES, BuilderProcess.creativeItem(Blocks.TWISTING_VINES.defaultBlockState()));
+        // kelp stays missing on purpose
+        assertNull(BuilderProcess.creativeItem(Blocks.KELP_PLANT.defaultBlockState()));
+    }
+
+    @Test
+    public void vineHeadsAndPlantsCountAsTheSameCell() {
+        Block[][] families = {
+                {Blocks.CAVE_VINES, Blocks.CAVE_VINES_PLANT},
+                {Blocks.WEEPING_VINES, Blocks.WEEPING_VINES_PLANT},
+                {Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT},
+        };
+        for (Block[] f : families) {
+            // ages and berries differ and the plant has no age at all, none of that may throw
+            BlockState head = f[0].defaultBlockState();
+            BlockState plant = f[1].defaultBlockState();
+            assertTrue(BuilderProcess.sameBlockstate(head, plant, false, List.of()));
+            assertTrue(BuilderProcess.sameBlockstate(plant, head, false, List.of()));
+            assertEquals(BuilderProcess.itemOf(head), BuilderProcess.itemOf(plant));
+        }
+        assertFalse(BuilderProcess.sameBlockstate(Blocks.CAVE_VINES.defaultBlockState(), Blocks.WEEPING_VINES_PLANT.defaultBlockState(), false, List.of()));
+        assertFalse(BuilderProcess.sameBlockstate(Blocks.KELP.defaultBlockState(), Blocks.KELP_PLANT.defaultBlockState(), false, List.of()));
+    }
+
+    @Test
+    public void hangingVinesBuildTopDown() {
+        assertTrue(BuilderProcess.growsDown(Blocks.CAVE_VINES));
+        assertTrue(BuilderProcess.growsDown(Blocks.CAVE_VINES_PLANT));
+        assertTrue(BuilderProcess.growsDown(Blocks.WEEPING_VINES));
+        assertTrue(BuilderProcess.growsDown(Blocks.WEEPING_VINES_PLANT));
+        assertFalse(BuilderProcess.growsDown(Blocks.TWISTING_VINES));
+        assertFalse(BuilderProcess.growsDown(Blocks.TWISTING_VINES_PLANT));
+        assertFalse(BuilderProcess.growsDown(Blocks.STONE));
+    }
+
+    @Test
+    public void hangingColumnPicksItsTopAndTheCeilingGoesFirst() {
+        // ceiling at y=10, cave vines hanging 9, 8, 7, all still to place
+        BetterBlockPos ceiling = new BetterBlockPos(0, 10, 0);
+        BetterBlockPos top = ceiling.below();
+        BetterBlockPos mid = top.below();
+        BetterBlockPos tip = mid.below();
+        Set<BetterBlockPos> placeable = Set.of(ceiling, top, mid, tip);
+        Function<BetterBlockPos, Block> schem = p -> p.equals(ceiling) ? Blocks.STONE : p.equals(tip) ? Blocks.CAVE_VINES : Blocks.CAVE_VINES_PLANT;
+        // the ceiling isn't held back by the vines under it, the vines wait for it top down
+        assertFalse(BuilderProcess.waitsOnSupport(placeable, ceiling, Blocks.STONE, schem));
+        assertTrue(BuilderProcess.waitsOnSupport(placeable, top, Blocks.CAVE_VINES_PLANT, schem));
+        assertTrue(BuilderProcess.waitsOnSupport(placeable, mid, Blocks.CAVE_VINES_PLANT, schem));
+        assertTrue(BuilderProcess.waitsOnSupport(placeable, tip, Blocks.CAVE_VINES, schem));
+        // ceiling already there: the top vine goes first, the rest queue under it
+        Set<BetterBlockPos> built = Set.of(top, mid, tip);
+        assertFalse(BuilderProcess.waitsOnSupport(built, top, Blocks.CAVE_VINES_PLANT, schem));
+        assertTrue(BuilderProcess.waitsOnSupport(built, mid, Blocks.CAVE_VINES_PLANT, schem));
+        // twisting grows up like any block, bottom first
+        Function<BetterBlockPos, Block> twist = p -> Blocks.TWISTING_VINES_PLANT;
+        Set<BetterBlockPos> col = Set.of(tip, mid, top);
+        assertFalse(BuilderProcess.waitsOnSupport(col, tip, Blocks.TWISTING_VINES_PLANT, twist));
+        assertTrue(BuilderProcess.waitsOnSupport(col, mid, Blocks.TWISTING_VINES_PLANT, twist));
+        // plain blocks keep waiting on a plain block under them
+        Function<BetterBlockPos, Block> stone = p -> Blocks.STONE;
+        assertTrue(BuilderProcess.waitsOnSupport(Set.of(tip, mid), mid, Blocks.STONE, stone));
     }
 
     @Test
