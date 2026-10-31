@@ -209,6 +209,8 @@ public final class FoodTripRules {
     // so it does not count against MAX_TRIPS: the cap is for the world with no food in reach, not for a bot that keeps running dry
     // because the nether eats it. blocks trips and trips that came back empty handed stay counted
     public static final int TRIP_GAIN_UNITS = 12;
+    // refunds per nether phase entry
+    public static final int MAX_REFUNDS = 3;
 
     public static boolean refundsTrip(Reason reason, int unitsAtStart, int unitsAtEnd) {
         return reason == Reason.FOOD && unitsAtEnd - unitsAtStart >= TRIP_GAIN_UNITS;

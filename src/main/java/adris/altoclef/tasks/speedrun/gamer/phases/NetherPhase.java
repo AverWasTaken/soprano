@@ -150,6 +150,8 @@ public class NetherPhase implements PhaseHandler {
     // alone and the other way round
     private FoodTripRules.Reason tripReason = FoodTripRules.Reason.FOOD;
     private int foodTrips;
+    // refunds given this phase entry, so a trip that keeps coming back with a thin 12 units cannot restart for ever
+    private int tripRefunds;
     private int blockTrips;
     // the walk home: progress mark, last tick it ran, and its own dig for blocks (fresh per trip so an old cooldown does not carry)
     private FoodTripRules.Mark homeMark;
@@ -351,6 +353,7 @@ public class NetherPhase implements PhaseHandler {
         // overworld half of a trip runs inside this phase, so coming back down never lands here
         if (FoodTripRules.countersReset(ctx.attempt())) {
             foodTrips = 0;
+            tripRefunds = 0;
             blockTrips = 0;
             tripEndedTick = -1;
             tripResumed = false;
@@ -495,10 +498,12 @@ public class NetherPhase implements PhaseHandler {
                     return hunt;
                 }
                 // a trip that came back with food did its job, so the next dry spell gets its trips too. a hunt still going when the
-                // clock ran out counts as well: the bag is what says it worked (a trip that gained 24 units kept its spot on the cap and
-                // the bag ran dry with no trip left to send)
-                if (FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
+                // clock ran out counts as well: the bag is what says it worked, and a trip that gained plenty used to keep its
+                // spot on the cap. a few refunds per entry, a thin trip over and over is not a bag that is getting somewhere
+                if (tripRefunds < FoodTripRules.MAX_REFUNDS
+                        && FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
                     foodTrips = Math.max(0, foodTrips - 1);
+                    tripRefunds++;
                 }
                 foodTrip = false;
                 foodTripUp = false;

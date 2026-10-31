@@ -51,8 +51,8 @@ public final class ItemPickupRules {
         return canMakeRoom ? Room.MAKE_ROOM : Room.GIVE_UP;
     }
 
-    // armor we would put on is worth a slot even when the bag is all things we keep: a golden helmet lay on the death pile
-    // while the bag called itself full, and the pile only gets one look. the slot comes from the last resort pick
+    // armor we would put on is worth a slot even when the bag is all things we keep: the death pile only gets one look, and
+    // the helmet is the thing we came back for. the slot comes from the last resort pick
     public static boolean canMakeRoom(boolean canMakeRoom, boolean wearable, boolean lastResortThere) {
         return canMakeRoom || (wearable && lastResortThere);
     }
