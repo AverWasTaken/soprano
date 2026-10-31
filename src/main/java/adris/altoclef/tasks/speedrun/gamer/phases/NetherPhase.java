@@ -134,6 +134,9 @@ public class NetherPhase implements PhaseHandler {
     // how long after the last rod a looking blaze still starts the walk away. the pick up lands mid volley, not on a calm tick
     private static final int DISENGAGE_WINDOW_TICKS = 40;
     private PearlHuntTask hunt;
+    // the game tick huntStep last ran on, so a hunt left behind by another step doesn't keep the long leash
+    private long huntTickedAt = Long.MIN_VALUE / 2;
+    private static final long HUNT_FRESH_TICKS = 40;
     private int huntTarget;
     private final HomePortalWalk homeWalk = new HomePortalWalk();
     // the bag ran dry out here: home through the portal, the overworld's food floor, and back (FoodTripRules). rods, pearls and the
@@ -441,7 +444,10 @@ public class NetherPhase implements PhaseHandler {
     // the watchdog (see PearlHuntTask), stares do not
     @Override
     public double stallSeconds() {
-        return EndermanNook.stallSeconds(hunt != null && hunt.inNook(lastGameTime), PhaseHandler.super.stallSeconds());
+        // the whole hunt gets the nook's longer leash, not just the nook: a few minutes between kills while the endermen near us
+        // all stand by lava is a normal stretch of a hunt, not a stuck bot (huntWanderMinutes still ends a hunt that gets nothing)
+        boolean hunting = hunt != null && lastGameTime - huntTickedAt <= HUNT_FRESH_TICKS;
+        return EndermanNook.stallSeconds(hunting, PhaseHandler.super.stallSeconds());
     }
 
     @Override
@@ -1456,6 +1462,7 @@ public class NetherPhase implements PhaseHandler {
         if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
             return fail(ctx, "no pearl gained in the Nether hunt for too long");
         }
+        huntTickedAt = lastGameTime;
         hudState = hunt.step();
         return hunt;
     }
