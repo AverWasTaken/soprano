@@ -169,6 +169,7 @@ public final class GamerConfigs {
         c.death.maxTotal = Math.max(1, c.death.maxTotal);
         c.death.recoverReach = Math.max(0, c.death.recoverReach);
         c.death.recoverSeconds = Math.max(0, c.death.recoverSeconds);
+        c.death.tickingBlocks = Math.max(0, c.death.tickingBlocks);
         c.death.netherTripSeconds = Math.max(0, c.death.netherTripSeconds);
         c.death.netherBlocks = Math.max(0, c.death.netherBlocks);
         c.death.netherBlocksSeconds = Math.max(0, c.death.netherBlocksSeconds);

@@ -76,6 +76,19 @@ public final class EndGear {
         return !woolGaveUp || facts.count(ItemHelper.BED) > bedsRequired;
     }
 
+    // the spawn bed goes down before the bed errand only when placing it cannot leave the End short: a spare beyond the required
+    // ones, a source that replaces it (BedPlan MINE, or CRAFT with the wool for what the placing leaves missing), or enough beds
+    // that the beds strategy still has its RESUME_BEDS after. otherwise the errand runs first, and when it gives up the
+    // spawn bed is skipped (spawnBedAffordable). nothing in the bag = nothing to place
+    public static boolean spawnFirst(int bagBeds, int required, boolean replaceable) {
+        return bagBeds >= 1 && (bagBeds > required || replaceable || bagBeds - 1 >= DragonStrat.RESUME_BEDS);
+    }
+
+    // a bed source that covers the shortfall left after the spawn bed is placed
+    public static boolean replaceable(BedPlan plan, int woolBeds, int shortfallAfterPlacing) {
+        return plan == BedPlan.MINE || plan == BedPlan.CRAFT && woolBeds >= shortfallAfterPlacing;
+    }
+
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
     // (weapon is a sword or an axe, whichever the bot made). food is the same count every other gate goes by (FoodPlan: raw meat
     // nobody can cook is worth its raw value, a smoker's pending batch counts), against the End's own floor
@@ -211,6 +224,11 @@ public final class EndGear {
     // food short and the errand is far from the portal: eat first, the trip back is where the food goes
     public static boolean foodFirst(boolean foodShort, double errandBlocksFromPortal, double farBlocks) {
         return foodShort && errandBlocksFromPortal > farBlocks;
+    }
+
+    // the walk back to the portal and the spawn bed step are the way home: food never replaces them
+    public static boolean foodFirst(boolean foodShort, double errandBlocksFromPortal, double farBlocks, boolean wayHome) {
+        return !wayHome && foodFirst(foodShort, errandBlocksFromPortal, farBlocks);
     }
 
     // the bed errand, from what the bag and the world offer: a bed in range is mined, wool in the bag is crafted (never the

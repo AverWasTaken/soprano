@@ -1181,7 +1181,8 @@ public class GamerTask extends Task {
                 DeathRules.reachFor(worth, cfg.overworld.refillStartFoodUnits, cfg.death.recoverReach), worth,
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         waitingPile = null;
-        if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits)) {
+        if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits,
+                DeathRules.pileUnloaded(facts.x() - deathPos.getX(), facts.z() - deathPos.getZ(), cfg.death.tickingBlocks))) {
             host.say(DeathRules.waiting(blocks, worth));
             waitingPile = deathPos;
             waitingPileDimension = deathDimension;
@@ -1213,13 +1214,13 @@ public class GamerTask extends Task {
         if (waitingPile == null || recover != null || darkAndBare(mod)) {
             return;
         }
+        // another dimension right now: the pile keeps waiting for the next visit here, a new death is what clears it
+        if (facts.dimension() != waitingPileDimension) {
+            return;
+        }
         BlockPos pile = waitingPile;
         Dimension where = waitingPileDimension;
         waitingPile = null;
-        if (facts.dimension() != waitingPileDimension) {
-            host.say(DeathRules.leaving("the waiting pile is in another dimension now"));
-            return;
-        }
         // (the allowance starts now, the night already ate the one from the death)
         startRecovery(pile, flatBlocksTo(pile), facts.gameTime());
         recoverDimension = where;
