@@ -39,6 +39,12 @@ public final class SwordSwing {
         return target.inflate(1.5, 0.75, 1.5).intersects(victim) && distanceSqToUs < 9.0;
     }
 
+    // a calm neutral this close to us counts as near whatever the target's box says (the sweep reaches past where the client
+    // thinks the target is)
+    public static boolean calmByUs(double distanceSqToUs) {
+        return distanceSqToUs < 9.0;
+    }
+
     // the item swap that resets the charge has to be seen by the server too: both packets landing in one server tick is no
     // reset over there and the sweep comes back. the odd item stays in hand through this many ticks past the swap tick
     public static final long RESET_HOLD_TICKS = 3;

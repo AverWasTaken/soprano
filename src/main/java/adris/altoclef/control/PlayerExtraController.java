@@ -418,9 +418,17 @@ public class PlayerExtraController {
 
     private boolean calmBeside(LivingEntity target) {
         AABB box = target.getBoundingBox();
-        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, box.inflate(2))) {
-            if (mob != target && EntityHelper.isCalmNeutral(_mod, mob)
-                    && SwordSwing.calmNear(box, mob.getBoundingBox(), _mod.getPlayer().distanceToSqr(mob))) {
+        // the box around the target alone missed piglins right beside us while the target (a teleporting enderman) stood off a
+        // couple of blocks: the client's view of who stands where lags the server's, and they got swept anyway. anything calm
+        // within 3 of us counts too
+        AABB a = box.inflate(2);
+        AABB b = _mod.getPlayer().getBoundingBox().inflate(3);
+        AABB around = new AABB(Math.min(a.minX, b.minX), Math.min(a.minY, b.minY), Math.min(a.minZ, b.minZ),
+                Math.max(a.maxX, b.maxX), Math.max(a.maxY, b.maxY), Math.max(a.maxZ, b.maxZ));
+        for (Mob mob : _mod.getWorld().getEntitiesOfClass(Mob.class, around)) {
+            if (mob == target || !EntityHelper.isCalmNeutral(_mod, mob)) continue;
+            double d = _mod.getPlayer().distanceToSqr(mob);
+            if (SwordSwing.calmNear(box, mob.getBoundingBox(), d) || SwordSwing.calmByUs(d)) {
                 return true;
             }
         }
