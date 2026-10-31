@@ -41,8 +41,10 @@ public final class WhatsNewScreen extends Screen {
             panel = new WhatsNewPanel(surface.theme, snapshot, new WhatsNewPanel.Actions() {
                 @Override
                 public void update() {
-                    Updater.get().download();
-                    back();
+                    // a refused download (state moved on, can't install) leaves the notes up instead of eating the click
+                    if (Updater.get().download()) {
+                        back();
+                    }
                 }
 
                 @Override
@@ -146,6 +148,16 @@ public final class WhatsNewScreen extends Screen {
         if (ok) {
             Safe.run("whats new mouse up", () -> panel.mouseUp(KitSurface.pointerX(), KitSurface.pointerY(),
                     McKeys.buttonToKit(event.button()), McKeys.mods(event)));
+        }
+        return true;
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (ok) {
+            double s = guiScale;
+            Safe.run("whats new mouse drag", () -> panel.mouseDrag(KitSurface.pointerX(), KitSurface.pointerY(),
+                    McKeys.buttonToKit(event.button()), (float) (dx * s), (float) (dy * s)));
         }
         return true;
     }

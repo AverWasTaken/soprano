@@ -338,6 +338,24 @@ public class UpdateCardPreviewTest {
 
     // the longest name there is, on the widest cap and the narrowest ones. the button never takes the card under the logo
     @Test
+    public void noRoomDropsTheSwitchRowThenTheCard() throws Exception {
+        Harness h = new Harness(1f, 960, 540);
+        Snapshot s = upToDate("1.1.6", NIGHTLY);
+        h.show(s, UpdateCard.MIN_W);
+        assertEquals(1, h.card.buttons().size());
+        h.show(s, UpdateCard.MIN_W - 1);
+        assertEquals(0, h.card.buttons().size());
+        assertTrue(!h.card.hidden());
+        h.show(s, UpdateCard.MIN_COMPACT_W - 1);
+        assertTrue(h.card.hidden());
+        assertEquals(0, h.card.preferredWidth());
+        h.show(snap(UpdateState.AVAILABLE, true, null, RELEASE, 0, 0, null, false), UpdateCard.MIN_COMPACT_W - 1);
+        assertTrue(h.card.hidden());
+        h.show(s, UpdateCard.MIN_W);
+        assertTrue(!h.card.hidden());
+    }
+
+    @Test
     public void longNightlyNameKeepsClearOfTheLogo() throws Exception {
         Snapshot s = upToDate("1.1.8-nightly.1-anyversion", STABLE_ANY);
         Harness h = new Harness(1f, 960, 540);

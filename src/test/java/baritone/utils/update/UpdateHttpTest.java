@@ -23,6 +23,23 @@ public class UpdateHttpTest {
     public TemporaryFolder tmp = new TemporaryFolder();
 
     @Test
+    public void onlyTheRealRateLimitSaysSo() {
+        assertTrue(UpdateHttp.rateLimited(429, null));
+        assertTrue(UpdateHttp.rateLimited(403, "0"));
+        assertTrue(!UpdateHttp.rateLimited(403, "42"));
+        assertTrue(!UpdateHttp.rateLimited(403, null));
+        assertTrue(!UpdateHttp.rateLimited(500, "0"));
+    }
+
+    @Test
+    public void autoRetryIsOnceAndNotForTheRateLimit() {
+        assertTrue(UpdateState.shouldAutoRetry(UpdateState.CHECK_FAILED, false, false));
+        assertTrue(!UpdateState.shouldAutoRetry(UpdateState.CHECK_FAILED, true, false));
+        assertTrue(!UpdateState.shouldAutoRetry(UpdateState.CHECK_FAILED, false, true));
+        assertTrue(!UpdateState.shouldAutoRetry(UpdateState.UP_TO_DATE, false, false));
+    }
+
+    @Test
     public void copiesAndHashes() throws Exception {
         Path part = tmp.getRoot().toPath().resolve("x.part");
         java.security.MessageDigest md = JarCheck.newSha256();

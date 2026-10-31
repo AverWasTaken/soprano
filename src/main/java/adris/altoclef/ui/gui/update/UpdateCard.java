@@ -44,6 +44,8 @@ public final class UpdateCard extends Widget {
     public static final int RICH_W = 300;
     // wide enough that "Open download page" on its own row never ellipsizes (it needs about 164 inside the padding)
     public static final int MIN_W = 196;
+    // "Soprano v1" and a bit, any narrower and the compact row is just a sliver
+    public static final int MIN_COMPACT_W = 120;
     // a rich card fits its words and buttons, but never gets narrower than this so the states don't jump around
     public static final int MIN_RICH_W = 240;
     private static final int PAD = 12;
@@ -66,6 +68,9 @@ public final class UpdateCard extends Widget {
     // the real room before the logo, not capped at RICH_W. the compact row isn't a rich card and only has to stay off
     // the logo, which on a normal window leaves the switch button room to sit on the one row
     private int roomDesignW = RICH_W;
+    // the room as the host gave it, which can be less than any floor. under MIN_W the switch row goes, under
+    // MIN_COMPACT_W there's no card at all
+    private int roomRawW = RICH_W;
     private int cardW;
     private int cardH;
     private boolean compact;
@@ -87,10 +92,11 @@ public final class UpdateCard extends Widget {
     // the host knows how much room there is before the logo starts
     public void setMaxWidth(int designPx) {
         int clamped = Math.max(MIN_W, Math.min(RICH_W, designPx));
-        int room = Math.max(MIN_W, designPx);
-        if (clamped != maxDesignW || room != roomDesignW) {
+        int room = Math.max(MIN_COMPACT_W, designPx);
+        if (clamped != maxDesignW || room != roomDesignW || designPx != roomRawW) {
             maxDesignW = clamped;
             roomDesignW = room;
+            roomRawW = designPx;
             key = "";
         }
     }
@@ -118,7 +124,7 @@ public final class UpdateCard extends Widget {
         return s.state() + "|" + s.canInstall() + "|" + s.cannotInstallReason() + "|" + (r == null ? "" : r.version())
                 + "|" + s.error() + "|" + s.unfinishedLastTime() + "|" + s.oldJarName() + "|" + s.stagedName() + "|"
                 + s.finalName() + "|" + s.currentVersion() + "|" + s.switching() + "|"
-                + (s.switchTarget() == null ? "" : s.switchTarget().version()) + "|" + maxDesignW + "|" + roomDesignW;
+                + (s.switchTarget() == null ? "" : s.switchTarget().version()) + "|" + maxDesignW + "|" + roomDesignW + "|" + roomRawW;
     }
 
     @Override
@@ -176,6 +182,18 @@ public final class UpdateCard extends Widget {
             case READY -> ready(s, next);
             case STUCK -> stuck(s);
             case FAILED -> failed(s);
+        }
+        // the rich cards keep their floor between here and MIN_W (the default 854x480 window sits there, and losing the
+        // update notice on the default window is worse than a card nudging the logo)
+        if (roomRawW < MIN_COMPACT_W) {
+            // no room even for this, draw() and contains() see a zero size card and skip it
+            lines.clear();
+            buttons.clear();
+            kids.clear();
+            slots.clear();
+            downloading = false;
+            cardW = 0;
+            cardH = 0;
         }
     }
 
@@ -260,7 +278,8 @@ public final class UpdateCard extends Widget {
     // the small way over to the other track. only on the up to date row, an update always beats a switch
     private Button switchButton(Snapshot s) {
         Snapshot.Release t = s.switchTarget();
-        if (t == null) {
+        // the row is the first thing to give when the logo is close, see MIN_W
+        if (t == null || roomRawW < MIN_W) {
             return null;
         }
         String label = nightly(t) ? "Switch to nightly" : "Switch to stable";
@@ -638,6 +657,10 @@ public final class UpdateCard extends Widget {
     // test hooks
     public List<Button> buttons() {
         return buttons;
+    }
+
+    public boolean hidden() {
+        return cardW <= 0;
     }
 
     public boolean compact() {

@@ -93,6 +93,9 @@ public final class UpdateCardWidget extends AbstractWidget {
         if (w != getWidth() || h != getHeight()) {
             setSize(w, h);
         }
+        // a card with no room is not just invisible, its 1x1 box shouldn't eat clicks either
+        visible = !card.hidden();
+        active = visible;
     }
 
     // ----- drawing

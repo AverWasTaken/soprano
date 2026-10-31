@@ -79,13 +79,20 @@ final class UpdateHttp {
             throw new Failed("github sent us somewhere odd");
         }
         int code = resp.statusCode();
-        if (code == 403 || code == 429) {
-            throw new Failed("hit github's rate limit, try again in a bit");
+        if (rateLimited(code, resp.headers().firstValue("x-ratelimit-remaining").orElse(null))) {
+            throw new Failed(RATE_LIMIT, true);
         }
         if (code != 200) {
             throw new Failed("github said " + code);
         }
         return resp.body();
+    }
+
+    static final String RATE_LIMIT = "hit github's rate limit, try again in a bit";
+
+    // a 403 alone isn't the rate limit (blocked ip, abuse flag, a proxy), github says so with 429 or an empty bucket
+    static boolean rateLimited(int code, String remaining) {
+        return code == 429 || (code == 403 && remaining != null && remaining.strip().equals("0"));
     }
 
     // null when part holds exactly the bytes github promised, a reason when it doesn't
@@ -179,8 +186,16 @@ final class UpdateHttp {
     // a failure we can put in words, no stack trace needed
     static final class Failed extends RuntimeException {
 
+        // the rate limit one doesn't get an automatic second try, that would just be asking again for the same no
+        final boolean rateLimit;
+
         Failed(String message) {
+            this(message, false);
+        }
+
+        Failed(String message, boolean rateLimit) {
             super(message, null, false, false);
+            this.rateLimit = rateLimit;
         }
     }
 }
