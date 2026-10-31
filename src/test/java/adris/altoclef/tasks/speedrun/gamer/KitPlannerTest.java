@@ -1264,7 +1264,7 @@ public class KitPlannerTest {
         assertEquals(base + 2, KitPlanner.ingotsNeeded(f, cfg));
         // the first one alone until it exists, the spares come after it
         assertEquals(new KitNeed("shield", 1), find(KitPlanner.plan(f, cfg, 8), "shield"));
-        assertEquals(new KitNeed("shield", 3), find(KitPlanner.plan(new FakeFacts().give(Items.SHIELD, 1), cfg, 8), "shield"));
+        assertEquals(new KitNeed("shield", 2), find(KitPlanner.plan(new FakeFacts().give(Items.SHIELD, 1), cfg, 8), "shield"));
         // 12 more planks is three logs
         assertEquals(planks + 3, WoodBudget.owed(f, cfg, 8, true));
         // holding the first one and both spares asks for nothing more of them
@@ -1275,6 +1275,18 @@ public class KitPlannerTest {
         cfg.netherSpareShields = 2;
         assertEquals(without, KitPlanner.ingotsNeeded(shields, cfg));
         assertNull(find(KitPlanner.plan(shields, cfg, 8), "shield"));
+    }
+
+    // three shields in one craft want 18 planks and two kinds of wood don't stack, so the need is always just the next shield
+    @Test
+    public void theShieldTargetIsNeverMoreThanOneOverWhatWeHold() {
+        cfg.netherSpareShields = 3;
+        for (int held = 0; held < 4; held++) {
+            FakeFacts bag = new FakeFacts().give(Items.SHIELD, held);
+            KitNeed need = find(KitPlanner.plan(bag, cfg, 8), "shield");
+            assertEquals(new KitNeed("shield", held + 1), need);
+        }
+        assertNull(find(KitPlanner.plan(new FakeFacts().give(Items.SHIELD, 4), cfg, 8), "shield"));
     }
 
     @Test

@@ -584,15 +584,21 @@ public final class CombatCommit {
     // CombatRules.FAST_MOB_SPEED, infinity for none), and whether a bite is already under way
     // nearestMelee: the closest melee mob of any kind (infinity for none), hungry: the food bar is not full. both only matter to a
     // fight, which may take a bite when nothing can reach us (see fightBite)
-    public record Bite(boolean shotAt, double nearestFast, boolean biting, double nearestMelee, boolean hungry) {
+    // nearestWither: the closest tracked wither skeleton, seen or not, foe or not (infinity for none). one that walked behind a
+    // pillar is still walking at us, and the bite it caught was the one it came round the corner for
+    public record Bite(boolean shotAt, double nearestFast, boolean biting, double nearestMelee, boolean hungry, double nearestWither) {
         public static final Bite NONE = new Bite(false, Double.POSITIVE_INFINITY, false);
 
         public Bite(boolean shotAt, double nearestFast, boolean biting) {
             this(shotAt, nearestFast, biting, 0, false);
         }
 
+        public Bite(boolean shotAt, double nearestFast, boolean biting, double nearestMelee, boolean hungry) {
+            this(shotAt, nearestFast, biting, nearestMelee, hungry, Double.POSITIVE_INFINITY);
+        }
+
         Bite notBiting() {
-            return new Bite(shotAt, nearestFast, false, nearestMelee, hungry);
+            return new Bite(shotAt, nearestFast, false, nearestMelee, hungry, nearestWither);
         }
     }
 
@@ -666,7 +672,8 @@ public final class CombatCommit {
 
     private static boolean runBiteBlocked(double nearest, Bite bite) {
         return bite.biting() ? nearest < CombatRules.RUN_BITE_ABORT
-                : bite.shotAt() || nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST;
+                : bite.shotAt() || nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST
+                || bite.nearestWither() < CombatRules.RUN_BITE_START;
     }
 
     // why the stance is what it is, for the log line that says so when it changes (and so why a hurt bot is not eating).
@@ -689,6 +696,8 @@ public final class CombatCommit {
             case FIGHT -> "fighting, no meals mid fight";
             case RUN -> bite.biting() ? "running, " + near + ", too close to keep chewing"
                     : bite.shotAt() ? "running, a shooter has a line on us"
+                    : nearest >= CombatRules.RUN_BITE_START && bite.nearestWither() < CombatRules.RUN_BITE_START
+                    ? "running, a wither skeleton " + Math.round(bite.nearestWither()) + " blocks off, too close to start a bite"
                     : nearest >= CombatRules.RUN_BITE_START ? "running, something fast is too close to start a bite"
                     : "running, " + near + ", too close to eat";
             default -> creeperClose ? "a lit creeper is close"
@@ -771,6 +780,8 @@ public final class CombatCommit {
     private boolean boxCorner;
     // cornered because a fast mob is on us (not a box): the warden and the heavy hitters still get us out of there
     private boolean fastCorner;
+    // that fast corner is the lone wither skeleton one (loneWither): a crowd still bails it
+    private boolean witherCorner;
     // since when the melee target has been out of reach (takeover)
     private long outReachSince = -1;
 
@@ -933,6 +944,7 @@ public final class CombatCommit {
         runLine = false;
         boxCorner = false;
         fastCorner = false;
+        witherCorner = false;
         outReachSince = -1;
         wayBoxSince = -1;
         wayGapSince = -1;
@@ -1209,6 +1221,7 @@ public final class CombatCommit {
         runLine = true;
         boxCorner = false;
         fastCorner = false;
+        witherCorner = false;
         noRoom = false;
         contacted = false;
         lobberPick = false;
@@ -1433,6 +1446,7 @@ public final class CombatCommit {
                 runLine = true;
                 boxCorner = t.boxed();
                 fastCorner = !t.boxed();
+                witherCorner = fastCorner && !on.fast();
                 return event;
             }
         }
@@ -1451,7 +1465,24 @@ public final class CombatCommit {
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
-        return best;
+        return best != null ? best : loneWither(t);
+    }
+
+    // a wither skeleton that hit us from close, with no other melee mob within 8: not fast, but the same cornered fight. 4.5 a
+    // swing in the back plus the wither ticks finish a run long before it gets 24 blocks, so turning round is the better bet,
+    // flee line or not. two of them, or anything else melee with it, is the normal run (and a crowd mid fight still bails)
+    private Foe loneWither(Tick t) {
+        Foe wither = null;
+        for (Foe foe : t.foes()) {
+            if (!foe.melee() || foe.distance() > LOW_HP_RANGE) continue;
+            if (wither != null || !foe.wither()) return null;
+            wither = foe;
+        }
+        if (wither == null || !wither.hitUs() || wither.distance() > FAST_FIGHT_RANGE) return null;
+        // (three on us counts the shooters too: a skeleton and two blazes landing hits is the crowd run, not this)
+        if (crowded(t.health(), t.foes(), false, true)) return null;
+        if (gaveUpOn(wither, t.now()) || stillIgnored(wither, t.now())) return null;
+        return wither;
     }
 
     // who we swing at when there is nowhere to go: whatever is in contact, a melee foe first. never the warden, never one we only
@@ -1763,18 +1794,23 @@ public final class CombatCommit {
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
         }
         bail = unlatched(bail, t);
+        // the lone wither skeleton corner is one skeleton's: a crowd turning up is a crowd again, latch or no latch (loneWither
+        // says no to a crowd too, so the stay below lets it go)
+        if (bail == Why.NONE && witherCorner && crowded(t.health(), t.foes(), false, true)) bail = Why.CROWD;
         if (bail != Why.NONE) {
             // (before the stay below: a fast mob that hit us makes the fight stay, and up on a pillar there is nothing to stay for)
             int perchHeight = perchAt(t);
             if (perchHeight > 0) return startPerch(t, perchHeight, "fight bail " + bail);
             // boxed in, a crowd or low hp is no reason to leave: there is no leaving. this fight is the cornered one from here.
             // the same goes for something fast that has hit us and is close: it comes along on the run
-            boolean stay = (bail == Why.CROWD || bail == Why.LOW_HP) && (t.boxed() || fastTarget(t) != null);
+            Foe fast = fastTarget(t);
+            boolean stay = (bail == Why.CROWD || bail == Why.LOW_HP) && (t.boxed() || fast != null);
             if (!stay) return startRun(t, bail, Event.FIGHT_TO_RUN);
             cornered = true;
             runLine = true;
             boxCorner = t.boxed();
             fastCorner = !t.boxed();
+            witherCorner = fastCorner && !fast.fast();
             runLatch = true;
             latchChased = false;
             latchClearSince = -1;
@@ -1783,12 +1819,15 @@ public final class CombatCommit {
         if (target != null) noteSplit(target);
         if (target == null) return targetGone(t);
         // an enderman that hit us is the target over whatever we are on, it is the one that cannot be walked away from
+        // (the lone wither corner does not carry over to a new target, same as targetGone)
+        boolean chain = cornered && !witherCorner;
+        Why swapWhy = why == Why.PINNED || cornered != chain ? Why.HIT : why;
         Foe ender = endermanOnUs(t);
         if (ender != null && ender.id() != target.id() && (!target.standsAndFights() || !target.hitUs()) && !witherOnFloor(t)) {
-            return startFight(t, ender, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
+            return startFight(t, ender, swapWhy, Event.FIGHT_NEXT, chain);
         }
         Foe swap = takeover(t, target);
-        if (swap != null) return startFight(t, swap, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
+        if (swap != null) return startFight(t, swap, swapWhy, Event.FIGHT_NEXT, chain);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
@@ -1879,16 +1918,18 @@ public final class CombatCommit {
     private Event targetGone(Tick t) {
         // (a chased fight stays CHASED, it is the same reason we turned around)
         Why boxed = why == Why.CHASED ? Why.CHASED : Why.CORNERED;
+        // the lone wither corner was that skeleton's and nobody else's: whoever is next gets the normal bail rules
+        boolean chain = cornered && !witherCorner;
         Foe lobber = lobberNext(t);
         if (lobber != null) {
-            Event event = startFight(t, lobber, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
+            Event event = startFight(t, lobber, chain ? boxed : Why.HIT, Event.FIGHT_NEXT, chain);
             lobberPick = true;
             return event;
         }
         Foe heir = splitHeir(t);
-        if (heir != null) return startFight(t, heir, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
+        if (heir != null) return startFight(t, heir, chain ? boxed : Why.HIT, Event.FIGHT_NEXT, chain);
         Foe next = nextTarget(t);
-        if (next != null) return startFight(t, next, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
+        if (next != null) return startFight(t, next, chain ? boxed : Why.HIT, Event.FIGHT_NEXT, chain);
         // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
         // leave: a gap and a five second cooldown next to it is not a plan
         if (cornered && anyDanger(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
@@ -1985,6 +2026,7 @@ public final class CombatCommit {
         ignored.remove(foe.id());
         noteChase(t);
         fastCorner = false;
+        witherCorner = false;
         noRoom = false;
         outReachSince = -1;
         // (a chain on a fight keeps where it came from)
@@ -2263,6 +2305,7 @@ public final class CombatCommit {
         runLine = false;
         boxCorner = false;
         fastCorner = false;
+        witherCorner = false;
         mode = Mode.NONE;
         why = Why.NONE;
         targetId = -1;

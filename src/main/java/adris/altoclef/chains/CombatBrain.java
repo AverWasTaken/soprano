@@ -344,6 +344,15 @@ final class CombatBrain {
         return out;
     }
 
+    // the closest tracked wither skeleton, out of sight or not (trackedBlazes already has every one of them, fresh this tick)
+    private double nearestWither(LocalPlayer player) {
+        double best = Double.POSITIVE_INFINITY;
+        for (Mob mob : _crowdBlazes) {
+            if (mob instanceof WitherSkeleton && mob.isAlive()) best = Math.min(best, mob.distanceTo(player));
+        }
+        return best;
+    }
+
     // one game tick. creeperClose: a lit creeper close enough that we do not sit down to a meal next to it (we do not
     // run from it either, the task walks on). enabled: false is the off switch (altoCommitCombat), the foes are still
     // worked out for the stance and the crit counts but nothing is ever committed to. creeperRepeat: the creeper step just
@@ -548,7 +557,7 @@ final class CombatBrain {
         // (in lava a bite is the wrong thing to be doing, the escape has the wheel)
         boolean burning = mod.getPlayer().isOnFire() && !mod.getPlayer().isInLava();
         CombatCommit.Bite bite = new CombatCommit.Bite(biteShot, nearestFast, mod.getFoodChain().isTryingToEat(),
-                nearestMelee, CombatRules.fightHungry(mod.getPlayer().getFoodData().getFoodLevel(), burning));
+                nearestMelee, CombatRules.fightHungry(mod.getPlayer().getFoodData().getFoodLevel(), burning), nearestWither(player));
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);

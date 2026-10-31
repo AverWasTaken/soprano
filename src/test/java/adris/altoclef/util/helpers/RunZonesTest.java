@@ -113,4 +113,29 @@ public class RunZonesTest {
         assertEquals(1, z.active(1100));
         assertTrue(z.blocks(20, 0, 1100, 500, 500, NO_GOAL, NO_GOAL));
     }
+
+    @Test
+    public void coversHoldsBlazesWhereverWeStand() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        // no player or goal exemption: standing in the closet is still the closet
+        assertTrue(z.covers(5, 5, 1000));
+        assertFalse(z.covers(13, 0, 1000));
+        // and it goes with the same three minute clock as the rest
+        assertFalse(z.covers(5, 5, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void aMergedZoneStillCoversInEitherOrder() {
+        RunZones a = new RunZones();
+        a.add(0, 0, 1000, RunZones.RADIUS);
+        a.add(2, 2, 1100, RunZones.PACK_RADIUS);
+        assertTrue(a.covers(2, 2, 1100));
+        assertTrue(a.covers(20, 0, 1100));
+        RunZones b = new RunZones();
+        b.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        b.add(2, 2, 1100, RunZones.RADIUS);
+        assertTrue(b.covers(0, 0, 1100));
+        assertTrue(b.covers(20, 0, 1100));
+    }
 }
