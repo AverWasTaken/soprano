@@ -298,4 +298,20 @@ public class CombatCommitStanceTest {
         CombatCommit.Bite far = new CombatCommit.Bite(true, NOBODY, false, 6, true);
         assertEquals(Stance.EAT_GAPPLE, CombatCommit.stance(Mode.FIGHT, 8, 12, false, true, far));
     }
+
+    // a wither skeleton out of sight is still walking at us: it keeps a run's bite from starting inside RUN_BITE_START, but
+    // a bite already going is only dropped at the abort line, same as before
+    @Test
+    public void anUnseenWitherSkeletonKeepsARunBiteFromStarting() {
+        double inf = Double.POSITIVE_INFINITY;
+        CombatCommit.Bite close = new CombatCommit.Bite(false, inf, false, inf, false, CombatRules.RUN_BITE_START - 1);
+        CombatCommit.Bite far = new CombatCommit.Bite(false, inf, false, inf, false, CombatRules.RUN_BITE_START + 1);
+        CombatCommit.Bite chewing = new CombatCommit.Bite(false, inf, true, inf, false, CombatRules.RUN_BITE_ABORT + 1);
+        assertFalse(CombatCommit.stance(Mode.RUN, 10, inf, false, false, close) == Stance.CALM);
+        // (no hp exception: at 2 hp it is still no bite)
+        assertFalse(CombatCommit.stance(Mode.RUN, 2, inf, false, false, close) == Stance.CALM);
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 10, inf, false, false, far));
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 10, inf, false, false, chewing));
+        assertTrue(CombatCommit.stanceWhy(Mode.RUN, 10, inf, false, close).contains("wither skeleton"));
+    }
 }

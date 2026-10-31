@@ -829,6 +829,9 @@ public class IronPhase implements PhaseHandler {
         }
         // skipping with iron still in a furnace is fine: PORTAL takes a last look before it leaves the overworld (TAKE_ALL on
         // every job that is left, see PortalPhase.tick), so nothing gets stranded
-        return KitPlanner.essentialsMet(ctx.facts(), ctx.cfg().overworld) ? Timeout.SKIP : Timeout.STUCK;
+        if (!KitPlanner.essentialsMet(ctx.facts(), ctx.cfg().overworld)) return Timeout.STUCK;
+        // the armor is not an essential, so a skip can send us to the fortress in leather. say how much we left with
+        Debug.logInternal("iron: out of time with the essentials in hand, skipping at " + ctx.facts().armorPoints() + " armor");
+        return Timeout.SKIP;
     }
 }

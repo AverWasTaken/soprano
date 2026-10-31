@@ -1251,6 +1251,13 @@ public class GamerTask extends Task {
         }
         RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
         double far = flatBlocksFromHome(pile);
+        if (NetherTripRules.defers(far) && !NetherTripRules.defersFor(worth)) {
+            // a pile with no eye parts in it is a stick and a bucket the rebuild makes anyway, and the second walk to it goes
+            // through whatever killed us the first time
+            host.say("nether death at " + where + ", " + (int) far + " blocks from the portal with no rods, powder, pearls or eyes in it, "
+                    + "letting the pile go, rebuilding");
+            return;
+        }
         if (NetherTripRules.defers(far)) {
             // naked and that far out is how the last few trips died, so the pile waits for a kit and the rebuild runs
             state.deferredPile = pile;

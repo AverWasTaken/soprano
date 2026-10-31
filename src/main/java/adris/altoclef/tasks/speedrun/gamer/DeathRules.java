@@ -63,11 +63,17 @@ public final class DeathRules {
             Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.OBSIDIAN, Items.DIAMOND, Items.BUCKET,
             Items.WATER_BUCKET, Items.LAVA_BUCKET, Items.FLINT_AND_STEEL
     };
-    private static final Item[] PICKS = {Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE};
+    private static final Item[] EYE_PARTS = {Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.ENDER_PEARL, Items.ENDER_EYE};
+    private static final Item[] PICKS ={Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE};
 
     // what the bag held the last time we saw it alive, which is what the pile is made of. it is read every tick and kept: the
     // body that shows up after the respawn has an empty bag, and the old one is not guaranteed to still have its slots
-    public record Worth(int iron, int gear, boolean pick, int food, boolean run) {
+    // eyeParts: rods, powder, pearls or eyes, the only things a far nether pile is worth a second walk for (NetherTripRules.defersFor)
+    public record Worth(int iron, int gear, boolean pick, int food, boolean run, boolean eyeParts) {
+
+        public Worth(int iron, int gear, boolean pick, int food, boolean run) {
+            this(iron, gear, pick, food, run, false);
+        }
 
         // iron to smelt, iron tools or armor, something the run cannot remake in a minute, or enough food to skip a hunt
         public boolean rich(int foodLine) {
@@ -107,7 +113,8 @@ public final class DeathRules {
                 gear++;
             }
         }
-        return new Worth(f.count(Items.RAW_IRON, Items.IRON_INGOT), gear, f.count(PICKS) > 0, f.foodUnits(), runItems(f));
+        return new Worth(f.count(Items.RAW_IRON, Items.IRON_INGOT), gear, f.count(PICKS) > 0, f.foodUnits(), runItems(f),
+                f.count(EYE_PARTS) > 0);
     }
 
     // what the later phases are made of: a late bag with no iron tool in it is not an empty one

@@ -79,6 +79,16 @@ public final class RunZones {
         return false;
     }
 
+    // is (x, z) inside any live zone, no exemptions. this is for picking blazes, not paths: a blaze over the closet is the walk
+    // into the closet whether we stand in the zone or not. every zone counts (two runs from one spot merge into the fatter one,
+    // and in a fortress the fat ones are wither skeleton runs anyway)
+    public boolean covers(double x, double z, long now) {
+        for (Zone zone : zones) {
+            if (live(zone, now) && inside(zone, x, z)) return true;
+        }
+        return false;
+    }
+
     private static boolean live(Zone zone, long now) {
         return zone.at <= now && now - zone.at < EXPIRY_TICKS;
     }
