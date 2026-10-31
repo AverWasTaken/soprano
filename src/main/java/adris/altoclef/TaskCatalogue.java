@@ -1,5 +1,6 @@
 package adris.altoclef;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.container.CraftInTableTask;
@@ -586,6 +587,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             simple("wooden_fence_gate", ItemHelper.WOOD_FENCE_GATE, CollectFenceGateTask::new);
             woodTasks("fence_gate", woodItems -> woodItems.fenceGate, (woodItems, count) -> new CollectFenceGateTask(woodItems.fenceGate, woodItems.prefix + "_planks", count));
             woodRecipes();
+            schematicBlocks();
             {
                 String r = "wooden_slab";
                 shapedRecipe3x3("chiseled_bookshelf", Items.CHISELED_BOOKSHELF, 1, p, p, p, r, r, r, p, p, p).dontMineIfPresent();
@@ -1022,6 +1024,66 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
 
     private static CataloguedResource[] woodTasks(String baseName, Function<ItemHelper.WoodItems, Item> getMatch, BiFunction<ItemHelper.WoodItems, Integer, ResourceTask> getTask) {
         return woodTasks(baseName, getMatch, getTask, false);
+    }
+
+    // blocks and dyes a schematic build can ask for. gettable == "has an entry", so a coloured craft only gets one when its dye
+    // really has a source, or the build stalls waiting on a block nothing can make. dyes go in first for that reason
+    private static void schematicBlocks() {
+        String o = null;
+        // one flower, one dye. sourced from the mine() flowers above, ink sacs (black) and cocoa (brown) stay out
+        dye(DyeColor.WHITE, 1, "bone_meal", o);
+        dye(DyeColor.YELLOW, 1, "dandelion", o);
+        dye(DyeColor.RED, 1, "poppy", o);
+        dye(DyeColor.BLUE, 1, "lapis_lazuli", o);
+        dye(DyeColor.MAGENTA, 1, "allium", o);
+        dye(DyeColor.LIGHT_GRAY, 1, "azure_bluet", o);
+        dye(DyeColor.ORANGE, 1, "orange_tulip", o);
+        dye(DyeColor.PINK, 1, "pink_tulip", o);
+        dye(DyeColor.LIGHT_BLUE, 1, "blue_orchid", o);
+        // the mixes, once both parents above exist (green_dye is the cactus smelt)
+        dye(DyeColor.PURPLE, 2, "blue_dye", "red_dye");
+        dye(DyeColor.CYAN, 2, "blue_dye", "green_dye");
+        dye(DyeColor.LIME, 2, "green_dye", "white_dye");
+
+        smelt("terracotta", Items.TERRACOTTA, "clay").dontMineIfPresent();
+        for (DyeColor dCol : DyeColor.values()) {
+            ItemHelper.ColorfulItems c = ItemHelper.getColorfulItems(dCol);
+            String color = c.colorName;
+            // carpet only needs wool, which every colour has an entry for
+            if (_nameToResourceTask.containsKey(color + "_wool")) {
+                shapedRecipe2x2(color + "_carpet", c.carpet, 3, color + "_wool", color + "_wool", null, null).dontMineIfPresent();
+            }
+            String dye = color + "_dye";
+            if (!_nameToResourceTask.containsKey(dye)) {
+                continue;
+            }
+            String t = "terracotta";
+            shapedRecipe3x3(color + "_terracotta", c.terracotta, 8, t, t, t, t, dye, t, t, t, t).dontMineIfPresent();
+            smelt(color + "_glazed_terracotta", c.glazedTerracotta, color + "_terracotta").dontMineIfPresent();
+            String g = "glass";
+            shapedRecipe3x3(color + "_stained_glass", c.stainedGlass, 8, g, g, g, g, dye, g, g, g, g).dontMineIfPresent();
+            String sg = color + "_stained_glass";
+            shapedRecipe3x3(color + "_stained_glass_pane", c.stainedGlassPane, 16, null, null, null, sg, sg, sg, sg, sg, sg).dontMineIfPresent();
+        }
+        // wood blocks are 4 logs -> 3, stripped the same. bamboo has none (null). keyed by the vanilla id (crimson_hyphae etc.),
+        // the log inputs keep the catalogue's _log names
+        for (WoodType woodType : WoodType.values()) {
+            ItemHelper.WoodItems w = ItemHelper.getWoodItems(woodType);
+            if (w.wood != null && w.log != null) {
+                String l = w.prefix + "_log";
+                shapedRecipe2x2(BuiltInRegistries.ITEM.getKey(w.wood).getPath(), w.wood, 3, l, l, l, l).dontMineIfPresent();
+            }
+            // the stripped stems only get collected by walking the overworld, so the nether ones would wait forever
+            if (w.strippedWood != null && w.strippedLog != null && !w.isNetherWood()) {
+                String l = w.prefix + "_stripped_logs";
+                shapedRecipe2x2(BuiltInRegistries.ITEM.getKey(w.strippedWood).getPath(), w.strippedWood, 3, l, l, l, l).dontMineIfPresent();
+            }
+        }
+    }
+
+    private static void dye(DyeColor color, int out, String a, String b) {
+        ItemHelper.ColorfulItems c = ItemHelper.getColorfulItems(color);
+        shapedRecipe2x2(c.colorName + "_dye", c.dye, out, a, b, null, null);
     }
 
     // woodTasks, but eager, so the recipe is in _craftedRecipes without anyone asking for a task.
