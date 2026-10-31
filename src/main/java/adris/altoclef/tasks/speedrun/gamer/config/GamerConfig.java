@@ -46,6 +46,9 @@ public class GamerConfig {
         // items despawn after 5 minutes, leave margin. counted from when the pile can be loaded (RecoverRules.Allowance), the
         // walk there is not part of it
         public int recoverSeconds = 240;
+        // a pile within this many blocks (square, not round: chunks tick in a square) of where we respawn stays loaded and its items
+        // despawn on the clock, so waiting for the day with it is a loss. only a farther pile waits (DeathRules.waitsForDay)
+        public int tickingBlocks = 176;
         public int maxPerPhase = 3;
         // deaths since the run was (re)started by hand, over every phase together
         public int maxTotal = 12;

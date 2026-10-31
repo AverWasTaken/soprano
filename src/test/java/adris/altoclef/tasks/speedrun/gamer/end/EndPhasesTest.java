@@ -34,6 +34,33 @@ public class EndPhasesTest {
     }
 
     @Test
+    public void aDeathWipesWhatTheVisitRememberedAboutItsErrands() throws Exception {
+        poke("_spawnStartedAt", 123.0);
+        poke("_bedsGaveUp", true);
+        poke("_spawnGo", true);
+        poke("_bedMineTail", 7);
+        // the overworld death does not re-enter the phase, so this is the only reset the second life gets
+        prep.resetOnDeath(3);
+        assertEquals(3, prep.bucketDeaths());
+        assertEquals(-1, prep.spawnStartedAt(), 0);
+        assertFalse(prep.bedsGaveUp());
+        assertFalse((boolean) peek("_spawnGo"));
+        assertEquals(0, (int) peek("_bedMineTail"));
+    }
+
+    private void poke(String field, Object v) throws Exception {
+        var f = prep.getClass().getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(prep, v);
+    }
+
+    private Object peek(String field) throws Exception {
+        var f = prep.getClass().getDeclaredField(field);
+        f.setAccessible(true);
+        return f.get(prep);
+    }
+
+    @Test
     public void endPrepIsOnlyDoneOnceWeAreInTheEnd() {
         FakeFacts f = new FakeFacts();
         RunState s = new RunState();

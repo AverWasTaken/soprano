@@ -69,8 +69,11 @@ public class EndPrepPhase implements PhaseHandler {
     private boolean _farWalk;
     // the bed errand found nothing in range and no wool this visit: the gate asks for what we hold from here
     private boolean _bedsGaveUp;
+    // the spawn step was let through once (EndGear.spawnFirst): it runs to its end, placing the bed changes what the check sees
+    private boolean _spawnGo;
     // the bed mine task that was running, kept through the pickup of the bed it just broke (the lookup is empty by then)
     private Task _bedMine;
+    private BlockPos _bedPortal;
     private int _bedMineTail;
     private String _hudState;
     // the gap the last gate line named, so a line goes out only when it changes
@@ -108,17 +111,43 @@ public class EndPrepPhase implements PhaseHandler {
     public void onEnter(AltoClef mod, GamerContext ctx) {
         ensureTasks();
         _lastGate = null;
+        // the lambdas in these capture the portal and the config of the last visit, and a finished task stays finished
+        _catalogue.clear();
+        _equip.clear();
+        _food = null;
+        _buildBlocks = null;
+        _toPortal = null;
+        _toPortalAt = null;
         // the task keeps its "spawn is set" flag from the last visit, a death in the End means it may be gone
         _setSpawn.resetSleep();
         _spawnNoted = false;
-        _spawnStartedAt = -1;
         _walkingIn = false;
         _farWalk = false;
+        _hudState = null;
+        resetOnDeath(ctx.state().deaths.size());
+    }
+
+    // everything a visit remembers about its errands: onEnter, and a death in the overworld (it does not re-enter the phase)
+    public void resetOnDeath(int deaths) {
+        _spawnStartedAt = -1;
+        _spawnGo = false;
         _bedsGaveUp = false;
         _bedMine = null;
         _bedMineTail = 0;
-        _hudState = null;
-        resetBucket(ctx.state().deaths.size());
+        resetBucket(deaths);
+    }
+
+    // test hooks
+    public double spawnStartedAt() {
+        return _spawnStartedAt;
+    }
+
+    public boolean bedsGaveUp() {
+        return _bedsGaveUp;
+    }
+
+    public int bucketDeaths() {
+        return _bucketDeaths;
     }
 
     // END_PORTAL is in the engine's tracked set (GamerTask.TRACKED), a handler level trackBlock leaked its ref count when
@@ -161,14 +190,15 @@ public class EndPrepPhase implements PhaseHandler {
         }
         EndConfig cfg = ctx.cfg().end;
         RunState state = ctx.state();
+        // first: the spawn clock of the life before the death must not run out on the new one
+        if (state.deaths.size() != _bucketDeaths) {
+            resetOnDeath(state.deaths.size());
+        }
         noteSpawnSet(mod, ctx);
         giveUpSpawnWhenSlow(ctx, cfg);
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
         int required = requiredBeds(ctx, cfg);
-        if (state.deaths.size() != _bucketDeaths) {
-            resetBucket(state.deaths.size());
-        }
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
         noteGate(mod, ctx, gap);
         BlockPos portal = portalCenter(mod, state);
@@ -178,8 +208,9 @@ public class EndPrepPhase implements PhaseHandler {
             step = gearStep(mod, ctx, cfg, gap);
         }
         // a far errand eats the food on the way, so the food floor comes first (the gear steps go on the same rule: far from the
-        // portal is far, whatever the errand)
-        if (step != null && step != _food && EndGear.foodFirst(gap.food(), _errandBlocks, cfg.farErrandBlocks)) {
+        // portal is far, whatever the errand). the walk back and the spawn bed are the way home, food does not replace them
+        if (step != null && step != _food
+                && EndGear.foodFirst(gap.food(), _errandBlocks, cfg.farErrandBlocks, step == _toPortal || step == _setSpawn)) {
             step = foodStep(ctx);
         }
         _walkingIn = step == null;
@@ -219,8 +250,8 @@ public class EndPrepPhase implements PhaseHandler {
         return EndGear.relaxed(ctx.attempt(), EndRules.endDeaths(ctx.state()));
     }
 
-    // the spawn bed by the portal as soon as a bed is in the bag (the rest of the beds can wait, a death on a long errand should
-    // respawn here), then the beds. returns null when both are done (or given up on)
+    // the spawn bed by the portal as soon as a bed is in the bag and placing it cannot leave the End a bed short (EndGear.spawnFirst,
+    // a death on a long errand should respawn here), then the beds. returns null when both are done (or given up on)
     private Task bedStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
         RunState state = ctx.state();
         int required = requiredBeds(ctx, cfg);
@@ -231,10 +262,26 @@ public class EndPrepPhase implements PhaseHandler {
         // done when it says so
         boolean finishing = !wantSpawn && !_spawnNoted && !relaxed(ctx) && !state.spawnBedGaveUp && cfg.placeSpawnNearPortal
                 && _setSpawn.isActive() && !_setSpawn.isFinished(mod);
-        if (finishing || wantSpawn && (ctx.facts().count(ItemHelper.BED) > 0 || lacking <= 0)) {
+        int bag = ctx.facts().count(ItemHelper.BED);
+        if (!wantSpawn) {
+            _spawnGo = false;
+        }
+        if (finishing || wantSpawn && (_spawnGo || bag >= 1 && (lacking <= 0 || spawnFirst(mod, ctx, cfg, bag, required, lacking)))) {
+            _spawnGo = wantSpawn;
             return spawnStep(mod, ctx, cfg);
         }
         return lacking > 0 ? bedErrand(mod, ctx, cfg, lacking) : null;
+    }
+
+    // lacking is already counted with the spawn bed placed, so it is the shortfall after placing
+    private boolean spawnFirst(AltoClef mod, GamerContext ctx, EndConfig cfg, int bag, int required, int lacking) {
+        BlockPos bed = nearestBed(mod, portalCenter(mod, ctx.state()), cfg.bedErrandRange);
+        EndGear.BedPlan plan = EndGear.bedPlan(bed != null, woolBeds(ctx));
+        return EndGear.spawnFirst(bag, required, EndGear.replaceable(plan, woolBeds(ctx), lacking));
+    }
+
+    private static int woolBeds(GamerContext ctx) {
+        return craftSafe(ctx.facts()) ? KitPlanner.usableWool(ctx.facts()) / 3 : 0;
     }
 
     // a bed near the portal gets broken, wool in the bag gets crafted, else we go with the beds we hold (the chase for sheep and
@@ -243,7 +290,7 @@ public class EndPrepPhase implements PhaseHandler {
         int held = ctx.facts().count(ItemHelper.BED);
         BlockPos portal = portalCenter(mod, ctx.state());
         BlockPos bed = nearestBed(mod, portal, cfg.bedErrandRange);
-        int woolBeds = craftSafe(ctx.facts()) ? KitPlanner.usableWool(ctx.facts()) / 3 : 0;
+        int woolBeds = woolBeds(ctx);
         EndGear.BedPlan plan = EndGear.bedPlan(bed != null, woolBeds);
         // the bed we just broke is still on the floor: the lookup is empty but the pickup is not done (bounded, a drop that never
         // shows up must not hold us)
@@ -254,12 +301,15 @@ public class EndPrepPhase implements PhaseHandler {
             case MINE -> {
                 _hudState = "Breaking a bed near the portal";
                 _bedMineTail = 0;
+                // the bed's own distance from the portal, not ours: standing far away is the walk back's business
                 if (portal != null) {
-                    _errandBlocks = Math.max(_errandBlocks, Math.hypot(bed.getX() - portal.getX(), bed.getZ() - portal.getZ()));
+                    _errandBlocks = Math.hypot(bed.getX() - portal.getX(), bed.getZ() - portal.getZ());
                 }
                 int want = held + 1;
+                // the filter reads the portal off the field: task equality ignores the filter, so a new portal keeps the old miner
+                _bedPortal = portal;
                 _bedMine = catalogue("bedmine", want, () -> new MineAndCollectTask(new ItemTarget(ItemHelper.BED, want), CollectBedTask.BEDS,
-                        MiningRequirement.HAND).onlyWhere(p -> bedOk(mod, p, portal, cfg.bedErrandRange)));
+                        MiningRequirement.HAND).onlyWhere(p -> bedOk(mod, p, _bedPortal, cfg.bedErrandRange)));
                 return _bedMine;
             }
             case CRAFT -> {

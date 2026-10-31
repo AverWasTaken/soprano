@@ -165,9 +165,15 @@ public final class DeathRules {
     }
 
     // a rich pile still passes refuse() at night with no armor, but the walk is a bad bet in the dark with no armor: the pile waits for
-    // the dawn (or armor) instead of being dropped, items do not age while nobody has the chunk loaded
-    public static boolean waitsForDay(boolean darkAndBare, Worth worth, int foodLine) {
-        return darkAndBare && worth != null && worth.rich(foodLine);
+    // the dawn (or armor) instead of being dropped, items do not age while nobody has the chunk loaded. a pile that is still inside
+    // the ticking area is loaded, so it despawns while we wait: that one is fetched now
+    public static boolean waitsForDay(boolean darkAndBare, Worth worth, int foodLine, boolean pileUnloaded) {
+        return darkAndBare && pileUnloaded && worth != null && worth.rich(foodLine);
+    }
+
+    // square on purpose, the loaded area is a square of chunks
+    public static boolean pileUnloaded(double dx, double dz, int tickingBlocks) {
+        return Math.max(Math.abs(dx), Math.abs(dz)) > tickingBlocks;
     }
 
     public static String waiting(double blocks, Worth worth) {
