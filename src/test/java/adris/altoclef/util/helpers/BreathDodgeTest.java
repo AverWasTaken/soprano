@@ -29,6 +29,28 @@ public class BreathDodgeTest {
     }
 
     @Test
+    public void aRunStuckInTheCloudDropsWithWaterAndDigsWithout() {
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, false, true, false));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, false));
+        assertEquals(Move.DIG, BreathDodge.escalate(Move.RUN, true, false, false));
+    }
+
+    @Test
+    public void neverDigsObsidianKeepsRunningWithoutWater() {
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, true, false, true));
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, false, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.DIG, true, true, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, true));
+    }
+
+    @Test
+    public void otherMovesPassThrough() {
+        assertEquals(Move.NONE, BreathDodge.escalate(Move.NONE, true, true, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.DROP, true, false, true));
+        assertEquals(Move.DIG, BreathDodge.escalate(Move.DIG, true, false, false));
+    }
+
+    @Test
     public void endPickupNeedsReachAndGivesUpFast() {
         assertFalse(BreathDodge.pickupExpired(true, 1, 3));
         assertTrue(BreathDodge.pickupExpired(true, 1, 6));

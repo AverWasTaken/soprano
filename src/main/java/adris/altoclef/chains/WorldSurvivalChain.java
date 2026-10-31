@@ -41,6 +41,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 public class WorldSurvivalChain extends SingleTaskChain {
 
@@ -56,6 +57,15 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private boolean _arrivalLogged;
     private boolean _stepBackLatched;
     private long _lastStepBackMs;
+    // ticks since the step back started, whether we ever stood in a portal block since, the cell it locked onto (a new cell
+    // would be a new task and reset its wait), and whether it quit so it doesn't relatch while we are still in lava
+    private int _sinceStepBack;
+    private boolean _stepBackInside;
+    private BlockPos _stepBackPortal;
+    private boolean _stepBackGaveUp;
+    // step backs per portal, so a portal that keeps dropping us by lava can't lap us between dimensions forever
+    private BlockPos _lastStepBackPortal;
+    private int _stepBackCount;
 
     // our name on the sneak key, so letting go never lifts the shield's hold and the fix chain knows to leave it be
     static final Object MAGMA_SNEAK = new Object();
@@ -79,6 +89,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private final DragonBreathTracker _breath = new DragonBreathTracker();
     private Task _breathTask;
     private BreathDodge.Move _breathMove = BreathDodge.Move.NONE;
+    private BreathDodge.Move _breathEscalated = BreathDodge.Move.NONE;
+    private Vec3 _breathRunFrom;
+    private int _breathRunTicks;
 
     public WorldSurvivalChain(TaskRunner runner) {
         super(runner);
@@ -349,6 +362,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet),
                 mod.getItemStorage().hasItem(Items.WATER_BUCKET));
+        move = escalateStuckRun(mod, feet, move);
         // a drop is committed: sliding half a block along the pillar top would otherwise see the pillar as floor and swap
         // it for a run before we ever fall
         if (_breathMove == BreathDodge.Move.DROP && inCloud && mod.getPlayer().onGround()) {
@@ -372,6 +386,42 @@ public class WorldSurvivalChain extends SingleTaskChain {
             };
         }
         return _breathTask;
+    }
+
+    // a run that sits in the cloud for 2 s without getting a block away switches to a drop or a dig, and stays switched
+    // until the cloud is gone (the floor check would flip it straight back to a run)
+    private BreathDodge.Move escalateStuckRun(AltoClef mod, BlockPos feet, BreathDodge.Move move) {
+        if (move == BreathDodge.Move.NONE) {
+            _breathEscalated = BreathDodge.Move.NONE;
+            _breathRunTicks = 0;
+            return move;
+        }
+        BlockPos below = feet.below();
+        float hardness = mod.getWorld().getBlockState(below).getDestroySpeed(mod.getWorld(), below);
+        boolean hard = hardness >= BreathDodge.HARD_BLOCK_HARDNESS || hardness < 0;
+        // the block under us can change while a dig is latched, obsidian is not something we dig our way out of
+        if (_breathEscalated == BreathDodge.Move.DIG && hard) {
+            _breathEscalated = BreathDodge.Move.NONE;
+        }
+        if (_breathEscalated != BreathDodge.Move.NONE) {
+            return _breathEscalated;
+        }
+        if (move == BreathDodge.Move.RUN) {
+            // exact position, block coords would reset the clock every time we wobble over a block line
+            Vec3 at = mod.getPlayer().position();
+            if (_breathRunFrom == null || _breathRunFrom.distanceToSqr(at) >= 1) {
+                _breathRunFrom = at;
+                _breathRunTicks = 0;
+            } else {
+                _breathRunTicks++;
+            }
+        }
+        BreathDodge.Move out = BreathDodge.escalate(move, _breathRunTicks >= BreathDodge.STUCK_RUN_TICKS,
+                mod.getItemStorage().hasItem(Items.WATER_BUCKET), hard);
+        if (out != move && out != BreathDodge.Move.RUN) {
+            _breathEscalated = out;
+        }
+        return out;
     }
 
     // somewhere to run to: floor under any cell in the 5x5 around us. a pillar top has none
@@ -423,6 +473,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             _sinceArrival = 0;
             _arrivalLogged = false;
             _stepBackLatched = false;
+            _stepBackGaveUp = false;
             // a fresh arrival gets a fresh five seconds in a portal, the old clock was for the other side
             _portalStuckTimer.reset();
         } else if (_sinceArrival < Integer.MAX_VALUE) {
@@ -431,22 +482,43 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     private Task portalStepBack(AltoClef mod, boolean inLava) {
-        if (_arrivalDim != Dimension.NETHER) {
+        if (_arrivalDim != Dimension.NETHER || _stepBackGaveUp) {
             return null;
         }
-        BlockPos portal = ArrivalRules.nearestPortal(mod.getPlayer().blockPosition(),
-                p -> mod.getWorld().getBlockState(p).is(Blocks.NETHER_PORTAL));
-        if (!ArrivalRules.stepBack(true, _sinceArrival, inLava, _stepBackLatched, portal != null)) {
+        java.util.function.Predicate<BlockPos> isPortal = p -> mod.getWorld().getBlockState(p).is(Blocks.NETHER_PORTAL);
+        BlockPos portal = _stepBackLatched && _stepBackPortal != null && isPortal.test(_stepBackPortal) ? _stepBackPortal
+                : ArrivalRules.nearestPortal(mod.getPlayer().blockPosition(), isPortal);
+        int since = _stepBackLatched ? _sinceStepBack : -1;
+        if (!ArrivalRules.stepBack(true, _sinceArrival, inLava, since, portal != null)) {
             _stepBackLatched = false;
             return null;
         }
         if (!_stepBackLatched) {
             long now = System.currentTimeMillis();
+            if (ArrivalRules.loopCapped(_lastStepBackPortal, _stepBackCount, portal)) {
+                return null;
+            }
             Debug.logInternal("arrival: lava next to the portal, stepping back in at " + portal.toShortString()
                     + (now - _lastStepBackMs < ArrivalRules.REPEAT_MS ? " (again, the last one was " + (now - _lastStepBackMs) / 1000 + " s ago)" : ""));
+            _stepBackCount = _lastStepBackPortal != null && _lastStepBackPortal.distSqr(portal) <= ArrivalRules.SAME_PORTAL_RADIUS * ArrivalRules.SAME_PORTAL_RADIUS
+                    ? _stepBackCount + 1 : 1;
+            _lastStepBackPortal = portal;
             _lastStepBackMs = now;
+            _sinceStepBack = 0;
+            _stepBackInside = false;
+        } else {
+            _sinceStepBack++;
+        }
+        _stepBackInside |= WorldHelper.isStandingInPortal(mod);
+        if (ArrivalRules.gaveUp(_sinceStepBack, _stepBackInside)) {
+            // lava or a wall in the way: the lava escape knows more than a straight walk does
+            Debug.logInternal("arrival: step back never reached the portal, handing it to the lava escape");
+            _stepBackGaveUp = true;
+            _stepBackLatched = false;
+            return null;
         }
         _stepBackLatched = true;
+        _stepBackPortal = portal;
         return new StepIntoPortalTask(portal);
     }
 
