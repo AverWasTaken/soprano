@@ -177,6 +177,7 @@ public class NetherPhase implements PhaseHandler {
     private boolean foodTripUp;
     // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
     private long tripEndedTick = -1;
+    private long lastNoTripLog = -1;
     // food units at the last look up top, so a gain pings the watchdog (-1 = no look yet)
     private int lastTripUnits = -1;
     // the live trip already came back from a watchdog retry once
@@ -493,8 +494,10 @@ public class NetherPhase implements PhaseHandler {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
-                // a trip that came back with food did its job, so the next dry spell gets its trips too
-                if (hunt == null && FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
+                // a trip that came back with food did its job, so the next dry spell gets its trips too. a hunt still going when the
+                // clock ran out counts as well: the bag is what says it worked (a trip that gained 24 units kept its spot on the cap and
+                // the bag ran dry with no trip left to send)
+                if (FoodTripRules.refundsTrip(tripReason, tripStartUnits, FoodTripRules.units(ctx.food()))) {
                     foodTrips = Math.max(0, foodTrips - 1);
                 }
                 foodTrip = false;
@@ -614,6 +617,17 @@ public class NetherPhase implements PhaseHandler {
         return false;
     }
 
+    // no trip with the bag under the floor is the one thing that must never be silent: one line per 30 s with every gate
+    private void logNoTrip(GamerContext ctx, long tick, int units, double portalDistance, boolean portalKnown, boolean deathTrip) {
+        if (!FoodTripRules.underFloor(units, portalDistance) || (lastNoTripLog >= 0 && GameClock.since(lastNoTripLog, tick) < 600)) {
+            return;
+        }
+        lastNoTripLog = tick;
+        ctx.log("nether: no food trip with " + units + " units: portalKnown=" + portalKnown + " deathTrip=" + deathTrip + " trips=" + foodTrips
+                + "/" + FoodTripRules.MAX_TRIPS + " dry=" + FoodTripRules.MAX_TRIPS_DRY + " cooling=" + FoodTripRules.coolingDown(tick, tripEndedTick)
+                + " dist=" + (int) portalDistance);
+    }
+
     // the walk home for food. the fight rules stay the combat chain's, this only picks the portal. no known home portal = today's behaviour
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
@@ -645,6 +659,7 @@ public class NetherPhase implements PhaseHandler {
                 why = FoodTripRules.Reason.BLOCKS;
             }
             if (why == null) {
+                logNoTrip(ctx, tick, units, portalDistance, portalKnown, deathTrip);
                 return null;
             }
             foodTrip = true;

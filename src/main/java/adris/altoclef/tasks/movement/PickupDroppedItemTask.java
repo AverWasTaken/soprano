@@ -320,7 +320,9 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         if (touching) {
             if (_freeInventoryIfFull) {
                 boolean fits = hasRoomFor(_mod, itemEntity.getItem());
-                ItemPickupRules.Room room = ItemPickupRules.room(fits, canMakeRoom(_mod));
+                boolean wearable = !fits && StorageHelper.wouldWear(_mod, itemEntity.getItem());
+                ItemPickupRules.Room room = ItemPickupRules.room(fits, ItemPickupRules.canMakeRoom(canMakeRoom(_mod), wearable,
+                        wearable && StorageHelper.getLastResortSlot(_mod).isPresent()));
                 if (room == ItemPickupRules.Room.MAKE_ROOM) {
                     // the drop would be the next thing thrown, so making room for it is a loop with extra steps. same skip as the death pile
                     if (!fits && StorageHelper.garbageView(_mod).dropIsNext(itemEntity.getItem())) {
@@ -330,7 +332,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                         _progressChecker.reset();
                         return null;
                     }
-                    return new EnsureFreeInventorySlotTask();
+                    return new EnsureFreeInventorySlotTask(wearable);
                 }
                 if (room == ItemPickupRules.Room.GIVE_UP) {
                     Debug.logMessage("Giving up on " + itemEntity.getItem().getItem().getDescriptionId() + ", the bag is full of things we keep.");
