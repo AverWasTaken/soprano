@@ -19,6 +19,9 @@ public class SchematicGettableTest {
     }
 
     private static final String[] WOODS = {"oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"};
+    // colours whose dye has a source (flowers, bone meal, lapis, cactus, mixes). gray, brown and black have none
+    private static final String[] DYED = {"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "light_gray",
+        "cyan", "purple", "blue", "green", "red"};
     private static final String[] COLORS = {"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
         "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"};
 
@@ -34,13 +37,13 @@ public class SchematicGettableTest {
         "hay_block", "bookshelf", "lantern", "torch", "chest", "barrel", "crafting_table", "furnace", "ladder",
         "iron_bars", "iron_block", "gold_block", "tuff", "calcite", "crimson_stem", "warped_stem", "crimson_planks",
         "warped_planks", "bamboo_block", "bamboo_planks", "bamboo_stairs", "bamboo_slab", "amethyst_block", "basalt",
-        "polished_basalt", "soul_sand", "magma_block");
+        "polished_basalt", "soul_sand", "magma_block", "terracotta", "crimson_hyphae", "warped_hyphae", "stripped_oak_wood");
 
     // no catalogue entry, the build goes around them and says so
     private static final List<String> NOT_GETTABLE = List.of(
         "prismarine", "prismarine_bricks", "dark_prismarine", "sea_lantern", "mud", "packed_mud", "mud_bricks",
         "end_stone", "end_stone_bricks", "purpur_block", "end_rod", "waxed_copper_block", "exposed_copper",
-        "grass_block", "terracotta", "snow_block", "ice", "packed_ice",
+        "grass_block", "snow_block", "ice", "packed_ice",
         // creative only, and nothing at all
         "bedrock", "air", "not_an_item");
 
@@ -54,19 +57,30 @@ public class SchematicGettableTest {
         for (String color : COLORS) {
             out.add(color + "_wool");
             out.add(color + "_bed");
+            out.add(color + "_carpet");
+        }
+        for (String color : DYED) {
+            for (String kind : new String[]{"dye", "stained_glass", "stained_glass_pane", "terracotta", "glazed_terracotta"}) {
+                out.add(color + "_" + kind);
+            }
+        }
+        for (String wood : WOODS) {
+            out.add(wood + "_wood");
+            out.add("stripped_" + wood + "_wood");
         }
         return out;
     }
 
     private static List<String> notGettable() {
         List<String> out = new ArrayList<>(NOT_GETTABLE);
-        // the bark blocks are the one wood shape the catalogue skips
-        for (String wood : WOODS) {
-            out.add(wood + "_wood");
-        }
         for (String color : COLORS) {
-            for (String kind : new String[]{"stained_glass", "stained_glass_pane", "carpet", "concrete", "concrete_powder",
-                "terracotta", "glazed_terracotta"}) {
+            for (String kind : new String[]{"concrete", "concrete_powder"}) {
+                out.add(color + "_" + kind);
+            }
+        }
+        // no dye source, so no dyed copies either (an entry would stall the build instead of skipping)
+        for (String color : new String[]{"gray", "brown", "black"}) {
+            for (String kind : new String[]{"stained_glass", "stained_glass_pane", "terracotta", "glazed_terracotta"}) {
                 out.add(color + "_" + kind);
             }
         }
