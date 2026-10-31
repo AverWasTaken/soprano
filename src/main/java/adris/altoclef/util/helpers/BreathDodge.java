@@ -12,6 +12,10 @@ public final class BreathDodge {
     public static final double END_PICKUP_SECONDS = 3;
     public static final double PICKUP_SECONDS = 10;
 
+    public static final int STUCK_RUN_TICKS = 40;
+    // obsidian is 50, bedrock is -1
+    public static final float HARD_BLOCK_HARDNESS = 50;
+
     private BreathDodge() {
     }
 
@@ -25,6 +29,22 @@ public final class BreathDodge {
             return Move.RUN;
         }
         return hasWaterBucket ? Move.DROP : Move.DIG;
+    }
+
+    // a run that is still in the cloud and has not moved a block by now has nowhere to go (a wide pillar counts its own top
+    // as floor). off the edge needs water, digging needs something we can dig in a few seconds. obsidian takes ~9 s and a
+    // drop without water off a spike kills, so there the run stays
+    public static Move escalate(Move move, boolean stuck, boolean hasWaterBucket, boolean hardBelow) {
+        if (move == Move.DIG && hardBelow) {
+            return hasWaterBucket ? Move.DROP : Move.RUN;
+        }
+        if (move != Move.RUN || !stuck) {
+            return move;
+        }
+        if (hasWaterBucket) {
+            return Move.DROP;
+        }
+        return hardBelow ? Move.RUN : Move.DIG;
     }
 
     public static boolean pickupExpired(boolean inEnd, double seconds, double distance) {

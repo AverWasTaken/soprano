@@ -10,7 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 // a portal dumped us next to lava: walk straight back into it instead of planning anything (the planner has nothing to go on
-// this early) and then stand still until it sends us home
+// this early) and then stand still until it sends us home. the wait lives in ArrivalRules, it has to outlast the transition
 public class StepIntoPortalTask extends Task {
 
     private final BlockPos portal;
