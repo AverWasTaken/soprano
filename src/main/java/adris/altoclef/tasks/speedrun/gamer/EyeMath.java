@@ -27,9 +27,14 @@ public final class EyeMath {
     }
 
     public static boolean enoughFor(int goalEyes, GamerFacts f) {
+        return enoughFor(goalEyes, goalEyes, f);
+    }
+
+    // rods are sized for their own goal (the spare rides on rods only), pearls for the plain one
+    public static boolean enoughFor(int goalEyes, int rodGoalEyes, GamerFacts f) {
         int eyes = eyes(f);
         int powder = f.count(Items.BLAZE_POWDER);
-        return f.count(Items.BLAZE_ROD) >= rodsNeeded(goalEyes, eyes, powder)
+        return f.count(Items.BLAZE_ROD) >= rodsNeeded(rodGoalEyes, eyes, powder)
                 && f.count(Items.ENDER_PEARL) >= pearlsNeeded(goalEyes, eyes);
     }
 
@@ -59,6 +64,13 @@ public final class EyeMath {
         return ringKnown(state) ? emptyFrames(state.framesFilled) : targetGoal(cfg, state.framesFilled);
     }
 
+    // the eye count to size rods for: until OPEN has read the ring, spareRods extra rods (2 powder each) so a short OPEN
+    // can be topped up with pearls in the overworld instead of a second nether trip
+    public static int rodGoal(GamerConfig cfg, RunState state) {
+        int goal = targetGoal(cfg, state);
+        return ringKnown(state) ? goal : goal + 2 * Math.max(0, cfg.spareRods);
+    }
+
     public static int floorGoal(GamerConfig cfg, RunState state) {
         return ringKnown(state) ? emptyFrames(state.framesFilled) : floorGoal(cfg, state.framesFilled);
     }
@@ -77,7 +89,7 @@ public final class EyeMath {
     }
 
     public static boolean canLeaveNether(GamerFacts f, GamerConfig cfg, RunState state, boolean budgetOver) {
-        if (enoughFor(targetGoal(cfg, state), f)) {
+        if (enoughFor(targetGoal(cfg, state), rodGoal(cfg, state), f)) {
             return true;
         }
         return budgetOver && enoughFor(floorGoal(cfg, state), f);

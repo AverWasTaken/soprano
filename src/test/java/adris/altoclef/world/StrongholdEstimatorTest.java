@@ -644,6 +644,70 @@ public class StrongholdEstimatorTest {
     }
 
     @Test
+    public void farButSettledWalksInsteadOfThrowingAnotherBaseline() {
+        // a tight fit that is not snapped (a snapped one walks on its own), slid in from a few third-ray origins
+        boolean found = false;
+        for (int back = 200; back <= 1400 && !found; back += 100) {
+            StrongholdEstimator e = twoGood();
+            if (!e.addRay(toTarget(back, -300 - back / 2.0))) {
+                continue;
+            }
+            Estimate s = get(e);
+            double px = s.x() + 1000;
+            if (s.snapped() || s.radius() > 24 || e.advise(px, s.z(), 400, 14).step() != Step.WALK) {
+                continue;
+            }
+            // but a very long silent walk earns a new baseline anyway
+            assertEquals(Step.THROW, e.advise(px, s.z(), 900, 14).step());
+            found = true;
+        }
+        assertTrue(found);
+        // two rays is not enough to call it settled
+        StrongholdEstimator two = twoGood();
+        assertEquals(Step.THROW, two.advise(get(two).x() + 1000, get(two).z(), 400, 14).step());
+    }
+
+    @Test
+    public void restoredRejectsKeepAFitFromCountingAsSettled() {
+        boolean found = false;
+        for (int back = 200; back <= 1400 && !found; back += 100) {
+            StrongholdEstimator e = twoGood();
+            if (!e.addRay(toTarget(back, -300 - back / 2.0))) {
+                continue;
+            }
+            Estimate s = get(e);
+            double px = s.x() + 1000;
+            if (s.snapped() || s.radius() > 24 || e.advise(px, s.z(), 400, 14).step() != Step.WALK) {
+                continue;
+            }
+            // a reloaded estimator that lost a rejected throw must stop trusting the fit
+            e.restoreRejects(1);
+            assertEquals(Step.THROW, e.advise(px, s.z(), 400, 14).step());
+            found = true;
+        }
+        assertTrue(found);
+    }
+
+    @Test
+    public void lowEyesWalkOnAMidSizedFitButFullBagsKeepThrowing() {
+        // slide a third ray's origin until the fit lands between the settled radius and the low-eyes one
+        boolean found = false;
+        for (int back = 200; back <= 1400 && !found; back += 100) {
+            StrongholdEstimator e = twoBlurry();
+            if (!e.addRay(toTarget(back, -300 - back / 2.0))) {
+                continue;
+            }
+            Estimate s = get(e);
+            if (e.advise(s.x() + 1000, s.z(), 400).step() == Step.THROW && s.radius() <= 100) {
+                assertEquals(Step.THROW, e.advise(s.x() + 1000, s.z(), 400, 14).step());
+                assertEquals(Step.WALK, e.advise(s.x() + 1000, s.z(), 400, 12).step());
+                found = true;
+            }
+        }
+        assertTrue(found);
+    }
+
+    @Test
     public void closeButBlurryThrowsAfterFortyBlocksOrInsideSixty() {
         StrongholdEstimator e = twoBlurry();
         Estimate s = get(e);
