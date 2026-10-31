@@ -11,6 +11,7 @@ import adris.altoclef.trace.StartStormWatch;
 import adris.altoclef.trace.StormGate;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.ui.HudText;
+import baritone.api.event.events.TickEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -477,9 +478,13 @@ public abstract class Task {
     }
 
     // a force held longer than this is assumed to be stuck, so it can't deadlock the whole tree
-    private static final long FORCE_TIMEOUT_MS = 10_000;
-    private long _forcedSinceMs = -1;
+    private static final int FORCE_TIMEOUT_TICKS = 200;
+    private int _forcedSinceTick = -1;
     private boolean _forceTimeoutLogged = false;
+
+    static boolean forceTimedOut(int sinceTick, int nowTick) {
+        return nowTick - sinceTick > FORCE_TIMEOUT_TICKS;
+    }
 
     /**
      * Sometimes a task just can NOT be bothered to be interrupted right now.
@@ -493,19 +498,20 @@ public abstract class Task {
         boolean forced = subTask.thisOrChildSatisfies(task ->
                 task instanceof ITaskCanForce canForce && canForce.shouldForce(mod, toInterruptWith));
         if (!forced) {
-            _forcedSinceMs = -1;
+            _forcedSinceTick = -1;
             _forceTimeoutLogged = false;
             return true;
         }
-        long now = System.currentTimeMillis();
-        if (_forcedSinceMs < 0) {
-            _forcedSinceMs = now;
+        // game ticks, not wall time: a long esc pause must not look like a held force that ran out
+        int now = TickEvent.currentCount();
+        if (_forcedSinceTick < 0) {
+            _forcedSinceTick = now;
         }
-        if (now - _forcedSinceMs > FORCE_TIMEOUT_MS) {
+        if (forceTimedOut(_forcedSinceTick, now)) {
             // a stuck shouldForce must not freeze the tree forever (log once, not 20 times a second)
             if (!_forceTimeoutLogged) {
                 _forceTimeoutLogged = true;
-                Debug.logInternal("Task force held for over " + FORCE_TIMEOUT_MS / 1000 + "s, ignoring it: " + subTask);
+                Debug.logInternal("Task force held for over " + FORCE_TIMEOUT_TICKS / 20 + "s, ignoring it: " + subTask);
             }
             return true;
         }

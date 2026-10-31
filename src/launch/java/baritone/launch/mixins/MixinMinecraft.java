@@ -84,6 +84,11 @@ public class MixinMinecraft {
             )
     )
     private void runTick(CallbackInfo ci) {
+        // the singleplayer pause menu stops the world but this still fires. skipping the whole tick (pre and post, post bails on
+        // a null provider) keeps every tick-counted timeout from running out while esc is open
+        if (((Minecraft) (Object) this).isPaused()) {
+            return;
+        }
         this.tickProvider = TickEvent.createNextProvider();
 
         for (IBaritone baritone : BaritoneAPI.getProvider().getAllBaritones()) {
