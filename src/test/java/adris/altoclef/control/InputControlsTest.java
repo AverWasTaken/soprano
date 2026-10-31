@@ -131,4 +131,34 @@ public class InputControlsTest {
         controls.release(Input.CLICK_RIGHT);
         assertFalse(controls.isHeldDown(Input.CLICK_RIGHT));
     }
+
+    // the edge brake pins sneak on its own name: letting go must not lift the magma sneak's pin
+    @Test
+    public void twoPinnersShareASneakAndTheLastOneLiftsIt() {
+        Object magma = new Object();
+        Object brake = new Object();
+        controls.pin(Input.SNEAK, magma);
+        controls.pin(Input.SNEAK, brake);
+        controls.unpin(Input.SNEAK, brake);
+        assertFalse(controls.isPinnedBy(Input.SNEAK, brake));
+        assertTrue(controls.isPinnedBy(Input.SNEAK, magma));
+        controls.release(Input.SNEAK);
+        assertTrue(controls.isHeldDown(Input.SNEAK));
+        controls.unpin(Input.SNEAK, magma);
+        assertFalse(controls.isHeldDown(Input.SNEAK));
+    }
+
+    // a screen lets every key up, the next pin's fresh hold forgets the magma claim. the magma pin still has to hold it
+    @Test
+    public void aPinSurvivesAnotherPinnerAfterTheGameLetTheKeyUp() {
+        Object magma = new Object();
+        Object brake = new Object();
+        controls.pin(Input.SNEAK, magma);
+        keys.setDown(Input.SNEAK, false);
+        controls.pin(Input.SNEAK, brake);
+        controls.unpin(Input.SNEAK, brake);
+        assertTrue(controls.isHeldDown(Input.SNEAK));
+        controls.unpin(Input.SNEAK, magma);
+        assertFalse(controls.isHeldDown(Input.SNEAK));
+    }
 }
