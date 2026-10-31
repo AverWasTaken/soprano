@@ -62,4 +62,24 @@ public class BreathDodgeTest {
         assertFalse(BreathDodge.pickupExpired(false, 9, 30));
         assertTrue(BreathDodge.pickupExpired(false, 10.5, 1));
     }
+
+    // one water bucket is the fall bucket, a breath drop only bets a second one
+    @Test
+    public void theLastWaterBucketIsNeverDroppedFor() {
+        assertFalse(BreathDodge.spareWater(0));
+        assertFalse(BreathDodge.spareWater(1));
+        assertTrue(BreathDodge.spareWater(2));
+        assertEquals(Move.DIG, BreathDodge.choose(true, true, false, BreathDodge.spareWater(1)));
+        assertEquals(Move.DROP, BreathDodge.choose(true, true, false, BreathDodge.spareWater(2)));
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, BreathDodge.spareWater(1), true));
+    }
+
+    @Test
+    public void theLastBucketInTheEndIsWorthAShortWalk() {
+        assertFalse(BreathDodge.pickupExpired(true, true, 5, 10));
+        assertTrue(BreathDodge.pickupExpired(true, true, 5, 13));
+        assertTrue(BreathDodge.pickupExpired(true, true, 10.5, 2));
+        // with another water bucket in the bag it is the old click-from-here rule
+        assertTrue(BreathDodge.pickupExpired(true, false, 1, 6));
+    }
 }

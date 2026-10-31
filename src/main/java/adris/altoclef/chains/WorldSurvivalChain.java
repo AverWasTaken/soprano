@@ -185,12 +185,15 @@ public class WorldSurvivalChain extends SingleTaskChain {
                     return dunk;
                 }
             } else if (EndermanWater.keepWater(angryEnderman) && _extinguishWaterPosition != null) {
-                // the water stays up while an angry enderman is about, it is the thing it is afraid of
+                // the water stays up while an angry enderman is about, it is the thing it is afraid of. the pickup clock
+                // starts when it leaves, or a long enderman fight used up the whole pickup window before it ever opened
+                _pickupTicks = 0;
             } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockTracker().blockIsValid(_extinguishWaterPosition, Blocks.WATER) && !pickupGaveUp(mod)) {
                 // Pick up the water
                 InteractWithBlockTask pickup = new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), _extinguishFace, _extinguishHit, true);
-                // in the End the water is only worth a click from here, never a walk
-                setTask(WorldHelper.getCurrentDimension() == Dimension.END ? pickup.stayPut() : pickup);
+                // in the End the water is only worth a click from here, never a walk. unless it was the last bucket: that
+                // one is the fall bucket for every fling the dragon has left in it
+                setTask(WorldHelper.getCurrentDimension() == Dimension.END && !lastBucket(mod) ? pickup.stayPut() : pickup);
                 return 60;
             } else {
                 _extinguishWaterPosition = null;
@@ -341,7 +344,12 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private boolean pickupGaveUp(AltoClef mod) {
         _pickupTicks++;
         double distance = mod.getPlayer().position().distanceTo(WorldHelper.toVec3d(_extinguishWaterPosition));
-        return BreathDodge.pickupExpired(WorldHelper.getCurrentDimension() == Dimension.END, _pickupTicks / 20.0, distance);
+        return BreathDodge.pickupExpired(WorldHelper.getCurrentDimension() == Dimension.END, lastBucket(mod), _pickupTicks / 20.0, distance);
+    }
+
+    // the water out there is the only water we have
+    private static boolean lastBucket(AltoClef mod) {
+        return !mod.getItemStorage().hasItem(Items.WATER_BUCKET);
     }
 
     // null when we are not in a cloud (or in the air, MLG owns that), else the task that gets us out of it
@@ -360,8 +368,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
             return null;
         }
-        BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet),
-                mod.getItemStorage().hasItem(Items.WATER_BUCKET));
+        BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet), spareWater(mod));
         move = escalateStuckRun(mod, feet, move);
         // a drop is committed: sliding half a block along the pillar top would otherwise see the pillar as floor and swap
         // it for a run before we ever fall
@@ -416,12 +423,16 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 _breathRunTicks++;
             }
         }
-        BreathDodge.Move out = BreathDodge.escalate(move, _breathRunTicks >= BreathDodge.STUCK_RUN_TICKS,
-                mod.getItemStorage().hasItem(Items.WATER_BUCKET), hard);
+        BreathDodge.Move out = BreathDodge.escalate(move, _breathRunTicks >= BreathDodge.STUCK_RUN_TICKS, spareWater(mod), hard);
         if (out != move && out != BreathDodge.Move.RUN) {
             _breathEscalated = out;
         }
         return out;
+    }
+
+    // a breath drop never bets the last water bucket (see BreathDodge.spareWater)
+    private static boolean spareWater(AltoClef mod) {
+        return BreathDodge.spareWater(mod.getItemStorage().getItemCount(Items.WATER_BUCKET));
     }
 
     // somewhere to run to: floor under any cell in the 5x5 around us. a pillar top has none
