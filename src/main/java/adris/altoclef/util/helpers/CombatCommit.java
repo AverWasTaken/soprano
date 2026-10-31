@@ -790,6 +790,7 @@ public final class CombatCommit {
     private long perchTopSince = -1;
     private long perchQuietSince = -1;
     private long perchCapAt;
+    private long perchStartedAt;
     private int perchShotBase;
     private String perchNote;
     // a perch that failed (we got hit on top, knocked off, no pillar) is not tried again for a while, that is what the old rules are for
@@ -1228,6 +1229,7 @@ public final class CombatCommit {
         perchTopSince = -1;
         perchQuietSince = -1;
         perchCapAt = t.now() + PerchRules.CAP_TICKS;
+        perchStartedAt = t.now();
         perchShotBase = f.shots();
         perchNote = "perch start: " + trigger + ", h " + h + ", chasers " + chasers + ", rim=" + t.way().rim();
         return Event.PERCH_START;
@@ -1252,7 +1254,7 @@ public final class CombatCommit {
         // the creeper step is off up here and a blast at the foot of the pillar is not something we sit through
         if (f.creeper4()) return leavePerch(t, "a creeper at the foot", true);
         for (Foe foe : t.foes()) {
-            if (foe.creeper() && foe.distance() <= PerchRules.CAP_RANGE) return leavePerch(t, "a creeper at the foot", true);
+            if (foe.creeper() && foe.distance() <= PerchRules.LEAVE_RANGE) return leavePerch(t, "a creeper at the foot", true);
         }
         boolean top = f.grounded() && f.feetY() >= perchStartY + perchH - 0.05;
         if (top && perchTopSince < 0) {
@@ -1287,6 +1289,8 @@ public final class CombatCommit {
         } else {
             perchQuietSince = -1;
         }
+        // the renew below has no end of its own: a piglin at the foot that the hit cannot reach would keep us up here forever
+        if (t.now() - perchStartedAt >= PerchRules.CAP_TICKS * 2) return leavePerch(t, "total cap", true);
         if (t.now() >= perchCapAt) {
             // something still at the foot is a reason to stay, not to climb down into it
             if (near4) {
@@ -1584,22 +1588,36 @@ public final class CombatCommit {
         return runReason(t, freshOnly, t.nextHit());
     }
 
-    // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
-    // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
-    // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
     // another wither skeleton within WITHER_PACK_RANGE of us, on our floor (the ones through the fortress floors do not count). a wither
     // skeleton's y is its height over us, see CombatBrain.withSplit
     private static boolean otherWither(Tick t, Foe self) {
+        return witherNear(t, self.id());
+    }
+
+    // a wither skeleton on our floor, or the one we are fighting: the ticks are eating hp and standing still for an enderman is the wait
+    // it needs to walk up and hit twice
+    private static boolean witherOnFloor(Tick t) {
+        return witherNear(t, -1) || (t.target() != null && t.target().wither());
+    }
+
+    // any wither skeleton on our floor in WITHER_PACK_RANGE, bar the one with this id (-1: none barred)
+    static boolean witherNear(Tick t, int notId) {
         for (Foe foe : t.foes()) {
-            if (foe.id() != self.id() && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
+            if (foe.id() != notId && foe.wither() && foe.distance() <= WITHER_PACK_RANGE && Math.abs(foe.y()) <= 4) return true;
         }
         return false;
     }
 
+    // a committed fight against one melee mob is not left for the hp it would have after the next hit: a 4 damage hitter
+    // would send us off at 12 hp, and the run is the thing that gets us hit in the back. the real hp is the line there,
+    // a second melee mob near, a shooter with a line on us, and everything not yet fighting, keep the projected one
+    private static final float LINGER_HIT = 2;
+
     private static float lowHit(Tick t) {
         Foe target = t.target();
         // a lone wither skeleton is a fight we stay in: its hit is 4.5 and the bail at 12.5 hp is what turned our back on it
-        if (target != null && target.wither() && !otherWither(t, target)) return 0;
+        // (while the wither effect is on, the ticks keep going after we stop swinging, so a small projected hit moves the bail up to ~10 hp)
+        if (target != null && target.wither() && !otherWither(t, target)) return t.lingering() ? LINGER_HIT : 0;
         // (one hit is the whole cost only when nothing keeps ticking after it: wither and fire do)
         if (t.lingering() || target == null || !target.melee() || target.standsAndFights()) return t.nextHit();
         for (Foe foe : t.foes()) {
@@ -1649,12 +1667,12 @@ public final class CombatCommit {
 
     // what holds the runs back: an angry one nearby counts even after we wrote it off, it is still about
     private Foe endermanAbout(Tick t) {
-        return nearestEnderman(t, false, false);
+        return witherOnFloor(t) ? null : nearestEnderman(t, false, false);
     }
 
     // what a run turns round for: one we have not written off
     private Foe endermanToFight(Tick t) {
-        return nearestEnderman(t, false, true);
+        return witherOnFloor(t) ? null : nearestEnderman(t, false, true);
     }
 
     private Foe endermanOnUs(Tick t) {
@@ -1663,7 +1681,7 @@ public final class CombatCommit {
 
     // an angry one that has not hit us yet but is close enough to swing next: fight it now so the shield is up for that swing
     private Foe endermanClose(Tick t) {
-        Foe best = nearestEnderman(t, false, true);
+        Foe best = witherOnFloor(t) ? null : nearestEnderman(t, false, true);
         return best != null && best.distance() <= CombatRules.FIGHT_SHIELD_RANGE ? best : null;
     }
 
@@ -1766,7 +1784,7 @@ public final class CombatCommit {
         if (target == null) return targetGone(t);
         // an enderman that hit us is the target over whatever we are on, it is the one that cannot be walked away from
         Foe ender = endermanOnUs(t);
-        if (ender != null && ender.id() != target.id() && (!target.standsAndFights() || !target.hitUs())) {
+        if (ender != null && ender.id() != target.id() && (!target.standsAndFights() || !target.hitUs()) && !witherOnFloor(t)) {
             return startFight(t, ender, why == Why.PINNED ? Why.HIT : why, Event.FIGHT_NEXT, cornered);
         }
         Foe swap = takeover(t, target);
@@ -1848,6 +1866,8 @@ public final class CombatCommit {
         Foe best = null;
         for (Foe foe : t.foes()) {
             if (foe.id() == target.id() || !foe.melee() || foe.kind() == Kind.UNTOUCHABLE || foe.mustRun(t.guardHealth())) continue;
+            // (same wither rule as the other enderman paths)
+            if (foe.standsAndFights() && witherOnFloor(t)) continue;
             if (!foe.hitUs() || !foe.inReach() || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.reachGap() < best.reachGap()) best = foe;
         }
@@ -2048,7 +2068,11 @@ public final class CombatCommit {
         // an angry enderman about turns any run into the fight: it teleports onto us, nothing outruns it. the warden still wins
         Foe ender = endermanToFight(t);
         // (a run from the warden or a heavy hitter is not ours to turn, it ends where it ends: that mob is still about once we are past 8)
-        if (ender != null && why != Why.HEAVY && !anyDanger(t)) return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
+        // (nor while a wither skeleton is on our floor: standing still to swat the enderman is the wait it needs to walk up and
+        // hit twice, and the wither ticks are already eating the hp the fight would need)
+        if (ender != null && why != Why.HEAVY && !anyDanger(t)) {
+            return startFight(t, ender, Why.CHASED, Event.RUN_CHASED_FIGHT, false);
+        }
         // melee only things we cannot outrun: stack up right here instead of jogging (and instead of turning round on them later)
         int perchH = perchAt(t);
         if (perchH > 0) return startPerch(t, perchH, "run " + why);

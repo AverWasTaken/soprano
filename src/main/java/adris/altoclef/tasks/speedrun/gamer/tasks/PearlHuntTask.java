@@ -16,10 +16,13 @@ import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.LavaShore;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.PearlHuntHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
+import baritone.pathing.movement.CliffAvoidance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
@@ -136,6 +139,10 @@ public class PearlHuntTask extends Task {
     // where lava kept us stuck: endermen near it are skipped for a few minutes (see LavaSpot) and we walk off it once
     private final LavaSpot lavaSpot = new LavaSpot();
     private final LavaStrikes lavaStrikes = new LavaStrikes();
+    private final PullStare pullStare = new PullStare();
+    // the lava target filter asks once per enderman per tick, the answer only changes with the tick
+    private long dryAt = Long.MIN_VALUE;
+    private boolean dryAny;
     // a back off is new when the last fleeing tick is more than one tick old, so an interrupt or an early return in between
     // cannot leave it looking like the same one
     private long lastFleeAt = Long.MIN_VALUE / 2;
@@ -327,6 +334,7 @@ public class PearlHuntTask extends Task {
             }
             PearlHuntHook.clear();
         }
+        noteStareAnswer(mod, gameTime);
         Task angry = fightAngry(mod);
         if (angry != null) {
             return say("Fighting an angry enderman", angry);
@@ -334,6 +342,17 @@ public class PearlHuntTask extends Task {
         Task grab = pickupStep(mod);
         if (grab != null) {
             return say("Picking up an ender pearl", grab);
+        }
+        Enderman pull = pullTarget(mod, gameTime);
+        if (pull != null) {
+            if (pullStare.staringAt() != pull.getId()) {
+                Debug.logInternal("pearl: staring at enderman #" + pull.getId() + " at " + Math.round(pull.distanceTo(mod.getPlayer())));
+            }
+            if (pullStare.stare(pull.getId(), gameTime)) {
+                LookHelper.lookAt(mod, pull.getEyePosition());
+                return say("Staring an enderman down", null);
+            }
+            Debug.logInternal("pearl: stare ignored");
         }
         Task walk = walkToHotspot(mod);
         if (walk != null) {
@@ -411,6 +430,10 @@ public class PearlHuntTask extends Task {
     // loot filter only, not avoid(): an angry one already coming at us near a brute still has to be fought
     // chasing = asked about the one the kill walk is already on (the keep line), not about picking one
     private boolean lootTarget(Entity man, boolean chasing) {
+        return baseLootTarget(man, chasing) && (chasing || !PullStare.lavaFilterSkips(byLava(man), dryCandidateExists()));
+    }
+
+    private boolean baseLootTarget(Entity man, boolean chasing) {
         if (!lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
             return false;
         }
@@ -422,6 +445,32 @@ public class PearlHuntTask extends Task {
             Debug.logInternal("pearl hunt: skipping enderman " + man.getId() + ", it stands by a brute or a bastion");
         }
         return !skip;
+    }
+
+    // the lava check behind "Lava by the foe, letting it come": lava beside the enderman, or on the straight walk to it
+    private static boolean byLava(Entity man) {
+        AltoClef mod = AltoClef.getInstance();
+        var cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        var us = mod.getPlayer();
+        return LavaShore.lavaNear(cells, man.getX(), man.getY(), man.getZ(), LavaShore.NEAR)
+                || LavaShore.lineHitsLava(cells, us.getX(), us.getY(), us.getZ(), man.getX(), man.getY(), man.getZ());
+    }
+
+    // any enderman the hunt could pick that has no lava on it, so the ones by lava can be passed over from the start
+    private boolean dryCandidateExists() {
+        AltoClef mod = AltoClef.getInstance();
+        long now = mod.getWorld().getGameTime();
+        if (dryAt != now) {
+            dryAt = now;
+            dryAny = false;
+            for (Enderman other : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+                if (other.isAlive() && baseLootTarget(other, false) && !byLava(other)) {
+                    dryAny = true;
+                    break;
+                }
+            }
+        }
+        return dryAny;
     }
 
     // the same HEAVY list the combat brain runs from (FoeRules), read off the tracker
@@ -450,6 +499,62 @@ public class PearlHuntTask extends Task {
             }
         }
         return false;
+    }
+
+    // the stare we were on turned angry: say so once (fightAngry takes it from here)
+    private void noteStareAnswer(AltoClef mod, long gameTime) {
+        int id = pullStare.staringAt();
+        if (id >= 0 && mod.getWorld().getEntity(id) instanceof Enderman man && man.isCreepy()) {
+            int took = pullStare.answered(id, gameTime);
+            if (took >= 0) {
+                Debug.logInternal("pearl: stare answered in " + took + " ticks");
+            }
+        }
+    }
+
+    // the calm enderman to stare at, null for none. nether only: a calm one 12 to 48 blocks off, nothing angry, and the same
+    // bait rules the nook uses (EndermanNook.stareWorthwhile: hp, fire, lava by us, lava between at close range)
+    private Enderman pullTarget(AltoClef mod, long gameTime) {
+        var us = mod.getPlayer();
+        var cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        if (!PullStare.allowed(dimension == Dimension.NETHER, LavaShore.edgeNear(cells, us.getX(), us.getY(), us.getZ()), pullStare.cooling(gameTime))) {
+            return null;
+        }
+        List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
+        for (Enderman man : men) {
+            // a given up one is not angry business anymore (countAngry in the nook does the same)
+            if (man.isAlive() && man.isCreepy() && !angrySpent.givenUp(man.getId())) {
+                return null;
+            }
+        }
+        int lootId = loot.pursuingId();
+        boolean ourLavaClear = exposedLava(mod.getWorld(), us.blockPosition(), EndermanNook.AGGRO_LAVA_GAP).isEmpty();
+        Enderman best = null;
+        for (Enderman man : men) {
+            double d = man.distanceTo(us);
+            if (!man.isAlive() || man.isCreepy() || !lootTarget(man, false)) {
+                continue;
+            }
+            boolean sees = man.hasLineOfSight(us);
+            // one in sight the walk up is cheap for: the loot task does that fine. one behind a wall doesn't count
+            if (d < PullStare.MIN_RANGE && sees) {
+                return null;
+            }
+            // the one we are already staring at keeps the stare, or two that trade places as nearest would reset the budget forever
+            boolean current = man.getId() == pullStare.staringAt();
+            if (!PullStare.candidate(d, true, true, sees, pullStare.skipped(man.getId(), gameTime), man.getId() == lootId)
+                    || best != null && !current && d >= best.distanceTo(us)) {
+                continue;
+            }
+            boolean between = LavaShore.lineHitsLava(cells, us.getX(), us.getY(), us.getZ(), man.getX(), man.getY(), man.getZ());
+            if (EndermanNook.stareWorthwhile(us.isOnFire(), us.getHealth(), ourLavaClear, 0, d, true, false, true, between)) {
+                best = man;
+                if (current) {
+                    break;
+                }
+            }
+        }
+        return best;
     }
 
     // a pearl lying close by comes before the hotspot walk and the recovery wait, the loot task below is the only other thing that

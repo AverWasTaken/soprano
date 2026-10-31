@@ -38,7 +38,7 @@ public class CollectBedTask extends CraftWithMatchingWoolTask {
         this(ItemHelper.BED, TaskCatalogue.getItemTarget("wool", 1), count);
     }
 
-    private static CraftingRecipe createBedRecipe(ItemTarget wool) {
+    static CraftingRecipe createBedRecipe(ItemTarget wool) {
         ItemTarget w = wool;
         ItemTarget p = TaskCatalogue.getItemTarget("planks", 1);
         return CraftingRecipe.newShapedRecipe(new ItemTarget[]{w, w, w, p, p, p, null, null, null}, 1);

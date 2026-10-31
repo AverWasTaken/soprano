@@ -2132,6 +2132,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (desired.getBlock() instanceof LiquidBlock) {
             return bucketFor(desired); // flowing ones are the source's business
         }
+        Item vine = vineItem(desired.getBlock());
+        if (vine != null) {
+            return vine;
+        }
         Item item = desired.getBlock().asItem();
         return item instanceof BlockItem block && (block.getBlock() == desired.getBlock() || item instanceof StandingAndWallBlockItem) ? item : null;
     }
@@ -2675,8 +2679,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> droppedNow = new ArrayList<>();
         placeable.forEach(pos -> {
             // given up ones stay in placeableSet, or the block above a hole we gave up on becomes a goal over thin air
-            if (!placeableSet.contains(pos.below()) && !placeableSet.contains(pos.below(2)) && !givenUp(pos.x, pos.y, pos.z)) {
-                BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            BlockState wanted = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            if (!waitsOnSupport(placeableSet, pos, wanted.getBlock(), p -> bcc.getSchematic(p.x, p.y, p.z, bcc.bsi.get0(p.x, p.y, p.z)).getBlock()) && !givenUp(pos.x, pos.y, pos.z)) {
+                BlockState desired = wanted;
                 // loaded only, an unloaded chunk reads as air and nothing survives on air
                 if (bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z) && !desired.canSurvive(ctx.world(), pos)) {
                     // nothing could go in there right now from any face (a wall torch whose wall isn't up yet), so a
@@ -3438,6 +3443,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // one comes out a corner, and asking for the straight one anyway is a place and break loop.
     // Objects.equals and not != because not every property value is an interned enum (upstream #5122)
     static boolean sameBlockstate(BlockState first, BlockState second, boolean ignoreDirection, List<String> ignoredProps) {
+        // a column the file draws as plant with a head on the tip is built from heads only, the game makes the plant
+        // itself. so a head standing where the file says plant (or the other way round) is that cell done. returns
+        // before the property loop on purpose: the head has age, the plant doesn't, and getValue would throw
+        Block head = vineHead(first.getBlock());
+        if (head != null && head == vineHead(second.getBlock())) {
+            return true;
+        }
         if (first.getBlock() != second.getBlock()) {
             return false;
         }
@@ -3466,9 +3478,57 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     // the bucket for a source, the block's own item for everything else (flowing water has none)
-    private static Item itemOf(BlockState state) {
+    static Item itemOf(BlockState state) {
         Item bucket = bucketFor(state);
-        return bucket != null ? bucket : state.getBlock().asItem();
+        if (bucket != null) {
+            return bucket;
+        }
+        Item vine = vineItem(state.getBlock());
+        return vine != null ? vine : state.getBlock().asItem();
+    }
+
+    // the item that places a vine head, for the head and for the plant body under it. nobody places a plant: the game
+    // turns the head above into one when another head goes in below it (or above, for twisting). null for any other block
+    static Item vineItem(Block block) {
+        if (block == Blocks.CAVE_VINES || block == Blocks.CAVE_VINES_PLANT) {
+            return Items.GLOW_BERRIES;
+        }
+        if (block == Blocks.WEEPING_VINES || block == Blocks.WEEPING_VINES_PLANT) {
+            return Items.WEEPING_VINES;
+        }
+        return block == Blocks.TWISTING_VINES || block == Blocks.TWISTING_VINES_PLANT ? Items.TWISTING_VINES : null;
+    }
+
+    // the head block of a vine family, null for anything else. head and plant of one family count as the same cell
+    private static Block vineHead(Block block) {
+        if (block == Blocks.CAVE_VINES_PLANT) {
+            return Blocks.CAVE_VINES;
+        }
+        if (block == Blocks.WEEPING_VINES_PLANT) {
+            return Blocks.WEEPING_VINES;
+        }
+        if (block == Blocks.TWISTING_VINES_PLANT) {
+            return Blocks.TWISTING_VINES;
+        }
+        return block == Blocks.CAVE_VINES || block == Blocks.WEEPING_VINES || block == Blocks.TWISTING_VINES ? block : null;
+    }
+
+    // hanging vines grow down, so their support is the cell above and the column goes top first. bottom first would try
+    // to hang the tip off thin air. the ceiling over a column doesn't wait on the vines under it either, or the two
+    // wait on each other forever
+    static boolean waitsOnSupport(Set<BetterBlockPos> placeable, BetterBlockPos pos, Block block, Function<BetterBlockPos, Block> schematicAt) {
+        if (growsDown(block)) {
+            return placeable.contains(pos.above()) || placeable.contains(pos.above(2));
+        }
+        BetterBlockPos below = pos.below();
+        BetterBlockPos below2 = pos.below(2);
+        return placeable.contains(below) && !growsDown(schematicAt.apply(below)) || placeable.contains(below2) && !growsDown(schematicAt.apply(below2));
+    }
+
+    // cave and weeping vines hang, twisting grows up
+    static boolean growsDown(Block block) {
+        Block head = vineHead(block);
+        return head == Blocks.CAVE_VINES || head == Blocks.WEEPING_VINES;
     }
 
     // a water or lava source, the only kind of fluid a bucket puts down

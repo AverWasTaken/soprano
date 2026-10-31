@@ -207,4 +207,14 @@ public class ItemPickupRulesTest {
             assertFalse(item, ItemPickupRules.worthSwimming(item));
         }
     }
+
+    @Test
+    public void wearableArmorGetsASlotFromTheLastResort() {
+        // the golden helmet on the death pile, a bag of things we keep and nothing garbage
+        assertTrue(ItemPickupRules.canMakeRoom(false, true, true));
+        assertFalse(ItemPickupRules.canMakeRoom(false, true, false));
+        assertFalse(ItemPickupRules.canMakeRoom(false, false, true));
+        assertTrue(ItemPickupRules.canMakeRoom(true, false, false));
+        assertEquals(ItemPickupRules.Room.MAKE_ROOM, ItemPickupRules.room(false, ItemPickupRules.canMakeRoom(false, true, true)));
+    }
 }

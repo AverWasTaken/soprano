@@ -77,6 +77,51 @@ public class BedPlaceGateTest {
     }
 
     @Test
+    public void aLandingPlacesFromAnywhereAndAnApproachFromTwentyFour() {
+        assertTrue(BedPlaceGate.placeWindow(true, false, false, 60));
+        assertTrue(BedPlaceGate.placeWindow(false, true, false, 24));
+        assertFalse(BedPlaceGate.placeWindow(false, true, false, 24.1));
+        assertFalse(BedPlaceGate.placeWindow(false, false, false, 3));
+    }
+
+    @Test
+    public void aSitterPlacesOnlyWithinTheOldRange() {
+        assertTrue(BedPlaceGate.placeWindow(false, false, true, 8));
+        assertFalse(BedPlaceGate.placeWindow(false, false, true, 8.1));
+    }
+
+    @Test
+    public void aBedThatIsDownKeepsALowLandingOurs() {
+        assertTrue(BedPlaceGate.perch(true, false, false, true, true, false));
+    }
+
+    @Test
+    public void clickNowTakesTheHeadWithinFourAndAHalf() {
+        List<AABB> far = List.of(box(10, 70, 10));
+        assertTrue(BedPlaceGate.clickNow(4.5, far, FOOT, HEAD));
+        assertFalse(BedPlaceGate.clickNow(4.6, far, FOOT, HEAD));
+    }
+
+    @Test
+    public void clickNowTakesAPartAboutToTouchTheBedUpToSix() {
+        // box edge 1.2 off the head cell: inside the 1.5 grow
+        List<AABB> near = List.of(new AABB(3.2, 64, -1, 6, 67, 1));
+        assertTrue(BedPlaceGate.clickNow(5.5, near, FOOT, HEAD));
+        assertFalse(BedPlaceGate.clickNow(6.1, near, FOOT, HEAD));
+        // box edge 2 off: not touching yet
+        assertFalse(BedPlaceGate.clickNow(5.5, List.of(new AABB(4, 64, -1, 6, 67, 1)), FOOT, HEAD));
+    }
+
+    @Test
+    public void lostReasonsGoInOrder() {
+        assertEquals("no bed", BedPlaceGate.lostReason(false, true, true, true, true));
+        assertEquals("pathing", BedPlaceGate.lostReason(true, true, true, true, true));
+        assertEquals("breath", BedPlaceGate.lostReason(true, false, true, true, true));
+        assertEquals("mobdef", BedPlaceGate.lostReason(true, false, true, false, true));
+        assertEquals("clutch", BedPlaceGate.lostReason(true, false, true, false, false));
+    }
+
+    @Test
     public void foodOnlyStepsAsideForABed() {
         assertFalse(BedPlaceGate.holdFood(false, false));
         assertTrue(BedPlaceGate.holdFood(true, false));

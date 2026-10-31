@@ -87,13 +87,9 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             _swingsAtSwap = swings;
             // the offhand counts as a candidate but the equip can't fetch from it. a failed axe falls back to the plain pick
             // instead of asking for it every tick and never swinging
-            if (!mod.getSlotHandler().forceEquipItem(hold) && axe != null) {
-                Item plain = WeaponPick.hold(equipedWeapon, bestWeapon(mod), mod.getControllerExtras().chargedTicks(), true);
-                if (plain != equipedWeapon) {
-                    mod.getSlotHandler().forceEquipItem(plain);
-                }
-            }
-            return true;
+            // (and a swap that failed both ways is no reason to skip the swing: melee goes on with what is in hand)
+            return WeaponPick.swapHand(item -> mod.getSlotHandler().forceEquipItem(item), hold, equipedWeapon, axe != null,
+                    () -> WeaponPick.hold(equipedWeapon, bestWeapon(mod), mod.getControllerExtras().chargedTicks(), true));
         }
         return false;
     }

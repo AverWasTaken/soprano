@@ -132,4 +132,17 @@ public class DunkRulesTest {
         World w = new World().put(FEET.below(), stone()).put(FEET, Blocks.LAVA.defaultBlockState());
         assertEquals(1, DunkRules.candidates(w, FEET).size());
     }
+
+    @Test
+    public void gaveUpDunkRetriesOnlyAfterAMoveOrALanding() {
+        BlockPos other = FEET.east();
+        // same cell, never left the ground: stays given up
+        assertFalse(DunkRules.retry(FEET, FEET, false, false));
+        // still in the air, same cell: not yet
+        assertFalse(DunkRules.retry(FEET, FEET, true, true));
+        // landed again after being airborne
+        assertTrue(DunkRules.retry(FEET, FEET, true, false));
+        // a different feet cell
+        assertTrue(DunkRules.retry(FEET, other, false, false));
+    }
 }

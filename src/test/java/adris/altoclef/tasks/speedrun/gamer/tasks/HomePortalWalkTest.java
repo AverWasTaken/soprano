@@ -13,7 +13,7 @@ public class HomePortalWalkTest {
 
     @Test
     public void graceRunsFromTheArrival() {
-        assertFalse(HomePortalWalk.graceOver(1000, 5000));
-        assertTrue(HomePortalWalk.graceOver(1000, 6001));
+        assertFalse(HomePortalWalk.graceOver(10, 110));
+        assertTrue(HomePortalWalk.graceOver(10, 111));
     }
 }

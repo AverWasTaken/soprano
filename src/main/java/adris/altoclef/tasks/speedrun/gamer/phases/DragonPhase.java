@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
@@ -44,6 +45,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,6 +65,8 @@ public class DragonPhase implements PhaseHandler {
     private static final int BRIDGE_X = 28;
     private static final double GEAR_SEARCH_RADIUS = 64;
     private static final double BLOCKS_BUDGET_SECONDS = 150;
+    // the heal beam reaches this far past the dragon's box
+    private static final double HEAL_BEAM_RANGE = 32;
 
     private final DragonBreathTracker _breath = new DragonBreathTracker();
     private final Map<Item, Task> _pickups = new HashMap<>();
@@ -78,6 +82,7 @@ public class DragonPhase implements PhaseHandler {
     private KillEnderDragonTask _swordTask;
     private DragonStrat _strat;
     private final DragonLogGate _statusLog = new DragonLogGate();
+    private final Map<Integer, BlockPos> _crystalSpots = new HashMap<>();
 
     private boolean _wasInEnd;
     private boolean _onIsland;
@@ -157,7 +162,7 @@ public class DragonPhase implements PhaseHandler {
         if (_latch == null) {
             _latch = new DragonDeadLatch(cfg.dragonGoneSeconds);
             _drops = new EndDropCache(cfg.dropEmptyWaitSeconds);
-            _bedTask = new KillEnderDragonWithBedsTask(new WaitForDragonAndPearlTask(), cfg.dragonHeadCloseEnoughClickBedRange);
+            _bedTask = new KillEnderDragonWithBedsTask(new WaitForDragonAndPearlTask(true), cfg.dragonHeadCloseEnoughClickBedRange);
             _swordTask = new KillEnderDragonTask();
             _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false), Blocks.END_PORTAL);
             _bridge = new GetToXZTask(BRIDGE_X, 0);
@@ -205,6 +210,7 @@ public class DragonPhase implements PhaseHandler {
         _drops.restartWait(seconds(ctx));
         _strat = null;
         _statusLog.reset();
+        _crystalSpots.clear();
         // children are cached per item and remember how the last visit ended (a finished pickup stays finished), a death
         // and a second trip would otherwise reuse the corpses
         _pickups.clear();
@@ -267,13 +273,32 @@ public class DragonPhase implements PhaseHandler {
         }
         _lastHealth = health;
         EnderDragonPhase<?> phase = ed.getPhaseManager().getCurrentPhase().getPhase();
+        List<EndCrystal> crystals = mod.getEntityTracker().getTrackedEntities(EndCrystal.class);
+        logCrystalsGone(crystals);
         if (_statusLog.shouldLog(now, phase)) {
             // the fight was blind in the logs: nothing said how the dragon, the crystals or we were doing
             LocalPlayer me = mod.getPlayer();
-            ctx.log(String.format("dragon: hp %.0f, phase %s, crystals %d, us hp %.1f food %d at %d %d %d, strat %s",
-                    health, phase, mod.getEntityTracker().getTrackedEntities(EndCrystal.class).size(), me.getHealth(),
+            // a crystal near the dragon is healing it, so a bed that does damage can still lose ground
+            AABB healBox = ed.getBoundingBox().inflate(HEAL_BEAM_RANGE);
+            boolean healing = crystals.stream().anyMatch(c -> healBox.contains(c.position()));
+            ctx.log(String.format("dragon: hp %.0f, phase %s, crystals %d, healing=%b, us hp %.1f food %d at %d %d %d, strat %s",
+                    health, phase, crystals.size(), healing, me.getHealth(),
                     me.getFoodData().getFoodLevel(), me.getBlockX(), me.getBlockY(), me.getBlockZ(), _strat));
         }
+    }
+
+    // a crystal that was tracked and is not any more (blown up, or out of tracking range, the log cannot tell)
+    private void logCrystalsGone(List<EndCrystal> now) {
+        Map<Integer, BlockPos> seen = new HashMap<>();
+        for (EndCrystal c : now) seen.put(c.getId(), c.blockPosition());
+        for (Map.Entry<Integer, BlockPos> old : _crystalSpots.entrySet()) {
+            if (!seen.containsKey(old.getKey())) {
+                BlockPos p = old.getValue();
+                Debug.logMessage(String.format("crystal gone at %d %d %d, %d left", p.getX(), p.getY(), p.getZ(), seen.size()));
+            }
+        }
+        _crystalSpots.clear();
+        _crystalSpots.putAll(seen);
     }
 
     private Task breathStep(AltoClef mod) {

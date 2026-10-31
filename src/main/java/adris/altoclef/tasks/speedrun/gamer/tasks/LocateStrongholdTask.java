@@ -507,6 +507,9 @@ public class LocateStrongholdTask extends Task {
         }
         boolean back = mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline;
         Debug.logInternal("eyes: drop " + (back ? "already picked up" : "none within " + (int) PICKUP_RANGE));
+        if (!back) {
+            Debug.logInternal("eyes: raw eye items in the world " + rawEyeItems(mod));
+        }
         return endCollect(mod, baseline, back ? "back" : "shattered or never seen");
     }
 
@@ -528,6 +531,20 @@ public class LocateStrongholdTask extends Task {
 
     private static String describePos(double[] p) {
         return p == null ? "none" : Math.round(p[0]) + "," + Math.round(p[1]) + "," + Math.round(p[2]);
+    }
+
+    // every ender eye item the client knows of, grounded or not, past the tracker's filters: a lost throw with one of these in it
+    // is a pickup we missed, an empty list is a real shatter (debug: losses well over the 20% break rate need telling apart)
+    private String rawEyeItems(AltoClef mod) {
+        StringBuilder out = new StringBuilder();
+        for (net.minecraft.world.entity.Entity e : mod.getWorld().entitiesForRendering()) {
+            if (e instanceof net.minecraft.world.entity.item.ItemEntity item && item.getItem().is(Items.ENDER_EYE)) {
+                out.append(" [").append(describePos(new double[]{e.getX(), e.getY(), e.getZ()}))
+                        .append(" ground=").append(e.onGround()).append(" d=").append(Math.round(e.distanceTo(mod.getPlayer())))
+                        .append("]");
+            }
+        }
+        return (out.length() == 0 ? "none" : out.toString()) + ", last eye " + describePos(lastEyePos);
     }
 
     private boolean nearDrop(AltoClef mod) {

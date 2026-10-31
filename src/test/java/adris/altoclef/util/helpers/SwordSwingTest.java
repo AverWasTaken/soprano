@@ -165,4 +165,11 @@ public class SwordSwingTest {
             }
         }
     }
+
+    @Test
+    public void aCalmNeutralRightBesideUsCountsWhateverTheTargetsBoxSays() {
+        assertTrue(SwordSwing.calmByUs(1.2 * 1.2));
+        assertTrue(SwordSwing.calmByUs(2.9 * 2.9));
+        assertFalse(SwordSwing.calmByUs(3.1 * 3.1));
+    }
 }

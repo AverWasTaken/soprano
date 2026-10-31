@@ -213,6 +213,24 @@ public class CombatCommitEndermanTest {
     }
 
     @Test
+    public void aWitherSkeletonOnOurFloorKeepsTheRunGoingPastAnAngryEnderman() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(zombie(2)), null)));
+        Foe wither = new Foe(7, 6, false, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, true, NEVER).withWither(true);
+        org.junit.Assert.assertNotEquals(Event.RUN_CHASED_FIGHT, c.step(tick(1, 5, List.of(zombie(2), wither, enderman(12, NEVER)), null)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aWitherSkeletonTwoFloorsDownDoesNotStopTheEndermanTurn() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(0, 5, List.of(zombie(2)), null)));
+        Foe below = new Foe(7, 9, false, false, NEVER, Kind.NORMAL, Double.POSITIVE_INFINITY, false, NEVER).withWither(true)
+                .withSplit(null, false, 0, -8, 0);
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(1, 5, List.of(zombie(2), below, enderman(12, NEVER)), null)));
+    }
+
+    @Test
     public void bareHandsAndAZombieOnUsIsNotAnUnarmedRunWithAnEndermanAbout() {
         Foe z = new Foe(1, 2, false, false, 0);
         Tick lone = new Tick(0, 20, 0, 0, List.of(z), null, Way.NONE, false);

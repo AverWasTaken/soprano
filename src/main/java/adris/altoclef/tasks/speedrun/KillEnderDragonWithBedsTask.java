@@ -19,8 +19,12 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.level.block.Blocks;
@@ -33,6 +37,8 @@ public class KillEnderDragonWithBedsTask extends Task {
     private static final double HEAL_STALL_SECONDS = 20;
     // the exit portal is a 3x3 ring around the fountain at (0,0), a tracked END_PORTAL block this close to it is the real one
     private static final int EXIT_PORTAL_RADIUS = 8;
+    // an enderman this close is on us, so mob defense may deal with it even mid-landing
+    private static final double HOLD_STAND_MELEE = 3;
 
     private final Task _whenNotPerchingTask;
     private final double _clickRange;
@@ -47,6 +53,28 @@ public class KillEnderDragonWithBedsTask extends Task {
     private BlockPos _endPortalTop;
     private Task _positionTask;
     private boolean _perching;
+    // at the stand with a bed down while the dragon lands: mob defense does not pull us off for an enderman then
+    private volatile boolean _holdStand;
+    private AltoClef _mod;
+
+    // log bookkeeping: the bed that is down, the click and the landing in progress
+    private boolean _bedWasDown;
+    private boolean _clicked;
+    private double _lastHead;
+    private String _lastPart = "none";
+    private boolean _pendingResult;
+    private long _resultAt;
+    private float _dragonHpAtClick;
+    private float _usHpAtClick;
+    private boolean _landing;
+    private double _landMinHead;
+    private boolean _landAtStand;
+    private boolean _landGrounded;
+    private boolean _landBedDown;
+    private boolean _landClicked;
+    private boolean _landPathed;
+    private boolean _landGap;
+    private long _lastTickAt;
 
     public KillEnderDragonWithBedsTask(IDragonWaiter notPerchingOverride) {
         this(notPerchingOverride, DEFAULT_CLICK_RANGE);
@@ -75,12 +103,15 @@ public class KillEnderDragonWithBedsTask extends Task {
         _deadLatch.reset();
         _healStall.reset();
         _perching = false;
+        _mod = mod;
+        _holdStand = false;
+        // the log bookkeeping survives a restart on purpose: a clutch or mob defense interruption is half the story of a lost landing
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
         // the sword task keeps mob defense out of the dragon fight and so does this one: endermen and the dragon are not a
         // fight or a run while the beds go off
         mod.getBehaviour().releasePaused(this);
         _level = mod.getBehaviour().push();
-        mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
+        mod.getBehaviour().addMobDefenseExclusion(this::ownedOrHeld);
         // and off the aura too, like the sword task: an excluded mob is the aura's otherwise, and a swing turns the head in the
         // middle of aiming a bed
         mod.getBehaviour().addForceFieldExclusion(KillEnderDragonTask::calmDragonFightEntity);
@@ -132,6 +163,7 @@ public class KillEnderDragonWithBedsTask extends Task {
         _deadLatch.update(exitPortalExists(mod), dragon.isPresent(),
                 mod.getChunkTracker().isChunkLoaded(new BlockPos(0, 64, 0)), mod.getWorld().getGameTime() / 20.0);
         _perching = false;
+        _holdStand = false;
         if (!_deadLatch.hasSeenDragon() && !_deadLatch.isDead()) {
             setDebugState("Waiting for dragon to spawn.", "Waiting for the dragon");
             return null;
@@ -175,6 +207,7 @@ public class KillEnderDragonWithBedsTask extends Task {
             boolean bedDown = mod.getBlockTracker().blockIsValid(bedSpot, ItemHelper.itemsToBlocks(ItemHelper.BED));
             // the stand is on the -x side of the pillar so the head half goes to +x (bedCycle asks again with the real yaw)
             boolean cellsClear = cellsClear(dragonEntity, bedSpot, BedPlaceGate.headCell(bedSpot, Direction.EAST), sitting);
+            logBed(mod, dragonEntity, phase, bedSpot, bedDown, landingPhase);
             // the y check is the old "bed only on the way down" rule, a sitting dragon is down already and that is the whole point
             boolean perching = BedPlaceGate.perch(landingPhase, sitting, phase == EnderDragonPhase.SITTING_FLAMING,
                     dragonEntity.getY() < _endPortalTop.getY() + 2, bedDown, cellsClear);
@@ -199,12 +232,18 @@ public class KillEnderDragonWithBedsTask extends Task {
 //                            && mod.getPlayer().getVelocity().getX() == 0 && mod.getPlayer().getVelocity().getY() == 0 && mod.getPlayer().getVelocity().getZ() == 0
                 ) {
                     _positionTask = new GetToBlockTask(targetStandPosition);
+                    _landPathed |= _landing;
                     Debug.logInternal("Going to position for bed cycle...");
                     setDebugState("Moving to target stand position", "Getting into position");
                     return _positionTask;
                 }
                 // We're positioned. Perform bed strats!
-                return bedCycle(mod, dragonEntity);
+                _holdStand = landingPhase && bedDown;
+                if (_landing) {
+                    _landAtStand = true;
+                    _landGrounded |= mod.getPlayer().onGround();
+                }
+                return bedCycle(mod, dragonEntity, phase);
             }
         }
         mod.getFoodChain().shouldStop(false);
@@ -225,7 +264,93 @@ public class KillEnderDragonWithBedsTask extends Task {
         return BedPlaceGate.clear(parts, foot, head, sitting);
     }
 
-    private Task bedCycle(AltoClef mod, EnderDragon dragonEntity) {
+    private static List<AABB> headBoxes(EnderDragon dragon) {
+        EnderDragonPart[] all = dragon.getSubEntities();
+        return List.of(all[0].getBoundingBox(), all[1].getBoundingBox(), all[2].getBoundingBox());
+    }
+
+    // the way the placed bed points, the foot to its head half
+    private static Direction bedFacing(AltoClef mod, BlockPos foot) {
+        var state = mod.getWorld().getBlockState(foot);
+        return state.getBlock() instanceof BedBlock ? state.getValue(BedBlock.FACING) : Direction.EAST;
+    }
+
+    // mob defense skips what the fight owns, and an angry enderman too once we stand on the stand with the bed down and the
+    // dragon landing (unless it is already on us, then it is a fight like any other)
+    private boolean ownedOrHeld(Entity entity) {
+        if (KillEnderDragonTask.ownedByTheDragonFight(entity)) return true;
+        if (!_holdStand || !(entity instanceof Enderman)) return false;
+        return _mod == null || _mod.getPlayer() == null || entity.distanceTo(_mod.getPlayer()) > HOLD_STAND_MELEE;
+    }
+
+    // the logs: one line per bed placed, clicked, eaten and one per landing. the bed state is read from the tracker, so this
+    // runs every tick whether or not the cycle does
+    private void logBed(AltoClef mod, EnderDragon dragon, EnderDragonPhase<?> phase, BlockPos bedSpot, boolean bedDown,
+                        boolean landingPhase) {
+        long now = mod.getWorld().getGameTime();
+        double head = dragon.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(bedSpot));
+        if (bedDown && !_bedWasDown) {
+            _clicked = false;
+            Debug.logMessage(String.format("bed: placed %d %d %d, head %.1f, %s", bedSpot.getX(), bedSpot.getY(), bedSpot.getZ(),
+                    head, phase));
+        }
+        if (bedDown) {
+            _lastHead = head;
+            _lastPart = touchingPart(dragon, bedSpot);
+        }
+        if (!bedDown && _bedWasDown && !_clicked) {
+            Debug.logMessage(String.format("bed: eaten without click, last head %.1f, %s", _lastHead, _lastPart));
+        }
+        _bedWasDown = bedDown;
+        if (_pendingResult && now >= _resultAt) {
+            _pendingResult = false;
+            Debug.logMessage(String.format("bed: result dragon hp %.0f->%.0f, us hp %.1f->%.1f", _dragonHpAtClick, dragon.getHealth(),
+                    _usHpAtClick, mod.getPlayer().getHealth()));
+        }
+        if (_lastTickAt != 0 && now - _lastTickAt > 3 && _landing) _landGap = true;
+        _lastTickAt = now;
+        if (landingPhase && !_landing) {
+            _landing = true;
+            _landMinHead = Double.MAX_VALUE;
+            _landAtStand = false;
+            _landGrounded = false;
+            _landBedDown = false;
+            _landClicked = false;
+            _landPathed = false;
+            _landGap = false;
+        }
+        if (_landing) {
+            _landMinHead = Math.min(_landMinHead, head);
+            _landBedDown |= bedDown;
+            if (!landingPhase) endLanding(mod);
+        }
+    }
+
+    private void endLanding(AltoClef mod) {
+        _landing = false;
+        String lost = "";
+        if (!_landClicked) {
+            boolean breath = mod.getEntityTracker().entityFound(e -> e.closerThan(mod.getPlayer(), 8), AreaEffectCloud.class);
+            boolean man = mod.getEntityTracker().entityFound(e -> KillEnderDragonTask.angryEnderman(e) && e.closerThan(mod.getPlayer(), 16),
+                    Enderman.class);
+            lost = ", lost to " + BedPlaceGate.lostReason(_landBedDown, _landPathed, _landGap, breath, man);
+        }
+        Debug.logMessage(String.format("landing: min head %.1f, %s, %s, %s%s", _landMinHead, _landAtStand ? "at stand" : "off stand",
+                _landGrounded ? "grounded" : "airborne", _landBedDown ? "bed down" : "no bed", lost));
+    }
+
+    // which of head, neck and body is closest to a bed cell, for the eaten line
+    private static String touchingPart(EnderDragon dragon, BlockPos spot) {
+        String[] names = {"head", "neck", "body"};
+        List<AABB> boxes = headBoxes(dragon);
+        AABB cell = new AABB(spot).inflate(0.5);
+        for (int i = 0; i < boxes.size(); i++) {
+            if (boxes.get(i).inflate(0.5).intersects(cell)) return names[i];
+        }
+        return "none";
+    }
+
+    private Task bedCycle(AltoClef mod, EnderDragon dragonEntity, EnderDragonPhase<?> phase) {
         BlockPos bedTargetPosition = _endPortalTop.above();
         boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
         if (!bedPlaced) {
@@ -233,8 +358,10 @@ public class KillEnderDragonWithBedsTask extends Task {
             // If no bed, place bed.
             // Fire messes up our "reach" so we just assume we're good when we're above a height.
             boolean canPlace = LookHelper.getCameraPos(mod).y > bedTargetPosition.getY();
-            // no bed until the head is close: one set down early gets eaten before the dragon is even here
-            if (!BedPlaceGate.headNear(dragonEntity.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(bedTargetPosition)))) {
+            // the bed goes down on the way in, not when the head is already on top of us (see BedPlaceGate.placeWindow)
+            double headDist = dragonEntity.head.getBoundingBox().getCenter().distanceTo(Vec3.atCenterOf(bedTargetPosition));
+            if (!BedPlaceGate.placeWindow(phase == EnderDragonPhase.LANDING, phase == EnderDragonPhase.LANDING_APPROACH,
+                    isSitting(dragonEntity), headDist)) {
                 return null;
             }
             if (canPlace) {
@@ -267,12 +394,13 @@ public class KillEnderDragonWithBedsTask extends Task {
         if (bedfoot == null) {
             return null;
         }
-        Vec3 headPos = dragonEntity.head.getBoundingBox().getCenter(); // dragon.head.getPos();
-        double dist = headPos.distanceTo(WorldHelper.toVec3d(bedfoot));
-        // this logged every tick for the whole perch
-        Debug.logInternal("Dist: " + dist + " Health: " + dragonEntity.getHealth());
+        Vec3 headPos = dragonEntity.head.getBoundingBox().getCenter();
+        double dist = headPos.distanceTo(Vec3.atCenterOf(bedfoot));
+        _lastHead = dist;
 
-        if (dist < _clickRange) {
+        // the click range setting can only widen the window past the touch range, the gate decides inside it
+        if (dist < Math.max(_clickRange, BedPlaceGate.CLICK_TOUCH_RANGE) && BedPlaceGate.clickNow(dist, headBoxes(dragonEntity), bedfoot,
+                BedPlaceGate.headCell(bedfoot, bedFacing(mod, bedfoot)))) {
             // our own explosion is the likeliest thing to kill us here: with too little health for it, do not click, let
             // the food chain heal (it was told to stop for the perch) and wait for the next lap
             double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
@@ -284,6 +412,15 @@ public class KillEnderDragonWithBedsTask extends Task {
                 return null;
             }
             // Interact with the bed.
+            if (!_clicked) {
+                _clicked = true;
+                _landClicked = true;
+                _pendingResult = true;
+                _resultAt = mod.getWorld().getGameTime() + 20;
+                _dragonHpAtClick = dragonEntity.getHealth();
+                _usHpAtClick = mod.getPlayer().getHealth();
+                Debug.logMessage(String.format("bed: click head %.1f, dragon hp %.0f, us hp %.1f", dist, _dragonHpAtClick, _usHpAtClick));
+            }
             return new InteractWithBlockTask(bedTargetPosition);
         }
         // Wait for it...

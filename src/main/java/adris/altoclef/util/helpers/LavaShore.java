@@ -271,6 +271,60 @@ public final class LavaShore {
         return standable(cells, x, y, z, fx, fz) && Math.hypot(x + 0.5 - fx, z + 0.5 - fz) >= 1.0;
     }
 
+    // the camp spot is this far out from the spawner (horizontal): blazes spawn within 4 of it, so six to eight out they have to
+    // fly to us and come one or two at a time, standing in the spawn area meant four of them shooting at once
+    public static final double CAMP_MIN = 6;
+    public static final double CAMP_MAX = 8;
+
+    // a standable cell CAMP_MIN..CAMP_MAX out from the spawner with a clear line to it (no solid block between, so the blazes
+    // that spawn see us and come over), nearest to us. {x, y, z} or null when the room has no such cell
+    public static int[] campSpot(Cells cells, int sx, int sy, int sz, double ux, double uz) {
+        int[] best = null;
+        double bestGap = Double.MAX_VALUE;
+        int r = (int) Math.ceil(CAMP_MAX);
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                double out = Math.hypot(dx, dz);
+                if (out < CAMP_MIN || out > CAMP_MAX) {
+                    continue;
+                }
+                for (int dy = -2; dy <= 2; dy++) {
+                    int x = sx + dx;
+                    int y = sy + dy;
+                    int z = sz + dz;
+                    if (!standable(cells, x, y, z, sx + 0.5, sz + 0.5) || !clearLine(cells, x, y, z, sx, sy, sz)) {
+                        continue;
+                    }
+                    double gap = Math.hypot(x + 0.5 - ux, z + 0.5 - uz);
+                    if (gap < bestGap) {
+                        bestGap = gap;
+                        best = new int[]{x, y, z};
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // eye height over the cell to the spawner's middle, no solid cell in between
+    static boolean clearLine(Cells cells, int x, int y, int z, int sx, int sy, int sz) {
+        double ax = x + 0.5;
+        double ay = y + 1.6;
+        double az = z + 0.5;
+        double bx = sx + 0.5;
+        double by = sy + 0.5;
+        double bz = sz + 0.5;
+        int steps = (int) Math.ceil(Math.hypot(bx - ax, bz - az) / STEP);
+        // the last stretch is the spawner's own cell and its frame, that is not in the way
+        for (int i = 0; i < steps - 1; i++) {
+            double t = (double) i / steps;
+            if (cells.at((int) Math.floor(ax + (bx - ax) * t), (int) Math.floor(ay + (by - ay) * t), (int) Math.floor(az + (bz - az) * t)) == Cell.SOLID) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // the one-block step off a rim: null when our spot is fine (or nothing around is better), else {dx, dz} to a neighbour
     // cell that is standable. no lava within 2 wins over a cell that is merely not-on-fire, then the one nearest the foe, so
     // the step also closes the gap instead of backing off. a cell the foe is standing in is no step

@@ -114,7 +114,23 @@ public class FoodTripRulesTest {
     @Test
     public void spentTripsStay() {
         assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS - 1));
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        // short of food but over the floor: the cap holds
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
+    }
+
+    @Test
+    public void anEmptyBagGoesHomePastTheCapUpToTheDryCap() {
+        assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertTrue(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS_DRY - 1));
+        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS_DRY));
+        // at the floor line itself it is not empty, so the plain cap applies
+        assertFalse(FoodTripRules.goHome(FoodTripRules.FLOOR_BASE, 0, true, false, FoodTripRules.MAX_TRIPS));
+    }
+
+    @Test
+    public void aTripThatGainedUnitsRefundsEvenWhenTheClockEndedIt() {
+        // the bag is the judge, not whether the hunt was still going: 10 -> 34 refunds
+        assertTrue(FoodTripRules.refundsTrip(FoodTripRules.Reason.FOOD, 10, 34));
     }
 
     @Test
@@ -122,6 +138,32 @@ public class FoodTripRulesTest {
         assertTrue(FoodTripRules.tripOver(false, 5));
         assertFalse(FoodTripRules.tripOver(true, 5));
         assertTrue(FoodTripRules.tripOver(true, FoodTripRules.MAX_SECONDS));
+    }
+
+    @Test
+    public void risingBagHoldsTheClockUntilTheHardCap() {
+        double limit = FoodTripRules.MAX_SECONDS;
+        // past the clock but the bag grew a minute ago: carry on
+        assertFalse(FoodTripRules.tripOver(true, limit + 30, limit, 60));
+        // nothing gained for two minutes: the clock cuts it
+        assertTrue(FoodTripRules.tripOver(true, limit + 30, limit, FoodTripRules.RISING_SECONDS));
+        // before the clock it is never cut, gains or not
+        assertFalse(FoodTripRules.tripOver(true, limit - 1, limit, 500));
+        // a bag that keeps nibbling still ends at the hard cap, and a full bag ends it at once
+        assertTrue(FoodTripRules.tripOver(true, FoodTripRules.HARD_SECONDS, limit, 0));
+        assertTrue(FoodTripRules.tripOver(false, 5, limit, 0));
+    }
+
+    @Test
+    public void tripEndsAtTwiceTheHomeLineNotTheRefillStop() {
+        // at the portal: 2 * 36 = 72, over the minimum of 70, under the plan's 130
+        assertEquals(72, FoodTripRules.tripEndUnits(0, 70, 130));
+        // far out the line moves with the walk: 2 * (36 + 400 / 40) = 92
+        assertEquals(92, FoodTripRules.tripEndUnits(400, 70, 130));
+        // never under the overworld minimum
+        assertEquals(90, FoodTripRules.tripEndUnits(0, 90, 130));
+        // never past what the plan itself would stop at (a full bag settles for the minimum)
+        assertEquals(70, FoodTripRules.tripEndUnits(400, 70, 70));
     }
 
     @Test
@@ -137,7 +179,7 @@ public class FoodTripRulesTest {
     @Test
     public void blockAndFoodTripsHaveSeparateBudgets() {
         // food spent, blocks fresh: the blocks trip still goes, and the other way round
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
         assertTrue(FoodTripRules.goHomeForBlocks(0, 2, true, false, 0));
         assertFalse(FoodTripRules.goHomeForBlocks(0, 2, true, false, FoodTripRules.MAX_TRIPS));
         assertTrue(FoodTripRules.goHome(0, 0, true, false, 0));
@@ -248,7 +290,7 @@ public class FoodTripRulesTest {
         }
         assertEquals(1, foodTrips);
         assertTrue(FoodTripRules.goHome(0, 0, true, false, foodTrips));
-        assertFalse(FoodTripRules.goHome(0, 0, true, false, foodTrips + 1));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, foodTrips + 1));
     }
 
     @Test
@@ -321,6 +363,6 @@ public class FoodTripRulesTest {
         for (int trip = 0; trip < FoodTripRules.MAX_TRIPS; trip++) {
             assertTrue(FoodTripRules.goHome(5, 0, true, false, trip));
         }
-        assertFalse(FoodTripRules.goHome(5, 0, true, false, FoodTripRules.MAX_TRIPS));
+        assertFalse(FoodTripRules.goHome(30, 0, true, false, FoodTripRules.MAX_TRIPS));
     }
 }

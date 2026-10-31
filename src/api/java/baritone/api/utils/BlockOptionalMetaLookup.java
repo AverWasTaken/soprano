@@ -32,22 +32,20 @@ import java.util.stream.Stream;
 public class BlockOptionalMetaLookup {
     private final ImmutableSet<Block> blockSet;
     private final ImmutableSet<BlockState> blockStateSet;
-    private final ImmutableSet<Integer> stackHashes;
+    // lazy, same reason as BlockOptionalMeta: hashing stacks needs the mixin
+    private volatile ImmutableSet<Integer> stackHashes;
     private final BlockOptionalMeta[] boms;
 
     public BlockOptionalMetaLookup(BlockOptionalMeta... boms) {
         this.boms = boms;
         Set<Block> blocks = new HashSet<>();
         Set<BlockState> blockStates = new HashSet<>();
-        Set<Integer> stacks = new HashSet<>();
         for (BlockOptionalMeta bom : boms) {
             blocks.add(bom.getBlock());
             blockStates.addAll(bom.getAllBlockStates());
-            stacks.addAll(bom.stackHashes());
         }
         this.blockSet = ImmutableSet.copyOf(blocks);
         this.blockStateSet = ImmutableSet.copyOf(blockStates);
-        this.stackHashes = ImmutableSet.copyOf(stacks);
     }
 
     public BlockOptionalMetaLookup(Block... blocks) {
@@ -80,7 +78,16 @@ public class BlockOptionalMetaLookup {
     public boolean has(ItemStack stack) {
         int hash = ((IItemStack) (Object) stack).getBaritoneHash();
         hash -= stack.getDamageValue();
-        return stackHashes.contains(hash);
+        ImmutableSet<Integer> hashes = stackHashes;
+        if (hashes == null) {
+            Set<Integer> stacks = new HashSet<>();
+            for (BlockOptionalMeta bom : boms) {
+                stacks.addAll(bom.stackHashes());
+            }
+            hashes = ImmutableSet.copyOf(stacks);
+            stackHashes = hashes;
+        }
+        return hashes.contains(hash);
     }
 
     public List<BlockOptionalMeta> blocks() {

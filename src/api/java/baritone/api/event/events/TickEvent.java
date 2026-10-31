@@ -56,6 +56,16 @@ public final class TickEvent {
         return state;
     }
 
+    /**
+     * How many game ticks have been dispatched so far. It does not move while the game is paused, so it works as a clock
+     * that timeouts can use without a pause eating them.
+     *
+     * @return the number of ticks dispatched
+     */
+    public static synchronized int currentCount() {
+        return overallTickCount;
+    }
+
     public static synchronized BiFunction<EventState, Type, TickEvent> createNextProvider() {
         final int count = overallTickCount++;
         return (state, type) -> new TickEvent(state, type, count);

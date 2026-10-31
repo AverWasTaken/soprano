@@ -30,12 +30,18 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     // blazes spawn within 4 sideways of the spawner, standing this close keeps every new one in reach
     private static final double CAMP_RADIUS = 2;
+    // close enough to the camp cell (it is a standable cell, not a spawner block)
+    private static final double CAMP_SPOT_RADIUS = 1.5;
     private final int _count;
     private final Task _searcher = new SearchChunkForBlockTask(Blocks.NETHER_BRICKS);
     // the fight logic lives in there. this task used to just camp, silently, while blazes it had decided not to see shot at it
     private final BlazeFight _fight = new BlazeFight();
 
     private BlockPos _foundBlazeSpawner = null;
+    // where we camp: a cell out past the spawn area (LavaShore.campSpot), picked once per spawner. null = the room had none, so
+    // the old stand-by-the-spawner camp is the fallback
+    private BlockPos _campSpot;
+    private BlockPos _campSpotFor;
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
     private boolean _camping;
@@ -194,10 +200,13 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 return null;
             }
             // (the inland step may end past the camp radius, walking back to the spawner would undo it)
-            if (_campStep == null && !_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), CAMP_RADIUS)) {
+            pickCampSpot(mod);
+            BlockPos camp = _campSpot != null ? _campSpot : _foundBlazeSpawner.above();
+            double campRadius = _campSpot != null ? CAMP_SPOT_RADIUS : CAMP_RADIUS;
+            if (_campStep == null && !camp.closerToCenterThan(mod.getPlayer().position(), campRadius)) {
                 setDebugState("Going to blaze spawner (" + (RunZones.INSTANCE.active(_zoneNow) + _deathZones.active(_zoneNow)) + " zones)");
                 _toSpawner = true;
-                return new GetToBlockTask(_foundBlazeSpawner.above(), false);
+                return new GetToBlockTask(camp, false);
             }
             // Put out fire that might mess with us.
             Optional<BlockPos> nearestFire = mod.getBlockTracker().getNearestWithinRange(_foundBlazeSpawner, 5, Blocks.FIRE);
@@ -244,6 +253,16 @@ public class CollectBlazeRodsTask extends ResourceTask {
         }
         _campStepTicks++;
         return new GetToBlockTask(_campStep);
+    }
+
+    // once per spawner: a cell six to eight out with a line to it, so the blazes come to us in ones and twos
+    private void pickCampSpot(AltoClef mod) {
+        if (_foundBlazeSpawner.equals(_campSpotFor) || mod.getClientBaritone().bsi == null) return;
+        _campSpotFor = _foundBlazeSpawner;
+        Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        var us = mod.getPlayer();
+        int[] spot = LavaShore.campSpot(cells, _foundBlazeSpawner.getX(), _foundBlazeSpawner.getY(), _foundBlazeSpawner.getZ(), us.getX(), us.getZ());
+        _campSpot = spot == null ? null : new BlockPos(spot[0], spot[1], spot[2]);
     }
 
     private void pickSpawner(AltoClef mod) {

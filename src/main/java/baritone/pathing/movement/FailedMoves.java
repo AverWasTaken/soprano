@@ -43,15 +43,39 @@ public final class FailedMoves {
         sameWorld(world);
         long from = BetterBlockPos.longHash(src);
         long to = BetterBlockPos.longHash(dest);
+        long[] mine = null;
         for (long[] f : fails) {
-            if (f[0] == from && f[1] == to) {
+            if (f[0] != from) {
+                continue;
+            }
+            if (f[1] == to) {
                 // an expired entry still sitting here (nobody snapshotted since) starts over, it had its 30s
                 f[2] = f[3] <= now ? 1 : f[2] + 1;
+                mine = f;
+            } else if (f[3] > now) {
+                // the planner rotates through the exits of a cell that keeps failing, and each one's timer ran out
+                // while the others took their turn. a cell that keeps failing keeps all its exits warm
                 f[3] = now + MEMORY_MS;
-                return;
             }
         }
-        fails.add(new long[]{from, to, 1, now + MEMORY_MS});
+        if (mine == null) {
+            fails.add(new long[]{from, to, 1, now + MEMORY_MS});
+        } else {
+            mine[3] = now + MEMORY_MS;
+        }
+    }
+
+    // how many different moves out of src are failing right now. two or more means it's the cell, not the edge
+    public synchronized int exitsFrom(BetterBlockPos src, Object world, long now) {
+        sameWorld(world);
+        long from = BetterBlockPos.longHash(src);
+        int n = 0;
+        for (long[] f : fails) {
+            if (f[0] == from && f[3] > now) {
+                n++;
+            }
+        }
+        return n;
     }
 
     public synchronized Snapshot snapshot(Object world, long now) {

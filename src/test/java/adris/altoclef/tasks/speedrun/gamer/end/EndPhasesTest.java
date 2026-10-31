@@ -151,4 +151,10 @@ public class EndPhasesTest {
         assertEquals(0, dragon.stallSeconds(), 0);
         assertTrue(prep.stallSeconds() > 0);
     }
+
+    @Test
+    public void theEndPrepHoldsNeitherTheNightNorTheBudgetUntilItWalksIn() {
+        assertFalse(prep.nightHold());
+        assertFalse(prep.holdsBudget());
+    }
 }

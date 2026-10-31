@@ -197,6 +197,35 @@ public final class EndGear {
         return facts.armorPoints() < cfg.bedMinArmor;
     }
 
+    // the spawn bed gets spawnBedBudgetSeconds from the step it starts at, not from the phase start (the bed errand ahead of it
+    // can eat the whole budget). a step that never started has no clock, the bed errand giving up is what ends the wait for it
+    public static boolean spawnClockExpired(double secondsInPhase, double spawnStartedAt, double budget) {
+        return spawnStartedAt >= 0 && secondsInPhase - spawnStartedAt > budget;
+    }
+
+    // a world bed is only worth the walk when it is near the portal
+    public static boolean bedInRange(double bedX, double bedZ, double portalX, double portalZ, double range) {
+        return Math.hypot(bedX - portalX, bedZ - portalZ) <= range;
+    }
+
+    // food short and the errand is far from the portal: eat first, the trip back is where the food goes
+    public static boolean foodFirst(boolean foodShort, double errandBlocksFromPortal, double farBlocks) {
+        return foodShort && errandBlocksFromPortal > farBlocks;
+    }
+
+    // the bed errand, from what the bag and the world offer: a bed in range is mined, wool in the bag is crafted (never the
+    // catalogue path, that walks to any tracked bed and then chases sheep), else the prep takes what it holds
+    public enum BedPlan {
+        MINE, CRAFT, GO_WITHOUT
+    }
+
+    public static BedPlan bedPlan(boolean bedInRange, int woolBeds) {
+        if (bedInRange) {
+            return BedPlan.MINE;
+        }
+        return woolBeds > 0 ? BedPlan.CRAFT : BedPlan.GO_WITHOUT;
+    }
+
     // a spare bed for the spawn point: the hard gate is cfg.beds, one more is a bonus
     public static int bedTarget(EndConfig cfg, boolean wantSpawnBed) {
         return cfg.beds + (wantSpawnBed ? 1 : 0);

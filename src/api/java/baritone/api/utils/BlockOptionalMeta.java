@@ -77,7 +77,8 @@ public final class BlockOptionalMeta {
     private final String propertiesDescription; // exists so toString() can return something more useful than a list of all blockstates
     private final Set<BlockState> blockstates;
     private final ImmutableSet<Integer> stateHashes;
-    private final ImmutableSet<Integer> stackHashes;
+    // lazy: hashing an ItemStack needs the mixin, and only matches(ItemStack) / stackHashes() ever ask
+    private volatile ImmutableSet<Integer> stackHashes;
     private static Map<Block, List<Item>> drops = new HashMap<>();
 
     public BlockOptionalMeta(@Nonnull Block block) {
@@ -85,7 +86,6 @@ public final class BlockOptionalMeta {
         this.propertiesDescription = "{}";
         this.blockstates = getStates(block, Collections.emptyMap());
         this.stateHashes = getStateHashes(blockstates);
-        this.stackHashes = getStackHashes(blockstates);
     }
 
     public BlockOptionalMeta(@Nonnull String selector) {
@@ -103,7 +103,6 @@ public final class BlockOptionalMeta {
         propertiesDescription = props == null ? "{}" : "{" + props.replace("=", ":") + "}";
         blockstates = getStates(block, properties);
         stateHashes = getStateHashes(blockstates);
-        stackHashes = getStackHashes(blockstates);
     }
 
     private static <C extends Comparable<C>, P extends Property<C>> P castToIProperty(Object value) {
@@ -151,13 +150,25 @@ public final class BlockOptionalMeta {
         //noinspection ConstantConditions
         return ImmutableSet.copyOf(
                 blockstates.stream()
-                        .flatMap(state -> drops(state.getBlock())
+                        .flatMap(state -> pickupItems(state.getBlock(), drops(state.getBlock()))
                                 .stream()
                                 .map(item -> new ItemStack(item, 1))
                         )
                         .map(stack -> ((IItemStack) (Object) stack).getBaritoneHash())
                         .toArray(Integer[]::new)
         );
+    }
+
+    // the loot table is rolled with a plain pickaxe, but a silk touch one drops the block itself. without this #mine never
+    // picked the ore block back up and left it lying there (it only knew about the diamond)
+    static List<Item> pickupItems(Block block, List<Item> drops) {
+        Item self = block.asItem();
+        if (self == Items.AIR || drops.contains(self)) {
+            return drops;
+        }
+        List<Item> all = new ArrayList<>(drops);
+        all.add(self);
+        return all;
     }
 
     public Block getBlock() {
@@ -179,7 +190,7 @@ public final class BlockOptionalMeta {
 
         hash -= stack.getDamageValue();
 
-        return stackHashes.contains(hash);
+        return stackHashes().contains(hash);
     }
 
     @Override
@@ -200,7 +211,12 @@ public final class BlockOptionalMeta {
     }
 
     public Set<Integer> stackHashes() {
-        return stackHashes;
+        ImmutableSet<Integer> hashes = stackHashes;
+        if (hashes == null) {
+            hashes = getStackHashes(blockstates);
+            stackHashes = hashes;
+        }
+        return hashes;
     }
 
     private static Method getVanillaServerPack;

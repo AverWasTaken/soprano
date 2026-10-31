@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasksystem.Task;
+import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
@@ -16,7 +17,7 @@ import net.minecraft.world.phys.Vec3;
 public class HomePortalWalk {
     // close enough to the remembered overworld portal that the tracker can see it and the default task takes over
     private static final double PORTAL_NEAR_BLOCKS = 8;
-    private static final long HOME_SCAN_MS = 5000;
+    private static final int HOME_SCAN_TICKS = 100;
 
     // made when it is first needed: building one touches the game, and the phases are built in tests that have none
     private Task goNether;
@@ -24,7 +25,8 @@ public class HomePortalWalk {
     private RunState.Pos walkingTo;
     // the portal we remembered is not there any more: stop walking back to it and let the default task build
     private boolean gone;
-    private long homeArrivedMs;
+    // game ticks (TickEvent.currentCount), so an esc pause can't run the grace out; 0 = not there yet
+    private int homeArrivedTick;
     private boolean tracking;
     private String hud;
 
@@ -34,7 +36,7 @@ public class HomePortalWalk {
         walkToPortal = null;
         walkingTo = null;
         gone = false;
-        homeArrivedMs = 0;
+        homeArrivedTick = 0;
         hud = null;
     }
 
@@ -57,12 +59,12 @@ public class HomePortalWalk {
                 tracking = true;
             }
             if (portalNear(mod)) {
-                homeArrivedMs = 0;
+                homeArrivedTick = 0;
             } else {
                 BlockPos at = new BlockPos(home.x, home.y, home.z);
                 if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {
                     // left the spot: the next arrival gets its own grace
-                    homeArrivedMs = 0;
+                    homeArrivedTick = 0;
                     if (!home.equals(walkingTo)) {
                         walkingTo = home;
                         walkToPortal = new GetToBlockTask(at);
@@ -74,13 +76,13 @@ public class HomePortalWalk {
                 // not drag us home again every time the default task wanders off to build a new one. the scan flag only
                 // says some scan finished since we started looking, maybe far from here, so give the chunks around us a
                 // few seconds to be scanned first
-                if (homeArrivedMs == 0) {
-                    homeArrivedMs = System.currentTimeMillis();
+                if (homeArrivedTick == 0) {
+                    homeArrivedTick = Math.max(1, TickEvent.currentCount());
                 }
                 // an unloaded chunk reads as "no portal" too, so it has to be loaded before the spot can be called empty
                 if (mod.getChunkTracker().isChunkLoaded(at)
                         && mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)
-                        && graceOver(homeArrivedMs, System.currentTimeMillis())) {
+                        && graceOver(homeArrivedTick, TickEvent.currentCount())) {
                     gone = true;
                     // forget it too, or every later trip and relog walks to the same empty spot again
                     state.overworldPortal = null;
@@ -99,9 +101,9 @@ public class HomePortalWalk {
         return goNether;
     }
 
-    // arrivedMs 0 = not standing at the spot yet
-    static boolean graceOver(long arrivedMs, long nowMs) {
-        return arrivedMs != 0 && nowMs - arrivedMs > HOME_SCAN_MS;
+    // arrivedTick 0 = not standing at the spot yet
+    static boolean graceOver(int arrivedTick, int nowTick) {
+        return arrivedTick != 0 && nowTick - arrivedTick > HOME_SCAN_TICKS;
     }
 
     // a portal really within reach, not just "we used one once": the tracker remembers the last used portal for good, which

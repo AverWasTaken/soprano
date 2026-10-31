@@ -9,6 +9,10 @@ public class EndConfig {
     public double spawnBedRange = 8;
     // the extra bed (wool hunt + placing it) gets this long from the start of END_PREP, then we go without a spawn bed
     public double spawnBedBudgetSeconds = 300;
+    // a world bed farther than this from the portal is not worth the walk, the prep goes with what it has
+    public double bedErrandRange = 250;
+    // an errand (or the walk back) farther than this from the portal wants the food floor first, and the phase budget waits for the walk
+    public double farErrandBlocks = 150;
     public int buildBlocks = 64;
     // the gate: below this we collect up to buildBlocks. 40 because the arrival platform is ~30 void blocks from the island
     public int minBuildBlocks = 40;

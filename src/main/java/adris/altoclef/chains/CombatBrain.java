@@ -845,7 +845,7 @@ final class CombatBrain {
                 if (!creeper.isAlive()) continue;
                 double d = creeper.distanceTo(player);
                 creeper8 |= d <= PerchRules.RANGE;
-                creeper4 |= d <= PerchRules.CAP_RANGE;
+                creeper4 |= d <= PerchRules.LEAVE_RANGE; // (named for the old 4, the perch leaves at LEAVE_RANGE now)
             }
         } catch (ConcurrentModificationException ignored) {
             // one tick of stale mobs is fine

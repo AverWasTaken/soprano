@@ -170,6 +170,13 @@ public class EndermanNookTest {
     }
 
     @Test
+    public void veryLowHpNeverHuntsEvenWhenFlat() {
+        assertEquals(EndermanNook.Stance.WAIT, EndermanNook.stance(false, false, 0.7f, false));
+        assertEquals(EndermanNook.Stance.WAIT, EndermanNook.stance(false, false, EndermanNook.NEVER_HUNT_HP, false));
+        assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, EndermanNook.NEVER_HUNT_HP + 1, false));
+    }
+
+    @Test
     public void fineHuntsWhateverTheClockSays() {
         assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, 20, true));
         assertEquals(EndermanNook.Stance.HUNT, EndermanNook.stance(false, false, EndermanNook.AGGRO_MIN_HP, false));

@@ -9,6 +9,11 @@ public final class DragonWaitRules {
     public static final double GROUND_MIN = 8;
     public static final double GROUND_MAX = 12;
     public static final double GROUND_AIM = 10;
+    // the bed strategy waits closer: the 8 to 12 ring was in the strafe path of the dragon, and the stand is a short walk from
+    // here. aimed on the west side, the bed's head half goes east
+    public static final double BED_MIN = 4;
+    public static final double BED_MAX = 6;
+    public static final double BED_AIM = 5;
     // a cloud is stood in inside its radius (it grows from 3 to 7 over its life), so we leave a bit before the edge and go
     // well past it, or the walk back to the ring turns around at the rim
     public static final double CLOUD_TRIGGER_MARGIN = 1.5;
@@ -53,6 +58,17 @@ public final class DragonWaitRules {
             len = 1;
         }
         return new Spot(fx + dx / len * GROUND_AIM, fz + dz / len * GROUND_AIM);
+    }
+
+    public static boolean inBedRing(double px, double pz, double fx, double fz) {
+        double d = Math.hypot(px - fx, pz - fz);
+        return d >= BED_MIN && d <= BED_MAX;
+    }
+
+    // where the bed strategy waits: here if already in its ring, else BED_AIM out on the west side
+    public static Spot bedSpot(double px, double pz, double fx, double fz) {
+        if (inBedRing(px, pz, fx, fz)) return new Spot(px, pz);
+        return new Spot(fx - BED_AIM, fz);
     }
 
     // a spot to stand clear of a breath cloud of this radius, null when we are not near its edge. straight away from the

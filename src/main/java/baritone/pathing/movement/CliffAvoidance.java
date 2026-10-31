@@ -45,8 +45,8 @@ public final class CliffAvoidance {
     // that we have bridged or mined since) has a different answer now. the scan is the cost, and every node asks about the
     // same columns as its neighbours do
     public static final class Memo {
-        private final Long2ByteOpenHashMap columns = new Long2ByteOpenHashMap();
-        private final Long2ByteOpenHashMap nodes = new Long2ByteOpenHashMap();
+        private final Long2ByteOpenHashMap columns = new Long2ByteOpenHashMap(4096);
+        private final Long2ByteOpenHashMap nodes = new Long2ByteOpenHashMap(4096);
 
         public Memo() {
             columns.defaultReturnValue((byte) -1);

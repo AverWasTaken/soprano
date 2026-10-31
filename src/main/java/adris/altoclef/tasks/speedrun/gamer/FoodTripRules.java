@@ -19,6 +19,9 @@ public final class FoodTripRules {
     public static final float CALM_HEALTH = 14;
     // trips per nether phase entry. a world with no food in reach would otherwise ping pong forever
     public static final int MAX_TRIPS = 2;
+    // an empty bag out here (under the floor) is a death sentence, so past MAX_TRIPS it still goes home, up to this many. trips
+    // that left the bag short are the ones that ate the cap, the hunt up top just gets another go
+    public static final int MAX_TRIPS_DRY = 4;
     // the hunt up top gets this long, then we carry on with what we have. the walk home has no flat clock, see STALL_SECONDS
     public static final double MAX_SECONDS = 480;
 
@@ -44,7 +47,8 @@ public final class FoodTripRules {
 
     // no food in the bag at all is just the same line: nothing to eat means no regen once hunger drops, and the floor is far over that
     public static boolean goHome(double foodUnits, double distToPortal, boolean portalKnown, boolean deathTripLive, int tripsDone) {
-        return portalKnown && !deathTripLive && tripsDone < MAX_TRIPS && foodUnits < goHomeLine(distToPortal);
+        return portalKnown && !deathTripLive && foodUnits < goHomeLine(distToPortal)
+                && (tripsDone < MAX_TRIPS || (tripsDone < MAX_TRIPS_DRY && underFloor(foodUnits, distToPortal)));
     }
 
     public static boolean underFloor(double foodUnits, double distToPortal) {
@@ -101,6 +105,23 @@ public final class FoodTripRules {
     // the same end check with the trip's own clock. stillShort = any need left (food under the minimum, blocks under the entry stack)
     public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit) {
         return !stillShort || secondsOnTrip >= limit;
+    }
+
+    // the clock does not cut a trip whose bag is still filling, same idea as the portal hold: a new high of food units inside the
+    // last RISING_SECONDS holds it. the cap is the hard stop for a trip that keeps nibbling forever
+    public static final double RISING_SECONDS = 120;
+    public static final double HARD_SECONDS = 900;
+
+    public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit, double secondsSinceGain) {
+        return !stillShort || secondsOnTrip >= HARD_SECONDS || secondsOnTrip >= limit && secondsSinceGain >= RISING_SECONDS;
+    }
+
+    // where a trip ends: twice the line that sent us home (so the bag is not back under it after one fight), never under the
+    // overworld minimum, never past the plan's own stop. the old stop (refillStop, 130) was out of reach inside the clock and
+    // the trips came back at 48 anyway. distance = nether side distance to the portal when the trip started
+    public static int tripEndUnits(double distToPortal, int overworldMinimum, int planEnd) {
+        int own = Math.max((int) Math.ceil(goHomeLine(distToPortal) * 2), overworldMinimum);
+        return Math.min(own, planEnd);
     }
 
     // ---- the walk home (nether half of a trip)
@@ -188,6 +209,8 @@ public final class FoodTripRules {
     // so it does not count against MAX_TRIPS: the cap is for the world with no food in reach, not for a bot that keeps running dry
     // because the nether eats it. blocks trips and trips that came back empty handed stay counted
     public static final int TRIP_GAIN_UNITS = 12;
+    // refunds per nether phase entry
+    public static final int MAX_REFUNDS = 3;
 
     public static boolean refundsTrip(Reason reason, int unitsAtStart, int unitsAtEnd) {
         return reason == Reason.FOOD && unitsAtEnd - unitsAtStart >= TRIP_GAIN_UNITS;

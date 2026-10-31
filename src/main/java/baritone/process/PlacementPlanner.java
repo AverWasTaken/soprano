@@ -32,6 +32,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -327,7 +328,8 @@ final class PlacementPlanner {
 
     // the desired block's own item, a stand in for whatever slot will hold it once we get there. null for no item
     private static ItemStack stackFor(BlockState desired) {
-        ItemStack stack = new ItemStack(desired.getBlock().asItem());
+        Item vine = BuilderProcess.vineItem(desired.getBlock());
+        ItemStack stack = new ItemStack(vine != null ? vine : desired.getBlock().asItem());
         return stack.isEmpty() || !(stack.getItem() instanceof BlockItem) ? null : stack;
     }
 

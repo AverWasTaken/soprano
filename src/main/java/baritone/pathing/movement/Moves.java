@@ -603,4 +603,26 @@ public enum Moves {
     public double cost(CalculationContext context, int x, int y, int z) {
         throw new UnsupportedOperationException("Movements must override `cost` or `apply`");
     }
+
+    // the moves a search can skip outright: ones whose apply provably hands back COST_INF for this context's flags, checked
+    // against the same fields the movements check (not the settings, those can move mid search). all of them are dynamicXZ,
+    // so numEmptyChunk and exhausted can't tell the difference, only numMovementsConsidered drops. allowJumpAtBuildLimit is
+    // y dependent so it stays out of this. with parkour off (the default, and forced off under #gamer) that is 24 of the 42
+    // moves per node that used to pay a chunk check, a reset and a virtual call to say no
+    public static Moves[] live(CalculationContext context) {
+        boolean jumps = context.allowParkour;
+        boolean sprintJumps = jumps && context.canSprint;
+        java.util.ArrayList<Moves> out = new java.util.ArrayList<>();
+        for (Moves m : values()) {
+            String n = m.name();
+            boolean dead = n.startsWith("PARKOUR_") && !jumps
+                    || n.startsWith("NEO_") && !(sprintJumps && context.allowNeos)
+                    || n.startsWith("MOMENTUM_") && !(sprintJumps && context.allowMomentumJumps)
+                    || n.startsWith("CLIMB_") && !(jumps && context.allowClimbJumps);
+            if (!dead) {
+                out.add(m);
+            }
+        }
+        return out.toArray(new Moves[0]);
+    }
 }
