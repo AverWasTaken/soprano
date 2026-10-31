@@ -127,7 +127,7 @@ final class BlazeFight {
     Task tick(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        scan(mod, player);
+        scan(mod, player, now);
         noteShot(player, now);
         updateTarget(player, now);
         float health = player.getHealth();
@@ -143,7 +143,9 @@ final class BlazeFight {
             }
         }
         boolean burning = player.isOnFire() && !player.hasEffect(MobEffects.FIRE_RESISTANCE);
-        Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null, burning);
+        boolean withered = player.hasEffect(MobEffects.WITHER);
+        Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null,
+                BlazeFightRules.stillHurting(burning, withered));
         running = next == Mode.RUN;
         mode = next;
         noPlacing = mode != Mode.CAMP;
@@ -292,7 +294,7 @@ final class BlazeFight {
 
     // ---- what is out there
 
-    private void scan(AltoClef mod, LocalPlayer player) {
+    private void scan(AltoClef mod, LocalPlayer player, long now) {
         List<Blaze> blazes;
         try {
             blazes = new ArrayList<>(mod.getEntityTracker().getTrackedEntities(Blaze.class));
@@ -321,6 +323,8 @@ final class BlazeFight {
             // the one we are already after is checked at any distance, so it can't drift out of pick range and keep us walking at a pack
             boolean packed = packHere || ((distance <= range || blaze == target)
                     && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS)));
+            // a pack we already met is still there when one of them walks out of tracking, the zone remembers it for us
+            packed |= RunZones.INSTANCE.covers(blaze.getX(), blaze.getZ(), now);
             if (packed && blaze == target) packDrop = true;
             if (distance <= range && !packed) {
                 around++;

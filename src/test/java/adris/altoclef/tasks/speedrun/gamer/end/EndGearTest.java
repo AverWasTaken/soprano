@@ -416,4 +416,38 @@ public class EndGearTest {
         assertFalse(EndGear.foodFirst(true, 100, 150));
         assertFalse(EndGear.foodFirst(false, 900, 150));
     }
+
+    @Test
+    public void foodNeverReplacesTheWalkHomeOrTheSpawnBed() {
+        assertFalse(EndGear.foodFirst(true, 900, 150, true));
+        assertTrue(EndGear.foodFirst(true, 900, 150, false));
+        assertFalse(EndGear.foodFirst(true, 10, 150, false));
+    }
+
+    @Test
+    public void spawnBedGoesFirstOnlyWhenItCannotLeaveTheEndShort() {
+        int req = 5;
+        // nothing in the bag, nothing to place
+        assertFalse(EndGear.spawnFirst(0, req, true));
+        assertFalse(EndGear.spawnFirst(0, 0, false));
+        // 1-4 beds and no source: keep them
+        assertFalse(EndGear.spawnFirst(1, req, false));
+        assertFalse(EndGear.spawnFirst(3, req, false));
+        // a source that covers it
+        assertTrue(EndGear.spawnFirst(1, req, true));
+        assertTrue(EndGear.spawnFirst(3, req, true));
+        // a spare beyond the required ones
+        assertTrue(EndGear.spawnFirst(6, req, false));
+        // RESUME_BEDS (3) still left after placing one, even with no source
+        assertTrue(EndGear.spawnFirst(DragonStrat.RESUME_BEDS + 1, 9, false));
+        assertFalse(EndGear.spawnFirst(DragonStrat.RESUME_BEDS, 9, false));
+    }
+
+    @Test
+    public void aBedSourceReplacesTheSpawnBedOnlyIfItCoversTheShortfall() {
+        assertTrue(EndGear.replaceable(EndGear.BedPlan.MINE, 0, 4));
+        assertTrue(EndGear.replaceable(EndGear.BedPlan.CRAFT, 4, 4));
+        assertFalse(EndGear.replaceable(EndGear.BedPlan.CRAFT, 1, 4));
+        assertFalse(EndGear.replaceable(EndGear.BedPlan.GO_WITHOUT, 9, 1));
+    }
 }

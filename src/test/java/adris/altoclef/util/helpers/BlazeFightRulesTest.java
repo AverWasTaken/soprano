@@ -216,4 +216,15 @@ public class BlazeFightRulesTest {
         assertTrue(BlazeFightRules.packNear(3));
         assertTrue(BlazeFightRules.packNear(5));
     }
+
+    // the wither ticking keeps a run going like fire does, it never starts one
+    @Test
+    public void witherHoldsARunTheWayBurningDoes() {
+        assertTrue(BlazeFightRules.stillHurting(false, true));
+        assertTrue(BlazeFightRules.stillHurting(true, false));
+        assertFalse(BlazeFightRules.stillHurting(false, false));
+        assertEquals(RUN, BlazeFightRules.decide(19, true, false, false, true, BlazeFightRules.stillHurting(false, true)));
+        assertEquals(KILL, BlazeFightRules.decide(19, false, false, false, true, BlazeFightRules.stillHurting(false, true)));
+        assertEquals(KILL, BlazeFightRules.decide(19, true, false, false, true, BlazeFightRules.stillHurting(false, false)));
+    }
 }

@@ -186,6 +186,26 @@ public class EyeMathTest {
     }
 
     @Test
+    public void rodGoalCarriesTheSpareUntilTheRingIsKnown() {
+        RunState first = new RunState();
+        assertEquals(16, EyeMath.rodGoal(cfg, first));
+        assertEquals(8, EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, first), 0, 0));
+        // a return trip knows the ring: plain goal, no spare
+        RunState trip = revisit(5, true);
+        assertEquals(7, EyeMath.rodGoal(cfg, trip));
+        cfg.spareRods = 0;
+        assertEquals(14, EyeMath.rodGoal(cfg, first));
+    }
+
+    @Test
+    public void exitWaitsForTheSpareRodButTheFloorStaysThirteen() {
+        RunState first = new RunState();
+        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 14, 0), cfg, first, false));
+        assertTrue(EyeMath.canLeaveNether(bag(8, 0, 14, 0), cfg, first, false));
+        assertTrue(EyeMath.canLeaveNether(bag(7, 0, 13, 0), cfg, first, true));
+    }
+
+    @Test
     public void potentialEyes() {
         assertEquals(10, EyeMath.potentialEyes(bag(2, 1, 8, 5)));
         assertEquals(5, EyeMath.potentialEyes(bag(0, 0, 8, 5)));

@@ -35,7 +35,7 @@ public class TaskIdentityTest {
         ALLOWED.put("LavaPoolPortalTask", "takes the gamer ctx, plumbing");
         ALLOWED.put("LPortalTask", "the rejected lakes list is plumbing from the phase, the same run keeps the same list");
         ALLOWED.put("GamerTask", "startAt is ignored on purpose, #gamer while one runs is a no-op");
-        ALLOWED.put("KillEnderDragonWithBedsTask", "holds a freshly built waiter task and a range from config, not a request");
+        ALLOWED.put("KillEnderDragonWithBedsTask", "holds a freshly built waiter task, not a request");
         // the lookTimer is state, not identity
         ALLOWED.put("SafeRandomShimmyTask", "randomLookInterval only seeds a timer, every caller wants the shimmy that is already running");
         // the terminator's own helpers, the terminator is a one off that nobody restarts with new args

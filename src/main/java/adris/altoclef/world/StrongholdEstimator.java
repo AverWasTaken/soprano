@@ -66,6 +66,13 @@ public final class StrongholdEstimator {
     private static final double FAR = 150;
     private static final double FAR_MIN_WALK = 120;
     private static final double FAR_WALK_FRACTION = 0.4;
+    // a tight fit this far out stops asking for new baselines: more throws from here burn eyes for a few blocks of gain
+    private static final double SETTLED_RADIUS = 24;
+    private static final int SETTLED_MIN_RAYS = 3;
+    private static final double SETTLED_VALVE = 2;
+    // same idea with a looser fit once the bag is running low, the ring needs those eyes more than the fit does
+    private static final double LOW_EYES_RADIUS = 100;
+    private static final int LOW_EYES = 12;
     private static final double NEAR_RADIUS = 24;
     private static final double NEAR_THROW_WALK = 40;
     private static final double NEAR_THROW_RANGE = 60;
@@ -81,6 +88,8 @@ public final class StrongholdEstimator {
     private final List<Ray> rays = new ArrayList<>();
     private Fit fit;
     private int throwsUsed;
+    // throws a previous run of the task made that never became rays (rejected), so a reload still knows the fit was contradicted
+    private int restoredRejects;
     private boolean hasLastOrigin;
     private double lastOriginX;
     private double lastOriginZ;
@@ -146,12 +155,21 @@ public final class StrongholdEstimator {
         return throwsUsed;
     }
 
+    public void restoreRejects(int n) {
+        restoredRejects = Math.max(0, n);
+    }
+
     public boolean throwsExhausted() {
         return throwsUsed >= params.maxThrows();
     }
 
     // walkedSinceLastThrow in blocks. runs every tick so it only reads the cached fit and builds one Advice
     public Advice advise(double playerX, double playerZ, double walkedSinceLastThrow) {
+        return advise(playerX, playerZ, walkedSinceLastThrow, Integer.MAX_VALUE);
+    }
+
+    // heldEyes lets a far, already decent fit stop spending eyes once the bag gets thin
+    public Advice advise(double playerX, double playerZ, double walkedSinceLastThrow, int heldEyes) {
         if (fit == null) {
             return new Advice(Step.THROW, playerX, playerZ, "no rays yet");
         }
@@ -168,6 +186,10 @@ public final class StrongholdEstimator {
             // the close path below do the one on-the-spot dive throw
             if (fit.est.snapped() && fit.used >= 2) {
                 return new Advice(Step.WALK, fit.snapX, fit.snapZ, "estimate is snapped, walking there without more throws");
+            }
+            // the valve: a confidently wrong fit must not be walked at forever, so a long silent walk earns a new baseline
+            if (settled(heldEyes) && walkedSinceLastThrow < SETTLED_VALVE * Math.max(FAR_MIN_WALK, FAR_WALK_FRACTION * range)) {
+                return new Advice(Step.WALK, fit.x, fit.z, "estimate is stable enough, walking there without more throws");
             }
             if (walkedSinceLastThrow >= Math.max(FAR_MIN_WALK, FAR_WALK_FRACTION * range)) {
                 return throwOrWalk(last, playerX, playerZ, fit.x, fit.z, "walked far enough for a new baseline");
@@ -190,6 +212,15 @@ public final class StrongholdEstimator {
         return new Advice(Step.WALK, fit.x, fit.z, "estimate is tight, almost there");
     }
 
+    private boolean settled(int heldEyes) {
+        // a rejected ray means the world disagreed with the fit at least once, so it is not settled whatever its radius says
+        if (fit.used < SETTLED_MIN_RAYS || throwsUsed + restoredRejects > fit.used) {
+            return false;
+        }
+        double r = fit.est.radius();
+        return r <= SETTLED_RADIUS || (heldEyes <= LOW_EYES && r <= LOW_EYES_RADIUS);
+    }
+
     public List<Ray> rays() {
         return List.copyOf(rays);
     }
@@ -198,6 +229,7 @@ public final class StrongholdEstimator {
         rays.clear();
         fit = null;
         throwsUsed = 0;
+        restoredRejects = 0;
         hasLastOrigin = false;
         lastRejection = "";
         rejectedStreak.clear();

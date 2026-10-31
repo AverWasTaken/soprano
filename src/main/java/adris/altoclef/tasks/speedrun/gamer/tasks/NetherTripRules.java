@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import adris.altoclef.tasks.speedrun.gamer.DeathRules;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.util.helpers.GameClock;
 import baritone.api.utils.Dimension;
@@ -67,6 +68,13 @@ public final class NetherTripRules {
     // the pile is too far out to walk to naked
     public static boolean defers(double pileFlatDistanceFromHome) {
         return pileFlatDistanceFromHome > DEFER_BLOCKS;
+    }
+
+    // what a far pile has to hold to be put off for later instead of dropped: the stuff the eyes are made of. iron, armor and
+    // the rest come back with the rebuild, rods and pearls are the hours
+    // (no bag seen at all reads as nothing in it)
+    public static boolean defersFor(DeathRules.Worth lastBag) {
+        return lastBag != null && lastBag.eyeParts();
     }
 
     // in the nether with the kit on and a deferred pile in reach: this is the trip we put off

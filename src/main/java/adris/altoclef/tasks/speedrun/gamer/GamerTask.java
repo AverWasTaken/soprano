@@ -1181,7 +1181,8 @@ public class GamerTask extends Task {
                 DeathRules.reachFor(worth, cfg.overworld.refillStartFoodUnits, cfg.death.recoverReach), worth,
                 cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile, darkAndBare);
         waitingPile = null;
-        if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits)) {
+        if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits,
+                DeathRules.pileUnloaded(facts.x() - deathPos.getX(), facts.z() - deathPos.getZ(), cfg.death.tickingBlocks))) {
             host.say(DeathRules.waiting(blocks, worth));
             waitingPile = deathPos;
             waitingPileDimension = deathDimension;
@@ -1213,13 +1214,13 @@ public class GamerTask extends Task {
         if (waitingPile == null || recover != null || darkAndBare(mod)) {
             return;
         }
+        // another dimension right now: the pile keeps waiting for the next visit here, a new death is what clears it
+        if (facts.dimension() != waitingPileDimension) {
+            return;
+        }
         BlockPos pile = waitingPile;
         Dimension where = waitingPileDimension;
         waitingPile = null;
-        if (facts.dimension() != waitingPileDimension) {
-            host.say(DeathRules.leaving("the waiting pile is in another dimension now"));
-            return;
-        }
         // (the allowance starts now, the night already ate the one from the death)
         startRecovery(pile, flatBlocksTo(pile), facts.gameTime());
         recoverDimension = where;
@@ -1250,6 +1251,13 @@ public class GamerTask extends Task {
         }
         RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
         double far = flatBlocksFromHome(pile);
+        if (NetherTripRules.defers(far) && !NetherTripRules.defersFor(worth)) {
+            // a pile with no eye parts in it is a stick and a bucket the rebuild makes anyway, and the second walk to it goes
+            // through whatever killed us the first time
+            host.say("nether death at " + where + ", " + (int) far + " blocks from the portal with no rods, powder, pearls or eyes in it, "
+                    + "letting the pile go, rebuilding");
+            return;
+        }
         if (NetherTripRules.defers(far)) {
             // naked and that far out is how the last few trips died, so the pile waits for a kit and the rebuild runs
             state.deferredPile = pile;

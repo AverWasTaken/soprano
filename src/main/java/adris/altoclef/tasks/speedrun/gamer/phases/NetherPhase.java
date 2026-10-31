@@ -1183,7 +1183,8 @@ public class NetherPhase implements PhaseHandler {
         GamerFacts f = ctx.facts();
         int eyes = EyeMath.eyes(f);
         int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state());
-        boolean rodsDone = f.count(Items.BLAZE_ROD) >= EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER)) || ctx.state().netherRodsGaveUp;
+        int rodGoal = EyeMath.rodGoal(ctx.cfg(), ctx.state());
+        boolean rodsDone = f.count(Items.BLAZE_ROD) >= EyeMath.rodsNeeded(rodGoal, eyes, f.count(Items.BLAZE_POWDER)) || ctx.state().netherRodsGaveUp;
         return rodsDone && f.count(Items.ENDER_PEARL) < EyeMath.pearlsNeeded(goal, eyes);
     }
 
@@ -1193,7 +1194,7 @@ public class NetherPhase implements PhaseHandler {
         GamerConfig cfg = ctx.cfg();
         int eyes = EyeMath.eyes(f);
         int goal = EyeMath.targetGoal(cfg, s);
-        int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
+        int rodsNeed = EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, s), eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
         // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
         // the dig runs on the game clock like RodsWatch and FORTRESS_WALK_SECONDS do, so it eats into those too, accepted
@@ -1229,8 +1230,7 @@ public class NetherPhase implements PhaseHandler {
     // taking the wheel with three blazes still shooting is the same death
     private Task disengageStep(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
-        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state());
-        int rodsNeed = EyeMath.rodsNeeded(goal, EyeMath.eyes(f), f.count(Items.BLAZE_POWDER));
+        int rodsNeed = EyeMath.rodsNeeded(EyeMath.rodGoal(ctx.cfg(), ctx.state()), EyeMath.eyes(f), f.count(Items.BLAZE_POWDER));
         if (f.count(Items.BLAZE_ROD) < rodsNeed) {
             // short of rods again (or still collecting): the next batch gets its own walk away
             disengage = null;

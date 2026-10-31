@@ -32,5 +32,11 @@ public enum UpdateState {
     // two launches in a row and the swap still didn't happen, time for the manual steps
     STUCK,
     // the download or its checks failed, download() again is fine
-    FAILED
+    FAILED;
+
+    // a reopened title screen gets one free recheck after a failed check, except for the rate limit: asking github
+    // again right away just earns the same no
+    static boolean shouldAutoRetry(UpdateState state, boolean rateLimited, boolean alreadyTried) {
+        return state == CHECK_FAILED && !rateLimited && !alreadyTried;
+    }
 }

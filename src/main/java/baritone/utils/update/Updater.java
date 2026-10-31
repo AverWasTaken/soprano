@@ -69,6 +69,9 @@ public final class Updater {
     private long total;
     private String error;
     private boolean unfinished;
+    // the last check failed on github's rate limit, and whether the title screen already got its one free retry
+    private boolean limited;
+    private boolean autoRetried;
     private String stagedName;
     private String finalName;
     private UpdateHttp http;
@@ -91,9 +94,25 @@ public final class Updater {
         return snapshot;
     }
 
-    // once per session no matter how often the title screen opens
+    // the check runs once per session no matter how often the title screen opens. a reopen after a failed check gets
+    // one more try though, the first one often lands before the wifi is up
     public void checkAsync() {
+        checkAsync(true);
+    }
+
+    // reopen is false for the resize inits of a title screen that's already up, those shouldn't spend the free retry
+    public void checkAsync(boolean reopen) {
         if (!started.compareAndSet(false, true)) {
+            boolean again;
+            synchronized (this) {
+                again = reopen && UpdateState.shouldAutoRetry(state, limited, autoRetried);
+                if (again) {
+                    autoRetried = true;
+                }
+            }
+            if (again) {
+                recheck();
+            }
             return;
         }
         boolean network = checkForUpdates();
@@ -106,11 +125,12 @@ public final class Updater {
         submit(() -> startup(network));
     }
 
-    public void download() {
+    // false when nothing started (wrong state, can't install), so the caller doesn't act like it did
+    public boolean download() {
         synchronized (this) {
             boolean available = state == UpdateState.AVAILABLE || state == UpdateState.FAILED;
             if (!available || !installable()) {
-                return;
+                return false;
             }
             // flipped right here so a double click can't queue two downloads
             state = UpdateState.DOWNLOADING;
@@ -120,6 +140,7 @@ public final class Updater {
             publish();
         }
         submit(this::runDownload);
+        return true;
     }
 
     // also from DISABLED once checkForUpdates got turned back on, so the card doesn't need a restart for that.
@@ -248,18 +269,18 @@ public final class Updater {
         try {
             found = fetchPick();
         } catch (UpdateHttp.Failed e) {
-            checkFailed(e.getMessage());
+            checkFailed(e.getMessage(), e.rateLimit);
             return;
         } catch (IOException e) {
-            checkFailed("couldn't reach github");
+            checkFailed("couldn't reach github", false);
             return;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            checkFailed("couldn't reach github");
+            checkFailed("couldn't reach github", false);
             return;
         } catch (RuntimeException e) {
             // gson on a captive portal login page, mostly
-            checkFailed("github sent something weird");
+            checkFailed("github sent something weird", false);
             return;
         }
         synchronized (this) {
@@ -292,12 +313,13 @@ public final class Updater {
         return ReleasePicker.check(json, running, minecraftVersion, flavor);
     }
 
-    private synchronized void checkFailed(String why) {
+    private synchronized void checkFailed(String why, boolean rateLimited) {
         if (state != UpdateState.CHECKING) {
             return;
         }
         state = UpdateState.CHECK_FAILED;
         error = why;
+        limited = rateLimited;
         publish();
     }
 

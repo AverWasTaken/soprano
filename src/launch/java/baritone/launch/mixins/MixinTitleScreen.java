@@ -55,6 +55,10 @@ public abstract class MixinTitleScreen extends Screen {
     @Unique
     private boolean soprano$decided;
 
+    // init reruns on resize, only the first one on this screen counts as a reopen for the update retry
+    @Unique
+    private boolean soprano$checked;
+
     protected MixinTitleScreen(Component title) {
         super(title);
     }
@@ -96,7 +100,8 @@ public abstract class MixinTitleScreen extends Screen {
             }
         }
         try {
-            Updater.get().checkAsync();
+            Updater.get().checkAsync(!soprano$checked);
+            soprano$checked = true;
             addRenderableWidget(new UpdateCardWidget(this));
         } catch (Throwable t) {
             Safe.report("title update card", t);

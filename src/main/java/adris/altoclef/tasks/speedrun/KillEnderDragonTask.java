@@ -5,17 +5,14 @@ import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
-import adris.altoclef.tasks.entity.DoToClosestEntityTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
-import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.util.slots.PlayerSlot;
 import net.minecraft.world.entity.EquipmentSlot;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
-import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -32,14 +29,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
-import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -55,7 +50,7 @@ public class KillEnderDragonTask extends Task {
     private static final String[] DIAMOND_ARMORS = new String[]{"diamond_chestplate", "diamond_leggings", "diamond_helmet", "diamond_boots"};
     // Don't accidentally anger endermen lol
     private final TimerGame _lookDownTimer = new TimerGame(0.5);
-    private final Task _collectBuildMaterialsTask = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 100), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD);
+    private final CrystalStep _crystals = new CrystalStep();
     private final PunkEnderDragonTask _punkTask = new PunkEnderDragonTask();
     // false for the outer islands trip: the gateways only show up once the dragon is dead, but we are not done after that
     private final boolean _enterExitPortal;
@@ -188,30 +183,9 @@ public class KillEnderDragonTask extends Task {
         // If we have no building materials (stone + cobble + end stone), get end stone
         // If there are crystals, suicide blow em up.
         // If there are no crystals, punk the dragon if it's close.
-        int MINIMUM_BUILDING_BLOCKS = 1;
-        if (mod.getEntityTracker().entityFound(EndCrystal.class) && mod.getItemStorage().getItemCount(Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.END_STONE) < MINIMUM_BUILDING_BLOCKS || (_collectBuildMaterialsTask.isActive() && !_collectBuildMaterialsTask.isFinished(mod))) {
-            if (StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD)) {
-                mod.getBehaviour().addProtectedItems(Items.END_STONE);
-                setDebugState("Collecting building blocks to pillar to crystals");
-                return _collectBuildMaterialsTask;
-            }
-        } else {
-            mod.getBehaviour().removeProtectedItems(Items.END_STONE);
-        }
-
-        // Blow up the nearest end crystal
-        if (mod.getEntityTracker().entityFound(EndCrystal.class)) {
-            setDebugState("Kamakazeeing crystals");
-            return new DoToClosestEntityTask(
-                    (toDestroy) -> {
-                        if (toDestroy.closerThan(mod.getPlayer(), 7)) {
-                            mod.getControllerExtras().attack(toDestroy);
-                        }
-                        // Go next to the crystal, arbitrary where we just need to get close.
-                        return new GetToBlockTask(toDestroy.blockPosition().offset(1, 0, 0), false);
-                    },
-                    EndCrystal.class
-            );
+        Task crystals = _crystals.tick(mod, entity -> true, this::setDebugState);
+        if (crystals != null) {
+            return crystals;
         }
 
         // Punk dragon

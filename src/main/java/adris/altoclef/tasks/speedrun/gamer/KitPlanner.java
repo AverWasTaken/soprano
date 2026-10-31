@@ -340,7 +340,9 @@ public final class KitPlanner {
             }
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
             // the first shield (or sword) is the early one, the spares only show up once it exists (no ingots go to them ahead of the pick)
-            int craft = (k.item.equals("shield") || k.item.equals("iron_sword")) && have(f, k.item) == 0 ? 1 : missing;
+            // shields go one per need, spares too: a batch of three wants 18 planks in the grid, and a bag of oak and dark oak that
+            // won't stack is a cursor juggle that never ends
+            int craft = k.item.equals("shield") || (k.item.equals("iron_sword") && have(f, k.item) == 0) ? 1 : missing;
             crafts.add(new KitNeed(k.item, held(f, k.item) + craft));
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that

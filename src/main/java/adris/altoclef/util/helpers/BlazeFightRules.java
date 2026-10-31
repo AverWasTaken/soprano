@@ -175,6 +175,12 @@ public final class BlazeFightRules {
         return haveTarget ? Mode.KILL : Mode.CAMP;
     }
 
+    // what keeps a run going past the recovered line (decide's burning): fire, or the wither effect. walking back in with the
+    // wither ticking means the regen we waited for is gone again before the first blaze is down
+    public static boolean stillHurting(boolean burning, boolean withered) {
+        return burning || withered;
+    }
+
     // the camp spot gets one bounded step inland off a lava rim or ledge, same budget idea as the heal hold's step
     public static final int CAMP_STEP_TICKS = 100;
 

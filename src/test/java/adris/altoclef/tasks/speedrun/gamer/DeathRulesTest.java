@@ -269,9 +269,44 @@ public class DeathRulesTest {
     public void aRichPileAtNightWithNoArmorWaitsForTheDayInsteadOfBeingDropped() {
         // refuse() still lets it through, waitsForDay is the extra say
         assertNull(DeathRules.refuse(true, 1271, 3000, rich(), FOOD_LINE, 0, false, true));
-        assertTrue(DeathRules.waitsForDay(true, rich(), FOOD_LINE));
-        assertFalse(DeathRules.waitsForDay(false, rich(), FOOD_LINE));
-        assertFalse(DeathRules.waitsForDay(true, bag(0, 0, true, 6, false), FOOD_LINE));
-        assertFalse(DeathRules.waitsForDay(true, null, FOOD_LINE));
+        assertTrue(DeathRules.waitsForDay(true, rich(), FOOD_LINE, true));
+        assertFalse(DeathRules.waitsForDay(false, rich(), FOOD_LINE, true));
+        assertFalse(DeathRules.waitsForDay(true, bag(0, 0, true, 6, false), FOOD_LINE, true));
+        assertFalse(DeathRules.waitsForDay(true, null, FOOD_LINE, true));
+    }
+
+    @Test
+    public void aRichPileInsideTheTickingAreaIsFetchedNowNotWaitedFor() {
+        // loaded chunks keep ticking, the items on the floor despawn while we wait
+        assertFalse(DeathRules.waitsForDay(true, rich(), FOOD_LINE, DeathRules.pileUnloaded(100, 90, 176)));
+        assertTrue(DeathRules.waitsForDay(true, rich(), FOOD_LINE, DeathRules.pileUnloaded(1271, 0, 176)));
+    }
+
+    @Test
+    public void theTickingAreaIsASquareAroundUs() {
+        assertFalse(DeathRules.pileUnloaded(176, -176, 176));
+        assertTrue(DeathRules.pileUnloaded(-177, 10, 176));
+        assertTrue(DeathRules.pileUnloaded(10, 177, 176));
+        // 150 each way is 212 round, still loaded
+        assertFalse(DeathRules.pileUnloaded(150, 150, 176));
+    }
+
+    // a far nether pile is only put off for the eye makings: rods, powder, pearls, eyes
+    @Test
+    public void eyePartsAreTheOnlyThingsAFarNetherPileWaitsFor() {
+        for (net.minecraft.world.item.Item item : new net.minecraft.world.item.Item[] {Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD,
+                Items.BLAZE_POWDER}) {
+            DeathRules.Worth bag = DeathRules.worth(new FakeFacts().give(item, 1));
+            assertTrue(item.toString(), bag.eyeParts());
+            assertTrue(item.toString(), adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.defersFor(bag));
+        }
+        // a stick, a water bucket, iron and armor all come back with the rebuild
+        FakeFacts rest = new FakeFacts().give(Items.STICK, 1).give(Items.WATER_BUCKET, 1).give(Items.IRON_INGOT, 20).give(Items.IRON_SWORD, 1);
+        rest.worn.add(Items.IRON_CHESTPLATE);
+        DeathRules.Worth bag = DeathRules.worth(rest);
+        assertFalse(bag.eyeParts());
+        assertFalse(adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.defersFor(bag));
+        // no bag seen at all is no reason to wait either
+        assertFalse(adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules.defersFor(null));
     }
 }

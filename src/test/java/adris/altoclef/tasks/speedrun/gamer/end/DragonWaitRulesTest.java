@@ -95,12 +95,31 @@ public class DragonWaitRulesTest {
     }
 
     @Test
-    public void theBedRingIsFourToSixAndAimsWest() {
-        assertTrue(DragonWaitRules.inBedRing(5, 0, 0, 0));
-        assertFalse(DragonWaitRules.inBedRing(10, 0, 0, 0));
+    public void theBedRingSitsOutsideTheWingsOnOurSide() {
+        assertTrue(DragonWaitRules.inBedRing(15, 0, 0, 0));
+        assertFalse(DragonWaitRules.inBedRing(5, 0, 0, 0));
+        assertFalse(DragonWaitRules.inBedRing(17, 0, 0, 0));
         Spot out = DragonWaitRules.bedSpot(30, 0, 0, 0);
-        assertEquals(-DragonWaitRules.BED_AIM, out.x(), 1e-9);
-        Spot stay = DragonWaitRules.bedSpot(0, 5, 0, 0);
-        assertEquals(5, stay.z(), 1e-9);
+        assertEquals(DragonWaitRules.BED_AIM, out.x(), 1e-9);
+        assertEquals(0, out.z(), 1e-9);
+        Spot in = DragonWaitRules.bedSpot(0, -3, 0, 0);
+        assertEquals(-DragonWaitRules.BED_AIM, in.z(), 1e-9);
+        Spot stay = DragonWaitRules.bedSpot(0, 14, 0, 0);
+        assertEquals(14, stay.z(), 1e-9);
+    }
+
+    @Test
+    public void awayFromGoesStraightOut() {
+        Spot s = DragonWaitRules.awayFrom(3, 4, 0, 0, 10);
+        assertEquals(6, s.x(), 1e-9);
+        assertEquals(8, s.z(), 1e-9);
+        Spot middle = DragonWaitRules.awayFrom(0, 0, 0, 0, 10);
+        assertEquals(10, middle.x(), 1e-9);
+    }
+
+    // under 20 or the sit never roars at us and the yaw never freezes
+    @Test
+    public void theBedRingStaysInsideTheScanRange() {
+        assertTrue(DragonWaitRules.BED_MAX + 1 < 20);
     }
 }

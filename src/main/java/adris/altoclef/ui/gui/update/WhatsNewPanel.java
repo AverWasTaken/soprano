@@ -50,6 +50,7 @@ public final class WhatsNewPanel extends Control {
     private int bodyH;
     private int lastWrapW = -1;
     private Widget focusedKid;
+    private boolean draggingThumb;
 
     public WhatsNewPanel(Theme theme, Snapshot s, Actions actions) {
         super(theme);
@@ -179,11 +180,28 @@ public final class WhatsNewPanel extends Control {
         if (vis < 0.01f || !scroller.scrollable()) {
             return;
         }
-        float minThumb = theme.px(24);
-        float th = scroller.thumbHeight(bodyH, minThumb);
-        float tt = scroller.thumbTop(bodyH, minThumb, now);
+        float th = scroller.thumbHeight(bodyH, minThumb());
+        float tt = scroller.thumbTop(bodyH, minThumb(), now);
         float bw = theme.px(Theme.SCROLLBAR_W);
-        c.fillRoundRect(panelX + panelW - bw - theme.px(6), bodyTop + tt, bw, th, bw / 2f, Theme.fade(theme.color(Theme.TEXT_3), vis));
+        c.fillRoundRect(barX(), bodyTop + tt, bw, th, bw / 2f, Theme.fade(theme.color(Theme.TEXT_3), vis));
+    }
+
+    private float minThumb() {
+        return theme.px(24);
+    }
+
+    private float barX() {
+        return panelX + panelW - theme.px(Theme.SCROLLBAR_W) - theme.px(6);
+    }
+
+    // the thumb is a few px wide, so the grab area gets a gutter's worth of slack on the left
+    private boolean onThumb(float mx, float my) {
+        if (!scroller.scrollable()) {
+            return false;
+        }
+        float top = bodyTop + scroller.thumbTop(bodyH, minThumb(), now);
+        return mx >= barX() - theme.px(6) && mx < panelX + panelW
+                && my >= top && my < top + scroller.thumbHeight(bodyH, minThumb());
     }
 
     // ----- input
@@ -199,12 +217,35 @@ public final class WhatsNewPanel extends Control {
 
     @Override
     public boolean mouseDown(float mx, float my, int button, int mods) {
+        if (button == 0 && onThumb(mx, my)) {
+            draggingThumb = true;
+            scroller.touch(now);
+            return true;
+        }
         boolean kid = super.mouseDown(mx, my, button, mods);
         if (!kid) {
             // a click on the text, or outside the card, takes the ring off whatever had it
             blur();
         }
         return kid || contains(mx, my);
+    }
+
+    @Override
+    public boolean mouseDrag(float mx, float my, int button, float dx, float dy) {
+        if (!draggingThumb) {
+            return false;
+        }
+        scroller.dragThumb(dy, bodyH, minThumb(), now);
+        return true;
+    }
+
+    @Override
+    public boolean mouseUp(float mx, float my, int button, int mods) {
+        if (draggingThumb) {
+            draggingThumb = false;
+            return true;
+        }
+        return super.mouseUp(mx, my, button, mods);
     }
 
     // tab walks back then update, enter or space presses, page and arrow keys move the notes. true when the key was ours

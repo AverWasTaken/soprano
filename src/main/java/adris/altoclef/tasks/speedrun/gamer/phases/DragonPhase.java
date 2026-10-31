@@ -162,7 +162,7 @@ public class DragonPhase implements PhaseHandler {
         if (_latch == null) {
             _latch = new DragonDeadLatch(cfg.dragonGoneSeconds);
             _drops = new EndDropCache(cfg.dropEmptyWaitSeconds);
-            _bedTask = new KillEnderDragonWithBedsTask(new WaitForDragonAndPearlTask(true), cfg.dragonHeadCloseEnoughClickBedRange);
+            _bedTask = new KillEnderDragonWithBedsTask(new WaitForDragonAndPearlTask(true));
             _swordTask = new KillEnderDragonTask();
             _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false), Blocks.END_PORTAL);
             _bridge = new GetToXZTask(BRIDGE_X, 0);
@@ -438,10 +438,14 @@ public class DragonPhase implements PhaseHandler {
         GamerFacts facts = ctx.facts();
         boolean perched = dragonPerched(mod);
         double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
-        DragonStrat next = DragonStrat.choose(_strat, _bedTask.bedsLeft(mod), facts.armorPoints(), perched,
-                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool, _bedTask.healStalled());
+        // a floor bed we can't live through in this armor is a sword fight until the armor changes, so no back and forth
+        boolean unsurvivable = _bedTask.bedsUnsurvivable(mod);
+        DragonStrat next = unsurvivable && _strat != DragonStrat.BEDS ? DragonStrat.SWORD
+                : DragonStrat.choose(_strat, _bedTask.bedsLeft(mod), facts.armorPoints(), perched,
+                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool, _bedTask.healStalled() || unsurvivable);
         if (next != _strat) {
-            ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds" : "fighting the dragon with the sword");
+            ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds"
+                    : unsurvivable ? "fighting the dragon with the sword, a floor bed would kill us in this armor" : "fighting the dragon with the sword");
             ctx.progress("strat " + next);
             _strat = next;
         }

@@ -3,6 +3,7 @@ package adris.altoclef;
 import adris.altoclef.butler.Butler;
 import adris.altoclef.chains.*;
 import adris.altoclef.commands.AltoClefCommands;
+import adris.altoclef.control.EdgeBrake;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.control.PlayerExtraController;
 import adris.altoclef.control.SlotHandler;
@@ -85,6 +86,7 @@ public class AltoClef {
     // Misc managers/input
     private MessageSender _messageSender;
     private InputControls _inputControls;
+    private final EdgeBrake _edgeBrake = new EdgeBrake();
     private SlotHandler _slotHandler;
     // Butler
     private Butler _butler;
@@ -219,6 +221,8 @@ public class AltoClef {
         _monitors.onTick(this);
         _butler.tick();
         _messageSender.tick();
+        // outside the runner block above: a gate going false (task over, runner idle) has to let go of the sneak too
+        _edgeBrake.tick(this, _userTaskChain.isActive() && !_userTaskChain.isRunningIdleTask());
 
         _inputControls.onTickPost();
     }
@@ -318,6 +322,7 @@ public class AltoClef {
             }
             // and so does what the placer told plain alto's station book
             adris.altoclef.util.helpers.StationHook.clearPlain();
+            _edgeBrake.letGo(_inputControls);
         }
     }
 
@@ -335,6 +340,11 @@ public class AltoClef {
             if (_taskRunner != null) {
                 _taskRunner.disable();
             }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        try {
+            _edgeBrake.letGo(_inputControls);
         } catch (Throwable t) {
             t.printStackTrace();
         }
