@@ -51,7 +51,7 @@ public class EntityHelper {
         // magma cubes are not slimes, and neither kind ever raises the aggressive flag (nothing in the cube goals does), so
         // the "close enough to bite" rule has to cover the whole family or the aura never swings at a magma cube on us
         if (entity instanceof AbstractCubeMob cube) {
-            if (mod.getPlayer().closerThan(cube, 3)) return true;
+            if (mod.getPlayer().closerThan(cube, adris.altoclef.util.helpers.CombatRules.cubeBiteRange(cube.getBbWidth()))) return true;
             // a bite throws us past 3 blocks, it is still the one that bit us
             return NeutralMobs.hitRecently(mod.getEntityTracker().getProvocations().sinceHit(cube.getId(), mod.getWorld().getGameTime()));
         }

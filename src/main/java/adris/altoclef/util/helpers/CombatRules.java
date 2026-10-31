@@ -56,6 +56,11 @@ public final class CombatRules {
     public static final double FIGHT_SHIELD_HOLD = FIGHT_SHIELD_RANGE + 1;
     // on a rim (see rimShield) a melee foe this close is one hit from knocking us off
     public static final double RIM_SHIELD_FOE_RANGE = 4;
+    // a cube counts as on us this close (EntityHelper). a flat CONTACT_RANGE was a small cube's reach, but a size 4 one is two
+    // blocks wide and bites from past 3, so its first hit was in before it was a foe. its own width on top covers every size
+    public static double cubeBiteRange(double width) {
+        return CONTACT_RANGE + width;
+    }
     // a cube or an angry piglin this close on a rim starts the fight before its first hit (CombatCommit.rimEngage). a big
     // cube covers three blocks in one hop, so at three the hit was in before the fight was. the fight lets go at
     // RIM_RELEASE, one block past it

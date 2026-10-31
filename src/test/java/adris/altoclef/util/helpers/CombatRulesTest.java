@@ -324,4 +324,16 @@ public class CombatRulesTest {
         assertTrue(CombatRules.fightHungry(19, true));
         assertFalse(CombatRules.fightHungry(20, true));
     }
+
+    // magma cube width is 0.52 per size
+    @Test
+    public void aBigCubeIsAFoeFromFurtherOutThanItBites() {
+        assertEquals(5.08, CombatRules.cubeBiteRange(0.52 * 4), 1e-9);
+        assertEquals(4.04, CombatRules.cubeBiteRange(0.52 * 2), 1e-9);
+        assertEquals(3.52, CombatRules.cubeBiteRange(0.52), 1e-9);
+        // a size 4 bites from about 3.2, the old flat 3 was short of that
+        assertTrue(CombatRules.cubeBiteRange(0.52 * 4) > 3.2);
+        // never tighter than it was
+        assertTrue(CombatRules.cubeBiteRange(0.52) > CombatRules.CONTACT_RANGE);
+    }
 }
