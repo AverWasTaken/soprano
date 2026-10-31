@@ -146,6 +146,13 @@ public class CalculationContext {
     private static final int BOAT_CACHE_SIZE = 128;
     private long[] boatKeys;
     private boolean[] boatAnswers;
+    // the walk-through rules run a predicate loop per walkability check and every neighbour asks the same block. same shape as
+    // the boat cache: the claiming thread's alone, null when no rule is registered. it also pins each block's answer for the
+    // rest of the search, so a rule that reads a task field the main thread rewrites can't flip mid way (that is a behaviour
+    // change on purpose, a slot that got evicted can still be asked again and see the newer answer)
+    private static final int WALK_THROUGH_CACHE_BITS = 12;
+    private long[] walkThroughKeys;
+    private boolean[] walkThroughAnswers;
     public final double breakBlockAdditionalCost;
     // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
     public final double breakIdleTicks;
@@ -528,6 +535,11 @@ public class CalculationContext {
         boatKeys = new long[BOAT_CACHE_SIZE];
         java.util.Arrays.fill(boatKeys, Long.MIN_VALUE);
         boatAnswers = new boolean[BOAT_CACHE_SIZE];
+        if (altoAvoidWalkThrough != null) {
+            walkThroughKeys = new long[1 << WALK_THROUGH_CACHE_BITS];
+            java.util.Arrays.fill(walkThroughKeys, Long.MIN_VALUE);
+            walkThroughAnswers = new boolean[1 << WALK_THROUGH_CACHE_BITS];
+        }
         miningOwner = Thread.currentThread();
         bsi.claimCache();
     }
@@ -539,6 +551,8 @@ public class CalculationContext {
         miningOwner = null;
         boatKeys = null;
         boatAnswers = null;
+        walkThroughKeys = null;
+        walkThroughAnswers = null;
         miningKeys = null;
         miningKeysFalling = null;
         miningVals = null;
@@ -625,7 +639,19 @@ public class CalculationContext {
     }
 
     public boolean altoAvoidsWalkThrough(int x, int y, int z) {
-        return altoAvoidWalkThrough != null && altoAnyMatch(altoAvoidWalkThrough, x, y, z);
+        if (altoAvoidWalkThrough == null) {
+            return false;
+        }
+        if (Thread.currentThread() != miningOwner || walkThroughKeys == null) {
+            return altoAnyMatch(altoAvoidWalkThrough, x, y, z);
+        }
+        long key = BlockPos.asLong(x, y, z);
+        int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - WALK_THROUGH_CACHE_BITS));
+        if (walkThroughKeys[slot] != key) {
+            walkThroughKeys[slot] = key;
+            walkThroughAnswers[slot] = altoAnyMatch(altoAvoidWalkThrough, x, y, z);
+        }
+        return walkThroughAnswers[slot];
     }
 
     private boolean altoAnyMatch(Predicate<BlockPos>[] predicates, int x, int y, int z) {
