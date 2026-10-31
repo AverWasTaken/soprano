@@ -423,7 +423,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 _breathRunTicks++;
             }
         }
-        BreathDodge.Move out = BreathDodge.escalate(move, _breathRunTicks >= BreathDodge.STUCK_RUN_TICKS, spareWater(mod), hard);
+        BreathDodge.Move out = BreathDodge.escalate(move, _breathRunTicks >= BreathDodge.STUCK_RUN_TICKS, spareWater(mod),
+                mod.getItemStorage().hasItem(Items.WATER_BUCKET), hard);
         if (out != move && out != BreathDodge.Move.RUN) {
             _breathEscalated = out;
         }

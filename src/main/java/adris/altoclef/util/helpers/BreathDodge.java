@@ -41,16 +41,17 @@ public final class BreathDodge {
     }
 
     // a run that is still in the cloud and has not moved a block by now has nowhere to go (a wide pillar counts its own top
-    // as floor). off the edge needs water, digging needs something we can dig in a few seconds. obsidian takes ~9 s and a
-    // drop without water off a spike kills, so there the run stays
-    public static Move escalate(Move move, boolean stuck, boolean spareWater, boolean hardBelow) {
+    // as floor). off the edge needs water, digging needs something we can dig in a few seconds. obsidian takes ~9 s, so on
+    // a hard top even the last bucket goes over the side: standing in the cloud is the sure death, the clutch scoop usually
+    // brings the water back. with no water at all the run stays
+    public static Move escalate(Move move, boolean stuck, boolean spareWater, boolean anyWater, boolean hardBelow) {
         if (move == Move.DIG && hardBelow) {
-            return spareWater ? Move.DROP : Move.RUN;
+            return anyWater ? Move.DROP : Move.RUN;
         }
         if (move != Move.RUN || !stuck) {
             return move;
         }
-        if (spareWater) {
+        if (spareWater || hardBelow && anyWater) {
             return Move.DROP;
         }
         return hardBelow ? Move.RUN : Move.DIG;

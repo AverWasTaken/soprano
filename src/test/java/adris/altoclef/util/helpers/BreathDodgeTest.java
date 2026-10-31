@@ -30,24 +30,24 @@ public class BreathDodgeTest {
 
     @Test
     public void aRunStuckInTheCloudDropsWithWaterAndDigsWithout() {
-        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, false, true, false));
-        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, false));
-        assertEquals(Move.DIG, BreathDodge.escalate(Move.RUN, true, false, false));
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, false, true, true, false));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, true, false));
+        assertEquals(Move.DIG, BreathDodge.escalate(Move.RUN, true, false, false, false));
     }
 
     @Test
     public void neverDigsObsidianKeepsRunningWithoutWater() {
-        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, true, false, true));
-        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, false, true));
-        assertEquals(Move.DROP, BreathDodge.escalate(Move.DIG, true, true, true));
-        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, true));
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.RUN, true, false, false, true));
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, false, false, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.DIG, true, true, true, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, true, true, true));
     }
 
     @Test
     public void otherMovesPassThrough() {
-        assertEquals(Move.NONE, BreathDodge.escalate(Move.NONE, true, true, true));
-        assertEquals(Move.DROP, BreathDodge.escalate(Move.DROP, true, false, true));
-        assertEquals(Move.DIG, BreathDodge.escalate(Move.DIG, true, false, false));
+        assertEquals(Move.NONE, BreathDodge.escalate(Move.NONE, true, true, true, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.DROP, true, false, false, true));
+        assertEquals(Move.DIG, BreathDodge.escalate(Move.DIG, true, false, false, false));
     }
 
     @Test
@@ -71,7 +71,10 @@ public class BreathDodgeTest {
         assertTrue(BreathDodge.spareWater(2));
         assertEquals(Move.DIG, BreathDodge.choose(true, true, false, BreathDodge.spareWater(1)));
         assertEquals(Move.DROP, BreathDodge.choose(true, true, false, BreathDodge.spareWater(2)));
-        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, BreathDodge.spareWater(1), true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.DIG, true, BreathDodge.spareWater(1), true, true));
+        // a hard top with no water at all: nothing better than running
+        assertEquals(Move.RUN, BreathDodge.escalate(Move.DIG, true, BreathDodge.spareWater(0), false, true));
+        assertEquals(Move.DROP, BreathDodge.escalate(Move.RUN, true, BreathDodge.spareWater(1), true, true));
     }
 
     @Test
