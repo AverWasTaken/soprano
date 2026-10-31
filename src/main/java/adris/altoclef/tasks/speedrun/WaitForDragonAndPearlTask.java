@@ -59,6 +59,16 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
     private Task _pillarUpFurther;
 
     private boolean _hasPillar = false;
+    // the bed strategy never pillars: from up there the bot could not get back down in time for a landing
+    private final boolean _groundOnly;
+
+    public WaitForDragonAndPearlTask() {
+        this(false);
+    }
+
+    public WaitForDragonAndPearlTask(boolean groundOnly) {
+        _groundOnly = groundOnly;
+    }
 
     @Override
     public void setExitPortalTop(BlockPos top) {
@@ -101,7 +111,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
         // pearls decide it every tick: a pearl in the bag is the pillar and the throw, none is the ground. nothing is
         // remembered, so a pearl thrown (or never crafted) does not leave us climbing or hunting for another
-        if (DragonWaitRules.mode(mod.getItemStorage().hasItem(Items.ENDER_PEARL) ? 1 : 0) == DragonWaitRules.Mode.GROUND) {
+        if (_groundOnly || DragonWaitRules.mode(mod.getItemStorage().hasItem(Items.ENDER_PEARL) ? 1 : 0) == DragonWaitRules.Mode.GROUND) {
             return groundTick(mod);
         }
 
@@ -262,8 +272,8 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             return _dodgeTask;
         }
 
-        DragonWaitRules.Spot spot = DragonWaitRules.groundSpot(px, pz, fx, fz);
-        boolean settled = DragonWaitRules.inGroundRing(px, pz, fx, fz);
+        DragonWaitRules.Spot spot = _groundOnly ? DragonWaitRules.bedSpot(px, pz, fx, fz) : DragonWaitRules.groundSpot(px, pz, fx, fz);
+        boolean settled = _groundOnly ? DragonWaitRules.inBedRing(px, pz, fx, fz) : DragonWaitRules.inGroundRing(px, pz, fx, fz);
         // walking back to the ring through a cloud that is still there is how we would stand in it again
         boolean cloudAtSpot = cloud.isPresent() && cloud.get() instanceof AreaEffectCloud c
                 && DragonWaitRules.clearOfCloud(spot.x(), spot.z(), c.getX(), c.getZ(), c.getRadius()) != null;
@@ -310,7 +320,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof WaitForDragonAndPearlTask;
+        return other instanceof WaitForDragonAndPearlTask task && task._groundOnly == _groundOnly;
     }
 
     @Override

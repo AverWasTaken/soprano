@@ -19,8 +19,49 @@ public final class BedPlaceGate {
     private BedPlaceGate() {
     }
 
+    // the descent is where the bed goes down: set it before the head gets here so the jump and the fall are done before the
+    // click window opens (placing at 8 blocks left ten ticks of jumping while the head ate the bed first)
+    public static final double APPROACH_RANGE = 24;
+    // closer is more damage, so inside this we click no matter what the boxes say
+    public static final double CLICK_NEAR = 4.5;
+    // past CLICK_NEAR we only click when a part is about to touch the bed, and not from further out than this
+    public static final double CLICK_TOUCH_RANGE = 6;
+    // client lag plus two ticks of dragon travel
+    public static final double CLICK_TOUCH_INFLATE = 1.5;
+
     public static boolean headNear(double headDistance) {
         return headDistance <= PLACE_RANGE;
+    }
+
+    // may the bed go down this tick. a landing always, an approach once the head is within APPROACH_RANGE, a sit (the old
+    // rule) once it is within PLACE_RANGE
+    public static boolean placeWindow(boolean landing, boolean approach, boolean sitting, double headDistance) {
+        if (landing) return true;
+        if (approach) return headDistance <= APPROACH_RANGE;
+        return sitting && headNear(headDistance);
+    }
+
+    // click the bed now. head close enough and it is a hit whatever the boxes say, a bit further out only when the head, neck or
+    // body (grown for lag) already touch a bed cell, because the next tick may be the one that eats it
+    public static boolean clickNow(double headDistance, List<AABB> parts, BlockPos foot, BlockPos head) {
+        if (headDistance <= CLICK_NEAR) return true;
+        if (headDistance > CLICK_TOUCH_RANGE) return false;
+        AABB footBox = new AABB(foot);
+        AABB headBox = new AABB(head);
+        for (AABB part : parts) {
+            AABB fat = part.inflate(CLICK_TOUCH_INFLATE);
+            if (fat.intersects(footBox) || fat.intersects(headBox)) return true;
+        }
+        return false;
+    }
+
+    // why a landing ended with no click, for the log. first match wins
+    public static String lostReason(boolean bedEverDown, boolean pathed, boolean gap, boolean breathNear, boolean endermanNear) {
+        if (!bedEverDown) return "no bed";
+        if (pathed) return "pathing";
+        if (breathNear) return "breath";
+        if (endermanNear) return "mobdef";
+        return gap ? "clutch" : "no click window";
     }
 
     // the cell the head half of the bed lands in: the foot plus the way we face once the look has landed (bed rotation follows
@@ -41,7 +82,7 @@ public final class BedPlaceGate {
         return true;
     }
 
-    // is this tick a perch. the descent only counts above the pillar top (the old rule: the bed is for the way down), a
+    // is this tick a perch. the descent only counts above the pillar top unless a bed is already down (the old rule: the bed is for the way down), a
     // sitting dragon counts whatever its height. but a flaming one is breath on the pillar, and a sitting one whose body is
     // over the pillar top with no bed down yet leaves nowhere to put one: both go back to waiting
     public static boolean perch(boolean landingPhase, boolean sitting, boolean flaming, boolean dragonLow, boolean bedPlaced,
@@ -50,7 +91,9 @@ public final class BedPlaceGate {
             if (flaming) return false;
             return bedPlaced || cellsClear;
         }
-        return landingPhase && !dragonLow;
+        // a bed that is down keeps the landing ours when the dragon drops under the pillar top, or the wait task walks us off
+        // the stand right when the head comes in range
+        return landingPhase && (!dragonLow || bedPlaced);
     }
 
     // the food chain only steps aside once a bed is down or going down, not for the whole sit

@@ -93,4 +93,14 @@ public class DragonWaitRulesTest {
         assertNotNull(b2);
         assertTrue(Math.signum(a2.z()) != Math.signum(b2.z()));
     }
+
+    @Test
+    public void theBedRingIsFourToSixAndAimsWest() {
+        assertTrue(DragonWaitRules.inBedRing(5, 0, 0, 0));
+        assertFalse(DragonWaitRules.inBedRing(10, 0, 0, 0));
+        Spot out = DragonWaitRules.bedSpot(30, 0, 0, 0);
+        assertEquals(-DragonWaitRules.BED_AIM, out.x(), 1e-9);
+        Spot stay = DragonWaitRules.bedSpot(0, 5, 0, 0);
+        assertEquals(5, stay.z(), 1e-9);
+    }
 }
