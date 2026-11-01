@@ -30,6 +30,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.FishingHook;
@@ -37,6 +38,8 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownExperienceBottle;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -64,6 +67,8 @@ public class EntityTracker extends Tracker {
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
     private final Set<Integer> _skippedLavaDrops = new HashSet<>();
+    // the ender pearl item log for the pearl hunt (see PearlWatch)
+    private final PearlWatch _pearlWatch = new PearlWatch();
     // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
     // every tick. rebuilt each update from the drops that were actually asked about, so dead ones fall out by themselves
     private HashMap<Integer, PickupVerdict> _pickupVerdicts = new HashMap<>();
@@ -485,6 +490,8 @@ public class EntityTracker extends Tracker {
 
                 if (entity instanceof ItemEntity ientity) {
                     Item droppedItem = ientity.getItem().getItem();
+                    // (an item is none of the mob / projectile / player kinds below, so this used to just continue)
+                    String listed = "airborne";
 
                     // Only cared about GROUNDED item entities
                     if (ientity.onGround() || ientity.isInWater() || WorldHelper.isSolid(_mod, ientity.blockPosition().below(2)) || WorldHelper.isSolid(_mod, ientity.blockPosition().below(3))) {
@@ -495,17 +502,25 @@ public class EntityTracker extends Tracker {
                         // is gone, the verdict is redone every few ticks
                         if (verdict.lava()) {
                             noteSkippedLavaDrop(ientity);
-                            continue;
-                        }
-                        if (!verdict.safe()) {
+                            listed = "lava";
+                        } else if (!verdict.safe()) {
                             noteSkippedWetDrop(ientity);
-                            continue;
+                            listed = "wet";
+                        } else {
+                            if (!_itemDropLocations.containsKey(droppedItem)) {
+                                _itemDropLocations.put(droppedItem, new ArrayList<>());
+                            }
+                            _itemDropLocations.get(droppedItem).add(ientity);
+                            listed = "listed";
                         }
-                        if (!_itemDropLocations.containsKey(droppedItem)) {
-                            _itemDropLocations.put(droppedItem, new ArrayList<>());
-                        }
-                        _itemDropLocations.get(droppedItem).add(ientity);
                     }
+                    if (droppedItem == Items.ENDER_PEARL) {
+                        String line = _pearlWatch.see(ientity.getId(), ientity.getX(), ientity.getY(), ientity.getZ(), ientity.onGround(), ientity.isInLava(), listed);
+                        if (line != null) {
+                            Debug.logInternal(line);
+                        }
+                    }
+                    continue;
                 }
                 if (entity instanceof Mob) {
                     // distance first: isAngryAtPlayer does a line of sight raycast for endermen, and most mobs
@@ -542,6 +557,29 @@ public class EntityTracker extends Tracker {
                 }
             }
             _pickupVerdicts = verdicts;
+            sweepPearls(now);
+        }
+    }
+
+    // the pearl log's end of pass. the bag is only counted while a pearl is around or a gone one waits on its count
+    private void sweepPearls(long now) {
+        if (_pearlWatch.idle()) {
+            return;
+        }
+        Player me = _mod.getPlayer();
+        if (me == null) {
+            return;
+        }
+        int pearls = 0;
+        Inventory inv = me.getInventory();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.is(Items.ENDER_PEARL)) {
+                pearls += stack.getCount();
+            }
+        }
+        for (String line : _pearlWatch.sweep(me.getX(), me.getY(), me.getZ(), pearls, now)) {
+            Debug.logInternal(line);
         }
     }
 
@@ -578,6 +616,7 @@ public class EntityTracker extends Tracker {
         _skippedWetDrops.clear();
         _skippedLavaDrops.clear();
         _pickupVerdicts.clear();
+        _pearlWatch.reset();
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
         _entitiesCollidingWithPlayerAccumulator.clear();
         _entitiesCollidingWithPlayer.clear();

@@ -25,6 +25,7 @@ import baritone.api.utils.Dimension;
 import baritone.pathing.movement.CliffAvoidance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -33,6 +34,7 @@ import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.PiglinBrute;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -78,6 +80,10 @@ public class PearlHuntTask extends Task {
     private static final int AWAY_CALM_RESET_TICKS = 100;
     // a pearl this close (all three axes, one 20 blocks down a cliff is not "close") is walked to before the hunt goes on
     private static final double PICKUP_BLOCKS = 16;
+    // a pearl this close goes in the bag before the next angry one gets chased: the chase can drag us past PICKUP_BLOCKS
+    // and the pearl is forgotten. not with one already in our face, it hits like a truck
+    private static final double GRAB_FIRST_BLOCKS = 6;
+    private static final double ANGRY_CLOSE_BLOCKS = 4;
     // out of the lava's reach and a good way out of the spot's own radius, 15 s is plenty to walk it
     private static final double LEAVE_BLOCKS = 32;
     private static final long LEAVE_TICKS = 300;
@@ -150,6 +156,17 @@ public class PearlHuntTask extends Task {
     private long leaveUntil = Long.MIN_VALUE;
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+    // the walk around the forest when nothing is worth chasing, see PearlRoam. the task object is latched with the goal
+    private final PearlRoam roam = new PearlRoam();
+    private GetWithinRangeOfBlockTask roamTask;
+    private boolean roamMissSaid;
+    private boolean roamQuietSaid;
+    // our own tick count and the tick the loot task / the roam was last handed out: the loot's drop wait only means
+    // something while it runs, and a roam coming back after a chase starts its progress mark over. not game time, the
+    // server pulls the client's clock back on a laggy server and the same tick would come up twice
+    private long tickNo;
+    private long lootRanAt = Long.MIN_VALUE;
+    private long roamRanAt = Long.MIN_VALUE;
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
         this(pearlsTotal, dimension, hotspot, () -> {
@@ -294,6 +311,9 @@ public class PearlHuntTask extends Task {
         endermanLatch.reset();
         // the flee task was built around lava from before the interrupt
         away = null;
+        // an interrupt breaks the run of ticks, the loot task restarts anyway
+        lootRanAt = Long.MIN_VALUE;
+        roamRanAt = Long.MIN_VALUE;
     }
 
     @Override
@@ -302,6 +322,7 @@ public class PearlHuntTask extends Task {
             return say("Heading to " + HudText.dimension(dimension), goToDimension);
         }
         long gameTime = mod.getWorld().getGameTime();
+        tickNo++;
         // a nook left over from before we stopped being ticked is dropped: if it was still being built its clock ran on without us and it would
         // fail on the first tick back, which is not a nook failure (a built one would be fine, but a fresh find() is cheap)
         if (nook != null && !nookFresh(lastTickAt, gameTime)) {
@@ -335,8 +356,13 @@ public class PearlHuntTask extends Task {
             PearlHuntHook.clear();
         }
         noteStareAnswer(mod, gameTime);
+        Task grabFirst = grabBeforeFight(mod);
+        if (grabFirst != null) {
+            return say("Picking up an ender pearl", grabFirst);
+        }
         Task angry = fightAngry(mod);
         if (angry != null) {
+            roam.sawEnderman();
             return say("Fighting an angry enderman", angry);
         }
         Task grab = pickupStep(mod);
@@ -405,6 +431,12 @@ public class PearlHuntTask extends Task {
         if (lootId >= 0 && !(mod.getWorld().getEntity(lootId) instanceof Enderman man && farBelow(man, true))) {
             angrySpent.tick(lootId, ANGRY_SECONDS);
         }
+        Task roaming = roamStep(mod, lootId);
+        if (roaming != null) {
+            roamRanAt = tickNo;
+            return say("Roaming the warped forest", roaming);
+        }
+        lootRanAt = tickNo;
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
     }
 
@@ -582,6 +614,107 @@ public class PearlHuntTask extends Task {
 
     static boolean pickupInReach(double distSqr) {
         return distSqr <= PICKUP_BLOCKS * PICKUP_BLOCKS;
+    }
+
+    // the close pearl first, unless an angry one is already on top of us (infinity = none angry)
+    static boolean grabFirst(double pearlDistSqr, double nearestAngry) {
+        return pearlDistSqr <= GRAB_FIRST_BLOCKS * GRAB_FIRST_BLOCKS && nearestAngry > ANGRY_CLOSE_BLOCKS;
+    }
+
+    // the pickup ahead of the angry fight when the pearl is right here, null to go on as usual
+    private Task grabBeforeFight(AltoClef mod) {
+        Optional<ItemEntity> pearl = closestPearlDrop(mod, pearlTarget);
+        if (pearl.isEmpty() || !grabFirst(pearl.get().distanceToSqr(mod.getPlayer()), nearestAngry(mod))) {
+            return null;
+        }
+        return pickupStep(mod);
+    }
+
+    // any angry one counts here, given up or not: given up means we stopped chasing it, not that it stopped hitting
+    private static double nearestAngry(AltoClef mod) {
+        double best = Double.POSITIVE_INFINITY;
+        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+            if (man.isAlive() && man.isCreepy()) {
+                best = Math.min(best, man.distanceTo(mod.getPlayer()));
+            }
+        }
+        return best;
+    }
+
+    // the roam around a known forest when there is nothing to chase, null hands it to the loot task (and its far wander)
+    private Task roamStep(AltoClef mod, int lootId) {
+        RunState.Pos spot = hotspot.get();
+        boolean lootable = lootId >= 0 || anyLootable(mod, -1);
+        // any enderman in the client world keeps the forest alive, chaseable or not: the ones by lava or given up on move
+        // and new ones spawn, the walk around is what brings a good one in range
+        if (mod.getEntityTracker().entityFound(Enderman.class)) {
+            roam.sawEnderman();
+        }
+        // asking a loot task that is not running would arm its drop wait off any enderman that dies nearby, and the one
+        // tick it then gets restarts it and wipes that wait anyway
+        boolean dropDue = lootRanAt == tickNo - 1 && loot.awaitingDrop(mod);
+        if (roam.idleTicks() <= PearlRoam.IDLE_TICKS) {
+            roamQuietSaid = false;
+        }
+        if (!PearlRoam.wanted(spot != null, hotspotGaveUp, lootId, lootable, dropDue, roam.idleTicks())) {
+            if (spot != null && roam.idleTicks() > PearlRoam.IDLE_TICKS && !roamQuietSaid) {
+                roamQuietSaid = true;
+                Debug.logInternal("pearl: nothing to chase around the forest for " + PearlRoam.IDLE_TICKS / 1200 + " min, exploring instead");
+            }
+            return null;
+        }
+        var me = mod.getPlayer();
+        if (roamRanAt != tickNo - 1) {
+            roam.resumed();
+        }
+        BlockPos goal = roam.goal();
+        if (goal == null) {
+            roam.idleTick();
+        } else if (!roam.step(Math.sqrt(me.distanceToSqr(goal.getX() + 0.5, goal.getY() + 1, goal.getZ() + 0.5)), () -> roamSpotOk(mod, goal, false))) {
+            return roamTask;
+        }
+        if (!roam.mayPick()) {
+            return null;
+        }
+        BlockPos next = PearlRoam.pick(mod.getBlockTracker().getKnownLocations(Blocks.WARPED_NYLIUM), spot.x, spot.z, me.getX(), me.getZ(),
+                roam.failed(), p -> roamSpotOk(mod, p, true), roam.rng());
+        roam.picked(next);
+        if (next == null) {
+            roamTask = null;
+            if (!roamMissSaid) {
+                roamMissSaid = true;
+                Debug.logInternal("pearl: no nylium to roam to near the forest, the loot task wanders");
+            }
+            return null;
+        }
+        roamMissSaid = false;
+        Debug.logInternal("pearl: roaming to " + next.getX() + " " + next.getY() + " " + next.getZ() + ", "
+                + Math.round(Math.hypot(next.getX() - spot.x, next.getZ() - spot.z)) + " from the forest");
+        // (feet on top of the nylium, a couple of blocks of slack so a fungus on the spot does not hold the walk)
+        roamTask = new GetWithinRangeOfBlockTask(next.above(), 2);
+        return roamTask;
+    }
+
+    // roots and sprouts cover half a warped forest floor and we walk right through them, so "nothing to bump into" and not
+    // air. fluids and fire are not room
+    private static boolean roomAt(Level w, BlockPos p) {
+        var state = w.getBlockState(p);
+        return state.getCollisionShape(w, p).isEmpty() && state.getFluidState().isEmpty() && !state.is(BlockTags.FIRE);
+    }
+
+    // the world half of PearlRoam.spotOk. the height rule only counts at the pick: we climb and drop while walking there
+    private static boolean roamSpotOk(AltoClef mod, BlockPos p, boolean atPick) {
+        Level w = mod.getWorld();
+        var us = mod.getPlayer();
+        boolean nylium = w.getBlockState(p).is(Blocks.WARPED_NYLIUM);
+        boolean air = roomAt(w, p.above());
+        boolean air2 = roomAt(w, p.above(2));
+        // (the cheap block reads first, the lava scan is 25 columns)
+        if (!nylium || !air || !air2) {
+            return false;
+        }
+        boolean lava = LavaShore.lavaNear(CliffAvoidance.of(mod.getClientBaritone().bsi), p.getX() + 0.5, p.getY() + 1, p.getZ() + 0.5, LavaShore.NEAR);
+        return PearlRoam.spotOk(true, true, true, p.getY() + 1, atPick ? us.getY() : Double.NEGATIVE_INFINITY, lava);
     }
 
     // back off only when there is an enderman the loot walk would actually go for, not from nothing

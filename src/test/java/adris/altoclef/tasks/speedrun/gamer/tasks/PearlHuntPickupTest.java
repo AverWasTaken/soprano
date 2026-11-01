@@ -30,4 +30,16 @@ public class PearlHuntPickupTest {
         assertFalse(PearlHuntTask.stillLatched(true, 10, true, false));
         assertFalse(PearlHuntTask.stillLatched(true, 10, false, true));
     }
+
+    @Test
+    public void aPearlRightHereComesBeforeTheNextAngryOne() {
+        double none = Double.POSITIVE_INFINITY;
+        assertTrue(PearlHuntTask.grabFirst(5 * 5, none));
+        assertTrue(PearlHuntTask.grabFirst(6 * 6, 10));
+        // further than that the chase goes first and the 16 block pickup gets it after
+        assertFalse(PearlHuntTask.grabFirst(7 * 7, none));
+        // one already in our face gets fought first
+        assertFalse(PearlHuntTask.grabFirst(2 * 2, 4));
+        assertTrue(PearlHuntTask.grabFirst(2 * 2, 4.5));
+    }
 }

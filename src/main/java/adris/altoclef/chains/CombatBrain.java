@@ -134,6 +134,11 @@ final class CombatBrain {
     private int _fightId = -1;
     private String _fightName = FightNames.UNKNOWN;
     private final FightNames _names = new FightNames();
+    // the enderman fight target and where it last stood alive, for the one "gone" line: a kill and a blink out of the client
+    // world both end the fight as FIGHT_DEAD, and only one of them drops a pearl
+    private int _enderId = -1;
+    private Vec3 _enderLastPos;
+    private boolean _enderGoneSaid;
     private LocalPlayer _player;
     private Dimension _dimension;
     // when the last run ended, for the rods task: it waits to heal before it walks back to whatever we ran from
@@ -141,6 +146,27 @@ final class CombatBrain {
     // a run happened and nothing has settled since: the end is stamped when the machine is back to nothing, so a run that
     // turned into a fight counts from when the fight is over
     private boolean _ranSince;
+
+    // one line on the first tick an enderman target stops being a target. the client keeps a dead one around through its
+    // death animation with hp 0, one that teleported out of tracking range is just not there anymore
+    private void noteEnderGone(Dimension dimension, Entity entity, boolean alive, LocalPlayer player) {
+        int id = _commit.targetId();
+        if (alive) {
+            // (anything else as the target forgets the old enderman, its id could come back as somebody else)
+            _enderId = entity instanceof Enderman ? id : -1;
+            _enderLastPos = entity.position();
+            _enderGoneSaid = false;
+            return;
+        }
+        if (id != _enderId || _enderGoneSaid || _enderLastPos == null) return;
+        _enderGoneSaid = true;
+        Vec3 at = entity != null ? entity.position() : _enderLastPos;
+        String why = entity == null ? "left the client world"
+                : entity instanceof Enderman man && man.getHealth() <= 0 ? "died" : "removed with hp left";
+        Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] enderman #" + id + " gone: " + why
+                + ", last at " + Math.round(at.x) + " " + Math.round(at.y) + " " + Math.round(at.z) + ", " + Math.round(at.distanceTo(player.position()))
+                + " blocks off, dy " + Math.round(at.y - player.getY()));
+    }
 
     long lastRunEnd() {
         return _lastRunEnd;
@@ -261,6 +287,9 @@ final class CombatBrain {
         _fightId = -1;
         _fightName = FightNames.UNKNOWN;
         _names.clear();
+        _enderId = -1;
+        _enderLastPos = null;
+        _enderGoneSaid = false;
     }
 
     // what to hold the wheel with right now, null for nothing (the chain lets go of whatever it has)
@@ -417,6 +446,7 @@ final class CombatBrain {
             if (entity instanceof Mob mob && mob.isAlive()) {
                 target = foe(dimension, mob, mob.distanceTo(player), book, now, player);
             }
+            noteEnderGone(dimension, entity, entity instanceof Mob m && m.isAlive(), player);
         }
 
         // the name is written down while the target is alive, a dead mob is already gone from the world by the time we say so.
@@ -445,6 +475,11 @@ final class CombatBrain {
             if (_commit.mode() == Mode.FIGHT && !_commit.perching()) {
                 _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
                 _fightName = _names.of(_commit.targetId());
+            }
+            // same chance for the enderman gone line: one that the step just picked and that blinks off before the next tick
+            // would never have been written down
+            if (_commit.mode() == Mode.FIGHT && mod.getWorld().getEntity(_commit.targetId()) instanceof Enderman man && man.isAlive()) {
+                noteEnderGone(dimension, man, true, player);
             }
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
