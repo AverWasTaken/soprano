@@ -387,4 +387,26 @@ public class StationAttemptTest {
         assertEquals(RELOCATE, a.phase());
         assertEquals(1, a.relocations());
     }
+
+    // ---- where a relocate goes
+
+    @Test
+    public void theBankAndTheFloorComeBeforeTheSwimBack() {
+        assertEquals(StationAttempt.Move.SHORE, StationAttempt.relocateMove(true, true, true, 100, false));
+        assertEquals(StationAttempt.Move.STANDPOINT, StationAttempt.relocateMove(false, true, true, 100, false));
+        assertEquals(StationAttempt.Move.DRY_LAND, StationAttempt.relocateMove(false, false, true, 100, false));
+    }
+
+    @Test
+    public void theSwimBackIsForWetBotsWithLandInRangeOnce() {
+        // dry and stuck is a carve, not a swim
+        assertEquals(StationAttempt.Move.NONE, StationAttempt.relocateMove(false, false, false, 100, false));
+        // never stood on land in this dimension
+        assertEquals(StationAttempt.Move.NONE, StationAttempt.relocateMove(false, false, true, -1, false));
+        // the edge of the range counts, past it is an ocean crossing
+        assertEquals(StationAttempt.Move.DRY_LAND, StationAttempt.relocateMove(false, false, true, StationAttempt.DRY_LAND_RANGE, false));
+        assertEquals(StationAttempt.Move.NONE, StationAttempt.relocateMove(false, false, true, StationAttempt.DRY_LAND_RANGE + 1, false));
+        // once per attempt
+        assertEquals(StationAttempt.Move.NONE, StationAttempt.relocateMove(false, false, true, 100, true));
+    }
 }

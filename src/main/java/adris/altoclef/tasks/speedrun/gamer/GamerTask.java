@@ -238,6 +238,9 @@ public class GamerTask extends Task {
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
                 Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLD_BLOCK, Items.GOLD_NUGGET,
                 Items.RAW_GOLD, Items.LADDER,
+                // same deal as the table: a station we mined to carry along is not garbage. unguarded, a lone furnace was the
+                // "unused" pick, got thrown to make room, and the pickup refused our own because it would be the next thing out
+                Items.FURNACE, Items.SMOKER,
                 // the nether digs a lot of netherrack and the spares are all that stands between that and bare hands
                 Items.STONE_PICKAXE, Items.WOODEN_PICKAXE};
         Item[] all = own;

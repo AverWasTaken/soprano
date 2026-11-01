@@ -2270,4 +2270,25 @@ public class WorkbenchRulesTest {
         s.now = 990 + WorkbenchRules.PLACE_GUARD_TICKS + WorkbenchRules.SETTLE_TICKS + 1;
         assertEquals(Call.PICK_UP, decide(furnace, s));
     }
+
+    // ---- a drop that is not coming back
+
+    @Test
+    public void theWanderStreakCountsUpAndOneTargetStartsItOver() {
+        int streak = 0;
+        for (int i = 0; i < WorkbenchRules.DROP_WANDER_TICKS - 1; i++) {
+            streak = WorkbenchRules.dropWanderStreak(streak, true);
+        }
+        assertNull(WorkbenchRules.dropGone(null, streak));
+        assertEquals(0, WorkbenchRules.dropWanderStreak(streak, false));
+        streak = WorkbenchRules.dropWanderStreak(streak, true);
+        assertEquals(WorkbenchRules.DROP_WANDER_TICKS, streak);
+        assertTrue(WorkbenchRules.dropGone(null, streak).startsWith("drop-wandering"));
+    }
+
+    @Test
+    public void aPickupThatGaveUpLetsTheBenchGoRightAway() {
+        assertEquals("drop gave up (no room)", WorkbenchRules.dropGone("no room", 0));
+        assertNull(WorkbenchRules.dropGone(null, 0));
+    }
 }
