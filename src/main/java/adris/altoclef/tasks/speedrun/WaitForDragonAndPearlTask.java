@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun;
 
+import adris.altoclef.tasks.speedrun.gamer.end.CrystalBlast;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.DoToClosestEntityTask;
@@ -159,7 +160,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
                 if (mod.getEntityTracker().entityFound(EndCrystal.class)) {
                     return new DoToClosestEntityTask(
                             (toDestroy) -> {
-                                if (toDestroy.closerThan(mod.getPlayer(), 7)) {
+                                if (toDestroy.closerThan(mod.getPlayer(), 7) && CrystalBlast.safeToSwing(CrystalStep.blastDamage(mod, mod.getPlayer(), toDestroy))) {
                                     mod.getControllerExtras().attack(toDestroy);
                                 }
                                 if (mod.getPlayer().blockPosition().getY() < minHeight) {
@@ -189,7 +190,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             if (mod.getEntityTracker().entityFound(EndCrystal.class)) {
                 return new DoToClosestEntityTask(
                         (toDestroy) -> {
-                            if (toDestroy.closerThan(mod.getPlayer(), 7)) {
+                            if (toDestroy.closerThan(mod.getPlayer(), 7) && CrystalBlast.safeToSwing(CrystalStep.blastDamage(mod, mod.getPlayer(), toDestroy))) {
                                 mod.getControllerExtras().attack(toDestroy);
                             }
                             if (mod.getPlayer().blockPosition().getY() < minHeight) {
