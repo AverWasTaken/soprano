@@ -137,6 +137,11 @@ public abstract class Movement implements IMovement, MovementHelper {
      *
      * @return Status
      */
+    // read by the falltrace, which wants the status of the tick we fell on, not the one PathExecutor saw last
+    public MovementStatus status() {
+        return currentState.getStatus();
+    }
+
     @Override
     public MovementStatus update() {
         ctx.player().getAbilities().flying = false;

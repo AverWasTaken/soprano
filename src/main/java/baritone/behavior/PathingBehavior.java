@@ -31,6 +31,7 @@ import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.pathing.calc.AStarPathFinder;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.SwimStalls;
@@ -55,6 +56,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private PathExecutor current;
     private PathExecutor next;
+    private Movement lastTicked;
 
     private Goal goal;
     private CalculationContext context;
@@ -405,6 +407,19 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     @Override
     public PathExecutor getCurrent() {
         return current;
+    }
+
+    // the falltrace takes this once a client tick. a movement that failed and got cancelled, or finished and handed the
+    // same tick to the next one, is gone from the path by the time anyone looks, so the executor drops it here instead
+    public void noteTicked(Movement movement) {
+        lastTicked = movement;
+    }
+
+    // null when no movement ran since the last take
+    public Movement takeTicked() {
+        Movement movement = lastTicked;
+        lastTicked = null;
+        return movement;
     }
 
     @Override

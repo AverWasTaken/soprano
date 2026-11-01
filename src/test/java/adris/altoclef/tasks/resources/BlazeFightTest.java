@@ -39,6 +39,16 @@ public class BlazeFightTest {
         assertFalse(BlazeFight.placingBanned(true, 67, 68));
     }
 
+    // a hair under the block top still stands on 65, so 64 is the bridge below us and stays open
+    @Test
+    public void floorRoundsLikeBaritoneFeet() {
+        int floor = BlazeFight.floorY(64.92);
+        assertEquals(65, floor);
+        assertFalse(BlazeFight.placingBanned(true, 64, floor));
+        assertTrue(BlazeFight.placingBanned(true, 65, floor));
+        assertEquals(64, BlazeFight.floorY(64.5));
+    }
+
     @Test
     public void nothingIsBannedWhenNotFighting() {
         assertFalse(BlazeFight.placingBanned(false, 70, 68));

@@ -12,7 +12,7 @@ public final class FallTrace {
     // a fall is this many blocks before it is worth a dump (the little hops of a path never get there)
     public static final float FALL_TRIGGER = 4;
 
-    public static final byte FORWARD = 1, BACK = 2, LEFT = 4, RIGHT = 8, SPRINT = 16, JUMP = 32;
+    public static final byte FORWARD = 1, BACK = 2, LEFT = 4, RIGHT = 8, SPRINT = 16, JUMP = 32, SNEAK = 64;
 
     private final double[] x = new double[SIZE], y = new double[SIZE], z = new double[SIZE];
     private final double[] dx = new double[SIZE], dy = new double[SIZE], dz = new double[SIZE];
@@ -22,6 +22,8 @@ public final class FallTrace {
     private final int[] attacker = new int[SIZE];
     private final double[] ax = new double[SIZE], ay = new double[SIZE], az = new double[SIZE];
     private final Object[] under = new Object[SIZE], move = new Object[SIZE], goal = new Object[SIZE];
+    // the movement's status and its last bridge PlaceResult that tick, both enums, so still no strings until a dump
+    private final Object[] status = new Object[SIZE], place = new Object[SIZE];
     private int next;
     private int size;
     // 5 ticks on the ground and the next fall counts again
@@ -35,7 +37,8 @@ public final class FallTrace {
 
     // attackerId < 0 means nobody (no hit this tick)
     public void push(double px, double py, double pz, double vx, double vy, double vz, boolean onGround, float fallDistance, byte keyBits,
-                     Object blockUnder, Object movement, Object goalNow, boolean hit, int attackerId, double hx, double hy, double hz) {
+                     Object blockUnder, Object movement, Object moveStatus, Object placeResult, Object goalNow, boolean hit, int attackerId,
+                     double hx, double hy, double hz) {
         int i = next;
         x[i] = px;
         y[i] = py;
@@ -48,6 +51,8 @@ public final class FallTrace {
         keys[i] = keyBits;
         under[i] = blockUnder;
         move[i] = movement;
+        status[i] = moveStatus;
+        place[i] = placeResult;
         goal[i] = goalNow;
         hurt[i] = hit;
         attacker[i] = attackerId;
@@ -68,8 +73,9 @@ public final class FallTrace {
     // does not know what a movement is
     public String line(int i, Function<Object, String> moveName) {
         int at = (next - size + i + SIZE) % SIZE;
-        String line = String.format(Locale.ROOT, "[falltrace] t-%d pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b fall %.1f keys %s under %s move %s goal %s",
-                size - 1 - i, x[at], y[at], z[at], dx[at], dy[at], dz[at], ground[at], fall[at], keyWord(keys[at]), under[at], move[at] == null ? "none" : moveName.apply(move[at]), shorten(goal[at]));
+        String line = String.format(Locale.ROOT, "[falltrace] t-%d pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b fall %.1f keys %s under %s move %s status %s place %s goal %s",
+                size - 1 - i, x[at], y[at], z[at], dx[at], dy[at], dz[at], ground[at], fall[at], keyWord(keys[at]), under[at], move[at] == null ? "none" : moveName.apply(move[at]),
+                orDash(status[at]), orDash(place[at]), shorten(goal[at]));
         if (hurt[at]) {
             line += String.format(Locale.ROOT, " HURT by #%d at %.2f %.2f %.2f", attacker[at], ax[at], ay[at], az[at]);
         }
@@ -87,7 +93,13 @@ public final class FallTrace {
         if ((bits & RIGHT) != 0) out.append('D');
         if ((bits & SPRINT) != 0) out.append('R');
         if ((bits & JUMP) != 0) out.append('J');
+        // C for crouch, S was taken by back
+        if ((bits & SNEAK) != 0) out.append('C');
         return out.toString();
+    }
+
+    private static String orDash(Object o) {
+        return o == null ? "-" : o.toString();
     }
 
     // goals print their whole life story, the first bit says which one it is

@@ -72,6 +72,9 @@ public class MovementTraverse extends Movement {
     private boolean godClicked;
     // a movement's src and dest never change, so the lava scan is once per movement and not once per tick
     private Boolean lavaShore;
+    // what the bridge placer said this tick. nobody acts on it, the falltrace prints it so a slide off a bridge says whether
+    // the block was coming or refused
+    private PlaceResult lastPlace;
 
     public MovementTraverse(IBaritone baritone, BetterBlockPos from, BetterBlockPos to) {
         super(baritone, from, to, new BetterBlockPos[]{to.above(), to}, to.below());
@@ -84,6 +87,11 @@ public class MovementTraverse extends Movement {
         god = God.UNDECIDED;
         godClicked = false;
         lavaShore = null;
+        lastPlace = null;
+    }
+
+    public PlaceResult lastPlace() {
+        return lastPlace;
     }
 
     @Override
@@ -240,6 +248,8 @@ public class MovementTraverse extends Movement {
     @Override
     public MovementState updateState(MovementState state) {
         super.updateState(state);
+        // per tick: a tick that never got to the placer says so, instead of repeating the last answer
+        lastPlace = null;
         BlockState pb0 = BlockStateInterface.get(ctx, positionsToBreak[0]);
         BlockState pb1 = BlockStateInterface.get(ctx, positionsToBreak[1]);
         if (state.getStatus() != MovementStatus.RUNNING) {
@@ -383,6 +393,7 @@ public class MovementTraverse extends Movement {
             }
             double dist1 = Math.max(Math.abs(ctx.player().position().x - (dest.getX() + 0.5D)), Math.abs(ctx.player().position().z - (dest.getZ() + 0.5D)));
             PlaceResult p = MovementHelper.attemptToPlaceABlock(state, baritone, dest.below(), false, !Baritone.settings().assumeSafeWalk.value);
+            lastPlace = p;
             if ((p == PlaceResult.READY_TO_PLACE || dist1 < 0.6) && !Baritone.settings().assumeSafeWalk.value) {
                 state.setInput(Input.SNEAK, true);
             }
