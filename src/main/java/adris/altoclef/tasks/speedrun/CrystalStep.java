@@ -107,16 +107,23 @@ public class CrystalStep {
             return;
         }
         double distance = player.position().distanceTo(crystal.position());
-        // vanilla's own seen check works client side, it only needs the level's blocks
         double seen = ServerExplosion.getSeenPercent(crystal.position(), player);
-        double damage = CrystalBlast.predicted(distance, seen, mod.getWorld().getDifficulty().getId(),
-                player.getArmorValue(), player.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
+        double damage = blastDamage(mod, player, crystal);
         if (CrystalBlast.safeToSwing(damage)) {
             mod.getControllerExtras().attack(crystal, ReachRules.CRYSTAL_REACH);
         } else if (_heldLogged.add(crystal.getId())) {
             Debug.logMessage(String.format("crystal: not swinging at %s, it would do %.1f to us (seen %.2f, %.1f out)",
                     crystal.blockPosition().toShortString(), damage, seen, distance));
         }
+    }
+
+    // what popping this crystal right now would do to us after armor. the bed fight's pillar swings ask this too
+    public static double blastDamage(AltoClef mod, LocalPlayer player, Entity crystal) {
+        double distance = player.position().distanceTo(crystal.position());
+        // vanilla's own seen check works client side, it only needs the level's blocks
+        double seen = ServerExplosion.getSeenPercent(crystal.position(), player);
+        return CrystalBlast.predicted(distance, seen, mod.getWorld().getDifficulty().getId(),
+                player.getArmorValue(), player.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
     }
 
     private static boolean pillar(AltoClef mod, int x, int y, int z) {
