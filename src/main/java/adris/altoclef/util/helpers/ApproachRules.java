@@ -63,7 +63,9 @@ public final class ApproachRules {
         if (inRange && shot) {
             // (first, before the swing is even considered: a kill task that was told to swing for this long and has not is
             // stuck in the swing's own gates too, a hop waiting on a fall that never comes, and no path is what blocks it)
-            if (policy == Policy.KILL && waitedLong) {
+            // an angry enderman gets it from the first tick: it hits for 3+ a go and teleports off once it's hurt, so waiting on
+            // a hop or a path step to land is handing it the first hit. no crits on endermen, fine
+            if (policy == Policy.KILL && (waitedLong || comesToUs)) {
                 return Plan.SWING_NOW;
             }
             if (ready && safeToCancel) {

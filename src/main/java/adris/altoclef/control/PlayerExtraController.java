@@ -113,6 +113,10 @@ public class PlayerExtraController {
     // two attack packets in one tick is a thing no hand does
     private long _lastSwingTick = Long.MIN_VALUE;
 
+    public long lastSwingTick() {
+        return _lastSwingTick;
+    }
+
     public boolean attack(Entity entity) {
         long now = gameTime();
         // the odd item is in hand to throw the charge away, nothing swings with it

@@ -249,10 +249,32 @@ public class ApproachRulesTest {
         }
     }
 
+    // in reach with a shot an angry enderman is hit right away, no waiting on a hop, a path step or the walk
     @Test
-    public void anEndermanInReachIsStillSwungAt() {
-        assertEquals(Plan.INTERACT, ApproachRules.plan(false, true, true, true, true, false, false, ApproachRules.Policy.KILL, true));
+    public void anEndermanInReachIsSwungAtFirst() {
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, true, false, false, ApproachRules.Policy.KILL, true));
         assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, true, false, true, ApproachRules.Policy.KILL, true));
-        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, false, true, false, false, ApproachRules.Policy.KILL, true));
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(true, true, true, false, true, false, false, ApproachRules.Policy.KILL, true));
+        // baritone mid step
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, false, false, false, ApproachRules.Policy.KILL, true));
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(true, true, true, true, false, true, false, ApproachRules.Policy.KILL, true));
+    }
+
+    @Test
+    public void aGatedKillStillWaitsOnAnEnderman() {
+        // eating or the bucket: the gates are shut, no forced swing
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, false, false, false, ApproachRules.Policy.KILL_GATED, true));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, false, false, false, false, ApproachRules.Policy.KILL_GATED, true));
+        // and out of reach it's still let come
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, false, true, true, false, false, false, ApproachRules.Policy.KILL, true));
+    }
+
+    @Test
+    public void anythingElseInReachKeepsTheOldRules() {
+        assertEquals(Plan.INTERACT, ApproachRules.plan(false, true, true, true, true, false, false, ApproachRules.Policy.KILL, false));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, false, false, ApproachRules.Policy.KILL, false));
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, true, false, false, false, ApproachRules.Policy.KILL, false));
+        // not a kill task: comesToUs never gets past the out of reach wait
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, false, false, ApproachRules.Policy.OTHER, true));
     }
 }

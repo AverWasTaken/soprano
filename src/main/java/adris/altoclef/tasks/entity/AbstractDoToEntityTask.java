@@ -231,6 +231,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
             boolean comesToUs = isKillTask() && entity instanceof Enderman && EntityHelper.isAngryAtPlayer(mod, entity);
+            // while we let it come the head is already on it (legs, CombatAim keeps us out of its eyes): aimStalled only aims in
+            // reach, and the swing wants onTarget, so the turn used to start the tick it arrived and it got the first hit
+            if (comesToUs && !inReach && sqDist < PRE_AIM_RANGE * PRE_AIM_RANGE) {
+                mod.getControllerExtras().aimAt(entity, CombatAim.Priority.KILL_TASK);
+            }
+            if (isKillTask()) {
+                logEndermanContact(mod, entity, comesToUs && inReach, now);
+            }
             // a foe that is biting us in reach: a step cannot land under the knockback, the swing is the way out
             boolean underFire = LavaShore.underFire(mod.getControllerExtras().ticksSinceHurt(), inReach);
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
@@ -334,6 +342,13 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     // stood in reach this long with no swing: whatever path is in the way goes, the hit is what is owed
                     _progress.reset();
                     _blocker = null;
+                    // the enderman gets this from the first tick, so the recharge ticks are ours to get off a rim, same as INTERACT
+                    if (comesToUs && rimWide && !underFire && mod.getPlayer().getAttackStrengthScale(0.5f) < 0.9f) {
+                        Task off = rimStep(mod, entity);
+                        if (off != null) {
+                            return off;
+                        }
+                    }
                     _standCap.forced();
                     dropBackOff(mod);
                     mod.getClientBaritone().getPathingBehavior().cancelEverything();
@@ -355,7 +370,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                             return off;
                         }
                     }
-                    setDebugState(!shot ? "In reach, waiting: no shot"
+                    // the enderman wait lands here out of reach too, and "in reach, no shot" there reads like a broken shot
+                    setDebugState(!inReach ? "Out of reach, letting it come"
+                            : !shot ? "In reach, waiting: no shot"
                             : !ready ? "In reach, waiting: swing gated"
                             : "In reach, waiting: path mid-step");
                     return null;
@@ -621,6 +638,58 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             _unaimedTicks++;
         }
         return false;
+    }
+
+    // an enderman further than this teleports a few times before it gets here, turning the head that early is just twitching
+    private static final double PRE_AIM_RANGE = 8;
+
+    // first contact with an angry enderman, once per mob per task: where we stood when it got into reach, then how long until our
+    // first swing and the first hurt (any source, the nearest thing is usually it). gives up quietly after CONTACT_LOG_TICKS
+    private static final int CONTACT_LOG_TICKS = 200;
+    private Entity _contactEntity;
+    private long _contactStart;
+    private long _contactSwings;
+    private int _contactHurtTime;
+    private boolean _contactSwung;
+    private boolean _contactHurt;
+
+    private void logEndermanContact(AltoClef mod, Entity entity, boolean angryInReach, long now) {
+        var us = mod.getPlayer();
+        var extras = mod.getControllerExtras();
+        if (angryInReach && _contactEntity != entity) {
+            _contactEntity = entity;
+            _contactStart = now;
+            _contactSwings = extras.swings();
+            _contactHurtTime = us.hurtTime;
+            _contactSwung = false;
+            _contactHurt = false;
+            Vec3 eye = us.getEyePosition();
+            var box = entity.getBoundingBox();
+            double gap = ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+            Debug.logInternal(String.format("enderman contact: gap %.2f, onTarget %b, attackReady %b, safeToCancel %b, pathing %b",
+                    gap, extras.onTarget(entity), extras.attackReady(),
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), mod.getClientBaritone().getPathingBehavior().isPathing()));
+            // a hit that came in with it is a rise we'll never see from here, hurtTime only goes down after this (10 on a hit)
+            if (us.hurtTime >= 9) {
+                _contactHurt = true;
+                Debug.logInternal("enderman contact: first hurt +0 ticks");
+            }
+            return;
+        }
+        if (_contactEntity != entity || (_contactSwung && _contactHurt) || now - _contactStart > CONTACT_LOG_TICKS) {
+            return;
+        }
+        // the swing goes out after this runs, so it's seen a tick late. the controller knows the real tick
+        if (!_contactSwung && extras.swings() != _contactSwings) {
+            _contactSwung = true;
+            Debug.logInternal("enderman contact: first swing +" + (extras.lastSwingTick() - _contactStart) + " ticks");
+        }
+        // hurtTime jumps back up to 10 on a hit, so a rise is a new one
+        if (!_contactHurt && us.hurtTime > _contactHurtTime) {
+            _contactHurt = true;
+            Debug.logInternal("enderman contact: first hurt +" + (now - _contactStart) + " ticks");
+        }
+        _contactHurtTime = us.hurtTime;
     }
 
     // feeds the stand cap: a swing, a new target or the mob leaving reach starts it over
