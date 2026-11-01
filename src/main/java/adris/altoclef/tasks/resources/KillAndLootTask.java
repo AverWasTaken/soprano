@@ -73,10 +73,15 @@ public class KillAndLootTask extends ResourceTask {
         _killTask = new KillEntitiesTask(_toKill);
     }
 
-    // the id of the one the kill walk is after right now, -1 for none
+    // the id of the one the kill walk is after right now, -1 for none. a dead or unloaded one is none: the kill walk only lets
+    // go of it on its own tick, and with nothing left to kill we wander instead of ticking it, so the corpse stays "pursued"
     public int pursuingId() {
         Entity target = _killTask.pursuing();
-        return target == null ? -1 : target.getId();
+        return pursuedId(target != null, target != null && target.isAlive(), target == null ? -1 : target.getId());
+    }
+
+    static int pursuedId(boolean exists, boolean alive, int id) {
+        return exists && alive ? id : -1;
     }
 
     @Override
