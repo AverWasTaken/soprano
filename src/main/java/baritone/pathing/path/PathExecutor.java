@@ -418,6 +418,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             ((MovementAscend) movement).setKeepsSprint(ascendBlocker((MovementAscend) movement, false) == null);
         }
         MovementStatus movementStatus = movement.update();
+        behavior.noteTicked(movement);
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
             rememberFailure(movement, false);

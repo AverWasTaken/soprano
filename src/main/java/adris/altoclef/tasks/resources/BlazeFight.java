@@ -17,6 +17,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
@@ -106,6 +107,12 @@ final class BlazeFight {
         return noPlacing && placeY >= floorY;
     }
 
+    // same floor rule as baritone's playerFeet (y + 0.1251). getBlockY drops a block the moment we sink a hair under the top
+    // (slabs, the first tick of a fall) and then the bridge cell the path counted on reads as feet level and gets refused
+    static int floorY(double y) {
+        return Mth.floor(y + 0.1251);
+    }
+
     // blazes we could hit right now, and every live blaze in range (that one is just for the hud)
     int reachable() {
         return candidates.size();
@@ -149,7 +156,7 @@ final class BlazeFight {
         running = next == Mode.RUN;
         mode = next;
         noPlacing = mode != Mode.CAMP;
-        floorY = player.getBlockY();
+        floorY = floorY(player.getY());
         watchRun(now, health);
         lastHealth = health;
         logChange(mod, health);

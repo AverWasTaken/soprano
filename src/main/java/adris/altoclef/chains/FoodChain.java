@@ -411,7 +411,7 @@ public class FoodChain extends SingleTaskChain {
         // mid fight we do not start a meal, and one already going gets spat out. you cannot swing a sword while chewing
         // and the thing hitting us does not wait for the bar. once the fight is over _requestFillup picks it back up
         CombatRules.Stance stance = stance(mod);
-        if (stance == CombatRules.Stance.EAT_GAPPLE && !mod.getPlayer().isBlocking()) {
+        if ((stance == CombatRules.Stance.EAT_GAPPLE || burnGapple(mod, stance)) && !mod.getPlayer().isBlocking()) {
             // not in the food list on purpose, this is the one fight where the gapple is the point
             Item gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) ? Items.GOLDEN_APPLE : Items.ENCHANTED_GOLDEN_APPLE;
             // (a gapple meal tops up like an ordinary one afterwards, not to the last heal meal's line)
@@ -507,7 +507,7 @@ public class FoodChain extends SingleTaskChain {
     private boolean wantsToEat() {
         if (shouldStop || _eatBlocked) return false;
         CombatRules.Stance stance = stance(_mod);
-        if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
+        if (stance == CombatRules.Stance.EAT_GAPPLE || burnGapple(_mod, stance)) return true;
         if (!stance.mayEat()) return false;
         return rawNeedsToEat(true) || recoverMeal();
     }
@@ -530,6 +530,18 @@ public class FoodChain extends SingleTaskChain {
     // flesh too, it is only ever the pick when starving, and the older rules eat it there anyway)
     static boolean healFood(Item item) {
         return item != Items.CHORUS_FRUIT && item != Items.CHICKEN && item != Items.ROTTEN_FLESH;
+    }
+
+    // on fire with nothing putting it out and half the hearts gone: a gapple is the one food vanilla lets us eat on a full
+    // bar, and its regen outheals the burn for a while. ordinary food still waits for the bar to drop
+    static boolean burnGapple(boolean burning, float health, boolean hasGapple, boolean mayEat) {
+        return burning && health <= 10 && hasGapple && mayEat;
+    }
+
+    private static boolean burnGapple(AltoClef mod, CombatRules.Stance stance) {
+        LocalPlayer player = mod == null ? null : mod.getPlayer();
+        return player != null && burnGapple(player.isOnFire() && !player.hasEffect(MobEffects.FIRE_RESISTANCE), player.getHealth(),
+                mod.getItemStorage().hasItem(Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE), stance.mayEat());
     }
 
     // the chains are built one after another, so early on there may be no mob defense to ask yet
