@@ -223,6 +223,11 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
         }
     }
 
+    // the yaw moveRelative is going to use this tick: the target's if one is set, else our own. EdgeSettle picks its keys off it
+    public float pendingMoveYaw() {
+        return this.target != null ? peek(this.target).getYaw() : ctx.player().getYRot();
+    }
+
     // the yaw moveRelative really used last time, and how many times it has run. SprintTelemetry replays the tick with them
     public float lastMoveYaw() {
         return moveYaw;

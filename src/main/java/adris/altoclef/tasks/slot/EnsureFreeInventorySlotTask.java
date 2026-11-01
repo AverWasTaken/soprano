@@ -8,6 +8,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.helpers.ThrowAim;
 import adris.altoclef.util.slots.Slot;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import net.minecraft.world.inventory.ContainerInput;
@@ -22,8 +23,22 @@ public class EnsureFreeInventorySlotTask extends Task {
         this(false);
     }
 
+    // a full bag making room for a drop that StorageHelper.GarbageView.room already picked the stack for: throw exactly that one
+    // and nothing else. checked every tick (the slot must still hold that stack), and no canDropStack veto, the room decision
+    // was the veto
+    private final Slot _evict;
+    private final ItemStack _victim;
+
     public EnsureFreeInventorySlotTask(boolean lastResort) {
         _lastResort = lastResort;
+        _evict = null;
+        _victim = null;
+    }
+
+    public EnsureFreeInventorySlotTask(Slot evict, ItemStack victim) {
+        _lastResort = false;
+        _evict = evict;
+        _victim = victim.copy();
     }
 
     private boolean _stuck = false;
@@ -49,17 +64,21 @@ public class EnsureFreeInventorySlotTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
+        if (_evict != null && cursorStack.isEmpty()) {
+            return throwVictim(mod);
+        }
+        // something already on the cursor (or plain mode): the old way, no veto skipped for anyone
         Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
         if (garbage.isEmpty() && _lastResort) {
             garbage = StorageHelper.getLastResortSlot(mod);
         }
+        boolean cursorThrowable = ItemHelper.canDropStack(mod, cursorStack);
         // only plain storage takes things back. a furnace input or a crafting grid would eat the stack (or hand it back
         // on close into a bag with no room), which is the loss this is here to stop
         boolean storageOpen = ContainerType.screenHandlerMatches(ContainerType.CHEST) || ContainerType.screenHandlerMatches(ContainerType.SHULKER);
         Optional<Slot> containerSlot = cursorStack.isEmpty() || !storageOpen ? Optional.empty()
                 : mod.getItemStorage().getSlotThatCanFitInOpenContainer(cursorStack, false);
-        FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), ItemHelper.canDropStack(mod, cursorStack),
-                garbage.isPresent(), containerSlot.isPresent());
+        FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), cursorThrowable, garbage.isPresent(), containerSlot.isPresent());
         _stuck = action == FreeSlotPlan.Action.STUCK;
         // an empty cursor means whatever we threw is gone (a refused click leaves the stack in hand, so no re-pick there)
         if (cursorStack.isEmpty()) {
@@ -76,14 +95,7 @@ public class EnsureFreeInventorySlotTask extends Task {
                 // a 1x1 pocket has no run to throw along, so the stack still comes back there. the bucket task has a
                 // backstop for that
                 pickAim(mod);
-                // what the server last heard from us, not the camera: the click goes out ahead of this tick's rotation packet,
-                // and baritone's free look can send one angle and put another on the camera
-                var player = mod.getPlayer();
-                var sent = mod.getClientBaritone().getLookBehavior().serverRotation();
-                float sentYaw = sent.map(r -> r.getYaw()).orElse(player.getYRot());
-                float sentPitch = sent.map(r -> r.getPitch()).orElse(player.getXRot());
-                boolean aligned = ThrowAim.isAligned(sentYaw, sentPitch, _aimYaw, ThrowAim.PITCH);
-                if (ThrowAim.shouldThrow(aligned, WorldHelper.getTicks() - _aimSince)) {
+                if (aimed(mod)) {
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 }
             }
@@ -97,6 +109,35 @@ public class EnsureFreeInventorySlotTask extends Task {
         if (_hasAim) {
             mod.getInputControls().forceLook(_aimYaw, ThrowAim.PITCH);
         }
+        return null;
+    }
+
+    // what the server last heard from us, not the camera: the click goes out ahead of this tick's rotation packet,
+    // and baritone's free look can send one angle and put another on the camera
+    private boolean aimed(AltoClef mod) {
+        var player = mod.getPlayer();
+        var sent = mod.getClientBaritone().getLookBehavior().serverRotation();
+        float sentYaw = sent.map(r -> r.getYaw()).orElse(player.getYRot());
+        float sentPitch = sent.map(r -> r.getPitch()).orElse(player.getXRot());
+        return ThrowAim.shouldThrow(ThrowAim.isAligned(sentYaw, sentPitch, _aimYaw, ThrowAim.PITCH), WorldHelper.getTicks() - _aimSince);
+    }
+
+    // the evict mode throws straight out of the slot (ctrl+Q), so the victim never sits on the cursor where a parent that
+    // already sees the free slot could walk off and leave it there. a slot that no longer holds that exact stack ends us,
+    // the pickup asks for room again with the bag as it is now
+    private Task throwVictim(AltoClef mod) {
+        if (!ItemStack.isSameItemSameComponents(StorageHelper.getItemStackInSlot(_evict), _victim)) {
+            _stuck = true;
+            _hasAim = false;
+            return null;
+        }
+        _stuck = false;
+        setDebugState("Throwing out " + ItemHelper.stripItemName(_victim.getItem()) + " to make room");
+        pickAim(mod);
+        if (aimed(mod)) {
+            mod.getSlotHandler().clickSlot(_evict, 1, ContainerInput.THROW);
+        }
+        mod.getInputControls().forceLook(_aimYaw, ThrowAim.PITCH);
         return null;
     }
 
@@ -114,7 +155,8 @@ public class EnsureFreeInventorySlotTask extends Task {
 
     @Override
     protected boolean isEqual(Task obj) {
-        return obj instanceof EnsureFreeInventorySlotTask t && t._lastResort == _lastResort;
+        return obj instanceof EnsureFreeInventorySlotTask t && t._lastResort == _lastResort && Objects.equals(t._evict, _evict)
+                && (t._victim == null ? _victim == null : _victim != null && ItemStack.isSameItemSameComponents(t._victim, _victim));
     }
 
     @Override

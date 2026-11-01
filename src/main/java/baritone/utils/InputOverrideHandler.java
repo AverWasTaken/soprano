@@ -26,6 +26,7 @@ import baritone.api.utils.IInputOverrideHandler;
 import baritone.api.utils.input.Input;
 import baritone.behavior.Behavior;
 import net.minecraft.client.player.KeyboardInput;
+import net.minecraft.client.player.LocalPlayer;
 
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.process.IBaritoneProcess;
@@ -51,6 +52,11 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
 
     private final BlockBreakHelper blockBreakHelper;
     private final BlockPlaceHelper blockPlaceHelper;
+
+    // holds sneak and walks us back on when a path lets go while we hang off a ledge, see EdgeSettle
+    private final EdgeSettle settle = new EdgeSettle();
+    // the executor the last tick ran, a new one means the old one stopped steering
+    private PathExecutor lastExec;
 
     public InputOverrideHandler(Baritone baritone) {
         super(baritone);
@@ -96,9 +102,12 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
     @Override
     public final void onTick(TickEvent event) {
         if (event.getType() == TickEvent.Type.OUT) {
+            settle.reset();
+            lastExec = null;
             return;
         }
-        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+        tickSettle();
+        if (AltoClefSettings.getInstance().isInteractionPaused() || settle.active()) {
             // this is the only place a click turns into a real one, so every process and movement gets muzzled at once
             setInputForceState(Input.CLICK_LEFT, false);
             setInputForceState(Input.CLICK_RIGHT, false);
@@ -129,6 +138,37 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         // gotta do it this way, or else it constantly thinks you're beginning a double tap W sprint lol
     }
 
+    // judged here because the keys are final: processes ran in preTick, the path ran, and the soft cancel after us only sets
+    // a flag. the last consumed input is the one the player moved with last tick
+    private void tickSettle() {
+        LocalPlayer player = ctx.player();
+        PathExecutor exec = baritone.getPathingBehavior().getCurrent();
+        boolean changed = exec != lastExec;
+        lastExec = exec;
+        if (player == null) {
+            settle.tick(null, null, null, false, false, true);
+            return;
+        }
+        boolean shiftLastTick = player.input instanceof PlayerMovementInput p && p.keyPresses.shift();
+        boolean moveKey = false;
+        for (Input input : new Input[]{Input.MOVE_FORWARD, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT, Input.JUMP}) {
+            moveKey |= isInputForcedDown(input);
+        }
+        // a pause that landed or a path that ended or got swapped is a path not steering. the same executor running a tick
+        // with no keys is a look wait, not a let go
+        boolean idle = exec == null || baritone.getPathingBehavior().pausedLastTick() || changed;
+        settle.tick(player, ctx.world(), ctx.minecraft().options, shiftLastTick, isInputForcedDown(Input.SNEAK), moveKey || !idle);
+    }
+
+    // PlayerMovementInput lays these over the forced keys: sneak down, no jump, no sprint
+    public boolean settleActive() {
+        return settle.active();
+    }
+
+    public EdgeSettle.Keys settleKeys() {
+        return settle.keys(baritone.getLookBehavior().pendingMoveYaw());
+    }
+
     // whose click this is for the trace: the builder's own, else the movement running, else whoever has the wheel
     private String clicker() {
         if (baritone.getBuilderProcess().clickedByBuilder()) {
@@ -146,6 +186,10 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
     }
 
     private boolean inControl() {
+        // or the swap to KeyboardInput lets go of sneak right here
+        if (settle.active()) {
+            return true;
+        }
         for (Input input : new Input[]{Input.MOVE_FORWARD, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT, Input.SNEAK, Input.JUMP}) {
             if (isInputForcedDown(input)) {
                 return true;
@@ -181,6 +225,8 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
     @Override
     public void onWorldEvent(WorldEvent event) {
         sprintLockedAt = Long.MIN_VALUE;
+        settle.reset();
+        lastExec = null;
     }
 
     public BlockBreakHelper getBlockBreakHelper() {

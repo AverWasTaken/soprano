@@ -177,7 +177,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     @Override
     public void onPlayerSprintState(SprintStateEvent event) {
-        if (isPathing()) {
+        if (baritone.getInputOverrideHandler().settleActive()) {
+            // the gated executor's last answer is stale, and a sprint on a ledge is the opposite of settling
+            event.setState(false);
+        } else if (isPathing()) {
             event.setState(current.isSprinting());
         }
     }
@@ -221,6 +224,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 }
             }
             if (current == null) {
+                return;
+            }
+            if (baritone.getInputOverrideHandler().settleActive()) {
+                // the edge settle has the wheel (EdgeSettle). no movement runs, old or new, the cancels above still land.
+                // not a pause: pausedThisTick would make isPathing false and the processes would read a stall
+                baritone.getInputOverrideHandler().clearAllKeys();
+                safeToCancel = true;
                 return;
             }
             safeToCancel = current.onTick();
