@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.function.Predicate;
 
@@ -62,9 +63,25 @@ public final class WaterUpkeep {
     public static boolean pondSource(AltoClef mod, BlockPos p) {
         Level world = mod.getWorld();
         return BucketPour.isWaterSource(world, p)
+                && !byEndPortal(p, q -> world.getBlockState(q).is(Blocks.END_PORTAL))
                 && FluidSources.exposedSource(world.getFluidState(p), world.getFluidState(p.above()))
                 && world.getBlockState(p.above()).getCollisionShape(world, p.above()).isEmpty()
                 && pondOpen(!world.getBlockState(p.above(2)).getCollisionShape(world, p.above(2)).isEmpty(), dryStandNearby(world, p));
+    }
+
+    // water poured into the portal room settles on the portal itself (and on the frame next to it). the scoop walks onto it
+    // and drops us into the End mid errand. same height as the water or one under it, the 3x3 around it. pure for the tests
+    public static boolean byEndPortal(BlockPos p, Predicate<BlockPos> isEndPortal) {
+        for (int dy = -1; dy <= 0; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (isEndPortal.test(p.offset(dx, dy, dz))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     // a solid lid right over the air layer means the pond is a pocket, and nowhere dry to stand means we would be swimming

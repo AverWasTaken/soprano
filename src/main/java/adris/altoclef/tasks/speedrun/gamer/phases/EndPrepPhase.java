@@ -85,6 +85,10 @@ public class EndPrepPhase implements PhaseHandler {
     private int _bucketDeaths;
     private BlockPos _bucketPond;
     private Task _bucketTask;
+    // the armor floor (EndGear.armorFloorPiece), per visit like the bucket: ticks the step ran, and whether the clock ran out
+    private int _armorTicks;
+    private boolean _armorGaveUp;
+    private Task _armorTask;
 
     @Override
     public GamerPhase phase() {
@@ -134,6 +138,9 @@ public class EndPrepPhase implements PhaseHandler {
         _bedsGaveUp = false;
         _bedMine = null;
         _bedMineTail = 0;
+        _armorTicks = 0;
+        _armorGaveUp = false;
+        _armorTask = null;
         resetBucket(deaths);
     }
 
@@ -200,18 +207,24 @@ public class EndPrepPhase implements PhaseHandler {
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
         int required = requiredBeds(ctx, cfg);
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
-        noteGate(mod, ctx, gap);
+        Item armorFloor = armorFloor(ctx, cfg);
+        noteGate(mod, ctx, gap, armorFloor);
         BlockPos portal = portalCenter(mod, state);
         _errandBlocks = portal == null ? 0 : Math.hypot(mod.getPlayer().getX() - portal.getX(), mod.getPlayer().getZ() - portal.getZ());
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
-            step = gearStep(mod, ctx, cfg, gap);
+            step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
         // a far errand eats the food on the way, so the food floor comes first (the gear steps go on the same rule: far from the
         // portal is far, whatever the errand). the walk back and the spawn bed are the way home, food does not replace them
         if (step != null && step != _food
                 && EndGear.foodFirst(gap.food(), _errandBlocks, cfg.farErrandBlocks, step == _toPortal || step == _setSpawn)) {
             step = foodStep(ctx);
+        }
+        // the clock counts ticks the step really ran: a far errand hands the tick to the food, and the bench sweep in GamerTask
+        // can swap us out for a pickup (that stops the task, so it is not active anymore)
+        if (step != null && step == _armorTask && _armorTask.isActive()) {
+            _armorTicks++;
         }
         _walkingIn = step == null;
         _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
@@ -221,8 +234,8 @@ public class EndPrepPhase implements PhaseHandler {
     }
 
     // a line when the gap we are working on changes, with the numbers the gate went by (not every tick)
-    private void noteGate(AltoClef mod, GamerContext ctx, EndGear.Gap gap) {
-        String gate = EndGear.gate(gap);
+    private void noteGate(AltoClef mod, GamerContext ctx, EndGear.Gap gap, Item armorFloor) {
+        String gate = EndGear.gate(gap, armorFloor);
         // a block collection that already started runs past the gap (blocksStep), so it is still the step
         if ((gate.equals("armor") || gate.equals("food") || gate.equals("none")) && _buildBlocks != null && _buildBlocks.isActive()
                 && !_buildBlocks.isFinished(mod)) {
@@ -235,7 +248,8 @@ public class EndPrepPhase implements PhaseHandler {
         Debug.logInternal("endprep: gate " + gate + " (beds short " + gap.beds() + ", blocks to get " + gap.buildBlocks() + ", food "
                 + FoodTripRules.units(ctx.food()) + " units / " + ctx.food().held() + " held" + (gap.food() ? " SHORT" : "")
                 + ", weapon " + (gap.weapon() ? "missing" : "ok") + ", pickaxe " + (gap.pickaxe() ? "missing" : "ok")
-                + ", armor to wear " + gap.armorToWear().size() + ", bucket " + (gap.waterBucket() ? "missing" : "ok") + ")");
+                + ", armor to wear " + gap.armorToWear().size() + ", armor " + ctx.facts().armorPoints() + " points"
+                + (armorFloor != null ? " (making " + ItemHelper.stripItemName(armorFloor) + ")" : "") + ", bucket " + (gap.waterBucket() ? "missing" : "ok") + ")");
     }
 
     private int requiredBeds(GamerContext ctx, EndConfig cfg) {
@@ -436,8 +450,23 @@ public class EndPrepPhase implements PhaseHandler {
         return mod.getBlockTracker().getNearestTracking(Blocks.END_PORTAL).orElse(null);
     }
 
-    // weapon, bucket, pickaxe, blocks, armor, food. null = all there
-    private Task gearStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
+    // the iron piece the armor floor wants, null once it is fine or its clock ran out (one line when it does, then the visit goes
+    // in with what it has)
+    private Item armorFloor(GamerContext ctx, EndConfig cfg) {
+        if (_armorGaveUp) {
+            return null;
+        }
+        Item piece = EndGear.armorFloorPiece(ctx.facts(), ctx.cfg());
+        if (piece != null && EndGear.armorFloorTimedOut(_armorTicks, cfg)) {
+            _armorGaveUp = true;
+            ctx.log("endprep: armor floor out of time at " + ctx.facts().armorPoints() + " armor points, going anyway");
+            return null;
+        }
+        return piece;
+    }
+
+    // weapon, bucket, pickaxe, armor floor, blocks, armor, food. null = all there
+    private Task gearStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap, Item armorFloor) {
         if (gap.weapon()) {
             _hudState = "Getting a sword";
             return catalogueItem(Items.IRON_SWORD);
@@ -452,11 +481,22 @@ public class EndPrepPhase implements PhaseHandler {
             _hudState = "Getting a pickaxe";
             return catalogueItem(Items.IRON_PICKAXE);
         }
+        List<Item> wear = gap.armorToWear();
+        if (armorFloor != null) {
+            // the points only count what is worn, so a piece in the bag goes on first. otherwise the floor makes all four
+            // when a chestplate and leggings already clear the line
+            if (!wear.isEmpty()) {
+                _hudState = "Putting on armor";
+                return _equip.computeIfAbsent(wear.get(0), piece -> new EquipArmorTask(piece));
+            }
+            _hudState = "Making iron armor";
+            _armorTask = catalogueItem(armorFloor);
+            return _armorTask;
+        }
         Task blocks = blocksStep(mod, cfg, gap);
         if (blocks != null) {
             return blocks;
         }
-        List<Item> wear = gap.armorToWear();
         if (!wear.isEmpty()) {
             _hudState = "Putting on armor";
             return _equip.computeIfAbsent(wear.get(0), piece -> new EquipArmorTask(piece));
