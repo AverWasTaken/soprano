@@ -47,5 +47,6 @@ public enum Icon {
     LANGUAGE,       // a small globe and an A
     ACCESSIBILITY,  // arms out in a ring
     SPEAKER,        // menu music on: a speaker and two waves
-    SPEAKER_OFF     // menu music off: the same speaker and an x
+    SPEAKER_OFF,    // menu music off: the same speaker and an x
+    ROUTINE         // commands tab: three lines and a play triangle, a list that runs
 }

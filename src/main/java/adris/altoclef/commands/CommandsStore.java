@@ -506,7 +506,10 @@ public final class CommandsStore {
         if (shape != null) {
             return shape;
         }
-        if (kind != RoutineStep.Kind.RAW && RoutineLines.kindOf(normal) != kind) {
+        // a typed goto that crosses dimensions is still a goto line, the editor's checks say "use a Raw step" for it.
+        // turning the whole file down over it would be a lot
+        boolean dimensionGoto = kind == RoutineStep.Kind.GOTO && RoutineLines.isDimensionGoto(normal);
+        if (kind != RoutineStep.Kind.RAW && !dimensionGoto && RoutineLines.kindOf(normal) != kind) {
             return "a " + kind.name().toLowerCase(Locale.ROOT) + " step can't run \"" + RoutineLines.label(normal) + "\"";
         }
         return null;

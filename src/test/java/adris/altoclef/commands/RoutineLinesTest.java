@@ -29,7 +29,8 @@ public class RoutineLinesTest {
         assertEquals("goto 1 -3", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("x", "1", "z", "-3")));
         assertEquals("goto 64", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("y", "64")));
         assertEquals("goto 1 64 ~", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("x", "1", "y", "64")));
-        assertEquals("goto 1 64 -3 nether", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("x", "1", "y", "64", "z", "-3", "dimension", "nether")));
+        // the goto boxes have no dimension, a stray one in the map doesn't sneak onto the line
+        assertEquals("goto 1 64 -3", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("x", "1", "y", "64", "z", "-3", "dimension", "nether")));
         assertEquals("wp goto home", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("waypoint", "home", "block", "dirt")));
         assertEquals("goto diamond_ore", RoutineLines.lineFor(RoutineStep.Kind.GOTO, Map.of("block", "diamond_ore", "x", "1")));
         // nothing filled in is still a line, just one the checks turn down
@@ -57,7 +58,8 @@ public class RoutineLinesTest {
             Map<String, String> fields = RoutineLines.fieldsOf(step(kind, c[1]));
             assertEquals(c[1], RoutineLines.lineFor(kind, fields));
         }
-        assertEquals(Map.of("x", "1", "y", "64", "z", "-3", "dimension", "the_end"), RoutineLines.fieldsOf(step(RoutineStep.Kind.GOTO, "goto 1 64 -3 the_end")));
+        // a dimension has no box, so the line opens as typed and keeps going red instead of losing the_end on save
+        assertEquals(Map.of("block", "1 64 -3 the_end"), RoutineLines.fieldsOf(step(RoutineStep.Kind.GOTO, "goto 1 64 -3 the_end")));
         assertEquals(Map.of("waypoint", "home"), RoutineLines.fieldsOf(step(RoutineStep.Kind.GOTO, "wp goto home")));
         assertEquals(Map.of("block", "diamond_ore"), RoutineLines.fieldsOf(step(RoutineStep.Kind.GOTO, "goto diamond_ore")));
     }
@@ -70,8 +72,9 @@ public class RoutineLinesTest {
         assertNull(problem(RoutineStep.Kind.WAIT, "wait 0.5"));
         assertNull(problem(RoutineStep.Kind.GOTO, "goto 1 2 3"));
         assertNull(problem(RoutineStep.Kind.GOTO, "goto ~ 70 ~10"));
-        assertNull(problem(RoutineStep.Kind.GOTO, "goto 1 2 3 nether"));
-        assertNull(problem(RoutineStep.Kind.GOTO, "goto the_end"));
+        // the raw step is where a dimension change goes, and it takes the line as is
+        assertNull(problem(RoutineStep.Kind.RAW, "goto 1 2 3 nether"));
+        assertNull(problem(RoutineStep.Kind.RAW, "goto the_end"));
         assertNull(problem(RoutineStep.Kind.GOTO, "goto diamond_ore"));
         assertNull(problem(RoutineStep.Kind.GOTO, "waypoints goto home"));
         assertNull(problem(RoutineStep.Kind.RAW, "goto diamond_ore"));
@@ -92,6 +95,9 @@ public class RoutineLinesTest {
         assertNotNull(problem(RoutineStep.Kind.GOTO, "goto"));
         assertNotNull(problem(RoutineStep.Kind.GOTO, "goto 1 2 3 4"));
         assertNotNull(problem(RoutineStep.Kind.GOTO, "goto ~ 2 3 nether"));
+        assertEquals("use a Raw step to change dimension", problem(RoutineStep.Kind.GOTO, "goto 1 2 3 nether"));
+        assertEquals("use a Raw step to change dimension", problem(RoutineStep.Kind.GOTO, "goto the_end"));
+        assertEquals("use a Raw step to change dimension", problem(RoutineStep.Kind.GOTO, "goto 64 overworld"));
         assertNotNull(problem(RoutineStep.Kind.GOTO, "goto stone 3"));
         assertNotNull(problem(RoutineStep.Kind.GOTO, "wp goto"));
         assertNotNull(problem(RoutineStep.Kind.GOTO, "get dirt"));
@@ -131,6 +137,11 @@ public class RoutineLinesTest {
         assertEquals(RoutineStep.Kind.GOTO, RoutineLines.kindOf("wp goto home"));
         assertEquals(RoutineStep.Kind.GOTO, RoutineLines.kindOf("Goto 1 2 3"));
         assertEquals(RoutineStep.Kind.RAW, RoutineLines.kindOf("wp list"));
+        // an old untyped entry that crossed dimensions keeps running as the raw line it was
+        assertEquals(RoutineStep.Kind.RAW, RoutineLines.kindOf("goto 1 2 3 nether"));
+        assertEquals(RoutineStep.Kind.RAW, RoutineLines.kindOf("goto the_end"));
+        // but a typed goto with a dimension still loads, so the file isn't turned down over one red row
+        assertNull(CommandsStore.stepShape(RoutineStep.Kind.GOTO, "goto 1 2 3 nether"));
         assertEquals(RoutineStep.Kind.WAIT, RoutineLines.kindNamed("wait"));
         assertNull(RoutineLines.kindNamed("dance"));
         assertEquals("diamond_gear", RoutineLines.idFor("  diamond   gear "));

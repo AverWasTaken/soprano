@@ -57,7 +57,7 @@ public interface RoutinesAccess {
 
     // the editor's boxes -> a row's line. keys per type:
     // GET "items" ("diamond_sword 1, diamond_chestplate 1"), EQUIP "item", WAIT "seconds", RAW "line",
-    // GOTO "x" "y" "z" (+ "dimension": overworld / nether / the_end), or "waypoint" (a name), or "block" (an id).
+    // GOTO "x" "y" "z", or "waypoint" (a name), or "block" (an id). no dimension: crossing one is a Raw step.
     // waypoint wins over block wins over the coordinates. a missing x or z with the others there is ~ (where you stand)
     String lineFor(StepType type, Map<String, String> fields);
 

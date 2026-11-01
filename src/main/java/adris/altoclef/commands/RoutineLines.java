@@ -47,7 +47,6 @@ public final class RoutineLines {
     public static final double MAX_WAIT_SECONDS = 86400;
 
     private static final Pattern ID = Pattern.compile("[A-Za-z0-9_-]{1," + MAX_ID + "}");
-    private static final Pattern INT = Pattern.compile("[+-]?\\d{1,9}");
     // what baritone's own goto takes for a coordinate: a number, ~, or ~ with an offset
     private static final Pattern COORD = Pattern.compile("[+-]?\\d{1,9}|~([+-]?\\d{1,9})?");
     private static final Set<String> SELF = Set.of("custom", "custom2");
@@ -99,10 +98,20 @@ public final class RoutineLines {
         return w.size() >= 2 && WAYPOINT_LABELS.contains(w.get(0).toLowerCase(Locale.ROOT)) && w.get(1).equalsIgnoreCase("goto");
     }
 
+    // "goto 1 64 -3 nether" or "goto the_end": a goto that ends in a dimension. those are raw steps now, a Goto step
+    // walks around the world it's in
+    public static boolean isDimensionGoto(String line) {
+        return label(line).equals("goto") && CrossDimensionGoto.endsInDimension(words(rest(line)));
+    }
+
     // what a line is when nobody said (a hand written file, a legacy entry). raw is the honest answer for the rest
     public static RoutineStep.Kind kindOf(String line) {
         if (isWaypointGoto(line)) {
             return RoutineStep.Kind.GOTO;
+        }
+        // an old #custom entry that crossed dimensions keeps running, it just runs as the raw line it always was
+        if (isDimensionGoto(line)) {
+            return RoutineStep.Kind.RAW;
         }
         return switch (label(line)) {
             case "get" -> RoutineStep.Kind.GET;
@@ -228,7 +237,7 @@ public final class RoutineLines {
         return null;
     }
 
-    // goto x y z / goto x z / goto y (+ a dimension), goto <block>, wp goto <name>
+    // goto x y z / goto x z / goto y, goto <block>, wp goto <name>
     private static String gotoProblem(String line, Checks checks) {
         if (isWaypointGoto(line)) {
             return words(line).size() > 2 ? null : "which waypoint?";
@@ -240,18 +249,18 @@ public final class RoutineLines {
         if (w.isEmpty()) {
             return "goto where?";
         }
-        boolean dimension = CrossDimensionGoto.endsInDimension(w);
-        List<String> coords = dimension ? w.subList(0, w.size() - 1) : w;
-        if (coords.size() > 3) {
-            return "that is " + coords.size() + " numbers, a position is at most 3 (x y z)";
+        // a dimension change is a portal trip with its own ways to go wrong, the goto step doesn't promise that.
+        // the raw step still runs the same line
+        if (CrossDimensionGoto.endsInDimension(w)) {
+            return "use a Raw step to change dimension";
         }
-        if (!dimension && coords.size() == 1 && !COORD.matcher(coords.get(0)).matches()) {
-            return checks.blockProblem(coords.get(0));
+        if (w.size() > 3) {
+            return "that is " + w.size() + " numbers, a position is at most 3 (x y z)";
         }
-        for (String c : coords) {
-            if (dimension && !INT.matcher(c).matches()) {
-                return "with a dimension the coordinates have to be plain numbers, \"" + c + "\" isn't";
-            }
+        if (w.size() == 1 && !COORD.matcher(w.get(0)).matches()) {
+            return checks.blockProblem(w.get(0));
+        }
+        for (String c : w) {
             if (!COORD.matcher(c).matches()) {
                 return "\"" + c + "\" is not a coordinate";
             }
@@ -292,7 +301,7 @@ public final class RoutineLines {
             // a missing one stays where the player is, which is what ~ means to baritone's goto
             coords = join(join(x.isEmpty() ? "~" : x, y), z.isEmpty() ? "~" : z);
         }
-        return join(join("goto", coords), field(f, "dimension"));
+        return join("goto", coords);
     }
 
     // the line -> the editor's fields, so a saved step opens the way it was typed
@@ -318,16 +327,11 @@ public final class RoutineLines {
             out.put("waypoint", String.join(" ", w.subList(2, w.size())));
             return;
         }
-        List<String> w = words(rest(line));
-        boolean dimension = CrossDimensionGoto.endsInDimension(w);
-        List<String> coords = dimension ? w.subList(0, w.size() - 1) : w;
+        List<String> coords = words(rest(line));
         boolean allCoords = coords.stream().allMatch(c -> COORD.matcher(c).matches());
-        if (!dimension && (!allCoords || coords.isEmpty())) {
-            out.put("block", rest(line));
-            return;
-        }
-        if (!allCoords || coords.size() > 3) {
-            // not something the coordinate boxes can hold, so it opens as typed and the checks say what is wrong
+        // not something the coordinate boxes can hold, so it opens as typed and the checks say what is wrong. that
+        // includes a dimension on the end: there's no box for it, and dropping it on the next save would be sneaky
+        if (!allCoords || coords.isEmpty() || coords.size() > 3) {
             out.put("block", rest(line));
             return;
         }
@@ -344,9 +348,6 @@ public final class RoutineLines {
             }
             default -> {
             }
-        }
-        if (dimension) {
-            out.put("dimension", w.get(w.size() - 1).toLowerCase(Locale.ROOT));
         }
     }
 

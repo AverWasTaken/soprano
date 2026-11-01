@@ -439,6 +439,12 @@ public final class Icons {
                 line(g, 15.5f, 9.5f, 20.5f, 14.5f);
                 line(g, 20.5f, 9.5f, 15.5f, 14.5f);
             }
+            case ROUTINE -> {
+                line(g, 3, 6, 15, 6);
+                line(g, 3, 12, 11, 12);
+                line(g, 3, 18, 11, 18);
+                poly(g, true, 15, 11, 21, 15.5f, 15, 20);
+            }
         }
     }
 
