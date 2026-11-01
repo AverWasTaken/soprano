@@ -19,6 +19,8 @@ package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.RoutineRunner;
+import adris.altoclef.chains.UserTaskChain;
 import adris.altoclef.tasks.construction.CoverWithBlocksTask;
 import adris.altoclef.tasks.construction.CoverWithSandTask;
 import adris.altoclef.tasks.entity.HeroTask;
@@ -31,8 +33,14 @@ import baritone.altoclef.AltoClefBridge;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.command.ICommand;
+import baritone.api.command.argument.ICommandArgument;
 import baritone.api.command.exception.CommandException;
+import baritone.api.command.exception.CommandUnhandledException;
+import baritone.api.command.exception.ICommandException;
 import baritone.api.command.manager.ICommandManager;
+import baritone.api.utils.Pair;
+import baritone.command.argument.ArgConsumer;
+import baritone.command.manager.CommandManager;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -59,6 +67,8 @@ public final class AltoClefCommands {
 
     private static final Runnable NOOP = () -> {
     };
+    private static final UserTaskChain.Listener NOOP_LISTENER = outcome -> {
+    };
 
     // bumped by #stop. a "a;b;c" line that sees a different number than it started with was stopped on purpose, and
     // starting b after the user hit stop would be rude
@@ -72,14 +82,16 @@ public final class AltoClefCommands {
     }
 
     private static final class Dispatch {
-        final Runnable onFinish;
+        // a ";" line's next part goes in through UserTaskChain.legacy, so it keeps the old meaning exactly. a routine
+        // step hands its own listener in and gets told about a replace too
+        final UserTaskChain.Listener onEnd;
         // true when the line came from a whisper, so a command that runs more lines (custom) keeps them on the leash
         final boolean butler;
         boolean taken;
         Exception failure;
 
-        Dispatch(Runnable onFinish, boolean butler) {
-            this.onFinish = onFinish;
+        Dispatch(UserTaskChain.Listener onEnd, boolean butler) {
+            this.onEnd = onEnd;
             this.butler = butler;
         }
     }
@@ -106,6 +118,7 @@ public final class AltoClefCommands {
                 new CustomCommand(baritone),
                 new GamerCommand(baritone),
                 new SchemCommand(baritone),
+                new WaitCommand(baritone),
                 new TaskCommand(baritone, new String[]{"hero"}, "Kill all hostile mobs",
                         HeroTask::new,
                         "Hunts down every hostile mob it can find and keeps going until stopped."),
@@ -163,6 +176,8 @@ public final class AltoClefCommands {
     // called when somebody hits stop, see AltoClefBridge#cancelUserTask
     public static void abortSequences() {
         generation++;
+        // a running routine is a sequence too, and one that a stop has to end for good
+        RoutineRunner.get().cancel("stopped");
     }
 
     // how many stops there have been, so a whisper can tell "finished" from "somebody stopped it"
@@ -234,7 +249,7 @@ public final class AltoClefCommands {
             onError.accept("command " + label + " does not exist");
             return;
         }
-        Dispatch d = new Dispatch(next, butler);
+        Dispatch d = new Dispatch(UserTaskChain.legacy(next), butler);
         Dispatch previous = current;
         current = d;
         try {
@@ -357,16 +372,57 @@ public final class AltoClefCommands {
         }
     }
 
+    // one routine step. not runOne: that one goes through the manager, which prints a failure and tells nobody, and a
+    // routine has to stop on a failed step. the chat still gets the same message the manager would have printed
+    public static RoutineRunner.Start runForRoutine(String line, UserTaskChain.Listener onEnd) {
+        Pair<String, List<ICommandArgument>> expanded = CommandManager.expand(line.trim());
+        String label = expanded.first();
+        ICommandManager manager = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager();
+        ICommand command = manager.getCommand(label);
+        if (command == null) {
+            return RoutineRunner.Start.failed("there is no command called " + label);
+        }
+        ArgConsumer args = new ArgConsumer(manager, expanded.second());
+        Dispatch d = new Dispatch(onEnd, false);
+        Dispatch previous = current;
+        current = d;
+        try {
+            command.execute(label, args);
+        } catch (Throwable t) {
+            ICommandException e = t instanceof ICommandException ce ? ce : new CommandUnhandledException(t);
+            e.handle(command, args.getArgs());
+            return RoutineRunner.Start.failed(t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
+        } finally {
+            current = previous;
+        }
+        if (d.failure != null) {
+            return RoutineRunner.Start.failed(String.valueOf(d.failure.getMessage()));
+        }
+        return d.taken ? RoutineRunner.Start.WAITING : RoutineRunner.Start.DONE;
+    }
+
+    // a stock command whose job carries on in baritone (goto <block>, wp goto). null when it went in, else why not
+    public static String runStock(String line) {
+        RoutineRunner.Start s = runForRoutine(line, NOOP_LISTENER);
+        return s.failed() ? s.error() : null;
+    }
+
     // what AltoClefCommand uses to tell the line that is running about its task. a command that never calls either
     // of these gets treated as finished once it returns, see runOne
 
     static Runnable takeFinish() {
+        UserTaskChain.Listener l = takeListener();
+        return l == NOOP_LISTENER ? NOOP : () -> l.ended(UserTaskChain.Outcome.FINISHED);
+    }
+
+    // the whole listener, for a command that starts a user task: the chain tells it a finish from a cancel and a replace
+    static UserTaskChain.Listener takeListener() {
         Dispatch d = current;
         if (d == null || d.taken) {
-            return NOOP;
+            return NOOP_LISTENER;
         }
         d.taken = true;
-        return d.onFinish;
+        return d.onEnd;
     }
 
     static void finishNow() {

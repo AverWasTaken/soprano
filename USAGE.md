@@ -186,7 +186,8 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own, and it saves its progress per world, so after a relog, a stop or a crash it carries on from the phase it was in. `gamer status` shows the phase and what has been found, `gamer reset` forgets the saved run (not while it is running), `gamer trace` writes the last 300 log lines to the log file, and `gamer phase <name>` starts in that phase (`gather`, `iron`, `portal`, `nether`, `eyes`, `return`, `locate`, `room`, `open`, `end_prep` or `dragon`), for testing one part of the run
 - `schem nether yes|no` answers a survival schematic build that wants to go to the nether, see `schem` under Mining, building and farming. Owner only, a whisper can't answer it
 - `locate_structure <structure>` to find a structure, like `desert_temple` or `stronghold`
-- `custom <name>` to run a task list from `CustomTasks.json`
+- `custom <name>` to run a task list from `CustomTasks.json` (the same lists the commands tab saves; the tab runs them step by step and each step waits until the one before it really got there)
+- `wait <seconds>` to stand still that long, mostly as a pause between steps of a task list or a `;` line
 - `status` to see what the running task is doing, `inventory [item]` to list or count, `coords` to get the bot's coordinates, `gamma [value]` to set the brightness
 - `altoreload` to re-read its json configs
 - `whitelist <player>` to let a player whisper commands to the bot, `whitelist remove <player>` to take them off and `whitelist list` to see who is on it. It edits `altoclef_butler_whitelist.txt` for you (comments stay) and works right away, no `altoreload`. Owner only, a whisper can never run it. See the whisper section below

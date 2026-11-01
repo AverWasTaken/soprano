@@ -18,13 +18,55 @@ import adris.altoclef.util.time.Stopwatch;
 public class UserTaskChain extends SingleTaskChain {
 
     private final Stopwatch _taskStopwatch = new Stopwatch();
-    private Runnable _currentOnFinish = null;
+    private Listener _currentOnFinish = null;
+    // true while cancel() runs, so the finish it calls knows the task did not get there on its own
+    private boolean _cancelling;
 
     private boolean _runningIdleTask;
     private boolean _nextTaskIdleFlag;
 
     public UserTaskChain(TaskRunner runner) {
         super(runner);
+    }
+
+    // how a user task ended. the old callback could not tell these apart: a cancel, a crash and a real finish all
+    // looked the same, and a task that got replaced never called anything at all
+    public enum Outcome {
+        FINISHED,
+        CANCELLED,
+        REPLACED
+    }
+
+    public interface Listener {
+        void ended(Outcome outcome);
+    }
+
+    // the old Runnable callbacks keep their exact old meaning: run on a finish and on a cancel, never on a replace. the
+    // ";" lines lean on that (a stop bumps the generation and the line ends itself), and a replaced "a;b" must not go
+    // on to start b over whatever replaced it
+    public static Listener legacy(Runnable onFinish) {
+        if (onFinish == null) {
+            return null;
+        }
+        return outcome -> {
+            if (outcome != Outcome.REPLACED) {
+                onFinish.run();
+            }
+        };
+    }
+
+    // a task the chain dropped on its own is only finished when it was not stopped. the tick path gets here for
+    // isFinished || stopped, and a stopped root never got there by itself. pure so a test can ask
+    static Outcome outcomeOf(boolean cancelling, Task oldTask) {
+        if (cancelling || oldTask == null || oldTask.stopped()) {
+            return Outcome.CANCELLED;
+        }
+        return Outcome.FINISHED;
+    }
+
+    // the callback a new one pushes out, if it never got to run. that one gets told it was replaced
+    static Listener pushedOut(Listener current, Listener next) {
+        return current != null && current != next ? current : null;
     }
 
     private static String prettyPrintTimeDuration(double seconds) {
@@ -61,8 +103,14 @@ public class UserTaskChain extends SingleTaskChain {
     public void cancel(AltoClef mod) {
         // installed but not ticked yet is not active, and that one has to be cancellable too
         if (_mainTask != null) {
-            stop(mod);
-            onTaskFinish(mod);
+            boolean before = _cancelling;
+            _cancelling = true;
+            try {
+                stop(mod);
+                onTaskFinish(mod);
+            } finally {
+                _cancelling = before;
+            }
         }
     }
 
@@ -83,10 +131,24 @@ public class UserTaskChain extends SingleTaskChain {
     }
 
     public void runTask(AltoClef mod, Task task, Runnable onFinish) {
+        runTask(mod, task, legacy(onFinish));
+    }
+
+    public void runTask(AltoClef mod, Task task, Listener onFinish) {
         _runningIdleTask = _nextTaskIdleFlag;
         _nextTaskIdleFlag = false;
 
+        // whoever was waiting on the old task hears about it now, or it waits forever. told before the new task goes in,
+        // so it can't mistake the new one for its own
+        Listener replaced = pushedOut(_currentOnFinish, onFinish);
         _currentOnFinish = onFinish;
+        if (replaced != null) {
+            try {
+                replaced.ended(Outcome.REPLACED);
+            } catch (Throwable t) {
+                AltoClefBridge.onHookError(t);
+            }
+        }
 
         if (!_runningIdleTask) {
             Debug.logMessage("User Task Set: " + task.toString());
@@ -98,6 +160,9 @@ public class UserTaskChain extends SingleTaskChain {
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
+        // asked before anything below: the runner disable stops every chain, which stops and drops our task, and a
+        // finished task would read as cancelled afterwards
+        Outcome outcome = outcomeOf(_cancelling, _mainTask);
         boolean shouldIdle = AltoSettings.shouldRunIdleCommandWhenNotActive();
         if (!shouldIdle) {
             // Stop. (with the idle gate on the runner stays up so the survival chains keep going)
@@ -121,9 +186,12 @@ public class UserTaskChain extends SingleTaskChain {
             oldTask.letGoOfKeys(mod);
         }
         _mainTask = null;
-        if (_currentOnFinish != null) {
-            //noinspection unchecked
-            _currentOnFinish.run();
+        // let go of it before it runs: the callback may start the next task, and that one must not find this callback
+        // still waiting and tell it it was replaced
+        Listener onFinish = _currentOnFinish;
+        _currentOnFinish = null;
+        if (onFinish != null) {
+            onFinish.ended(outcome);
         }
         // our `onFinish` might have triggered more tasks.
         boolean actuallyDone = _mainTask == null;

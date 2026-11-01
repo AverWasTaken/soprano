@@ -19,6 +19,7 @@ package baritone.altoclef;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.RoutineRunner;
 import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
@@ -140,7 +141,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     }
 
     // the instance if it's up and hasn't given up, never creates it
-    static AltoClef instanceOrNull() {
+    public static AltoClef instanceOrNull() {
         return isAlive() ? altoClef : null;
     }
 
@@ -276,6 +277,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     // quit to title, disconnect, kicked: no task and no override gets to follow the player into the next world. a
     // dimension change is not this, the player never goes null there and tasks like cross dimension goto rely on that
     private void onWorldLeft() {
+        // a routine says why it ended, the abort below would only say "stopped"
+        RoutineRunner.get().cancel("left the world");
         AltoClefCommands.abortSequences();
         try {
             altoClef.onWorldLeft();
@@ -314,6 +317,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             if (player == null) {
                 return;
             }
+            // a routine never carries on after a death, whatever the respawn does
+            RoutineRunner.get().onDeath();
             DeathStash.Death death = DeathStash.snapshot(player);
             DeathStash.put(death);
             Debug.logInternal("death: recorded at " + death.where() + " in " + death.dimension() + " (" + death.cause() + ")");
