@@ -188,11 +188,12 @@ public final class RecoverRules {
         }
     }
 
-    // pile drop ordering. with no pick in the bag the pile's pickaxe goes first (it makes the rest of the dig cheap), then
-    // whatever is nearest
-    public static boolean better(boolean wantsPick, boolean isPick, double dist, boolean bestIsPick, double bestDist) {
-        if (wantsPick && isPick != bestIsPick) {
-            return isPick;
+    // pile drop ordering. tiers are ItemValue's: the pickaxe if we have none (it makes the rest of the dig cheap), then the
+    // pearls and rods, then kit, then the rest. nearest to us within a tier. the bag fills up long before a big pile is
+    // done, so whatever we grab first is what we keep
+    public static boolean better(int tier, double dist, int bestTier, double bestDist) {
+        if (tier != bestTier) {
+            return tier < bestTier;
         }
         return dist < bestDist;
     }
@@ -302,11 +303,10 @@ public final class RecoverRules {
         }
     }
 
-    // the pile with a full bag. a drop that would be the next garbage once it is in (junk, a block we already hold the building
-    // reserve of, or what the garbage pick would land on with the drop in the bag) is making room just to throw it back down and
-    // chase it again: netherrack in, netherrack out, or two stacks taking turns, for ever. leaving it costs nothing, it was going
-    // straight back on the floor anyway
-    public static boolean skipWhenFull(boolean fits, boolean dropJunk, boolean dropIsNextGarbage) {
-        return !fits && (dropJunk || dropIsNextGarbage);
+    // the pile with a full bag. junk (or a block we already hold the building reserve of) is making room just to throw it back
+    // down and chase it again: netherrack in, netherrack out, or two stacks taking turns, for ever. noRoom is DropRoom's NONE,
+    // which also covers a drop that would be the next garbage once it is in. leaving either costs nothing
+    public static boolean skipWhenFull(boolean fits, boolean dropJunk, boolean noRoom) {
+        return !fits && (dropJunk || noRoom);
     }
 }

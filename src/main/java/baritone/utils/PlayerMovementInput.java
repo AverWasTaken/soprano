@@ -56,11 +56,23 @@ public class PlayerMovementInput extends ClientInput {
         }
 
         boolean sneaking = handler.isInputForcedDown(Input.SNEAK);
+        boolean sprinting = handler.isInputForcedDown(Input.SPRINT);
+        if (handler.settleActive()) {
+            // the edge settle owns this tick whatever got forced, here and not in the force map so no clearAllKeys eats it
+            EdgeSettle.Keys keys = handler.settleKeys();
+            up = keys.forward();
+            down = keys.back();
+            left = keys.left();
+            right = keys.right();
+            forwardImpulse = (up ? 1 : 0) - (down ? 1 : 0);
+            leftImpulse = (left ? 1 : 0) - (right ? 1 : 0);
+            jumping = false;
+            sneaking = true;
+            sprinting = false;
+        }
         // no sneak scaling here, LocalPlayer.modifyInput does the 0.98 and the sneaking speed attribute (scaling it here
         // too made a sneak 0.09 instead of 0.294). and normalized like KeyboardInput, or a diagonal sneak is 1.4x too fast
         this.moveVector = new Vec2(leftImpulse, forwardImpulse).normalized();
-
-        boolean sprinting = handler.isInputForcedDown(Input.SPRINT);
 
         this.keyPresses = new net.minecraft.world.entity.player.Input(up, down, left, right, jumping, sneaking, sprinting);
     }

@@ -80,6 +80,8 @@ public class GamerTask extends Task {
     // what a full inventory (altoThrowAwayUnusedItems, which the run forces on) must never throw away: the gear and
     // materials the End needs, wool until it is beds, the stuff the next phases still have to smelt, trade and craft with
     private static final Item[] PROTECTED = protectedItems();
+    // the same list for ItemValue, which wants it whether or not a run is going
+    private static final Set<Item> GUARDED = new HashSet<>(List.of(PROTECTED));
     private static final Block[] TRACKED = ArrayUtils.addAll(new Block[]{
             Blocks.END_PORTAL_FRAME, Blocks.END_PORTAL, Blocks.CRAFTING_TABLE, Blocks.CHEST, Blocks.SPAWNER,
             Blocks.NETHER_PORTAL}, ItemHelper.itemsToBlocks(ItemHelper.BED));
@@ -222,6 +224,10 @@ public class GamerTask extends Task {
                 new EyesPhase(), new ReturnPhase(), new LocatePhase(), new RoomPhase(), new OpenPhase(), new EndPrepPhase(),
                 new DragonPhase());
         machine = new PhaseMachine(handlers, host);
+    }
+
+    public static boolean guards(Item item) {
+        return GUARDED.contains(item);
     }
 
     private static Item[] protectedItems() {

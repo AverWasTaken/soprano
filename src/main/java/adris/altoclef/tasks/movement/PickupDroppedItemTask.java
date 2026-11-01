@@ -7,14 +7,13 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
-import adris.altoclef.tasks.slot.FreeSlotPlan;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
-import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.DropRoom;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -22,7 +21,6 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.progresscheck.WaterPickupWatchdog;
 import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -319,23 +317,13 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         boolean touching = _mod.getEntityTracker().isCollidingWithPlayer(itemEntity);
         if (touching) {
             if (_freeInventoryIfFull) {
-                boolean fits = hasRoomFor(_mod, itemEntity.getItem());
-                boolean wearable = !fits && StorageHelper.wouldWear(_mod, itemEntity.getItem());
-                ItemPickupRules.Room room = ItemPickupRules.room(fits, ItemPickupRules.canMakeRoom(canMakeRoom(_mod), wearable,
-                        wearable && lastResortThrowable(_mod)));
-                if (room == ItemPickupRules.Room.MAKE_ROOM) {
-                    // the drop would be the next thing thrown, so making room for it is a loop with extra steps. same skip as the death pile
-                    if (!fits && StorageHelper.garbageView(_mod).dropIsNext(itemEntity.getItem())) {
-                        _gaveUpReason = "no room";
-                        BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
-                        _currentDrop = null;
-                        _progressChecker.reset();
-                        return null;
-                    }
-                    return new EnsureFreeInventorySlotTask(wearable);
+                // same answer the death pile filters by, so a drop it walked us to is never one we refuse here
+                StorageHelper.Room room = StorageHelper.garbageView(_mod).room(itemEntity.getItem());
+                if (room.kind() == DropRoom.Kind.EVICT) {
+                    return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim());
                 }
-                if (room == ItemPickupRules.Room.GIVE_UP) {
-                    Debug.logMessage("Giving up on " + itemEntity.getItem().getItem().getDescriptionId() + ", the bag is full of things we keep.");
+                if (room.kind() == DropRoom.Kind.NONE) {
+                    Debug.logMessage("no room for " + itemEntity.getItem().getItem().getDescriptionId() + ", nothing in the bag may go");
                     _gaveUpReason = "no room";
                     BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
                     _currentDrop = null;
@@ -349,28 +337,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     // public for RecoverItemsTask, which skips a drop that would only be thrown again
     public static boolean hasRoomFor(AltoClef mod, ItemStack drop) {
-        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
-        int[] counts = new int[slots.size()];
-        boolean[] sameKind = new boolean[slots.size()];
-        for (int i = 0; i < counts.length; i++) {
-            ItemStack there = slots.get(i);
-            counts[i] = there.isEmpty() ? 0 : there.getCount();
-            sameKind[i] = ItemStack.isSameItemSameComponents(there, drop);
-        }
-        return ItemPickupRules.hasRoom(counts, sameKind, drop.getMaxStackSize());
-    }
-
-    // the last resort stack has to be one the free slot task may actually throw, else it swaps protected stacks round for ever
-    private static boolean lastResortThrowable(AltoClef mod) {
-        return StorageHelper.getLastResortSlot(mod)
-                .map(slot -> ItemHelper.canDropStack(mod, StorageHelper.getItemStackInSlot(slot))).orElse(false);
-    }
-
-    // same question EnsureFreeInventorySlotTask asks, no container because we are standing in the open
-    private static boolean canMakeRoom(AltoClef mod) {
-        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        return FreeSlotPlan.plan(cursor.isEmpty(), ItemHelper.canDropStack(mod, cursor),
-                StorageHelper.getGarbageSlot(mod).isPresent(), false) != FreeSlotPlan.Action.STUCK;
+        return StorageHelper.hasRoomFor(mod, drop);
     }
 
     @Override
