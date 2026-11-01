@@ -55,8 +55,8 @@ public final class DropRoom {
     }
 
     // who a core drop pushes out, -1 for nobody. first a surplus (a second stack of something, a worse tool of a kind we
-    // hold better, wool past the bed's three), then one build stack when we hold two or more, then a
-    // plain stack that is neither. the smallest stack of the winning group goes, it's the least to lose
+    // hold better, wool past the bed's three), then one build stack when we hold two or more, then any
+    // plain tier-3 stack. the smallest stack of the winning group goes, it's the least to lose
     public static int victim(List<Stack> bag) {
         Map<Item, Integer> stacks = new HashMap<>();
         Map<String, Integer> bestTool = new HashMap<>();
@@ -85,8 +85,9 @@ public final class DropRoom {
                 surplus = smaller(bag, surplus, i);
             } else if (s.build()) {
                 if (builds >= 2) build = smaller(bag, build, i);
-            } else if (s.tier() == ItemValue.REST && stacks.get(s.stack().getItem()) >= 2) {
-                // never the last of its item. a second stack already reads as surplus above, so today this one never wins
+            } else if (s.tier() == ItemValue.REST) {
+                // a lone stack of sticks or string is still worth less than a pearl. the stuff whose last one matters
+                // (crafting table, flint and steel, potions) sits in the never list or the kit tier, not here
                 plain = smaller(bag, plain, i);
             }
         }

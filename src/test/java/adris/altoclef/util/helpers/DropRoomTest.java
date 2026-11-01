@@ -99,8 +99,9 @@ public class DropRoomTest {
     }
 
     @Test
-    public void aLoneTierThreeStackIsTheLastOfItsItem() {
-        assertSame(Decision.NO, pearl(with(rest(Items.STRING, 9))));
+    public void pearlPushesOutALoneTierThreeStack() {
+        List<Stack> bag = with(rest(Items.STRING, 9));
+        assertEquals(new Decision(Kind.EVICT, Source.VICTIM, bag.size() - 1), pearl(bag));
     }
 
     @Test
