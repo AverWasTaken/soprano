@@ -41,6 +41,9 @@ public final class WorkbenchRules {
     public static final long DRIVE_GRACE_TICKS = 100;
     // ...unless the block is already down and only the drop is left, that one gets a good while longer before it is given up
     public static final long DROP_GIVE_UP_TICKS = 1200;
+    // a drop pickup that has had nothing to chase for this long (2 s) is exploring for it, and the explore does not stop for
+    // anything. the drop is right where the block was or it is gone, a minute of that walks us out to sea
+    public static final int DROP_WANDER_TICKS = 40;
     // a station that comes back into NEAR after it was out of it only counts for the planner again once we are well inside
     public static final double RETURN_SHARE = 0.75;
     // furnace and smoker get a smaller latch than the table: once out of NEAR they only count for the planner again this many
@@ -449,6 +452,20 @@ public final class WorkbenchRules {
         b.broken = false;
         b.retryAt = now + RETRY_GAP_TICKS;
         return b.tries >= MAX_TRIES;
+    }
+
+    // the wander streak after one more run of the drop pickup. one run with something to chase starts it over
+    public static int dropWanderStreak(int streak, boolean wandering) {
+        return wandering ? streak + 1 : 0;
+    }
+
+    // why the drop is a lost cause, null = keep collecting. a pickup that gave up on our drop (no room, no path, in water) is not
+    // going to change its mind before the ban runs out, and one that keeps wandering found nothing to give up on
+    public static String dropGone(String gaveUpReason, int wanderStreak) {
+        if (gaveUpReason != null) {
+            return "drop gave up (" + gaveUpReason + ")";
+        }
+        return wanderStreak >= DROP_WANDER_TICKS ? "drop-wandering, nothing to chase for " + wanderStreak + " ticks" : null;
     }
 
     // the item is back once there is one more than when we began

@@ -513,4 +513,24 @@ public class GarbageRulesTest {
         // a worse sword next to it still goes, the spare stays
         assertEquals(2, next(List.of(e(Items.IRON_SWORD, 1), e(Items.IRON_SWORD, 1), e(Items.WOODEN_SWORD, 1))));
     }
+
+    // the cobble is past the reserve so it goes, and the furnace we mined to carry takes its slot. with the cobble gone the dirt
+    // alone is under the reserve, and the next pick by "smallest stack" is that one furnace: the pickup said no to our own
+    // station. guarded (canDropStack says no for a protected item, so mayGo is false) it is never the pick and the cobble goes
+    @Test
+    public void aGuardedStationIsNotTheNextPickSoTheJunkMakesRoomForIt() {
+        List<GarbageRules.Entry> bag = List.of(junk(Items.COBBLESTONE, 40), junk(Items.DIRT, 30));
+        int pick = GarbageRules.nextPick(bag, 64, true, 0, 0);
+        assertEquals(0, pick);
+        GarbageRules.Entry unguarded = e(Items.FURNACE, 1);
+        GarbageRules.Entry guarded = new GarbageRules.Entry(new ItemStack(Items.FURNACE, 1), false, -1);
+        assertTrue(GarbageRules.dropIsNextPick(bag, pick, unguarded, 64, true, 0, 0));
+        assertFalse(GarbageRules.dropIsNextPick(bag, pick, guarded, 64, true, 0, 0));
+        // and the room call that follows: refused before, the cobble goes now
+        assertEquals(DropRoom.Kind.NONE, DropRoom.decide(false, pick, true, false, false, List.of()).kind());
+        DropRoom.Decision now = DropRoom.decide(false, pick, GarbageRules.dropIsNextPick(bag, pick, guarded, 64, true, 0, 0), false, false, List.of());
+        assertEquals(DropRoom.Kind.EVICT, now.kind());
+        assertEquals(DropRoom.Source.GARBAGE, now.source());
+        assertEquals(pick, now.slot());
+    }
 }
