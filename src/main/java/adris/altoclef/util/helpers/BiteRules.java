@@ -148,9 +148,12 @@ public final class BiteRules {
     // a bite in progress gives way to the projectile shield only when the thing is about to land: raising it quick-moves the
     // food out of the hand, and the bite starts over from nothing
     public static final double SHIELD_IMPACT_TICKS = 10;
+    // a ghast ball speeds up on the way in and ticksToClosest assumes today's speed, so its clock reads long: 16 on it is
+    // about when the shield still has its 5 ticks to come up. a lost bite costs a second, a ghast ball costs the run
+    public static final double SHIELD_IMPACT_FIREBALL_TICKS = 16;
 
-    public static boolean shieldMayStart(boolean biting, double impactTicks) {
-        return !biting || impactTicks <= SHIELD_IMPACT_TICKS;
+    public static boolean shieldMayStart(boolean biting, double impactTicks, boolean fireball) {
+        return !biting || impactTicks <= (fireball ? SHIELD_IMPACT_FIREBALL_TICKS : SHIELD_IMPACT_TICKS);
     }
 
     // starving behind a stop that does not come. only water and a boat are worth the risk of chewing on the move: a swim

@@ -1,5 +1,8 @@
 package adris.altoclef.util.helpers;
 
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
+import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
 import net.minecraft.world.phys.Vec3;
 import org.junit.Test;
 
@@ -55,5 +58,18 @@ public class ProjectileHelperTest {
         Vec3 hit = ProjectileHelper.calculateArrowClosestApproach(
                 new Vec3(0, 70, 0), new Vec3(1, 0, 0), 0, new Vec3(-4, 70, 0));
         assertEquals(-4, hit.x, EPS);
+    }
+
+    @Test
+    public void onlyAGhastBallIsWatchedFromFurtherOut() {
+        assertEquals(28 * 28, ProjectileHelper.watchRangeSq(LargeFireball.class), EPS);
+        assertEquals(150, ProjectileHelper.watchRangeSq(Arrow.class), EPS);
+        assertEquals(150, ProjectileHelper.watchRangeSq(SmallFireball.class), EPS);
+    }
+
+    @Test
+    public void theShieldLineSaysWhatHowSoonAndHowFar() {
+        assertEquals("shield: up for LargeFireball, impact 12t, dist 21.4",
+                ProjectileHelper.shieldLine(LargeFireball.class, 11.6, 21.38));
     }
 }
