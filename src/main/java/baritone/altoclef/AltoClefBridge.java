@@ -263,6 +263,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         }
         wasInGame = true;
         try {
+            PtShots.tick();
             LocalPlayer me = Minecraft.getInstance().player;
             if (me != null) {
                 DeathStash.watch(me);
