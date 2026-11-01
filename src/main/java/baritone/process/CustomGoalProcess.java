@@ -28,6 +28,7 @@ import baritone.api.process.PathingCommandType;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.utils.BaritoneProcessHelper;
+import baritone.utils.InputOverrideHandler;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
@@ -136,6 +137,28 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                 return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
             }
+            case CENTRING: {
+                net.minecraft.client.player.LocalPlayer p = ctx.player();
+                InputOverrideHandler keys = baritone.getInputOverrideHandler();
+                double cx = p == null ? 0 : Math.floor(p.getX()) + 0.5 - p.getX(), cz = p == null ? 0 : Math.floor(p.getZ()) + 0.5 - p.getZ();
+                double off = Math.sqrt(cx * cx + cz * cz), speed = p == null ? 0 : p.getDeltaMovement().horizontalDistance();
+                boolean there = off < 0.1 && speed < 0.03;
+                if (p == null || !p.isInWater() || there || ++centreTicks > CENTRE_TICKS) {
+                    keys.setInputForceState(Input.MOVE_FORWARD, false);
+                    keys.setInputForceState(Input.JUMP, false);
+                    this.state = State.PATH_REQUESTED;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
+                // (holding jump the whole time: let go in a lone water block and we sink out of the bottom of it)
+                keys.setInputForceState(Input.JUMP, true);
+                if (off > 0.1 && !(off < 0.3 && speed > 0.06)) {
+                    baritone.getLookBehavior().updateTarget(new Rotation((float) Math.toDegrees(Math.atan2(cz, cx)) - 90F, 0F), true);
+                    keys.setInputForceState(Input.MOVE_FORWARD, true);
+                } else {
+                    keys.setInputForceState(Input.MOVE_FORWARD, false);
+                }
+                return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+            }
             case PATH_REQUESTED:
                 // return FORCE_REVALIDATE_GOAL_AND_PATH just once
                 tableMisses = PendingTables.misses();
@@ -153,8 +176,20 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                     this.state = State.WAITING_FOR_TABLES;
                     return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
                 }
+                if (calcFailed && waterRetries < WATER_RETRIES && ctx.player() != null && ctx.player().isInWater()) {
+                    // floating in water with nothing found from here: over to the middle of the block (where the jumps out of
+                    // it are worked out from, and where the rest of the water is all round), treading water, and ask again.
+                    // never just stop: it's somewhere a player would swim about a bit and look again
+                    waterRetries++;
+                    centreTicks = 0;
+                    if (waterRetries == 1) {
+                        logDebug("No way on from the edge of the water, moving to the middle of it and looking again");
+                    }
+                    this.state = State.CENTRING;
+                    return new PathingCommand(this.goal, PathingCommandType.REQUEST_PAUSE);
+                }
                 if (calcFailed && airRetries < AIR_RETRIES && ctx.player() != null && !ctx.player().onGround()
-                        && !ctx.player().onClimbable()) {
+                        && !ctx.player().onClimbable() && !ctx.player().isInWater()) {
                     // planned from mid air (falling off a jump): nowhere to stand yet, so of course nothing. a parkour server
                     // puts us back on a checkpoint in a moment; ask again from wherever we end up
                     airRetries++;
@@ -200,6 +235,7 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 if (baritone.getPathingBehavior().getCurrent() != null) {
                     airRetries = 0; // (a plan came through: the retries start over)
                     groundRetries = 0;
+                    waterRetries = 0;
                     if (baritone.getPathingBehavior().getCurrent().getPosition() > 2) {
                         dropRetries = 0; // (and it's getting somewhere)
                     }
@@ -227,6 +263,10 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
     private static final int TABLE_RETRIES = 8, TABLE_WAIT_TICKS = 600, AIR_RETRIES = 20, AIR_WAIT_TICKS = 20, GROUND_WAIT_TICKS = 40;
     // how many times a goal may step off to be put back, and how long one goes on for
     private static final int DROP_RETRIES = 3, DROP_TICKS = 60;
+    // in water with no path: how many times it swims to the middle and looks again before the usual giving up, and how long
+    // it gives the swim
+    private static final int WATER_RETRIES = 30, CENTRE_TICKS = 40;
+    private int waterRetries, centreTicks;
     private int tableRetries, tableWaitTicks, airRetries, airWaitTicks, groundRetries, dropRetries, dropTicks;
     private net.minecraft.world.phys.Vec3 dropFrom = net.minecraft.world.phys.Vec3.ZERO;
     private long tableMisses;
@@ -310,8 +350,12 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         this.airRetries = 0;
         this.groundRetries = 0;
         this.dropRetries = 0;
-        if (this.state == State.DROPPING) {
+        this.waterRetries = 0;
+        if (this.state == State.DROPPING || this.state == State.CENTRING) {
             baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, false);
+        }
+        if (this.state == State.CENTRING) {
+            baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, false);
         }
         this.state = State.NONE;
         this.goal = null;
@@ -330,6 +374,8 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         // a search came back empty after the neo / momentum / climb tables told it "don't know yet": waiting for them
         WAITING_FOR_TABLES,
         // stepping off the course to be put back on it (dropDirection)
-        DROPPING
+        DROPPING,
+        // floating in water with no way on found: over to the middle of the block and look again
+        CENTRING
     }
 }

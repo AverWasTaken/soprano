@@ -40,8 +40,18 @@ public final class JumpPolicy {
     // the furthest a fall may go: SAFE_FALL, or further if maxFallHeightNoWater says falls that far are fine (a parkour server
     // with fall damage off, where CubeCraft's levels drop four or five blocks at a time)
     public static double safeFall() {
-        return Math.max(SAFE_FALL, baritone.Baritone.settings().maxFallHeightNoWater.value);
+        if (noSettings) {
+            return SAFE_FALL;
+        }
+        try {
+            return Math.max(SAFE_FALL, baritone.Baritone.settings().maxFallHeightNoWater.value);
+        } catch (Throwable t) {
+            noSettings = true; // (no game round us: the tests)
+            return SAFE_FALL;
+        }
     }
+
+    private static boolean noSettings;
     // standing still, near enough. below this the slide left is under a hundredth of a block
     static final double STILL = 0.02;
 

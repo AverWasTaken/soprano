@@ -1,10 +1,29 @@
-# Parkour Lab v8 (bot v17)
+# Parkour Lab v8 (bot v18)
 
 A test course for Soprano's parkour: 26 sections, each aimed at one kind of jump, ending in a finale that strings a bit of every section together. Next to it, in rows to the south, the CubeCraft levels you recorded, rebuilt block for block, each a course of its own.
 
 The Lab is built at **x 1000, y 150, z 1000**, floating in the air, and runs east (+x) for about 890 blocks. Gold pads are checkpoints. Fall below y 140, or into lava, and you're put back on your last one.
 
-## What's new in bot v17 (course v8: section 15 has a new jump, everything after it is 21 blocks further east)
+## What's new in bot v18 (same course, v8)
+
+**No more giving up at the edge of the water.** In a lone water block (the CubeCraft kind), the bot found no way on from the edge of the block but did from the middle. After its retries ran out it stopped looking for good. Four things fixed it:
+- **Jumps out of a water block are tried from more places**: the middle, the edge on the way out, and the other edges, from the bottom of the block and from near its top. They used to be tried from the middle only. A real fall into the water never ends up in the middle, and some of the way on from the Lab's section 25 blocks (1766 165 995 and 1768 162 995) wasn't found from there at all.
+- **Sinking out of the bottom of the block counts as still being in it.** The bot used to plan from the air under the block, where every way on is a fall.
+- **When it's in water and nothing turns up**, it swims to the middle of the block (holding jump, so it doesn't sink out) and looks again. This is what you were doing by hand. It does this up to 30 times before the usual give up.
+- **The jump net no longer skips jumps out of water.** It learned on jumps from standing.
+
+**Tests.** JumpPilotTest and ChainTest work again. They had been failing on settings that aren't there outside the game, which JumpPolicy.safeFall and the v16 lag meter both read. Run the tungsten tests one class at a time: a class that sets up the game's registries and one that doesn't can't share a JVM (that's older than this).
+
+**How v18 did:**
+
+| | result |
+|---|---|
+| Lab 25 Water blocks, put in at the edge of each water block (1764, 1765, 1766, 1768) | way found and section done every time, 6 to 9 s, 0 falls. Before: no way from 1766 or 1768 even from the middle, and from the 1764 edge it stopped at the 1766 one |
+| Lab 25 from its checkpoint | 10.3 s, 0 falls (the full run before: 21.7 s, 2 falls) |
+| Aqua, Candy | 41 s / 0 falls, 23 s / 0 |
+| Desert | checkpoint 3 of 8, as before (stuck on dry jumps after it, not the water) |
+
+## What was new in bot v17 (course v8: section 15 has a new jump, everything after it is 21 blocks further east)
 
 **The triple neo from right behind the wall.** You were right, it's possible in vanilla. It takes momentum: no run up from standing gets round a wall three thick from behind, but a run of bunny hops does. The bot (`RunNeo`, `allowRunningNeos`, on with `allowNeos`) does it the way you described:
 - it hops along the runway, out towards its open side edge, every touchdown straight back up, so each hop keeps the jump's push on top of the speed the last flight carried;

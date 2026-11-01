@@ -813,6 +813,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             // or every bob starts the search over and it never gets to the end of one (see treadWater)
             return feet.below();
         }
+        if (!ctx.player().onGround() && ctx.player().isInWater() && ctx.world().getFluidState(feet).isEmpty()
+                && !ctx.world().getFluidState(feet.above()).isEmpty()) {
+            // sinking out of the bottom of a lone water block (the feet already under it, the rest of us still in it): the
+            // water's the start, not the air under it, where every jump is a fall
+            return feet.above();
+        }
         if (!MovementHelper.canWalkOn(ctx, feet.below())) {
             // the lip search runs whether or not onGround says so. onGround blinks on a lip, and every blink used to flip the
             // start between the lip and the block under us, a block lower, which plans a whole different path from a spot

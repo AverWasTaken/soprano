@@ -566,7 +566,8 @@ public final class TungstenJumps {
             if (JumpNetStore.learning()) {
                 feat = JumpNet.features(context, src.x, src.y, src.z, dest.x - src.x, dest.y - src.y, dest.z - src.z);
                 guess = JumpNetStore.net().predict(feat);
-                if (!anyBudget && JumpNetStore.skip(guess)) {
+                // (not out of water: the net learned on jumps from standing, and these are few and cheap)
+                if (!anyBudget && JumpNetStore.skip(guess) && !waterCell(context, src.x, src.y, src.z)) {
                     return null; // (not kept: asked again, it's asked of the net again, and now and then of the sim)
                 }
             }
@@ -1266,12 +1267,30 @@ public final class TungstenJumps {
         PlayerSim sim = new PlayerSim(PlayerSim.Params.vanilla(), world);
         Landing land = landing(context, dest);
         if (waterCell(context, src.x, src.y, src.z)) {
-            // floating in the water block, about where a fall into it ends up: up it and out of the top, the rule's job
-            sim.x = src.x + 0.5;
-            sim.y = src.y + WATER_START;
-            sim.z = src.z + 0.5;
-            JumpPolicy.Rollout r = JumpPolicy.forgiving(sim, land);
-            if (r == null || r.ticks() == 0) {
+            // floating in the water block, about where a fall into it ends up: up it and out of the top, the rule's job.
+            // from the middle, and if not from there, from the edge of the cell on the way out and the other edges. a fall
+            // into one doesn't end up in the middle, and a jump that goes from the edge but not the middle was "no path",
+            // the bot floating at the edge of the water with the way on right there (and found from the middle)
+            JumpPolicy.Rollout r = null;
+            double ddx0 = dest.x - src.x, ddz0 = dest.z - src.z, len0 = Math.max(1.0E-6, Math.sqrt(ddx0 * ddx0 + ddz0 * ddz0));
+            double[][] starts = {{0.5, 0.5}, {0.5 + 0.2 * ddx0 / len0, 0.5 + 0.2 * ddz0 / len0}, {0.31, 0.5}, {0.69, 0.5}, {0.5, 0.31}, {0.5, 0.69}};
+            for (double[] st : starts) {
+                for (double up : new double[]{WATER_START, 0.6}) {
+                    PlayerSim w = new PlayerSim(PlayerSim.Params.vanilla(), world);
+                    w.x = src.x + st[0];
+                    w.y = src.y + up;
+                    w.z = src.z + st[1];
+                    r = JumpPolicy.forgiving(w, land);
+                    if (r != null && r.ticks() > 0) {
+                        break;
+                    }
+                    r = null;
+                }
+                if (r != null) {
+                    break;
+                }
+            }
+            if (r == null) {
                 return null;
             }
             double ddx = dest.x - src.x, ddz = dest.z - src.z;

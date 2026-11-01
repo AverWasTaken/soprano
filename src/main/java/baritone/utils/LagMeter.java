@@ -53,9 +53,20 @@ public final class LagMeter {
         }
     }
 
+    // (no settings at all outside the game: the tests fly the pilots, which are measured)
+    private static boolean noSettings;
+
     public static long thresholdMs() {
-        long s = Baritone.settings().lagLogMs.value;
-        return s > 0 ? s : ENV_MS;
+        if (noSettings) {
+            return ENV_MS;
+        }
+        try {
+            long s = Baritone.settings().lagLogMs.value;
+            return s > 0 ? s : ENV_MS;
+        } catch (Throwable t) {
+            noSettings = true;
+            return ENV_MS;
+        }
     }
 
     public static boolean on() {
