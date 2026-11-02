@@ -61,6 +61,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -700,7 +701,11 @@ final class CombatBrain {
                         : BuiltInRegistries.ENTITY_TYPE.getKey(attacker.getType()).getPath();
             }
         }
-        Debug.logInternal(CombatLog.hurt(dimension, before - hp, who, how));
+        String line = CombatLog.hurt(dimension, before - hp, who, how);
+        if (source != null && source.is(DamageTypes.HOT_FLOOR)) {
+            line += CombatLog.hotFloor(player.input.keyPresses.shift(), player.onGround(), player.getY(), player.input.getClass().getSimpleName());
+        }
+        Debug.logInternal(line);
     }
 
     private final CombatCommit.Drive _drive = new CombatCommit.Drive();

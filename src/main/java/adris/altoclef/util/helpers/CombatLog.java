@@ -83,6 +83,12 @@ public final class CombatLog {
         return tag + " by " + who + (how == null ? "" : " (" + how + ")");
     }
 
+    // what a magma hit gets on the end of its hurt line. magma only spares a held shift, so this says if it was, and whose input
+    // object said so
+    public static String hotFloor(boolean shift, boolean onGround, double y, String input) {
+        return String.format(Locale.ROOT, " shift=%b onGround=%b y=%.2f input=%s", shift, onGround, y, input);
+    }
+
     private static String fightWhy(Why why) {
         return switch (why) {
             case IN_WAY -> "in our way";

@@ -82,6 +82,12 @@ public class CombatLogTest {
     }
 
     @Test
+    public void aMagmaHitSaysWhatShiftWasDoing() {
+        assertEquals("combat: [nether] hurt 0.4 (hotFloor) shift=false onGround=true y=83.00 input=KeyboardInput",
+                CombatLog.hurt(Dimension.NETHER, 0.4f, null, "hotFloor") + CombatLog.hotFloor(false, true, 83, "KeyboardInput"));
+    }
+
+    @Test
     public void aHitSaysWhoAndHowWhenTheClientKnows() {
         assertEquals("combat: [overworld] hurt 4.0 by skeleton (arrow)", CombatLog.hurt(Dimension.OVERWORLD, 4f, "skeleton", "arrow"));
         assertEquals("combat: [nether] hurt 2.5 (fall)", CombatLog.hurt(Dimension.NETHER, 2.5f, null, "fall"));
