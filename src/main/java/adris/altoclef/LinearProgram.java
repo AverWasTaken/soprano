@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.function.Function;
 
 // a list routine: down the list, the first failure ends it. the node is just the index
-final class LinearProgram implements RoutineRunner.Program {
+public final class LinearProgram implements RoutineRunner.Program {
 
     private final List<RoutineStep> steps;
     private int index;
 
-    LinearProgram(List<RoutineStep> steps) {
+    public LinearProgram(List<RoutineStep> steps) {
         this.steps = List.copyOf(steps);
     }
 

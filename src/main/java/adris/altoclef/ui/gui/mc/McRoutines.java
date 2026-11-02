@@ -159,9 +159,6 @@ final class McRoutines implements RoutinesAccess {
     @Override
     public List<GraphEntry> listGraphs() {
         List<GraphEntry> out = new ArrayList<>();
-        if (!GraphStore.enabled()) {
-            return out;
-        }
         try {
             for (GraphStore.Entry e : GraphStore.get().list()) {
                 RoutineGraph g = e.graph();
@@ -209,7 +206,7 @@ final class McRoutines implements RoutinesAccess {
     @Override
     public boolean deleteGraph(String id) {
         try {
-            return GraphStore.enabled() && GraphStore.get().delete(id);
+            return GraphStore.get().delete(id);
         } catch (Throwable t) {
             Safe.report("graphs delete", t);
             return false;
@@ -258,6 +255,11 @@ final class McRoutines implements RoutinesAccess {
     }
 
     @Override
+    public List<CondPreset> condPresets() {
+        return GraphMapping.condPresets();
+    }
+
+    @Override
     public List<String> outputsOf(GraphNode node) {
         try {
             return RoutineGraph.outputs(GraphMapping.fromFacade(node));
@@ -289,7 +291,7 @@ final class McRoutines implements RoutinesAccess {
 
     @Override
     public void runGraph(String id) {
-        if (id == null || !GraphStore.enabled()) {
+        if (id == null) {
             return;
         }
         try {

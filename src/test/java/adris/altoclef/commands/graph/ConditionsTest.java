@@ -165,4 +165,49 @@ public class ConditionsTest {
         });
         assertEquals(6, scans.get());
     }
+
+    private static Conditions.RunFacts facts(boolean failed, int laps) {
+        return new Conditions.RunFacts() {
+            @Override
+            public boolean lastActionFailed() {
+                return failed;
+            }
+
+            @Override
+            public int laps() {
+                return laps;
+            }
+        };
+    }
+
+    @Test
+    public void lastActionFailedAsksTheRun() {
+        Cond c = GraphTestKit.lastFailed();
+        assertTrue(Conditions.eval(c, w, facts(true, 0)));
+        assertFalse(Conditions.eval(c, w, facts(false, 0)));
+        assertFalse("nothing ran yet, nothing failed", Conditions.eval(c, w));
+        assertTrue(Conditions.eval(Cond.not(c), w, facts(false, 0)));
+    }
+
+    @Test
+    public void theLoopCounterCompares() {
+        assertTrue(Conditions.eval(GraphTestKit.laps(">=", 3), w, facts(false, 3)));
+        assertFalse(Conditions.eval(GraphTestKit.laps(">", 3), w, facts(false, 3)));
+        assertThrows(Conditions.Unreadable.class, () -> Conditions.eval(GraphTestKit.laps(">=", 3), w));
+    }
+
+    @Test
+    public void theNewConditionsReadLikeASentence() {
+        assertEquals("last action failed", Conditions.text(GraphTestKit.lastFailed()));
+        assertEquals("loop counter >= 3", Conditions.text(GraphTestKit.laps(">=", 3)));
+        assertEquals("inventory full", Conditions.text(Cond.leaf("free_slots", Map.of("op", "=", "value", "0"))));
+        assertEquals("free slots >= 2", Conditions.text(Cond.leaf("free_slots", Map.of("op", ">=", "value", "2"))));
+    }
+
+    @Test
+    public void usesLooksAllTheWayDown() {
+        assertTrue(Conditions.uses(Cond.not(Cond.any(night(), GraphTestKit.laps(">=", 1))), "loop_counter"));
+        assertFalse(Conditions.uses(night(), "loop_counter"));
+        assertFalse(Conditions.uses(null, "loop_counter"));
+    }
 }

@@ -10,6 +10,11 @@ public final class GraphText {
         return switch (n.type()) {
             case START -> "When you press Run";
             case GET, EQUIP, GOTO, RAW -> n.param("line").isBlank() ? "No command yet" : n.param("line");
+            case MINE -> orWhat(n.param("n")) + " " + orWhat(n.param("block"));
+            case CRAFT -> orWhat(n.param("n")) + " " + orWhat(n.param("item"));
+            case EAT -> n.param("hunger").isBlank() ? "Until full" : "Until hunger " + n.param("hunger");
+            case FOLLOW -> orWhat(n.param("player")) + " for " + orWhat(n.param("secs")) + " seconds";
+            case SUB -> n.param("routine").isBlank() ? "No routine yet" : n.param("routine");
             case IF -> Conditions.text(n.cond());
             case REPEAT -> switch (n.param("mode")) {
                 case RoutineGraph.MODE_TIMES -> orWhat(n.param("n")) + " times";

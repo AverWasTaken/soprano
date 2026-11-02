@@ -2,6 +2,7 @@ package adris.altoclef;
 
 import adris.altoclef.chains.UserTaskChain;
 import adris.altoclef.commands.RoutineStep;
+import adris.altoclef.commands.graph.GraphAction;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -83,6 +84,10 @@ public final class RoutineRunner {
         record Step(String node, RoutineStep step) implements Op {
         }
 
+        // a graph's own actions, the ones that aren't a command line
+        record Act(String node, GraphAction action) implements Op {
+        }
+
         // answered on the spot, no task
         record Inline(String node, Supplier<Result> eval, boolean yieldFirst) implements Op {
         }
@@ -142,6 +147,11 @@ public final class RoutineRunner {
         // the until kind of wait. a user task, so the bot's stop and death rules all still apply to it
         default Start startWait(Supplier<Result> poll, double timeoutSeconds, String label, WaitEnd end) {
             return Start.failed("this can't wait on a condition");
+        }
+
+        // the real task for one graph action, always quiet. the end's failure = it finished without getting there
+        default Start startAction(GraphAction action, StepEnd end) {
+            return Start.failed("this can't run that");
         }
 
         // the user chain's task right now. the watchdog compares it to the step's
@@ -395,8 +405,11 @@ public final class RoutineRunner {
         if (op instanceof Op.WaitUntil wait) {
             return host.startWait(wait.poll(), wait.timeoutSeconds(), wait.label(), (outcome, result) -> onEnded(r, seq, outcome, result));
         }
-        RoutineStep step = ((Op.Step) op).step();
         StepEnd end = (outcome, failure) -> onEnded(r, seq, outcome, failure == null ? Result.OK : Result.failed(failure));
+        if (op instanceof Op.Act act) {
+            return host.startAction(act.action(), end);
+        }
+        RoutineStep step = ((Op.Step) op).step();
         return r.program.quiet() ? host.startQuiet(step, end) : host.start(step, end);
     }
 

@@ -28,7 +28,8 @@ public class CustomCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireExactly(1);
         String name = args.getString();
-        if (GraphStore.enabled() && runGraph(name)) {
+        // no setting in the way: an upgraded routine has no list entry left, skipping graphs here would lose it
+        if (runGraph(name)) {
             return;
         }
         // the store builds the lines (line, or the old command + parameters), the same ones the commands tab runs
@@ -97,9 +98,7 @@ public class CustomCommand extends AltoClefCommand {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             List<String> names = new ArrayList<>(CommandsStore.get().customIds());
-            if (GraphStore.enabled()) {
-                GraphStore.get().list().forEach(e -> names.add(e.id()));
-            }
+            GraphStore.get().list().forEach(e -> names.add(e.id()));
             return new TabCompleteHelper().append(names.stream()).filterPrefix(args.getString()).sortAlphabetically().stream();
         }
         return Stream.empty();
@@ -126,11 +125,9 @@ public class CustomCommand extends AltoClefCommand {
                 lines.add("> custom " + entry.id() + (entry.description().isEmpty() ? "" : " - " + entry.description()));
             }
         }
-        if (GraphStore.enabled()) {
-            for (GraphStore.Entry entry : GraphStore.get().list()) {
-                String about = entry.graph() == null ? entry.error() : entry.graph().description();
-                lines.add("> custom " + entry.id() + (about.isEmpty() ? "" : " - " + about));
-            }
+        for (GraphStore.Entry entry : GraphStore.get().list()) {
+            String about = entry.graph() == null ? entry.error() : entry.graph().description();
+            lines.add("> custom " + entry.id() + (about.isEmpty() ? "" : " - " + about));
         }
         return lines;
     }

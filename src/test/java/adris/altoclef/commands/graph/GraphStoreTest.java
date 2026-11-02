@@ -126,7 +126,7 @@ public class GraphStoreTest {
         assertBad("{\"format\": \"soprano-routine-graph\", \"version\": 2, \"nodes\": [], \"edges\": []}", "newer");
         assertBad("{\"format\": \"soprano-routine-graph\", \"nodes\": [], \"edges\": []}", "version");
         assertBad("{" + ok + ", \"edges\": []}", "nodes");
-        assertBad("{" + ok + ", \"nodes\": [{\"id\": \"a\", \"type\": \"mine\"}], \"edges\": []}", "mine");
+        assertBad("{" + ok + ", \"nodes\": [{\"id\": \"a\", \"type\": \"teleport\"}], \"edges\": []}", "teleport");
         assertBad("{" + ok + ", \"nodes\": [{\"type\": \"raw\"}], \"edges\": []}", "no id");
         assertBad("{" + ok + ", \"nodes\": [{\"id\": \"a\", \"type\": \"raw\"}, {\"id\": \"a\", \"type\": \"raw\"}], \"edges\": []}", "two nodes");
         assertBad("{" + ok + ", \"nodes\": [], \"edges\": [{\"from\": \"a\"}]}", "wire");
@@ -277,5 +277,22 @@ public class GraphStoreTest {
         assertNull("a side node", graph(List.of(start(), raw("a", "x"), raw("b", "y")), "s.out>a").toSteps());
         assertNull("a loop", graph(List.of(start(), times("r", 2), raw("a", "x")), "s.out>r", "r.body>a", "a.ok>>r").toSteps());
         assertNull("a wait until", graph(List.of(start(), GraphTestKit.waitUntil("w", night(), 5)), "s.out>w").toSteps());
+    }
+
+    @Test
+    public void theNewNodesAndConditionsSurviveARoundTrip() throws Exception {
+        RoutineGraph g = new RoutineGraph("x", "x", "", List.of(start(), GraphTestKit.mine("m", "oak_log", 16), GraphTestKit.craft("c", "stick", 4),
+                new RoutineGraph.Node("e", RoutineGraph.Type.EAT, 0, 0, Map.of("hunger", "14"), null), GraphTestKit.follow("f", "Steve", 30), GraphTestKit.sub("u", "wood"),
+                GraphTestKit.iff("i", GraphTestKit.lastFailed()), GraphTestKit.iff("j", GraphTestKit.laps(">=", 3))), List.of());
+        String text = GraphFile.write(g);
+        RoutineGraph back = GraphFile.parse("x", text);
+        assertEquals(g.nodes(), back.nodes());
+        assertEquals(text, GraphFile.write(back));
+    }
+
+    @Test
+    public void aGraphWithTheNewNodesHasNoListView() {
+        assertNull(graph(List.of(start(), GraphTestKit.mine("m", "dirt", 1)), "s.out>m").toSteps());
+        assertNull(graph(List.of(start(), GraphTestKit.sub("m", "dirt")), "s.out>m").toSteps());
     }
 }

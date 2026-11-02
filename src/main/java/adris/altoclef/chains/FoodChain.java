@@ -37,6 +37,7 @@ public class FoodChain extends SingleTaskChain {
     private final DragonBreathTracker _dragonBreathTracker = new DragonBreathTracker();
     private boolean _isTryingToEat = false;
     private boolean _requestFillup = false;
+    private boolean _askedToEat = false;
     private boolean _needsFood = false;
     private Optional<Item> _cachedPerfectFood = Optional.empty();
     private static final int FOOD_RECALC_TICKS = 10;
@@ -478,7 +479,8 @@ public class FoodChain extends SingleTaskChain {
         for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
             if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) return true;
         }
-        if (!Baritone.settings().altoAutoEat.value) return true;
+        // auto eat is about the bot deciding by itself, a routine's eat node is somebody asking
+        if (!Baritone.settings().altoAutoEat.value && !_askedToEat) return true;
         // a lit creeper with nowhere to run: the shield or the cap has the hands
         if (mod.getMobDefenseChain().creeperBoxedIn()) return true;
         // a fireball or an arrow is on its way and the shield is up for it: a bite swaps the food into the hand and lets go of the use
@@ -627,6 +629,19 @@ public class FoodChain extends SingleTaskChain {
 
     public boolean hasFood() {
         return _hasFood;
+    }
+
+    // a routine's eat node: eat up to this line with no rule asking. it's the normal meal latch, so everything that can
+    // refuse a meal (a fight, a fall, no food) still can, and it lets go by itself at the line
+    public void requestFillup(int to) {
+        _fillTo = to;
+        _requestFillup = true;
+        _askedToEat = true;
+    }
+
+    public void cancelFillup() {
+        _requestFillup = false;
+        _askedToEat = false;
     }
 
     public void shouldStop(boolean shouldStopInput) {

@@ -92,6 +92,14 @@ final class GraphMapping {
         return out;
     }
 
+    static List<RoutinesAccess.CondPreset> condPresets() {
+        List<RoutinesAccess.CondPreset> out = new ArrayList<>();
+        for (GraphSpecs.CondPreset p : GraphSpecs.COND_PRESETS) {
+            out.add(new RoutinesAccess.CondPreset(p.label(), p.kind(), p.args()));
+        }
+        return out;
+    }
+
     private static List<RoutinesAccess.FieldSpec> fields(List<GraphSpecs.Field> in) {
         List<RoutinesAccess.FieldSpec> out = new ArrayList<>();
         for (GraphSpecs.Field f : in) {

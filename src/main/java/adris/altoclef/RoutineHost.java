@@ -5,15 +5,29 @@ import adris.altoclef.commands.CrossDimensionGoto;
 import adris.altoclef.commands.GameChecks;
 import adris.altoclef.commands.RoutineLines;
 import adris.altoclef.commands.RoutineStep;
+import adris.altoclef.commands.graph.GraphAction;
 import adris.altoclef.tasks.misc.ConditionWaitTask;
+import adris.altoclef.tasks.misc.EatToHungerTask;
+import adris.altoclef.tasks.movement.FollowForTask;
 import adris.altoclef.tasks.movement.RoutineGotoTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
+import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.altoclef.AltoClefBridge;
 import baritone.api.command.exception.CommandException;
+import baritone.api.utils.BlockOptionalMeta;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 
 // RoutineRunner's game side: how each kind of step starts, and what "done" means for it
 final class RoutineHost implements RoutineRunner.Host {
@@ -100,6 +114,68 @@ final class RoutineHost implements RoutineRunner.Host {
         mod.getUserTaskChain().signalNextTaskQuiet();
         mod.runUserTask(task, outcome -> end.ended(outcome, task.result()));
         return RoutineRunner.Start.WAITING;
+    }
+
+    @Override
+    public RoutineRunner.Start startAction(GraphAction action, RoutineRunner.StepEnd end) {
+        AltoClef mod;
+        Task task;
+        try {
+            mod = AltoClefBridge.require();
+            task = taskFor(mod, action);
+        } catch (CommandException | IllegalArgumentException e) {
+            return RoutineRunner.Start.failed(e.getMessage());
+        }
+        mod.getUserTaskChain().signalNextTaskQuiet();
+        mod.runUserTask(task, outcome -> end.ended(outcome, failureOf(task)));
+        return RoutineRunner.Start.WAITING;
+    }
+
+    private static String failureOf(Task task) {
+        if (task instanceof EatToHungerTask eat) {
+            return eat.failure();
+        }
+        return task instanceof FollowForTask follow ? follow.failure() : null;
+    }
+
+    // counts go on top of what we hold when the node starts. "hold 16" would be done on the spot on every lap after the
+    // first, which is the same do nothing loop a raw line is
+    private static Task taskFor(AltoClef mod, GraphAction action) {
+        return switch (action) {
+            case GraphAction.Mine mine -> {
+                Block block = BuiltInRegistries.BLOCK.getOptional(Identifier.tryParse(mine.block())).orElse(null);
+                if (block == null) {
+                    throw new IllegalArgumentException("\"" + mine.block() + "\" is not a block");
+                }
+                Item[] drops = dropsOf(block);
+                if (drops.length == 0) {
+                    throw new IllegalArgumentException(mine.block() + " has no drop we can count, try a Get node");
+                }
+                ItemTarget target = new ItemTarget(drops, mod.getItemStorage().getItemCount(drops) + mine.count());
+                yield new MineAndCollectTask(new ItemTarget[]{target}, new Block[]{block}, MiningRequirement.getMinimumRequirementForBlock(block));
+            }
+            case GraphAction.Craft craft -> {
+                // the same road as get: the whole shopping list, then craft. it gets the ingredients first if it has to
+                Item item = BuiltInRegistries.ITEM.getOptional(Identifier.tryParse(craft.item())).orElse(null);
+                if (item == null || !TaskCatalogue.taskExists(craft.item())) {
+                    throw new IllegalArgumentException("\"" + craft.item() + "\" is not something altoclef can make");
+                }
+                yield new GatherBillTask(new ItemTarget(craft.item(), mod.getItemStorage().getItemCount(item) + craft.count()));
+            }
+            case GraphAction.Eat eat -> new EatToHungerTask(eat.hunger());
+            case GraphAction.Follow follow -> new FollowForTask(follow.player(), follow.seconds());
+        };
+    }
+
+    // what breaking it really gets us. the block's own item only counts next to that: silk touch can give it, but counting
+    // glass as a drop of glass is a mine that smashes every window around and never gets to its number. the roll is one
+    // sample with no player in it, so a few real drops read as none (snow). a failed wire beats a node that never ends
+    private static Item[] dropsOf(Block block) {
+        List<Item> out = new ArrayList<>(BlockOptionalMeta.plainDrops(block));
+        if (!out.isEmpty() && block.asItem() != Items.AIR && !out.contains(block.asItem())) {
+            out.add(block.asItem());
+        }
+        return out.toArray(Item[]::new);
     }
 
     @Override

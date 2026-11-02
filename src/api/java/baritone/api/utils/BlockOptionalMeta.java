@@ -236,6 +236,16 @@ public final class BlockOptionalMeta {
         return null;
     }
 
+    /**
+     * What a block drops when it is broken with a plain pickaxe, without the block's own item that silk touch would give.
+     *
+     * @param block The block to ask about
+     * @return The items its loot table rolled, empty when it doesn't drop anything
+     */
+    public static List<Item> plainDrops(Block block) {
+        return drops(block);
+    }
+
     private static synchronized List<Item> drops(Block b) {
         return drops.computeIfAbsent(b, block -> {
             Optional<ResourceKey<LootTable>> optionalLootTableKey = block.getLootTable();

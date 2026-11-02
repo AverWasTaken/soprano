@@ -90,7 +90,7 @@ public final class CommandsStore {
 
     public static synchronized CommandsStore get() {
         if (shared == null) {
-            shared = new CommandsStore(() -> ConfigHelper.getConfigFolder().resolve(PATH), id -> GraphStore.enabled() && GraphStore.get().exists(id));
+            shared = new CommandsStore(() -> ConfigHelper.getConfigFolder().resolve(PATH), id -> GraphStore.get().exists(id));
         }
         return shared;
     }

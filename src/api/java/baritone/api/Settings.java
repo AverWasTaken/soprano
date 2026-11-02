@@ -2116,10 +2116,10 @@ public final class Settings {
     public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
 
     /**
-     * Turns on routine graphs, routines with branches, loops and waits saved in {@code routines/} next to
-     * {@code CustomTasks.json}. With this on {@code #custom <name>} also runs those, and a graph's name counts as taken
-     * for list routines. Off by default while the node editor is being built: with it off the graph files are ignored
-     * and everything works the way it did. Takes effect right away.
+     * Shows the node editor for routine graphs, routines with branches, loops and waits saved in {@code routines/} next
+     * to {@code CustomTasks.json}. Off by default while the editor is being built. This only hides the editor: a saved
+     * graph keeps running through {@code #custom <name>} with it off and its name stays taken for list routines, so a
+     * routine you upgraded to a graph never disappears. Takes effect right away.
      */
     public final Setting<Boolean> experimentalRoutineGraphs = new Setting<>(false);
 

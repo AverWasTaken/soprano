@@ -2,7 +2,9 @@ package adris.altoclef.commands.graph;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.commands.CommandsStore;
 import adris.altoclef.commands.GameChecks;
+import adris.altoclef.commands.StoredRoutine;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.altoclef.AltoClefBridge;
 import baritone.api.utils.Dimension;
@@ -36,7 +38,17 @@ public final class GameConditions implements Conditions.World {
     }
 
     public static GraphProgram program(RoutineGraph graph) {
-        return new GraphProgram(graph, INSTANCE, GameChecks.INSTANCE, Debug::logInternal);
+        return new GraphProgram(graph, INSTANCE, GameChecks.INSTANCE, Debug::logInternal, GameConditions::routine);
+    }
+
+    // same order as #custom, graphs first
+    private static GraphProgram.Callee routine(String id) {
+        GraphStore.Entry entry = GraphStore.get().find(id);
+        if (entry != null) {
+            return entry.graph() == null ? GraphProgram.Callee.bad(entry.error()) : GraphProgram.Callee.of(entry.graph());
+        }
+        StoredRoutine list = CommandsStore.get().find(id);
+        return list == null ? null : GraphProgram.Callee.of(list.steps());
     }
 
     private static AltoClef mod() {

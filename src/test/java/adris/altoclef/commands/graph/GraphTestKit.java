@@ -46,6 +46,34 @@ public final class GraphTestKit {
         return new RoutineGraph.Node(id, RoutineGraph.Type.STOP, 0, 0, Map.of("ok", String.valueOf(ok)), null);
     }
 
+    public static RoutineGraph.Node mine(String id, String block, int n) {
+        return new RoutineGraph.Node(id, RoutineGraph.Type.MINE, 0, 0, Map.of("block", block, "n", String.valueOf(n)), null);
+    }
+
+    public static RoutineGraph.Node craft(String id, String item, int n) {
+        return new RoutineGraph.Node(id, RoutineGraph.Type.CRAFT, 0, 0, Map.of("item", item, "n", String.valueOf(n)), null);
+    }
+
+    public static RoutineGraph.Node eat(String id) {
+        return new RoutineGraph.Node(id, RoutineGraph.Type.EAT, 0, 0, null, null);
+    }
+
+    public static RoutineGraph.Node follow(String id, String player, int secs) {
+        return new RoutineGraph.Node(id, RoutineGraph.Type.FOLLOW, 0, 0, Map.of("player", player, "secs", String.valueOf(secs)), null);
+    }
+
+    public static RoutineGraph.Node sub(String id, String routine) {
+        return new RoutineGraph.Node(id, RoutineGraph.Type.SUB, 0, 0, Map.of("routine", routine), null);
+    }
+
+    public static Cond laps(String op, int n) {
+        return Cond.leaf("loop_counter", Map.of("op", op, "value", String.valueOf(n)));
+    }
+
+    public static Cond lastFailed() {
+        return Cond.leaf("last_action_failed", null);
+    }
+
     public static Cond night() {
         return Cond.leaf("time", Map.of("value", "night"));
     }

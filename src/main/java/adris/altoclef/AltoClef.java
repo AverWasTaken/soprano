@@ -181,8 +181,7 @@ public class AltoClef {
             _taskRunner.enable();
             // the idle command used to be started when the settings loaded, now that is whenever the gate comes up
             if ((!_userTaskChain.isActive() || _userTaskChain.isRunningIdleTask()) && AltoSettings.shouldRunIdleCommandWhenNotActive()) {
-                _userTaskChain.signalNextTaskToBeIdleTask();
-                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
+                _userTaskChain.startIdleCommand();
             }
         } else if (!runsWhenIdle && _taskRunner.isActive() && !_userTaskChain.isActive()) {
             _taskRunner.disable();

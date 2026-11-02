@@ -105,4 +105,14 @@ public class UserTaskOutcomeTest {
         assertNull(UserTaskChain.pushedOut(null, b));
         assertNull(UserTaskChain.pushedOut(a, a));
     }
+
+    @Test
+    public void theIdleFlagOnlyLastsForTheIdleCommand() {
+        UserTaskChain chain = new UserTaskChain(new TaskRunner(null));
+        assertEquals(false, chain.nextTaskIsIdle());
+        boolean[] during = {false};
+        chain.runMarkedIdle(() -> during[0] = chain.nextTaskIsIdle());
+        assertEquals("the task the command starts is the idle one", true, during[0]);
+        assertEquals("a command that started nothing leaves nothing for the next task", false, chain.nextTaskIsIdle());
+    }
 }

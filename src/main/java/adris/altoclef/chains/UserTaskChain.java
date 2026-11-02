@@ -219,10 +219,23 @@ public class UserTaskChain extends SingleTaskChain {
         }
     }
 
-    private void startIdleCommand() {
-        AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
-        signalNextTaskToBeIdleTask();
-        _runningIdleTask = true;
+    public void startIdleCommand() {
+        runMarkedIdle(() -> AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value));
+    }
+
+    // up before the command, down after it. up after, and whatever the user asks for next gets called idle: every "is the
+    // bot busy" check and the finish lines skip it. a command that starts no task would leave it up the same way
+    void runMarkedIdle(Runnable command) {
+        _nextTaskIdleFlag = true;
+        try {
+            command.run();
+        } finally {
+            _nextTaskIdleFlag = false;
+        }
+    }
+
+    boolean nextTaskIsIdle() {
+        return _nextTaskIdleFlag;
     }
 
     // right after the routine runner's tick, which is where a parked graph finds out it's over
@@ -260,10 +273,5 @@ public class UserTaskChain extends SingleTaskChain {
 
     public void clearNextTaskQuiet() {
         _nextTaskQuietFlag = false;
-    }
-
-    // The next task will be an idle task.
-    public void signalNextTaskToBeIdleTask() {
-        _nextTaskIdleFlag = true;
     }
 }

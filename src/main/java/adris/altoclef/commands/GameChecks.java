@@ -1,8 +1,13 @@
 package adris.altoclef.commands;
 
+import adris.altoclef.TaskCatalogue;
+import adris.altoclef.commands.graph.GraphStore;
 import adris.altoclef.commands.graph.GraphValidator;
+import adris.altoclef.commands.graph.RoutineGraph;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.BlockOptionalMeta;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -64,6 +69,50 @@ public final class GameChecks implements GraphValidator.Checks {
             };
         } catch (Throwable t) {
             return null;
+        }
+    }
+
+    @Override
+    public String routineProblem(String id) {
+        try {
+            GraphStore.Entry entry = GraphStore.get().find(id);
+            if (entry != null) {
+                return entry.graph() == null ? "routines/" + entry.id() + ".json has a problem: " + entry.error() : null;
+            }
+            return CommandsStore.get().find(id) != null ? null : "there's no routine called " + id;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> callsOf(String id) {
+        List<String> out = new ArrayList<>();
+        try {
+            GraphStore.Entry entry = GraphStore.get().find(id);
+            if (entry != null && entry.graph() != null) {
+                for (RoutineGraph.Node n : entry.graph().nodes()) {
+                    if (n.type() == RoutineGraph.Type.SUB && !n.param("routine").isBlank()) {
+                        out.add(n.param("routine").trim());
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            // the run has its own guard
+        }
+        return out;
+    }
+
+    @Override
+    public boolean craftable(String item) {
+        try {
+            if (TaskCatalogue.recipeOf(item) != null) {
+                return true;
+            }
+            TaskCatalogue.BillEdge edge = TaskCatalogue.billEdge(item);
+            return edge != null && edge.step() == TaskCatalogue.BillEdge.Step.CRAFT;
+        } catch (Throwable t) {
+            return true;
         }
     }
 

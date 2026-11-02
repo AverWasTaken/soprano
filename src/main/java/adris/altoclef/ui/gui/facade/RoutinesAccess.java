@@ -75,9 +75,10 @@ public interface RoutinesAccess {
 
     RunStatus IDLE_STATUS = new RunStatus(null, null, 0, 0, null, RunState.IDLE, null);
 
-    // ---- graphs, for the node editor. all of it answers "not here" until experimentalRoutineGraphs is on ----
+    // ---- graphs, for the node editor. experimentalRoutineGraphs only hides the editor: graphsEnabled says whether to show
+    // it, and loadGraph and saveGraph answer "not here" with it off. saved graphs still list, run and delete either way ----
 
-    // type = start get equip goto raw if repeat wait stop. x and y are design px. params hold what NodeSpec's fields ask
+    // type = start get equip goto mine craft eat follow raw sub if repeat wait stop. x and y are design px. params hold what NodeSpec's fields ask
     // for (strings, half typed numbers are fine), cond is the If's or the until's condition, null when there's none
     record GraphNode(String id, String type, int x, int y, Map<String, String> params, CondTree cond) {
     }
@@ -109,7 +110,8 @@ public interface RoutinesAccess {
     record GraphCheck(boolean ok, List<String> errors, Map<String, NodeCheck> nodes) {
     }
 
-    // kind = INT COORD CHOICE OP ITEM BLOCK MOB LINE SECONDS COND. whenMode = only asked for in that mode, null = always.
+    // kind = INT COORD CHOICE OP ITEM BLOCK MOB PLAYER ROUTINE LINE SECONDS COND. PLAYER is a name, ROUTINE is an id out of
+    // list() or listGraphs(). whenMode = only asked for in that mode, null = always.
     // a LINE opens in the same boxes as the list view's rows: fieldsOf / lineFor with the node's step type
     record FieldSpec(String key, String label, String kind, boolean required, int min, int max, List<String> choices, String whenMode) {
     }
@@ -119,6 +121,10 @@ public interface RoutinesAccess {
     }
 
     record CondSpec(String kind, String label, List<FieldSpec> fields) {
+    }
+
+    // a named shortcut for the condition picker: picking it makes a leaf of that kind with these args
+    record CondPreset(String label, String kind, Map<String, String> args) {
     }
 
     // what the cards show. activeNode = running now, null once it's over. failedNode = where a failed run stopped.
@@ -167,6 +173,10 @@ public interface RoutinesAccess {
     }
 
     default List<CondSpec> condSpecs() {
+        return List.of();
+    }
+
+    default List<CondPreset> condPresets() {
         return List.of();
     }
 

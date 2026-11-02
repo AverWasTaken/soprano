@@ -44,6 +44,26 @@ public final class Conditions {
         boolean nearBlock(String block, int radius);
     }
 
+    // what only the run itself knows, the walker of the graph answers these
+    public interface RunFacts {
+        boolean lastActionFailed();
+
+        // the innermost Repeat's lap, Unreadable outside of one
+        int laps();
+
+        RunFacts NONE = new RunFacts() {
+            @Override
+            public boolean lastActionFailed() {
+                return false;
+            }
+
+            @Override
+            public int laps() {
+                throw new Unreadable("the loop counter only means something inside a Repeat");
+            }
+        };
+    }
+
     private Conditions() {
     }
 
@@ -54,15 +74,24 @@ public final class Conditions {
     }
 
     public static boolean eval(Cond c, World w) {
+        return eval(c, w, RunFacts.NONE);
+    }
+
+    public static boolean eval(Cond c, World w, RunFacts run) {
         return switch (c.op()) {
-            case ALL -> c.children().stream().allMatch(k -> eval(k, w));
-            case ANY -> c.children().stream().anyMatch(k -> eval(k, w));
-            case NOT -> !eval(c.children().get(0), w);
-            case LEAF -> leaf(c, w);
+            case ALL -> c.children().stream().allMatch(k -> eval(k, w, run));
+            case ANY -> c.children().stream().anyMatch(k -> eval(k, w, run));
+            case NOT -> !eval(c.children().get(0), w, run);
+            case LEAF -> leaf(c, w, run);
         };
     }
 
-    private static boolean leaf(Cond c, World w) {
+    // does a leaf of this kind sit anywhere in here
+    public static boolean uses(Cond c, String kind) {
+        return c != null && (kind.equals(c.kind()) || c.children().stream().anyMatch(k -> uses(k, kind)));
+    }
+
+    private static boolean leaf(Cond c, World w, RunFacts run) {
         return switch (c.kind() == null ? "" : c.kind()) {
             case "has_item" -> compare(w.itemCount(c.arg("item")), c);
             case "health" -> compare(w.health(), c);
@@ -73,6 +102,8 @@ public final class Conditions {
             case "near_pos" -> nearPos(c, w);
             case "near_mob" -> w.nearMob(c.arg("mob"), number(c, "r"));
             case "near_block" -> w.nearBlock(c.arg("block"), number(c, "r"));
+            case "last_action_failed" -> run.lastActionFailed();
+            case "loop_counter" -> compare(run.laps(), c);
             default -> throw new Unreadable("\"" + c.kind() + "\" is not a condition");
         };
     }
@@ -129,10 +160,13 @@ public final class Conditions {
             case "health", "hunger" -> kind + " " + c.arg("op") + " " + show(c, "value");
             case "time" -> "day".equals(c.arg("value")) ? "day" : "night";
             case "dimension" -> "in the " + show(c, "value");
-            case "free_slots" -> "free slots " + c.arg("op") + " " + show(c, "value");
+            // the preset's own name, it reads better on a card than the numbers it's made of
+            case "free_slots" -> "=".equals(c.arg("op")) && "0".equals(c.arg("value")) ? "inventory full" : "free slots " + c.arg("op") + " " + show(c, "value");
             case "near_pos" -> "at " + show(c, "x") + " " + (c.arg("y").isBlank() ? "~" : c.arg("y")) + " " + show(c, "z") + " within " + show(c, "r");
             case "near_mob" -> show(c, "mob") + " within " + show(c, "r");
             case "near_block" -> show(c, "block") + " within " + show(c, "r");
+            case "last_action_failed" -> "last action failed";
+            case "loop_counter" -> "loop counter " + c.arg("op") + " " + show(c, "value");
             default -> "nothing yet";
         };
     }

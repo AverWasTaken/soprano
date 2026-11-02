@@ -42,19 +42,33 @@ public record RoutineGraph(String id, String name, String description, List<Node
         GET("Get items", RoutineStep.Kind.GET),
         EQUIP("Equip", RoutineStep.Kind.EQUIP),
         GOTO("Go to", RoutineStep.Kind.GOTO),
+        MINE("Mine", true),
+        CRAFT("Craft", true),
+        EAT("Eat", true),
+        FOLLOW("Follow player", true),
         RAW("Raw command", RoutineStep.Kind.RAW),
+        SUB("Run routine", true),
         IF("If", null),
         REPEAT("Repeat", null),
         WAIT("Wait", null),
         STOP("Stop", null);
 
         public final String label;
-        // the step kind an action node runs, null for the flow nodes
+        // the step kind an action node runs as a command line, null for everything else
         public final RoutineStep.Kind action;
+        // does a piece of work and has ok and failed ports: the line based ones and the ones with params of their own
+        public final boolean acts;
 
         Type(String label, RoutineStep.Kind action) {
             this.label = label;
             this.action = action;
+            this.acts = action != null;
+        }
+
+        Type(String label, boolean acts) {
+            this.label = label;
+            this.action = null;
+            this.acts = acts;
         }
 
         public String wire() {
@@ -119,7 +133,7 @@ public record RoutineGraph(String id, String name, String description, List<Node
     public static List<String> outputs(Node n) {
         return switch (n.type()) {
             case START -> List.of(OUT);
-            case GET, EQUIP, GOTO, RAW -> List.of(OK, FAILED);
+            case GET, EQUIP, GOTO, RAW, MINE, CRAFT, EAT, FOLLOW, SUB -> List.of(OK, FAILED);
             case IF -> List.of(YES, NO);
             case REPEAT -> List.of(BODY, DONE);
             case WAIT -> MODE_UNTIL.equals(n.param("mode")) ? List.of(OK, TIMEOUT) : List.of(OK);

@@ -1,13 +1,20 @@
 package adris.altoclef;
 
+import static adris.altoclef.commands.graph.GraphTestKit.craft;
+import static adris.altoclef.commands.graph.GraphTestKit.eat;
+import static adris.altoclef.commands.graph.GraphTestKit.follow;
 import static adris.altoclef.commands.graph.GraphTestKit.forever;
 import static adris.altoclef.commands.graph.GraphTestKit.graph;
 import static adris.altoclef.commands.graph.GraphTestKit.hasLogs;
 import static adris.altoclef.commands.graph.GraphTestKit.iff;
+import static adris.altoclef.commands.graph.GraphTestKit.laps;
+import static adris.altoclef.commands.graph.GraphTestKit.lastFailed;
+import static adris.altoclef.commands.graph.GraphTestKit.mine;
 import static adris.altoclef.commands.graph.GraphTestKit.night;
 import static adris.altoclef.commands.graph.GraphTestKit.raw;
 import static adris.altoclef.commands.graph.GraphTestKit.start;
 import static adris.altoclef.commands.graph.GraphTestKit.stop;
+import static adris.altoclef.commands.graph.GraphTestKit.sub;
 import static adris.altoclef.commands.graph.GraphTestKit.times;
 import static adris.altoclef.commands.graph.GraphTestKit.until;
 import static adris.altoclef.commands.graph.GraphTestKit.waitSecs;
@@ -22,6 +29,7 @@ import adris.altoclef.RoutineRunner.State;
 import adris.altoclef.chains.UserTaskChain;
 import adris.altoclef.commands.RoutineStep;
 import adris.altoclef.commands.graph.Conditions;
+import adris.altoclef.commands.graph.GraphAction;
 import adris.altoclef.commands.graph.GraphProgram;
 import adris.altoclef.commands.graph.GraphTestKit;
 import adris.altoclef.commands.graph.GraphValidator;
@@ -46,6 +54,8 @@ public class RoutineGraphRunTest {
         final List<Supplier<Result>> polls = new ArrayList<>();
         final List<RoutineRunner.WaitEnd> waitEnds = new ArrayList<>();
         final List<String> endedRuns = new ArrayList<>();
+        final List<GraphAction> actions = new ArrayList<>();
+        RoutineRunner.Start actionStart = RoutineRunner.Start.WAITING;
         Object current;
         int quietStarts;
         int loudStarts;
@@ -87,6 +97,14 @@ public class RoutineGraphRunTest {
             waitEnds.add(end);
             current = new Object();
             return RoutineRunner.Start.WAITING;
+        }
+
+        @Override
+        public RoutineRunner.Start startAction(GraphAction action, RoutineRunner.StepEnd end) {
+            actions.add(action);
+            ends.add(end);
+            current = new Object();
+            return actionStart;
         }
 
         @Override
@@ -133,6 +151,16 @@ public class RoutineGraphRunTest {
 
     private void run(RoutineGraph g) {
         runner.start("test", "test", new GraphProgram(g, world, GraphValidator.Checks.SHAPE_ONLY, logged::add));
+    }
+
+    private final Map<String, GraphProgram.Callee> routines = new HashMap<>();
+
+    private void runCalling(RoutineGraph g) {
+        runner.start("test", "test", new GraphProgram(g, world, GraphValidator.Checks.SHAPE_ONLY, logged::add, routines::get));
+    }
+
+    private static RoutineGraph named(String id, RoutineGraph g) {
+        return new RoutineGraph(id, id, "", g.nodes(), g.edges());
     }
 
     private State state() {
@@ -551,5 +579,215 @@ public class RoutineGraphRunTest {
         int before = t.outcomes().size();
         host.endStep(UserTaskChain.Outcome.FINISHED, null);
         assertEquals(before, t.outcomes().size());
+    }
+
+    @Test
+    public void aMineNodeHoldsTheRunUntilItsTaskEnds() {
+        run(graph(List.of(start(), mine("m", "oak_log", 16), raw("a", "after")), "s.out>m", "m.ok>a"));
+        assertEquals(List.of(new GraphAction.Mine("oak_log", 16)), host.actions);
+        assertEquals("still mining", State.RUNNING, state());
+        assertTrue(host.started.isEmpty());
+        host.endStep(UserTaskChain.Outcome.FINISHED, null);
+        assertEquals(List.of("after"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void everyNewActionReachesTheHostWithItsParams() {
+        run(graph(List.of(start(), craft("c", "stick", 4), eat("e"), follow("f", "Steve", 30)), "s.out>c", "c.ok>e", "e.ok>f"));
+        host.endStep(UserTaskChain.Outcome.FINISHED, null);
+        host.endStep(UserTaskChain.Outcome.FINISHED, null);
+        assertEquals(List.of(new GraphAction.Craft("stick", 4), new GraphAction.Eat(20), new GraphAction.Follow("Steve", 30)), host.actions);
+    }
+
+    @Test
+    public void anActionsRealFailureGoesDownItsWire() {
+        run(graph(List.of(start(), eat("e"), raw("a", "fallback")), "s.out>e", "e.failed>a"));
+        host.endStep(UserTaskChain.Outcome.FINISHED, "nothing to eat");
+        assertEquals(List.of("fallback"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void anActionThatCantStartFailsToo() {
+        host.actionStart = RoutineRunner.Start.failed("doesn't drop anything");
+        run(graph(List.of(start(), mine("m", "air", 1)), "s.out>m"));
+        assertEquals(State.FAILED, state());
+        assertTrue(runner.status().message(), runner.status().message().contains("doesn't drop"));
+    }
+
+    @Test
+    public void stoppingAnActionEndsTheRunInsteadOfGoingDownFailed() {
+        run(graph(List.of(start(), mine("m", "oak_log", 1), raw("a", "fallback")), "s.out>m", "m.failed>a"));
+        host.endStep(UserTaskChain.Outcome.CANCELLED, null);
+        assertEquals(State.CANCELLED, state());
+        assertTrue(host.started.isEmpty());
+    }
+
+    @Test
+    public void lastActionFailedReadsTheLastAction() {
+        host.answers.put("bad", RoutineRunner.Start.failed("nope"));
+        run(graph(List.of(start(), iff("before", lastFailed()), raw("a", "bad"), iff("i", lastFailed()), raw("y", "saw it"), raw("b", "fine"), iff("j", lastFailed()), raw("z", "wrong")),
+                "s.out>before", "before.no>a", "a.failed>i", "i.yes>y", "y.ok>b", "b.ok>j", "j.yes>z"));
+        assertEquals(List.of("bad", "saw it", "fine"), host.started);
+        assertEquals("NO", runner.trace().outcomes().get("before"));
+        assertEquals("the raw after it worked", "NO", runner.trace().outcomes().get("j"));
+    }
+
+    @Test
+    public void theLoopCounterCountsLapsOfTheInnermostRepeat() {
+        // outer 2 laps, inner 3 laps, the If is in the inner body and asks for lap 3 of the inner one
+        run(graph(List.of(start(), times("o", 2), times("r", 3), iff("i", laps("=", 3)), raw("y", "third"), waitSecs("w", "1")),
+                "s.out>o", "o.body>r", "r.done>>o", "r.body>i", "i.yes>y", "i.no>w", "y.ok>>r", "w.ok>>r"));
+        for (int guard = 0; guard < 20 && state() == State.RUNNING; guard++) {
+            runner.tick();
+        }
+        assertEquals(List.of("third", "third"), host.started.stream().filter("third"::equals).toList());
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void aRepeatsUntilCanReadItsOwnCounter() {
+        run(graph(List.of(start(), until("r", laps(">=", 2), 10), raw("a", "x")), "s.out>r", "r.body>a", "a.ok>>r"));
+        for (int i = 0; i < 5; i++) {
+            runner.tick();
+        }
+        assertEquals(List.of("x", "x"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void theLoopCounterOutsideARepeatFailsTheRun() {
+        run(graph(List.of(start(), iff("i", laps(">=", 1))), "s.out>i"));
+        assertEquals(State.FAILED, state());
+        assertTrue(runner.status().message(), runner.status().message().contains("inside a Repeat"));
+    }
+
+    @Test
+    public void theLoopCounterAfterTheLoopFailsToo() {
+        run(graph(List.of(start(), times("r", 1), raw("a", "x"), iff("i", laps(">=", 1))), "s.out>r", "r.body>a", "a.ok>>r", "r.done>i"));
+        runner.tick();
+        assertEquals(State.FAILED, state());
+    }
+
+    @Test
+    public void walkingOutOfABodyLeavesTheLoop() {
+        run(graph(List.of(start(), times("r", 5), iff("i", lastFailed()), raw("a", "x"), raw("z", "after"), iff("q", laps("=", 1))),
+                "s.out>r", "r.body>i", "i.no>a", "a.ok>z", "z.ok>q", "r.done>q"));
+        assertEquals(List.of("x", "after"), host.started);
+        assertEquals("q sits where body and done meet, so that's out", State.FAILED, state());
+    }
+
+    @Test
+    public void runRoutineRunsAGraphAndComesBackOnOk() {
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(start(), raw("a", "inside")), "s.out>a"))));
+        callInner();
+        assertEquals(List.of("inside", "after"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    private void callInner() {
+        runCalling(graph(List.of(start(), sub("c", "inner"), raw("a", "after"), raw("b", "broke")), "s.out>c", "c.ok>a", "c.failed>b"));
+    }
+
+    @Test
+    public void runRoutineRunsAListToo() {
+        routines.put("inner", GraphProgram.Callee.of(List.of(new RoutineStep(RoutineStep.Kind.RAW, "one"), new RoutineStep(RoutineStep.Kind.RAW, "two"))));
+        callInner();
+        assertEquals(List.of("one", "two", "after"), host.started);
+    }
+
+    @Test
+    public void aFailedCalleeGoesDownTheFailedPort() {
+        host.answers.put("bad", RoutineRunner.Start.failed("nope"));
+        routines.put("inner", GraphProgram.Callee.of(List.of(new RoutineStep(RoutineStep.Kind.RAW, "bad"), new RoutineStep(RoutineStep.Kind.RAW, "never"))));
+        callInner();
+        assertEquals(List.of("bad", "broke"), host.started);
+        assertEquals("FAILED", runner.trace().outcomes().get("c"));
+    }
+
+    @Test
+    public void aStopInTheCalleeOnlyEndsTheCallee() {
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(start(), stop("e", false)), "s.out>e"))));
+        callInner();
+        assertEquals(List.of("broke"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void lastActionFailedSeesTheCallAsOneAction() {
+        host.answers.put("bad", RoutineRunner.Start.failed("nope"));
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(start(), raw("a", "bad")), "s.out>a"))));
+        runCalling(graph(List.of(start(), sub("c", "inner"), iff("i", lastFailed()), raw("y", "saw it")), "s.out>c", "c.failed>i", "i.yes>y"));
+        assertEquals(List.of("bad", "saw it"), host.started);
+    }
+
+    @Test
+    public void aCalleeWaitsForItsTasksAndTheCardStaysOnTheCall() {
+        waits("slow");
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(start(), raw("a", "slow")), "s.out>a"))));
+        // the same node id on both sides, only the routine that made an op ever hears back about it
+        runCalling(graph(List.of(start(), sub("a", "inner"), raw("z", "after")), "s.out>a", "a.ok>z"));
+        assertEquals(State.RUNNING, state());
+        assertEquals("a", runner.trace().at());
+        assertEquals("Run routine: inner > Raw command: slow", runner.status().line());
+        host.endStep(UserTaskChain.Outcome.FINISHED, null);
+        assertEquals(List.of("slow", "after"), host.started);
+        assertEquals(State.DONE, state());
+    }
+
+    @Test
+    public void aRoutineThatCallsItselfNeverStarts() {
+        runCalling(named("me", graph(List.of(start(), raw("a", "x"), sub("c", "me")), "s.out>a", "a.ok>c")));
+        assertEquals(State.FAILED, state());
+        assertTrue(runner.status().message(), runner.status().message().contains("itself"));
+        assertTrue(host.started.isEmpty());
+    }
+
+    @Test
+    public void aRoundaboutCallIsCaughtWhenItGetsThere() {
+        routines.put("a", GraphProgram.Callee.of(named("a", graph(List.of(start(), sub("c", "b")), "s.out>c"))));
+        routines.put("b", GraphProgram.Callee.of(named("b", graph(List.of(start(), sub("c", "a")), "s.out>c"))));
+        runCalling(named("top", graph(List.of(start(), sub("c", "a"), raw("x", "broke")), "s.out>c", "c.failed>x")));
+        assertEquals(List.of("broke"), host.started);
+        assertTrue(logged.toString(), logged.toString().contains("already running"));
+    }
+
+    @Test
+    public void callsStopAtTheDepthGuard() {
+        for (int i = 0; i < 12; i++) {
+            routines.put("d" + i, GraphProgram.Callee.of(named("d" + i, graph(List.of(start(), sub("c", "d" + (i + 1))), "s.out>c"))));
+        }
+        runCalling(named("top", graph(List.of(start(), sub("c", "d0"), raw("x", "broke")), "s.out>c", "c.failed>x")));
+        assertEquals(List.of("broke"), host.started);
+        assertTrue(logged.toString(), logged.toString().contains("deep"));
+    }
+
+    @Test
+    public void aMissingOrBadCalleeFails() {
+        callInner();
+        assertEquals("no routine called inner", List.of("broke"), host.started);
+        host.started.clear();
+        routines.put("inner", GraphProgram.Callee.bad("not json"));
+        callInner();
+        assertEquals(List.of("broke"), host.started);
+    }
+
+    @Test
+    public void aCalleeThatDoesntValidateNeverStarts() {
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(raw("a", "x"))))));
+        callInner();
+        assertEquals(List.of("broke"), host.started);
+    }
+
+    @Test
+    public void aLoopInACalleeStillCostsATick() {
+        routines.put("inner", GraphProgram.Callee.of(named("inner", graph(List.of(start(), times("r", 2), raw("a", "x")), "s.out>r", "r.body>a", "a.ok>>r"))));
+        callInner();
+        assertEquals("the first lap, then it waits for the tick", List.of("x"), host.started);
+        runner.tick();
+        assertEquals(List.of("x", "x"), host.started);
+        runner.tick();
+        assertEquals(List.of("x", "x", "after"), host.started);
     }
 }

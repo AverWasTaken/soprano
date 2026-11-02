@@ -86,7 +86,7 @@ public final class GraphStore {
         return shared;
     }
 
-    // the api setting that gates all of this. off = nothing in here gets looked at
+    // the api setting that shows the editor. saved graphs don't care: they run, list and keep their names either way
     public static boolean enabled() {
         try {
             return BaritoneAPI.getSettings().experimentalRoutineGraphs.value;
