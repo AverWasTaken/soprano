@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import adris.altoclef.util.helpers.ItemValue;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules.Gate;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules.Verdict;
 import org.junit.Test;
@@ -242,7 +243,7 @@ public class RecoverRulesTest {
 
     // ---- full bag at the pile
 
-    // args: fits, junk (a throwaway, or a block past the reserve), the drop would be the next garbage pick
+    // args: fits, junk (a throwaway, or a block past the reserve), no room (DropRoom NONE, incl. the drop being the next garbage pick)
     @Test
     public void junkAndTheNextPickAreLeftWhenTheBagIsFull() {
         assertTrue(RecoverRules.skipWhenFull(false, true, false));
@@ -345,15 +346,16 @@ public class RecoverRulesTest {
     }
 
     @Test
-    public void theNearestDropWinsUnlessWeNeedAPick() {
-        // holding a pick: plain nearest
-        assertTrue(RecoverRules.better(false, false, 2, true, 5));
-        assertFalse(RecoverRules.better(false, true, 9, false, 5));
-        // bare hands: the pile's pickaxe goes first however far, then the nearest
-        assertTrue(RecoverRules.better(true, true, 20, false, 3));
-        assertFalse(RecoverRules.better(true, false, 1, true, 20));
-        assertTrue(RecoverRules.better(true, false, 1, false, 3));
-        assertTrue(RecoverRules.better(true, true, 1, true, 3));
+    public void valuablesFirstThenTheNearest() {
+        // a pearl beats a nearer bread
+        assertTrue(RecoverRules.better(ItemValue.CORE, 20, ItemValue.KIT, 3));
+        assertFalse(RecoverRules.better(ItemValue.KIT, 3, ItemValue.CORE, 20));
+        // the pickaxe we don't have beats even the pearl, however far
+        assertTrue(RecoverRules.better(ItemValue.PICK, 30, ItemValue.CORE, 1));
+        // same tier: the one nearer to us
+        assertTrue(RecoverRules.better(ItemValue.CORE, 2, ItemValue.CORE, 5));
+        assertFalse(RecoverRules.better(ItemValue.CORE, 9, ItemValue.CORE, 5));
+        assertTrue(RecoverRules.better(ItemValue.REST, 1, ItemValue.REST, 3));
     }
 
     @Test

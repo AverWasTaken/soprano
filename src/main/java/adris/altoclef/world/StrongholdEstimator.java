@@ -194,13 +194,13 @@ public final class StrongholdEstimator {
             if (walkedSinceLastThrow >= Math.max(FAR_MIN_WALK, FAR_WALK_FRACTION * range)) {
                 return throwOrWalk(last, playerX, playerZ, fit.x, fit.z, "walked far enough for a new baseline");
             }
-            return leadWalk(playerX, playerZ, range, "walking to the estimate, bending off the line for parallax");
+            return leadWalk(playerX, playerZ, "walking to the estimate, bending off the line for parallax");
         }
         if (fit.est.radius() > NEAR_RADIUS) {
             if (walkedSinceLastThrow >= NEAR_THROW_WALK || range <= NEAR_THROW_RANGE) {
                 return throwOrWalk(last, playerX, playerZ, fit.x, fit.z, "close but still blurry, another ray");
             }
-            return leadWalk(playerX, playerZ, range, "closing in, estimate still blurry");
+            return leadWalk(playerX, playerZ, "closing in, estimate still blurry");
         }
         double toSnap = Math.hypot(fit.snapX - playerX, fit.snapZ - playerZ);
         if (toSnap <= DIVE_RADIUS) {
@@ -272,12 +272,16 @@ public final class StrongholdEstimator {
     }
     // walking straight at a blurry estimate retraces the line the rays already share and never learns how far along it
     // the target is (rays from one line are all parallel to each other). so aim off to the side by a slice of the range,
-    // the throw from there crosses the old rays at a real angle
-    private Advice leadWalk(double px, double pz, double range, String why) {
+    // the throw from there crosses the old rays at a real angle.
+    // measured from the last throw spot, not from us (same idea as adviseOneRay): off our own position the aim slid about
+    // 8 blocks for every 27 we walked, which is exactly the walk leg's replan gap, so it threw the path away every leg
+    private Advice leadWalk(double px, double pz, String why) {
+        double ax = hasLastOrigin ? lastOriginX : px;
+        double az = hasLastOrigin ? lastOriginZ : pz;
         double perpX = -fit.axisZ;
         double perpZ = fit.axisX;
-        double side = (px - fit.x) * perpX + (pz - fit.z) * perpZ >= 0 ? 1 : -1;
-        double lead = Math.min(LEAD_MAX, LEAD_FRACTION * range) * side;
+        double side = (ax - fit.x) * perpX + (az - fit.z) * perpZ >= 0 ? 1 : -1;
+        double lead = Math.min(LEAD_MAX, LEAD_FRACTION * Math.hypot(fit.x - ax, fit.z - az)) * side;
         return new Advice(Step.WALK, fit.x + perpX * lead, fit.z + perpZ * lead, why);
     }
 

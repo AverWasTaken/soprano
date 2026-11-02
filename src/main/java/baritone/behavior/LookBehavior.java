@@ -63,6 +63,13 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     private final Deque<Float> smoothYawBuffer;
     private final Deque<Float> smoothPitchBuffer;
 
+    // who set this tick's target, and the last target that really got put on the player and who set that one. only the
+    // bridge stall dump reads them (BridgeStallLog), a stuck aim with no name on it is a guess
+    private static final StackWalker WALKER = StackWalker.getInstance();
+    private String targetBy;
+    private Rotation applied;
+    private String appliedBy;
+
     public LookBehavior(Baritone baritone) {
         super(baritone);
         this.processor = new AimProcessor(baritone.getPlayerContext());
@@ -74,6 +81,20 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     @Override
     public void updateTarget(Rotation rotation, boolean blockInteract) {
         this.target = new Target(rotation, Target.Mode.resolve(ctx, blockInteract), false);
+        this.targetBy = caller();
+    }
+
+    // the three frames above updateTarget. one frame says Movement.update for every movement, three say which one
+    private static String caller() {
+        return WALKER.walk(frames -> frames.skip(2).limit(3)
+                .map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + "." + f.getMethodName() + ":" + f.getLineNumber())
+                .reduce((a, b) -> a + " < " + b).orElse("?"));
+    }
+
+    // for the bridge stall dump: this tick's target so far (set before whoever asks) and the last one that was applied
+    public String lookTrace() {
+        String now = this.target == null ? "none" : this.target.rotation + " " + this.target.mode + (this.target.combat ? " combat" : "") + " by " + this.targetBy;
+        return "target " + now + ", last applied " + (this.applied == null ? "none" : this.applied + " by " + this.appliedBy);
     }
 
     // melee aim asks go through here, see CombatAim
@@ -114,6 +135,8 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 final Rotation actual = peek(this.target);
                 ctx.player().setYRot(actual.getYaw());
                 ctx.player().setXRot(actual.getPitch());
+                this.applied = actual;
+                this.appliedBy = this.targetBy;
                 break;
             }
             case POST: {
@@ -142,6 +165,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 }
                 // The target is done being used for this game tick, so it can be invalidated
                 this.target = null;
+                this.targetBy = null;
                 break;
             }
             default:
@@ -181,6 +205,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
             // always the visible camera, like a block interact. the smoothing steps from the camera's rotation every tick,
             // a SERVER target would put the camera back at POST and the next step would start from the wrong place
             this.target = new Target(rotation, Target.Mode.CLIENT, true);
+            this.targetBy = "combat";
         }
     }
 
@@ -221,6 +246,11 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
             this.moveYaw = event.getYaw();
             this.moveCount++;
         }
+    }
+
+    // the yaw moveRelative is going to use this tick: the target's if one is set, else our own. EdgeSettle picks its keys off it
+    public float pendingMoveYaw() {
+        return this.target != null ? peek(this.target).getYaw() : ctx.player().getYRot();
     }
 
     // the yaw moveRelative really used last time, and how many times it has run. SprintTelemetry replays the tick with them

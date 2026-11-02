@@ -228,8 +228,11 @@ public class MovementAscend extends Movement {
                     state.setInput(Input.CLICK_RIGHT, true);
                 }
             }
-            if (ticksWithoutPlacement > 10) {
-                // After 10 ticks without placement, we might be standing in the way, move back
+            // after 10 ticks without placement we might be standing in the way. only back up while that is really true, and
+            // never off the back of the source block (see AscendBackUp)
+            Vec3 at = ctx.player().position();
+            double toEdge = AscendBackUp.centreToBackEdge(at.x, at.z, src.getX(), src.getZ(), dest.getX() - src.getX(), dest.getZ() - src.getZ());
+            if (AscendBackUp.mayBack(ticksWithoutPlacement, AscendBackUp.boxInCell(ctx.player().getBoundingBox(), positionToPlace), toEdge)) {
                 state.setInput(Input.MOVE_BACK, true);
             }
 

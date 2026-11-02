@@ -52,7 +52,9 @@ public final class Workbenches {
 
     // the destroy task first, then the pickup of what it dropped. one at a time
     private Task destroy;
-    private Task collect;
+    private PickupDroppedItemTask collect;
+    // runs of the drop pickup in a row that had nothing to chase, see WorkbenchRules.dropGone
+    private int dropWander;
     private Bench taskFor;
     private String hud;
     // the tick a station screen was first seen open with nothing in the task tree working at it, -1 = not now
@@ -67,6 +69,7 @@ public final class Workbenches {
     public void reset() {
         destroy = null;
         collect = null;
+        dropWander = 0;
         taskFor = null;
         hud = null;
     }
@@ -977,6 +980,7 @@ public final class Workbenches {
         if (taskFor != b) {
             destroy = null;
             collect = null;
+            dropWander = 0;
             taskFor = b;
         }
         if (!b.broken) {
@@ -1008,6 +1012,15 @@ public final class Workbenches {
             // got it. nothing to wait for
             reset();
             forget(ctx.state(), b, "the pickup found no drop and the bag has none");
+            return null;
+        }
+        // the pickup's own wander for a missing drop is an explore with no end, and a refused drop sits there banned. either way
+        // the station is gone for us, let it go now and the plan crafts another
+        dropWander = WorkbenchRules.dropWanderStreak(dropWander, collect.wasWandering());
+        String gone = WorkbenchRules.dropGone(collect.gaveUpReason(), dropWander);
+        if (gone != null) {
+            reset();
+            forget(ctx.state(), b, gone);
             return null;
         }
         hud = "Picking up the " + name(b.kind);

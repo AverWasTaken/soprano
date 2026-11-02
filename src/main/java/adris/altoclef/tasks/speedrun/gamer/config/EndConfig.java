@@ -24,6 +24,8 @@ public class EndConfig {
     public int bedMinArmor = 10;
     // every dragon death asks for this many more armor points before beds are tried again
     public int bedArmorPerAttempt = 4;
+    // END_PREP below bedMinArmor makes iron armor for this long (ticks the step ran), then walks to the End anyway
+    public double armorFloorSeconds = 360;
     // dragon fight attempts (a death sends us back to END_PREP) before the run is STUCK
     public int attempts = 3;
     // nothing reads this since the bed went on the floor under the head (BedPairSearch picks the cells), kept so old

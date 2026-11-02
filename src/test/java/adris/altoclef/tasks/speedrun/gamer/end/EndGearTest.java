@@ -450,4 +450,51 @@ public class EndGearTest {
         assertFalse(EndGear.replaceable(EndGear.BedPlan.CRAFT, 1, 4));
         assertFalse(EndGear.replaceable(EndGear.BedPlan.GO_WITHOUT, 9, 1));
     }
+
+    private GamerConfig armorCfg() {
+        GamerConfig all = new GamerConfig();
+        all.end = cfg;
+        return all;
+    }
+
+    @Test
+    public void aNakedRespawnMakesTheChestplateFirst() {
+        FakeFacts f = new FakeFacts().with(Items.IRON_SWORD, 1).with(Items.IRON_PICKAXE, 1);
+        assertEquals(Items.IRON_CHESTPLATE, EndGear.armorFloorPiece(f, armorCfg()));
+        // a chestplate in the bag is the wear step's, the next slot is up
+        f.with(Items.IRON_CHESTPLATE, 1);
+        assertEquals(Items.IRON_LEGGINGS, EndGear.armorFloorPiece(f, armorCfg()));
+        // worn diamond counts as covered, leather does not
+        f.wear(Items.DIAMOND_LEGGINGS).wear(Items.LEATHER_HELMET);
+        f.armorPoints = 7;
+        assertEquals(Items.IRON_HELMET, EndGear.armorFloorPiece(f, armorCfg()));
+    }
+
+    @Test
+    public void theArmorFloorIsQuietAtTheBedLineOrOffTheIronPlan() {
+        FakeFacts f = new FakeFacts();
+        f.armorPoints = cfg.bedMinArmor;
+        assertNull(EndGear.armorFloorPiece(f, armorCfg()));
+        f.armorPoints = 0;
+        GamerConfig light = armorCfg();
+        light.overworld.armorPlan = OverworldConfig.ArmorPlan.CHEST_HELMET;
+        assertNull(EndGear.armorFloorPiece(f, light));
+        // every slot iron or held and still short: nothing left to make
+        FakeFacts covered = new FakeFacts().with(Items.IRON_HELMET, 1).with(Items.IRON_CHESTPLATE, 1).with(Items.IRON_LEGGINGS, 1)
+                .with(Items.IRON_BOOTS, 1);
+        assertNull(EndGear.armorFloorPiece(covered, armorCfg()));
+    }
+
+    @Test
+    public void theArmorFloorClockAndItsGate() {
+        assertFalse(EndGear.armorFloorTimedOut((int) (cfg.armorFloorSeconds * 20) - 1, cfg));
+        assertTrue(EndGear.armorFloorTimedOut((int) (cfg.armorFloorSeconds * 20), cfg));
+        // after the pickaxe, before the blocks
+        assertEquals("pickaxe", EndGear.gate(new EndGear.Gap(0, false, false, true, 20, true, List.of()), Items.IRON_CHESTPLATE));
+        assertEquals("armor_floor", EndGear.gate(new EndGear.Gap(0, false, false, false, 20, true, List.of()), Items.IRON_CHESTPLATE));
+        assertEquals("blocks", EndGear.gate(new EndGear.Gap(0, false, false, false, 20, true, List.of()), null));
+        // a piece in the bag goes on before the next one is made, the points only count worn armor
+        assertEquals("armor", EndGear.gate(new EndGear.Gap(0, false, false, false, 20, true, List.of(Items.IRON_CHESTPLATE)),
+                Items.IRON_LEGGINGS));
+    }
 }

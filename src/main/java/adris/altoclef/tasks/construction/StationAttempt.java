@@ -21,6 +21,11 @@ final class StationAttempt {
     static final int NO_SPOT_TICKS = 10;
     // holes we dig for room before we try walking somewhere else. a hole that didn't help, it's the wall's fault, not ours
     static final int MAX_CARVES = 3;
+    // the swim back to the last dry land, only this far. past that it is an ocean crossing, not a detour for a crafting table
+    static final double DRY_LAND_RANGE = 512;
+
+    // where a relocate goes: the bank (afloat), a better patch of floor, back to where we last stood on land, or nowhere
+    enum Move { SHORE, STANDPOINT, DRY_LAND, NONE }
 
     enum Phase {
         // choose a spot
@@ -216,6 +221,22 @@ final class StationAttempt {
             fallbackWhy = "nowhere better to stand within " + StationSpots.MAX_MOVE + " blocks, and " + carves + " holes dug didn't help";
             enter(Phase.FALLBACK);
         }
+    }
+
+    // the bank and the floor around us first, they are close. the dry land is the way out when we are wet and both came back
+    // empty, which is open sea with the shore past the 32 the bank search looks at. once per attempt: we went, we looked, if
+    // that did not help another swim to the same place will not either. dryLandDistance < 0 = we never stood on land here
+    static Move relocateMove(boolean shore, boolean standpoint, boolean inWater, double dryLandDistance, boolean dryLandUsed) {
+        if (shore) {
+            return Move.SHORE;
+        }
+        if (standpoint) {
+            return Move.STANDPOINT;
+        }
+        if (inWater && !dryLandUsed && dryLandDistance >= 0 && dryLandDistance <= DRY_LAND_RANGE) {
+            return Move.DRY_LAND;
+        }
+        return Move.NONE;
     }
 
     // we are at the new patch (or the walk timed out, same thing: look again from where we are)

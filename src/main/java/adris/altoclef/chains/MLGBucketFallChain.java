@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.LadderClutchFallTask;
@@ -22,6 +23,7 @@ import adris.altoclef.util.helpers.WaterUpkeep;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.pathing.movement.IMovement;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
@@ -45,6 +47,9 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 @SuppressWarnings("UnnecessaryLocalVariable")
@@ -85,6 +90,9 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     private int _upkeepLookAt = Integer.MIN_VALUE / 2;
     // ponds a go already timed out on, so a pond behind a ravine does not win every minute. forgotten with the chain
     private final Set<BlockPos> _upkeepFailedPonds = new HashSet<>();
+    // the level we last ticked in, same check as WorldSurvivalChain.trackArrival
+    private Level _lastWorld;
+    private Dimension _lastDim;
 
     // a few ticks for our eyes to go under after the splash, the first tick in the water can still have them above it
     static final int SPLASH_TICKS = 10;
@@ -121,8 +129,14 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     @Override
     public float getPriority(AltoClef mod) {
         if (!AltoClef.inGame()) return Float.NEGATIVE_INFINITY;
-        boolean falling = isFallingOhNo(mod) && !baritoneHasTheFall(mod);
-        LadderClutchFallTask ladder = falling ? ladderClutch(mod) : ladderTask();
+        levelChanged(mod);
+        // dropping into an end portal is a teleport, not a fall. a clutch started on the way in clicks on the other side,
+        // and the water lands on the spawn platform with us in it
+        boolean portal = inEndPortalColumn(mod);
+        boolean falling = isFallingOhNo(mod) && !baritoneHasTheFall(mod) && !portal;
+        // a ladder clutch from higher up does not get to keep clicking on the way through either. levelChanged drops it once
+        // we are across
+        LadderClutchFallTask ladder = portal ? null : falling ? ladderClutch(mod) : ladderTask();
         if (ladder != null) {
             // in the air it's the clutch, and once we're down it stays until the ladder is back in the inventory
             setTask(ladder);
@@ -188,11 +202,72 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             mod.getInputControls().hold(Input.CLICK_RIGHT);
             mod.getExtraBaritoneSettings().setInteractionPaused(true);
         } else if (_doingChorusFruit) {
-            _doingChorusFruit = false;
-            mod.getInputControls().release(Input.CLICK_RIGHT);
-            mod.getExtraBaritoneSettings().setInteractionPaused(false);
+            stopChorusFruit(mod);
         }
         return Float.NEGATIVE_INFINITY;
+    }
+
+    private void stopChorusFruit(AltoClef mod) {
+        _doingChorusFruit = false;
+        mod.getInputControls().release(Input.CLICK_RIGHT);
+        mod.getExtraBaritoneSettings().setInteractionPaused(false);
+    }
+
+    // a portal or a respawn moved us to another dimension: the fall, the water we poured and the pond we were walking to are
+    // all on the other side. only our own state goes, the keys and the path belong to whoever comes next. a respawn in the
+    // same dimension keeps the level, so it never gets here
+    private void levelChanged(AltoClef mod) {
+        Level world = mod.getWorld();
+        Dimension dim = WorldHelper.getCurrentDimension();
+        if (world == _lastWorld && dim == _lastDim) {
+            return;
+        }
+        boolean first = _lastWorld == null;
+        _lastWorld = world;
+        _lastDim = dim;
+        if (first) {
+            return;
+        }
+        Debug.logInternal("mlg: level changed to " + dim + ", dropping the fall state (clutching " + _clutching + ", took fall " + _tookFall
+                + ", surfacing " + _surfacing + ", our water " + _ourWater.size() + ", upkeep " + (_upkeep != null) + ")");
+        _tookFall = false;
+        _clutching = false;
+        _surfacing = false;
+        _wentUnder = false;
+        _lastMLG = null;
+        endCleanup();
+        endUpkeep(false);
+        // block positions from the other level, they would only black out the same coordinates over here
+        _upkeepFailedPonds.clear();
+        if (_doingChorusFruit) {
+            stopChorusFruit(mod);
+        }
+        setTask(null);
+    }
+
+    private static boolean inEndPortalColumn(AltoClef mod) {
+        AABB box = mod.getPlayer().getBoundingBox();
+        return inEndPortalColumn(box.minX, box.maxX, box.minZ, box.maxZ, mod.getPlayer().getY(),
+                p -> mod.getWorld().getBlockState(p).is(Blocks.END_PORTAL));
+    }
+
+    // an end portal block in any column our box covers (four at most), from just under the feet to above the head. the
+    // portal is a thin slab and we can be a tick above it or already in it, so the window is generous. pure for the tests
+    static boolean inEndPortalColumn(double minX, double maxX, double minZ, double maxZ, double y, Predicate<BlockPos> isEndPortal) {
+        int feet = (int) Math.floor(y);
+        // a box edge sitting right on a block line does not reach into the next column
+        int x1 = (int) Math.floor(maxX - 1.0E-7);
+        int z1 = (int) Math.floor(maxZ - 1.0E-7);
+        for (int x = (int) Math.floor(minX); x <= x1; x++) {
+            for (int z = (int) Math.floor(minZ); z <= z1; z++) {
+                for (int by = feet - 1; by <= feet + 3; by++) {
+                    if (isEndPortal.test(new BlockPos(x, by, z))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private void tookTheFall() {

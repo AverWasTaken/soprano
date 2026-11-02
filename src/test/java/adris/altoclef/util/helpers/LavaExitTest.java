@@ -180,7 +180,51 @@ public class LavaExitTest {
 
     @Test
     public void aRimWithNoRoomOnTopIsRejected() {
-        assertNull(stair(5, 63, 10, wallAt(7).set(7, 66, 10, STONE), 0));
+        // 66 alone would leave a rim at 66 with room over it, three up from T, so 67 goes too
+        assertNull(stair(5, 63, 10, wallAt(7).set(7, 66, 10, STONE).set(7, 67, 10, STONE), 0));
+    }
+
+    // a wall on x=7 whose top block is `k` up from the lava surface at 63
+    private static LavaWorld wallOf(int k) {
+        return lake().fill(7, 63, 10, 7, 63 + k, 10, STONE);
+    }
+
+    @Test
+    public void aThreeHighWallStillGetsAStairBlock() {
+        LavaExit.Cell t = stair(5, 63, 10, wallOf(2), 0);
+        assertNotNull(t);
+        assertEquals(6, t.x());
+        assertEquals(63, t.y());
+        assertEquals(10, t.z());
+    }
+
+    @Test
+    public void aFourHighWallStillGetsAStairBlock() {
+        LavaExit.Cell t = stair(5, 63, 10, wallOf(3), 0);
+        assertNotNull(t);
+        assertEquals(6, t.x());
+        assertEquals(63, t.y());
+    }
+
+    @Test
+    public void aFiveHighWallIsTooMuchPillar() {
+        assertNull(stair(5, 63, 10, wallOf(4), 0));
+    }
+
+    @Test
+    public void aTallerWallNeedsRoomToPillarOnTheStair() {
+        // three high wall, a block over T's column at 66: no room for the pillar plus the step
+        assertNull(stair(5, 63, 10, wallOf(2).set(6, 66, 10, STONE), 0));
+        // the one up stair never asked for that cell and still doesn't
+        assertNotNull(stair(5, 63, 10, wallAt(7).set(6, 66, 10, STONE), 0));
+    }
+
+    @Test
+    public void theLowestRimBeatsWhereWeAreLooking() {
+        // a two high wall behind us on x=3, a three high one ahead on x=7. facing +x, the short one still wins
+        LavaWorld w = wallOf(2).set(3, 63, 10, STONE).set(3, 64, 10, STONE);
+        assertEquals(4, stair(5, 63, 10, w, -90).x());
+        assertEquals(4, stair(5, 63, 10, w, 90).x());
     }
 
     @Test

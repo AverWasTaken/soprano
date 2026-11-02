@@ -18,7 +18,7 @@ import baritone.Baritone;
 import baritone.api.utils.DebugTap;
 import baritone.api.pathing.goals.Goal;
 import baritone.pathing.movement.Movement;
-import baritone.pathing.path.PathExecutor;
+import baritone.pathing.movement.movements.MovementTraverse;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -177,14 +177,12 @@ public final class Monitors {
         if (player == null) {
             return;
         }
-        PathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
-        Movement movement = null;
-        if (current != null && current.getPath() != null) {
-            var movements = current.getPath().movements();
-            int at = current.getPosition();
-            if (at >= 0 && at < movements.size() && movements.get(at) instanceof Movement m) {
-                movement = m;
-            }
+        // whatever the executor ran since our last look, not what the path points at now: by now a failed movement is
+        // cancelled and a finished one has handed over, and their status + place is the part worth reading
+        Movement movement = mod.getClientBaritone().getPathingBehavior().takeTicked();
+        Object place = null;
+        if (movement instanceof MovementTraverse traverse) {
+            place = traverse.lastPlace();
         }
         // hurtTime stays up for ten ticks, only the tick it starts is a hit
         boolean hit = player.hurtTime > lastHurtTime;
@@ -203,10 +201,10 @@ public final class Monitors {
         var input = player.input.keyPresses;
         byte keys = (byte) ((input.forward() ? FallTrace.FORWARD : 0) | (input.backward() ? FallTrace.BACK : 0)
                 | (input.left() ? FallTrace.LEFT : 0) | (input.right() ? FallTrace.RIGHT : 0)
-                | (input.sprint() ? FallTrace.SPRINT : 0) | (input.jump() ? FallTrace.JUMP : 0));
+                | (input.sprint() ? FallTrace.SPRINT : 0) | (input.jump() ? FallTrace.JUMP : 0) | (input.shift() ? FallTrace.SNEAK : 0));
         Goal goal = mod.getClientBaritone().getPathingBehavior().getGoal();
         fallTrace.push(player.getX(), player.getY(), player.getZ(), move.x, move.y, move.z, player.onGround(), (float) player.fallDistance, keys,
-                player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, goal,
+                player.getYRot(), player.getXRot(), player.verticalCollision, player.verticalCollisionBelow, player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, movement == null ? null : movement.status(), place, goal,
                 hit, attacker == null ? -1 : attacker.getId(), attacker == null ? 0 : attacker.getX(), attacker == null ? 0 : attacker.getY(),
                 attacker == null ? 0 : attacker.getZ());
         boolean nether = WorldHelper.getCurrentDimension() == baritone.api.utils.Dimension.NETHER;

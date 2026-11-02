@@ -80,6 +80,8 @@ public class GamerTask extends Task {
     // what a full inventory (altoThrowAwayUnusedItems, which the run forces on) must never throw away: the gear and
     // materials the End needs, wool until it is beds, the stuff the next phases still have to smelt, trade and craft with
     private static final Item[] PROTECTED = protectedItems();
+    // the same list for ItemValue, which wants it whether or not a run is going
+    private static final Set<Item> GUARDED = new HashSet<>(List.of(PROTECTED));
     private static final Block[] TRACKED = ArrayUtils.addAll(new Block[]{
             Blocks.END_PORTAL_FRAME, Blocks.END_PORTAL, Blocks.CRAFTING_TABLE, Blocks.CHEST, Blocks.SPAWNER,
             Blocks.NETHER_PORTAL}, ItemHelper.itemsToBlocks(ItemHelper.BED));
@@ -224,6 +226,10 @@ public class GamerTask extends Task {
         machine = new PhaseMachine(handlers, host);
     }
 
+    public static boolean guards(Item item) {
+        return GUARDED.contains(item);
+    }
+
     private static Item[] protectedItems() {
         Item[] own = {
                 Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
@@ -232,6 +238,9 @@ public class GamerTask extends Task {
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
                 Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLD_BLOCK, Items.GOLD_NUGGET,
                 Items.RAW_GOLD, Items.LADDER,
+                // same deal as the table: a station we mined to carry along is not garbage. unguarded, a lone furnace was the
+                // "unused" pick, got thrown to make room, and the pickup refused our own because it would be the next thing out
+                Items.FURNACE, Items.SMOKER,
                 // the nether digs a lot of netherrack and the spares are all that stands between that and bare hands
                 Items.STONE_PICKAXE, Items.WOODEN_PICKAXE};
         Item[] all = own;

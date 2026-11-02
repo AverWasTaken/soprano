@@ -113,10 +113,20 @@ public class PlayerExtraController {
     // two attack packets in one tick is a thing no hand does
     private long _lastSwingTick = Long.MIN_VALUE;
 
+    public long lastSwingTick() {
+        return _lastSwingTick;
+    }
+
     public boolean attack(Entity entity) {
+        return attack(entity, Baritone.settings().altoEntityReachRange.value);
+    }
+
+    // objectReach is how far a crystal or ghast ball can be. only CrystalStep passes more than the setting (CRYSTAL_REACH),
+    // after its blast check said yes. the other crystal swings never asked, so they keep the short arm
+    public boolean attack(Entity entity, double objectReach) {
         long now = gameTime();
         // the odd item is in hand to throw the charge away, nothing swings with it
-        if (now == _lastSwingTick || chargeResetActive() || !canSwingAt(entity)) {
+        if (now == _lastSwingTick || chargeResetActive() || !canSwingAt(entity, objectReach)) {
             return false;
         }
         // pre 1.9 there is no cooldown to wait on, so everybody calls this every tick and the clicker is the pacing
@@ -166,9 +176,9 @@ public class PlayerExtraController {
     // a mob only gets hit when the crosshair the server knows about is on it (CombatAim.onTarget). crystals and ghast balls
     // keep the old reach-only rule: nobody aims at those, the dragon fight and the fireball swat never did, and the server
     // doesn't care either way
-    private boolean canSwingAt(Entity entity) {
+    private boolean canSwingAt(Entity entity, double objectReach) {
         if (!(entity instanceof LivingEntity)) {
-            return inRange(entity) || reachGap(_mod.getPlayer(), entity) <= Baritone.settings().altoEntityReachRange.value;
+            return inRange(entity) || reachGap(_mod.getPlayer(), entity) <= objectReach;
         }
         return onTarget(entity);
     }

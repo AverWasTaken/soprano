@@ -410,12 +410,24 @@ public class BiteRulesTest {
 
     @Test
     public void aBiteOnlyGivesWayToTheShieldWhenTheProjectileIsAboutToLand() {
-        assertTrue(BiteRules.shieldMayStart(false, Double.POSITIVE_INFINITY));
-        assertTrue(BiteRules.shieldMayStart(false, 40));
-        assertFalse(BiteRules.shieldMayStart(true, 40));
-        assertFalse(BiteRules.shieldMayStart(true, Double.POSITIVE_INFINITY));
-        assertTrue(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_TICKS));
-        assertTrue(BiteRules.shieldMayStart(true, 3));
+        assertTrue(BiteRules.shieldMayStart(false, Double.POSITIVE_INFINITY, false));
+        assertTrue(BiteRules.shieldMayStart(false, 40, false));
+        assertFalse(BiteRules.shieldMayStart(true, 40, false));
+        assertFalse(BiteRules.shieldMayStart(true, Double.POSITIVE_INFINITY, false));
+        assertTrue(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_TICKS, false));
+        assertTrue(BiteRules.shieldMayStart(true, 3, false));
+    }
+
+    @Test
+    public void aGhastBallGetsTheShieldEarlierThanAnArrow() {
+        // 14 on the clock: an arrow lets the bite finish, a ghast ball (which speeds up) does not
+        assertFalse(BiteRules.shieldMayStart(true, 14, false));
+        assertTrue(BiteRules.shieldMayStart(true, 14, true));
+        assertTrue(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_FIREBALL_TICKS, true));
+        assertFalse(BiteRules.shieldMayStart(true, BiteRules.SHIELD_IMPACT_FIREBALL_TICKS + 1, true));
+        assertFalse(BiteRules.shieldMayStart(true, Double.POSITIVE_INFINITY, true));
+        // not biting: nothing to give way
+        assertTrue(BiteRules.shieldMayStart(false, 40, true));
     }
 
     @Test

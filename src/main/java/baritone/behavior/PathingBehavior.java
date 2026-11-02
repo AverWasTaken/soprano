@@ -31,6 +31,7 @@ import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.pathing.calc.AStarPathFinder;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.SwimStalls;
@@ -55,9 +56,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private PathExecutor current;
     private PathExecutor next;
+    private Movement lastTicked;
 
     private Goal goal;
     private CalculationContext context;
+    // the context came from a PathingCommandContext, so it carries settings of its own and we don't rebuild it
+    private boolean customContext;
 
     /*eta*/
     private int ticksElapsedSoFar;
@@ -175,7 +179,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     @Override
     public void onPlayerSprintState(SprintStateEvent event) {
-        if (isPathing()) {
+        if (baritone.getInputOverrideHandler().settleActive()) {
+            // the gated executor's last answer is stale, and a sprint on a ledge is the opposite of settling
+            event.setState(false);
+        } else if (isPathing()) {
             event.setState(current.isSprinting());
         }
     }
@@ -221,8 +228,16 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             if (current == null) {
                 return;
             }
+            if (baritone.getInputOverrideHandler().settleActive()) {
+                // the edge settle has the wheel (EdgeSettle). no movement runs, old or new, the cancels above still land.
+                // not a pause: pausedThisTick would make isPathing false and the processes would read a stall
+                baritone.getInputOverrideHandler().clearAllKeys();
+                safeToCancel = true;
+                return;
+            }
             safeToCancel = current.onTick();
             if (current.failed() || current.finished()) {
+                boolean hanging = current.bailedOverDrop();
                 current = null;
                 // the segment it was waiting on is gone, and the next path to show up is not the one to cancel
                 deferredCancel.clear();
@@ -236,6 +251,14 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                         }
                     }
                     return;
+                }
+                if (next != null && hanging) {
+                    // the bridge just gave up with us hanging off the edge on sneak. a next path taking over this same tick
+                    // presses its keys, EdgeSettle reads that as steering and never walks us back. a replan instead: it waits
+                    // while the settle has the wheel (settleActive above)
+                    logDebug("Discarding next path, the bridge gave up over a drop");
+                    queuePathEvent(PathEvent.DISCARD_NEXT);
+                    next = null;
                 }
                 if (next != null && !next.getPath().positions().contains(ctx.playerFeet()) && !next.getPath().positions().contains(expectedSegmentStart)) { // can contain either one
                     // if the current path failed, we may not actually be on the next one, so make sure
@@ -266,6 +289,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     }
                     // we aren't calculating
                     queuePathEvent(PathEvent.CALC_STARTED);
+                    if (hanging && !customContext) {
+                        // this tick's context snapshotted the failed moves before the bail recorded the bridge, and the
+                        // replan would happily pick the same bridge again. a fresh one has it priced in
+                        context = new CalculationContext(baritone, true);
+                    }
                     findPathInNewThread(expectedSegmentStart, true, context);
                 }
                 return;
@@ -336,8 +364,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         secretInternalSetGoal(command.goal);
         if (command instanceof PathingCommandContext) {
             context = ((PathingCommandContext) command).desiredCalcContext;
+            customContext = true;
         } else {
             context = new CalculationContext(baritone, true);
+            customContext = false;
         }
         if (goal == null) {
             return false;
@@ -405,6 +435,19 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     @Override
     public PathExecutor getCurrent() {
         return current;
+    }
+
+    // the falltrace takes this once a client tick. a movement that failed and got cancelled, or finished and handed the
+    // same tick to the next one, is gone from the path by the time anyone looks, so the executor drops it here instead
+    public void noteTicked(Movement movement) {
+        lastTicked = movement;
+    }
+
+    // null when no movement ran since the last take
+    public Movement takeTicked() {
+        Movement movement = lastTicked;
+        lastTicked = null;
+        return movement;
     }
 
     @Override
