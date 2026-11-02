@@ -197,9 +197,11 @@ public class FoodTripRulesTest {
     }
 
     @Test
-    public void runReserveNeverDropsUnderTheEntryStack() {
-        assertEquals(128, BuildBlocks.reserveFor(64, 128));
-        assertEquals(200, BuildBlocks.reserveFor(200, 128));
+    public void runReserveNeverDropsUnderTheArrivalStack() {
+        // the entry stack is smaller than what the nether digs, a floor on it would throw the dig back out
+        assertEquals(128, BuildBlocks.reserveFor(64, 56));
+        assertEquals(200, BuildBlocks.reserveFor(200, 56));
+        assertEquals(200, BuildBlocks.reserveFor(64, 200));
     }
 
     // ---- the walk home: stall, cap, restock, counters

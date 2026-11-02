@@ -185,12 +185,20 @@ public class PortalPlannerTest {
     public void portalGateFillsToTheEntryStackNotTheSmallBand() {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.CRAFTING_TABLE, 1);
         f.foodUnits = cfg.netherEntryFoodUnits;
-        f.buildBlocks = 64;
+        f.buildBlocks = 32;
         List<KitNeed> out = PortalPlanner.gate(f, cfg, 10);
         assertEquals(List.of(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.netherEntryBlocks)), out);
-        assertEquals(128, cfg.netherEntryBlocks);
+        assertEquals(56, cfg.netherEntryBlocks);
         f.buildBlocks = cfg.netherEntryBlocksLow;
         assertTrue("a near full stack is not worth a trip to the stone", PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    // KitRunner tells the gate's stack from the stock-up by the count alone, the two landing on one number would bill the stock-up
+    // to the base's refills
+    @Test
+    public void theEntryStackIsNotTheStockUpsNumber() {
+        int extra = cfg.smeltExtras.stream().filter(k -> k.item.equals(KitNeed.BUILD_BLOCKS)).findFirst().orElseThrow().count;
+        assertTrue(cfg.portalBuildBlocks + extra != cfg.netherEntryBlocks);
     }
 
     @Test

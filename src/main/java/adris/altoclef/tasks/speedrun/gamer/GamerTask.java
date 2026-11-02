@@ -483,8 +483,8 @@ public class GamerTask extends Task {
         // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
         SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
-        // junk disposal keeps this many throwaway blocks and drops the rest, so under the entry stack it would throw away the very
-        // stack the portal gate just went and got
+        // junk disposal keeps this many throwaway blocks and drops the rest, so under the arrival stack it would throw away the very
+        // stack the nether just dug (see BuildBlocks.reserveFor)
         int keep = userReserve != null ? userReserve : s.altoReservedBuildingBlockCount.value;
         SettingsOverrides.put(s.altoReservedBuildingBlockCount, BuildBlocks.reserveFor(keep, GamerConfigs.get().overworld.netherEntryBlocks));
     }

@@ -179,17 +179,18 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
-    // what the portal gate fills to, and what a blocks trip home brings back. the nether bridges eat throwaways and hand nothing
-    // back, 32 got a lava pool crossing about halfway. portalBuildBlocks stays the small number everything else shares
-    public int netherEntryBlocks = 128;
-    // the portal gate only tops up under this, so a bag at 64 does not go through as it is but one at 120 is not worth a trip to the
+    // what the portal gate fills to. just enough to get through and get out of trouble, the real stack gets dug on the other side
+    // (NetherRestock.ARRIVAL_TARGET), netherrack comes off way faster than dirt does up here. not 64: KitRunner tells a stock-up from
+    // this one by the count, and the stock-up lands on 64. portalBuildBlocks stays the small number everything else shares
+    public int netherEntryBlocks = 56;
+    // the portal gate only tops up under this: the cast, one escape's budget and a spare. a bag over it is not worth a trip to the
     // stone. portalBuildBlocksLow stays the mark for everything else
-    public int netherEntryBlocksLow = 96;
+    public int netherEntryBlocksLow = 40;
     // the refill only starts under these marks (BuildBlocks), then runs to the target. a pillar or two, or a bridge, takes a
     // bag from 32 to 20 and that is not a reason to go mining. while a furnace cooks the base is 8: enough for a few pillars.
-    // at the portal it is what the lava pool still places (the slab and the two top row pads) plus what the nether walk should
-    // have in hand: nothing on the other side asks for blocks, so the bag we take through is the bag we bridge lava with. walking
-    // back into the phase with more than that does not start another round
+    // at the portal it is what the lava pool still places (the slab and the two top row pads) plus a few for the way over. the
+    // stack we bridge lava with is the nether's own arrival dig. walking back into the phase with more than that does not start
+    // another round
     public int ironBuildBlocksLow = 8;
     public int portalBuildBlocksLow = PortalMold.SLAB.length + (int) PortalMold.CASTS.stream().filter(c -> c.pad != null).count() + 12;
     // the stock-up on top of a full base (smeltExtras build_blocks) only starts under this, and gets one trip per phase entry

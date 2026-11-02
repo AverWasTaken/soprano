@@ -18,6 +18,10 @@ public final class NetherRestock {
     // merely getting low, and LOW is far too big a number to mean "empty")
     static final int EMPTY = 8;
     public static final int TARGET = 64;
+    // what the first dig of a phase entry fills to. we walk in with netherEntryBlocks and the rest comes off the nether's own
+    // walls. a number of its own: raising LOW and TARGET for this would hand the fallback dig to healthy bags and double the
+    // death trip's dig
+    public static final int ARRIVAL_TARGET = 128;
     // netherrack is everywhere but the digging can still go nowhere (lava all around): stop trying after this
     static final double MAX_SECONDS = 75;
     static final double COOLDOWN_SECONDS = 120;
@@ -36,6 +40,9 @@ public final class NetherRestock {
     // restocks in a row that ended because the dig had nothing left to go to (not the clock, not a full bag). the phase reads it to
     // tell "short" from "short and the band is empty"
     private int exhaustedEnds;
+    private boolean arrivalAsked;
+    // log only, what ended the last dig
+    private String endWhy = "";
 
     public int exhaustedEnds() {
         return exhaustedEnds;
@@ -47,6 +54,24 @@ public final class NetherRestock {
 
     public boolean isActive() {
         return active;
+    }
+
+    // true once in this restock's life. the phase makes a new NetherBlockRestock per phase entry and not per arrival, a reset on
+    // arrival would have every food trip dig the whole stack again. same idea as portalRestockAsked in NetherRecoverTask
+    public boolean takeArrivalAsk() {
+        boolean first = !arrivalAsked;
+        arrivalAsked = true;
+        return first;
+    }
+
+    // the tracker lines, one when a dig starts and one when it ends
+    public String startLine() {
+        return "restock: dig start, " + heldAtStart + " blocks, filling to " + activeStopAt
+                + (exhaustedEnds == 0 ? "" : ", arm's reach only");
+    }
+
+    public String endLine(int held, double now) {
+        return "restock: dig end, " + heldAtStart + " -> " + held + " blocks in " + Math.round(now - startedAt) + " s, " + endWhy;
     }
 
     // the dig stays in a box around where it started, a few blocks either way in height and not far off sideways. on a ledge
@@ -129,6 +154,7 @@ public final class NetherRestock {
     public boolean update(int held, int startBelow, int stopAt, boolean hasPick, boolean exhausted, double now) {
         if (!hasPick) {
             active = false;
+            endWhy = "no pick";
             return false;
         }
         if (active) {
@@ -143,6 +169,12 @@ public final class NetherRestock {
                 // the whole clock without one block in the bag is a dry dig too: every pick was a path it couldn't make
                 boolean empty = dry || held <= heldAtStart;
                 exhaustedEnds = held < activeStopAt && empty ? exhaustedEnds + 1 : 0;
+                // only the arrival dig asks for this much. it was a bonus: coming up dry on it with a healthy bag says nothing about
+                // the bag, so it can't unlock the fallback dig or count toward goHomeForBlocks
+                if (activeStopAt == ARRIVAL_TARGET && held >= LOW) {
+                    exhaustedEnds = 0;
+                }
+                endWhy = held >= activeStopAt ? "full" : dry ? "dry" : "clock";
                 clockEnd = held < activeStopAt && !empty;
                 active = false;
                 exhaustedSince = Double.NaN;

@@ -374,6 +374,24 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileWithTheOldEntryStackGetsTheNewOne() throws IOException {
+        write("{\"version\": 13, \"overworld\": {\"netherEntryBlocks\": 128, \"netherEntryBlocksLow\": 96}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(56, c.overworld.netherEntryBlocks);
+        assertEquals(40, c.overworld.netherEntryBlocksLow);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 13, \"overworld\": {\"netherEntryBlocks\": 200, \"netherEntryBlocksLow\": 150}}");
+        c = GamerConfigs.load();
+        assertEquals(200, c.overworld.netherEntryBlocks);
+        assertEquals(150, c.overworld.netherEntryBlocksLow);
+        // and a current file that says 128 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherEntryBlocks\": 128, \"netherEntryBlocksLow\": 96}}");
+        c = GamerConfigs.load();
+        assertEquals(128, c.overworld.netherEntryBlocks);
+        assertEquals(96, c.overworld.netherEntryBlocksLow);
+    }
+
+    @Test
     public void anOldSavedStockUpListLosesTheWoolBeds() throws IOException {
         write("{\"version\": 9, \"overworld\": {\"smeltExtras\": [{\"item\": \"wool_beds\", \"count\": 3}]}}");
         assertTrue(GamerConfigs.load().overworld.smeltExtras.stream().noneMatch(e -> e.item.equals("wool_beds")));
@@ -406,7 +424,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 13;
+    private static final int PINNED_VERSION = 14;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

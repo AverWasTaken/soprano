@@ -570,7 +570,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 else if (b == Blocks.NETHER_PORTAL) portal++;
             }
             Debug.logInternal("arrival: nether at " + at.toShortString() + ", 5x3x5 has lava " + lava + " portal " + portal
-                    + arrivalState(mod) + (loaded ? "" : " (chunks never all showed up)"));
+                    + arrivalState(mod) + ", build blocks " + StorageHelper.getBuildingMaterialCount(mod)
+                    + (loaded ? "" : " (chunks never all showed up)"));
         } else if (_arrivalDim == Dimension.END) {
             Debug.logInternal("arrival: end at " + at.toShortString() + arrivalState(mod) + ", build blocks " + StorageHelper.getBuildingMaterialCount(mod)
                     + (loaded ? "" : " (chunks never all showed up)"));

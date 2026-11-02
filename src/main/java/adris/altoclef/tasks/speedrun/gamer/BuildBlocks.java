@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRestock;
+
 import java.util.function.Consumer;
 
 // the one rule for "go get build blocks". it used to be count < 32 to start and count >= 32 to stop, the same number, so
@@ -88,9 +90,10 @@ public final class BuildBlocks {
         state.buildRefill = target;
     }
 
-    // the user can keep more than the entry stack if they like, never less
+    // the user can keep more if they like, never less. the arrival dig goes well past the entry stack, a floor on the entry number
+    // would throw the dig straight back out. a hand picked entry over it still counts, the gate would mine that and lose it too
     public static int reserveFor(int user, int entry) {
-        return Math.max(user, entry);
+        return Math.max(user, Math.max(entry, NetherRestock.ARRIVAL_TARGET));
     }
 
     // a phase entry starts from nothing
