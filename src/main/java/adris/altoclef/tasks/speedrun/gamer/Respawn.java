@@ -140,6 +140,16 @@ public final class Respawn {
         return bed == null || start == null || Math.hypot(bed.x - start.x, bed.z - start.z) > NEAR_STRONGHOLD;
     }
 
+    // is the standing bed worth skipping a night for. in END_PREP only one by the portal is, any other is the thing the prep is fixing.
+    // ROOM and OPEN only one by the stronghold, an old bed back at the nether portal does nothing for a death down there
+    public static boolean worthKeeping(GamerPhase phase, RunState state) {
+        return switch (phase) {
+            case END_PREP -> coversPortal(state);
+            case ROOM, OPEN -> !nothingNearStronghold(state);
+            default -> true;
+        };
+    }
+
     // the fallback bed by the stronghold: we stand at its start, nothing holds our respawn near it, and a bed is in the bag. the
     // caller latches it, once per room search and not again mid dig
     public static boolean wantRoomBed(RunState state, boolean atStart, int bedsInBag) {

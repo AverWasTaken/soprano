@@ -1452,9 +1452,9 @@ public class GamerTask extends Task {
         return prep;
     }
 
-    // the spawn bed the night rules protect. in END_PREP only one by the portal is worth it, any other is the thing the prep is fixing
+    // the spawn bed the night rules protect
     private boolean spawnBedHeld(AltoClef mod) {
-        return spawnBedStands(mod) && (state.phase != GamerPhase.END_PREP || Respawn.coversPortal(state));
+        return spawnBedStands(mod) && Respawn.worthKeeping(state.phase, state);
     }
 
     // the overworld respawn bed we know of is still standing where we put it (unloaded counts as still there)
