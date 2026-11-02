@@ -80,6 +80,7 @@ public class AltoClef {
     private final Monitors _monitors = new Monitors();
     private Dimension _banDimension;
     private MiscBlockTracker _miscBlockTracker;
+    private LandMemory _landMemory;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
     private GamerHudOverlay _gamerHudOverlay;
@@ -138,6 +139,7 @@ public class AltoClef {
         _blockTracker = new BlockTracker(this, _trackerManager);
         _chunkTracker = new SimpleChunkTracker(this);
         _miscBlockTracker = new MiscBlockTracker(this);
+        _landMemory = new LandMemory(this);
 
         // Renderers
         _commandStatusOverlay = new CommandStatusOverlay();
@@ -419,6 +421,10 @@ public class AltoClef {
      */
     public MiscBlockTracker getMiscBlockTracker() {
         return _miscBlockTracker;
+    }
+
+    public LandMemory getLandMemory() {
+        return _landMemory;
     }
 
     /**

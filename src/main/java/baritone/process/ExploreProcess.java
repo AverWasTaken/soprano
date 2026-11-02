@@ -43,11 +43,28 @@ import net.minecraft.world.level.chunk.LevelChunk;
 
 public final class ExploreProcess extends BaritoneProcessHelper implements IExploreProcess {
 
+    // one scan a second, two empty ones in a row mean no land frontier
+    private static final int FRONTIER_SCAN_TICKS = 20;
+    private static final int FRONTIER_EMPTY_SCANS = 2;
+    // half a million chunks a scan, 8 km out from the origin. past that the ring stops and it reads as nothing found: a
+    // crossing, whose first look at dry land scans around the player and re-anchors there
+    static final int FRONTIER_MAX_RING = 512;
+
     private BlockPos explorationOrigin;
 
     private IChunkFilter filter;
 
     private int distanceCompleted;
+
+    // only the wander sets one. no gate is plain #explore, every line of the old path as it always was
+    private LandGate gate;
+    private boolean gateOn;
+    private boolean crossing;
+    // survives a cancel on purpose. every interrupt cancels every process, and a turn back still has to know what it swam at
+    private List<ChunkPos> lastFrontier = List.of();
+    private Goal[] frontierGoals;
+    private int frontierAge;
+    private int emptyScans;
 
     public ExploreProcess(Baritone baritone) {
         super(baritone);
@@ -62,6 +79,48 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
     public void explore(int centerX, int centerZ) {
         explorationOrigin = new BlockPos(centerX, 0, centerZ);
         distanceCompleted = 0;
+        clearGate();
+    }
+
+    // the same explore, but it only heads for chunks next to land the gate has seen, and says so when there are none left
+    public void explore(int centerX, int centerZ, LandGate gate) {
+        explore(centerX, centerZ);
+        this.gate = gate;
+        gateOn = gate.active();
+    }
+
+    private void clearGate() {
+        gate = null;
+        crossing = false;
+        frontierGoals = null;
+        frontierAge = 0;
+        emptyScans = 0;
+    }
+
+    // nothing left on this side of the water. a plain explore around a point way out there, so the rings pull us across
+    public void crossFrom(int x, int z) {
+        if (gate != null) {
+            explorationOrigin = gate.startCrossing(x, z);
+            distanceCompleted = 0;
+            crossing = true;
+        }
+    }
+
+    public boolean isCrossing() {
+        return crossing;
+    }
+
+    public BlockPos crossingTarget() {
+        return explorationOrigin;
+    }
+
+    // what the last scan was going for
+    public List<ChunkPos> lastFrontier() {
+        return lastFrontier;
+    }
+
+    public boolean landFrontierExists(int x, int z) {
+        return gate != null && !scanFrontier(x >> 4, z >> 4, 1, gate, new BaritoneChunkCache()).found().isEmpty();
     }
 
     @Override
@@ -98,12 +157,98 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
             onLostControl();
             return null;
         }
+        if (gate != null) {
+            boolean on = gate.active();
+            if (on != gateOn) {
+                // a wander can walk through a portal, and then these are the overworld's numbers in the nether. a crossing
+                // target would be a very long walk for nothing. let go, the wander asks again from here
+                onLostControl();
+                return null;
+            }
+            if (on && !crossing) {
+                PathingCommand land = landTick();
+                if (land != null) {
+                    return land;
+                }
+            }
+        }
         Goal[] closestUncached = closestUncachedChunks(explorationOrigin, filter);
         if (closestUncached == null) {
             logDebug("awaiting region load from disk");
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         return new PathingCommand(new GoalComposite(closestUncached), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
+    }
+
+    // null means a crossing just started and the old path below takes it from here. the scan walks the rings from the
+    // middle every time, so once a second it is. a goal doesn't need to change faster than chunks load
+    private PathingCommand landTick() {
+        if (--frontierAge < 0) {
+            int chunkX = explorationOrigin.getX() >> 4;
+            int chunkZ = explorationOrigin.getZ() >> 4;
+            // the real cache and not calcFilter: an inverted json filter calls everything off its list explored, and the scan
+            // would take all of that for old land and follow it out forever. a wander isn't working through someone's list
+            FrontierScan scan = scanFrontier(chunkX, chunkZ, Baritone.settings().exploreChunkSetMinimumSize.value, gate, new BaritoneChunkCache());
+            frontierAge = FRONTIER_SCAN_TICKS;
+            frontierGoals = null;
+            switch (ScanOutcome.of(scan, emptyScans)) {
+                case GO -> {
+                    emptyScans = 0;
+                    lastFrontier = scan.found();
+                    frontierGoals = scan.found().stream().map(chunk -> frontierGoal(chunk, chunkX, chunkZ)).toArray(Goal[]::new);
+                }
+                case AWAIT -> frontierAge = 0;
+                case EMPTY -> emptyScans++;
+                case CROSS -> {
+                    // never a pause from here, that would be standing on the beach until the heat death of the server
+                    BlockPos me = ctx.playerFeet();
+                    crossFrom(me.getX(), me.getZ());
+                    return null;
+                }
+            }
+        }
+        if (frontierGoals == null) {
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+        }
+        return new PathingCommand(new GoalComposite(frontierGoals), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
+    }
+
+    private static Goal frontierGoal(ChunkPos chunk, int originChunkX, int originChunkZ) {
+        int offset = Baritone.settings().worldExploringChunkOffset.value << 4;
+        int centerX = (chunk.x() << 4) + 8 + (chunk.x() < originChunkX ? -offset : offset);
+        int centerZ = (chunk.z() << 4) + 8 + (chunk.z() < originChunkZ ? -offset : offset);
+        return createGoal(centerX, centerZ);
+    }
+
+    // the rings, but only out to the land we know plus one. waiting for 10 chunks out here is what froze the client: with
+    // nothing to find the old loop just keeps going. fewer than 10 is fine, none is an answer. a region still loading doesn't
+    // hold up the chunks we do have
+    static FrontierScan scanFrontier(int chunkX, int chunkZ, int want, LandGate gate, IChunkFilter filter) {
+        List<ChunkPos> found = new ArrayList<>();
+        boolean awaiting = false;
+        // reach is read every ring, explored() can move it
+        for (int dist = 0; dist <= Math.min(gate.reach(chunkX, chunkZ) + 1, FRONTIER_MAX_RING); dist++) {
+            for (int dx = -dist; dx <= dist; dx++) {
+                int zval = dist - Math.abs(dx);
+                // no second go at zval 0, -0 is the same chunk
+                for (int mult = zval == 0 ? 1 : 0; mult < 2; mult++) {
+                    int x = chunkX + dx;
+                    int z = chunkZ + (mult * 2 - 1) * zval;
+                    if (!gate.frontier(x, z)) {
+                        continue;
+                    }
+                    switch (filter.isAlreadyExplored(x, z)) {
+                        case UNKNOWN -> awaiting = true;
+                        case NOT_EXPLORED -> found.add(new ChunkPos(x, z));
+                        case EXPLORED -> gate.explored(x, z);
+                    }
+                }
+            }
+            if (!found.isEmpty() && found.size() >= want) {
+                break;
+            }
+        }
+        return new FrontierScan(found, awaiting);
     }
 
     private Goal[] closestUncachedChunks(BlockPos center, IChunkFilter filter) {
@@ -180,6 +325,44 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         EXPLORED, NOT_EXPLORED, UNKNOWN;
     }
 
+    // what the wander knows about land, in chunk coordinates. it lives on the alto side so this file doesn't have to know what
+    // a wander is
+    public interface LandGate {
+
+        // false off the overworld: plain rings, nothing to gate
+        boolean active();
+
+        // an unseen chunk next to land, not banned
+        boolean frontier(int chunkX, int chunkZ);
+
+        // the chunk passed frontier() and turned out to be explored already, so it is from before this session
+        void explored(int chunkX, int chunkZ);
+
+        // the farthest ring from the origin that has known land on it, -1 for no land at all
+        int reach(int originChunkX, int originChunkZ);
+
+        // write the crossing down and say where it goes. this process forgets it on every cancel, the gate doesn't
+        BlockPos startCrossing(int x, int z);
+    }
+
+    record FrontierScan(List<ChunkPos> found, boolean awaiting) {
+    }
+
+    enum ScanOutcome {
+        GO, AWAIT, EMPTY, CROSS;
+
+        // two empties in a row, the chunks of a world we just joined are still arriving on the first one
+        static ScanOutcome of(FrontierScan scan, int emptyScansBefore) {
+            if (!scan.found().isEmpty()) {
+                return GO;
+            }
+            if (scan.awaiting()) {
+                return AWAIT;
+            }
+            return emptyScansBefore + 1 >= FRONTIER_EMPTY_SCANS ? CROSS : EMPTY;
+        }
+    }
+
     // loaded check first: a loaded chunk the cache never got is still explored
     static Status decide(boolean loadedNonEmpty, boolean cached, boolean regionLoaded) {
         if (loadedNonEmpty || cached) {
@@ -191,7 +374,7 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         return Status.NOT_EXPLORED;
     }
 
-    private interface IChunkFilter {
+    interface IChunkFilter {
 
         Status isAlreadyExplored(int chunkX, int chunkZ);
 
@@ -304,10 +487,16 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
     @Override
     public void onLostControl() {
         explorationOrigin = null;
+        clearGate();
     }
 
     @Override
     public String displayName0() {
-        return "Exploring around " + explorationOrigin + ", distance completed " + distanceCompleted + ", currently going to " + new GoalComposite(closestUncachedChunks(explorationOrigin, calcFilter()));
+        if (gate != null && gateOn && !crossing) {
+            return "Exploring land around " + explorationOrigin + ", " + lastFrontier.size() + " frontier chunks";
+        }
+        // null is regions still loading, a GoalComposite of null is a crash in a debug string
+        Goal[] goals = closestUncachedChunks(explorationOrigin, calcFilter());
+        return (crossing ? "Crossing to " : "Exploring around ") + explorationOrigin + ", distance completed " + distanceCompleted + ", currently going to " + (goals == null ? "nowhere yet" : new GoalComposite(goals));
     }
 }
