@@ -25,6 +25,14 @@ public final class Vitals {
     public static String format(float hp, float absorption, int hunger, float saturation, int armor, String held,
                                 String cursorItem, int cursorCount, int x, int y, int z, String dim, String chain,
                                 String task, Gamer gamer, String path, int stand) {
+        return format(hp, absorption, hunger, saturation, armor, held, cursorItem, cursorCount, x, y, z, dim, chain, task,
+                gamer, path, stand, null);
+    }
+
+    // wet is in water or not, so the share of a game spent at sea can be counted. last for the same reason, null leaves it off
+    public static String format(float hp, float absorption, int hunger, float saturation, int armor, String held,
+                                String cursorItem, int cursorCount, int x, int y, int z, String dim, String chain,
+                                String task, Gamer gamer, String path, int stand, Boolean wet) {
         StringBuilder sb = new StringBuilder(160);
         sb.append("vitals hp=").append(one(hp)).append(" abs=").append(one(absorption));
         sb.append(" hunger=").append(hunger).append(" sat=").append(one(saturation));
@@ -50,6 +58,9 @@ public final class Vitals {
         }
         if (path != null) {
             sb.append(" path=").append(word(path)).append(" stand=").append(stand);
+        }
+        if (wet != null) {
+            sb.append(" wet=").append(wet);
         }
         return sb.toString();
     }

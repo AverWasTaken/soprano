@@ -246,7 +246,7 @@ public final class Monitors {
                 player.getFoodData().getSaturationLevel(), player.getArmorValue(), held.isEmpty() ? null : name(held.getItem()),
                 carried.isEmpty() ? null : name(carried.getItem()), carried.getCount(), at.getX(), at.getY(), at.getZ(),
                 WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getClass().getSimpleName(), task, gamer,
-                StandReport.pathWord(mod.getClientBaritone()), standWatch.stillTicks());
+                StandReport.pathWord(mod.getClientBaritone()), standWatch.stillTicks(), player.isInWater());
     }
 
     private static String name(Item item) {
