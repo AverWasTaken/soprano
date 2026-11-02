@@ -410,6 +410,22 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysThreeDeathsPerPhaseGetsTheNewDefault() throws IOException {
+        assertEquals(8, new GamerConfig().death.maxPerPhase);
+        write("{\"version\": 14, \"death\": {\"maxPerPhase\": 3, \"maxTotal\": 12}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(8, c.death.maxPerPhase);
+        // the loop breaker stays where it was
+        assertEquals(12, c.death.maxTotal);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 14, \"death\": {\"maxPerPhase\": 5}}");
+        assertEquals(5, GamerConfigs.load().death.maxPerPhase);
+        // and a current file that says 3 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"death\": {\"maxPerPhase\": 3}}");
+        assertEquals(3, GamerConfigs.load().death.maxPerPhase);
+    }
+
+    @Test
     public void aSavedFileWithoutSpareSwordsGetsOne() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherSparePicks\": 1}}");
         assertEquals(1, GamerConfigs.load().overworld.netherSpareSwords);
@@ -424,7 +440,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 14;
+    private static final int PINNED_VERSION = 15;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

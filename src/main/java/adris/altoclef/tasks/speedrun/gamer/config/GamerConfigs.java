@@ -79,6 +79,10 @@ public final class GamerConfigs {
         if (from < 14 && c.overworld != null && c.overworld.netherEntryBlocksLow == 96) {
             c.overworld.netherEntryBlocksLow = new GamerConfig().overworld.netherEntryBlocksLow;
         }
+        // and the deaths per phase: 3 was the default until the stop turned out to cost more than the deaths did
+        if (from < 15 && c.death != null && c.death.maxPerPhase == 3) {
+            c.death.maxPerPhase = new GamerConfig().death.maxPerPhase;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

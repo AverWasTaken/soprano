@@ -114,6 +114,16 @@ public class BlazeFightRulesTest {
         assertFalse(BlazeFightRules.isThreat(21, true, true));
     }
 
+    // far past SIGHT_RANGE and still shooting, as long as it has a line on us
+    @Test
+    public void aBlazeIsInFireRangeOnlyWithALineOnUs() {
+        assertTrue(BlazeFightRules.inFireRange(33, true));
+        assertTrue(BlazeFightRules.inFireRange(BlazeFightRules.FIRE_RANGE, true));
+        assertFalse(BlazeFightRules.inFireRange(BlazeFightRules.FIRE_RANGE + 1, true));
+        assertFalse(BlazeFightRules.inFireRange(33, false));
+        assertFalse(BlazeFightRules.inFireRange(2, false));
+    }
+
     @Test
     public void reachabilityIsAboutHeightLavaAndDistance() {
         double range = BlazeFightRules.PICK_RANGE;

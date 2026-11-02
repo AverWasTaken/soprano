@@ -35,7 +35,8 @@ import net.minecraft.world.level.block.state.BlockState;
 // "nothing to do right now" (camping, or running with nobody in sight)
 final class BlazeFight {
 
-    private static final double RUN_DISTANCE = 24;
+    // past FIRE_RANGE on purpose, so a blaze with a line on us never counts as far enough. who is in the crowd is what ends a run
+    static final double RUN_DISTANCE = 50;
     // same reach the plain run's crowd uses for "who is after us"
     private static final double RUN_CROWD_RADIUS = 20;
 
@@ -167,10 +168,11 @@ final class BlazeFight {
             case KILL -> new KillEntityTask(target);
             // never stand still in a run: with no blaze on us the wither skeletons that kept chasing still count, only an empty
             // crowd (nobody at all) is sitting tight until the food chain and regen are done
-            // (a shot that landed lately keeps the thrower in that crowd, see runCrowd)
+            // (a shot that landed lately keeps the thrower in that crowd, see runCrowd, and a blaze with a line on us from far out
+            // is in it too, see underFireCrowd. out of their sight is where a run gets to stop)
             case RUN -> {
-                List<Entity> crowd = runCrowd(mod);
-                yield crowd.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, () -> runCrowd(mod));
+                List<Entity> crowd = underFireCrowd(mod);
+                yield crowd.isEmpty() ? null : new RunAwayFromHostilesTask(RUN_DISTANCE, true, () -> underFireCrowd(mod));
             }
         };
     }
@@ -229,6 +231,23 @@ final class BlazeFight {
         return merge(blazes, others);
     }
 
+    // the run's crowd: runCrowd plus every blaze that can shoot us from further out. waiting to be hit first is too late, the
+    // fight doesn't even hear about a hit while mob defense has the wheel. not in runCrowd itself, the pack back off shares that one
+    private List<Entity> underFireCrowd(AltoClef mod) {
+        List<Entity> crowd = runCrowd(mod);
+        try {
+            LocalPlayer player = mod.getPlayer();
+            for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {
+                // the close ones are in already, so the raycasts are only for the ones between SIGHT_RANGE and FIRE_RANGE
+                if (!blaze.isAlive() || crowd.contains(blaze)) continue;
+                if (BlazeFightRules.inFireRange(player.distanceTo(blaze), LookHelper.seesPlayer(blaze, player, BlazeFightRules.FIRE_RANGE))) crowd.add(blaze);
+            }
+        } catch (java.util.ConcurrentModificationException ignored) {
+            // the tracker rebuilds on another thread sometimes, we get the crowd again next tick
+        }
+        return crowd;
+    }
+
     // live wither skeletons within radius of a spot. 0 when the tracker is mid rebuild, we ask again next tick
     static int witherSkeletonsNear(AltoClef mod, Vec3 at, double radius) {
         int count = 0;
@@ -280,7 +299,7 @@ final class BlazeFight {
     private String runDetail(AltoClef mod, float health) {
         LocalPlayer player = mod.getPlayer();
         StringBuilder crowd = new StringBuilder();
-        for (Entity e : runCrowd(mod)) {
+        for (Entity e : underFireCrowd(mod)) {
             if (crowd.length() > 0) crowd.append(", ");
             crowd.append(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath()).append(' ').append(Math.round(player.distanceTo(e)));
         }

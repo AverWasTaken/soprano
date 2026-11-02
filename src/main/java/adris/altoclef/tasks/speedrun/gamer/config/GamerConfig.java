@@ -19,7 +19,8 @@ public class GamerConfig {
     // (12 moved the End beds to 9 and the sheep clock 3 -> 6 minutes, a saved 5, 8 or 3 is an old default and goes along)
     // (13 moved the End's block lines, minBuildBlocks 40 -> 48 and endMinBlocks 20 -> 8, a saved 40 or 20 is the old default and goes along)
     // (14 moved the nether entry stack 128 -> 56 and its low mark 96 -> 40, the rest gets dug on arrival. a saved 128 or 96 is the old default and goes along)
-    public static final int VERSION = 14;
+    // (15 moved the deaths per phase 3 -> 8, a saved 3 is the old default and goes along)
+    public static final int VERSION = 15;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;
@@ -54,7 +55,9 @@ public class GamerConfig {
         // a pile within this many blocks (square, not round: chunks tick in a square) of where we respawn stays loaded and its items
         // despawn on the clock, so waiting for the day with it is a loss. only a farther pile waits (DeathRules.waitsForDay)
         public int tickingBlocks = 176;
-        public int maxPerPhase = 3;
+        // a death with an empty bag costs a minute, this stop costs the game until somebody retypes #gamer. 8 sits out a whole
+        // bad night, maxTotal is the loop breaker
+        public int maxPerPhase = 8;
         // deaths since the run was (re)started by hand, over every phase together
         public int maxTotal = 12;
         // a death in the nether leaves a pile that does not age while we are away: go back through the portal for it

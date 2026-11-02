@@ -1524,7 +1524,8 @@ public class GamerTask extends Task {
             if (noBed) {
                 String why = ShelterTask.whyNoColumn(mod, skipSpot);
                 // the counts shift as we walk, so the key is the text with the nonzero numbers blanked: it says again when the failing mix changes
-                if (shelterNoHoleSaid.worthSaying(why.replaceAll("[1-9]\\d*", "N"), gameTime, 0)) {
+                // (the block ids are in the key too, and those change every few steps on mixed ground, hence the gap)
+                if (shelterNoHoleSaid.worthSaying(why.replaceAll("[1-9]\\d*", "N"), gameTime, 100)) {
                     Debug.logInternal("night: shelter wanted, no hole (" + why + ")");
                 }
             }
