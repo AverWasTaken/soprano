@@ -26,6 +26,7 @@ import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.VecUtils;
 import baritone.api.utils.input.Input;
+import baritone.pathing.movement.BridgeStallLog;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.CliffAvoidance;
 import baritone.pathing.movement.GodBridge;
@@ -33,6 +34,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.EdgeSettle;
 import baritone.utils.ExperimentalMovement;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
@@ -75,6 +77,14 @@ public class MovementTraverse extends Movement {
     // what the bridge placer said this tick. nobody acts on it, the falltrace prints it so a slide off a bridge says whether
     // the block was coming or refused
     private PlaceResult lastPlace;
+    // the bridge stall bail (bridgeStall): a second of hanging still over a real drop with no block appearing. the bot
+    // sits on the clamp with the timeout counting down, there's nothing to wait for
+    static final int STALL_TICKS = 20;
+    // less than this from where the stall started is standing still, the clamp lets a hundredth or two of creep through
+    static final double STALL_MOVE = 0.03;
+    private int stallTicks;
+    private Vec3 stallAt;
+    private boolean bailedOverDrop;
 
     public MovementTraverse(IBaritone baritone, BetterBlockPos from, BetterBlockPos to) {
         super(baritone, from, to, new BetterBlockPos[]{to.above(), to}, to.below());
@@ -88,6 +98,9 @@ public class MovementTraverse extends Movement {
         godClicked = false;
         lavaShore = null;
         lastPlace = null;
+        stallTicks = 0;
+        stallAt = null;
+        bailedOverDrop = false;
     }
 
     public PlaceResult lastPlace() {
@@ -351,6 +364,9 @@ public class MovementTraverse extends Movement {
         }
 
         if (isTheBridgeBlockThere) {
+            // a block showed up, that is progress
+            stallTicks = 0;
+            stallAt = null;
             if (feet.equals(dest)) {
                 return state.setStatus(MovementStatus.SUCCESS);
             }
@@ -378,97 +394,140 @@ public class MovementTraverse extends Movement {
             MovementHelper.moveTowards(ctx, state, positionsToBreak[0]);
             return state;
         } else {
-            wasTheBridgeBlockAlwaysThere = false;
-            if (godBridge(state)) {
-                return state;
-            }
-            Block standingOn = BlockStateInterface.get(ctx, feet.below()).getBlock();
-            if (standingOn.equals(Blocks.SOUL_SAND) || standingOn instanceof SlabBlock) { // see issue #118
-                double dist = Math.max(Math.abs(dest.getX() + 0.5 - ctx.player().position().x), Math.abs(dest.getZ() + 0.5 - ctx.player().position().z));
-                if (dist < 0.85) { // 0.5 + 0.3 + epsilon
-                    MovementHelper.moveTowards(ctx, state, dest);
-                    return state.setInput(Input.MOVE_FORWARD, false)
-                            .setInput(Input.MOVE_BACK, true);
-                }
-            }
-            double dist1 = Math.max(Math.abs(ctx.player().position().x - (dest.getX() + 0.5D)), Math.abs(ctx.player().position().z - (dest.getZ() + 0.5D)));
-            PlaceResult p = MovementHelper.attemptToPlaceABlock(state, baritone, dest.below(), false, !Baritone.settings().assumeSafeWalk.value);
-            lastPlace = p;
-            if ((p == PlaceResult.READY_TO_PLACE || dist1 < 0.6) && !Baritone.settings().assumeSafeWalk.value) {
-                state.setInput(Input.SNEAK, true);
-            }
-            switch (p) {
-                case READY_TO_PLACE: {
-                    if (ctx.player().isCrouching() || Baritone.settings().assumeSafeWalk.value) {
-                        state.setInput(Input.CLICK_RIGHT, true);
-                    }
-                    return state;
-                }
-                case ATTEMPTING: {
-                    if (dist1 > 0.83) {
-                        // might need to go forward a bit
-                        float yaw = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations()).getYaw();
-                        if (Math.abs(state.getTarget().rotation.getYaw() - yaw) < 0.1) {
-                            // but only if our attempted place is straight ahead
-                            return state.setInput(Input.MOVE_FORWARD, true);
-                        }
-                    } else if (ctx.playerRotations().isReallyCloseTo(state.getTarget().rotation)) {
-                        // well i guess theres something in the way
-                        return state.setInput(Input.CLICK_LEFT, true);
-                    }
-                    return state;
-                }
-                case BLOCKED: {
-                    // something is standing in the cell: no click, no walking forward into the gap. it moves or we give up
-                    // on this movement (that's PlaceWait, 20 ticks)
-                    return state;
-                }
-                default:
-                    break;
-            }
-            if (state.getStatus() == MovementStatus.UNREACHABLE) {
-                // findPlace already said there's nothing we may put here. the click below would go out with whatever is in hand
-                return state;
-            }
-            if (feet.equals(dest)) {
-                // If we are in the block that we are trying to get to, we are sneaking over air and we need to place a block beneath us against the one we just walked off of
-                // Out.log(from + " " + to + " " + faceX + "," + faceY + "," + faceZ + " " + whereAmI);
-                double faceX = (dest.getX() + src.getX() + 1.0D) * 0.5D;
-                double faceY = (dest.getY() + src.getY() - 1.0D) * 0.5D;
-                double faceZ = (dest.getZ() + src.getZ() + 1.0D) * 0.5D;
-                // faceX, faceY, faceZ is the middle of the face between from and to
-                BlockPos goalLook = src.below(); // this is the block we were just standing on, and the one we want to place against
+            return bridgeStall(bridge(state, feet), feet);
+        }
+    }
 
-                Rotation backToFace = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(faceX, faceY, faceZ), ctx.playerRotations());
-                float pitch = backToFace.getPitch();
-                double dist2 = Math.max(Math.abs(ctx.player().position().x - faceX), Math.abs(ctx.player().position().z - faceZ));
-                if (dist2 < 0.29) { // see issue #208
-                    float yaw = RotationUtils.calcRotationFromVec3d(VecUtils.getBlockPosCenter(dest), ctx.playerHead(), ctx.playerRotations()).getYaw();
-                    state.setTarget(new MovementState.MovementTarget(new Rotation(yaw, pitch), true));
-                    state.setInput(Input.MOVE_BACK, true);
-                } else {
-                    state.setTarget(new MovementState.MovementTarget(backToFace, true));
-                }
-                if (ctx.isLookingAt(goalLook)) {
-                    // findPlace came back empty handed, so nothing picked the block for this cell. pick it now, same as its
-                    // ready path does right before the click (a creative hand over lands in the slot this tick too). on a
-                    // builder path a block that has to be aimed is a no, the builder places those itself
-                    BlockPos placeAt = dest.below();
-                    if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), true)) {
-                        MovementHelper.logNoThrowaway(state, baritone, placeAt);
-                        return state.setStatus(MovementStatus.UNREACHABLE);
-                    }
-                    return state.setInput(Input.CLICK_RIGHT, true); // wait to right click until we are able to place
-                }
-                // Out.log("Trying to look at " + goalLook + ", actually looking at" + Baritone.whatAreYouLookingAt());
-                if (ctx.playerRotations().isReallyCloseTo(state.getTarget().rotation)) {
-                    state.setInput(Input.CLICK_LEFT, true);
-                }
-                return state;
-            }
-            MovementHelper.moveTowardsWithSlightRotation(ctx, state, dest);
+    // the block under dest isn't there: place it, sneaking out over the gap if we have to
+    private MovementState bridge(MovementState state, BlockPos feet) {
+        wasTheBridgeBlockAlwaysThere = false;
+        if (godBridge(state)) {
             return state;
         }
+        Block standingOn = BlockStateInterface.get(ctx, feet.below()).getBlock();
+        if (standingOn.equals(Blocks.SOUL_SAND) || standingOn instanceof SlabBlock) { // see issue #118
+            double dist = Math.max(Math.abs(dest.getX() + 0.5 - ctx.player().position().x), Math.abs(dest.getZ() + 0.5 - ctx.player().position().z));
+            if (dist < 0.85) { // 0.5 + 0.3 + epsilon
+                MovementHelper.moveTowards(ctx, state, dest);
+                return state.setInput(Input.MOVE_FORWARD, false)
+                        .setInput(Input.MOVE_BACK, true);
+            }
+        }
+        double dist1 = Math.max(Math.abs(ctx.player().position().x - (dest.getX() + 0.5D)), Math.abs(ctx.player().position().z - (dest.getZ() + 0.5D)));
+        PlaceResult p = MovementHelper.attemptToPlaceABlock(state, baritone, dest.below(), false, !Baritone.settings().assumeSafeWalk.value);
+        lastPlace = p;
+        if ((p == PlaceResult.READY_TO_PLACE || dist1 < 0.6) && !Baritone.settings().assumeSafeWalk.value) {
+            state.setInput(Input.SNEAK, true);
+        }
+        switch (p) {
+            case READY_TO_PLACE: {
+                if (ctx.player().isCrouching() || Baritone.settings().assumeSafeWalk.value) {
+                    state.setInput(Input.CLICK_RIGHT, true);
+                }
+                return state;
+            }
+            case ATTEMPTING: {
+                if (dist1 > 0.83) {
+                    // might need to go forward a bit
+                    float yaw = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations()).getYaw();
+                    if (Math.abs(state.getTarget().rotation.getYaw() - yaw) < 0.1) {
+                        // but only if our attempted place is straight ahead
+                        return state.setInput(Input.MOVE_FORWARD, true);
+                    }
+                } else if (ctx.playerRotations().isReallyCloseTo(state.getTarget().rotation)) {
+                    // well i guess theres something in the way
+                    return state.setInput(Input.CLICK_LEFT, true);
+                }
+                return state;
+            }
+            case BLOCKED: {
+                // something is standing in the cell: no click, no walking forward into the gap. it moves or we give up
+                // on this movement (that's PlaceWait, 20 ticks)
+                return state;
+            }
+            default:
+                break;
+        }
+        if (state.getStatus() == MovementStatus.UNREACHABLE) {
+            // findPlace already said there's nothing we may put here. the click below would go out with whatever is in hand
+            return state;
+        }
+        if (feet.equals(dest)) {
+            // If we are in the block that we are trying to get to, we are sneaking over air and we need to place a block beneath us against the one we just walked off of
+            // Out.log(from + " " + to + " " + faceX + "," + faceY + "," + faceZ + " " + whereAmI);
+            double faceX = (dest.getX() + src.getX() + 1.0D) * 0.5D;
+            double faceY = (dest.getY() + src.getY() - 1.0D) * 0.5D;
+            double faceZ = (dest.getZ() + src.getZ() + 1.0D) * 0.5D;
+            // faceX, faceY, faceZ is the middle of the face between from and to
+            BlockPos goalLook = src.below(); // this is the block we were just standing on, and the one we want to place against
+
+            Rotation backToFace = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(faceX, faceY, faceZ), ctx.playerRotations());
+            float pitch = backToFace.getPitch();
+            double dist2 = Math.max(Math.abs(ctx.player().position().x - faceX), Math.abs(ctx.player().position().z - faceZ));
+            if (dist2 < 0.29) { // see issue #208
+                float yaw = RotationUtils.calcRotationFromVec3d(VecUtils.getBlockPosCenter(dest), ctx.playerHead(), ctx.playerRotations()).getYaw();
+                state.setTarget(new MovementState.MovementTarget(new Rotation(yaw, pitch), true));
+                state.setInput(Input.MOVE_BACK, true);
+            } else {
+                state.setTarget(new MovementState.MovementTarget(backToFace, true));
+            }
+            if (ctx.isLookingAt(goalLook)) {
+                // findPlace came back empty handed, so nothing picked the block for this cell. pick it now, same as its
+                // ready path does right before the click (a creative hand over lands in the slot this tick too). on a
+                // builder path a block that has to be aimed is a no, the builder places those itself
+                BlockPos placeAt = dest.below();
+                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), true)) {
+                    MovementHelper.logNoThrowaway(state, baritone, placeAt);
+                    return state.setStatus(MovementStatus.UNREACHABLE);
+                }
+                return state.setInput(Input.CLICK_RIGHT, true); // wait to right click until we are able to place
+            }
+            // Out.log("Trying to look at " + goalLook + ", actually looking at" + Baritone.whatAreYouLookingAt());
+            if (ctx.playerRotations().isReallyCloseTo(state.getTarget().rotation)) {
+                state.setInput(Input.CLICK_LEFT, true);
+            }
+            return state;
+        }
+        MovementHelper.moveTowardsWithSlightRotation(ctx, state, dest);
+        return state;
+    }
+
+    // a sneak bridge out over a real drop that sits still while no block shows up isn't going to place. waiting out the
+    // movement timeout ends in the executor's cancel letting go of sneak while we hang there, so give up here instead,
+    // still on sneak, and EdgeSettle walks us back onto src. counted after the whole place decision, whatever it said
+    // (ready, attempting and no option take turns while the aim wobbles), only standing still and nothing placed count
+    private MovementState bridgeStall(MovementState state, BlockPos feet) {
+        Vec3 at = ctx.player().position();
+        boolean overDrop = state.getStatus() == MovementStatus.RUNNING && feet.equals(dest)
+                && EdgeSettle.hangingOver(ctx.world(), dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5);
+        boolean moved = stallAt == null || at.distanceToSqr(stallAt) > STALL_MOVE * STALL_MOVE;
+        stallTicks = stallTicks(stallTicks, overDrop, moved);
+        if (stallTicks == 0) {
+            stallAt = at;
+        }
+        if (!bridgeGivesUp(stallTicks)) {
+            return state;
+        }
+        BridgeStallLog.log(baritone, src, dest, state, lastPlace, stallTicks, !Baritone.settings().assumeSafeWalk.value);
+        bailedOverDrop = true;
+        // the executor remembers this edge (rememberFailure, not timed out). a flat traverse isn't a climb edge, so
+        // nothing forgives it and the replan prices this bridge up instead of picking it again straight away
+        return state.setStatus(MovementStatus.UNREACHABLE);
+    }
+
+    // ticks in a row over the drop without moving. moving or not being over it starts over
+    static int stallTicks(int before, boolean overDrop, boolean moved) {
+        return !overDrop || moved ? 0 : before + 1;
+    }
+
+    static boolean bridgeGivesUp(int stallTicks) {
+        return stallTicks >= STALL_TICKS;
+    }
+
+    // set the tick the stall bail fires. PathingBehavior asks so a planned next path doesn't grab the wheel that same
+    // tick, its keys would count as steering and EdgeSettle would never get to walk us back
+    public boolean bailedOverDrop() {
+        return bailedOverDrop;
     }
 
     // plain footing for the god bridge: the speed model leans on 0.6 friction and no speed factor, and magma wants the

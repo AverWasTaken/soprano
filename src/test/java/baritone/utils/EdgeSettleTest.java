@@ -7,9 +7,14 @@ import static org.junit.Assert.assertTrue;
 
 import baritone.utils.EdgeSettle.End;
 import baritone.utils.EdgeSettle.Keys;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
 import org.junit.Test;
 
 public class EdgeSettleTest {
@@ -178,13 +183,16 @@ public class EdgeSettleTest {
     }
 
     @Test
-    public void fortyTicksThenStandStillUntilTheCreepDies() {
-        assertTrue(EdgeSettle.walking(39));
-        assertFalse(EdgeSettle.walking(EdgeSettle.WALK_TICKS));
+    public void walkThenStandStillUntilTheCreepDies() {
+        int walk = EdgeSettle.WALK_TICKS;
+        // off the clamp the creep starts out going the wrong way, forty ticks wasn't enough to turn round and get in
+        assertEquals(60, walk);
+        assertTrue(EdgeSettle.walking(walk - 1));
+        assertFalse(EdgeSettle.walking(walk));
         // standing still while still walking is not the fallback
-        assertEquals(End.NONE, EdgeSettle.end(39, false, true, false, false, false, 0));
-        assertEquals(End.NONE, EdgeSettle.end(40, false, true, false, false, false, 0.01));
-        assertEquals(End.STOPPED, EdgeSettle.end(40, false, true, false, false, false, 0));
+        assertEquals(End.NONE, EdgeSettle.end(walk - 1, false, true, false, false, false, 0));
+        assertEquals(End.NONE, EdgeSettle.end(walk, false, true, false, false, false, 0.01));
+        assertEquals(End.STOPPED, EdgeSettle.end(walk, false, true, false, false, false, 0));
         assertEquals(End.NONE, EdgeSettle.end(99, false, true, false, false, false, 0.002));
         assertEquals(End.CAP, EdgeSettle.end(EdgeSettle.CAP_TICKS, false, true, false, false, false, 0.002));
         // getting there late still counts as getting there
@@ -211,5 +219,99 @@ public class EdgeSettleTest {
         latch.set(a);
         assertFalse(latch.blocks(false, a));
         assertFalse(latch.blocks(true, a));
+    }
+
+    // ---- resting. feet at y 60 on a block at row 59, support at x 11, the box hangs a hundredth over it
+
+    private static final class Shapes implements EdgeSettle.Boxes {
+        final Map<BlockPos, List<AABB>> boxes = new HashMap<>();
+
+        Shapes box(int x, int y, int z, double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+            boxes.computeIfAbsent(new BlockPos(x, y, z), k -> new ArrayList<>()).add(new AABB(x + minX, y + minY, z + minZ, x + maxX, y + maxY, z + maxZ));
+            return this;
+        }
+
+        Shapes full(int x, int y, int z) {
+            return box(x, y, z, 0, 0, 0, 1, 1, 1);
+        }
+
+        @Override
+        public List<AABB> at(int x, int y, int z) {
+            return boxes.getOrDefault(new BlockPos(x, y, z), List.of());
+        }
+    }
+
+    // box x [cx - 0.3, cx + 0.3], z [5.2, 5.8]
+    private static boolean resting(boolean onGround, double cx, double feet, double lastFeet, double vy, double fall, Shapes s) {
+        return EdgeSettle.resting(onGround, cx - 0.3, cx + 0.3, 5.2, 5.8, feet, lastFeet, vy, fall, s);
+    }
+
+    @Test
+    public void pinnedOnTheClampIsRestingWithOnGroundFalse() {
+        Shapes s = new Shapes().full(11, 59, 5);
+        // a hundredth of overlap, gravity still asking for -0.078, nothing moved
+        assertTrue(resting(false, 10.71, 60, 60, -0.078, 0, s));
+        // onGround true is resting whatever the rest says
+        assertTrue(resting(true, 10.71, 60, 59, 0.4, 3, new Shapes()));
+    }
+
+    @Test
+    public void feetOffTheTopIsNotResting() {
+        Shapes s = new Shapes().full(11, 59, 5);
+        assertFalse(resting(false, 10.71, 60.5, 60.5, -0.078, 0, s));
+        assertFalse(resting(false, 10.71, 59.6, 59.6, -0.078, 0, s));
+        // nothing under the box at all
+        assertFalse(resting(false, 10.5, 60, 60, -0.078, 0, s));
+    }
+
+    @Test
+    public void fallingPastALedgeAtItsHeightIsNotResting() {
+        Shapes s = new Shapes().full(11, 59, 5);
+        // same y as the top for a tick, but we've been falling
+        assertFalse(resting(false, 10.71, 60, 60, -0.078, 1.5, s));
+        // or the height moved since last tick
+        assertFalse(resting(false, 10.71, 60, 60.3, -0.078, 0, s));
+    }
+
+    @Test
+    public void risingIsNotResting() {
+        assertFalse(resting(false, 10.71, 60, 60, 0.42, 0, new Shapes().full(11, 59, 5)));
+    }
+
+    @Test
+    public void noLastTickIsNotResting() {
+        assertFalse(resting(false, 10.71, 60, Double.NaN, -0.078, 0, new Shapes().full(11, 59, 5)));
+    }
+
+    @Test
+    public void slabsAndFencesCount() {
+        // bottom slab, top at 59.5
+        assertTrue(resting(false, 10.71, 59.5, 59.5, -0.078, 0, new Shapes().box(11, 59, 5, 0, 0, 0, 1, 0.5, 1)));
+        // a fence post pokes half a block into the row above
+        assertTrue(resting(false, 11.2, 60.5, 60.5, -0.078, 0, new Shapes().box(11, 59, 5, 0.375, 0, 0.375, 0.625, 1.5, 0.625)));
+    }
+
+    @Test
+    public void aPaneBesideUsIsNotAFloor() {
+        // a north south pane at x 10.4375..10.5625, top at 60. our box ends exactly on its side
+        Shapes s = new Shapes().box(10, 59, 5, 0.4375, 0, 0, 0.5625, 1, 1);
+        assertFalse(EdgeSettle.resting(false, 9.8375, 10.4375, 5.2, 5.8, 60, 60, -0.078, 0, s));
+        // a sliver of real overlap is
+        assertTrue(EdgeSettle.resting(false, 9.84, 10.44, 5.2, 5.8, 60, 60, -0.078, 0, s));
+    }
+
+    @Test
+    public void pinnedKeepsTheLatch() {
+        // pinned on the clamp onGround is false. with resting the latch holds instead of clearing and re-arming every tick
+        BlockPos a = new BlockPos(11, 59, 5);
+        EdgeSettle.Latch latch = new EdgeSettle.Latch();
+        latch.set(a);
+        boolean pinned = resting(false, 10.71, 60, 60, -0.078, 0, new Shapes().full(11, 59, 5));
+        assertTrue(latch.blocks(pinned, a));
+        assertTrue(latch.blocks(pinned, a));
+        assertTrue(latch.armed());
+        // and the same pinned body may engage, raw onGround could not
+        assertTrue(EdgeSettle.mayEngage(true, false, false, pinned, false, false, false, true));
+        assertFalse(EdgeSettle.mayEngage(true, false, false, false, false, false, false, true));
     }
 }
