@@ -13,6 +13,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
+import java.util.List;
+
 // a path that stops steering while we hang off a ledge on sneak used to let go of sneak that same tick, and the leftover
 // creep took the last hundredth of a block of overlap with it. this keeps sneak down and walks us back onto the block we
 // are hanging off. it lives in the input handler and is applied where PlayerMovementInput reads the keys, after every
@@ -23,9 +25,14 @@ public final class EdgeSettle {
     static final int DROP_ROWS = 4;
     // how far inside the support the centre has to get before we let go
     static final double INSIDE = 0.2;
-    // a walk that hasn't made it by now isn't going to, just stand still on sneak
-    static final int WALK_TICKS = 40;
+    // a walk that hasn't made it by now isn't going to, just stand still on sneak. off a sneak clamp we start out with
+    // air physics creep going the wrong way: ~8 ticks to turn it round, ~30 more to reach the inside line
+    static final int WALK_TICKS = 60;
     static final int CAP_TICKS = 100;
+    // feet this close to a collision box top stand on it
+    static final double TOP = 1.0E-3;
+    // and this little height change since last tick is not falling
+    static final double STILL = 1.0E-4;
     // under this the key quantizes to the other axis. sin 22.5, so we press the closest of the eight directions
     private static final double AXIS = Math.sin(Math.toRadians(22.5));
 
@@ -46,6 +53,11 @@ public final class EdgeSettle {
     public interface Solid {
         // block (x, y, z) has a collision shape at all
         boolean at(int x, int y, int z);
+    }
+
+    public interface Boxes {
+        // the collision boxes of block (x, y, z), already in world coordinates. empty for none
+        List<AABB> at(int x, int y, int z);
     }
 
     // ---- pure half
@@ -84,6 +96,41 @@ public final class EdgeSettle {
         return best;
     }
 
+    // onGround reads false while the sneak clamp pins us to an edge, which is the exact moment this class exists for. so
+    // standing counts too when our footprint really overlaps a collision box whose top is at our feet, nothing pushes us
+    // up, nothing has been falling and the height didn't move since last tick. every one of those has to hold: a body
+    // dropping past a ledge can sit at the ledge's height for one tick, but not with fallDistance at zero and a still y
+    public static boolean resting(boolean onGround, double minX, double maxX, double minZ, double maxZ, double feet, double lastFeet,
+                                  double vy, double fallDistance, Boxes boxes) {
+        if (onGround) {
+            return true;
+        }
+        // NaN for no last tick, so this is written the way NaN fails
+        if (vy > 0 || fallDistance != 0 || !(Math.abs(feet - lastFeet) <= STILL)) {
+            return false;
+        }
+        return onTop(minX, maxX, minZ, maxZ, feet, boxes);
+    }
+
+    static boolean onTop(double minX, double maxX, double minZ, double maxZ, double feet, Boxes boxes) {
+        int row = (int) Math.floor(feet - 0.01);
+        // a fence or a wall pokes half a block into the row above it, so the row under the foot row gets asked too
+        for (int y = row; y >= row - 1; y--) {
+            for (int x = (int) Math.floor(minX); x <= (int) Math.floor(maxX); x++) {
+                for (int z = (int) Math.floor(minZ); z <= (int) Math.floor(maxZ); z++) {
+                    for (AABB b : boxes.at(x, y, z)) {
+                        // touching edges isn't standing on it, a pane beside us is not a floor
+                        if (Math.abs(b.maxY - feet) <= TOP && Math.min(maxX, b.maxX) - Math.max(minX, b.minX) > 1.0E-7
+                                && Math.min(maxZ, b.maxZ) - Math.max(minZ, b.minZ) > 1.0E-7) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // which keys walk (dx, dz) with this move yaw. same rotation as Entity.getInputVector: forward is (-sin, cos), left is
     // (cos, sin)
     public static Keys keysToward(float yaw, double dx, double dz) {
@@ -106,17 +153,17 @@ public final class EdgeSettle {
 
     // steering = a movement pressed a direction or jump this tick, or the same executor ran a tick that just had no keys
     // (a look wait mid back-place). latched = the last settle on this support gave up and we haven't moved off it since
-    public static boolean mayEngage(boolean shiftLastTick, boolean sneakForced, boolean steering, boolean onGround,
+    public static boolean mayEngage(boolean shiftLastTick, boolean sneakForced, boolean steering, boolean resting,
                                     boolean blocked, boolean humanKey, boolean latched, boolean hanging) {
-        return shiftLastTick && !sneakForced && !steering && onGround && !blocked && !humanKey && !latched && hanging;
+        return shiftLastTick && !sneakForced && !steering && resting && !blocked && !humanKey && !latched && hanging;
     }
 
     // ticks counts from the engage tick (0). the walk stops at WALK_TICKS, after that we only wait for the creep to die
     // (vanilla zeroes anything under 0.003 a tick, so a real stop reads as exactly 0)
-    public static End end(int ticks, boolean changed, boolean onGround, boolean blocked, boolean humanKey, boolean inside,
+    public static End end(int ticks, boolean changed, boolean resting, boolean blocked, boolean humanKey, boolean inside,
                           double horizontalSpeed) {
         if (changed) return End.CHANGED;
-        if (!onGround) return End.AIRBORNE;
+        if (!resting) return End.AIRBORNE;
         if (blocked) return End.BLOCKED;
         if (humanKey) return End.HUMAN;
         if (inside) return End.SETTLED;
@@ -138,11 +185,12 @@ public final class EdgeSettle {
             this.support = support;
         }
 
-        public boolean blocks(boolean onGround, BlockPos now) {
+        // resting, not onGround: pinned on the clamp onGround is false every tick, and the latch would let go and re-arm in a loop
+        public boolean blocks(boolean resting, BlockPos now) {
             if (support == null) {
                 return false;
             }
-            if (!onGround || now == null || !now.equals(support)) {
+            if (!resting || now == null || !now.equals(support)) {
                 support = null;
                 return false;
             }
@@ -166,6 +214,10 @@ public final class EdgeSettle {
     private BlockPos support;
     private LocalPlayer player;
     private Level level;
+    // feet height on the tick before this one, for resting. NaN when we don't have one
+    private double lastY = Double.NaN;
+    private double prevY = Double.NaN;
+    private LocalPlayer heightOf;
 
     public boolean active() {
         return active;
@@ -176,15 +228,22 @@ public final class EdgeSettle {
         latch.clear();
         player = null;
         level = null;
+        lastY = Double.NaN;
+        prevY = Double.NaN;
+        heightOf = null;
     }
 
     // once a tick from InputOverrideHandler.onTick, after the path and every process had their say
     public void tick(LocalPlayer p, Level world, Options options, boolean shiftLastTick, boolean sneakForced, boolean steering) {
+        // every tick, before any gate. a height that only gets sampled once we let go of sneak has no last tick to compare to
+        prevY = p != null && p == heightOf ? lastY : Double.NaN;
+        lastY = p == null ? Double.NaN : p.getY();
+        heightOf = p;
         if (active) {
             ticks++;
             boolean changed = p != player || world != level;
             Vec3 vel = changed ? Vec3.ZERO : p.getDeltaMovement();
-            End why = end(ticks, changed, !changed && p.onGround(), !changed && blocked(p), !changed && humanKey(options),
+            End why = end(ticks, changed, !changed && resting(p, world), !changed && blocked(p), !changed && humanKey(options),
                     !changed && inside(p.getX(), p.getZ(), support), Math.hypot(vel.x, vel.z));
             if (why != End.NONE) {
                 stop(why);
@@ -199,16 +258,20 @@ public final class EdgeSettle {
         boolean latched = false;
         if (latch.armed()) {
             under = supportUnder(p, world);
-            latched = latch.blocks(p.onGround(), under);
+            latched = latch.blocks(resting(p, world), under);
         }
         // cheap gates first, the world lookups only for a bot that just let go of sneak
-        if (!shiftLastTick || sneakForced || steering || !p.onGround() || latched || blocked(p) || humanKey(options)) {
+        if (!shiftLastTick || sneakForced || steering || latched || blocked(p) || humanKey(options)) {
+            return;
+        }
+        boolean resting = resting(p, world);
+        if (!resting) {
             return;
         }
         if (under == null) {
             under = supportUnder(p, world);
         }
-        if (under == null || !mayEngage(true, false, false, true, false, false, false, hanging(p.getX(), p.getY(), p.getZ(), probe(world)))) {
+        if (under == null || !mayEngage(true, false, false, resting, false, false, false, hanging(p.getX(), p.getY(), p.getZ(), probe(world)))) {
             return;
         }
         active = true;
@@ -216,7 +279,7 @@ public final class EdgeSettle {
         support = under;
         player = p;
         level = world;
-        Debug.logInternal("edge settle: hanging at " + p.blockPosition().toShortString() + ", support " + under.toShortString());
+        Debug.logInternal("edge settle: hanging at " + p.blockPosition().toShortString() + ", support " + under.toShortString() + ", onGround " + p.onGround());
     }
 
     // the keys for this tick, read by PlayerMovementInput. yaw is the one moveRelative is about to use
@@ -235,6 +298,23 @@ public final class EdgeSettle {
         Debug.logInternal("edge settle: " + why.name().toLowerCase() + " after " + ticks + " ticks");
         player = null;
         level = null;
+    }
+
+    // hanging, asked about the live world. MovementTraverse's bridge bail uses this so the two can't disagree on what a drop is
+    public static boolean hangingOver(Level world, double x, double y, double z) {
+        return hanging(x, y, z, probe(world));
+    }
+
+    private boolean resting(LocalPlayer p, Level world) {
+        AABB box = p.getBoundingBox();
+        return resting(p.onGround(), box.minX, box.maxX, box.minZ, box.maxZ, p.getY(), prevY, p.getDeltaMovement().y, p.fallDistance,
+                (x, y, z) -> boxes(world, x, y, z));
+    }
+
+    private static List<AABB> boxes(Level world, int x, int y, int z) {
+        BlockPos pos = new BlockPos(x, y, z);
+        VoxelShape shape = world.getBlockState(pos).getCollisionShape(world, pos);
+        return shape.isEmpty() ? List.of() : shape.move(x, y, z).toAabbs();
     }
 
     private static BlockPos supportUnder(LocalPlayer p, Level world) {

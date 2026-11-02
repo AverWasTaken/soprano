@@ -60,6 +60,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private Goal goal;
     private CalculationContext context;
+    // the context came from a PathingCommandContext, so it carries settings of its own and we don't rebuild it
+    private boolean customContext;
 
     /*eta*/
     private int ticksElapsedSoFar;
@@ -235,6 +237,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             }
             safeToCancel = current.onTick();
             if (current.failed() || current.finished()) {
+                boolean hanging = current.bailedOverDrop();
                 current = null;
                 // the segment it was waiting on is gone, and the next path to show up is not the one to cancel
                 deferredCancel.clear();
@@ -248,6 +251,14 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                         }
                     }
                     return;
+                }
+                if (next != null && hanging) {
+                    // the bridge just gave up with us hanging off the edge on sneak. a next path taking over this same tick
+                    // presses its keys, EdgeSettle reads that as steering and never walks us back. a replan instead: it waits
+                    // while the settle has the wheel (settleActive above)
+                    logDebug("Discarding next path, the bridge gave up over a drop");
+                    queuePathEvent(PathEvent.DISCARD_NEXT);
+                    next = null;
                 }
                 if (next != null && !next.getPath().positions().contains(ctx.playerFeet()) && !next.getPath().positions().contains(expectedSegmentStart)) { // can contain either one
                     // if the current path failed, we may not actually be on the next one, so make sure
@@ -278,6 +289,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     }
                     // we aren't calculating
                     queuePathEvent(PathEvent.CALC_STARTED);
+                    if (hanging && !customContext) {
+                        // this tick's context snapshotted the failed moves before the bail recorded the bridge, and the
+                        // replan would happily pick the same bridge again. a fresh one has it priced in
+                        context = new CalculationContext(baritone, true);
+                    }
                     findPathInNewThread(expectedSegmentStart, true, context);
                 }
                 return;
@@ -348,8 +364,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         secretInternalSetGoal(command.goal);
         if (command instanceof PathingCommandContext) {
             context = ((PathingCommandContext) command).desiredCalcContext;
+            customContext = true;
         } else {
             context = new CalculationContext(baritone, true);
+            customContext = false;
         }
         if (goal == null) {
             return false;
