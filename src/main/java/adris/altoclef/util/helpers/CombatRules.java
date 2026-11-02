@@ -142,13 +142,14 @@ public final class CombatRules {
         return health > FLEE_HEALTH;
     }
 
-    // the shield in every committed melee fight: the target is melee and close. with a sword there is no crit hop for it to
+    // the shield in every committed melee fight: the target is melee and close, or the pillager we walked up to (point blank
+    // its bolts come from right where the shield faces). with a sword there is no crit hop for it to
     // veto (a sword never hops) and a melee target comes to us, one that never does is dropped by the stall rule. up: it is up
     // already, and then the hold range is the one asked
     public static boolean fightShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
         double reach = up ? FIGHT_SHIELD_HOLD : FIGHT_SHIELD_RANGE;
         for (CombatCommit.Foe foe : foes) {
-            if (foe.id() == targetId && foe.melee() && foe.distance() <= reach) return true;
+            if (foe.id() == targetId && (foe.melee() || foe.patrol()) && foe.distance() <= reach) return true;
         }
         return false;
     }
