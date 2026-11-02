@@ -410,6 +410,22 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysFortyForTheNightWoolGetsTheNewDefault() throws IOException {
+        assertEquals(128, new GamerConfig().overworld.nightWoolRadius);
+        write("{\"version\": 15, \"overworld\": {\"nightWoolRadius\": 40, \"nightBedRadius\": 40}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(128, c.overworld.nightWoolRadius);
+        // the bed radius is the same number by accident: a bed 128 off would count as ready
+        assertEquals(40, c.overworld.nightBedRadius);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 15, \"overworld\": {\"nightWoolRadius\": 60}}");
+        assertEquals(60, GamerConfigs.load().overworld.nightWoolRadius);
+        // and a current file that says 40 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"nightWoolRadius\": 40}}");
+        assertEquals(40, GamerConfigs.load().overworld.nightWoolRadius);
+    }
+
+    @Test
     public void anOldFileThatStillSaysThreeDeathsPerPhaseGetsTheNewDefault() throws IOException {
         assertEquals(8, new GamerConfig().death.maxPerPhase);
         write("{\"version\": 14, \"death\": {\"maxPerPhase\": 3, \"maxTotal\": 12}}");
@@ -440,7 +456,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 15;
+    private static final int PINNED_VERSION = 16;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

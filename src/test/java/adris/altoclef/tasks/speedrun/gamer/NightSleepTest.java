@@ -462,6 +462,29 @@ public class NightSleepTest {
         assertEquals(Prep.GAVE_UP, prep(craftOut));
     }
 
+    private static NightSleep.PrepInputs woodAt(int wood, int need) {
+        return new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, 8000, false, 0, wood, need, true, false, false);
+    }
+
+    @Test
+    public void aRunningHuntDoesNotCareThatTheTableIsFarNow() {
+        // nothing running: whatever the table says
+        assertEquals(3, NightSleep.prepWoodNeeded(false, false, () -> 3));
+        assertEquals(7, NightSleep.prepWoodNeeded(false, false, () -> 7));
+        // table out of reach mid hunt: stays three, so five wood does not stop it halfway to the sheep
+        int need = NightSleep.prepWoodNeeded(false, true, () -> 7);
+        assertEquals(3, need);
+        assertEquals(Prep.WOOL, prep(woodAt(5, need)));
+        // that same bag with nothing running is the old answer
+        assertEquals(Prep.NO_WOOD, prep(woodAt(5, 7)));
+        // under three there is no bed at the end of the hunt, the hold does not lie about that
+        assertEquals(Prep.NO_WOOD, prep(woodAt(2, need)));
+        // a bed that is ready never asks the tracker at all
+        assertEquals(3, NightSleep.prepWoodNeeded(true, false, () -> {
+            throw new AssertionError("asked");
+        }));
+    }
+
     @Test
     public void theWoolColourIsTheOneWeHoldMostOfThatTheSheepCanFinish() {
         int[] held = new int[16];

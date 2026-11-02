@@ -136,12 +136,13 @@ public class OverworldConfig {
     // the evening before (NightPrep): a bed in the bag by the time the window opens. both leads are day ticks before the earliest the
     // game lets anyone sleep (12010, full rain). a craft is seconds, so its lead is two minutes; a wool trip is a walk and a chase
     // after three sheep, so it starts four and has 150 s, which leaves it a minute and a half of slack for the craft. each part gets
-    // its seconds once an evening and then stays quiet. only sheep this close count as known
+    // its seconds once an evening and then stays quiet. a sheep this close counts as known, which is about all the game shows us:
+    // at 40 a bot down a mine never knew of one and did the same walk after dark. the wool clock is what ends a bad trip, not this
     public int nightCraftLeadTicks = 2400;
     public int nightWoolLeadTicks = 4800;
     public double nightWoolSeconds = 150;
     public double nightCraftSeconds = 45;
-    public int nightWoolRadius = 40;
+    public int nightWoolRadius = 128;
     // a bed standing this close counts as one we can use (the old bed task's number)
     public int nightBedRadius = 40;
 
