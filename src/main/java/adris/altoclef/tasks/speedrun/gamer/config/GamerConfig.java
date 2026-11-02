@@ -20,7 +20,8 @@ public class GamerConfig {
     // (13 moved the End's block lines, minBuildBlocks 40 -> 48 and endMinBlocks 20 -> 8, a saved 40 or 20 is the old default and goes along)
     // (14 moved the nether entry stack 128 -> 56 and its low mark 96 -> 40, the rest gets dug on arrival. a saved 128 or 96 is the old default and goes along)
     // (15 moved the deaths per phase 3 -> 8, a saved 3 is the old default and goes along)
-    public static final int VERSION = 15;
+    // (16 moved the night wool radius 40 -> 128, a saved 40 is the old default and goes along)
+    public static final int VERSION = 16;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;

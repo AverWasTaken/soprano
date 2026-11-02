@@ -83,6 +83,10 @@ public final class GamerConfigs {
         if (from < 15 && c.death != null && c.death.maxPerPhase == 3) {
             c.death.maxPerPhase = new GamerConfig().death.maxPerPhase;
         }
+        // and the night wool radius: 40 was the default until the hunt got moved out of the dark
+        if (from < 16 && c.overworld != null && c.overworld.nightWoolRadius == 40) {
+            c.overworld.nightWoolRadius = new GamerConfig().overworld.nightWoolRadius;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;
