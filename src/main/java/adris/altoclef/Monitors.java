@@ -205,18 +205,30 @@ public final class Monitors {
         Goal goal = mod.getClientBaritone().getPathingBehavior().getGoal();
         fallTrace.push(player.getX(), player.getY(), player.getZ(), move.x, move.y, move.z, player.onGround(), (float) player.fallDistance, keys,
                 player.getYRot(), player.getXRot(), player.verticalCollision, player.verticalCollisionBelow, player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, movement == null ? null : movement.status(), place, goal, player.input.getClass(),
-                hit, attacker == null ? -1 : attacker.getId(), attacker == null ? 0 : attacker.getX(), attacker == null ? 0 : attacker.getY(),
+                player.isBlocking(), hit, attacker == null ? -1 : attacker.getId(), attacker == null ? 0 : attacker.getX(), attacker == null ? 0 : attacker.getY(),
                 attacker == null ? 0 : attacker.getZ());
+        // ahead of the dump, the tick that dumps is already in it
+        String carried = fallTrace.carriedLine(Monitors::fallMoveName);
+        if (carried != null) {
+            Debug.logInternal(carried);
+        }
         boolean nether = WorldHelper.getCurrentDimension() == baritone.api.utils.Dimension.NETHER;
         if (fallTrace.falling(nether, (float) player.fallDistance) | lavaEntered) {
             dumpFall();
+        }
+        if (lavaEntered) {
+            fallTrace.carryOn();
         }
     }
 
     private void dumpFall() {
         for (int i = 0; i < fallTrace.size(); i++) {
-            Debug.logInternal(fallTrace.line(i, m -> m instanceof Movement mv ? mv.getClass().getSimpleName() + " " + mv.getSrc().toShortString() + "->" + mv.getDest().toShortString() : "none"));
+            Debug.logInternal(fallTrace.line(i, Monitors::fallMoveName));
         }
+    }
+
+    private static String fallMoveName(Object m) {
+        return m instanceof Movement mv ? mv.getClass().getSimpleName() + " " + mv.getSrc().toShortString() + "->" + mv.getDest().toShortString() : "none";
     }
 
     private void watchCursor() {
