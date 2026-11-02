@@ -890,6 +890,13 @@ public class StrongholdRoomSearchTask extends Task {
                 && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
             return null;
         }
+        // we're there. OPEN reads the frames and walks itself, so there is nothing left to wait for. waiting anyway is how you
+        // get a finished goal task re-armed every tick and a very nervous goal marker
+        if (approachTask.isFinished(mod)) {
+            ctx.log("room: at the ring, on to the frames");
+            finish();
+            return null;
+        }
         if (seconds(mod) - stageSince >= cfg.approachSeconds) {
             Debug.logMessage("taking the frames we have not seen as given, the ring is rigid");
             finish();
