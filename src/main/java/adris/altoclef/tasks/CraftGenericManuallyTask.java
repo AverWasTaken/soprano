@@ -168,7 +168,8 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
         // MoveItemToSlotTask error in chat every single tick). grid contents count so this doesn't shrink as we fill it
         int craftsPossible = StorageHelper.craftsPossible(mod, _target.getRecipe(), wantedCrafts);
         // and a grid slot holds one stack, 100 hay blocks are two rounds
-        int requiredPerSlot = Math.min(craftsPossible, stackLimit(_target));
+        // and mixed wood is one craft a round, see CraftMath.perSlotToFill
+        int requiredPerSlot = StorageHelper.perSlotToFill(mod, _target.getRecipe(), Math.min(craftsPossible, stackLimit(_target)));
         if (craftsPossible <= 0) {
             // nothing left to put in. whatever is still sitting in the output is ours, then we are done
             if (!StorageHelper.getItemStackInSlot(outputSlot).isEmpty()) {

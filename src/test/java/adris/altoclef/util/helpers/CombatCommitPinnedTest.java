@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -30,6 +31,9 @@ public class CombatCommitPinnedTest {
     private static Foe skeleton(double distance, long sinceHit, boolean sight) {
         return skeleton(SKELETON, distance, sinceHit, sight);
     }
+
+    // still a foe (FOE_RANGE) and out of its bow, so a run can end with it about
+    private static final double PAST_THE_BOW = CombatRules.SHOOTER_RANGE + 1;
 
     // an arrow a few ticks ago, from twelve blocks with a line
     private static Foe shooter() {
@@ -178,12 +182,12 @@ public class CombatCommitPinnedTest {
         assertEquals(Event.RUN_START, c.step(tick(gaveUp + 40, 20, null, skeleton(12, 2, true))));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.SHOT, c.why());
-        // and it is the sight run: out of its line for the count ends it, far or not
+        // and it is the sight run: out of its line (and its bow) for the count ends it, far or not
         long t = gaveUp + 41;
         for (; t < gaveUp + 41 + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 20, skeleton(14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 20, skeleton(PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 20, skeleton(14, 2, false))));
+        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 20, skeleton(PAST_THE_BOW, 2, false))));
     }
 
     @Test
@@ -243,15 +247,89 @@ public class CombatCommitPinnedTest {
         // the line drops for one tick short of the count, then flickers back and the count starts over
         long t = NOW + 1;
         for (; t < NOW + 1 + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
+        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(PAST_THE_BOW, 2, true), skeleton(7, PAST_THE_BOW, 2, true))));
         long from = t;
         for (; t < from + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         assertEquals(Mode.NONE, c.mode());
+    }
+
+    // ---- a run does not end inside a bow's reach
+
+    // a run that is not about sight: three zombies on us. then they are gone and a far skeleton is what is left
+    private static CombatCommit crowdRun() {
+        CombatCommit c = new CombatCommit();
+        Foe zombie = new Foe(1, 2, false, false, NEVER);
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 20, zombie, new Foe(2, 2, false, false, NEVER), new Foe(3, 2, false, false, NEVER))));
+        assertEquals(Why.CROWD, c.why());
+        return c;
+    }
+
+    // goes the whole way to the cap with this foe about, walking the whole time
+    private static void holdsToTheCap(CombatCommit c, float hp, Foe foe) {
+        for (long t = NOW + 1; t < NOW + CombatCommit.RUN_CAP; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, hp, foe)));
+        }
+        assertEquals(Event.RUN_CAP, c.step(walking(NOW + CombatCommit.RUN_CAP, hp, foe)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void theSightRunHoldsInBowRangeWithNoLineUntilTheCap() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
+        // round a corner, right on the bow's line: no line for ages is not out of range
+        holdsToTheCap(c, 6, skeleton(CombatRules.SHOOTER_RANGE, 2, false));
+    }
+
+    @Test
+    public void theDistanceRunHoldsInBowRangeUntilTheCap() {
+        // far past the 24 and past RUN_CLEAR, with a line or without
+        holdsToTheCap(crowdRun(), 20, skeleton(13, NEVER, false));
+        holdsToTheCap(crowdRun(), 20, skeleton(CombatRules.SHOOTER_RANGE, NEVER, true));
+    }
+
+    @Test
+    public void justPastTheBowTheRunEndsAsUsual() {
+        CombatCommit c = crowdRun();
+        Foe out = skeleton(CombatRules.SHOOTER_RANGE + 0.1, NEVER, false);
+        Event last = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + 200 && last == Event.NONE; t++) last = c.step(walking(t, 20, out));
+        assertEquals(Event.RUN_CLEAR, last);
+    }
+
+    @Test
+    public void aSkeletonInTheWaterIsStillABow() {
+        // a swim makes every one of them wet, that is no time to call the run over
+        Foe wet = skeleton(14, NEVER, false).withWet(true);
+        assertFalse(wet.sniper());
+        holdsToTheCap(crowdRun(), 20, wet);
+    }
+
+    @Test
+    public void onlyBowsHoldTheRunOutThere() {
+        // a zombie past RUN_CLEAR, a calm blaze hovering (BlazeFight's), a witch: the old clear
+        for (Foe foe : List.of(new Foe(9, 14, false, false, NEVER), new Foe(9, 14, true, false, NEVER, Kind.FLYER, Double.POSITIVE_INFINITY, false, NEVER),
+                new Foe(9, 14, true, false, NEVER, Kind.LOBBER, Double.POSITIVE_INFINITY, false, NEVER))) {
+            CombatCommit c = crowdRun();
+            Event last = Event.NONE;
+            for (long t = NOW + 1; t <= NOW + 200 && last == Event.NONE; t++) last = c.step(walking(t, 20, foe));
+            assertEquals(foe.toString(), Event.RUN_CLEAR, last);
+        }
+    }
+
+    @Test
+    public void aRunThatCannotMoveStillGivesUpInBowRange() {
+        // the stuck rule is untouched: standing still in the arrows until the cap would be worse
+        CombatCommit c = crowdRun();
+        Foe foe = skeleton(14, NEVER, false);
+        Event last = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + CombatCommit.RUN_CAP && last == Event.NONE; t++) last = c.step(tick(t, 20, null, foe));
+        assertEquals(Event.RUN_STUCK, last);
     }
 
     // ---- the shooter fight: one skeleton with a line and at most one melee mob on us is never run from for hp

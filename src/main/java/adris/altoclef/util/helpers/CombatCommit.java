@@ -357,7 +357,12 @@ public final class CombatCommit {
         // water: nobody walks up to a skeleton by swimming, and a trident drowned out there swims faster than we do, so the
         // hp runs stay on (the lone sniper exemption would pin us in a fight we cannot take)
         public boolean sniper() {
-            return ranged && !creeper && kind == Kind.NORMAL && !wet;
+            return bow() && !wet;
+        }
+
+        // the sniper with the water left out: a skeleton up to its knees still shoots, and on a swim every one of them reads as wet
+        public boolean bow() {
+            return ranged && !creeper && kind == Kind.NORMAL;
         }
 
         // it shot us lately and still has a line: at low hp that is as good as standing next to us
@@ -2195,9 +2200,12 @@ public final class CombatCommit {
         for (Foe foe : t.foes()) {
             nearest = Math.min(nearest, foe.distance());
         }
+        // RUN_CLEAR and the sight count both stop short of a bow: 12 blocks is well inside SHOOTER_RANGE, and a skeleton round a
+        // corner is one step from its line again. neither ending counts until it is out of range. the cap still ends the run
+        boolean bowRange = inBowRange(t);
         // clear means nothing angry within RUN_CLEAR. the clock is on whether or not we are far enough yet, so the moment
         // we are far enough the answer is already in
-        if (nearest <= RUN_CLEAR) {
+        if (nearest <= RUN_CLEAR || bowRange) {
             clearSince = -1;
         } else if (clearSince < 0) {
             clearSince = t.now();
@@ -2206,7 +2214,7 @@ public final class CombatCommit {
         if (losRun) {
             // the line is the whole point: out of sight is out of range, however few blocks that took
             boolean seen = t.foes().stream().anyMatch(foe -> foe.ranged() && !foe.creeper() && foe.sight());
-            if (seen) {
+            if (seen || bowRange) {
                 noSightSince = -1;
             } else if (noSightSince < 0) {
                 noSightSince = t.now();
@@ -2254,6 +2262,13 @@ public final class CombatCommit {
         // nobody worth a fight: the run goes on, the cap or the mob settles it
         if (closest == null) return Event.NONE;
         return startFight(t, closest, Why.CORNERED, Event.RUN_TO_FIGHT, true);
+    }
+
+    private static boolean inBowRange(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.bow() && foe.distance() <= CombatRules.SHOOTER_RANGE) return true;
+        }
+        return false;
     }
 
     // the cap with nothing on us is just the end of a run. chased with something still inside 8, ending it only meant a fresh
