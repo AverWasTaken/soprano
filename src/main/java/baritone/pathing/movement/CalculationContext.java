@@ -105,6 +105,9 @@ public class CalculationContext {
     public boolean allowFallIntoLava;
     // on fire right now, so the lava is already our problem and whatever block gets us out wins, see costOfPlacingAt
     public boolean burning;
+    // the rule costs about 5% of the whole search, asked on every node that could place. lava is what the nether is made of and no water
+    // gets you out of it there, the overworld has a bucket and doesn't pay for it. true by default, a hand built context has no world
+    public boolean lavaWakes = true;
     // one per context so the cost code isn't building a lambda per bridge candidate
     public final LavaWake.Cells lavaCells = (x, y, z) -> LavaWake.cell(get(x, y, z));
     public final int frostWalker;
@@ -242,6 +245,7 @@ public class CalculationContext {
         );
         // not with the other arguments because a context built by hand has no fire to be on
         this.burning = baritone.getPlayerContext().player().isOnFire();
+        this.lavaWakes = baritone.getPlayerContext().world().dimension() == Level.NETHER;
     }
 
     // no soul speed boots, which is every test and bench that was written before they existed
@@ -605,7 +609,7 @@ public class CalculationContext {
             return COST_INF;
         }
         // last on purpose, this is the only check here that has to go ask the world anything
-        if (!burning && LavaWake.wakes(lavaCells, x, y, z)) {
+        if (lavaWakes && !burning && LavaWake.wakes(lavaCells, x, y, z)) {
             return COST_INF;
         }
         return placeBlockCost;

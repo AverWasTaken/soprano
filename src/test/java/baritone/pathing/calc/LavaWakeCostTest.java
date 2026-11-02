@@ -125,6 +125,13 @@ public class LavaWakeCostTest {
     }
 
     @Test
+    public void outsideTheNetherNobodyAsks() {
+        Ctx ctx = new Ctx(exposed());
+        ctx.lavaWakes = false;
+        assertTrue(ctx.costOfPlacingAt(7, 30, -2, AIR) < ActionCosts.COST_INF);
+    }
+
+    @Test
     public void aWalledInSourcePricesLikeNothingIsThere() {
         assertEquals(placeOnTop(new MapWorld(), false), placeOnTop(walledIn(), false), 0);
     }
