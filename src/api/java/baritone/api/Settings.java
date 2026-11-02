@@ -2138,7 +2138,8 @@ public final class Settings {
 
     /**
      * Draw Soprano's own boot screen and title screen instead of the vanilla ones. Turn this off if another mod
-     * restyles those screens, or to get the vanilla look back. The title screen switches the next time it opens.
+     * restyles those screens, or to get the vanilla look back. The switch in the bottom right corner of the title
+     * screen flips this right away, changed anywhere else the title screen switches the next time it opens.
      */
     public final Setting<Boolean> guiMenus = new Setting<>(true);
 
