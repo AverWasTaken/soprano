@@ -2,15 +2,14 @@ package adris.altoclef.tasks.speedrun.gamer.config;
 
 // owner: end worker (END_PREP, DRAGON)
 public class EndConfig {
-    // beds to carry into the End (wool is collected in IRON: 3 per bed)
-    public int beds = 5;
+    // beds in the bag before the End, the pillar fight goes through them (wool is collected in IRON: 3 per bed). END_PREP does not
+    // walk in with fewer, whatever it takes to find them
+    public int beds = 9;
     // one more bed to set the spawn near the portal, so a death in the End costs a short walk
     public boolean placeSpawnNearPortal = true;
     public double spawnBedRange = 8;
-    // the extra bed (wool hunt + placing it) gets this long from the start of END_PREP, then we go without a spawn bed
+    // placing the extra bed gets this long from the moment its step starts, then we go without a spawn bed (the fight's beds have no clock)
     public double spawnBedBudgetSeconds = 300;
-    // a world bed farther than this from the portal is not worth the walk, the prep goes with what it has
-    public double bedErrandRange = 250;
     // an errand (or the walk back) farther than this from the portal wants the food floor first, and the phase budget waits for the walk
     public double farErrandBlocks = 150;
     public int buildBlocks = 64;

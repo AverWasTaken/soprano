@@ -37,6 +37,8 @@ public class FakeFacts implements GamerFacts {
     // the gold dig ran out of time, and a gold ore is in the loaded chunks near us
     public boolean goldHuntGaveUp;
     public boolean woolHuntGaveUp;
+    public boolean spawnBedOwed;
+    public int bedsOutOfBag;
     // an edible animal is loaded close by, and the dry spell latch (FoodDry)
     public boolean preyNear;
     public boolean foodDryLatched;
@@ -205,6 +207,16 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean woolHuntGaveUp() {
         return woolHuntGaveUp;
+    }
+
+    @Override
+    public int bedsInBag() {
+        return count(adris.altoclef.util.helpers.ItemHelper.BED) - bedsOutOfBag;
+    }
+
+    @Override
+    public boolean spawnBedOwed() {
+        return spawnBedOwed;
     }
 
     @Override

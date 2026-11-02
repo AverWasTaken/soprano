@@ -330,14 +330,13 @@ public class StrongholdPhasesTest {
     // ---- the end prep ahead of the dig
 
     @Test
-    public void prepOnlyStartsOnTheFirstAttemptOnTheSurfaceAtTheStart() {
-        assertTrue(RoomPhase.prepStarts(1, true, 70, true));
+    public void prepOnlyStartsOnTheSurfaceAtTheStart() {
+        assertTrue(RoomPhase.prepStarts(true, 70, true));
         // the line itself counts, same as the room bed
-        assertTrue(RoomPhase.prepStarts(1, true, 50, true));
-        assertFalse(RoomPhase.prepStarts(2, true, 70, true));
-        assertFalse(RoomPhase.prepStarts(1, false, 70, true));
-        assertFalse(RoomPhase.prepStarts(1, true, 49.9, true));
-        assertFalse(RoomPhase.prepStarts(1, true, 70, false));
+        assertTrue(RoomPhase.prepStarts(true, 50, true));
+        assertFalse(RoomPhase.prepStarts(false, 70, true));
+        assertFalse(RoomPhase.prepStarts(true, 49.9, true));
+        assertFalse(RoomPhase.prepStarts(true, 70, false));
     }
 
     @Test

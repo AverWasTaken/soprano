@@ -91,7 +91,7 @@ public class OverworldPhasesTest {
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
-        f.give(Items.WOOL.green(), 24);
+        f.give(Items.WOOL.green(), 3 * cfg.end.beds);
         assertFalse("no diamond pick yet", iron.isDone(f, state, cfg));
         f.diamondHuntGaveUp = true;
         assertTrue("the dig ran out of time, the iron pick it is", iron.isDone(f, state, cfg));

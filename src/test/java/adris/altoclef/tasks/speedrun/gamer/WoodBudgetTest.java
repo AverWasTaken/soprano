@@ -85,13 +85,14 @@ public class WoodBudgetTest {
     }
 
     @Test
-    public void aGivenUpWoolChaseOnlyOwesPlanksForBedsTheWoolCanMake() {
+    public void aGivenUpWoolChaseStillOwesThePlanksForEveryBed() {
         FakeFacts f = new FakeFacts();
         f.woolHuntGaveUp = true;
-        assertEquals(0, WoodBudget.bedPlanksOwed(f, BEDS));
-        f.give(Items.WOOL.white(), 7);
-        assertEquals(6, WoodBudget.bedPlanksOwed(f, BEDS));
-        f.give(Items.WOOL.red(), 60);
+        assertEquals(3 * BEDS, WoodBudget.bedPlanksOwed(f, BEDS));
+        // the spawn bed still to place wants its planks too, a bed in the bag has them already
+        f.spawnBedOwed = true;
+        assertEquals(3 * (BEDS + 1), WoodBudget.bedPlanksOwed(f, BEDS));
+        f.give(Items.BED.white(), 1);
         assertEquals(3 * BEDS, WoodBudget.bedPlanksOwed(f, BEDS));
     }
 

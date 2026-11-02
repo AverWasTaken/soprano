@@ -107,6 +107,37 @@ public final class DropRoom {
         return stacks.get(item) >= 2;
     }
 
+    // per bag stack: is it spoken for by the End. the first reserveBeds beds, and while that still leaves us short, the wool that makes
+    // up the difference (whole threes of a colour only, scraps are scraps). a bed always looks like a duplicate, unstackable and all,
+    // so without this a pearl pickup happily throws one
+    public static boolean[] reserved(List<ItemStack> bag, int reserveBeds) {
+        boolean[] out = new boolean[bag.size()];
+        Map<Item, Integer> usableWool = new HashMap<>();
+        int beds = 0;
+        for (ItemStack st : bag) {
+            if (isBed(st.getItem())) beds += st.getCount();
+            if (isWool(st.getItem())) usableWool.merge(st.getItem(), st.getCount(), Integer::sum);
+        }
+        usableWool.replaceAll((wool, total) -> total / 3 * 3);
+        int bedsLeft = reserveBeds;
+        int woolLeft = 3 * Math.max(0, reserveBeds - beds);
+        for (int i = 0; i < out.length; i++) {
+            ItemStack st = bag.get(i);
+            if (st.isEmpty()) continue;
+            if (isBed(st.getItem()) && bedsLeft > 0) {
+                out[i] = true;
+                bedsLeft -= st.getCount();
+            } else if (isWool(st.getItem()) && woolLeft > 0 && usableWool.get(st.getItem()) > 0) {
+                out[i] = true;
+                // only what can become a bed pays off the debt, the scraps of 5 red don't stand in for 3 white
+                int pays = Math.min(st.getCount(), usableWool.get(st.getItem()));
+                usableWool.put(st.getItem(), usableWool.get(st.getItem()) - pays);
+                woolLeft -= pays;
+            }
+        }
+        return out;
+    }
+
     // the stacks nothing pushes out
     static boolean never(Stack s, Map<Item, Integer> stacks) {
         if (s.keep() || s.tier() == ItemValue.CORE) return true;
@@ -125,6 +156,13 @@ public final class DropRoom {
             if ("pickaxe".equals(ItemHelper.toolKind(e.getKey()))) picks += e.getValue();
         }
         return picks <= 1;
+    }
+
+    public static boolean isBed(Item item) {
+        for (Item b : ItemHelper.BED) {
+            if (b == item) return true;
+        }
+        return false;
     }
 
     private static boolean isWool(Item item) {

@@ -16,6 +16,7 @@ import java.util.Set;
 class FakeFacts implements GamerFacts {
     Dimension dimension = Dimension.OVERWORLD;
     final Map<Item, Integer> items = new HashMap<>();
+    int bedsOutOfBag;
     final Set<Item> worn = new HashSet<>();
     int armorPoints;
     int food = 100;
@@ -102,6 +103,11 @@ class FakeFacts implements GamerFacts {
     @Override
     public int z() {
         return z;
+    }
+
+    @Override
+    public int bedsInBag() {
+        return count(adris.altoclef.util.helpers.ItemHelper.BED) - bedsOutOfBag;
     }
 
     @Override

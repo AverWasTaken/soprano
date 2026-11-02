@@ -66,9 +66,9 @@ public class OverworldConfig {
     // raw gold for the piglin helmet, dug in IRON when an ore is already in the loaded chunks. gives up after this many minutes of
     // digging. a plain scalar, an old saved config just gets 3
     public double goldHuntMinutes = 3;
-    // the sheep chase for the beds gives up after this many minutes of it. the end prep then crafts what the wool in the bag allows.
-    // a plain scalar too
-    public double woolHuntMinutes = 3;
+    // IRON's sheep chase moves on after this many minutes with no sheep in view (a death starts it over). only IRON's wool need reads
+    // it, END_PREP gets the beds whatever happened here. a plain scalar too
+    public double woolHuntMinutes = 6;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;

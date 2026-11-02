@@ -53,9 +53,13 @@ public final class GamerConfigs {
         if (from < 9 && c.nether != null && c.nether.huntWanderMinutes == 10) {
             c.nether.huntWanderMinutes = new GamerConfig().nether.huntWanderMinutes;
         }
-        // and the End beds: 8 was the default until the sheep hunt got a clock, 5 is what the dragon fight really uses
-        if (from < 10 && c.end != null && c.end.beds == 8) {
+        // and the End beds: 8 and then 5 were the defaults until the pillar fight wanted a real stack
+        if (from < 12 && c.end != null && (c.end.beds == 5 || c.end.beds == 8)) {
             c.end.beds = new GamerConfig().end.beds;
+        }
+        // and the sheep clock: 3 was the default until it stopped counting while a sheep is in view
+        if (from < 12 && c.overworld != null && c.overworld.woolHuntMinutes == 3) {
+            c.overworld.woolHuntMinutes = new GamerConfig().overworld.woolHuntMinutes;
         }
         // and the floor eyes: 12 was the default until it got a spare for the lost throws
         if (from < 11 && c.floorEyes == 12) {

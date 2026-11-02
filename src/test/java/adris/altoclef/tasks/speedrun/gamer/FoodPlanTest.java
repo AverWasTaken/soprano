@@ -246,7 +246,7 @@ public class FoodPlanTest {
         assertTrue(p.held() - p.pending() < end.minFoodUnits);
         // and the End gate says so: 9 of 24, the batch and the 24 on paper do not get it through
         assertTrue(p.shortOfEndFloor());
-        assertTrue(EndGear.missing(f, new RunState(), end, 0, p).food());
+        assertTrue(EndGear.missing(f, new RunState(), end, p).food());
         // the hunt asks for the batch on top (the food task counts it as food on the way, the gate does not), and for the raw gap,
         // which the task counts cooked but will not cook while the batch is out
         assertEquals(end.minFoodUnits + FoodPlan.END_MARGIN + 32 + 15, p.endCollect());
@@ -871,7 +871,7 @@ public class FoodPlanTest {
         // (the portal is the last stop before the nether: it fills to the entry line, so it is short of more than the minimum)
         assertEquals(bag + " (portal)", p.shortOf(p.entryEnd(cfg.netherEntryFoodUnits)), PortalPlanner.gate(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
-        assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
+        assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, planIn(f, GamerPhase.END_PREP)).food());
     }
 
     @Test
@@ -917,14 +917,14 @@ public class FoodPlanTest {
         assertFalse("the old read", f.foodUnits() < end.minFoodUnits);
         FoodPlan atTheEnd = planIn(f, GamerPhase.END_PREP);
         assertEquals(9, atTheEnd.held());
-        assertTrue(EndGear.missing(f, new RunState(), end, 0, atTheEnd).food());
+        assertTrue(EndGear.missing(f, new RunState(), end, atTheEnd).food());
         // with a smoker standing and fuel the kit's phases can cook them, and it is the kit's phases that count them at 24. the
         // End gate is read in END_PREP, which never does, so a smoker that only stands there does not turn 9 into 24
         f.smokerPlaced = true;
         f.give(Items.COAL, 1);
         assertEquals(24, planIn(f, GamerPhase.IRON).held());
         assertEquals(9, planIn(f, GamerPhase.END_PREP).held());
-        assertTrue(EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
+        assertTrue(EndGear.missing(f, new RunState(), end, planIn(f, GamerPhase.END_PREP)).food());
     }
 
     @Test
@@ -938,7 +938,7 @@ public class FoodPlanTest {
         assertEquals(32, p.held());
         assertEquals(32, p.pending());
         assertTrue(p.shortOfEndFloor());
-        assertTrue(EndGear.missing(f, new RunState(), end, 0, p).food());
+        assertTrue(EndGear.missing(f, new RunState(), end, p).food());
         // the kit and the portal gate still count it, they do go back for it: 32 is under their 70 and over the End's 24
         assertEquals(32, plan(f).held());
         assertTrue(plan(f).shortOfMinimum());
