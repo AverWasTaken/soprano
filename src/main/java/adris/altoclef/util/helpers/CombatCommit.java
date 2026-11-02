@@ -104,6 +104,13 @@ public final class CombatCommit {
 
     // a fast melee mob that already hit us this close is not outrun: at a run decision (low hp, crowd) it is the cornered fight
     public static final double FAST_FIGHT_RANGE = 4;
+    // that corner lets go once the fast mob has been off us this long. one tick is not enough: its own hit knocks it past the range
+    // above, and at low hp that would be us turning our back on the first bite
+    public static final long FAST_CORNER_RELEASE_TICKS = 20;
+
+    // a blaze this close on our own floor is worth the walk: past this, or hovering, is the chase the rods task warns about
+    public static final double BLAZE_SWAP_RANGE = 6;
+    public static final double BLAZE_FLOOR_HEIGHT = 1.5;
 
     // a run that keeps taking hits is not working. every hit knocks us out of contact, so a mob that runs in, swings, gets
     // knocked off and runs in again never added up to a second of anything. this many hits landed while we run (each one
@@ -782,6 +789,8 @@ public final class CombatCommit {
     private boolean fastCorner;
     // that fast corner is the lone wither skeleton one (loneWither): a crowd still bails it
     private boolean witherCorner;
+    // since when nothing fast has been on us in a fast corner, -1 while something is
+    private long fastClearSince = -1;
     // since when the melee target has been out of reach (takeover)
     private long outReachSince = -1;
 
@@ -859,6 +868,14 @@ public final class CombatCommit {
 
     public boolean noRoom() {
         return noRoom;
+    }
+
+    // which corner this is, for the log. they all read "cornered" otherwise and they do not end the same way. null when none of these
+    public String cornerKind() {
+        if (!cornered) return null;
+        if (boxCorner) return "box";
+        if (witherCorner) return "wither";
+        return fastCorner ? "fast" : null;
     }
 
     // the brain hands over the world's side of the perch every tick, right before step
@@ -945,6 +962,7 @@ public final class CombatCommit {
         boxCorner = false;
         fastCorner = false;
         witherCorner = false;
+        fastClearSince = -1;
         outReachSince = -1;
         wayBoxSince = -1;
         wayGapSince = -1;
@@ -1222,6 +1240,7 @@ public final class CombatCommit {
         boxCorner = false;
         fastCorner = false;
         witherCorner = false;
+        fastClearSince = -1;
         noRoom = false;
         contacted = false;
         lobberPick = false;
@@ -1769,6 +1788,20 @@ public final class CombatCommit {
             cornered = false;
             if (why == Why.CORNERED) why = Why.HIT;
         }
+        // same idea for the fast corner: the mob that made it a corner stopped being on us, so the bail rules get asked again.
+        // the latch stays, it already knows about the hp line
+        if (fastCorner && !t.boxed() && fastTarget(t) == null) {
+            if (fastClearSince < 0) fastClearSince = t.now();
+            if (t.now() - fastClearSince >= FAST_CORNER_RELEASE_TICKS) {
+                fastCorner = false;
+                witherCorner = false;
+                cornered = false;
+                fastClearSince = -1;
+                if (why == Why.CORNERED) why = Why.HIT;
+            }
+        } else {
+            fastClearSince = -1;
+        }
         // the step keeps backing us off the same creeper and the fight keeps walking us back to it: the second go is the run's.
         // boxed in a run goes nowhere, so there the fight stays
         if (t.creeperRepeat() && !t.boxed()) return startRun(t, Why.REPEAT_CREEPER, Event.FIGHT_TO_RUN);
@@ -1793,7 +1826,10 @@ public final class CombatCommit {
             if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false, t.nextHit(), true);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
         }
-        bail = unlatched(bail, t);
+        // the latch is about melee on us, so a run under the hp line with only the blaze left would never get past it, and the
+        // hp line is the one thing the pick promised to keep
+        boolean blazeHpLine = lobberPick && target != null && target.kind() == Kind.FLYER && t.health() <= FLEE_HP;
+        if (!blazeHpLine) bail = unlatched(bail, t);
         // the lone wither skeleton corner is one skeleton's: a crowd turning up is a crowd again, latch or no latch (loneWither
         // says no to a crowd too, so the stay below lets it go)
         if (bail == Why.NONE && witherCorner && crowded(t.health(), t.foes(), false, true)) bail = Why.CROWD;
@@ -1826,6 +1862,15 @@ public final class CombatCommit {
         if (ender != null && ender.id() != target.id() && (!target.standsAndFights() || !target.hitUs()) && !witherOnFloor(t)) {
             return startFight(t, ender, swapWhy, Event.FIGHT_NEXT, chain);
         }
+        Foe blaze = blazeToSwap(t, target);
+        if (blaze != null) {
+            // (a real target change, not a dead one, so it gets its own line next to the "next" one)
+            idleNote = "blaze #" + blaze.id() + " on our floor with a line on us, it goes first";
+            Event event = startFight(t, blaze, Why.HIT, Event.FIGHT_NEXT, false);
+            // picked over what is on us, same deal as the witch: no swapping straight back, and only the hard hp line ends it
+            lobberPick = true;
+            return event;
+        }
         Foe swap = takeover(t, target);
         if (swap != null) return startFight(t, swap, swapWhy, Event.FIGHT_NEXT, chain);
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
@@ -1843,7 +1888,8 @@ public final class CombatCommit {
             releaseSince = -1;
         }
         // a blaze drifted off after it hit us: it is only a fight in contact, chasing it along a ledge is how we get shot off
-        if (target.kind() == Kind.FLYER && target.distance() > CONTACT + FLYER_SLACK) return end(t, Event.FIGHT_CLEARED);
+        // (not one we walked over to on purpose, see blazeToSwap: that one is out of contact by design until it leaves our floor)
+        if (target.kind() == Kind.FLYER && target.distance() > CONTACT + FLYER_SLACK && !walkingToBlaze(t, target)) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
         // after three seconds, only the stall rule below writes that one off)
@@ -1878,6 +1924,29 @@ public final class CombatCommit {
             return end(t, Event.FIGHT_STALLED);
         }
         return Event.NONE;
+    }
+
+    // a blaze with a line on us that lately hit us, close and on our own floor, while we trade blows with something else. the
+    // fire and the fireballs are most of the damage in that spot and it takes three or four swings, so it goes first. only from a
+    // plain melee target: an enderman comes to us anyway, and turning from a wither skeleton or a heavy hitter is a free hit in
+    // the back. boxed there is no walking over, and a walk along a rim is how we get shot off it
+    private Foe blazeToSwap(Tick t, Foe target) {
+        if (!t.armed() || t.health() <= FLEE_HP || t.boxed() || t.way().rim() || endermanAbout(t) != null) return null;
+        if (!target.melee() || target.kind() != Kind.NORMAL || target.wither()) return null;
+        Foe best = null;
+        for (Foe foe : t.foes()) {
+            if (foe.kind() != Kind.FLYER || !foe.shooting() || foe.distance() > BLAZE_SWAP_RANGE || Math.abs(foe.y()) > BLAZE_FLOOR_HEIGHT) continue;
+            if (gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
+    }
+
+    // the blaze we picked is still a walk away. it gets the slack on both lines so one bob over the line does not end the fight, and
+    // under the hp line nobody is walking anywhere for it
+    private boolean walkingToBlaze(Tick t, Foe target) {
+        return lobberPick && t.health() > FLEE_HP && target.distance() <= BLAZE_SWAP_RANGE + FLYER_SLACK
+                && Math.abs(target.y()) <= BLAZE_FLOOR_HEIGHT + FLYER_SLACK;
     }
 
     // the one we are swinging at is not the one hitting us. a shooter target with a melee foe that hit us in reach: that foe,
@@ -2025,7 +2094,10 @@ public final class CombatCommit {
         // a new fight with a mob we once gave up on is a clean slate with it (it hit us since, or we are boxed in with it)
         ignored.remove(foe.id());
         noteChase(t);
-        fastCorner = false;
+        // (a chain in a fast corner is still that corner. wiping it here left cornered on with nothing able to ever end it, and
+        // took the heavy bail with it)
+        fastCorner = fastCorner && event == Event.FIGHT_NEXT && boxedIn;
+        if (!fastCorner) fastClearSince = -1;
         witherCorner = false;
         noRoom = false;
         outReachSince = -1;

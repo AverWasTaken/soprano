@@ -395,7 +395,7 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean fighting = mode == CombatCommit.Mode.FIGHT;
         if (creeperShield) {
             // the creeper's shield is up, leave it be
-        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !_brain.walkingToBlaze() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
                 && isProjectileClose(mod) && !(_closeFireball && mod.getBehaviour().noFireballShield())
                 && (!mod.getFoodChain().biting() || _beatsBite)
                 && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)

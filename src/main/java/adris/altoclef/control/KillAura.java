@@ -54,6 +54,8 @@ public class KillAura {
     private boolean _kiting = false;
     private boolean _shieldAllowed = true;
     private boolean _fighting = false;
+    // the shield that is up came up holding us still, see startShielding
+    private boolean _stoodStill = false;
     private int _committedId = -1;
     // a run on a lava rim with a knocker on us: shield only, no swings, see tickEnd
     private int _rimGuardId = -1;
@@ -336,13 +338,24 @@ public class KillAura {
 
     public void startShielding(AltoClef mod) {
         _shielding = true;
+        boolean standStill = CombatRules.auraShieldStandsStill(_fighting);
+        // the rim guard handed over to a fight with its sneak still down. the magma pin has its own owner, so this only lifts ours
+        if (_stoodStill && !standStill) {
+            mod.getInputControls().releaseOwnedBy(_owner);
+            mod.getExtraBaritoneSettings().setInteractionPaused(false);
+        }
+        _stoodStill = standStill;
         // our own name on the keys: MobDefenseChain's shield letting go in the same tick must not lift ours, a shield only
         // blocks after 5 ticks of use and every lift starts that over. (passed by hand: the chain calls us from getPriority,
         // where Task.currentOwner() is nobody)
-        mod.getInputControls().hold(Input.SNEAK, _owner);
+        if (standStill) {
+            mod.getInputControls().hold(Input.SNEAK, _owner);
+        }
         mod.getInputControls().hold(Input.CLICK_RIGHT, _owner);
-        mod.getClientBaritone().getPathingBehavior().requestPause();
-        mod.getExtraBaritoneSettings().setInteractionPaused(true);
+        if (standStill) {
+            mod.getClientBaritone().getPathingBehavior().requestPause();
+            mod.getExtraBaritoneSettings().setInteractionPaused(true);
+        }
         if (!mod.getPlayer().isBlocking()) {
             ItemStack handItem = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot());
             if (handItem.getItem().components().has(DataComponents.FOOD)) {
@@ -376,6 +389,7 @@ public class KillAura {
             mod.getInputControls().releaseOwnedBy(_owner);
             mod.getExtraBaritoneSettings().setInteractionPaused(false);
             _shielding = false;
+            _stoodStill = false;
         }
     }
 
