@@ -16,6 +16,11 @@ public final class BreathDodge {
     public static final double END_LAST_PICKUP_SECONDS = 10;
 
     public static final int STUCK_RUN_TICKS = 40;
+    // one block out of the box is not out: the user task walks straight back in and the two take turns every tick
+    public static final int CLEAR_BLOCKS = 3;
+    public static final int MAX_CLEAR_TICKS = 100;
+    // past this we're falling, not hopping, and that's MLG's. same line as isFallingOhNo
+    public static final double FALL_SPEED = -0.7;
     // obsidian is 50, bedrock is -1
     public static final float HARD_BLOCK_HARDNESS = 50;
 
@@ -38,6 +43,13 @@ public final class BreathDodge {
             return Move.RUN;
         }
         return spareWater ? Move.DROP : Move.DIG;
+    }
+
+    // keep going after the last cloud cell lets go of us, until it's really behind us. capped so a wall of clouds can't hold us.
+    // the hops of a run count as the run: dropping it for one air tick just restarts it on landing
+    public static Move follow(Move picked, Move last, boolean cloudClose, int ticksOut, boolean grounded, double ySpeed) {
+        boolean keep = picked == Move.NONE && last == Move.RUN && cloudClose && ticksOut < MAX_CLEAR_TICKS && (grounded || ySpeed >= FALL_SPEED);
+        return keep ? Move.RUN : picked;
     }
 
     // a run that is still in the cloud and has not moved a block by now has nowhere to go (a wide pillar counts its own top

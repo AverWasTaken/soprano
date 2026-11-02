@@ -85,12 +85,14 @@ public final class EndGear {
         return !woolGaveUp || facts.count(ItemHelper.BED) > bedsRequired;
     }
 
+    public static final int SPAWN_FIRST_SPARE = 3;
+
     // the spawn bed goes down before the bed errand only when placing it cannot leave the End short: a spare beyond the required
     // ones, a source that replaces it (BedPlan MINE, or CRAFT with the wool for what the placing leaves missing), or enough beds
-    // that the beds strategy still has its RESUME_BEDS after. otherwise the errand runs first, and when it gives up the
+    // that the fight still has SPAWN_FIRST_SPARE after. otherwise the errand runs first, and when it gives up the
     // spawn bed is skipped (spawnBedAffordable). nothing in the bag = nothing to place
     public static boolean spawnFirst(int bagBeds, int required, boolean replaceable) {
-        return bagBeds >= 1 && (bagBeds > required || replaceable || bagBeds - 1 >= DragonStrat.RESUME_BEDS);
+        return bagBeds >= 1 && (bagBeds > required || replaceable || bagBeds - 1 >= SPAWN_FIRST_SPARE);
     }
 
     // a bed source that covers the shortfall left after the spawn bed is placed
@@ -240,7 +242,7 @@ public final class EndGear {
         return null;
     }
 
-    // bed self damage is why this exists, see DragonStrat
+    // the walk in and the end of the bridge are where this helps, the pillar fight itself doesn't ask
     public static boolean armorLow(GamerFacts facts, EndConfig cfg) {
         return facts.armorPoints() < cfg.bedMinArmor;
     }

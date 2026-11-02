@@ -54,8 +54,9 @@ import java.util.Map;
 import java.util.Optional;
 
 // the fight. in the End: breath first, the exit portal once the dragon is dead, then crossing the void from the
-// arrival platform, gear we left lying around, armor, end stone for building, and the strat (beds or sword, picked
-// by DragonStrat). the waiting for a perch has no stall timer (stallSeconds 0), the engine's per attempt budget covers it
+// arrival platform, gear we left lying around, armor, end stone for the stand, and the strat (beds or sword, picked
+// by DragonStrat). the waiting for a landing has no stall timer (stallSeconds 0), and running out of budget only starts the
+// attempt over: dying is what ends a dragon fight
 public class DragonPhase implements PhaseHandler {
     // the main island is a disk of about this radius around (0,0), the arrival platform sits at x=100
     private static final double ISLAND_RADIUS = 55;
@@ -74,7 +75,9 @@ public class DragonPhase implements PhaseHandler {
     // built in init, not here: the pure parts (isDone, regressTo) get tested with no game and no task machinery
     private Task _exitPortal;
     private Task _bridge;
-    private Task _endStone;
+    private MineAndCollectTask _endStone;
+    // the scan said yes and the pick found nothing it may touch. it would wander off next, and that's the long drop again
+    private boolean _endStoneGaveUp;
     private Task _runAway;
     private DragonDeadLatch _latch;
     private EndDropCache _drops;
@@ -130,13 +133,10 @@ public class DragonPhase implements PhaseHandler {
         return 0;
     }
 
-    // out of attempts is final, a plain timeout (the budget of one attempt) gets the default retry
+    // only the End deaths can end this. a slow fight is still the fight, the dragon has all day and so do we
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        if (!EndRules.attemptsLeft(ctx.state(), ctx.cfg().end)) {
-            return Timeout.STUCK;
-        }
-        return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
+        return EndRules.attemptsLeft(ctx.state(), ctx.cfg().end) ? Timeout.RETRY : Timeout.STUCK;
     }
 
     @Override
@@ -166,7 +166,8 @@ public class DragonPhase implements PhaseHandler {
             _swordTask = new KillEnderDragonTask();
             _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false), Blocks.END_PORTAL);
             _bridge = new GetToXZTask(BRIDGE_X, 0);
-            _endStone = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 64), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD);
+            _endStone = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 64), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD)
+                    .onlyWhere(p -> closeEndStone(AltoClef.getInstance(), p));
         }
     }
 
@@ -219,6 +220,7 @@ public class DragonPhase implements PhaseHandler {
         _onIsland = false;
         _pickupSeconds = 0;
         _blockSeconds = 0;
+        _endStoneGaveUp = false;
         _lastHealth = -1;
         _lastTick = seconds(ctx);
     }
@@ -418,14 +420,16 @@ public class DragonPhase implements PhaseHandler {
         return _equip.computeIfAbsent(wear.get(0), piece -> new EquipArmorTask(piece));
     }
 
-    // 20 blocks is the line, the arrival platform is no place to mine so this only runs on the island
+    // the fight only needs blocks for the stand's floor, so this is just that much, and only from stone right here: a stack from
+    // the far side of a long drop is us missing the landing. the arrival platform is no place to mine so this only runs on the island
     private Task blocksStep(AltoClef mod, GamerFacts facts, EndConfig cfg, double dt) {
         boolean running = _endStone.isActive() && !_endStone.isFinished(mod) && facts.buildBlocks() < cfg.endMinBlocks * 2;
         boolean low = facts.buildBlocks() < cfg.endMinBlocks;
         if (!running && !low || _blockSeconds > BLOCKS_BUDGET_SECONDS) {
             return null;
         }
-        if (!StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD)) {
+        _endStoneGaveUp |= _endStone.wandering();
+        if (_endStoneGaveUp || !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) || !endStoneClose(mod)) {
             return null;
         }
         _blockSeconds += dt;
@@ -433,19 +437,29 @@ public class DragonPhase implements PhaseHandler {
         return _endStone;
     }
 
-    // beds or sword. the choice only changes on events (see DragonStrat), the tasks are built once
+    // without the scan an empty pick sends the task off wandering, and that's the long drop again
+    private static boolean endStoneClose(AltoClef mod) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        int r = EndRules.END_STONE_RANGE;
+        for (BlockPos p : BlockPos.betweenClosed(feet.offset(-r, -EndRules.END_STONE_DROP, -r), feet.offset(r, EndRules.END_STONE_RISE, r))) {
+            if (mod.getWorld().getBlockState(p).is(Blocks.END_STONE) && !mod.getBlockTracker().unreachable(p) && WorldHelper.canBreak(mod, p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean closeEndStone(AltoClef mod, BlockPos p) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        return EndRules.endStoneClose(p.getX() - feet.getX(), p.getY() - feet.getY(), p.getZ() - feet.getZ());
+    }
+
+    // beds or sword. the tasks are built once
     private Task stratStep(AltoClef mod, GamerContext ctx) {
-        GamerFacts facts = ctx.facts();
         boolean perched = dragonPerched(mod);
-        double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
-        // a floor bed we can't live through in this armor is a sword fight until the armor changes, so no back and forth
-        boolean unsurvivable = _bedTask.bedsUnsurvivable(mod);
-        DragonStrat next = unsurvivable && _strat != DragonStrat.BEDS ? DragonStrat.SWORD
-                : DragonStrat.choose(_strat, _bedTask.bedsLeft(mod), facts.armorPoints(), perched,
-                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool, _bedTask.healStalled() || unsurvivable);
+        DragonStrat next = DragonStrat.choose(_bedTask.bedsLeft(mod));
         if (next != _strat) {
-            ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds"
-                    : unsurvivable ? "fighting the dragon with the sword, a floor bed would kill us in this armor" : "fighting the dragon with the sword");
+            ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds" : "fighting the dragon with the sword, out of beds");
             ctx.progress("strat " + next);
             _strat = next;
         }

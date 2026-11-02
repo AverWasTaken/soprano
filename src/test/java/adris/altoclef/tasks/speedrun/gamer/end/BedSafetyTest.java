@@ -1,12 +1,10 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-// the floor bed's real cost to us, against the armor we wear
+// a blast's real cost to us, against the armor we wear
 public class BedSafetyTest {
 
     @Test
@@ -27,13 +25,5 @@ public class BedSafetyTest {
         assertEquals(40.5, BedSafety.scaled(27, 3), 1e-9);
         // easy never makes a tiny hit bigger
         assertEquals(1.5, BedSafety.scaled(1.5, 1), 1e-9);
-    }
-
-    // a 4.5 block floor bed is ~27 raw on normal: full iron at full health does not live through it, diamond does
-    @Test
-    public void fullIronDoesNotSurviveTheFloorBed() {
-        assertFalse(BedSafety.survives(20, 0, 27, 2, 15, 0));
-        assertTrue(BedSafety.survives(20, 0, 27, 2, 20, 8));
-        assertTrue(BedSafety.survives(20, 8, 27, 2, 15, 0));
     }
 }

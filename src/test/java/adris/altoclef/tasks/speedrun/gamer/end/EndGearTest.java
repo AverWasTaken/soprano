@@ -438,9 +438,9 @@ public class EndGearTest {
         assertTrue(EndGear.spawnFirst(3, req, true));
         // a spare beyond the required ones
         assertTrue(EndGear.spawnFirst(6, req, false));
-        // RESUME_BEDS (3) still left after placing one, even with no source
-        assertTrue(EndGear.spawnFirst(DragonStrat.RESUME_BEDS + 1, 9, false));
-        assertFalse(EndGear.spawnFirst(DragonStrat.RESUME_BEDS, 9, false));
+        // the spare (3) still left after placing one, even with no source
+        assertTrue(EndGear.spawnFirst(EndGear.SPAWN_FIRST_SPARE + 1, 9, false));
+        assertFalse(EndGear.spawnFirst(EndGear.SPAWN_FIRST_SPARE, 9, false));
     }
 
     @Test

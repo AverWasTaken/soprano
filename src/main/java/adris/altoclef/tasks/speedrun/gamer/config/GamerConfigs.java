@@ -61,6 +61,13 @@ public final class GamerConfigs {
         if (from < 11 && c.floorEyes == 12) {
             c.floorEyes = new GamerConfig().floorEyes;
         }
+        // and the End's block lines: the pillar fight needs a stand floor, not a stack, and the bridge still eats ~30
+        if (from < 13 && c.end != null && c.end.minBuildBlocks == 40) {
+            c.end.minBuildBlocks = new GamerConfig().end.minBuildBlocks;
+        }
+        if (from < 13 && c.end != null && c.end.endMinBlocks == 20) {
+            c.end.endMinBlocks = new GamerConfig().end.endMinBlocks;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

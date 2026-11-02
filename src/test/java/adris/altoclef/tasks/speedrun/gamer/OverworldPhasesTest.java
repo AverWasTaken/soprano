@@ -232,6 +232,19 @@ public class OverworldPhasesTest {
     }
 
     @Test
+    public void aSlowDragonFightKeepsGoingAndOnlyTheEndDeathsEndIt() {
+        DragonPhase dragon = new DragonPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, dragon.onTimeout(ctx, ctx.cfg.maxAttempts + 50, "slow"));
+        for (int i = 0; i < ctx.cfg.end.attempts; i++) {
+            RunState.Death d = new RunState.Death();
+            d.dimension = "END";
+            ctx.state.deaths.add(d);
+        }
+        assertEquals(Timeout.STUCK, dragon.onTimeout(ctx, 1, "slow"));
+    }
+
+    @Test
     public void gatherSkipsOnTimeoutOnceBothStoneToolsAreHeld() {
         GatherPhase gather = new GatherPhase();
         StubContext ctx = new StubContext();
