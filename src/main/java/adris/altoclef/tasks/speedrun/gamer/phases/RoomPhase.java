@@ -16,6 +16,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.world.FrameGeometry;
 import baritone.api.utils.Dimension;
+import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.Optional;
@@ -29,13 +30,23 @@ public class RoomPhase implements PhaseHandler {
     private int movingRetries;
     // the bed by the stronghold start (Respawn.wantRoomBed): decided once on arrival, never again mid dig
     private PlaceBedAndSetSpawnTask roomBed;
-    private boolean roomBedDecided;
+    boolean roomBedDecided;
     private double roomBedSince;
     // a bed that will not go down (no spot, mobs on it) does not get to hold up the search
     private static final double ROOM_BED_SECONDS = 60;
     // the bed goes down at the top of the dig. the stronghold's top is never above sea level - 10, so under this we're
     // already in the shaft and a bed down there is a bed in a hole
     private static final double ROOM_BED_BELOW_Y = 50;
+    // END_PREP's gate, run on the surface before the dig so we don't climb back out for it after OPEN. its own instance: the real
+    // END_PREP keeps its attempts and clocks, and re-checks later anyway (it finds nothing and walks in, or fixes what the dig lost)
+    private EndPrepPhase prep = new EndPrepPhase();
+    private boolean prepLatched;
+    private boolean prepEnded;
+    private long prepSince;
+    private BlockPos prepAt;
+    // game ticks, not secondsInPhase: holdsBudget moves the phase start forward, so that clock stands still while we hold it
+    // (same reason as OpenTopUp's cap)
+    private static final long PREP_CAP_TICKS = 300 * 20;
 
     @Override
     public GamerPhase phase() {
@@ -49,7 +60,16 @@ public class RoomPhase implements PhaseHandler {
 
     @Override
     public String hudState() {
+        if (holdsBudget()) {
+            return prep.hudState();
+        }
         return task == null ? null : task.step();
+    }
+
+    // the prep's errands are what the end needs, not the search taking long (it has its own cap, PREP_CAP_TICKS)
+    @Override
+    public boolean holdsBudget() {
+        return prepLatched && !prepEnded;
     }
 
     @Override
@@ -85,6 +105,9 @@ public class RoomPhase implements PhaseHandler {
         keepTask = false;
         roomBed = null;
         roomBedDecided = false;
+        prep = new EndPrepPhase();
+        prepLatched = false;
+        prepEnded = false;
     }
 
     // the budget is one window: a spiral that reached new chunks in it is a long legit search, not a stuck one
@@ -103,6 +126,10 @@ public class RoomPhase implements PhaseHandler {
         Task bed = roomBedStep(mod, ctx);
         if (bed != null) {
             return bed;
+        }
+        Task errand = prepStep(mod, ctx);
+        if (errand != null) {
+            return errand;
         }
         if (task == null) {
             task = new StrongholdRoomSearchTask(ctx);
@@ -129,14 +156,9 @@ public class RoomPhase implements PhaseHandler {
             return roomBed;
         }
         RunState state = ctx.state();
-        RunState.Pos start = state.strongholdStart;
         var player = mod.getPlayer();
-        if (start == null || player == null || ctx.facts().dimension() != Dimension.OVERWORLD
-                || player.getY() < ROOM_BED_BELOW_Y) {
-            return null;
-        }
-        boolean atStart = Math.hypot(start.x - player.getX(), start.z - player.getZ()) <= ctx.cfg().stronghold.startReachBlocks;
-        if (!atStart) {
+        if (player == null || ctx.facts().dimension() != Dimension.OVERWORLD || player.getY() < ROOM_BED_BELOW_Y
+                || !atStart(mod, ctx)) {
             return null;
         }
         roomBedDecided = true;
@@ -146,6 +168,64 @@ public class RoomPhase implements PhaseHandler {
         roomBed = new PlaceBedAndSetSpawnTask();
         roomBedSince = ctx.secondsInPhase();
         return roomBed;
+    }
+
+    private static boolean atStart(AltoClef mod, GamerContext ctx) {
+        RunState.Pos start = ctx.state().strongholdStart;
+        var player = mod.getPlayer();
+        return start != null && player != null
+                && Math.hypot(start.x - player.getX(), start.z - player.getZ()) <= ctx.cfg().stronghold.startReachBlocks;
+    }
+
+    // latched once per visit: the first errand walks off the start chunk, and checking the spot again would flip this on and off
+    private Task prepStep(AltoClef mod, GamerContext ctx) {
+        if (prepEnded) {
+            return null;
+        }
+        long now = ctx.facts().gameTime();
+        if (!prepLatched) {
+            var player = mod.getPlayer();
+            if (player == null || !prepStarts(ctx.attempt(), ctx.facts().dimension() == Dimension.OVERWORLD, player.getY(), atStart(mod, ctx))) {
+                return null;
+            }
+            RunState.Pos start = ctx.state().strongholdStart;
+            startPrep(new BlockPos(start.x, start.y, start.z), now);
+        }
+        Task step = prepOutOfTime(prepSince, now) ? null : prep.prepAhead(mod, ctx, prepAt);
+        return prepResult(mod, ctx, step);
+    }
+
+    void startPrep(BlockPos at, long now) {
+        prepLatched = true;
+        prepSince = now;
+        prepAt = at;
+    }
+
+    // a stall in here would cost the search one of its attempts for something it did not do, so the stall clock stays out of it:
+    // the cap is this one's stall timer
+    Task prepResult(AltoClef mod, GamerContext ctx, Task step) {
+        if (step != null) {
+            ctx.progress("end prep ahead of the dig");
+            return step;
+        }
+        prepEnded = true;
+        // we may have turned up with no bed and only just made some: the walk back to the start gets to ask again, once
+        roomBedDecided = false;
+        ctx.progress("end prep ahead of the dig done");
+        ctx.log("room: end prep ahead of the dig is over after " + (ctx.facts().gameTime() - prepSince) / 20 + " s, going down");
+        if (task != null) {
+            task.backToStart(mod);
+        }
+        return null;
+    }
+
+    // attempt 1 only: relaxed() reads the attempt, and a stall retry should go on with the search rather than shop again
+    static boolean prepStarts(int attempt, boolean overworld, double y, boolean atStart) {
+        return attempt == 1 && overworld && y >= ROOM_BED_BELOW_Y && atStart;
+    }
+
+    static boolean prepOutOfTime(long since, long now) {
+        return now - since >= PREP_CAP_TICKS;
     }
 
     @Override

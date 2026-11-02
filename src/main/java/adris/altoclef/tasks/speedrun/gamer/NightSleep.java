@@ -131,10 +131,12 @@ public final class NightSleep {
 
     // a placed bed (bag or craft) sleeps wherever we stand, and a nether or eyes leg that got home for food would move the respawn
     // off the bed by the portal and then pick that bed up. so while the spawn bed is standing those phases leave the night alone
-    // (END_PREP: a night bed 200 blocks out must not move the respawn off the portal either).
+    // (END_PREP: a night bed 200 blocks out must not move the respawn off the portal either. ROOM and OPEN: the beds made ahead of
+    // the dig are in the bag from here on, and the one by the start is what a death in the shaft comes back to).
     // a bed that is already standing close (FOUND) is never claimed or picked up, that one stays fine
     public static boolean keepsSpawnBed(GamerPhase phase, BedSource source, boolean spawnBedStands) {
-        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES || phase == GamerPhase.END_PREP)
+        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES || phase == GamerPhase.ROOM || phase == GamerPhase.OPEN
+                || phase == GamerPhase.END_PREP)
                 && (source == BedSource.BAG || source == BedSource.CRAFT);
     }
 

@@ -1,13 +1,16 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
+import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.StubContext;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -20,6 +23,8 @@ import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 // handler isDone / regressTo are pure over fake facts. Items need the registry, hence the bootstrap
@@ -320,6 +325,94 @@ public class StrongholdPhasesTest {
         assertEquals(GamerPhase.LOCATE.hud(), locate.hud());
         assertEquals(GamerPhase.ROOM.hud(), room.hud());
         assertEquals(GamerPhase.OPEN.hud(), open.hud());
+    }
+
+    // ---- the end prep ahead of the dig
+
+    @Test
+    public void prepOnlyStartsOnTheFirstAttemptOnTheSurfaceAtTheStart() {
+        assertTrue(RoomPhase.prepStarts(1, true, 70, true));
+        // the line itself counts, same as the room bed
+        assertTrue(RoomPhase.prepStarts(1, true, 50, true));
+        assertFalse(RoomPhase.prepStarts(2, true, 70, true));
+        assertFalse(RoomPhase.prepStarts(1, false, 70, true));
+        assertFalse(RoomPhase.prepStarts(1, true, 49.9, true));
+        assertFalse(RoomPhase.prepStarts(1, true, 70, false));
+    }
+
+    @Test
+    public void prepGetsFiveMinutesOfGameTime() {
+        assertFalse(RoomPhase.prepOutOfTime(1000, 1000));
+        assertFalse(RoomPhase.prepOutOfTime(1000, 1000 + 5999));
+        assertTrue(RoomPhase.prepOutOfTime(1000, 1000 + 6000));
+    }
+
+    @Test
+    public void aPrepWithNothingLeftLetsTheSearchGo() {
+        StubContext ctx = new StubContext();
+        RoomPhase r = new RoomPhase();
+        assertFalse(r.holdsBudget());
+        r.startPrep(new BlockPos(0, 64, 0), 0);
+        assertTrue(r.holdsBudget());
+        // no search task yet, so nothing wants a mod
+        assertNull(r.prepResult(null, ctx, null));
+        assertFalse(r.holdsBudget());
+        assertEquals(1, ctx.progress.size());
+    }
+
+    @Test
+    public void theRoomBedGetsAnotherLookOnceThePrepIsOver() {
+        StubContext ctx = new StubContext();
+        RoomPhase r = new RoomPhase();
+        r.startPrep(new BlockPos(0, 64, 0), 0);
+        r.roomBedDecided = true;
+        r.prepResult(null, ctx, null);
+        assertFalse(r.roomBedDecided);
+    }
+
+    @Test
+    public void aRunningPrepHoldsTheBudgetAndFeedsTheStallClock() {
+        StubContext ctx = new StubContext();
+        RoomPhase r = new RoomPhase();
+        r.startPrep(new BlockPos(0, 64, 0), 0);
+        Task errand = new Task() {
+            @Override
+            protected void onStart(AltoClef mod) {
+            }
+
+            @Override
+            protected Task onTick(AltoClef mod) {
+                return null;
+            }
+
+            @Override
+            protected void onStop(AltoClef mod, Task interruptTask) {
+            }
+
+            @Override
+            protected boolean isEqual(Task other) {
+                return other == this;
+            }
+
+            @Override
+            protected String toDebugString() {
+                return "errand";
+            }
+        };
+        assertSame(errand, r.prepResult(null, ctx, errand));
+        assertTrue(r.holdsBudget());
+        assertEquals(1, ctx.progress.size());
+    }
+
+    @Test
+    public void aNewVisitForgetsThePrep() {
+        StubContext ctx = new StubContext();
+        RoomPhase r = new RoomPhase();
+        r.startPrep(new BlockPos(0, 64, 0), 0);
+        r.prepResult(null, ctx, null);
+        r.onEnter(null, ctx);
+        r.startPrep(new BlockPos(0, 64, 0), 0);
+        assertTrue(r.holdsBudget());
     }
 
     @Test

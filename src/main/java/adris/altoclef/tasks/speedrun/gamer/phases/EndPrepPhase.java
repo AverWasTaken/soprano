@@ -89,6 +89,8 @@ public class EndPrepPhase implements PhaseHandler {
     private int _armorTicks;
     private boolean _armorGaveUp;
     private Task _armorTask;
+    // only RoomPhase's instance sets this (prepAhead), see portalCenter
+    private BlockPos _prepAt;
 
     @Override
     public GamerPhase phase() {
@@ -209,12 +211,52 @@ public class EndPrepPhase implements PhaseHandler {
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
         Item armorFloor = armorFloor(ctx, cfg);
         noteGate(mod, ctx, gap, armorFloor);
-        BlockPos portal = portalCenter(mod, state);
-        _errandBlocks = portal == null ? 0 : Math.hypot(mod.getPlayer().getX() - portal.getX(), mod.getPlayer().getZ() - portal.getZ());
+        noteErrandBlocks(mod, state);
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
+        step = foodFirstThenCount(ctx, cfg, gap, step);
+        _walkingIn = step == null;
+        _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
+        // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
+        ctx.walkOnEndPortal(step == null);
+        return step != null ? step : walkIn();
+    }
+
+    // the gate, for RoomPhase's own instance before the dig: at stands in for the portal while no ring is known. no spawn bed
+    // (roomBedStep has that covered, asking for one here is a bed too many), no walk in (there's no portal yet). null = nothing left
+    public Task prepAhead(AltoClef mod, GamerContext ctx, BlockPos at) {
+        _prepAt = at;
+        ensureTasks();
+        if (ctx.facts().dimension() != Dimension.OVERWORLD) {
+            return null;
+        }
+        EndConfig cfg = ctx.cfg().end;
+        RunState state = ctx.state();
+        if (state.deaths.size() != _bucketDeaths) {
+            resetOnDeath(state.deaths.size());
+        }
+        int required = requiredBeds(ctx, cfg);
+        EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food(), _bucketGaveUp);
+        Item armorFloor = armorFloor(ctx, cfg);
+        noteGate(mod, ctx, gap, armorFloor);
+        noteErrandBlocks(mod, state);
+        int lacking = EndGear.bedShortfall(ctx.facts(), state, cfg, required, false);
+        Task step = lacking > 0 ? bedErrand(mod, ctx, cfg, lacking) : null;
+        if (step == null) {
+            step = gearStep(mod, ctx, cfg, gap, armorFloor);
+        }
+        return foodFirstThenCount(ctx, cfg, gap, step);
+    }
+
+    private void noteErrandBlocks(AltoClef mod, RunState state) {
+        BlockPos portal = portalCenter(mod, state);
+        _errandBlocks = portal == null ? 0 : Math.hypot(mod.getPlayer().getX() - portal.getX(), mod.getPlayer().getZ() - portal.getZ());
+    }
+
+    private Task foodFirstThenCount(GamerContext ctx, EndConfig cfg, EndGear.Gap gap, Task picked) {
+        Task step = picked;
         // a far errand eats the food on the way, so the food floor comes first (the gear steps go on the same rule: far from the
         // portal is far, whatever the errand). the walk back and the spawn bed are the way home, food does not replace them
         if (step != null && step != _food
@@ -226,11 +268,7 @@ public class EndPrepPhase implements PhaseHandler {
         if (step != null && step == _armorTask && _armorTask.isActive()) {
             _armorTicks++;
         }
-        _walkingIn = step == null;
-        _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
-        // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
-        ctx.walkOnEndPortal(step == null);
-        return step != null ? step : walkIn();
+        return step;
     }
 
     // a line when the gap we are working on changes, with the numbers the gate went by (not every tick)
@@ -446,6 +484,10 @@ public class EndPrepPhase implements PhaseHandler {
         if (state.endPortalCenter != null) {
             RunState.Pos c = state.endPortalCenter;
             return new BlockPos(c.x, c.y, c.z);
+        }
+        // (no portal at all would read as "a bed anywhere" in bedWorthIt, and the prep ahead of the dig is not walking across the map)
+        if (_prepAt != null) {
+            return _prepAt;
         }
         return mod.getBlockTracker().getNearestTracking(Blocks.END_PORTAL).orElse(null);
     }
