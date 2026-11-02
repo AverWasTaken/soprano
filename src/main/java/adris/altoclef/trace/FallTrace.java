@@ -12,6 +12,9 @@ public final class FallTrace {
     // a fall is this many blocks before it is worth a dump (the little hops of a path never get there)
     public static final float FALL_TRIGGER = 4;
 
+    // the ring ends at the lava entry and the escape is the other half of the story, this many more ticks print one at a time
+    public static final int AFTER_LAVA = 40;
+
     public static final byte FORWARD = 1, BACK = 2, LEFT = 4, RIGHT = 8, SPRINT = 16, JUMP = 32, SNEAK = 64;
 
     private final double[] x = new double[SIZE], y = new double[SIZE], z = new double[SIZE];
@@ -30,8 +33,12 @@ public final class FallTrace {
     // whose input object was on the player. the keys alone can't tell a forced W from one of ours
     private final Class<?>[] inputClass = new Class<?>[SIZE];
     private final boolean[] vColl = new boolean[SIZE], vCollBelow = new boolean[SIZE];
+    // a raised shield eats the knock, so whether it was up says if a hit could have thrown us at all
+    private final boolean[] blocking = new boolean[SIZE];
     private int next;
     private int size;
+    private int carryLeft;
+    private int carried;
     // 5 ticks on the ground and the next fall counts again
     private final EntryLatch fallLatch = new EntryLatch(5);
 
@@ -43,7 +50,7 @@ public final class FallTrace {
 
     // attackerId < 0 means nobody (no hit this tick)
     public void push(double px, double py, double pz, double vx, double vy, double vz, boolean onGround, float fallDistance, byte keyBits,
-                     float yawNow, float pitchNow, boolean verticalCollision, boolean verticalCollisionBelow, Object blockUnder, Object movement, Object moveStatus, Object placeResult, Object goalNow, Class<?> inputNow, boolean hit, int attackerId,
+                     float yawNow, float pitchNow, boolean verticalCollision, boolean verticalCollisionBelow, Object blockUnder, Object movement, Object moveStatus, Object placeResult, Object goalNow, Class<?> inputNow, boolean blockingNow, boolean hit, int attackerId,
                      double hx, double hy, double hz) {
         int i = next;
         x[i] = px;
@@ -65,6 +72,7 @@ public final class FallTrace {
         place[i] = placeResult;
         goal[i] = goalNow;
         inputClass[i] = inputNow;
+        blocking[i] = blockingNow;
         hurt[i] = hit;
         attacker[i] = attackerId;
         ax[i] = hx;
@@ -83,15 +91,33 @@ public final class FallTrace {
     // oldest first, one line per tick. i = 0 is the oldest tick still kept. movement names come from the caller, this class
     // does not know what a movement is
     public String line(int i, Function<Object, String> moveName) {
-        int at = (next - size + i + SIZE) % SIZE;
-        String line = String.format(Locale.ROOT, "[falltrace] t-%d pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b vcoll %s fall %.1f keys %s look %.2f/%.2f under %s move %s status %s place %s goal %s input %s",
-                size - 1 - i, x[at], y[at], z[at], dx[at], dy[at], dz[at], ground[at], collWord(vColl[at], vCollBelow[at]), fall[at], keyWord(keys[at]),
+        return format((next - size + i + SIZE) % SIZE, "t-" + (size - 1 - i), moveName);
+    }
+
+    // start printing the ticks after this one, see AFTER_LAVA
+    public void carryOn() {
+        carryLeft = AFTER_LAVA;
+        carried = 0;
+    }
+
+    // the newest tick as a line while a carry is on, null when none is. once per push or it prints the same tick twice
+    public String carriedLine(Function<Object, String> moveName) {
+        if (carryLeft <= 0) {
+            return null;
+        }
+        carryLeft--;
+        return format((next - 1 + SIZE) % SIZE, "t+" + ++carried, moveName);
+    }
+
+    private String format(int at, String when, Function<Object, String> moveName) {
+        String line = String.format(Locale.ROOT, "[falltrace] %s pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b vcoll %s fall %.1f keys %s look %.2f/%.2f under %s move %s status %s place %s goal %s input %s",
+                when, x[at], y[at], z[at], dx[at], dy[at], dz[at], ground[at], collWord(vColl[at], vCollBelow[at]), fall[at], keyWord(keys[at]),
                 yaw[at], pitch[at], under[at], move[at] == null ? "none" : moveName.apply(move[at]),
                 orDash(status[at]), orDash(place[at]), shorten(goal[at]), inputClass[at] == null ? "-" : inputClass[at].getSimpleName());
         if (hurt[at]) {
             line += String.format(Locale.ROOT, " HURT by #%d at %.2f %.2f %.2f", attacker[at], ax[at], ay[at], az[at]);
         }
-        return line;
+        return line + " blocking " + blocking[at];
     }
 
     // below implies a vertical collision, so three words cover it
