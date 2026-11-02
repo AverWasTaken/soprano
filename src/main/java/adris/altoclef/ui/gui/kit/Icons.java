@@ -445,6 +445,78 @@ public final class Icons {
                 line(g, 3, 18, 11, 18);
                 poly(g, true, 15, 11, 21, 15.5f, 15, 20);
             }
+            case PLAY -> poly(g, true, 7, 4.5f, 19.5f, 12, 7, 19.5f);
+            case IF -> {
+                Path2D.Float up = new Path2D.Float();
+                up.moveTo(10, 12);
+                up.curveTo(13, 12, 13, 6, 17, 6);
+                up.lineTo(20.5f, 6);
+                g.draw(up);
+                Path2D.Float down = new Path2D.Float();
+                down.moveTo(10, 12);
+                down.curveTo(13, 12, 13, 18, 17, 18);
+                down.lineTo(20.5f, 18);
+                g.draw(down);
+                line(g, 3.5f, 12, 10, 12);
+                head(g, 20.5f, 6, 1, 0, 2.5f, 2.5f);
+                head(g, 20.5f, 18, 1, 0, 2.5f, 2.5f);
+            }
+            case REPEAT -> {
+                g.draw(new Arc2D.Float(4, 4, 16, 16, 120, -300, Arc2D.OPEN));
+                head(g, 8, 5.07f, 0.87f, -0.5f, 3.2f, 3.2f);
+            }
+            case CLOCK -> {
+                g.draw(new Ellipse2D.Float(3, 3, 18, 18));
+                poly(g, false, 12, 7, 12, 12, 15.5f, 14);
+            }
+            case EAT -> {
+                Path2D.Float apple = new Path2D.Float();
+                apple.moveTo(12, 8);
+                apple.curveTo(9, 6, 4, 7, 4, 12.5f);
+                apple.curveTo(4, 17.5f, 8, 21, 10, 21);
+                apple.curveTo(11, 21, 11.5f, 20.5f, 12, 20.5f);
+                apple.curveTo(12.5f, 20.5f, 13, 21, 14, 21);
+                apple.curveTo(16, 21, 20, 17.5f, 20, 12.5f);
+                apple.curveTo(20, 7, 15, 6, 12, 8);
+                apple.closePath();
+                g.draw(apple);
+                Path2D.Float leaf = new Path2D.Float();
+                leaf.moveTo(12, 8);
+                leaf.quadTo(12, 5, 14.5f, 3.5f);
+                g.draw(leaf);
+            }
+            case CRAFT -> {
+                g.draw(new RoundRectangle2D.Float(3.5f, 3.5f, 17, 17, 4, 4));
+                line(g, 9.2f, 3.5f, 9.2f, 20.5f);
+                line(g, 14.8f, 3.5f, 14.8f, 20.5f);
+                line(g, 3.5f, 9.2f, 20.5f, 9.2f);
+                line(g, 3.5f, 14.8f, 20.5f, 14.8f);
+            }
+            case HASH -> {
+                line(g, 9.5f, 4, 7.5f, 20);
+                line(g, 16.5f, 4, 14.5f, 20);
+                line(g, 4.5f, 9, 20, 9);
+                line(g, 4, 15, 19.5f, 15);
+            }
+            case FIT -> {
+                poly(g, false, 3.5f, 8.5f, 3.5f, 3.5f, 8.5f, 3.5f);
+                poly(g, false, 15.5f, 3.5f, 20.5f, 3.5f, 20.5f, 8.5f);
+                poly(g, false, 20.5f, 15.5f, 20.5f, 20.5f, 15.5f, 20.5f);
+                poly(g, false, 8.5f, 20.5f, 3.5f, 20.5f, 3.5f, 15.5f);
+            }
+            case EQUIP -> {
+                poly(g, false, 20.5f, 3.5f, 20.5f, 7, 9.5f, 18, 6, 14.5f, 17, 3.5f, 20.5f, 3.5f);
+                line(g, 5, 13.5f, 10.5f, 19);
+                line(g, 7.75f, 16.25f, 4, 20);
+            }
+            case NODES -> {
+                g.draw(new RoundRectangle2D.Float(3, 4, 8, 6, 2.5f, 2.5f));
+                g.draw(new RoundRectangle2D.Float(13, 14, 8, 6, 2.5f, 2.5f));
+                Path2D.Float wire = new Path2D.Float();
+                wire.moveTo(11, 7);
+                wire.curveTo(15, 7, 9, 17, 13, 17);
+                g.draw(wire);
+            }
         }
     }
 
