@@ -336,4 +336,18 @@ public class CombatRulesTest {
         // never tighter than it was
         assertTrue(CombatRules.cubeBiteRange(0.52) > CombatRules.CONTACT_RANGE);
     }
+
+    @Test
+    public void theShieldComesDownForTheWalkUpOnly() {
+        assertTrue(CombatRules.fightShieldDown(true, CombatRules.CONTACT_RANGE + 0.5));
+        assertFalse(CombatRules.fightShieldDown(true, CombatRules.CONTACT_RANGE));
+        // no path going: nothing to walk, the fight's own shield rule decides
+        assertFalse(CombatRules.fightShieldDown(false, CombatRules.CONTACT_RANGE + 0.5));
+    }
+
+    @Test
+    public void aFightsShieldNeverStandsUsStillTheRimGuardsDoes() {
+        assertFalse(CombatRules.auraShieldStandsStill(true));
+        assertTrue(CombatRules.auraShieldStandsStill(false));
+    }
 }

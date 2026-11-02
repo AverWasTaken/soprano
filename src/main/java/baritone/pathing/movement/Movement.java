@@ -23,6 +23,7 @@ import baritone.api.pathing.movement.IMovement;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.utils.*;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
 import baritone.utils.BlockStateInterface;
@@ -588,6 +589,19 @@ public abstract class Movement implements IMovement, MovementHelper {
         return inFlight && fallWaited <= FALL_WAIT_MAX || pending && fallPending <= FALL_PENDING_MAX;
     }
 
+    // what prepared() is stuck on, for the stand line: PREPPING with no keys down says nothing about which cell or why. null when it let go
+    private String preparedHold;
+
+    public String preparedHold() {
+        return preparedHold;
+    }
+
+    private String breakHold(BetterBlockPos pos, boolean reachable) {
+        return "break " + pos.x + "," + pos.y + "," + pos.z + " " + BlockStateInterface.get(ctx, pos).getBlock()
+                + " avoid=" + AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(pos.x, pos.y, pos.z)
+                + " reach=" + reachable + " look=" + ctx.isLookingAt(pos);
+    }
+
     protected boolean prepared(MovementState state) {
         if (state.getStatus() == MovementStatus.WAITING) {
             return true;
@@ -596,6 +610,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         waitingOnFall = holdForFalling();
         if (waitingOnFall) {
             heldForFall = true;
+            preparedHold = "falling";
             return false;
         }
         for (BetterBlockPos blockPos : positionsToBreak) {
@@ -605,6 +620,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                     // only an edge of us hangs into that column (walkWhileBreaking momentum, mostly). failing the movement
                     // here would just get the same movement planned again, so back off into src and break it from there
                     MovementHelper.moveTowards(ctx, state, src);
+                    preparedHold = "column " + blockPos.x + "," + blockPos.y + "," + blockPos.z;
                     return false;
                 }
                 // we really are under it. the plan was made before whatever is stacked up there got there (the planner
@@ -622,6 +638,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                     if (ctx.isLookingAt(blockPos) || ctx.playerRotations().isReallyCloseTo(rotTowardsBlock)) {
                         state.setInput(Input.CLICK_LEFT, true);
                     }
+                    preparedHold = breakHold(blockPos, true);
                     return false;
                 }
                 //get rekt minecraft
@@ -633,6 +650,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 );
                 // don't check selectedblock on this one, this is a fallback when we can't see any face directly, it's intended to be breaking the "incorrect" block
                 state.setInput(Input.CLICK_LEFT, true);
+                preparedHold = breakHold(blockPos, false);
                 return false;
             }
         }
@@ -688,7 +706,10 @@ public abstract class Movement implements IMovement, MovementHelper {
      * @return The new state
      */
     public MovementState updateState(MovementState state) {
+        preparedHold = null;
         if (!prepared(state)) {
+            // (the subclasses with their own prepared don't all say, the move= next to it names the class)
+            if (preparedHold == null) preparedHold = "own";
             return state.setStatus(MovementStatus.PREPPING);
         } else if (state.getStatus() == MovementStatus.PREPPING) {
             state.setStatus(MovementStatus.WAITING);

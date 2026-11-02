@@ -540,6 +540,16 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public void requestPause() {
         pauseRequestedLastTick = true;
+        pausedBy = PAUSE_CALLER.walk(frames -> frames.skip(1).findFirst()
+                .map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + "." + f.getMethodName()).orElse(null));
+    }
+
+    // who asked for a pause last, for the stand line. paused=true alone never said whose fault the standing around was
+    private static final StackWalker PAUSE_CALLER = StackWalker.getInstance();
+    private String pausedBy;
+
+    public String pausedBy() {
+        return pausedBy;
     }
 
     public boolean cancelSegmentIfSafe() {

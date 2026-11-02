@@ -23,16 +23,23 @@ public final class CombatLog {
     // noRoom: the corner fight came from a run that went nowhere with the foe in reach, not from the three second window
     public static String line(Dimension dimension, Event event, Why why, boolean cornered, boolean noRoom, String target, String fighting,
                               String crowd, int hp, int blocks) {
+        return line(dimension, event, why, cornered, noRoom, null, target, fighting, crowd, hp, blocks);
+    }
+
+    // corner: which corner it is (CombatCommit.cornerKind), on the end in [] like the run lines' why. null says nothing
+    public static String line(Dimension dimension, Event event, Why why, boolean cornered, boolean noRoom, String corner, String target, String fighting,
+                              String crowd, int hp, int blocks) {
+        String kind = corner == null ? "" : " [" + corner + "]";
         String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] ";
         return switch (event) {
             case NONE -> null;
             case FIGHT_START -> tag + "FIGHT " + target + " (" + fightWhy(why) + ", hp " + hp + ")";
-            case FIGHT_NEXT -> cornered ? tag + (why == Why.CHASED ? "still chased, next " : "cornered, next ") + target
+            case FIGHT_NEXT -> cornered ? tag + (why == Why.CHASED ? "still chased, next " : "cornered, next ") + target + kind
                     : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
             case RUN_START -> why == Why.LOBBER ? tag + "RUN from witch (can't reach it) [" + why + "]"
                     : tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ") [" + why + "]";
             case FIGHT_TO_RUN -> tag + "FIGHT -> RUN from " + crowd + " (" + runWhy(why, hp) + ") [" + why + "]";
-            case RUN_TO_FIGHT -> tag + (noRoom ? "cornered, no room, fighting " : "cornered, fighting ") + target;
+            case RUN_TO_FIGHT -> tag + (noRoom ? "cornered, no room, fighting " : "cornered, fighting ") + target + kind;
             case FIGHT_DEAD -> tag + "fight over, " + fighting + " dead";
             case FIGHT_LOST -> tag + "fight over, lost track of " + fighting;
             case FIGHT_CLEARED -> tag + "fight over, " + fighting + " is out of the way";
