@@ -822,8 +822,10 @@ public class IronPhase implements PhaseHandler {
         if (foodTopUp && !wasTopUp) {
             Debug.logInternal("food: topping up from " + held + " to " + food.refillStop() + " now that it is cheap");
         }
-        foodLed = lead;
-        return lead ? needs : FoodGate.without(needs, at);
+        // nextTopUp only heard the real answer: a kept lead starting the soft latch would march a mine off to refillStop
+        boolean keep = lead || food.keepsLead(foodLed, CookGate.rawGap(ctx.facts()));
+        foodLed = keep;
+        return keep ? needs : FoodGate.without(needs, at);
     }
 
     // iron is the one phase where "mostly done" is fine: with the pickaxe, a light and two buckets the portal can be

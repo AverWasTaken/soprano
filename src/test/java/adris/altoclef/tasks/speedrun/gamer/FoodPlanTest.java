@@ -455,6 +455,27 @@ public class FoodPlanTest {
     }
 
     @Test
+    public void aHuntKeepsTheWheelUntilTheFloorIsMetWithoutTheRawMeat() {
+        // 14 cooked and 10 of raw that only counts while we are hunting: reads 24, on the floor, and must not let go
+        FoodPlan smokerCounts = new FoodPlan(24, 0, 0, 0, 0, 0, cfg, end, false);
+        assertFalse(smokerCounts.leads(false, false, false));
+        assertTrue(smokerCounts.keepsLead(true, 10));
+        // nobody was hunting, so nothing to keep
+        assertFalse(smokerCounts.keepsLead(false, 10));
+        // met without the raw meat, it can go. the count can't dip back under the floor when the smoker stops counting
+        assertFalse(new FoodPlan(34, 0, 0, 0, 0, 0, cfg, end, false).keepsLead(true, 10));
+        // a batch in the smoker is food we will get
+        assertFalse(new FoodPlan(14, 20, 0, 0, 0, 0, cfg, end, false).keepsLead(true, 10));
+    }
+
+    @Test
+    public void aKeptLeadDoesNotStartTheSoftTopUp() {
+        FoodPlan smokerCounts = new FoodPlan(24, 0, 0, 0, 0, 0, cfg, end, true);
+        // what IronPhase hands nextTopUp is leads(), the keep stays out of it
+        assertFalse(smokerCounts.nextTopUp(false, smokerCounts.leads(false, false, false)));
+    }
+
+    @Test
     public void aForcedTripUnderTheFloorDoesNotLatchTheSoftOne() {
         boolean lead = held(10, 0).leads(false, false, false);
         assertTrue(lead);

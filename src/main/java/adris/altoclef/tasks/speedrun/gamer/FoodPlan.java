@@ -409,6 +409,14 @@ public final class FoodPlan {
         return topUp || onSurface;
     }
 
+    // the floor's hysteresis. raw meat only counts while a cook can happen, a standing smoker only counts while the plan is coming
+    // back to it, and the plan only does that while food leads. so the hunt starts, the meat counts, the bag reads over the floor,
+    // the lead lets go, the meat stops counting, and round we go. a hunt with the wheel keeps it until the floor is met without
+    // the meat that only counts because we are hunting
+    public boolean keepsLead(boolean led, int rawGap) {
+        return led && counted() - rawGap < floor;
+    }
+
     // a top-up that started on the soft rule keeps going until the trip's stop, it must not flip every tick as the bot walks up and
     // down or the count wobbles at the line. under the floor it was forced anyway, that does not start one. one that is covered
     // ends: leads() already says no for it, and a latch left on would wake up off the surface the next time the raw meat is eaten.
