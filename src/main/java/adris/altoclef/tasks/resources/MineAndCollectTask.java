@@ -743,6 +743,8 @@ public class MineAndCollectTask extends ResourceTask {
             Predicate<BlockPos> usable = check -> {
                 if (mod.getBlockTracker().unreachable(check)) return false;
                 if (hangsInTheNether(mod, check)) return false;
+                // ahead of worthTheTrip, so a mine post doesn't spend a column scan on the way out
+                if (buriedLog(mod, check)) return false;
                 return WorldHelper.canBreak(mod, check) && _only.test(check) && (!sparing || worthTheTrip(mod, check));
             };
             // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
@@ -776,6 +778,12 @@ public class MineAndCollectTask extends ResourceTask {
                 return pickStone(mod, pos, usable, notOurs);
             }
             return orOwnBlock(mod, pos, usable, nearestBlock(mod, pos, notOurs));
+        }
+
+        // not a tree, see TreeReach.buried. all three asks go through here (the pick, isValid, stillOurs): a pursuit that is already
+        // on its way never hears from the pick again, and a cached log in an unloaded chunk only shows what it is once we get close
+        private boolean buriedLog(AltoClef mod, BlockPos pos) {
+            return _logsOnly && TreeReachScan.buried(mod, pos);
         }
 
         // nothing of the real stuff within 16: a block we placed ourselves is a fair meal after all
@@ -1103,6 +1111,11 @@ public class MineAndCollectTask extends ResourceTask {
                 return;
             }
             if (mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
+                // nobody broke it and nobody banned it, it just stopped being a tree. left set, the stall checker and dirtWanted
+                // would go on working on that log the whole wander
+                if (buriedLog(mod, pos)) {
+                    _miningPos = null;
+                }
                 return;
             }
             Vec3 spot = Vec3.atCenterOf(pos);
@@ -1338,6 +1351,7 @@ public class MineAndCollectTask extends ResourceTask {
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
             if (mod.getBlockTracker().unreachable(pos)) return false;
             if (hangsInTheNether(mod, pos)) return false;
+            if (buriedLog(mod, pos)) return false;
             if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
             // same answer as isValid, or a block that went unbreakable got dropped there and handed straight back here
             if (!WorldHelper.canBreak(mod, pos)) return false;
@@ -1578,7 +1592,7 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof BlockPos b) {
                 // a block we gave up on is not valid anymore, or the "new target must be twice as close" rule would
                 // keep us on it (it used to be swapped out for any other nearest block, which is how it got away with this)
-                return !mod.getBlockTracker().unreachable(b) && !hangsInTheNether(mod, b)
+                return !mod.getBlockTracker().unreachable(b) && !hangsInTheNether(mod, b) && !buriedLog(mod, b)
                         && mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {

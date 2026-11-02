@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import java.util.function.IntFunction;
+import java.util.function.IntPredicate;
 
 // can we get at this log, and if not, is it worth going for it anyway. plain ints so the rules are testable without a world:
 // the caller reads the column under the log and says what it found
@@ -19,6 +20,8 @@ public final class TreeReach {
     private static final int DIRT_MIN = 4;
     public static final int DIRT_MAX = 10;
     private static final int DIRT_UNKNOWN = 8;
+    // SmeltSurface.GO_UP_DEPTH, repeated for the same reason as MAX_UNDER: deeper than this below the sky and we are in a mine
+    public static final int BURIED_DEPTH = 8;
 
     private TreeReach() {
     }
@@ -66,6 +69,21 @@ public final class TreeReach {
             }
         }
         return new Column(NO_FEET, air);
+    }
+
+    // a mineshaft post is an oak log like any other and the nearest log search can't tell. deep is not enough on its own, a 30
+    // tall spruce is deep by the heightmap and only has itself over it. solid is not enough either, a roof or a ledge over a tree
+    // is still a tree, and a village post stays fair. it takes both. no y limit anywhere, a flat world has its trees at -60
+    public static boolean buried(int logY, int topY, IntPredicate solidAt) {
+        if (topY - logY <= BURIED_DEPTH) {
+            return false;
+        }
+        for (int y = logY + 1; y <= topY; y++) {
+            if (solidAt.test(y)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // GoalMineFromSide's own clamp on how far down the shaft goes
