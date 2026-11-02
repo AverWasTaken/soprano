@@ -691,14 +691,24 @@ public class StorageHelper {
      * count on purpose: the answer must not shrink just because the crafting task already moved the ingredients in.
      */
     public static int craftsPossible(AltoClef mod, CraftingRecipe recipe, int cap) {
+        Map<Item, Integer> inGrid = gridContents(openCraftGridInputs(recipe.isBig()));
+        return CraftMath.maxCrafts(recipeOptions(recipe), item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), cap);
+    }
+
+    // the same count as craftsPossible, so the answer doesn't move as the grid fills
+    public static int perSlotToFill(AltoClef mod, CraftingRecipe recipe, int perSlot) {
+        Map<Item, Integer> inGrid = gridContents(openCraftGridInputs(recipe.isBig()));
+        return CraftMath.perSlotToFill(recipeOptions(recipe), item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), perSlot);
+    }
+
+    private static List<List<Item>> recipeOptions(CraftingRecipe recipe) {
         List<List<Item>> slots = new ArrayList<>();
         for (int i = 0; i < recipe.getSlotCount(); ++i) {
             ItemTarget needs = recipe.getSlot(i);
             if (needs == null || needs.isEmpty()) continue;
             slots.add(Arrays.asList(needs.getMatches()));
         }
-        Map<Item, Integer> inGrid = gridContents(openCraftGridInputs(recipe.isBig()));
-        return CraftMath.maxCrafts(slots, item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), cap);
+        return slots;
     }
 
     // the one count for "what can a craft use": the bag (cursor included) plus whatever sits in the open grid, the same rule
