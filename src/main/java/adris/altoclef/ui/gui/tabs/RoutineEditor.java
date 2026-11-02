@@ -12,6 +12,7 @@ import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.Scroller;
+import adris.altoclef.ui.gui.kit.Segmented;
 import adris.altoclef.ui.gui.kit.ShellContext;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
@@ -46,6 +47,14 @@ final class RoutineEditor extends Widget implements StepRow.Host {
         void run(String id);
 
         void stop();
+
+        // the node editor's switch only exists with this on, off is the editor exactly as it was
+        default boolean graphsEnabled() {
+            return false;
+        }
+
+        default void showNodes() {
+        }
     }
 
     // design sizes, the mock's head / steps head / foot
@@ -64,6 +73,8 @@ final class RoutineEditor extends Widget implements StepRow.Host {
     private final Button saveBtn;
     private final Button runBtn;
     private final List<Widget> kids;
+    private final List<Widget> kidsWithSwitch = new ArrayList<>();
+    private Segmented viewSwitch;
 
     private RoutineDraft draft = RoutineDraft.blank();
     private List<String> errs = List.of();
@@ -95,6 +106,7 @@ final class RoutineEditor extends Widget implements StepRow.Host {
         saveBtn = new Button(theme, "Save", Button.Kind.SECONDARY, null, this::saveClicked);
         runBtn = new Button(theme, "Run", Button.Kind.PRIMARY, null, this::runClicked);
         kids = List.of(nameField, descField, steps, delBtn, saveBtn, runBtn);
+        kidsWithSwitch.addAll(kids);
     }
 
     // ----- state in
@@ -123,6 +135,20 @@ final class RoutineEditor extends Widget implements StepRow.Host {
 
     boolean dirty() {
         return draft.dirty(listener.routines());
+    }
+
+    // a new one is always "dirty" because Run has to save it, this says whether anybody put anything in it
+    boolean hasEdits() {
+        return draft.isNew() ? !draft.name.isEmpty() || !draft.description.isEmpty() || !draft.rows.isEmpty() : dirty();
+    }
+
+    // what going to the node view does first. false = it didn't save, the error is in the footer and we stay
+    boolean saveIfDirty() {
+        return !hasEdits() || save();
+    }
+
+    boolean trySave() {
+        return save();
     }
 
     void setLocked(boolean on) {
@@ -365,11 +391,33 @@ final class RoutineEditor extends Widget implements StepRow.Host {
         delBtn.setBounds(saveBtn.x() - gap - dw, by, dw, ch);
         int sTop = headBottom + 1 + theme.px(STEPS_HEAD_H);
         steps.setBounds(x + theme.px(Theme.SPACE_2), sTop, w - theme.px(Theme.SPACE_2) - 1, Math.max(0, footTop - 1 - sTop));
+        if (viewSwitch != null) {
+            int sw = viewSwitch.preferredWidth();
+            viewSwitch.setBounds(x + w - pad - sw, headBottom + 1 + (theme.px(STEPS_HEAD_H) - ch) / 2, sw, ch);
+        }
     }
 
     @Override
     public List<Widget> children() {
-        return kids;
+        return switchOn() ? kidsWithSwitch : kids;
+    }
+
+    private boolean switchOn() {
+        if (!listener.graphsEnabled()) {
+            return false;
+        }
+        if (viewSwitch == null) {
+            // built the first time it's asked for: with the editor off there's no switch at all, not a hidden one
+            viewSwitch = new Segmented(theme, List.of("List", "Nodes"), 0, i -> {
+                viewSwitch.setSelected(0);
+                if (i == 1) {
+                    listener.showNodes();
+                }
+            });
+            kidsWithSwitch.add(viewSwitch);
+            layout();
+        }
+        return true;
     }
 
     @Override
@@ -405,7 +453,9 @@ final class RoutineEditor extends Widget implements StepRow.Host {
             float sx = x + pad + c.measure("Steps", theme.label) + theme.px(10);
             c.text(n + (n == 1 ? " step" : " steps") + ", run top to bottom", sx, base, theme.small.asTabular(), theme.color(Theme.TEXT_3));
         }
-        // the "List | Nodes" switch goes on the right of this header once the node editor exists
+        if (switchOn()) {
+            viewSwitch.draw(c, f);
+        }
 
         steps.draw(c, f);
         drawFootMessage(c);
@@ -494,6 +544,10 @@ final class RoutineEditor extends Widget implements StepRow.Host {
 
     Button deleteButton() {
         return delBtn;
+    }
+
+    Segmented viewSwitch() {
+        return viewSwitch;
     }
 
     Button addButton() {

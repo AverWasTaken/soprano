@@ -12,7 +12,6 @@ import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Widget;
 import adris.altoclef.ui.gui.model.RoutineDraft;
-import adris.altoclef.ui.gui.model.RoutineDraft.Item;
 import adris.altoclef.ui.gui.model.RoutineDraft.Kind;
 import adris.altoclef.ui.gui.model.RoutineDraft.Row;
 
@@ -73,6 +72,7 @@ final class StepRow extends Widget {
     private final StepField add;
     private final List<BasketLine> lines = new ArrayList<>();
     private final List<Widget> kids = new ArrayList<>();
+    private final BasketLine.Owner basketOwner = new BasketOwner();
     private final FadeCanvas fade = new FadeCanvas();
     private List<String> wpOptions = List.of();
 
@@ -175,10 +175,10 @@ final class StepRow extends Widget {
         xyz[2].show(r.get("z"));
         bindWaypoints();
         while (lines.size() < r.items.size()) {
-            lines.add(new BasketLine(theme));
+            lines.add(new BasketLine(theme, basketOwner, true));
         }
         while (lines.size() > r.items.size()) {
-            lines.remove(lines.size() - 1).count.setFocused(false);
+            lines.remove(lines.size() - 1).unfocus();
         }
         for (int i = 0; i < r.items.size(); i++) {
             lines.get(i).bind(r.items.get(i), i);
@@ -196,16 +196,21 @@ final class StepRow extends Widget {
     // quietly swaps it for another one
     private void bindWaypoints() {
         String cur = row == null ? "" : row.get("waypoint");
-        List<String> opts = new ArrayList<>();
-        if (cur.isEmpty()) {
-            opts.add("Pick a waypoint");
-        } else if (!host.waypoints().contains(cur)) {
-            opts.add(cur);
-        }
-        opts.addAll(host.waypoints());
+        List<String> opts = waypointOptions(cur, host.waypoints());
         wpOptions = opts;
         int sel = cur.isEmpty() ? 0 : Math.max(0, opts.indexOf(cur));
         waypoint.setOptions(opts, sel);
+    }
+
+    static List<String> waypointOptions(String cur, List<String> known) {
+        List<String> opts = new ArrayList<>();
+        if (cur.isEmpty()) {
+            opts.add("Pick a waypoint");
+        } else if (!known.contains(cur)) {
+            opts.add(cur);
+        }
+        opts.addAll(known);
+        return opts;
     }
 
     void setState(String error, Mark m, String failMessage) {
@@ -229,8 +234,7 @@ final class StepRow extends Widget {
             }
         }
         for (BasketLine l : lines) {
-            int n = l.it == null ? 0 : RoutineDraft.countOf(l.it);
-            l.count.setInvalid(bad && (n < 1 || n > 9999));
+            l.setRed(bad);
         }
     }
 
@@ -280,7 +284,7 @@ final class StepRow extends Widget {
 
     private boolean anyCountFocused() {
         for (BasketLine l : lines) {
-            if (l.count.isFocused()) {
+            if (l.countFocused()) {
                 return true;
             }
         }
@@ -547,169 +551,45 @@ final class StepRow extends Widget {
         return top + height / 2f + (c.ascent(s) - c.descent(s)) / 2f;
     }
 
-    // ----- one item in a get step
-
-    private final class BasketLine extends Widget {
-
-        private final IconButton minus;
-        private final IconButton plus;
-        private final IconButton remove;
-        private final GetCountField count;
-        private final List<Widget> lineKids;
-        private Item it;
-        private int i;
-
-        BasketLine(Theme theme) {
-            super(theme);
-            minus = new IconButton(theme, Icon.MINUS, "Fewer", () -> nudge(-1));
-            plus = new IconButton(theme, Icon.PLUS, "More", () -> nudge(1));
-            remove = new Bin(theme, "Remove", () -> {
-                if (row != null && it != null) {
-                    row.items.remove(it);
-                    host.structure();
-                }
-            });
-            for (IconButton b : new IconButton[]{minus, plus, remove}) {
-                b.setFocusable(false);
-            }
-            count = new GetCountField(theme, new GetCountField.Host() {
-                @Override
-                public void commit(int n) {
-                    set(n);
-                }
-
-                @Override
-                public void step(int dir, int mods) {
-                    nudge(dir);
-                }
-
-                @Override
-                public void done() {
-                    host.ctx().blur();
-                }
-            });
-            // a count you are still typing counts as typed, so the line and the red follow every key
-            count.setOnChange(t -> {
-                if (it != null) {
-                    it.count = t.trim();
-                    host.edited();
-                }
-            });
-            lineKids = List.of(minus, count, plus, remove);
+    // the bin sits in TEXT_3 and only goes red when you're actually on it, same as the get basket's
+    private final class BasketOwner implements BasketLine.Owner {
+        @Override
+        public Row row() {
+            return row;
         }
 
-        void bind(Item item, int idx) {
-            boolean same = item == it;
-            it = item;
-            i = idx;
-            if (!same || !count.isFocused()) {
-                count.bind(RoutineDraft.countOf(item), "1");
-                if (item.count.isEmpty()) {
-                    count.setText("");
-                }
-            }
+        @Override
+        public boolean red() {
+            return why != null;
         }
 
-        void settle() {
-            if (it == null || count.isFocused()) {
-                return;
-            }
-            String t = count.text().trim();
-            if (!t.isEmpty() && !t.equals(it.count.trim())) {
-                it.count = t;
-                host.edited();
-            }
+        @Override
+        public boolean locked() {
+            return host.locked();
         }
 
-        private void nudge(int dir) {
-            if (it != null) {
-                set(Math.max(1, Math.min(9999, RoutineDraft.countOf(it) + dir)));
-            }
+        @Override
+        public ItemEntry item(String id) {
+            return host.item(id);
         }
 
-        private void set(int n) {
-            if (it == null) {
-                return;
-            }
-            it.count = String.valueOf(Math.max(1, Math.min(9999, n)));
-            count.sync(RoutineDraft.countOf(it));
+        @Override
+        public void edited() {
             host.edited();
         }
 
-        private int btn() {
-            return theme.px(28);
+        @Override
+        public void structure() {
+            host.structure();
         }
 
         @Override
-        protected void layout() {
-            int b = btn();
-            int gap = theme.px(Theme.SPACE_1);
-            int by = y + (h - b) / 2;
-            int right = x + w - theme.px(4);
-            remove.setBounds(right - b, by, b, b);
-            plus.setBounds(remove.x() - gap - b, by, b, b);
-            count.setBounds(plus.x() - gap - theme.px(48), by, theme.px(48), b);
-            minus.setBounds(count.x() - gap - b, by, b, b);
-        }
-
-        @Override
-        public List<Widget> children() {
-            return host.locked() ? List.of() : lineKids;
-        }
-
-        @Override
-        public void draw(Canvas c, Frame f) {
-            // drawn by the row so the basket's box goes under it
-        }
-
-        void drawLine(Canvas c, Frame f, boolean locked) {
-            if (it == null) {
-                return;
-            }
-            if (i > 0) {
-                c.fillRect(x + theme.px(6), y, w - 2 * theme.px(6), 1, theme.color(Theme.HAIRLINE));
-            }
-            ItemEntry e = host.item(it.id);
-            int s = theme.itemIconPx();
-            int ix = x + theme.px(8);
-            if (e != null) {
-                c.itemIcon(e.iconItemId(), ix, y + (h - s) / 2f, s);
-            } else {
-                int is = theme.px(Theme.ICON);
-                c.icon(Icon.GET, ix + (s - is) / 2f, y + (h - is) / 2f, is, theme.color(Theme.TEXT_3));
-            }
-            float tx = ix + s + theme.px(10);
-            // the steppers only show on the line you're on, the name gets their room the rest of the time
-            boolean hot = hovered || count.isFocused();
-            float stop = locked ? x + w - theme.px(48) - theme.px(12) : (hot ? minus.x() : count.x()) - theme.px(Theme.GAP);
-            float room = Math.max(0, stop - tx);
-            String name = e != null ? e.displayName() : ItemEntry.titleCase(it.id);
-            float nameH = c.ascent(theme.body) + c.descent(theme.body);
-            float idH = c.ascent(theme.small) + c.descent(theme.small);
-            float top = y + (h - nameH - idH) / 2f;
-            c.text(c.ellipsize(name, theme.body, room), tx, top + c.ascent(theme.body), theme.body, theme.color(Theme.TEXT));
-            // on a red row an id the catalogue doesn't know is probably the reason, so it gets the red too
-            c.text(c.ellipsize(it.id, theme.small, room), tx, top + nameH + c.ascent(theme.small), theme.small,
-                    theme.color(e == null && why != null ? Theme.DANGER : Theme.TEXT_3));
-            if (locked) {
-                // read only: the number as text where the box would be, no steppers
-                String n = String.valueOf(RoutineDraft.countOf(it));
-                TextStyle ts = theme.body.asTabular();
-                float tw = c.measure(n, ts);
-                c.text(n, x + w - theme.px(12) - tw, mid(c, ts, y, h), ts, theme.color(Theme.TEXT_2));
-                return;
-            }
-            if (hot) {
-                minus.draw(c, f);
-                plus.draw(c, f);
-            }
-            count.draw(c, f);
-            remove.draw(c, f);
+        public void blur() {
+            host.ctx().blur();
         }
     }
 
-    // the bin sits in TEXT_3 and only goes red when you're actually on it, same as the get basket's
-    private static final class Bin extends IconButton {
+    static final class Bin extends IconButton {
 
         Bin(Theme theme, String tip, Runnable onClick) {
             super(theme, Icon.TRASH, tip, onClick);

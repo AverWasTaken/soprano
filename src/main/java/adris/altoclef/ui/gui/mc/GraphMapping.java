@@ -11,13 +11,13 @@ import java.util.Locale;
 import java.util.Map;
 
 // the facade's plain records <-> the commands side's graph. the facade doesn't import anything from outside the gui, same
-// as for the list routines. pure, no game in here
-final class GraphMapping {
+// as for the list routines. pure, no game in here, which is why the test fake can use the real one
+public final class GraphMapping {
 
     private GraphMapping() {
     }
 
-    static RoutinesAccess.Graph toFacade(RoutineGraph g) {
+    public static RoutinesAccess.Graph toFacade(RoutineGraph g) {
         List<RoutinesAccess.GraphNode> nodes = new ArrayList<>();
         for (RoutineGraph.Node n : g.nodes()) {
             nodes.add(new RoutinesAccess.GraphNode(n.id(), n.type().wire(), n.x(), n.y(), n.params(), n.cond() == null ? null : toFacade(n.cond())));
@@ -35,7 +35,7 @@ final class GraphMapping {
         return new RoutinesAccess.CondTree(c.op().name().toLowerCase(Locale.ROOT), c.kind(), c.args(), kids);
     }
 
-    static RoutineGraph fromFacade(RoutinesAccess.Graph g) {
+    public static RoutineGraph fromFacade(RoutinesAccess.Graph g) {
         List<RoutineGraph.Node> nodes = new ArrayList<>();
         for (RoutinesAccess.GraphNode n : g.nodes() == null ? List.<RoutinesAccess.GraphNode>of() : g.nodes()) {
             nodes.add(fromFacade(n));
@@ -47,7 +47,7 @@ final class GraphMapping {
         return new RoutineGraph(g.id(), g.name(), g.description(), nodes, edges);
     }
 
-    static RoutineGraph.Node fromFacade(RoutinesAccess.GraphNode n) {
+    public static RoutineGraph.Node fromFacade(RoutinesAccess.GraphNode n) {
         RoutineGraph.Type type = RoutineGraph.Type.named(n.type());
         if (type == null) {
             throw new IllegalArgumentException("\"" + n.type() + "\" is not a node type");
@@ -76,7 +76,7 @@ final class GraphMapping {
         return out;
     }
 
-    static List<RoutinesAccess.NodeSpec> nodeSpecs() {
+    public static List<RoutinesAccess.NodeSpec> nodeSpecs() {
         List<RoutinesAccess.NodeSpec> out = new ArrayList<>();
         for (GraphSpecs.NodeSpec s : GraphSpecs.NODES) {
             out.add(new RoutinesAccess.NodeSpec(s.type().wire(), s.group(), s.label(), fields(s.fields()), s.inputs(), s.outputs()));
@@ -84,7 +84,7 @@ final class GraphMapping {
         return out;
     }
 
-    static List<RoutinesAccess.CondSpec> condSpecs() {
+    public static List<RoutinesAccess.CondSpec> condSpecs() {
         List<RoutinesAccess.CondSpec> out = new ArrayList<>();
         for (GraphSpecs.CondSpec s : GraphSpecs.CONDS) {
             out.add(new RoutinesAccess.CondSpec(s.kind(), s.label(), fields(s.fields())));
@@ -92,7 +92,7 @@ final class GraphMapping {
         return out;
     }
 
-    static List<RoutinesAccess.CondPreset> condPresets() {
+    public static List<RoutinesAccess.CondPreset> condPresets() {
         List<RoutinesAccess.CondPreset> out = new ArrayList<>();
         for (GraphSpecs.CondPreset p : GraphSpecs.COND_PRESETS) {
             out.add(new RoutinesAccess.CondPreset(p.label(), p.kind(), p.args()));

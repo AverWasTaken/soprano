@@ -33,6 +33,16 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
         void run(String id);
 
         void stop();
+
+        // a graph file and not a list routine. the rest of the row is the same, these only matter with the editor on
+        default boolean isGraph(String id) {
+            return false;
+        }
+
+        // what's wrong with this graph file, null when it's fine
+        default String fileError(String id) {
+            return null;
+        }
     }
 
     static final int ROW_H = 44;
@@ -88,6 +98,9 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
         if (item == null || running()) {
             return null;
         }
+        if (host.isGraph(item.id())) {
+            return blockedGraph();
+        }
         int bad = host.problems(item.id());
         if (bad > 0) {
             return bad + (bad == 1 ? " step needs" : " steps need") + " fixing before it can run";
@@ -96,6 +109,14 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
             return "It has no steps yet";
         }
         return null;
+    }
+
+    private String blockedGraph() {
+        if (host.fileError(item.id()) != null) {
+            return "This file has an error, so it can't run";
+        }
+        int bad = host.problems(item.id());
+        return bad > 0 ? bad + (bad == 1 ? " node needs" : " nodes need") + " fixing before it can run" : null;
     }
 
     @Override
@@ -133,6 +154,8 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
         boolean running = mine(st) && st.state() == RunState.RUNNING;
         boolean failed = mine(st) && st.state() == RunState.FAILED;
         int bad = host.problems(item.id());
+        boolean graph = host.isGraph(item.id());
+        boolean brokenFile = graph && host.fileError(item.id()) != null;
         boolean sel = item.id() != null && item.id().equalsIgnoreCase(host.selectedId());
         boolean first = index == 0;
         boolean last = index == host.count() - 1;
@@ -148,10 +171,10 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
         if (running) {
             int ds = theme.px(12);
             c.icon(Icon.DOT, x + pad + (is - ds) / 2f, y + (h - ds) / 2f, ds, theme.color(Theme.ACCENT));
-        } else if (failed || bad > 0) {
+        } else if (failed || bad > 0 || brokenFile) {
             c.icon(Icon.WARNING, x + pad, y + (h - is) / 2f, is, theme.color(Theme.DANGER));
         } else {
-            c.icon(Icon.ROUTINE, x + pad, y + (h - is) / 2f, is, theme.color(sel ? Theme.ACCENT_TEXT : Theme.TEXT_3));
+            c.icon(graph ? Icon.NODES : Icon.ROUTINE, x + pad, y + (h - is) / 2f, is, theme.color(sel ? Theme.ACCENT_TEXT : Theme.TEXT_3));
         }
 
         int n = item.steps() == null ? 0 : item.steps().size();
@@ -159,11 +182,22 @@ final class RoutineListRow extends RowWidgets.Row<Routine> {
         String sub;
         int subCol;
         if (running) {
-            sub = "Running step " + st.step() + "/" + st.total();
+            // a graph can go round, "step 40/5" is no use to anybody
+            sub = graph ? "Running" : "Running step " + st.step() + "/" + st.total();
             subCol = Theme.ACCENT_TEXT;
         } else if (failed) {
-            sub = "Failed at step " + st.step() + "/" + st.total();
+            sub = graph ? "Failed" : "Failed at step " + st.step() + "/" + st.total();
             subCol = Theme.DANGER;
+        } else if (brokenFile) {
+            sub = "This file has an error";
+            subCol = Theme.DANGER;
+        } else if (graph && bad > 0) {
+            sub = bad + (bad == 1 ? " node needs" : " nodes need") + " fixing";
+            subCol = Theme.DANGER;
+        } else if (graph) {
+            String d = item.description() == null ? "" : item.description().trim();
+            sub = d.isEmpty() ? "Nodes" : "Nodes · " + d;
+            subCol = Theme.TEXT_3;
         } else if (bad > 0) {
             sub = count + " · " + bad + (bad == 1 ? " needs" : " need") + " fixing";
             subCol = Theme.DANGER;

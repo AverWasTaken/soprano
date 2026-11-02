@@ -19,9 +19,12 @@ final class StepField extends TextField {
     private final Lead lead;
     private final Predicate<String> knownItem;
     private boolean editable = true;
+    private boolean rightAligned;
+    private final String hint;
 
     StepField(Theme theme, String placeholder, Lead lead, Predicate<String> knownItem, Consumer<String> onCommit) {
         super(theme, placeholder, onCommit);
+        hint = placeholder == null ? "" : placeholder;
         this.lead = lead;
         this.knownItem = knownItem == null ? s -> false : knownItem;
     }
@@ -31,6 +34,11 @@ final class StepField extends TextField {
         if (!e) {
             setFocused(false);
         }
+    }
+
+    // the inspector's numbers, like the mock. moving the left inset is all it takes, caret and clicks measure from there
+    void setRightAligned(boolean on) {
+        rightAligned = on;
     }
 
     boolean editable() {
@@ -47,6 +55,10 @@ final class StepField extends TextField {
 
     @Override
     protected int leftInset() {
+        if (rightAligned) {
+            String t = text().isEmpty() ? hint : text();
+            return Math.max(theme.px(10), w - theme.px(10) - Math.round(theme.measurer.measure(t, theme.body)));
+        }
         return switch (lead) {
             case NONE -> super.leftInset();
             case ITEM -> theme.px(7) + theme.itemIconPx() + theme.px(7);
