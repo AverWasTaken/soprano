@@ -1196,13 +1196,14 @@ public class NetherPhase implements PhaseHandler {
         int goal = EyeMath.targetGoal(cfg, s);
         int rodsNeed = EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, s), eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
-        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
+        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. the first time here after a phase
+        // entry it's the arrival dig, then NetherRestock.LOW decides. both sit behind the escapes and the side trips above.
         // the dig runs on the game clock like RodsWatch and FORTRESS_WALK_SECONDS do, so it eats into those too, accepted
         boolean atSpawner = rodsTask != null && ctx.facts().gameTime() - rodsTaskRanAt <= 5
                 && !FoodTripRules.restockAllowed(rodsTask.isCampingSpawner(), rodsTask.currentSpawner() != null,
                         rodsTask.isBusyWithBlazes());
         if (!atSpawner) {
-            Task dig = restock.tick(mod, false, ctx.secondsInPhase());
+            Task dig = restock.tickPhase(mod, ctx.secondsInPhase());
             if (dig != null) {
                 hudState = "Restocking building blocks";
                 return dig;

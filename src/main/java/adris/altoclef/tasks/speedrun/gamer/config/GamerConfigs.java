@@ -72,6 +72,13 @@ public final class GamerConfigs {
         if (from < 13 && c.end != null && c.end.endMinBlocks == 20) {
             c.end.endMinBlocks = new GamerConfig().end.endMinBlocks;
         }
+        // and the nether entry stack: 128 and 96 were the defaults until the nether started digging its own on arrival
+        if (from < 14 && c.overworld != null && c.overworld.netherEntryBlocks == 128) {
+            c.overworld.netherEntryBlocks = new GamerConfig().overworld.netherEntryBlocks;
+        }
+        if (from < 14 && c.overworld != null && c.overworld.netherEntryBlocksLow == 96) {
+            c.overworld.netherEntryBlocksLow = new GamerConfig().overworld.netherEntryBlocksLow;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;
