@@ -266,6 +266,12 @@ public class MineAndCollectTask extends ResourceTask {
         return this;
     }
 
+    // onlyWhere for the drops: a pile from another life counts as ours wherever it lies
+    public MineAndCollectTask dropsOnlyWhere(Predicate<BlockPos> only) {
+        _subtask._onlyDrops = only;
+        return this;
+    }
+
     @Override
     public MineAndCollectTask noReserve() {
         super.noReserve();
@@ -464,6 +470,7 @@ public class MineAndCollectTask extends ResourceTask {
         private ItemEntity _lockedDrop;
         // a caller's extra say on which blocks may be picked (see onlyWhere). last in the test, it may be the costly one
         private Predicate<BlockPos> _only = check -> true;
+        private Predicate<BlockPos> _onlyDrops = check -> true;
         // failed breaks per tree. static because the parent rebuilds this task whenever it likes and the count has to outlive that
         private static final TreeStrikes STRIKES = new TreeStrikes();
         private final TreeReachScan _scan = new TreeReachScan();
@@ -1170,7 +1177,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             Vec3 feet = mod.getPlayer().position();
             Predicate<ItemEntity> worthIt = drop -> {
-                if (!mod.getEntityTracker().isEntityReachable(drop)) return false;
+                if (!mod.getEntityTracker().isEntityReachable(drop) || !_onlyDrops.test(drop.blockPosition())) return false;
                 if (!skipInReach) return true;
                 Vec3 at = drop.position();
                 return !DropPatience.alreadyInReach(at.x - feet.x, at.y - feet.y, at.z - feet.z)

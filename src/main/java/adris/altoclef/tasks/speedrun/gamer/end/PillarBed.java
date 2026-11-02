@@ -4,7 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 
 // where the pillar fight stands and clicks, and when. the bed goes on top of the bedrock pillar with us tucked against it one
-// below the top, so the pillar eats the blast: 0.4 a bed instead of a good 20 on the open floor. pure so the task and the tests agree
+// below the top, so the pillar eats the blast and all we get is the flat bit. pure so the task and the tests agree
 public final class PillarBed {
     public enum Step {
         // sat down: the head is out of range from the stand and the wings shove anything by the body

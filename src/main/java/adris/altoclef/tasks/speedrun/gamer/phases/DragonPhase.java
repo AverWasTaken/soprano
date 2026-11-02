@@ -76,8 +76,6 @@ public class DragonPhase implements PhaseHandler {
     private Task _exitPortal;
     private Task _bridge;
     private MineAndCollectTask _endStone;
-    // the scan said yes and the pick found nothing it may touch. it would wander off next, and that's the long drop again
-    private boolean _endStoneGaveUp;
     private Task _runAway;
     private DragonDeadLatch _latch;
     private EndDropCache _drops;
@@ -167,7 +165,8 @@ public class DragonPhase implements PhaseHandler {
             _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false), Blocks.END_PORTAL);
             _bridge = new GetToXZTask(BRIDGE_X, 0);
             _endStone = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 64), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD)
-                    .onlyWhere(p -> closeEndStone(AltoClef.getInstance(), p));
+                    .onlyWhere(p -> closeEndStone(AltoClef.getInstance(), p))
+                    .dropsOnlyWhere(p -> closeEndStone(AltoClef.getInstance(), p));
         }
     }
 
@@ -220,7 +219,6 @@ public class DragonPhase implements PhaseHandler {
         _onIsland = false;
         _pickupSeconds = 0;
         _blockSeconds = 0;
-        _endStoneGaveUp = false;
         _lastHealth = -1;
         _lastTick = seconds(ctx);
     }
@@ -428,8 +426,7 @@ public class DragonPhase implements PhaseHandler {
         if (!running && !low || _blockSeconds > BLOCKS_BUDGET_SECONDS) {
             return null;
         }
-        _endStoneGaveUp |= _endStone.wandering();
-        if (_endStoneGaveUp || !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) || !endStoneClose(mod)) {
+        if (!StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) || !endStoneClose(mod)) {
             return null;
         }
         _blockSeconds += dt;
