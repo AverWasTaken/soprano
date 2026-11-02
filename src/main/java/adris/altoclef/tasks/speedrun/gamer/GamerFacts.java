@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.container.SmeltSplit;
+import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
@@ -183,8 +184,19 @@ public interface GamerFacts {
         return false;
     }
 
-    // the sheep chase for the beds ran out of time this run (RunState.woolHuntGaveUp), same deal again
+    // IRON's sheep chase ran out of time (RunState.woolHuntGaveUp), same deal again. IRON's wool need is the only one who cares
     default boolean woolHuntGaveUp() {
+        return false;
+    }
+
+    // beds in the inventory proper. count() also sees the cursor and the crafting grids, which is right for a kit and wrong for the End's
+    // gate: a bed on the cursor with a full bag ends up on the floor
+    default int bedsInBag() {
+        return count(ItemHelper.BED);
+    }
+
+    // no respawn bed covers the End portal yet, so one more bed still has to be made and placed (EndGear.wantSpawnBed)
+    default boolean spawnBedOwed() {
         return false;
     }
 

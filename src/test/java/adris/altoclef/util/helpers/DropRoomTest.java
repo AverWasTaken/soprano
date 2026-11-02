@@ -169,4 +169,74 @@ public class DropRoomTest {
         List<Stack> bag = with(rest(Items.STRING, 2), new Stack(ItemStack.EMPTY, ItemValue.REST, false, false), rest(Items.STRING, 5));
         assertEquals(6, pearl(bag).slot());
     }
+
+    private static List<ItemStack> stacks(ItemStack... all) {
+        return new ArrayList<>(List.of(all));
+    }
+
+    @Test
+    public void theEndsBedsAreSpokenForAndTheSpareIsNot() {
+        List<ItemStack> bag = stacks(new ItemStack(Items.BED.white()), new ItemStack(Items.BED.white()), new ItemStack(Items.BED.white()), ItemStack.EMPTY);
+        boolean[] kept = DropRoom.reserved(bag, 2);
+        assertEquals(true, kept[0]);
+        assertEquals(true, kept[1]);
+        assertEquals(false, kept[2]);
+        assertEquals(false, kept[3]);
+    }
+
+    @Test
+    public void aPearlCannotPushAReserveBedOut() {
+        // two white beds look like a duplicate, that's the surplus rule's whole idea of a spare
+        List<Stack> bag = keepers();
+        bag.add(kit(Items.BED.white(), 1));
+        bag.add(kit(Items.BED.white(), 1));
+        assertEquals(bag.size() - 2, DropRoom.victim(bag));
+        List<ItemStack> raw = new ArrayList<>();
+        for (Stack st : bag) {
+            raw.add(st.stack());
+        }
+        boolean[] kept = DropRoom.reserved(raw, 8);
+        List<Stack> guarded = new ArrayList<>();
+        for (int i = 0; i < bag.size(); i++) {
+            Stack st = bag.get(i);
+            guarded.add(new Stack(st.stack(), st.tier(), kept[i], st.build()));
+        }
+        assertEquals(-1, DropRoom.victim(guarded));
+    }
+
+    @Test
+    public void theWoolThatStillHasToBecomeBedsIsSpokenFor() {
+        // 1 bed of 3 reserved, so 6 wool to go. the scraps of another colour can't make a bed
+        List<ItemStack> bag = stacks(new ItemStack(Items.BED.white()), new ItemStack(Items.WOOL.red(), 6), new ItemStack(Items.WOOL.blue(), 2));
+        boolean[] kept = DropRoom.reserved(bag, 3);
+        assertEquals(true, kept[1]);
+        assertEquals(false, kept[2]);
+        // beds covered: the wool is just wool
+        assertEquals(false, DropRoom.reserved(stacks(new ItemStack(Items.BED.white()), new ItemStack(Items.WOOL.red(), 6)), 1)[1]);
+    }
+
+    @Test
+    public void scrapsDontPayForAnotherColoursWool() {
+        // 9 wool owed: 5 red and 5 blue are 3 usable each, so the white three are still needed
+        List<ItemStack> bag = stacks(new ItemStack(Items.WOOL.red(), 5), new ItemStack(Items.WOOL.blue(), 5), new ItemStack(Items.WOOL.white(), 3));
+        boolean[] kept = DropRoom.reserved(bag, 3);
+        assertEquals(true, kept[0]);
+        assertEquals(true, kept[1]);
+        assertEquals(true, kept[2]);
+    }
+
+    @Test
+    public void aSetOfThreeSplitOverTwoStacksStaysWhole() {
+        List<ItemStack> bag = stacks(new ItemStack(Items.WOOL.red(), 2), new ItemStack(Items.WOOL.red(), 2));
+        boolean[] kept = DropRoom.reserved(bag, 1);
+        assertEquals(true, kept[0]);
+        assertEquals(true, kept[1]);
+    }
+
+    @Test
+    public void noRunNothingIsSpokenFor() {
+        boolean[] kept = DropRoom.reserved(stacks(new ItemStack(Items.BED.white()), new ItemStack(Items.WOOL.red(), 6)), 0);
+        assertEquals(false, kept[0]);
+        assertEquals(false, kept[1]);
+    }
 }

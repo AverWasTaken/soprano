@@ -183,8 +183,7 @@ public class DragonPhase implements PhaseHandler {
             }
             step = inEnd(mod, ctx);
         }
-        // one write per tick, true only while walking into the exit portal. the engine remembers the wanted value across
-        // interrupts and restarts (an interrupt clears the Baritone side, this call puts it back)
+        // one write per tick, true only while walking into the exit portal (an interrupt clears the Baritone side, this call puts it back)
         ctx.walkOnEndPortal(_walkWanted);
         return step;
     }

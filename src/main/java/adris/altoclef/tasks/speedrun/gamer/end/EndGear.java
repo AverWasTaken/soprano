@@ -2,11 +2,11 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
-import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.world.item.Item;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.function.Predicate;
 
 // what is still missing before we walk into the End. pure over facts + RunState.endDrops (gear we left lying in the End
-// counts as owned, we go and pick it up there instead of crafting it again)
+// counts as owned, we go and pick it up there instead of crafting it again. beds don't, see mayEnter)
 public final class EndGear {
     // best first, per slot: helmet, chest, legs, boots. iron is the floor, anything worse is not worth a swap
     private static final Item[][] ARMOR_SLOTS = {
@@ -34,7 +34,7 @@ public final class EndGear {
     private EndGear() {
     }
 
-    // beds = how many short of bedsRequired, buildBlocks = how many to collect (target, not the gap) or 0 when fine,
+    // beds = how many short of cfg.beds, buildBlocks = how many to collect (target, not the gap) or 0 when fine,
     // armorToWear = pieces we hold that are better than what is worn on their slot (or the slot is bare)
     public record Gap(int beds, boolean weapon, boolean waterBucket, boolean pickaxe, int buildBlocks, boolean food,
                       List<Item> armorToWear) {
@@ -62,27 +62,10 @@ public final class EndGear {
         return "none";
     }
 
-    // a second try goes with what it has: a stall retry bumps the attempt, but dying in the End regresses DRAGON to END_PREP
-    // and PhaseMachine resets the attempt to 1 on every move, so the deaths are what says "we already tried this"
-    public static boolean relaxed(int attempt, int endDeaths) {
-        return attempt >= 2 || endDeaths >= 1;
-    }
-
-    // the beds the prep asks for. once the sheep chase gave up (WoolHunt) it takes what the bag can make, never more than cfg.beds.
-    // with beds already held it takes just those: the bed collector counts a held bed of another colour towards one colour's target
-    // and would go back out for sheep. the dragon fight falls back to the sword when the beds run out
-    public static int bedsRequired(GamerFacts facts, EndConfig cfg, boolean woolGaveUp) {
-        if (!woolGaveUp) {
-            return cfg.beds;
-        }
-        int held = facts.count(ItemHelper.BED);
-        return held > 0 ? Math.min(cfg.beds, held) : Math.min(cfg.beds, KitPlanner.usableWool(facts) / 3);
-    }
-
-    // the spawn bed rides on a spare. after the chase gave up there is no wool to make one, so only a bed beyond the required ones
-    // counts (nothing is crafted for it)
-    public static boolean spawnBedAffordable(GamerFacts facts, int bedsRequired, boolean woolGaveUp) {
-        return !woolGaveUp || facts.count(ItemHelper.BED) > bedsRequired;
+    // the rule the whole prep hangs off: the fight's beds, in the bag, or no End. beds in the death pile don't count (the pile may be
+    // gone, and we'd still have to survive getting to it), no clock, attempt or death moves this number
+    public static boolean mayEnter(int bagBeds, EndConfig cfg) {
+        return bagBeds >= cfg.beds;
     }
 
     // the spawn bed goes down before the bed errand only when placing it cannot leave the End short: a spare beyond the required
@@ -93,23 +76,45 @@ public final class EndGear {
         return bagBeds >= 1 && (bagBeds > required || replaceable || bagBeds - 1 >= DragonStrat.RESUME_BEDS);
     }
 
-    // a bed source that covers the shortfall left after the spawn bed is placed
-    public static boolean replaceable(BedPlan plan, int woolBeds, int shortfallAfterPlacing) {
-        return plan == BedPlan.MINE || plan == BedPlan.CRAFT && woolBeds >= shortfallAfterPlacing;
+    // the spawn bed goes down once the bag covers it too, or right away when we are by the portal anyway (a death on a long search
+    // should respawn here, and the gate makes sure it gets replaced). from across the map it waits, that's a long walk back for one
+    // bed with the search still to finish. nothing in the bag = nothing to place
+    public static boolean spawnNow(int bagBeds, int lacking, double blocksFromPortal, double farBlocks) {
+        return bagBeds >= 1 && (lacking <= 0 || blocksFromPortal <= farBlocks);
     }
 
-    // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
+    // RoomPhase's bed by the stronghold start doubles as the spawn bed, so the prep ahead of the dig buys one for it. it's a spare
+    // the moment it's in the bag, and it stops the climb back up for one more bed after OPEN
+    public static boolean roomBedOwed(RunState state, EndConfig cfg) {
+        return cfg.placeSpawnNearPortal && !state.spawnBedGaveUp && Respawn.nothingNearStronghold(state);
+    }
+
+    // what the portal and room beds may spend: only what's past the reserve
+    public static int surplusBeds(int bagBeds, int reserve) {
+        return Math.max(0, bagBeds - reserve);
+    }
+
+    // the beds a full bag may not throw while a run is on, 0 otherwise (the bag code asks this from far away, same deal as Respawn's hooks)
+    public static int reserveBeds() {
+        RunState run = Respawn.boundRun();
+        if (run == null) {
+            return 0;
+        }
+        EndConfig cfg = GamerConfigs.get().end;
+        return bedTarget(cfg, wantSpawnBed(run, cfg));
+    }
+
     // (weapon is a sword or an axe, whichever the bot made). food is the same count every other gate goes by (FoodPlan: raw meat
     // nobody can cook is worth its raw value, a smoker's pending batch counts), against the End's own floor
     // the water bucket is in the gate again: the fall bucket (mlg) protects every fling and the void edge, and the dragon flings.
     // bounded though, see wantsWater. the old collector wandered the whole budget away
-    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food) {
-        return missing(facts, state, cfg, bedsRequired, food, false);
+    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, FoodPlan food) {
+        return missing(facts, state, cfg, food, false);
     }
 
     // bucketGivenUp = this END_PREP attempt already spent its clock (or found no pond) on the water bucket
-    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food, boolean bucketGivenUp) {
-        int bedGap = bedShortfall(facts, state, cfg, bedsRequired, false);
+    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, FoodPlan food, boolean bucketGivenUp) {
+        int bedGap = bedShortfall(facts, cfg.beds, false);
         boolean weapon = !ownedOrDropped(facts, state, cfg, WEAPONS);
         boolean water = wantsWater(ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET), facts.has(Items.BUCKET), bucketGivenUp);
         boolean pickaxe = !ownedOrDropped(facts, state, cfg, PICKAXES);
@@ -130,11 +135,10 @@ public final class EndGear {
         return ticksSpent >= BUCKET_BUDGET_TICKS;
     }
 
-    // beds still to get: required (+1 for the spawn bed) minus what we hold and what lies in the End. <= 0 means a spare
-    // (the spawn bed is what the spare is for: placing it takes one out of the inventory, so ask this again afterwards)
-    public static int bedShortfall(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, boolean wantSpawnBed) {
-        int have = facts.count(ItemHelper.BED) + EndRules.dropped(state, facts.gameTime(), cfg, ItemHelper.BED);
-        return bedsRequired + (wantSpawnBed ? 1 : 0) - have;
+    // beds still to get: required (+1 for the spawn bed) minus what's in the bag. <= 0 means a spare (the spawn bed is what the
+    // spare is for: placing it takes one out of the inventory, so ask this again afterwards)
+    public static int bedShortfall(GamerFacts facts, int bedsRequired, boolean wantSpawnBed) {
+        return bedsRequired + (wantSpawnBed ? 1 : 0) - facts.bedsInBag();
     }
 
     private static boolean ownedOrDropped(GamerFacts facts, RunState state, EndConfig cfg, Item... items) {
@@ -251,11 +255,6 @@ public final class EndGear {
         return spawnStartedAt >= 0 && secondsInPhase - spawnStartedAt > budget;
     }
 
-    // a world bed is only worth the walk when it is near the portal
-    public static boolean bedInRange(double bedX, double bedZ, double portalX, double portalZ, double range) {
-        return Math.hypot(bedX - portalX, bedZ - portalZ) <= range;
-    }
-
     // food short and the errand is far from the portal: eat first, the trip back is where the food goes
     public static boolean foodFirst(boolean foodShort, double errandBlocksFromPortal, double farBlocks) {
         return foodShort && errandBlocksFromPortal > farBlocks;
@@ -266,20 +265,31 @@ public final class EndGear {
         return !wayHome && foodFirst(foodShort, errandBlocksFromPortal, farBlocks);
     }
 
-    // the bed errand, from what the bag and the world offer: a bed in range is mined, wool in the bag is crafted (never the
-    // catalogue path, that walks to any tracked bed and then chases sheep), else the prep takes what it holds
+    // the bed search, from what the bag and the world offer: wool in the bag is crafted, a known bed is mined wherever it is, and with
+    // neither we go find sheep. there is no fourth answer on purpose
     public enum BedPlan {
-        MINE, CRAFT, GO_WITHOUT
+        CRAFT, MINE, WOOL
     }
 
-    public static BedPlan bedPlan(boolean bedInRange, int woolBeds) {
-        if (bedInRange) {
-            return BedPlan.MINE;
+    public static BedPlan bedPlan(int woolBeds, boolean bedKnown) {
+        if (woolBeds > 0) {
+            return BedPlan.CRAFT;
         }
-        return woolBeds > 0 ? BedPlan.CRAFT : BedPlan.GO_WITHOUT;
+        return bedKnown ? BedPlan.MINE : BedPlan.WOOL;
     }
 
-    // a spare bed for the spawn point: the hard gate is cfg.beds, one more is a bonus
+    private static final long SHORT_LOG_TICKS = 5 * 60 * 20;
+
+    // a search with no give up gets a line every 5 minutes, so a hopeless world is at least loud about it. last < 0 = never said
+    public static boolean shortLogDue(long lastSaid, long now) {
+        return lastSaid < 0 || now - lastSaid >= SHORT_LOG_TICKS;
+    }
+
+    public static String shortLine(int bedsShort, long minutes, int x, int y, int z) {
+        return "endprep: short by " + bedsShort + " beds after " + minutes + " min, still looking, at " + x + " " + y + " " + z;
+    }
+
+    // the shared target: the fight's beds, plus one while the spawn bed still has to go down
     public static int bedTarget(EndConfig cfg, boolean wantSpawnBed) {
         return cfg.beds + (wantSpawnBed ? 1 : 0);
     }

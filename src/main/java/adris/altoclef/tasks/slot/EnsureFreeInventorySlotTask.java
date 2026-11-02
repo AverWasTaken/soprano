@@ -126,7 +126,7 @@ public class EnsureFreeInventorySlotTask extends Task {
     // already sees the free slot could walk off and leave it there. a slot that no longer holds that exact stack ends us,
     // the pickup asks for room again with the bag as it is now
     private Task throwVictim(AltoClef mod) {
-        if (!ItemStack.isSameItemSameComponents(StorageHelper.getItemStackInSlot(_evict), _victim)) {
+        if (!ItemStack.isSameItemSameComponents(StorageHelper.getItemStackInSlot(_evict), _victim) || StorageHelper.reservedForTheEnd(mod, _evict)) {
             _stuck = true;
             _hasAim = false;
             return null;

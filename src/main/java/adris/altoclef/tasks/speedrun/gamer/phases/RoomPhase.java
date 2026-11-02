@@ -11,6 +11,7 @@ import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdRoomSearchTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -42,6 +43,8 @@ public class RoomPhase implements PhaseHandler {
     private EndPrepPhase prep = new EndPrepPhase();
     private boolean prepLatched;
     private boolean prepEnded;
+    // retries spent while short on beds, free for the same reason as the moving ones
+    private int shortRetries;
     private long prepSince;
     private BlockPos prepAt;
     // game ticks, not secondsInPhase: holdsBudget moves the phase start forward, so that clock stands still while we hold it
@@ -66,7 +69,7 @@ public class RoomPhase implements PhaseHandler {
         return task == null ? null : task.step();
     }
 
-    // the prep's errands are what the end needs, not the search taking long (it has its own cap, PREP_CAP_TICKS)
+    // the prep's errands are what the end needs, not the search taking long (the gear has its own cap, PREP_CAP_TICKS, the beds have none)
     @Override
     public boolean holdsBudget() {
         return prepLatched && !prepEnded;
@@ -94,6 +97,9 @@ public class RoomPhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         hopelessSaid = false;
+        if (ctx.attempt() == 1) {
+            shortRetries = 0;
+        }
         // a retry because the spiral is still working keeps the task: a fresh one walks back to the start chunk and forgets
         // the level it searches at. anything else (first entry, a regress back here) starts clean
         if (keepTask && task != null) {
@@ -113,13 +119,19 @@ public class RoomPhase implements PhaseHandler {
     // the budget is one window: a spiral that reached new chunks in it is a long legit search, not a stuck one
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
+        // only a held budget getting nibbled by other chains can land here while short. one more go, however many it takes
+        if (holdsBudget() && prep.shortOnBeds()) {
+            keepTask = true;
+            shortRetries++;
+            return Timeout.RETRY;
+        }
         if (task != null && StrongholdRules.mayRetryMoving(movingRetries) && StrongholdRules.roomStillMoving(task.chunksReached(), task.exhausted(), reason)) {
             keepTask = true;
             movingRetries++;
             return Timeout.RETRY;
         }
         // PhaseMachine bumps the attempt on every retry, the moving ones were free and must not eat the real ones
-        return PhaseHandler.super.onTimeout(ctx, Math.max(1, attempt - movingRetries), reason);
+        return PhaseHandler.super.onTimeout(ctx, Math.max(1, attempt - movingRetries - shortRetries), reason);
     }
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
@@ -162,7 +174,7 @@ public class RoomPhase implements PhaseHandler {
             return null;
         }
         roomBedDecided = true;
-        if (!Respawn.wantRoomBed(state, true, ctx.facts().count(ItemHelper.BED))) {
+        if (!Respawn.wantRoomBed(state, true, EndGear.surplusBeds(ctx.facts().bedsInBag(), ctx.cfg().end.beds))) {
             return null;
         }
         roomBed = new PlaceBedAndSetSpawnTask();
@@ -185,13 +197,14 @@ public class RoomPhase implements PhaseHandler {
         long now = ctx.facts().gameTime();
         if (!prepLatched) {
             var player = mod.getPlayer();
-            if (player == null || !prepStarts(ctx.attempt(), ctx.facts().dimension() == Dimension.OVERWORLD, player.getY(), atStart(mod, ctx))) {
+            if (player == null || !prepStarts(ctx.facts().dimension() == Dimension.OVERWORLD, player.getY(), atStart(mod, ctx))) {
                 return null;
             }
             RunState.Pos start = ctx.state().strongholdStart;
             startPrep(new BlockPos(start.x, start.y, start.z), now);
         }
-        Task step = prepOutOfTime(prepSince, now) ? null : prep.prepAhead(mod, ctx, prepAt);
+        // the cap only ends the gear shopping. capping the beds as well would just send us back up the shaft for them after OPEN
+        Task step = prep.prepAhead(mod, ctx, prepAt, !prepOutOfTime(prepSince, now));
         return prepResult(mod, ctx, step);
     }
 
@@ -201,8 +214,7 @@ public class RoomPhase implements PhaseHandler {
         prepAt = at;
     }
 
-    // a stall in here would cost the search one of its attempts for something it did not do, so the stall clock stays out of it:
-    // the cap is this one's stall timer
+    // a stall in here would cost the search one of its attempts for something it did not do, so the stall clock stays out of it
     Task prepResult(AltoClef mod, GamerContext ctx, Task step) {
         if (step != null) {
             ctx.progress("end prep ahead of the dig");
@@ -219,9 +231,9 @@ public class RoomPhase implements PhaseHandler {
         return null;
     }
 
-    // attempt 1 only: relaxed() reads the attempt, and a stall retry should go on with the search rather than shop again
-    static boolean prepStarts(int attempt, boolean overworld, double y, boolean atStart) {
-        return attempt == 1 && overworld && y >= ROOM_BED_BELOW_Y && atStart;
+    // any attempt: a retry that finds us on the surface short of something is better off shopping now than climbing back for it
+    static boolean prepStarts(boolean overworld, double y, boolean atStart) {
+        return overworld && y >= ROOM_BED_BELOW_Y && atStart;
     }
 
     static boolean prepOutOfTime(long since, long now) {
@@ -230,6 +242,10 @@ public class RoomPhase implements PhaseHandler {
 
     @Override
     public double stallSeconds() {
+        // no stall clock on the bed search, it has no end by design
+        if (holdsBudget() && prep.shortOnBeds()) {
+            return 0;
+        }
         // digging through stone is slow, a chunk takes up to 90 s
         return 180;
     }

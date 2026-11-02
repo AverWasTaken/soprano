@@ -127,9 +127,11 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
             }
 
             CraftingRecipe samedRecipe = generateSamedRecipe(_recipe, majorityCraftItem, _sameMask);
-            int toCraftTotal = majorityCraftCount + currentTargetCount;
-            toCraftTotal = Math.min(toCraftTotal, _target.getTargetCount());
             Item output = getSpecificItemCorrespondingToMajorityResource(majorityCraftItem);
+            // the recipe target counts this one colour, currentTargetCount counts all of them. a mixed bag used to ask for more of
+            // this colour than the wool can make, and off it went for sheep holding enough wool
+            int heldOfOutput = output == null ? 0 : mod.getItemStorage().getItemCount(output);
+            int toCraftTotal = CraftMath.matchingTarget(heldOfOutput, majorityCraftCount, currentTargetsRequired);
             RecipeTarget recipeTarget = new RecipeTarget(output, toCraftTotal, samedRecipe);
             return _recipe.isBig() ? new CraftInTableTask(recipeTarget) : new CraftInInventoryTask(recipeTarget);
         }

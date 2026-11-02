@@ -5,6 +5,8 @@ import adris.altoclef.AltoSettings;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerType;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.util.helpers.DropRoom;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import java.util.Optional;
@@ -113,7 +115,9 @@ public class EnsureFreeCursorSlotTask extends Task {
 
     // important list, or gear: the things a full bag must never cost us
     private static boolean keeps(ItemStack stack) {
-        return AltoSettings.isImportant(stack.getItem()) || isGear(stack.getItem());
+        return AltoSettings.isImportant(stack.getItem()) || isGear(stack.getItem())
+                // a bed on the cursor during a run: the End counts it, the throw-what-we-don't-keep branch would not
+                || DropRoom.isBed(stack.getItem()) && EndGear.reserveBeds() > 0;
     }
 
     static boolean isGear(Item item) {
