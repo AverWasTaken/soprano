@@ -352,6 +352,59 @@ public class StorageHelper {
             return GarbageRules.dropIsNextPick(entriesAt(after), _pick, in, _reserve, _throwUnused, after, _floor);
         }
 
+        // room for a drop with the bag as it is: FIT, EVICT a slot, or NONE (see DropRoom). the death pile's filter, the
+        // pickup and the throw all go by this one answer
+        public Room room(ItemStack drop) {
+            if (hasRoomFor(_mod, drop)) {
+                return new Room(DropRoom.Decision.FIT, Optional.empty(), null);
+            }
+            Optional<Slot> lastResort = Optional.empty();
+            if (wouldWear(_mod, drop)) {
+                // the last resort stack has to be one the free slot task may actually throw, else it swaps protected stacks round for ever
+                lastResort = getLastResortSlot(_mod).filter(slot -> ItemHelper.canDropStack(_mod, getItemStackInSlot(slot)));
+            }
+            boolean core = ItemValue.isCore(drop.getItem());
+            DropRoom.Decision d = DropRoom.decide(false, _pick, _pick >= 0 && dropIsNext(drop), lastResort.isPresent(), core,
+                    core ? victims() : List.of());
+            if (d.kind() != DropRoom.Kind.EVICT) {
+                return new Room(d, Optional.empty(), null);
+            }
+            Optional<Slot> slot = d.source() == DropRoom.Source.WEAR ? lastResort : Optional.of(_bag.slots.get(d.slot()));
+            return new Room(d, slot, getItemStackInSlot(slot.get()).copy());
+        }
+
+        private List<DropRoom.Stack> victims() {
+            List<DropRoom.Stack> out = new ArrayList<>(_bag.stacks.size());
+            for (int i = 0; i < _bag.stacks.size(); i++) {
+                ItemStack stack = _bag.stacks.get(i);
+                Item item = stack.getItem();
+                int units = GarbageRules.keepUnits(stack);
+                // wouldWear too: wear[] only keeps the best piece per slot, a second helmet for a bare head still counts
+                boolean keep = _bag.wear[i] || wouldWear(_mod, stack) || AltoSettings.isImportant(item)
+                        || (stack.isEnchanted() && Baritone.settings().altoDontThrowAwayEnchantedItems.value)
+                        || (stack.has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)
+                        || (units > 0 && GarbageRules.keepsFood(_foodUnits, units, _floor));
+                boolean build = item instanceof BlockItem && (isThrowaway(item) || ItemHelper.isCoreBuildBlock(item));
+                out.add(new DropRoom.Stack(stack, stack.isEmpty() ? ItemValue.REST : ItemValue.tierOf(_mod, stack, false), keep, build));
+            }
+            return out;
+        }
+
+        // the bag in one line for the death pile's log: free slots and every stack
+        public String dump() {
+            int free = 0;
+            StringBuilder sb = new StringBuilder();
+            for (ItemStack stack : _bag.stacks) {
+                if (stack.isEmpty()) {
+                    free++;
+                    continue;
+                }
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(ItemHelper.stripItemName(stack.getItem())).append(" x").append(stack.getCount());
+            }
+            return free + " free: " + sb;
+        }
+
         // only food stacks answer mayGo differently for another total, so the rest is reused as is
         private List<GarbageRules.Entry> entriesAt(int units) {
             if (units == _foodUnits) {
@@ -366,6 +419,27 @@ public class StorageHelper {
             }
             return out;
         }
+    }
+
+    // what GarbageView.room says about a drop. slot and victim are set for an EVICT: the slot to throw and what has to still
+    // be in it when the throw happens
+    public record Room(DropRoom.Decision decision, Optional<Slot> slot, ItemStack victim) {
+        public DropRoom.Kind kind() {
+            return decision.kind();
+        }
+    }
+
+    // an empty slot, or a stack of the same thing with space left, takes at least some of a drop (ItemPickupRules.hasRoom)
+    public static boolean hasRoomFor(AltoClef mod, ItemStack drop) {
+        List<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
+        int[] counts = new int[slots.size()];
+        boolean[] sameKind = new boolean[slots.size()];
+        for (int i = 0; i < counts.length; i++) {
+            ItemStack there = slots.get(i);
+            counts[i] = there.isEmpty() ? 0 : there.getCount();
+            sameKind[i] = ItemStack.isSameItemSameComponents(there, drop);
+        }
+        return ItemPickupRules.hasRoom(counts, sameKind, drop.getMaxStackSize());
     }
 
     // EnsureFreeCursorSlotTask's way out when it holds something we keep and getGarbageSlot has nothing: the lowest bag stack that

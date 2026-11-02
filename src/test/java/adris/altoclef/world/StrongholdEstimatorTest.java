@@ -634,6 +634,24 @@ public class StrongholdEstimatorTest {
     }
 
     @Test
+    public void theBentWalkGoalStaysPutWhileWeWalkToIt() {
+        // the walk leg replans when its goal moves more than 8 blocks, so a goal that slides as we walk repaths every leg
+        StrongholdEstimator e = twoGood();
+        Estimate s = get(e);
+        double px = s.x() + 1000;
+        double pz = s.z();
+        Advice first = e.advise(px, pz, 10);
+        assertEquals(Step.WALK, first.step());
+        double dx = first.x() - px;
+        double dz = first.z() - pz;
+        double len = Math.hypot(dx, dz);
+        Advice later = e.advise(px + dx / len * 200, pz + dz / len * 200, 210);
+        assertEquals(Step.WALK, later.step());
+        assertEquals(first.x(), later.x(), 1e-6);
+        assertEquals(first.z(), later.z(), 1e-6);
+    }
+
+    @Test
     public void farButNotThatFarUsesTheOneTwentyFloor() {
         StrongholdEstimator e = twoGood();
         Estimate s = get(e);

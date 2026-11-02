@@ -17,6 +17,7 @@
 
 package adris.altoclef.chains;
 
+import net.minecraft.core.BlockPos;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -168,5 +169,37 @@ public class MLGBucketFallChainTest {
     public void outOfWaterOrOutOfTimeStops() {
         assertEquals(MLGBucketFallChain.Surface.DONE, surface(false, false, false, false, true, false));
         assertEquals(MLGBucketFallChain.Surface.DONE, surface(true, false, true, true, true, true));
+    }
+
+    private static final BlockPos PORTAL = new BlockPos(10, 30, 20);
+
+    private static boolean overPortal(double x, double z, double y) {
+        // the player box is 0.6 wide
+        return MLGBucketFallChain.inEndPortalColumn(x - 0.3, x + 0.3, z - 0.3, z + 0.3, y, PORTAL::equals);
+    }
+
+    @Test
+    public void droppingIntoAnEndPortalIsNotAFall() {
+        // a tick above it, standing in it, and the head still in it on the way down
+        assertTrue(overPortal(10.5, 20.5, 31.2));
+        assertTrue(overPortal(10.5, 20.5, 30.1));
+        assertTrue(overPortal(10.5, 20.5, 27.5));
+    }
+
+    @Test
+    public void aCornerOfTheBoxOverThePortalCounts() {
+        // centre in the next column over, the box still hangs into the portal one
+        assertTrue(overPortal(11.2, 20.5, 31));
+        assertTrue(overPortal(9.8, 19.8, 31));
+    }
+
+    @Test
+    public void aFallNextToOrHighAboveThePortalIsStillAFall() {
+        // the box edge right on the block line does not reach into the portal column
+        assertFalse(MLGBucketFallChain.inEndPortalColumn(11.0, 11.6, 20.2, 20.8, 31, PORTAL::equals));
+        assertFalse(MLGBucketFallChain.inEndPortalColumn(9.4, 10.0, 20.2, 20.8, 31, PORTAL::equals));
+        assertFalse(overPortal(12.5, 20.5, 31));
+        assertFalse(overPortal(10.5, 20.5, 34.5));
+        assertFalse(overPortal(10.5, 20.5, 26.5));
     }
 }

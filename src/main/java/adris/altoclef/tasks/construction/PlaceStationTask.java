@@ -53,6 +53,8 @@ public class PlaceStationTask extends Task {
     private static final Set<Block> STATIONS = Set.of(Blocks.CRAFTING_TABLE, Blocks.FURNACE, Blocks.SMOKER, Blocks.BLAST_FURNACE);
     // a walk to a better patch of floor gets this long, then we look again from wherever we are
     private static final double WALK_SECONDS = 12;
+    // the swim back to dry land can be a couple hundred blocks of water, swimming is slow
+    private static final double DRY_LAND_SECONDS = 90;
     // stone by hand is a couple of seconds, deepslate and the like more. this is for a pick that never lands
     private static final double CARVE_SECONDS = 10;
     // softer than this and we'll mine it for room. stone is 1.5, deepslate 3, obsidian 50 (not today)
@@ -63,6 +65,11 @@ public class PlaceStationTask extends Task {
     private final PlaceBlockNearbyTask _fallback;
     private final StationSpots.Bans _bans = new StationSpots.Bans();
     private final TimerGame _walkTimer = new TimerGame(WALK_SECONDS);
+    private final TimerGame _dryLandTimer = new TimerGame(DRY_LAND_SECONDS);
+    // whichever of the two the walk in flight runs on
+    private TimerGame _walkClock = _walkTimer;
+    // the swim back to dry land is once per attempt, see StationAttempt.relocateMove
+    private boolean _dryLandUsed;
     // a wall that fights back for this long isn't getting carved today
     private final TimerGame _carveTimer = new TimerGame(CARVE_SECONDS);
     // carve targets that didn't open up. separate from _bans, those are for spots that missed
@@ -102,6 +109,8 @@ public class PlaceStationTask extends Task {
         _carveBans.clear();
         _spot = null;
         _walk = null;
+        _walkClock = _walkTimer;
+        _dryLandUsed = false;
         _carveTask = null;
         _carving = null;
         _carved = null;
@@ -265,18 +274,28 @@ public class PlaceStationTask extends Task {
             Optional<StationSpots.Stand> shore = swimming ? StationSpots.nearestShore(world, stance(mod), StationSpots.SHORE_RADIUS) : Optional.empty();
             Optional<StationSpots.Stand> stand = shore.isPresent() ? shore
                     : StationSpots.standpoint(world, stance(mod), _bans, sneakEyeHeight(mod));
-            if (stand.isEmpty()) {
+            // plain isInWater: a bot sunk to the sea floor reads onGround, and it is just as far from a floor it can use
+            Optional<BlockPos> dry = stand.isPresent() ? Optional.empty() : mod.getMiscBlockTracker().getLastDryLand(WorldHelper.getCurrentDimension());
+            double dryDistance = dry.map(p -> Math.sqrt(player.blockPosition().distSqr(p))).orElse(-1.0);
+            StationAttempt.Move move = StationAttempt.relocateMove(shore.isPresent(), stand.isPresent(), player.isInWater(), dryDistance, _dryLandUsed);
+            if (move == StationAttempt.Move.NONE) {
                 _attempt.noStandpoint();
                 return null;
             }
-            BlockPos at = new BlockPos(stand.get().x(), stand.get().y(), stand.get().z());
-            Debug.logInternal(shore.isPresent() ? "station: in water, swimming to shore at " + at.toShortString()
-                    : "station: walking to a better patch at " + at.toShortString() + " (move " + _attempt.relocations() + ")");
+            BlockPos at = move == StationAttempt.Move.DRY_LAND ? dry.get() : new BlockPos(stand.get().x(), stand.get().y(), stand.get().z());
+            Debug.logInternal(switch (move) {
+                case SHORE -> "station: in water, swimming to shore at " + at.toShortString();
+                case DRY_LAND -> "station: in water, no shore or floor around, swimming back to dry land at " + at.toShortString()
+                        + " (" + (int) dryDistance + " blocks)";
+                default -> "station: walking to a better patch at " + at.toShortString() + " (move " + _attempt.relocations() + ")";
+            });
+            _dryLandUsed |= move == StationAttempt.Move.DRY_LAND;
             _carved = null;
             _walk = new GetToBlockTask(at);
-            _walkTimer.reset();
+            _walkClock = move == StationAttempt.Move.DRY_LAND ? _dryLandTimer : _walkTimer;
+            _walkClock.reset();
         }
-        if (_walk.isFinished(mod) || _walkTimer.elapsed()) {
+        if (_walk.isFinished(mod) || _walkClock.elapsed()) {
             _walk = null;
             _attempt.arrived();
             return null;

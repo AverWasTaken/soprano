@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import net.minecraft.core.BlockPos;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -87,5 +88,22 @@ public class WaterUpkeepTest {
         assertTrue(WaterUpkeep.timedOut(50, 400000));
         assertFalse(WaterUpkeep.lookedRecently(50, 400000));
         assertTrue(WaterUpkeep.lookedRecently(110, 100));
+    }
+
+    @Test
+    public void waterOnOrNextToAnEndPortalIsNoPond() {
+        BlockPos portal = new BlockPos(5, 40, 5);
+        // sitting on the portal, next to it at the same height, and on the frame one block over
+        assertTrue(WaterUpkeep.byEndPortal(portal.above(), portal::equals));
+        assertTrue(WaterUpkeep.byEndPortal(portal.east(), portal::equals));
+        assertTrue(WaterUpkeep.byEndPortal(portal.east().north().above(), portal::equals));
+    }
+
+    @Test
+    public void waterAwayFromThePortalIsStillAPond() {
+        BlockPos portal = new BlockPos(5, 40, 5);
+        assertFalse(WaterUpkeep.byEndPortal(portal.east(2).above(), portal::equals));
+        assertFalse(WaterUpkeep.byEndPortal(portal.above(2), portal::equals));
+        assertFalse(WaterUpkeep.byEndPortal(portal.below(), portal::equals));
     }
 }

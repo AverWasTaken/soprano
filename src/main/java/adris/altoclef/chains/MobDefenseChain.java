@@ -71,6 +71,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.Vec3;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -109,11 +110,16 @@ public class MobDefenseChain extends SingleTaskChain {
     // game time of the last tick the projectile shield was called for. the food chain asks projectileDodging() and keeps its hands off
     // the use key for it: its swap back to the food and release on the way out is what dropped the shield mid volley
     private long _dodgeTick = Long.MIN_VALUE;
-    // ticks until the closest incoming projectile reaches us, as of the last isProjectileClose. a bite in progress only gives
-    // way to the shield when this is short (a held shield swaps the food out of the hand, which throws the bite away)
+    // ticks until the closest incoming projectile reaches us, as of the last isProjectileClose (for the shield line; whether a
+    // bite gives way is _beatsBite, a held shield swaps the food out of the hand, which throws the bite away)
     private double _impactTicks = Double.POSITIVE_INFINITY;
     // a close projectile of the last isProjectileClose was a ghast ball (the escape bridge keeps its shield down for those)
     private boolean _closeFireball;
+    // what that closest one was and how far, for the shield line
+    private Type _impactType;
+    private double _impactDist;
+    // one close projectile is near enough to be worth dropping a bite for, each by its own clock (BiteRules.shieldMayStart)
+    private boolean _beatsBite;
     private boolean _capSneak;
     private final Object _capOwner = new Object();
     // anything that is not a block, for the main hand while the shield is up
@@ -267,6 +273,8 @@ public class MobDefenseChain extends SingleTaskChain {
         // before anything can stand down below: the commitment moves once per tick whether or not we get to hold the wheel,
         // otherwise a stretch of eating would be a stretch of the machine not knowing what happened
         snapshot(mod);
+        // every tick, not just in the hold: the ghast ball that sent us there is older than the game's 40 tick memory of it
+        HealUpTask.noteGhastHit(mod.getPlayer(), mod.getWorld().getGameTime());
 
         // Put out fire if we're standing on one like an idiot
         BlockPos fireBlock = isInsideFireAndOnFire(mod);
@@ -389,7 +397,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // the creeper's shield is up, leave it be
         } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
                 && isProjectileClose(mod) && !(_closeFireball && mod.getBehaviour().noFireballShield())
-                && BiteRules.shieldMayStart(mod.getFoodChain().biting(), _impactTicks)
+                && (!mod.getFoodChain().biting() || _beatsBite)
                 && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
@@ -397,6 +405,8 @@ public class MobDefenseChain extends SingleTaskChain {
             if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                 mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
             } else {
+                // without this nobody can tell whether the shield came up in time or at all
+                if (!_shielding) Debug.logInternal(ProjectileHelper.shieldLine(_impactType, _impactTicks, _impactDist));
                 startShielding(mod, !fighting);
             }
         } else {
@@ -549,10 +559,13 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean close = false;
         _closeFireball = false;
         _impactTicks = Double.POSITIVE_INFINITY;
+        _impactType = null;
+        _beatsBite = false;
         try {
             if (!projectiles.isEmpty()) {
                 for (CachedProjectile projectile : projectiles) {
-                    if (projectile.position.distanceToSqr(mod.getPlayer().position()) < 150) {
+                    double distSq = projectile.position.distanceToSqr(mod.getPlayer().position());
+                    if (distSq < ProjectileHelper.watchRangeSq(projectile.projectileType)) {
                         if (projectile.projectileType == DragonFireball.class) {
                             // dragon fireballs are the dragon fight's problem, not the shield's. (continue, not return: the
                             // rest of the list still has arrows in it)
@@ -584,7 +597,14 @@ public class MobDefenseChain extends SingleTaskChain {
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
                             // every close one counts for the impact clock, so a far arrow listed first does not hide a near fireball
-                            _impactTicks = Math.min(_impactTicks, ProjectileHelper.ticksToClosest(projectile.position, projectile.velocity, mod.getPlayer().position()));
+                            double impact = ProjectileHelper.ticksToClosest(projectile.position, projectile.velocity, mod.getPlayer().position());
+                            // an arrow at 12 next to a ghast ball at 25 is still an arrow at 12, so not the min against one rule
+                            _beatsBite |= BiteRules.shieldMayStart(true, impact, projectile.projectileType == LargeFireball.class);
+                            if (impact < _impactTicks || _impactType == null) {
+                                _impactTicks = impact;
+                                _impactType = projectile.projectileType;
+                                _impactDist = Math.sqrt(distSq);
+                            }
                             _closeFireball |= projectile.projectileType == LargeFireball.class;
                             if (close) continue;
                             close = true;

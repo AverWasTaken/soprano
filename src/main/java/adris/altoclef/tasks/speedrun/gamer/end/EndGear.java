@@ -6,6 +6,8 @@ import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -43,10 +45,17 @@ public final class EndGear {
 
     // which gap the prep is working on, in the order the phase goes through them (beds, then gearStep's order). "none" = all there
     public static String gate(Gap gap) {
+        return gate(gap, null);
+    }
+
+    // armorFloor = the piece armorFloorPiece wants made (null = none, or its clock ran out). it sits between the pickaxe and
+    // the blocks, the same place gearStep runs it, and a piece already in the bag goes on before the next one gets made
+    public static String gate(Gap gap, Item armorFloor) {
         if (gap.beds() > 0) return "beds";
         if (gap.weapon()) return "weapon";
         if (gap.waterBucket()) return "water_bucket";
         if (gap.pickaxe()) return "pickaxe";
+        if (armorFloor != null) return gap.armorToWear().isEmpty() ? "armor_floor" : "armor";
         if (gap.buildBlocks() > 0) return "blocks";
         if (!gap.armorToWear().isEmpty()) return "armor";
         if (gap.food()) return "food";
@@ -145,6 +154,32 @@ public final class EndGear {
             }
         }
         return wear;
+    }
+
+    // the floor goes chest first: it is the most points per ingot
+    private static final Item[] ARMOR_FLOOR = {Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_HELMET, Items.IRON_BOOTS};
+    private static final int[] ARMOR_FLOOR_SLOT = {1, 2, 0, 3};
+
+    // an End death sends us back with whatever is still on us, often nothing, and the stronghold walk is full of mobs. below the
+    // bed armor line (the same test as NetherRegress.armorShort, only the full iron plan has a number) the next iron piece gets
+    // made here, no phase regress. a slot already iron or better, or with a piece of it in the bag (armorToWear puts that one
+    // on), asks for nothing. null = the floor is fine
+    public static Item armorFloorPiece(GamerFacts facts, GamerConfig cfg) {
+        if (cfg.overworld.armorPlan != OverworldConfig.ArmorPlan.FULL_IRON || facts.armorPoints() >= cfg.end.bedMinArmor) {
+            return null;
+        }
+        for (int i = 0; i < ARMOR_FLOOR.length; i++) {
+            Item[] slot = ARMOR_SLOTS[ARMOR_FLOOR_SLOT[i]];
+            if (rank(slot, facts::armorEquipped) < 0 && rank(slot, facts::has) < 0) {
+                return ARMOR_FLOOR[i];
+            }
+        }
+        return null;
+    }
+
+    // ticks the armor floor step actually ran, then the visit goes in with what it has
+    public static boolean armorFloorTimedOut(int ticksSpent, EndConfig cfg) {
+        return ticksSpent >= cfg.armorFloorSeconds * 20;
     }
 
     // index of the best piece of the slot the test says yes to, -1 when none

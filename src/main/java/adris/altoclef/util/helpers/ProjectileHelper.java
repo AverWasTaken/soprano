@@ -5,8 +5,12 @@ import adris.altoclef.util.baritone.CachedProjectile;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.hurtingprojectile.AbstractHurtingProjectile;
+import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.phys.Vec3;
+
+import java.lang.reflect.Type;
+import java.util.Locale;
 
 /**
  * Projectile motion math functions
@@ -15,6 +19,22 @@ public class ProjectileHelper {
 
     public static final double ARROW_GRAVITY_ACCEL = 0.05000000074505806;
     public static final double THROWN_ENTITY_GRAVITY_ACCEL = 0.03;
+
+    // how far out the shield starts caring about a projectile (squared). a ghast ball speeds up the whole way and covers its
+    // last 12 blocks in about 7 ticks, while a raised shield needs 5 to block plus one or two to reach the offhand, so at 150
+    // it was seen with nothing left to do about it. arrows and blaze balls are slow enough for the old number
+    public static final double WATCH_RANGE_SQ = 150;
+    public static final double FIREBALL_WATCH_RANGE_SQ = 28 * 28;
+
+    public static double watchRangeSq(Type type) {
+        return type == LargeFireball.class ? FIREBALL_WATCH_RANGE_SQ : WATCH_RANGE_SQ;
+    }
+
+    // the line for the moment the projectile shield goes up
+    public static String shieldLine(Type type, double impactTicks, double dist) {
+        String name = type instanceof Class<?> c ? c.getSimpleName() : String.valueOf(type);
+        return String.format(Locale.ROOT, "shield: up for %s, impact %dt, dist %.1f", name, Math.round(impactTicks), dist);
+    }
 
     public static boolean hasGravity(Projectile entity) {
         if (entity instanceof AbstractHurtingProjectile) return false;

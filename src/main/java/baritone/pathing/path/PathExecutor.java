@@ -90,6 +90,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     // planned versus real ticks per movement, handed on with the rest when a splice or a cut makes a new executor
     private MovementTimer timer = new MovementTimer();
     private boolean failed;
+    // the movement that failed us was a sneak bridge giving up while we hang over a drop (MovementTraverse.bridgeStall)
+    private boolean bailedOverDrop;
     private boolean recalcBP = true;
     private HashSet<BlockPos> toBreak = new HashSet<>();
     private HashSet<BlockPos> toPlace = new HashSet<>();
@@ -418,8 +420,10 @@ public class PathExecutor implements IPathExecutor, Helper {
             ((MovementAscend) movement).setKeepsSprint(ascendBlocker((MovementAscend) movement, false) == null);
         }
         MovementStatus movementStatus = movement.update();
+        behavior.noteTicked(movement);
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
+            bailedOverDrop = movement instanceof MovementTraverse traverse && traverse.bailedOverDrop();
             rememberFailure(movement, false);
             cancel();
             return true;
@@ -1783,6 +1787,10 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     public boolean failed() {
         return failed;
+    }
+
+    public boolean bailedOverDrop() {
+        return failed && bailedOverDrop;
     }
 
     public boolean finished() {

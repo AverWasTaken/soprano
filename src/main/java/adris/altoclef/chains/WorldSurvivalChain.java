@@ -24,7 +24,9 @@ import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.DunkRules;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.EndermanWater;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.Dimension;
@@ -33,12 +35,14 @@ import baritone.api.utils.input.Input;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -560,9 +564,36 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 else if (b == Blocks.NETHER_PORTAL) portal++;
             }
             Debug.logInternal("arrival: nether at " + at.toShortString() + ", 5x3x5 has lava " + lava + " portal " + portal
+                    + arrivalState(mod) + (loaded ? "" : " (chunks never all showed up)"));
+        } else if (_arrivalDim == Dimension.END) {
+            Debug.logInternal("arrival: end at " + at.toShortString() + arrivalState(mod) + ", build blocks " + StorageHelper.getBuildingMaterialCount(mod)
                     + (loaded ? "" : " (chunks never all showed up)"));
         }
         return false;
+    }
+
+    // what we walked in with: water at the feet, something in the hand, keys still down from the other side. log only
+    private static String arrivalState(AltoClef mod) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        BlockPos eyes = BlockPos.containing(mod.getPlayer().getEyePosition());
+        StringBuilder keys = new StringBuilder();
+        StringBuilder forced = new StringBuilder();
+        for (Input input : new Input[]{Input.MOVE_FORWARD, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT, Input.SPRINT, Input.JUMP, Input.SNEAK}) {
+            if (mod.getInputControls().isHeldDown(input)) {
+                keys.append(keys.isEmpty() ? "" : " ").append(input.name().toLowerCase());
+            }
+            if (mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(input)) {
+                forced.append(forced.isEmpty() ? "" : " ").append(input.name().toLowerCase());
+            }
+        }
+        return ", fluid feet " + fluidName(mod.getWorld().getFluidState(feet)) + " eyes " + fluidName(mod.getWorld().getFluidState(eyes))
+                + ", holding " + ItemHelper.stripItemName(mod.getPlayer().getMainHandItem().getItem())
+                + ", keys [" + keys + "] baritone [" + forced + "]";
+    }
+
+    private static String fluidName(FluidState fluid) {
+        if (fluid.isEmpty()) return "none";
+        return fluid.is(FluidTags.WATER) ? "water" : fluid.is(FluidTags.LAVA) ? "lava" : "other";
     }
 
     private boolean isInLavaOhShit(AltoClef mod) {

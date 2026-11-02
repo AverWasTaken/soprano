@@ -33,9 +33,10 @@ public final class LavaExit {
     // a rim two above the surface is a wall, and a hop can't climb a wall. a block set into the lava cell beside us at the
     // surface is a one high step to it: stand on its top and the rim is the usual one up. T is a horizontal neighbour of the
     // surface cell we float in (never our own column, pillaring in lava loses to the bobbing, see isSafeCell), lava or air,
-    // with room above. the rim N beside it is solid one up from T (the wall) and standable above that, and something next to
-    // T or under it is there to click against.
-    // yaw breaks ties, we'd rather place where we are already looking. null when there is no such cell
+    // with room above. the rim N beside it is solid 1..MAX_STEP up from T (the wall) and standable above that, and something
+    // next to T or under it is there to click against. a taller rim works too: once we stand on T we're out of the lava, and
+    // the pillar up to the rim is a dry one, plain baritone pillaring with nothing lava about it.
+    // the lowest rim wins, then yaw, we'd rather place where we are already looking. null when there is no such cell
     public static Cell stairCell(int px, int py, int pz, ItemPickupRules.Terrain t, ItemPickupRules.Lava lava, float yawDegrees) {
         int surface = py;
         while (surface - py < MAX_DEPTH && lava.at(px, surface + 1, pz)) {
@@ -44,15 +45,18 @@ public final class LavaExit {
         double lookX = -Math.sin(Math.toRadians(yawDegrees));
         double lookZ = Math.cos(Math.toRadians(yawDegrees));
         Cell best = null;
+        int bestStep = Integer.MAX_VALUE;
         double bestScore = -Double.MAX_VALUE;
         for (int[] d : SIDES) {
             int x = px + d[0];
             int z = pz + d[1];
-            if (!(lava.at(x, surface, z) || t.open(x, surface, z)) || !t.open(x, surface + 1, z) || !t.open(x, surface + 2, z)) continue;
-            if (!hasRim(x, surface, z, t) || !hasSupport(x, surface, z, t)) continue;
+            if (!(lava.at(x, surface, z) || t.open(x, surface, z))) continue;
+            int step = rimHeight(x, surface, z, t);
+            if (step == 0 || step > bestStep || !hasSupport(x, surface, z, t)) continue;
             double score = d[0] * lookX + d[1] * lookZ;
-            if (score > bestScore) {
+            if (step < bestStep || score > bestScore) {
                 best = new Cell(x, surface, z);
+                bestStep = step;
                 bestScore = score;
             }
         }
@@ -61,14 +65,24 @@ public final class LavaExit {
 
     private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-    // a neighbour of T that is solid one up from it, with a body's room on top of that
-    private static boolean hasRim(int x, int y, int z, ItemPickupRules.Terrain t) {
-        for (int[] d : SIDES) {
-            int nx = x + d[0];
-            int nz = z + d[1];
-            if (t.solid(nx, y + 1, nz) && t.open(nx, y + 2, nz) && t.open(nx, y + 3, nz)) return true;
+    // a rim 4 up is 3 blocks of pillar on T, and by then a 4 dmg lava tick has had plenty of goes at us anyway
+    static final int MAX_STEP = 3;
+
+    // the lowest k (1..MAX_STEP) with a neighbour of T solid k up and a body's room on top of it, 0 for none. a rim k up is
+    // k - 1 blocks of pillar on T and then a step, and the step's jump needs the cell over our head, so T's column has to be
+    // open to k + 2. k = 1 keeps the two cells it always had: standing on T is already out of the lava, a lid over that one
+    // step is baritone's to mine
+    private static int rimHeight(int x, int y, int z, ItemPickupRules.Terrain t) {
+        if (!t.open(x, y + 1, z) || !t.open(x, y + 2, z)) return 0;
+        for (int k = 1; k <= MAX_STEP; k++) {
+            if (k > 1 && (!t.open(x, y + k + 1, z) || !t.open(x, y + k + 2, z))) return 0;
+            for (int[] d : SIDES) {
+                int nx = x + d[0];
+                int nz = z + d[1];
+                if (t.solid(nx, y + k, nz) && t.open(nx, y + k + 1, nz) && t.open(nx, y + k + 2, nz)) return k;
+            }
         }
-        return false;
+        return 0;
     }
 
     // something to click against: a wall at T's level on any side, or a floor under it

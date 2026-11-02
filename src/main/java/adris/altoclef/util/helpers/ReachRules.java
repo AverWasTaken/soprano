@@ -18,6 +18,10 @@ public final class ReachRules {
     // a hair over two so the cell two straight out of a centred mob counts. GoalFollowEntity goes by block centres
     public static final double KILL_APPROACH = 2.25;
 
+    // crystals only. the server lets a hit through out to the 3 block interaction range plus its 3 block buffer, eye to box.
+    // the covered stand under a radius 4 pillar is ~4 out, so the old 4 was a coin flip and 5 still leaves the server slack
+    public static final double CRYSTAL_REACH = 5.0;
+
     private ReachRules() {
     }
 
