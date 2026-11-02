@@ -226,4 +226,16 @@ public class CraftMathTest {
         assertNull(topUp(Collections.emptyList(), inv(), inv(), 9));
         assertNull(topUp(Arrays.asList("birch"), inv(), inv("birch", 1), 0));
     }
+
+    @Test
+    public void theMatchingTargetCountsOnlyTheColourItMakes() {
+        // 3 village beds of other colours, 9 white wool, 6 still wanted: white goes to 3, not 3 + 3 that the wool can't pay for
+        assertEquals(3, adris.altoclef.util.helpers.CraftMath.matchingTarget(0, 3, 6));
+        // some white already held counts itself
+        assertEquals(5, adris.altoclef.util.helpers.CraftMath.matchingTarget(2, 3, 6));
+        // never past what's still wanted
+        assertEquals(1, adris.altoclef.util.helpers.CraftMath.matchingTarget(0, 6, 1));
+        // one colour only comes out at the old min(held + can craft, wanted)
+        assertEquals(8, adris.altoclef.util.helpers.CraftMath.matchingTarget(5, 9, 3));
+    }
 }

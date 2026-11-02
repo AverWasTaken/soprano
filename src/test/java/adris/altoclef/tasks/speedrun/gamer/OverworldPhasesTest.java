@@ -91,7 +91,7 @@ public class OverworldPhasesTest {
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
-        f.give(Items.WOOL.green(), 24);
+        f.give(Items.WOOL.green(), 3 * cfg.end.beds);
         assertFalse("no diamond pick yet", iron.isDone(f, state, cfg));
         f.diamondHuntGaveUp = true;
         assertTrue("the dig ran out of time, the iron pick it is", iron.isDone(f, state, cfg));
@@ -229,6 +229,19 @@ public class OverworldPhasesTest {
         assertFalse(portal.isDone(f, state, cfg));
         f.dimension = Dimension.NETHER;
         assertTrue(portal.isDone(f, state, cfg));
+    }
+
+    @Test
+    public void aSlowDragonFightKeepsGoingAndOnlyTheEndDeathsEndIt() {
+        DragonPhase dragon = new DragonPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, dragon.onTimeout(ctx, ctx.cfg.maxAttempts + 50, "slow"));
+        for (int i = 0; i < ctx.cfg.end.attempts; i++) {
+            RunState.Death d = new RunState.Death();
+            d.dimension = "END";
+            ctx.state.deaths.add(d);
+        }
+        assertEquals(Timeout.STUCK, dragon.onTimeout(ctx, 1, "slow"));
     }
 
     @Test

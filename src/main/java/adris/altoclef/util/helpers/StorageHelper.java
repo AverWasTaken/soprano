@@ -7,6 +7,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import baritone.utils.accessor.IAbstractFurnaceMenu;
 import adris.altoclef.tasks.CraftInInventoryTask;
+import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -296,6 +297,29 @@ public class StorageHelper {
         return at(bag, GarbageRules.junkPick(entries(mod, bag, bagFoodUnits(mod)), reserve()));
     }
 
+    // the End's beds and wool in this slot (DropRoom.reserved). the victim throw's last look, the bag may have changed since the room decision
+    public static boolean reservedForTheEnd(AltoClef mod, Slot slot) {
+        Bag bag = bag(mod);
+        boolean[] forTheEnd = DropRoom.reserved(bag.stacks, EndGear.reserveBeds());
+        for (int i = 0; i < forTheEnd.length; i++) {
+            if (forTheEnd[i] && bag.slots.get(i).equals(slot)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // empty bag slots, the end prep's gate logs it
+    public static int freeBagSlots(AltoClef mod) {
+        int free = 0;
+        for (ItemStack stack : bag(mod).stacks) {
+            if (stack.isEmpty()) {
+                free++;
+            }
+        }
+        return free;
+    }
+
     // one look at the bag and its garbage pick, held for a tick of pile drops so each drop does not read the bag again
     public static GarbageView garbageView(AltoClef mod) {
         return new GarbageView(mod);
@@ -375,12 +399,13 @@ public class StorageHelper {
 
         private List<DropRoom.Stack> victims() {
             List<DropRoom.Stack> out = new ArrayList<>(_bag.stacks.size());
+            boolean[] forTheEnd = DropRoom.reserved(_bag.stacks, EndGear.reserveBeds());
             for (int i = 0; i < _bag.stacks.size(); i++) {
                 ItemStack stack = _bag.stacks.get(i);
                 Item item = stack.getItem();
                 int units = GarbageRules.keepUnits(stack);
                 // wouldWear too: wear[] only keeps the best piece per slot, a second helmet for a bare head still counts
-                boolean keep = _bag.wear[i] || wouldWear(_mod, stack) || AltoSettings.isImportant(item)
+                boolean keep = forTheEnd[i] || _bag.wear[i] || wouldWear(_mod, stack) || AltoSettings.isImportant(item)
                         || (stack.isEnchanted() && Baritone.settings().altoDontThrowAwayEnchantedItems.value)
                         || (stack.has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)
                         || (units > 0 && GarbageRules.keepsFood(_foodUnits, units, _floor));
@@ -443,15 +468,17 @@ public class StorageHelper {
     }
 
     // EnsureFreeCursorSlotTask's way out when it holds something we keep and getGarbageSlot has nothing: the lowest bag stack that
-    // is not on the important list (or armor we would wear). the food floor and the protect list are soft, a deadlock is not
+    // is not on the important list (or armor we would wear, or the End's, DropRoom.reserved). the food floor and the protect list are
+    // soft, a deadlock is not
     public static Optional<Slot> getLastResortSlot(AltoClef mod) {
         Bag bag = bag(mod);
+        boolean[] forTheEnd = DropRoom.reserved(bag.stacks, EndGear.reserveBeds());
         final List<Slot> slots = new ArrayList<>();
         final List<GarbageRules.Cand> cands = new ArrayList<>();
         final boolean[] guarded = new boolean[bag.slots.size()];
         for (int i = 0; i < bag.slots.size(); i++) {
             ItemStack stack = bag.stacks.get(i);
-            if (stack.isEmpty() || bag.wear[i] || AltoSettings.isImportant(stack.getItem()))
+            if (stack.isEmpty() || forTheEnd[i] || bag.wear[i] || AltoSettings.isImportant(stack.getItem()))
                 continue;
             guarded[cands.size()] = ItemHelper.isStackProtected(mod, stack);
             slots.add(bag.slots.get(i));

@@ -43,6 +43,7 @@ import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
+import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.item.Items;
@@ -231,7 +232,7 @@ public class IronPhase implements PhaseHandler {
                     ctx.facts().pickScan()));
         }
         // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
-        FoodHunt.setWoolWanted(!ctx.facts().woolHuntGaveUp() && KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
+        FoodHunt.setWoolWanted(!ctx.facts().woolHuntGaveUp() && KitPlanner.woolShortfall(ctx.facts(), KitPlanner.bedGoal(ctx.facts(), ctx.cfg().end.beds)) > 0);
         boolean on = Baritone.settings().altoIronArbiter.value;
         if (arbiterOn == null || on != arbiterOn) {
             arbiter.reset();
@@ -245,12 +246,12 @@ public class IronPhase implements PhaseHandler {
         goldDug = false;
         woolChased = false;
         Task task = on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
-        huntClock(ctx);
+        huntClock(mod, ctx);
         return task;
     }
 
     // the diamond dig's clock (DiamondHunt), only on ticks the kit runner ran it. out of time: the need is gone for the rest of the run
-    private void huntClock(GamerContext ctx) {
+    private void huntClock(AltoClef mod, GamerContext ctx) {
         DiamondHunt.Step step = DiamondHunt.tick(ctx.state(), huntAge, dug, tickNeeds, ctx.secondsInPhase(),
                 ctx.cfg().overworld.diamondPickMinutes, ctx.cfg().budgets.iron);
         huntAge = step.lastAge();
@@ -263,12 +264,17 @@ public class IronPhase implements PhaseHandler {
         if (gold.gaveUp()) {
             ctx.save();
         }
-        DiamondHunt.Step wool = WoolHunt.tick(ctx.state(), woolAge, woolChased, ctx.secondsInPhase(), ctx.cfg().overworld.woolHuntMinutes);
+        DiamondHunt.Step wool = WoolHunt.tick(ctx.state(), woolAge, woolChased && !woolSheepInView(mod), ctx.secondsInPhase(), ctx.cfg().overworld.woolHuntMinutes);
         woolAge = wool.lastAge();
         if (wool.gaveUp()) {
-            ctx.log("no sheep in time, the beds will be whatever the wool allows");
+            ctx.log("no sheep around, moving on without the wool. the end prep gets the beds later");
             ctx.save();
         }
+    }
+
+    // same sheep CollectWoolTask would go for: lambs and shorn ones are just scenery
+    private static boolean woolSheepInView(AltoClef mod) {
+        return mod.getEntityTracker().entityFound(e -> e instanceof Sheep sheep && !sheep.isSheared() && !sheep.isBaby(), Sheep.class);
     }
 
     // the tick's list without the stock-ups SmeltFiller tacks on the end: an optional log or wool top-up behind the dig is not a
@@ -816,8 +822,10 @@ public class IronPhase implements PhaseHandler {
         if (foodTopUp && !wasTopUp) {
             Debug.logInternal("food: topping up from " + held + " to " + food.refillStop() + " now that it is cheap");
         }
-        foodLed = lead;
-        return lead ? needs : FoodGate.without(needs, at);
+        // nextTopUp only heard the real answer: a kept lead starting the soft latch would march a mine off to refillStop
+        boolean keep = lead || food.keepsLead(foodLed, CookGate.rawGap(ctx.facts()));
+        foodLed = keep;
+        return keep ? needs : FoodGate.without(needs, at);
     }
 
     // iron is the one phase where "mostly done" is fine: with the pickaxe, a light and two buckets the portal can be

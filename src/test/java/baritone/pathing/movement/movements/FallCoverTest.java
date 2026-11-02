@@ -176,4 +176,21 @@ public class FallCoverTest {
         assertFalse(FallCover.pickupReady(true, true, 4.6, 4.5, true, true, -0.005, true));
         assertFalse(FallCover.pickupReady(true, true, 1.2, 4.5, true, true, -0.005, false));
     }
+
+    @Test
+    public void aLadderRightOnTheFloorIsAsGoodAsStanding() {
+        assertTrue(FallCover.restingOnLadder(true, 0));
+        assertTrue(FallCover.restingOnLadder(true, FallCover.RESTING_ON_FLOOR));
+    }
+
+    @Test
+    public void hangingHigherUpIsStillTheFall() {
+        assertFalse(FallCover.restingOnLadder(true, 0.3));
+        assertFalse(FallCover.restingOnLadder(true, Double.MAX_VALUE));
+    }
+
+    @Test
+    public void noLadderNoRest() {
+        assertFalse(FallCover.restingOnLadder(false, 0));
+    }
 }

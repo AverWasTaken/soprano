@@ -540,6 +540,16 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public void requestPause() {
         pauseRequestedLastTick = true;
+        pausedBy = PAUSE_CALLER.walk(frames -> frames.skip(1).findFirst()
+                .map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + "." + f.getMethodName()).orElse(null));
+    }
+
+    // who asked for a pause last, for the stand line. paused=true alone never said whose fault the standing around was
+    private static final StackWalker PAUSE_CALLER = StackWalker.getInstance();
+    private String pausedBy;
+
+    public String pausedBy() {
+        return pausedBy;
     }
 
     public boolean cancelSegmentIfSafe() {
@@ -716,12 +726,18 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 return support;
             }
             // nothing to be hanging off of, so we're in the middle of a jump
-            if (!ctx.player().onGround() && MovementHelper.canWalkOn(ctx, feet.below().below())) {
+            if (midJump(ctx.player().onGround(), ctx.player().onClimbable(), MovementHelper.canWalkOn(ctx, feet.below().below()))) {
                 //logDebug("Faking path start assuming player is midair and falling");
                 return feet.below();
             }
         }
         return feet;
+    }
+
+    // a ladder or a vine isn't a jump, same exclusion as perched. sneaking on one right above something we can't walk on reads
+    // as off the ground forever, and the guess would start every path inside that block, where the first move can never finish
+    static boolean midJump(boolean onGround, boolean onClimbable, boolean solidTwoBelow) {
+        return !onGround && !onClimbable && solidTwoBelow;
     }
 
     // off the ground but sitting still on a block line, which is what hanging off a lip looks like. so does hanging on a

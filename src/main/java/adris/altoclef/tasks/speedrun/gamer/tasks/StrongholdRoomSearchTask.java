@@ -140,6 +140,12 @@ public class StrongholdRoomSearchTask extends Task {
         rearmChunkTimer = true;
     }
 
+    // somebody ran errands ahead of us (RoomPhase.prepStep). the old leg expired while they did, and an expired leg digs from
+    // wherever we happen to stand, so walk the leg again like a fresh one
+    public void backToStart(AltoClef mod) {
+        enter(mod, Stage.TO_START);
+    }
+
     // the whole spiral came up empty
     public boolean exhausted() {
         return exhausted;
@@ -888,6 +894,13 @@ public class StrongholdRoomSearchTask extends Task {
             approachBestAt = seconds(mod);
         } else if (seconds(mod) - approachBestAt >= RoomRetarget.PROGRESS_SECONDS && far(mod, c)
                 && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
+            return null;
+        }
+        // we're there. OPEN reads the frames and walks itself, so there is nothing left to wait for. waiting anyway is how you
+        // get a finished goal task re-armed every tick and a very nervous goal marker
+        if (approachTask.isFinished(mod)) {
+            ctx.log("room: at the ring, on to the frames");
+            finish();
             return null;
         }
         if (seconds(mod) - stageSince >= cfg.approachSeconds) {

@@ -120,4 +120,13 @@ public class LinesTest {
         assertEquals("none", Lines.lastDebug("", 5));
         assertEquals("a (0t ago)", Lines.lastDebug("a", -4));
     }
+
+    @Test
+    public void theStandLineNamesWhoPausedAndWhatPreparedIsStuckOn() {
+        Lines.Stand stand = new Lines.Stand(41, 0, 64, 0, "m", 0, 3, null, true, null, null, false, null, null, false, null, null, true, false,
+                null, null, null, null, "KillAura.startShielding", "break 1,64,2 Block{minecraft:air} avoid=true reach=true look=false");
+        String line = Lines.standing(stand);
+        assertTrue(line.contains(" | move=m prepared=break 1,64,2 Block{minecraft:air} avoid=true reach=true look=false | "));
+        assertTrue(line.contains(" by=none pausedBy=KillAura.startShielding | "));
+    }
 }

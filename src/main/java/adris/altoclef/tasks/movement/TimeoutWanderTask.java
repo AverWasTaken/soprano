@@ -6,17 +6,24 @@ import adris.altoclef.Debug;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
+import adris.altoclef.tasks.construction.PlaceStationTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.LandMemory;
+import adris.altoclef.trackers.MiscBlockTracker;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.PortalExit;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
+import baritone.process.ExploreProcess;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -26,6 +33,7 @@ import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.phys.Vec3;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -33,6 +41,9 @@ import java.util.function.Predicate;
  * Call this when the place you're currently at is bad for some reason and you just wanna get away.
  */
 public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
+    // same budget as PlaceStationTask's swim back, swimming is slow
+    private static final double TURN_BACK_SECONDS = 90;
+
     private MovementProgressChecker stuckCheck;
     private final float _distanceToWander;
     private MovementProgressChecker _progressChecker;
@@ -48,6 +59,14 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     // after every interrupt would make a wander that is going nowhere look like it just got somewhere
     private final WanderGiveUp.Excursion _excursion = new WanderGiveUp.Excursion();
     private boolean _failingLogged;
+
+    private final TimerGame _seaCheck = new TimerGame(1);
+    private final TimerGame _turnBackTimer = new TimerGame(TURN_BACK_SECONDS);
+    private Task _turnBack;
+    // where the rings go around. not _origin: that one is how far a finite wander has come, and landing somewhere after a
+    // crossing shouldn't reset that
+    private Vec3 _exploreFrom;
+    private BlockPos _crossingLogged;
 
     public TimeoutWanderTask(float distanceToWander, boolean increaseRange) {
         _distanceToWander = distanceToWander;
@@ -128,6 +147,99 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         _excursion.note(x, y, z);
     }
 
+    // keeps us out of the ocean, null means carry on exploring. each turn back costs the frontier it swam at, so this ends on
+    // land or in a crossing and never swims back and forth at the same beach
+    private Task landStep(AltoClef mod) {
+        LandMemory land = mod.getLandMemory();
+        if (!land.active()) {
+            return null;
+        }
+        ExploreProcess explore = mod.getClientBaritone().getExploreProcess();
+        LocalPlayer player = mod.getPlayer();
+        BlockPos me = player.blockPosition();
+        if (_turnBack != null) {
+            if (_turnBack.isFinished(mod)) {
+                _turnBack = null;
+                return null;
+            }
+            if (_turnBackTimer.elapsed()) {
+                // 90 s and still not there, it's closer to go on than to keep at it. only written down here: the swim back
+                // stopping on our way out cancels every process, a crossing started now wouldn't see the next tick
+                _turnBack = null;
+                land.startCrossing(me.getX(), me.getZ());
+                return null;
+            }
+            return _turnBack;
+        }
+        if (land.crossing()) {
+            crossingStep(mod, land, explore, player);
+            return null;
+        }
+        if (!LandFrontier.turnsBack(_distanceToWander) || !_seaCheck.elapsed()) {
+            return null;
+        }
+        _seaCheck.reset();
+        Optional<BlockPos> dry = mod.getMiscBlockTracker().getLastDryLand(WorldHelper.getCurrentDimension());
+        double distToDry = dry.map(p -> Math.sqrt(me.distSqr(p))).orElse(Double.POSITIVE_INFINITY);
+        // the shore scan is thousands of block reads, so it only gets asked once everything else already says open water
+        if (!LandFrontier.openWater(player.isInWater(), player.onGround(), distToDry, false) || PlaceStationTask.shoreNear(mod).isPresent()) {
+            return null;
+        }
+        if (dry.isEmpty()) {
+            // never stood on anything in this world, nothing to go back to
+            land.startCrossing(me.getX(), me.getZ());
+            return null;
+        }
+        List<ChunkPos> banned = LandFrontier.toBan(dry.get().getX(), dry.get().getZ(), me.getX(), me.getZ(), explore.lastFrontier());
+        banned.forEach(land::ban);
+        Debug.logInternal("wander: open water " + (int) distToDry + " blocks from dry land, heading back to " + dry.get().toShortString()
+                + ", " + banned.size() + " frontier chunks off the list");
+        explore.onLostControl();
+        _turnBack = new GetToBlockTask(dry.get());
+        _turnBackTimer.reset();
+        return _turnBack;
+    }
+
+    private void crossingStep(AltoClef mod, LandMemory land, ExploreProcess explore, LocalPlayer player) {
+        BlockPos me = player.blockPosition();
+        if (!explore.isCrossing()) {
+            // every interrupt cancels every process. a fight out at sea doesn't mean swimming back to the island we gave up on
+            startExplore(mod);
+            explore.crossFrom(me.getX(), me.getZ());
+        }
+        BlockPos start = land.crossingStart();
+        if (!start.equals(_crossingLogged)) {
+            _crossingLogged = start;
+            Debug.logInternal("wander: no land frontier, crossing from " + me.toShortString() + " toward "
+                    + explore.crossingTarget().getX() + "," + explore.crossingTarget().getZ());
+        }
+        // the plain rings stay around the target whatever we walk on, so this is what brings a crossing back
+        if (_seaCheck.elapsed()) {
+            _seaCheck.reset();
+            boolean dry = MiscBlockTracker.isDryLand(player.onGround(), player.isInWater(), player.isPassenger());
+            if (LandFrontier.reanchor(dry, dry && explore.landFrontierExists(me.getX(), me.getZ()))) {
+                Debug.logInternal("wander: land after a crossing, " + (int) Math.hypot(me.getX() - start.getX(), me.getZ() - start.getZ())
+                        + " blocks out, exploring from " + me.toShortString());
+                // or the ring around the old origin pulls us straight back over the water
+                land.endCrossing();
+                _exploreFrom = player.position();
+                startExplore(mod);
+                return;
+            }
+        }
+        BlockPos target = explore.crossingTarget();
+        if (LandFrontier.crossingArrived(Math.hypot(me.getX() - target.getX(), me.getZ() - target.getZ()))) {
+            // spiralling around one spot in the middle of an ocean finds nothing, keep the heading
+            explore.crossFrom(me.getX(), me.getZ());
+        }
+    }
+
+    private void startExplore(AltoClef mod) {
+        LandMemory land = mod.getLandMemory();
+        land.sweep();
+        mod.getClientBaritone().getExploreProcess().explore((int) _exploreFrom.x(), (int) _exploreFrom.z(), land);
+    }
+
     private boolean checkFailing(AltoClef mod) {
         Vec3 pos = mod.getPlayer().position();
         noteAt(pos.x(), pos.y(), pos.z());
@@ -146,6 +258,9 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     protected void onStart(AltoClef mod) {
         mod.getClientBaritone().getPathingBehavior().cancelWhenSafe();
         _origin = mod.getPlayer().position();
+        _exploreFrom = _origin;
+        // a swim back from before an interrupt may have nothing to do with where the interrupt left us
+        _turnBack = null;
         // built here and not in the field initializers because the checkers read the game clock, and a wander has to be
         // constructible without a game so a test can hang one in a task tree
         _progressChecker = new MovementProgressChecker();
@@ -190,6 +305,11 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 mod.getInputControls().release(Input.MOVE_FORWARD);
             }
         }
+        Task back = landStep(mod);
+        if (back != null) {
+            setDebugState("Swimming back to dry land.");
+            return back;
+        }
         // shimmy holds sneak+forward+click, in a meadow of tall grass it never runs out of grass to be stuck in. a
         // failing wander drops it and goes back to exploring
         if (!failing && _unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
@@ -217,7 +337,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         }
         setDebugState("Exploring.");
         if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-            mod.getClientBaritone().getExploreProcess().explore((int) _origin.x(), (int) _origin.z());
+            startExplore(mod);
         }
         if (!_progressChecker.check(mod)) {
             _progressChecker.reset();

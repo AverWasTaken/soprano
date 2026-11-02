@@ -532,11 +532,17 @@ public final class KitPlanner {
         if (f.woolHuntGaveUp()) {
             return;
         }
-        int missing = woolShortfall(f, endBeds);
+        int missing = woolShortfall(f, bedGoal(f, endBeds));
         if (missing > 0) {
             // the wool task counts every colour, so ask for what we hold plus the shortfall or it stops too early
             out.add(new KitNeed("wool", f.count(ItemHelper.WOOL) + missing));
         }
+    }
+
+    // the beds the materials are for: the fight's, and one more while the spawn bed still has to go down. same number as
+    // EndGear.bedTarget, the planner just gets it from the facts
+    public static int bedGoal(GamerFacts f, int endBeds) {
+        return endBeds + (f.spawnBedOwed() ? 1 : 0);
     }
 
     // wool still missing for this many beds, a held bed counting as its three wool. one formula for the wool need and for

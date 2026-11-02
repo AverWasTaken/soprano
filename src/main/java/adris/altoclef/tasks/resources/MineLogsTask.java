@@ -4,28 +4,35 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.ItemHelper;
-import baritone.api.process.IMineProcess;
 import net.minecraft.world.level.block.Block;
 
-// logs are what baritone's own #mine has always been good at: it picks the tree, breaks up the trunk and walks over the
-// drops (mineScanDroppedItems). MineAndCollect grew an anchor, a drop lock, a drop wait and the sand-column side mining on
-// top of the generic block breaker and still pillared up trees and hopped between them, so logs just hand it the job
+// logs are MineAndCollectTask's job, near or far. far ones used to go to baritone's own #mine, which takes the nearest log it
+// can find whatever that log is part of and never hears about the pick's rules (TreeReach.buried). one path, one set of rules
 public class MineLogsTask extends ResourceTask {
     private static final Block[] LOGS = ItemHelper.itemsToBlocks(ItemHelper.LOG);
 
     private final int _count;
+    private final MineAndCollectTask _miner;
 
     public MineLogsTask(int count) {
         super(new ItemTarget(ItemHelper.LOG, count));
         _count = count;
+        _miner = new MineAndCollectTask(_itemTargets, LOGS, MiningRequirement.HAND);
     }
 
-    // the mine process picks its own drops up, a pickup task from ResourceTask would fight it for the pather
+    // the miner sweeps up its own drops, a pickup task from ResourceTask would fight it for the pather
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
         return true;
+    }
+
+    // the catalogue's mineIfPresent is these very logs. its range check would only hand out the same miner we do
+    @Override
+    protected boolean minesOnItsOwn(Block[] blocks) {
+        return coversAll(blocks, LOGS);
     }
 
     @Override
@@ -36,18 +43,12 @@ public class MineLogsTask extends ResourceTask {
     protected Task onResourceTick(AltoClef mod) {
         // the axe, if the bag has one. ToolSet never looks past the hotbar
         HotbarTools.bringDown(mod, "axe");
-        IMineProcess mine = mod.getClientBaritone().getMineProcess();
-        // started once, and again when something else (a fight, eating) took the pather and it let go
-        if (!mine.isActive()) {
-            mine.mine(_count, LOGS);
-        }
         setDebugState("Mining logs");
-        return null;
+        return _miner;
     }
 
     @Override
     protected void onResourceStop(AltoClef mod, Task interruptTask) {
-        mod.getClientBaritone().getMineProcess().onLostControl();
     }
 
     @Override

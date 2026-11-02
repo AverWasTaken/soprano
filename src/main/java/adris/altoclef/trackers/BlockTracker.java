@@ -25,6 +25,7 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -503,20 +504,19 @@ public class BlockTracker extends Tracker {
             return level == null ? null : level.getBlockState(pos).getBlock();
         };
         List<Block> fluids = new ArrayList<>();
+        List<Block> logs = new ArrayList<>();
         List<Block> solids = new ArrayList<>();
         for (Block block : blocksToScan) {
-            (isScannedAsFluid(block) ? fluids : solids).add(block);
+            (isScannedAsFluid(block) ? fluids : BlockTrackerConfig.isLog(block) ? logs : solids).add(block);
         }
-        Map<Block, List<BlockPos>> found = PerTypeScan.run(
-                solids.toArray(new Block[0]),
-                _config.maxCacheSizePerBlockType,
-                (types, max) -> {
-                    int[] raw = {0};
-                    List<BlockPos> hits = MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), n -> raw[0] = n);
-                    return new PerTypeScan.Scanned(hits, raw[0]);
-                },
-                blockAt
-        );
+        PerTypeScan.Scan worldScan = (types, max) -> {
+            int[] raw = {0};
+            List<BlockPos> hits = MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), n -> raw[0] = n);
+            return new PerTypeScan.Scanned(hits, raw[0]);
+        };
+        Map<Block, List<BlockPos>> found = PerTypeScan.run(solids.toArray(new Block[0]), _config.maxCacheSizePerBlockType, worldScan, blockAt);
+        // their own scan for their own share, same split as the fluids below
+        found.putAll(PerTypeScan.run(logs.toArray(new Block[0]), _config.maxCacheSizePerLogType, worldScan, blockAt));
         if (!fluids.isEmpty()) {
             // water and lava are mostly flowing or buried, and the plain scan spends its whole budget on those before it
             // ever reaches a surface you could bucket (a lake 10 blocks away came back as "no water"). the filter runs
@@ -875,7 +875,7 @@ public class BlockTracker extends Tracker {
                         Integer[] order = new Integer[count];
                         for (int i = 0; i < count; i++) order[i] = i;
                         Arrays.sort(order, (l, r) -> Double.compare(dist[l], dist[r]));
-                        int keep = Math.min(count, _config.maxCacheSizePerBlockType);
+                        int keep = Math.min(count, _config.capFor(block));
                         List<BlockPos> trimmed = new ArrayList<>(keep);
                         for (int i = 0; i < keep; i++) trimmed.add(kept[order[i]]);
                         // addBlock bails on a byPosition hit, so anything dropped here has to leave that map too or it's never seen again
@@ -901,7 +901,19 @@ public class BlockTracker extends Tracker {
         public boolean scanAsynchronously = true;
         public int maxTotalCacheSize = 2500;
         public int maxCacheSizePerBlockType = 25;
+        // one mineshaft has more oak logs than 25 and the slots go nearest first, so standing near one the real oak further out
+        // never got cached and every log we knew about was a post the pick throws out (TreeReach.buried). no filter in the scan:
+        // what it finds is what the tracker knows, the pick is what has opinions
+        public int maxCacheSizePerLogType = 64;
         public double cutoffDistance = 128;
         public int defaultUnreachableAttemptsAllowed = 4;
+
+        static boolean isLog(Block block) {
+            return block.defaultBlockState().is(BlockTags.LOGS);
+        }
+
+        int capFor(Block block) {
+            return isLog(block) ? maxCacheSizePerLogType : maxCacheSizePerBlockType;
+        }
     }
 }

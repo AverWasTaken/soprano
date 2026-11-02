@@ -105,6 +105,13 @@ public final class FoeRules {
         return c.excluded().getAsBoolean();
     }
 
+    // the rods task keeps its blazes out of mob defense because the fight is its own, but that fight does not tick while we are
+    // busy with a cube next to it, and then nobody is looking after the thing setting us on fire. so one that hit us lately is a
+    // foe again for as long as a fight of ours is on. only then: the walk to the spawner still ignores them like the task asked
+    public static boolean liftsExclusion(String type, boolean fighting, long sinceHit) {
+        return fighting && type.equals("blaze") && sinceHit <= CombatCommit.HIT_MEMORY;
+    }
+
     // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither
     // skeleton is a skeleton by class and a swordsman by trade: it only ever hits from where it stands next to us, and as a
     // "shooter" its first swing would never count as contact. classRanged is what the class says (MobReachability.isRanged)

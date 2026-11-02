@@ -44,7 +44,14 @@ public final class Lines {
     public record Stand(int ticks, double x, double y, double z, String move, int pathIndex, int pathLength, String goal,
                         boolean paused, String lastCmd, String by, boolean interactionPaused, String keys, String held, boolean sneaking, String screen,
                         String using, boolean onGround, boolean inWater, String calc, String chain, String task,
-                        String last) {
+                        String last, String pausedBy, String prepared) {
+        public Stand(int ticks, double x, double y, double z, String move, int pathIndex, int pathLength, String goal,
+                     boolean paused, String lastCmd, String by, boolean interactionPaused, String keys, String held, boolean sneaking, String screen,
+                     String using, boolean onGround, boolean inWater, String calc, String chain, String task,
+                     String last) {
+            this(ticks, x, y, z, move, pathIndex, pathLength, goal, paused, lastCmd, by, interactionPaused, keys, held, sneaking, screen,
+                    using, onGround, inWater, calc, chain, task, last, null, null);
+        }
     }
 
     private static final int GOAL_MAX = 60;
@@ -56,9 +63,12 @@ public final class Lines {
         sb.append("MONITOR: standing on a live path ").append(s.ticks()).append("t at ").append(one(s.x())).append(' ')
                 .append(one(s.y())).append(' ').append(one(s.z()));
         sb.append(" | move=").append(word(s.move()));
+        // only when there is something to say, most stands have neither
+        if (s.prepared() != null) sb.append(" prepared=").append(flat(s.prepared()));
         sb.append(" | pathPos=").append(s.pathIndex()).append('/').append(s.pathLength());
         sb.append(" goal=").append(clip(s.goal(), GOAL_MAX));
         sb.append(" | paused=").append(s.paused()).append(" lastCmd=").append(word(s.lastCmd())).append(" by=").append(word(s.by()));
+        if (s.pausedBy() != null) sb.append(" pausedBy=").append(flat(s.pausedBy()));
         sb.append(" | interactionPaused=").append(s.interactionPaused());
         sb.append(" | keys=").append(word(s.keys())).append(" held=").append(word(s.held())).append(" sneak=").append(s.sneaking());
         sb.append(" | screen=").append(word(s.screen()));

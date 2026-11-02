@@ -27,6 +27,8 @@ public final class FallTrace {
     // where the head pointed and whether the last move bumped something up or down. a bridge that never clicks is either
     // looking the wrong way or standing on nothing, these say which
     private final float[] yaw = new float[SIZE], pitch = new float[SIZE];
+    // whose input object was on the player. the keys alone can't tell a forced W from one of ours
+    private final Class<?>[] inputClass = new Class<?>[SIZE];
     private final boolean[] vColl = new boolean[SIZE], vCollBelow = new boolean[SIZE];
     private int next;
     private int size;
@@ -41,7 +43,7 @@ public final class FallTrace {
 
     // attackerId < 0 means nobody (no hit this tick)
     public void push(double px, double py, double pz, double vx, double vy, double vz, boolean onGround, float fallDistance, byte keyBits,
-                     float yawNow, float pitchNow, boolean verticalCollision, boolean verticalCollisionBelow, Object blockUnder, Object movement, Object moveStatus, Object placeResult, Object goalNow, boolean hit, int attackerId,
+                     float yawNow, float pitchNow, boolean verticalCollision, boolean verticalCollisionBelow, Object blockUnder, Object movement, Object moveStatus, Object placeResult, Object goalNow, Class<?> inputNow, boolean hit, int attackerId,
                      double hx, double hy, double hz) {
         int i = next;
         x[i] = px;
@@ -62,6 +64,7 @@ public final class FallTrace {
         status[i] = moveStatus;
         place[i] = placeResult;
         goal[i] = goalNow;
+        inputClass[i] = inputNow;
         hurt[i] = hit;
         attacker[i] = attackerId;
         ax[i] = hx;
@@ -81,10 +84,10 @@ public final class FallTrace {
     // does not know what a movement is
     public String line(int i, Function<Object, String> moveName) {
         int at = (next - size + i + SIZE) % SIZE;
-        String line = String.format(Locale.ROOT, "[falltrace] t-%d pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b vcoll %s fall %.1f keys %s look %.2f/%.2f under %s move %s status %s place %s goal %s",
+        String line = String.format(Locale.ROOT, "[falltrace] t-%d pos %.2f %.2f %.2f vel %.3f %.3f %.3f ground %b vcoll %s fall %.1f keys %s look %.2f/%.2f under %s move %s status %s place %s goal %s input %s",
                 size - 1 - i, x[at], y[at], z[at], dx[at], dy[at], dz[at], ground[at], collWord(vColl[at], vCollBelow[at]), fall[at], keyWord(keys[at]),
                 yaw[at], pitch[at], under[at], move[at] == null ? "none" : moveName.apply(move[at]),
-                orDash(status[at]), orDash(place[at]), shorten(goal[at]));
+                orDash(status[at]), orDash(place[at]), shorten(goal[at]), inputClass[at] == null ? "-" : inputClass[at].getSimpleName());
         if (hurt[at]) {
             line += String.format(Locale.ROOT, " HURT by #%d at %.2f %.2f %.2f", attacker[at], ax[at], ay[at], az[at]);
         }

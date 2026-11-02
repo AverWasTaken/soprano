@@ -22,6 +22,26 @@ public class RespawnTest {
         Respawn.unbind();
     }
 
+    @Test
+    public void aBedIsOnlyWorthAQuietNightIfItCoversWhereWeAre() {
+        RunState s = new RunState();
+        s.respawnDim = "OVERWORLD";
+        s.respawnPos = pos(0, 64, 0);
+        s.strongholdStart = pos(100, 64, 0);
+        assertTrue(Respawn.worthKeeping(GamerPhase.ROOM, s));
+        assertTrue(Respawn.worthKeeping(GamerPhase.OPEN, s));
+        // the old bed back at the nether portal
+        s.strongholdStart = pos(1000, 64, 0);
+        assertFalse(Respawn.worthKeeping(GamerPhase.ROOM, s));
+        assertFalse(Respawn.worthKeeping(GamerPhase.OPEN, s));
+        // END_PREP goes by the portal, the rest take any bed
+        s.endPortalCenter = pos(1000, 30, 0);
+        assertFalse(Respawn.worthKeeping(GamerPhase.END_PREP, s));
+        assertTrue(Respawn.worthKeeping(GamerPhase.NETHER, s));
+        s.endPortalCenter = pos(100, 30, 0);
+        assertTrue(Respawn.worthKeeping(GamerPhase.END_PREP, s));
+    }
+
     // ---- the lines
 
     @Test

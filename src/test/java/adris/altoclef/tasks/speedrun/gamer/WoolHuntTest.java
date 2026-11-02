@@ -109,6 +109,27 @@ public class WoolHuntTest {
     }
 
     @Test
+    public void aDeathGivesTheChaseItsClockBack() {
+        RunState s = new RunState();
+        s.woolHuntSeconds = 300;
+        s.woolHuntGaveUp = true;
+        WoolHunt.onDeath(s);
+        assertFalse(s.woolHuntGaveUp);
+        assertEquals(0, s.woolHuntSeconds, 0);
+        // and the need is back on the plan
+        assertNotNull(find(KitPlanner.plan(new FakeFacts(), cfg, BEDS), "wool"));
+    }
+
+    @Test
+    public void theSpawnBedStillOwedAsksForItsWoolToo() {
+        FakeFacts bag = new FakeFacts().give(Items.WOOL.white(), 3 * BEDS);
+        assertNull(find(KitPlanner.plan(bag, cfg, BEDS), "wool"));
+        bag.spawnBedOwed = true;
+        assertEquals(BEDS + 1, KitPlanner.bedGoal(bag, BEDS));
+        assertNotNull(find(KitPlanner.plan(bag, cfg, BEDS), "wool"));
+    }
+
+    @Test
     public void woolBedsIsNotInTheDefaultStockUps() {
         assertTrue(new OverworldConfig().smeltExtras.stream().noneMatch(e -> e.item.equals("wool_beds")));
     }

@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
-import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -9,50 +8,12 @@ import static org.junit.Assert.assertTrue;
 
 // the strat pick and the dead latch, both pure
 public class DragonLogicTest {
-    private final EndConfig cfg = new EndConfig();
-
+    // a bed on the pillar counts in bedsLeft, so the last one placed is not the sword yet
     @Test
-    public void firstPickNeedsBedsAndArmor() {
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(null, 8, 15, false, 0, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(null, 0, 15, false, 0, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(null, 8, 9, false, 0, cfg));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(null, 1, 10, false, 0, cfg));
-    }
-
-    @Test
-    public void everyDeathRaisesTheArmorLine() {
-        // full iron is 15, full diamond 20. line is 10, 14, 18, 22
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(null, 8, 15, false, 1, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(null, 8, 15, false, 2, cfg));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(null, 8, 20, false, 2, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(null, 8, 20, false, 3, cfg));
-    }
-
-    @Test
-    public void runningOutOfBedsFallsBackToTheSword() {
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 0, 15, false, 0, cfg));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 1, 15, false, 0, cfg));
-    }
-
-    @Test
-    public void neverSwapsMidPerch() {
-        // the last bed is placed (so the count is 0) and waiting for its click
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 0, 15, true, 0, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 8, 15, true, 0, cfg));
-    }
-
-    @Test
-    public void armorWobbleDoesNotDropBeds() {
-        // pieces swapping for a moment: 2 under the line is within the slack
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 8, false, 0, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 7, false, 0, cfg));
-    }
-
-    @Test
-    public void comingBackToBedsNeedsARealStack() {
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 2, 15, false, 0, cfg));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.SWORD, DragonStrat.RESUME_BEDS, 15, false, 0, cfg));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 8, 5, false, 0, cfg));
+    public void bedsWhileAnyIsLeftThenTheSword() {
+        assertEquals(DragonStrat.BEDS, DragonStrat.choose(9));
+        assertEquals(DragonStrat.BEDS, DragonStrat.choose(1));
+        assertEquals(DragonStrat.SWORD, DragonStrat.choose(0));
     }
 
     @Test
@@ -112,99 +73,6 @@ public class DragonLogicTest {
         assertFalse(latch.update(false, false, false, 7));
     }
 
-    @Test
-    public void lowHealthKeepsBedsOffTheStartAndOnlyCriticalHealthDropsThem() {
-        // full iron: expected self damage 10, margin 4 => 14 hp wanted before a bed
-        assertEquals(14, BedSafety.safePool(15), 1e-9);
-        assertTrue(BedSafety.canClick(14, 0, 15));
-        assertTrue(BedSafety.canClick(10, 4, 15));
-        assertFalse(BedSafety.canClick(8, 0, 15));
-        // unarmored: more than a full bar, never
-        assertFalse(BedSafety.canClick(20, 0, 0));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(null, 8, 15, false, 0, cfg, 8));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(null, 8, 15, false, 0, cfg, 14));
-        // a dent mid fight is not a swap (the bed task waits and heals)...
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, false, 0, cfg, 8));
-        // ...but near death a melee fight is no better
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 15, false, 0, cfg, 5));
-        // and never mid perch
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 5));
-        // coming back to beds needs the health too
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 8, 15, false, 0, cfg, 9));
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.SWORD, 8, 15, false, 0, cfg, 20));
-    }
-
-    @Test
-    public void aStalledHealDropsBedsEvenMidPerch() {
-        // the gap between critical (6) and the click line (14): the pool is 9, perched, so the plain rule would wait forever
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9, false));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9, true));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 15, false, 0, cfg, 9, true));
-        // the old signature is the not stalled answer, and a stall verdict does nothing to the sword
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9));
-        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 8, 15, true, 0, cfg, 20, true));
-        // back to beds still needs the health and the stack, the stale flag is ignored while on the sword
-        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.SWORD, 8, 15, false, 0, cfg, 20, true));
-    }
-
-    // one sample a second from `from` to `to`, the way the bed task would while the head sits in click range
-    private static boolean feed(HealStall stall, double pool, int from, int to) {
-        boolean last = false;
-        for (int t = from; t <= to; t++) {
-            last = stall.update(true, pool, t);
-        }
-        return last;
-    }
-
-    @Test
-    public void healStallNeedsTwentySecondsOfHurtWithNoHealing() {
-        HealStall stall = new HealStall(20);
-        assertFalse(feed(stall, 9, 100, 119));
-        assertTrue(stall.update(true, 9, 120));
-        // the verdict latches, healing a bit later does not take it back before the strat has swapped
-        assertTrue(stall.update(false, 20, 121));
-        assertTrue(stall.stalled());
-        stall.reset();
-        assertFalse(stall.stalled());
-    }
-
-    @Test
-    public void healStallRestartsOnHealingOrOnBeingAbleToClick() {
-        HealStall stall = new HealStall(20);
-        feed(stall, 9, 0, 14);
-        // regen ticked: that is progress, the clock starts over
-        assertFalse(feed(stall, 10, 15, 34));
-        assertTrue(stall.update(true, 10, 35));
-        stall.reset();
-        feed(stall, 9, 0, 10);
-        // a click went off in between: the streak is over
-        stall.update(false, 14, 11);
-        assertFalse(feed(stall, 9, 12, 31));
-        assertTrue(stall.update(true, 9, 32));
-        // wobble under the epsilon is not healing
-        stall.reset();
-        feed(stall, 9, 0, 10);
-        assertTrue(feed(stall, 9.4, 11, 20));
-    }
-
-    @Test
-    public void healStallDoesNotCarryAStreakAcrossLaps() {
-        HealStall stall = new HealStall(20);
-        feed(stall, 12, 0, 5);
-        // the head left click range for a minute (and we healed up and got hit back down meanwhile): a new streak
-        assertFalse(stall.update(true, 12, 65));
-        assertFalse(feed(stall, 12, 66, 84));
-        assertTrue(stall.update(true, 12, 85));
-    }
-
-    @Test
-    public void healStallCountsHealingBackUpFromADipAsProgress() {
-        HealStall stall = new HealStall(20);
-        feed(stall, 12, 0, 10);
-        // breath took us to 8, then regen back to 12: that is a pool going up from its low point
-        feed(stall, 8, 11, 12);
-        assertFalse(feed(stall, 12, 13, 31));
-    }
     @Test
     public void anUnloadedCenterChunkResetsTheTimer() {
         DragonDeadLatch latch = new DragonDeadLatch(5);

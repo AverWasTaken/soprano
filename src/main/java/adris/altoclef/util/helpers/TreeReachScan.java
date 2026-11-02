@@ -1,11 +1,13 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
+import baritone.api.utils.Dimension;
 import baritone.pathing.movement.MovementHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +42,25 @@ public final class TreeReachScan {
             looksAt = now;
         }
         return looks.computeIfAbsent(log.immutable(), at -> read(mod, at));
+    }
+
+    // TreeReach.buried on the real column. the nether has a roof over everything, it would call every stem buried. a chunk we can't
+    // read isn't buried, the pursuit asks again once it is loaded. no cache like look has: past the depth test this stops at the
+    // first solid block, and a post has its planks right on top
+    public static boolean buried(AltoClef mod, BlockPos log) {
+        if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD || !mod.getWorld().isLoaded(log)) {
+            return false;
+        }
+        int x = log.getX();
+        int z = log.getZ();
+        int top = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        return TreeReach.buried(log.getY(), top, y -> ceiling(mod.getWorld().getBlockState(at.set(x, y, z))));
+    }
+
+    // what makes a log not a tree: something over it that no tree grows. vines, snow and water don't count, the trunk and its leaves are the tree
+    private static boolean ceiling(BlockState state) {
+        return !state.isAir() && state.getFluidState().isEmpty() && !state.is(BlockTags.LOGS) && !state.is(BlockTags.LEAVES) && state.isSolid();
     }
 
     private static Look read(AltoClef mod, BlockPos log) {

@@ -39,6 +39,11 @@ html.bare .devbar { display: none; }
 .card-ph { background: rgba(44, 44, 46, 0.92); color: rgba(255, 255, 255, 0.55); overflow: hidden; }
 .card-ph .txt { position: absolute; }
 .divider { background: rgba(255, 255, 255, 0.22); }
+.sw-track, .sw-knob { pointer-events: none; }
+.sw-knob { background: #fff; }
+/* guiMenus off keeps only the .keep things, the plain ones of those stay out of our own screen */
+.ui.plain > *:not(.keep) { display: none !important; }
+.ui:not(.plain) > .keep:not(.sw) { display: none; }
 
 .boot { position: absolute; inset: 0; pointer-events: none; }
 .boot-bg { position: absolute; inset: 0; background: #000; }

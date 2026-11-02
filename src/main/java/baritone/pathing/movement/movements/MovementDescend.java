@@ -25,6 +25,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.LavaWake;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
@@ -225,6 +226,11 @@ public class MovementDescend extends Movement {
             }
             if (MovementHelper.isBottomSlab(ontoBlock)) {
                 return false; // falling onto a half slab is really glitchy, and can cause more fall damage than we'd expect
+            }
+            // same split as the bucket's gate: asked mid air (fallMode, snapshotDamage) a no here throws away the save we're
+            // committed to, and it doesn't get us back up to the ledge anyway. ElytraProcess wants to end up in lava, let it
+            if (bucketHealthGate && !context.allowFallIntoLava && LavaWake.besideLanding(context.lavaCells, destX, newY + 1, destZ)) {
+                return false;
             }
             // maxFallHeightNoWater used to wave through every fall up to it, ladder in the bag or not. now a fall is free only
             // while it deals no damage (3 blocks), anything past that inside the limit goes through the same menu as a longer

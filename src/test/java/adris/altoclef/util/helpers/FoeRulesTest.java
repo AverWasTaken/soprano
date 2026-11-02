@@ -464,4 +464,25 @@ public class FoeRulesTest {
         List<String> out = FoeRules.crowdWithBlazes(List.of("blaze"), List.of("blaze", "other"), b -> 3.0, b -> true, 20);
         assertEquals(List.of("blaze", "other"), out);
     }
+
+    // ---- a blaze the rods task kept for itself is a foe again while we are in a fight
+
+    @Test
+    public void aBlazeThatHitUsLatelyIsOurBusinessInAFight() {
+        assertTrue(FoeRules.liftsExclusion("blaze", true, 3));
+        assertTrue(FoeRules.liftsExclusion("blaze", true, CombatCommit.HIT_MEMORY));
+    }
+
+    @Test
+    public void theTaskKeepsItOutsideAFightOrWithNoRecentHit() {
+        assertFalse(FoeRules.liftsExclusion("blaze", false, 3));
+        assertFalse(FoeRules.liftsExclusion("blaze", true, CombatCommit.HIT_MEMORY + 1));
+        assertFalse(FoeRules.liftsExclusion("blaze", true, CombatCommit.NEVER));
+    }
+
+    @Test
+    public void onlyBlazesGetTheirExclusionLifted() {
+        assertFalse(FoeRules.liftsExclusion("iron_golem", true, 3));
+        assertFalse(FoeRules.liftsExclusion("enderman", true, 3));
+    }
 }

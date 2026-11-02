@@ -80,6 +80,15 @@ final class FallCover {
     // floor tops out at -0.025, a bit past that is still nobody falling. anything faster is the drop's momentum.
     // on dry ground it's worse, -0.0784 every tick (gravity then drag after the floor), so on the ground is just down
     static final double NOT_FALLING_Y = -0.05;
+    // a hair over the floor still counts, a fall this close lands next tick anyway
+    static final double RESTING_ON_FLOOR = 0.05;
+
+    // sneaking on a ladder cancels the downward motion, so feet resting right on the floor don't collide with it and it reads as
+    // off the ground for as long as the sneak lasts. the sneak is held by whoever needs it (the magma rule, say), so a clutch waiting
+    // for onGround to fetch its ladder would wait forever
+    static boolean restingOnLadder(boolean onClimbable, double feetOverFloor) {
+        return onClimbable && feetOverFloor <= RESTING_ON_FLOOR;
+    }
 
     static boolean notFalling(boolean onGround, boolean inWater, double motionY) {
         return onGround || inWater && motionY > NOT_FALLING_Y;

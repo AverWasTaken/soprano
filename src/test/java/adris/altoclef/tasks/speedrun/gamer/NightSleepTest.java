@@ -743,6 +743,14 @@ public class NightSleepTest {
     }
 
     @Test
+    public void theRoomAndOpenKeepTheBedByTheStart() {
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.ROOM, NightSleep.BedSource.BAG, true));
+        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.OPEN, NightSleep.BedSource.CRAFT, true));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.ROOM, NightSleep.BedSource.BAG, false));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.OPEN, NightSleep.BedSource.FOUND, true));
+    }
+
+    @Test
     public void theEndPrepKeepsThePortalSpawnBedToo() {
         assertTrue(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.BAG, true));
         assertTrue(NightSleep.keepsSpawnBed(GamerPhase.END_PREP, NightSleep.BedSource.CRAFT, true));
