@@ -32,6 +32,51 @@ public class TreeReachTest {
     }
 
     @Test
+    public void aMinePostIsBuried() {
+        // planks right over it and the surface way up there
+        assertTrue(TreeReach.buried(2, 69, y -> y == 3 || y > 60));
+    }
+
+    @Test
+    public void aTallTreeHasOnlyItselfOverIt() {
+        // deep by the heightmap, and nothing in the way that isn't the tree (leaves and trunk read as not solid)
+        assertFalse(TreeReach.buried(64, 94, y -> false));
+    }
+
+    @Test
+    public void aLedgeWithinTheDepthIsStillATree() {
+        assertFalse(TreeReach.buried(64, 64 + TreeReach.BURIED_DEPTH, y -> true));
+        // one further and it takes the ceiling to matter
+        assertTrue(TreeReach.buried(64, 64 + TreeReach.BURIED_DEPTH + 1, y -> true));
+    }
+
+    @Test
+    public void flatWorldNumbersAreNotBuried() {
+        // no y limit: a tree at the bottom of the world is a tree
+        assertFalse(TreeReach.buried(-60, -55, y -> true));
+    }
+
+    @Test
+    public void theTopOfTheColumnIsNotBuried() {
+        assertFalse(TreeReach.buried(70, 70, y -> true));
+        // and a heightmap that reads lower than the log (no data from the server) turns the rule off instead of tripping it
+        assertFalse(TreeReach.buried(70, 40, y -> true));
+    }
+
+    @Test
+    public void aDeepOverhangReadsBuriedAndThatIsTheDeal() {
+        // a tree under a cliff more than the depth overhead. rare, and there are other trees
+        assertTrue(TreeReach.buried(64, 90, y -> y == 85));
+    }
+
+    @Test
+    public void onlyAskedAboutTheCellsOverTheLog() {
+        // the log's own cell and anything past the top are not part of the question
+        assertFalse(TreeReach.buried(64, 90, y -> y == 64 || y > 90));
+        assertTrue(TreeReach.buried(64, 90, y -> y == 90));
+    }
+
+    @Test
     public void theColumnStopsOnTheFirstThingThatIsNotAir() {
         Column bare = TreeReach.column(FLOOR + 8, ground(false));
         assertEquals(FLOOR + 1, bare.feetY());

@@ -28,6 +28,7 @@ import baritone.api.utils.*;
 import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.calc.AbstractNodeCostSearch;
+import baritone.pathing.movement.LavaWake;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.MovementHelper;
@@ -1484,6 +1485,10 @@ public class PathExecutor implements IPathExecutor, Helper {
                 }
             }
             if (!MovementHelper.canWalkOn(ctx, next.getDest().below())) {
+                break;
+            }
+            // aiming here moves the landing, so it has to pass the same rule the planned one did in dynamicFallCost
+            if (LavaWake.besideLanding(behavior.secretInternalGetCalculationContext().lavaCells, next.getDest().x, next.getDest().y, next.getDest().z)) {
                 break;
             }
         }

@@ -48,6 +48,7 @@ public final class MinecraftFacts implements GamerFacts {
     // fastutil so a tick of counting does not box a pile of integers
     private final Object2IntOpenHashMap<Item> counts = new Object2IntOpenHashMap<>(64);
     private final Object2IntOpenHashMap<Item> spent = new Object2IntOpenHashMap<>(4);
+    private int bagBeds;
     private int wornSwords;
     private final ItemStack[] worn = new ItemStack[5];
     // diagnostics only (PickDiag): every pickaxe the last scan saw, in scan order. nobody carries more than eight on purpose
@@ -289,8 +290,12 @@ public final class MinecraftFacts implements GamerFacts {
         ironWornNow = false;
         Inventory inv = player.getInventory();
         // main + hotbar (0..35), armor (36..39) and the offhand (40) are all in the container
+        bagBeds = 0;
         for (int i = 0; i < inv.getContainerSize(); i++) {
             add(inv.getItem(i), areaOf(i), i);
+            if (java.util.Arrays.asList(adris.altoclef.util.helpers.ItemHelper.BED).contains(inv.getItem(i).getItem())) {
+                bagBeds += inv.getItem(i).getCount();
+            }
         }
         // the cursor and the 2x2 grid are "ours" for a moment while we craft, not gone
         add(player.containerMenu.getCarried(), "cursor", -1);
@@ -605,6 +610,16 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean woolHuntGaveUp() {
         return state != null && state.woolHuntGaveUp;
+    }
+
+    @Override
+    public int bedsInBag() {
+        return bagBeds;
+    }
+
+    @Override
+    public boolean spawnBedOwed() {
+        return state != null && adris.altoclef.tasks.speedrun.gamer.end.EndGear.wantSpawnBed(state, adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs.get().end);
     }
 
     @Override

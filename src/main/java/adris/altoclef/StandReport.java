@@ -70,7 +70,12 @@ final class StandReport {
                 command.map(c -> c.commandType.name()).orElse(null), by, mod.getExtraBaritoneSettings().isInteractionPaused(),
                 keys(baritone, player), held(mc.options), player.isCrouching(), mc.gui.screen() == null ? null : mc.gui.screen().getClass().getSimpleName(), using(player),
                 player.onGround(), player.isInWater(), calc(pb), chain(taskChain), taskChain == null ? null : leaf(taskChain.getTasks()),
-                Lines.lastDebug(lastDebug, lastDebugAgo)));
+                Lines.lastDebug(lastDebug, lastDebugAgo), exec != null && !pb.isPathing() ? pb.pausedBy() : null, preparedHold(path, index)));
+    }
+
+    private static String preparedHold(IPath path, int index) {
+        if (path == null || index < 0 || index >= path.movements().size()) return null;
+        return path.movements().get(index) instanceof Movement movement ? movement.preparedHold() : null;
     }
 
     // the lava entry line: what was driving when we hit the lava, so a death in it can be pinned on a goal or a task

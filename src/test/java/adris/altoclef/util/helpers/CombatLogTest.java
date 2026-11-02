@@ -82,6 +82,12 @@ public class CombatLogTest {
     }
 
     @Test
+    public void aMagmaHitSaysWhatShiftWasDoing() {
+        assertEquals("combat: [nether] hurt 0.4 (hotFloor) shift=false onGround=true y=83.00 input=KeyboardInput",
+                CombatLog.hurt(Dimension.NETHER, 0.4f, null, "hotFloor") + CombatLog.hotFloor(false, true, 83, "KeyboardInput"));
+    }
+
+    @Test
     public void aHitSaysWhoAndHowWhenTheClientKnows() {
         assertEquals("combat: [overworld] hurt 4.0 by skeleton (arrow)", CombatLog.hurt(Dimension.OVERWORLD, 4f, "skeleton", "arrow"));
         assertEquals("combat: [nether] hurt 2.5 (fall)", CombatLog.hurt(Dimension.NETHER, 2.5f, null, "fall"));
@@ -106,5 +112,15 @@ public class CombatLogTest {
                 line(Dimension.OVERWORLD, Event.RUN_CHASED_FIGHT, Why.CHASED));
         assertEquals("combat: [overworld] still chased, next zombie",
                 CombatLog.line(Dimension.OVERWORLD, Event.FIGHT_NEXT, Why.CHASED, true, "zombie", "zombie", "", 14, 0));
+    }
+
+    @Test
+    public void theCornerLinesSayWhichCorner() {
+        assertEquals("combat: [nether] cornered, next magma_cube [fast]",
+                CombatLog.line(Dimension.NETHER, Event.FIGHT_NEXT, Why.CORNERED, true, false, "fast", "magma_cube", "magma_cube", "", 14, 0));
+        assertEquals("combat: [nether] cornered, fighting zombie [box]",
+                CombatLog.line(Dimension.NETHER, Event.RUN_TO_FIGHT, Why.CORNERED, true, false, "box", "zombie", "zombie", "", 14, 0));
+        assertEquals("combat: [nether] cornered, next zombie",
+                CombatLog.line(Dimension.NETHER, Event.FIGHT_NEXT, Why.CORNERED, true, false, null, "zombie", "zombie", "", 14, 0));
     }
 }

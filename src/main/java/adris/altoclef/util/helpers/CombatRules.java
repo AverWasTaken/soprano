@@ -153,6 +153,18 @@ public final class CombatRules {
         return false;
     }
 
+    // the shield comes down for the walk up. a raised shield is a third of the speed and a mid jump lands short, and three blocks
+    // of that under fire is longer than the hit it would have blocked. once it is in contact the path does not matter
+    public static boolean fightShieldDown(boolean pathLive, double targetDistance) {
+        return pathLive && targetDistance > CONTACT_RANGE;
+    }
+
+    // whether the aura's shield holds us still. a fight never does: a paused path never gets its first tick, so nothing ever
+    // walks anywhere (same word as MobDefenseChain.startShielding). the rim guard and the plain aura shield still do, standing is the point there
+    public static boolean auraShieldStandsStill(boolean fighting) {
+        return !fighting;
+    }
+
     // a fully blocked hit skips the knockback (not for a hoglin or zoglin, they still throw us), so on a ledge above a drop the shield is up whenever a melee foe is close. a
     // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
     // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem

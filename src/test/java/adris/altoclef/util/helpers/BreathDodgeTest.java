@@ -51,6 +51,65 @@ public class BreathDodgeTest {
     }
 
     @Test
+    public void aRunOutOfTheCloudKeepsGoingWhileTheCloudIsClose() {
+        assertEquals(Move.RUN, BreathDodge.follow(Move.NONE, Move.RUN, true, 1, true, 0));
+        // really clear
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.RUN, false, 1, true, 0));
+        // the cap, a wall of clouds can't hold us forever
+        assertEquals(Move.RUN, BreathDodge.follow(Move.NONE, Move.RUN, true, BreathDodge.MAX_CLEAR_TICKS - 1, true, 0));
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.RUN, true, BreathDodge.MAX_CLEAR_TICKS, true, 0));
+    }
+
+    @Test
+    public void onlyARunIsKeptAndOnlyWhenNothingElseWasPicked() {
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.NONE, true, 1, true, 0));
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.DROP, true, 1, true, 0));
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.DIG, true, 1, true, 0));
+        assertEquals(Move.DROP, BreathDodge.follow(Move.DROP, Move.RUN, true, 1, true, 0));
+    }
+
+    @Test
+    public void aHopIsStillTheRunButAFallIsMlgs() {
+        assertEquals(Move.RUN, BreathDodge.follow(Move.NONE, Move.RUN, true, 1, false, 0.4));
+        assertEquals(Move.RUN, BreathDodge.follow(Move.NONE, Move.RUN, true, 1, false, BreathDodge.FALL_SPEED));
+        assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.RUN, true, 1, false, BreathDodge.FALL_SPEED - 0.1));
+    }
+
+    // the dodge and the task that wants us back in the cloud, a cloud over cells -2..2 and a task walking to 0. the dodge walks
+    // out, the task walks back, this counts how many times the dodge had to start over. the chain's order, in small
+    private static int runStarts(boolean follow, int ticks, int hopEvery) {
+        double x = 0;
+        Move last = Move.NONE;
+        int out = 0;
+        int starts = 0;
+        for (int t = 0; t < ticks; t++) {
+            boolean inCloud = Math.abs(Math.floor(x)) <= 2;
+            boolean grounded = hopEvery == 0 || t % hopEvery != 0;
+            Move move = BreathDodge.choose(inCloud, grounded, true, false);
+            out = move == Move.NONE ? out + 1 : 0;
+            if (follow) {
+                move = BreathDodge.follow(move, last, Math.abs(x) < 2 + BreathDodge.CLEAR_BLOCKS, out, grounded, 0.2);
+            }
+            if (move == Move.RUN && last != Move.RUN) starts++;
+            last = move;
+            x += move == Move.RUN ? 0.2 : -0.2;
+        }
+        return starts;
+    }
+
+    @Test
+    public void theRunAndTheWalkDoNotTakeTurnsEveryTick() {
+        assertTrue(runStarts(false, 60, 0) >= 10);
+        assertTrue(runStarts(true, 60, 0) <= 3);
+    }
+
+    @Test
+    public void hopsDoNotRestartTheRun() {
+        assertTrue(runStarts(false, 20, 3) > 3);
+        assertEquals(1, runStarts(true, 20, 3));
+    }
+
+    @Test
     public void endPickupNeedsReachAndGivesUpFast() {
         assertFalse(BreathDodge.pickupExpired(true, 1, 3));
         assertTrue(BreathDodge.pickupExpired(true, 1, 6));

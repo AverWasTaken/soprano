@@ -686,11 +686,20 @@ public class MovementFall extends Movement {
         ticks++;
         confirmLadder();
         LocalPlayer player = ctx.player();
-        if (player.onGround() || player.isInWater() || player.isInLava()) {
+        if (player.onGround() || player.isInWater() || player.isInLava() || FallCover.restingOnLadder(player.onClimbable(), feetOverFloor(player))) {
             return pickUpLadder(state) ? state.setStatus(MovementStatus.SUCCESS) : state;
         }
         clutch(state);
         return state;
+    }
+
+    // how far the feet are over the block under their cell, MAX_VALUE when that block is nothing you could stand on
+    private double feetOverFloor(LocalPlayer player) {
+        BlockPos below = BlockPos.containing(player.getX(), player.getY(), player.getZ()).below();
+        if (ctx.world().getBlockState(below).getCollisionShape(ctx.world(), below).isEmpty()) {
+            return Double.MAX_VALUE;
+        }
+        return player.getY() - below.getY() - 1;
     }
 
     @Override

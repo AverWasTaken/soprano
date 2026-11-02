@@ -79,6 +79,7 @@ public abstract class MixinAltoClefBlockBreak implements IClientBlockBreak {
         if (hitResult != null) {
             try {
                 AltoClefBridge.publish(new adris.altoclef.eventbus.events.BlockInteractEvent(hitResult));
+                baritone.pathing.movement.LavaWakeLog.click(player, hand, hitResult);
             } catch (Throwable t) {
                 AltoClefBridge.onHookError(t);
             }

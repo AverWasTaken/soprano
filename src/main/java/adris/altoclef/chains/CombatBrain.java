@@ -61,6 +61,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -227,8 +228,18 @@ final class CombatBrain {
         return _commit.perching();
     }
 
+    // the fight has a path going and the target is not in contact yet, see CombatRules.fightShieldDown
+    private boolean _fightWalking;
+    private boolean _blazeWalking;
+
+    // same reason, for the chain's arrow shield: a volley is three shots, and raising it for each one is the walk gone. a skeleton
+    // keeps it, the walk up to one under arrows is the point of that shield
+    boolean walkingToBlaze() {
+        return _blazeWalking;
+    }
+
     boolean auraShield() {
-        if (_commit.perching()) return false;
+        if (_commit.perching() || _fightWalking) return false;
         return _commit.mode() == Mode.FIGHT && (_commit.cornered() || _fightShield) || _rim;
     }
 
@@ -413,7 +424,9 @@ final class CombatBrain {
 
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
-        boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes);
+        boolean inFight = _commit.mode() == Mode.FIGHT && !_commit.perching();
+        boolean shotByExcluded = gatherFoes(mod, dimension, book, now, player, mobs, foes, inFight);
+        if (inFight) addBlazesThatHitUs(mod, dimension, book, now, player, mobs, foes);
         // a swelling creeper stops being angry at us (the fuse goal pushes the chase aside), so the hostile list drops it right when
         // the run away from it needs to see it
         if (_commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.REPEAT_CREEPER) addNearCreepers(mod, player, mobs, foes);
@@ -561,7 +574,10 @@ final class CombatBrain {
         Foe fightFoe = target;
         List<Foe> shieldFoes = fightFoe != null && foes.stream().noneMatch(f -> f.id() == fightFoe.id()) ? List.of(fightFoe) : foes;
         _fightShield = _commit.mode() == Mode.FIGHT && !_commit.perching() && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
-        // (the shield pauses pathing, so outside a run it waits until the walk is done instead of pinning us on the edge)
+        _fightWalking = _commit.mode() == Mode.FIGHT && !_commit.perching() && CombatRules.fightShieldDown(
+                mod.getClientBaritone().getPathingBehavior().getCurrent() != null, target != null ? target.distance() : Double.POSITIVE_INFINITY);
+        _blazeWalking = _fightWalking && target != null && target.kind() == Kind.FLYER;
+        // (outside a fight the shield pauses pathing, so it waits until the walk is done instead of pinning us on the edge)
         _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
@@ -622,14 +638,14 @@ final class CombatBrain {
     // fills mobs and foes (in step) from the tracker's hostiles. hands back whether a mob some task kept for itself is
     // shooting at us: a task's own blaze is not ours to fight, but it still counts for "do not eat right now"
     private static boolean gatherFoes(AltoClef mod, Dimension dimension, Provocations book, long now, LocalPlayer player,
-                                      List<Mob> mobs, List<Foe> foes) {
+                                      List<Mob> mobs, List<Foe> foes, boolean fighting) {
         boolean shotByExcluded = false;
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 double distance = mob.distanceTo(player);
                 if (distance > FOE_RANGE) continue;
-                FoeRules.Candidate candidate = candidate(mod, dimension, mob, distance, book, now, player);
+                FoeRules.Candidate candidate = candidate(mod, dimension, mob, distance, book, now, player, fighting);
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
@@ -642,6 +658,23 @@ final class CombatBrain {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
         }
         return shotByExcluded;
+    }
+
+    // the hostile list only holds a blaze while it is charged, and it stops being charged right after the volley that hit us. then
+    // it is gone for five seconds, and it did not stop being the problem. same lookup as the fight target, no angry check to fail
+    private static void addBlazesThatHitUs(AltoClef mod, Dimension dimension, Provocations book, long now, LocalPlayer player,
+                                           List<Mob> mobs, List<Foe> foes) {
+        try {
+            for (Blaze blaze : mod.getEntityTracker().getTrackedEntities(Blaze.class)) {
+                if (!blaze.isAlive() || mobs.contains(blaze)) continue;
+                double distance = blaze.distanceTo(player);
+                if (distance > FOE_RANGE || !FoeRules.liftsExclusion(typeOf(blaze), true, book.sinceHit(blaze.getId(), now))) continue;
+                mobs.add(blaze);
+                foes.add(foe(dimension, blaze, distance, book, now, player));
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same as gatherFoes, one tick of stale state is fine
+        }
     }
 
     private static void addNearCreepers(AltoClef mod, LocalPlayer player, List<Mob> mobs, List<Foe> foes) {
@@ -700,7 +733,11 @@ final class CombatBrain {
                         : BuiltInRegistries.ENTITY_TYPE.getKey(attacker.getType()).getPath();
             }
         }
-        Debug.logInternal(CombatLog.hurt(dimension, before - hp, who, how));
+        String line = CombatLog.hurt(dimension, before - hp, who, how);
+        if (source != null && source.is(DamageTypes.HOT_FLOOR)) {
+            line += CombatLog.hotFloor(player.input.keyPresses.shift(), player.onGround(), player.getY(), player.input.getClass().getSimpleName());
+        }
+        Debug.logInternal(line);
     }
 
     private final CombatCommit.Drive _drive = new CombatCommit.Drive();
@@ -971,13 +1008,14 @@ final class CombatBrain {
     }
 
     // the slimes and magma cubes carry where they stand, CombatCommit wants it to find the splits of one that died
-    // (a wither skeleton carries its height over us in y instead, the pack rule only wants to know about the ones on our floor)
+    // (a wither skeleton carries its height over us in y instead, the pack rule only wants to know about the ones on our floor.
+    // a blaze too, CombatCommit.blazeToSwap only walks to one that is not hovering)
     private static Foe withSplit(Foe foe, Mob mob, LocalPlayer player) {
         String type = typeOf(mob);
         boolean cube = type.equals("slime") || type.equals("magma_cube");
         // a size 1 cube has 1 max health (size squared) and leaves nothing behind
         Foe out = cube ? foe.withSplit(type, mob.getMaxHealth() > 1, mob.getX(), mob.getY(), mob.getZ()) : foe;
-        if (foe.wither()) out = out.withSplit(null, false, 0, mob.getY() - player.getY(), 0);
+        if (foe.wither() || foe.kind() == Kind.FLYER) out = out.withSplit(null, false, 0, mob.getY() - player.getY(), 0);
         // the ones whose hit shoves us, the rim rules ask for them (an angry piglin is only ever a foe once it is angry)
         return cube || type.equals("zombified_piglin") ? out.withKnocker(true) : out;
     }
@@ -1025,7 +1063,7 @@ final class CombatBrain {
     // one line per transition, never per tick (the text is CombatLog's)
     private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs, int blocks) {
         LocalPlayer player = mod.getPlayer();
-        String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), _commit.noRoom(), nameOf(mod, _commit.targetId()), fighting,
+        String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), _commit.noRoom(), _commit.cornerKind(), nameOf(mod, _commit.targetId()), fighting,
                 describe(mobs), Math.round(player.getHealth()), blocks);
         if (line != null) Debug.logInternal(line);
     }
@@ -1040,10 +1078,10 @@ final class CombatBrain {
 
     // the costly questions are asked lazily, FoeRules only asks them when the cheap ones left the mob in the running
     private static FoeRules.Candidate candidate(AltoClef mod, Dimension dimension, Mob mob, double distance, Provocations book, long now,
-                                                LocalPlayer player) {
+                                                LocalPlayer player, boolean fighting) {
         long sinceHit = book.sinceHit(mob.getId(), now);
         return new FoeRules.Candidate(typeOf(mob), mob.getId(), distance,
-                () -> mod.getBehaviour().shouldExcludeFromMobDefense(mob),
+                () -> !FoeRules.liftsExclusion(typeOf(mob), fighting, sinceHit) && mod.getBehaviour().shouldExcludeFromMobDefense(mob),
                 () -> EntityHelper.isAngryAtPlayer(mod, mob),
                 () -> EntityHelper.canMobHarmPlayer(mod, mob),
                 sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper,

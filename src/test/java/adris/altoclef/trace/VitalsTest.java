@@ -82,6 +82,14 @@ public class VitalsTest {
     }
 
     @Test
+    public void wetComesLastAndOnlyWhenAsked() {
+        String line = Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, "none", 0, true);
+        assertTrue(line.endsWith(" path=none stand=0 wet=true"));
+        assertTrue(Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, "none", 0, false).endsWith(" wet=false"));
+        assertFalse(Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, "none", 0).contains("wet="));
+    }
+
+    @Test
     public void noPathWordMeansNeitherFieldIsPrinted() {
         String line = Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, null, 5);
         assertFalse(line.contains("path="));

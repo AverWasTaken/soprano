@@ -18,6 +18,12 @@ public final class CraftMath {
 
     // how many times the recipe has to run to make `wanted` items. a recipe that makes 9 wheat and a wanted of
     // 99999999 is eleven million crafts, which is exactly the number the grid then has to be clamped against
+    // the recipe target for a matching materials craft: what we hold of the one output it counts, plus what the crafts still owe
+    // (the wanted total counts every colour, the recipe does not)
+    public static int matchingTarget(int heldOfOutput, int canCraft, int stillRequired) {
+        return heldOfOutput + Math.min(canCraft, stillRequired);
+    }
+
     public static int craftsFor(int wanted, int outputCount) {
         if (wanted <= 0) return 0;
         return (int) Math.ceil((double) wanted / Math.max(1, outputCount));

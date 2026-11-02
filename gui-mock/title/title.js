@@ -256,6 +256,13 @@
         el.ver = mk('txt');
         el.copy = mk('txt');
         el.under = mk('under');
+        // the menu switch, and the bit of a vanilla title that goes with it being off
+        el.swLabel = mk('txt keep sw');
+        el.swTrack = mk('sw-track keep sw');
+        el.swKnob = mk('sw-knob keep sw');
+        el.plainCopy = mk('txt keep');
+        el.plainUnder = mk('under keep');
+        el.plainNote = mk('txt keep');
         el.ring = mk('ring');
         el.label = mk('label'); el.label1 = mk('txt', el.label); el.label2 = mk('txt', el.label);
     }
@@ -365,7 +372,7 @@
         }
         var spin = opt.spin + (frozen ? frozenMs : now - st.t0) * SPIN_PER_MS;
         cube.style.transform = 'translateZ(' + d + 'px) rotateX(' + (-PANO_PITCH) + 'deg) rotateY(' + (-spin) + 'deg)';
-        pano.style.filter = opt.blur ? 'blur(' + (BLUR_SIGMA / dpr) + 'px)' : 'none';
+        pano.style.filter = opt.blur && menusOn ? 'blur(' + (BLUR_SIGMA / dpr) + 'px)' : 'none';
     }
 
     // ---------- boot overlay ----------
@@ -419,6 +426,8 @@
         show(ui, v.title);
         $('shade').style.display = v.title ? '' : 'none';
         if (!v.title) { hits = []; return; }
+        ui.classList.toggle('plain', !menusOn);
+        if (!menusOn) { $('shade').style.display = 'none'; drawPlainTitle(v); return; }
 
         var et = animOn() ? v.entry : Infinity;
         var eBrand = outCubic(et / 800), eSub = outCubic((et - 120) / 800), eDock = outCubic((et - 200) / 700),
@@ -480,6 +489,7 @@
             if (id === 'a11y') return { x: a11yX + cornerB / 2, y: inset + cornerB / 2 };
             if (id === 'music') return { x: musicX + cornerB / 2, y: inset + cornerB / 2 };
             if (id === 'copyright') return { x: W - inset - R(100), y: H - inset - R(8) };
+            if (id === 'menuSwitch') return { x: W - inset - R(60), y: H - inset - R(30) };
             return null;
         }
         if (!mouse && opt.hover) {
@@ -604,6 +614,28 @@
             el.under.style.opacity = eCorner;
         }
 
+        // the row above the copyright line, TitleMenu.layoutCorners. the kit's Toggle a size down, always on here: a
+        // brand new title is only ours while the setting says so
+        var swH = R(18), lblW = textW('Soprano menu', 'regular', R(14)), swW = lblW + R(8) + R(28);
+        var swX = W - inset - swW, swY = cpy - R(4) - swH;
+        // a frozen shot only draws once, it has to know now and not next frame
+        var swLit = (frozen ? opt.hover : hoverId) === 'menuSwitch' || focusId === 'menuSwitch';
+        var swL = text(el.swLabel, 'Soprano menu', 'regular', 14, swLit ? '#fff' : 'rgba(255,255,255,0.60)');
+        el.swLabel.style.textDecoration = 'none';
+        box(el.swLabel, swX, swY + Math.round((swH - swL.h) / 2), lblW + 2, null);
+        el.swLabel.style.opacity = eCorner;
+        var swTx = swX + swW - R(28), swTy = swY + Math.round((swH - R(16)) / 2), swI = Math.round((R(16) - R(12)) / 2);
+        box(el.swTrack, swTx, swTy, R(28), R(16));
+        el.swTrack.style.borderRadius = css(R(16) / 2);
+        el.swTrack.style.background = swLit ? '#0B6BD6' : '#0A73E8';
+        el.swTrack.style.boxShadow = 'none';
+        el.swTrack.style.opacity = eCorner;
+        box(el.swKnob, swTx + R(28) - swI - R(12), swTy + swI, R(12), R(12));
+        el.swKnob.style.borderRadius = css(R(12) / 2);
+        el.swKnob.style.opacity = eCorner;
+        newHits.push({ id: 'menuSwitch', x: swX, y: swY, w: swW, h: swH });
+        cornerRects.menuSwitch = { x: swX, y: swY, w: swW, h: swH, r: Math.floor(swH / 2) };
+
         // the update card is its own widget and unchanged, this is only where it goes and about how big it is.
         // UpdateCardWidget: 4 gui units in from the top left, at kit scale, never wider than the room left of
         // vanilla's 256 wide logo. screen.width is the gui width rounded up, like Window does it
@@ -649,13 +681,13 @@
             box(el.ring, fr.x - off - thk, fr.y - off - thk, fr.w + 2 * (off + thk), fr.h + 2 * (off + thk));
             el.ring.style.borderWidth = css(thk);
             el.ring.style.borderRadius = css(fr.r + off + thk);
-            el.ring.style.opacity = focusId === 'lang' || focusId === 'a11y' || focusId === 'music' || focusId === 'card'
+            el.ring.style.opacity = focusId === 'lang' || focusId === 'a11y' || focusId === 'music' || focusId === 'card' || focusId === 'menuSwitch'
                 ? eCorner : eDock;
         }
 
         // ----- label: the hovered thing, else the focused one -----
         // only things with a label can take it off the focused one: the card and copyright have none
-        var labelled = function (id) { return id && id !== 'copyright' && id !== 'card'; };
+        var labelled = function (id) { return id && id !== 'copyright' && id !== 'card' && id !== 'menuSwitch'; };
         var lid = labelled(hoverId) ? hoverId : (labelled(focusId) ? focusId : null);
         var lt = null, rect = null, below = false;
         if (lid) {
@@ -697,6 +729,46 @@
             var la = (frozen || !animOn()) ? 1 : clamp01((now - label.since) / 120);
             el.label.style.opacity = la * (below ? eCorner : eDock);
         }
+    }
+
+    // guiMenus off: MenuSwitchWidget on a vanilla title. vanilla's screen isn't mocked, only the corner the switch has
+    // to share with its copyright line, in gui units like the real one. inter stands in for the minecraft font
+    function drawPlainTitle(v) {
+        var fontScale = function () { return 8 * gui; };
+        var lit = (frozen ? opt.hover : hoverId) === 'menuSwitch' || focusId === 'menuSwitch';
+        var cp = text(el.plainCopy, 'Copyright Mojang AB. Do not distribute!', 'regular', 8, '#fff', fontScale);
+        var cx = W - 2 * gui - cp.w, cy = H - 10 * gui;
+        box(el.plainCopy, cx, cy, cp.w + 2, null);
+        var ul = hoverId === 'copyright' || focusId === 'copyright';
+        show(el.plainUnder, ul);
+        if (ul) { box(el.plainUnder, cx, cy + 8 * gui, cp.w, gui); el.plainUnder.style.color = '#fff'; }
+
+        var sl = text(el.swLabel, 'Soprano menu', 'regular', 8, '#fff', fontScale);
+        var tw = 16 * gui, th = 8 * gui, rowW = sl.w + 4 * gui + tw, rx = W - 2 * gui - rowW, ry = H - 22 * gui;
+        el.swLabel.style.textDecoration = lit ? 'underline' : 'none';
+        el.swLabel.style.opacity = 1;
+        box(el.swLabel, rx, ry, sl.w + 2, null);
+        var tx = rx + rowW - tw;
+        box(el.swTrack, tx, ry, tw, th);
+        el.swTrack.style.borderRadius = '0';
+        el.swTrack.style.background = 'rgba(0,0,0,0.55)';
+        el.swTrack.style.boxShadow = 'inset 0 0 0 ' + css(gui) + ' ' + (lit ? '#fff' : '#a0a0a0');
+        el.swTrack.style.opacity = 1;
+        box(el.swKnob, tx + gui, ry + gui, 6 * gui, 6 * gui);
+        el.swKnob.style.borderRadius = '0';
+        el.swKnob.style.opacity = 1;
+
+        var note = text(el.plainNote, 'vanilla title screen, not mocked', 'regular', 14, 'rgba(255,255,255,0.7)');
+        box(el.plainNote, Math.round(W / 2 - note.w / 2), Math.round(H / 2), note.w + 2, null);
+
+        var newHits = [{ id: 'menuSwitch', x: rx, y: ry, w: rowW, h: 10 * gui }, { id: 'copyright', x: cx, y: cy, w: cp.w, h: 10 * gui }];
+        if (frozen || !mouse) hoverId = opt.hover;
+        else hoverId = v.boot ? null : hitTest(mouse.x, mouse.y, newHits);
+        bootUp = !!v.boot;
+        // the music lets go on a vanilla title, MenuMusic.titleGone
+        titleShown = false;
+        soundHover(!v.boot);
+        hits = newHits;
     }
 
     function hitTest(x, y, list) {
@@ -745,6 +817,18 @@
         if (id !== 'card') playSnd('click', 1, 0.32);
         $('dv-said').textContent = 'pressed: ' + nameOf(id);
         if (id === 'music') toggleMusic();
+        if (id === 'menuSwitch') flipMenus();
+    }
+    // the setting's shape: on by default, ?menus=0|1 pins it for a shot, otherwise the last click. the java opens a brand
+    // new TitleScreen, which never plays the entry animation, so this one doesn't either
+    var MENUS_KEY = 'soprano.mock.menus';
+    var menusOn = Q.has('menus') ? qb('menus', true) : readMenusPref();
+    function readMenusPref() { try { return localStorage.getItem(MENUS_KEY) !== '0'; } catch (e) { return true; } }
+    function flipMenus() {
+        menusOn = !menusOn;
+        try { localStorage.setItem(MENUS_KEY, menusOn ? '1' : '0'); } catch (e) { /* private window, fine */ }
+        st.entryStart = null;
+        focusId = null;
     }
 
     // ----- menu music: MenuMusic in the browser. WebAudio with a looping buffer, an <audio loop> leaves a gap at
@@ -855,7 +939,8 @@
         var o = [];
         tiles.forEach(function (t) { if (!t.off) o.push(t.id); });
         // the update card is a focusable vanilla widget too, it goes after the corner buttons
-        return o.concat(opt.card ? ['lang', 'a11y', 'music', 'card', 'copyright'] : ['lang', 'a11y', 'music', 'copyright']);
+        if (!menusOn) return ['menuSwitch', 'copyright'];
+        return o.concat(opt.card ? ['lang', 'a11y', 'music', 'card', 'menuSwitch', 'copyright'] : ['lang', 'a11y', 'music', 'menuSwitch', 'copyright']);
     }
     function wire() {
         stage.addEventListener('mousemove', function (e) { mouse = devPoint(e); });

@@ -37,6 +37,17 @@ public class DragonBreathTracker {
         }
     }
 
+    public boolean isNearDragonBreath(BlockPos pos, int blocks) {
+        return anyWithin(_breathBlocks, pos, blocks);
+    }
+
+    static boolean anyWithin(Iterable<BlockPos> cells, BlockPos pos, int blocks) {
+        for (BlockPos bad : cells) {
+            if (bad.closerThan(pos, blocks)) return true;
+        }
+        return false;
+    }
+
     public boolean isTouchingDragonBreath(BlockPos pos) {
         return _breathBlocks.contains(pos);
     }

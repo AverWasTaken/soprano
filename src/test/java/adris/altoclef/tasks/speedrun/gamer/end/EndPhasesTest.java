@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 // the pure half of the two handlers: isDone and regressTo over fake facts. the tick logic needs a game and is not covered here
@@ -36,16 +37,37 @@ public class EndPhasesTest {
     @Test
     public void aDeathWipesWhatTheVisitRememberedAboutItsErrands() throws Exception {
         poke("_spawnStartedAt", 123.0);
-        poke("_bedsGaveUp", true);
+        poke("_bedTarget", new net.minecraft.core.BlockPos(1, 2, 3));
         poke("_spawnGo", true);
         poke("_bedMineTail", 7);
         // the overworld death does not re-enter the phase, so this is the only reset the second life gets
         prep.resetOnDeath(3);
         assertEquals(3, prep.bucketDeaths());
         assertEquals(-1, prep.spawnStartedAt(), 0);
-        assertFalse(prep.bedsGaveUp());
+        assertNull(peek("_bedTarget"));
         assertFalse((boolean) peek("_spawnGo"));
         assertEquals(0, (int) peek("_bedMineTail"));
+    }
+
+    @Test
+    public void shortOnBedsNoClockGetsToUs() throws Exception {
+        assertTrue(prep.stallSeconds() > 0);
+        assertFalse(prep.holdsBudget());
+        poke("_shortOnBeds", true);
+        assertEquals(0, prep.stallSeconds(), 0);
+        assertTrue(prep.holdsBudget());
+        poke("_shortOnBeds", false);
+        assertTrue(prep.stallSeconds() > 0);
+    }
+
+    @Test
+    public void endStoneOnlyCountsRightAroundUs() {
+        assertTrue(EndRules.endStoneClose(0, -1, 0));
+        assertTrue(EndRules.endStoneClose(12, -6, -12));
+        assertFalse(EndRules.endStoneClose(13, -1, 0));
+        // a long drop for a stack is how we'd miss the landing
+        assertFalse(EndRules.endStoneClose(0, -7, 0));
+        assertFalse(EndRules.endStoneClose(0, -44, 0));
     }
 
     private void poke(String field, Object v) throws Exception {

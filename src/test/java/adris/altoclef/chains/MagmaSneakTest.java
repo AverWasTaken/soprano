@@ -10,17 +10,17 @@ public class MagmaSneakTest {
 
     @Test
     public void standingOnMagmaSneaks() {
-        assertTrue(WorldSurvivalChain.magmaSneakNow(true, true, false));
+        assertTrue(WorldSurvivalChain.magmaSneakNow(true, false));
     }
 
     @Test
     public void aWalkOffTheMagmaIsLeftAlone() {
-        assertFalse(WorldSurvivalChain.magmaSneakNow(true, true, true));
+        assertFalse(WorldSurvivalChain.magmaSneakNow(true, true));
     }
 
     @Test
-    public void inTheAirOrOnStoneItLetsGo() {
-        assertFalse(WorldSurvivalChain.magmaSneakNow(false, true, false));
-        assertFalse(WorldSurvivalChain.magmaSneakNow(true, false, false));
+    public void onStoneItLetsGo() {
+        assertFalse(WorldSurvivalChain.magmaSneakNow(false, false));
+        assertFalse(WorldSurvivalChain.magmaSneakNow(false, true));
     }
 }

@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.api.pathing.movement.MovementStatus;
@@ -25,8 +26,13 @@ public class LadderClutchFallTask extends Task {
     // how far down we look for the floor. a ladder placed that far up is no good anyway, LadderClutch says so
     private static final double LOOK_DOWN = 256;
 
+    // a fall is seconds and the ladder pickup has its own clock. this chain sits above the user's task and holds the wheel till we
+    // say done, so whatever goes wrong in here it doesn't get to park the bot for the rest of the game
+    private static final int MAX_TICKS = 600;
+
     private final MovementFall fall;
     private boolean done;
+    private int ticks;
 
     private LadderClutchFallTask(MovementFall fall) {
         this.fall = fall;
@@ -88,6 +94,12 @@ public class LadderClutchFallTask extends Task {
     protected Task onTick(AltoClef mod) {
         // the floor we probed is a guess: a hit pushes us over a stream, or water flows in under us. nothing on the wall
         // yet means nothing to fetch, so just let go. once something's up updateUnplanned sees the water and goes for it
+        if (++ticks > MAX_TICKS) {
+            Debug.logInternal("ladder clutch: still not done after " + MAX_TICKS / 20 + " s, letting go");
+            mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();
+            done = true;
+            return null;
+        }
         LocalPlayer player = mod.getPlayer();
         boolean airborne = !player.onGround() && !player.isInWater() && player.getDeltaMovement().y < 0;
         if (airborne && !fall.clutchClicked() && waterSavesIt(mod)) {

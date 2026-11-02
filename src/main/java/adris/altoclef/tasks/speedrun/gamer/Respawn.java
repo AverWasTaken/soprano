@@ -41,6 +41,11 @@ public final class Respawn {
         return message.contains(LOST) ? Line.LOST : Line.OTHER;
     }
 
+    // the run that's on, null otherwise
+    public static RunState boundRun() {
+        return bound;
+    }
+
     public static void bind(RunState state) {
         bound = state;
     }
@@ -140,17 +145,27 @@ public final class Respawn {
         return bed == null || start == null || Math.hypot(bed.x - start.x, bed.z - start.z) > NEAR_STRONGHOLD;
     }
 
-    // the fallback bed by the stronghold: we stand at its start, nothing holds our respawn near it, and a bed is in the bag. the
-    // caller latches it, once per room search and not again mid dig
-    public static boolean wantRoomBed(RunState state, boolean atStart, int bedsInBag) {
-        return atStart && bedsInBag > 0 && state.strongholdStart != null && nothingNearStronghold(state);
+    // is the standing bed worth skipping a night for. in END_PREP only one by the portal is, any other is the thing the prep is fixing.
+    // ROOM and OPEN only one by the stronghold, an old bed back at the nether portal does nothing for a death down there
+    public static boolean worthKeeping(GamerPhase phase, RunState state) {
+        return switch (phase) {
+            case END_PREP -> coversPortal(state);
+            case ROOM, OPEN -> !nothingNearStronghold(state);
+            default -> true;
+        };
     }
 
-    // the bed by the overworld nether portal: a bed we already carry (the wool is the dragon's, none gets made for this), and nothing
+    // the fallback bed by the stronghold: we stand at its start, nothing holds our respawn near it, and a bed is to spare (the End's
+    // beds are not, EndGear.surplusBeds). the caller latches it, once per room search and not again mid dig
+    public static boolean wantRoomBed(RunState state, boolean atStart, int spareBeds) {
+        return atStart && spareBeds > 0 && state.strongholdStart != null && nothingNearStronghold(state);
+    }
+
+    // the bed by the overworld nether portal: a bed we carry to spare (the End's beds are not, none gets made for this), and nothing
     // holding our respawn near that portal already. night is fine, the click sets the spawn before the sleep check and we just
     // sleep through it. the caller latches it, once per run
-    public static boolean wantPortalBed(RunState state, int bedsInBag, double portalX, double portalZ) {
-        if (bedsInBag <= 0) {
+    public static boolean wantPortalBed(RunState state, int spareBeds, double portalX, double portalZ) {
+        if (spareBeds <= 0) {
             return false;
         }
         RunState.Pos bed = bed(state);

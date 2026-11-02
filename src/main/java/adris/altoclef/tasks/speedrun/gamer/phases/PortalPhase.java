@@ -11,6 +11,7 @@ import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
+import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -387,7 +388,8 @@ public class PortalPhase implements PhaseHandler {
             return null;
         }
         portalBedDecided = true;
-        if (!Respawn.wantPortalBed(ctx.state(), ctx.facts().count(ItemHelper.BED), at.getX(), at.getZ())) {
+        int reserve = EndGear.bedTarget(ctx.cfg().end, EndGear.wantSpawnBed(ctx.state(), ctx.cfg().end));
+        if (!Respawn.wantPortalBed(ctx.state(), EndGear.surplusBeds(ctx.facts().bedsInBag(), reserve), at.getX(), at.getZ())) {
             return null;
         }
         portalBed = new PlaceBedAndSetSpawnTask().spawnOnly().awayFrom(at, 4);

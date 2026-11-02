@@ -94,6 +94,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private Task _breathTask;
     private BreathDodge.Move _breathMove = BreathDodge.Move.NONE;
     private BreathDodge.Move _breathEscalated = BreathDodge.Move.NONE;
+    private int _breathClearTicks;
     private Vec3 _breathRunFrom;
     private int _breathRunTicks;
 
@@ -231,16 +232,18 @@ public class WorldSurvivalChain extends SingleTaskChain {
         return Float.NEGATIVE_INFINITY;
     }
 
-    // pure so it can be tested: on the ground, on magma, and nobody walking us anywhere
-    static boolean magmaSneakNow(boolean onGround, boolean onMagma, boolean pathing) {
-        return onGround && onMagma && !pathing;
+    // pure so it can be tested: on magma and nobody walking us anywhere. onGround has no say: sneaking on a ladder cancels the
+    // downward motion, so resting right on the magma there is no collision and it reads false. letting go for that means the
+    // next tick lands with shift up, and that's the burn. and shift in the air over magma costs nothing
+    static boolean magmaSneakNow(boolean onMagma, boolean pathing) {
+        return onMagma && !pathing;
     }
 
     private void handleMagmaSneak(AltoClef mod) {
         var pathing = mod.getClientBaritone().getPathingBehavior();
         boolean onMagma = mod.getWorld().getBlockState(mod.getPlayer().getOnPos()).is(Blocks.MAGMA_BLOCK);
         // (a search still thinking is not a walk: we are standing here until the path actually starts)
-        if (magmaSneakNow(mod.getPlayer().onGround(), onMagma, pathing.isPathing())) {
+        if (magmaSneakNow(onMagma, pathing.isPathing())) {
             _magmaKeys = mod.getInputControls();
             // pinned: mining and placing tasks let go of sneak by hand every tick they run, and one tick up is a burn
             _magmaKeys.pin(Input.SNEAK, MAGMA_SNEAK);
@@ -374,6 +377,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet), spareWater(mod));
         move = escalateStuckRun(mod, feet, move);
+        _breathClearTicks = move == BreathDodge.Move.NONE ? _breathClearTicks + 1 : 0;
+        move = BreathDodge.follow(move, _breathMove, _breath.isNearDragonBreath(feet, BreathDodge.CLEAR_BLOCKS), _breathClearTicks,
+                mod.getPlayer().onGround(), mod.getPlayer().getDeltaMovement().y);
         // a drop is committed: sliding half a block along the pillar top would otherwise see the pillar as floor and swap
         // it for a run before we ever fall
         if (_breathMove == BreathDodge.Move.DROP && inCloud && mod.getPlayer().onGround()) {

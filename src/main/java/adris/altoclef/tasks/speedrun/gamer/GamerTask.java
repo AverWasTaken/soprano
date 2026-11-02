@@ -124,7 +124,6 @@ public class GamerTask extends Task {
     // the server's word on where we respawn (Respawn), written into the state as it comes
     private RespawnWatch respawnWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
-    private boolean wantWalkOnPortal;
 
     private double lastSaveSeconds;
     private long lastWriteMillis;
@@ -262,7 +261,8 @@ public class GamerTask extends Task {
         if (!pushed) {
             applyBehaviour(mod);
         }
-        mod.getExtraBaritoneSettings().canWalkOnEndPortal(wantWalkOnPortal);
+        // never handed back from memory: the phase that wants the portal says so on its own tick, after it looked at the bag
+        mod.getExtraBaritoneSettings().canWalkOnEndPortal(false);
         // back from an interrupt: same run, same phase, the stall timer should not blame the chain that had the wheel. the
         // facts are stale in here (only engineTick refreshes them), so the forgiving happens on the first real tick
     }
@@ -272,6 +272,8 @@ public class GamerTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         if (isInterrupting()) {
+            // whoever has the wheel now has no business on the portal, and may be driving a body that just respawned with an empty bag
+            mod.getExtraBaritoneSettings().canWalkOnEndPortal(false);
             if (begun && interruptedAt < 0) {
                 interruptedAt = machine.now();
                 // a recovery that got interrupted stops giving time back, the excuse below covers the stall
@@ -426,7 +428,6 @@ public class GamerTask extends Task {
             Debug.logInternal("gamer: stopTracking " + e);
         }
         try {
-            wantWalkOnPortal = false;
             mod.getExtraBaritoneSettings().canWalkOnEndPortal(false);
             releaseRunSettings();
         } catch (RuntimeException e) {
@@ -1138,6 +1139,9 @@ public class GamerTask extends Task {
         if (live != null) {
             live.onRespawn();
         }
+        // the walk in was decided by the body that had the beds. this one has an empty bag, and the recovery walks wherever it likes
+        // before END_PREP gets another look
+        mod.getExtraBaritoneSettings().canWalkOnEndPortal(false);
         // the same number the recovery decides on, and who told us about it
         double blocks = flatBlocksTo(deathPos);
         Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
@@ -1161,6 +1165,7 @@ public class GamerTask extends Task {
         death.cause = deathCause.name().toLowerCase(Locale.ROOT);
         state.deaths.add(death);
         state.deathsThisPhase++;
+        WoolHunt.onDeath(state);
         // dying on the way to a pile is the end of that trip: the second pile is not worth a third life
         boolean wasOnTrip = state.netherTrip != null;
         if (wasOnTrip) {
@@ -1452,9 +1457,9 @@ public class GamerTask extends Task {
         return prep;
     }
 
-    // the spawn bed the night rules protect. in END_PREP only one by the portal is worth it, any other is the thing the prep is fixing
+    // the spawn bed the night rules protect
     private boolean spawnBedHeld(AltoClef mod) {
-        return spawnBedStands(mod) && (state.phase != GamerPhase.END_PREP || Respawn.coversPortal(state));
+        return spawnBedStands(mod) && Respawn.worthKeeping(state.phase, state);
     }
 
     // the overworld respawn bed we know of is still standing where we put it (unloaded counts as still there)
@@ -1754,7 +1759,6 @@ public class GamerTask extends Task {
 
         @Override
         public void walkOnEndPortal(boolean on) {
-            wantWalkOnPortal = on;
             if (mod != null) {
                 mod.getExtraBaritoneSettings().canWalkOnEndPortal(on);
             }

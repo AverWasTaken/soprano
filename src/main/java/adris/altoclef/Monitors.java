@@ -204,7 +204,7 @@ public final class Monitors {
                 | (input.sprint() ? FallTrace.SPRINT : 0) | (input.jump() ? FallTrace.JUMP : 0) | (input.shift() ? FallTrace.SNEAK : 0));
         Goal goal = mod.getClientBaritone().getPathingBehavior().getGoal();
         fallTrace.push(player.getX(), player.getY(), player.getZ(), move.x, move.y, move.z, player.onGround(), (float) player.fallDistance, keys,
-                player.getYRot(), player.getXRot(), player.verticalCollision, player.verticalCollisionBelow, player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, movement == null ? null : movement.status(), place, goal,
+                player.getYRot(), player.getXRot(), player.verticalCollision, player.verticalCollisionBelow, player.level().getBlockState(underFeet.set(player.getBlockX(), player.getBlockY() - 1, player.getBlockZ())).getBlock(), movement, movement == null ? null : movement.status(), place, goal, player.input.getClass(),
                 hit, attacker == null ? -1 : attacker.getId(), attacker == null ? 0 : attacker.getX(), attacker == null ? 0 : attacker.getY(),
                 attacker == null ? 0 : attacker.getZ());
         boolean nether = WorldHelper.getCurrentDimension() == baritone.api.utils.Dimension.NETHER;
@@ -246,7 +246,7 @@ public final class Monitors {
                 player.getFoodData().getSaturationLevel(), player.getArmorValue(), held.isEmpty() ? null : name(held.getItem()),
                 carried.isEmpty() ? null : name(carried.getItem()), carried.getCount(), at.getX(), at.getY(), at.getZ(),
                 WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getClass().getSimpleName(), task, gamer,
-                StandReport.pathWord(mod.getClientBaritone()), standWatch.stillTicks());
+                StandReport.pathWord(mod.getClientBaritone()), standWatch.stillTicks(), player.isInWater());
     }
 
     private static String name(Item item) {
