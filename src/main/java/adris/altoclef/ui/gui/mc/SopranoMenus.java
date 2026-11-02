@@ -1,7 +1,10 @@
 package adris.altoclef.ui.gui.mc;
 
+import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Safe;
 import baritone.Baritone;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.TitleScreen;
 
 // whether our boot screen and title screen are on. the very first frame of the boot overlay is drawn from inside
 // Minecraft's constructor, before baritone (and its settings file) exists, so until the constructor returns the answer
@@ -27,6 +30,22 @@ public final class SopranoMenus {
         } catch (Throwable t) {
             Safe.report("menus setting", t);
             return true;
+        }
+    }
+
+    // the switch in the bottom right of the title. same road the speaker button takes, so it lands in settings.txt. a
+    // title decides whose it is once, on its first init, so going from one look to the other is a brand new screen.
+    // that's also why flipping it twenty times in a row can't stack anything up
+    static void flip() {
+        try {
+            Result r = new McSettings().toggle("guiMenus");
+            if (!r.ok()) {
+                Safe.report("menus switch", new IllegalStateException(r.message()));
+                return;
+            }
+            Minecraft.getInstance().gui.setScreen(new TitleScreen());
+        } catch (Throwable t) {
+            Safe.report("menus switch", t);
         }
     }
 

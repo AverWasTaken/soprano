@@ -35,7 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 
 // the title screen, ours: blurred panorama, a backdrop, the brand block, a dock of tiles that grow under the mouse,
-// three round corner buttons and the two corner lines. one of these lives as long as its TitleScreen (MixinTitleScreen
+// three round corner buttons, the two corner lines and the menu switch. one of these lives as long as its TitleScreen (MixinTitleScreen
 // keeps it), so the entry animation, the springs and the parallax survive init re-running on resize and when the
 // boot overlay re-inits the screen. vanilla's buttons stay in the screen, just invisible, and each gets a TitleTile
 // that presses it (the music button's is one of our own that never joins the screen). the layout and animation
@@ -43,7 +43,7 @@ import java.util.Set;
 // friend request badges and the realms notification icons are dropped for now, they'd need vanilla's sprites
 public final class TitleMenu {
 
-    private enum Role { PLAY, SECOND, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, MUSIC, COPYRIGHT }
+    private enum Role { PLAY, SECOND, REALMS, EXTRA, OPTIONS, QUIT, LANGUAGE, ACCESSIBILITY, MUSIC, COPYRIGHT, MENU_SWITCH }
 
     private static final class Piece {
         final TitleTile tile;
@@ -97,6 +97,13 @@ public final class TitleMenu {
     private static final int COPYRIGHT = 0x99FFFFFF;
     private static final int TIP = 0xB3FFFFFF;
 
+    // the menu switch, design px. the kit's Toggle is 34/18/14, this is the same shape a size down for 14 px text
+    private static final int SWITCH_H = 18;
+    private static final int SWITCH_GAP = 8;
+    private static final int TRACK_W = 28;
+    private static final int TRACK_H = 16;
+    private static final int KNOB = 12;
+
     // the backdrop is all soft gradients, so it bakes small once and stretches
     private static final int SHADE_W = 480;
     private static final int SHADE_H = 270;
@@ -114,6 +121,8 @@ public final class TitleMenu {
     private Piece music;
     private boolean musicOn;
     private Piece copyright;
+    private Piece menuSwitch;
+    private boolean menuOn;
     private final Map<String, Spring> springs = new HashMap<>();
     private String mpReason;
     private int guiScale = 1;
@@ -218,6 +227,7 @@ public final class TitleMenu {
         copyright = null;
         classify(children);
         music = musicPiece();
+        menuSwitch = menuSwitchPiece();
     }
 
     // ours, not vanilla's: a button that never joins the screen, it's only there so the tile has something to press
@@ -241,6 +251,32 @@ public final class TitleMenu {
         Component msg = Component.literal(music.label);
         music.tile.target.setMessage(msg);
         music.tile.setMessage(msg);
+    }
+
+    // same trick as musicPiece, a button that never joins the screen. the piece's label is what's drawn next to the
+    // switch, the tile's message is what the narrator reads, that one needs the state too
+    private Piece menuSwitchPiece() {
+        boolean on = SopranoMenus.enabled();
+        Button b = Button.builder(menuMessage(on), btn -> SopranoMenus.flip()).build();
+        menuOn = on;
+        return new Piece(new TitleTile(b, guiScale), Role.MENU_SWITCH, null, 0, 0, "menuSwitch", "Soprano menu", false);
+    }
+
+    // the click gui can flip guiMenus while this screen waits underneath it. the look waits for the next open, the
+    // switch shows the setting all the same, same as syncMusic
+    private void syncMenuSwitch() {
+        boolean on = SopranoMenus.enabled();
+        if (menuSwitch == null || on == menuOn) {
+            return;
+        }
+        menuOn = on;
+        Component msg = menuMessage(on);
+        menuSwitch.tile.target.setMessage(msg);
+        menuSwitch.tile.setMessage(msg);
+    }
+
+    private static Component menuMessage(boolean on) {
+        return Component.literal("Soprano menu: " + (on ? "on" : "off"));
     }
 
     // what a press would do, like a play/pause button
@@ -271,9 +307,16 @@ public final class TitleMenu {
         return out;
     }
 
-    // the copyright line goes after the update card in the tab order
-    public TitleTile tileAfterCard() {
-        return copyright == null ? null : copyright.tile;
+    // the bottom right corner goes after the update card in the tab order, the switch first because it's on top
+    public List<TitleTile> tilesAfterCard() {
+        List<TitleTile> out = new ArrayList<>();
+        if (menuSwitch != null) {
+            out.add(menuSwitch.tile);
+        }
+        if (copyright != null) {
+            out.add(copyright.tile);
+        }
+        return out;
     }
 
     // buttons other mods added after our init tail (fabric's after init event, mod menu). collected before anything
@@ -291,14 +334,13 @@ public final class TitleMenu {
         }
         hidden.clear();
         List<TitleTile> ours = tilesBeforeCard();
-        if (copyright != null) {
-            ours.add(copyright.tile);
-        }
+        ours.addAll(tilesAfterCard());
         dock.clear();
         language = null;
         accessibility = null;
         music = null;
         copyright = null;
+        menuSwitch = null;
         return ours;
     }
 
@@ -360,8 +402,8 @@ public final class TitleMenu {
             case LANGUAGE -> new Piece(tile, role, Icon.LANGUAGE, 0, 0, "language", label, false);
             case ACCESSIBILITY -> new Piece(tile, role, Icon.ACCESSIBILITY, 0, 0, "accessibility", label, false);
             case COPYRIGHT -> new Piece(tile, role, null, 0, 0, "copyright", label, false);
-            // roleOf never says music, the music button isn't a vanilla one
-            case EXTRA, MUSIC -> new Piece(tile, role, Icon.PUZZLE, TILE_0, TILE_1, extraId(label), label, false);
+            // roleOf never says music or the switch, those aren't vanilla's
+            case EXTRA, MUSIC, MENU_SWITCH -> new Piece(tile, role, Icon.PUZZLE, TILE_0, TILE_1, extraId(label), label, false);
         };
         switch (role) {
             case LANGUAGE -> language = p;
@@ -563,6 +605,9 @@ public final class TitleMenu {
                 hover = hit(music);
             }
             if (hover == null) {
+                hover = hit(menuSwitch);
+            }
+            if (hover == null) {
                 hover = hit(copyright);
             }
         }
@@ -683,13 +728,27 @@ public final class TitleMenu {
         int a11yX = musicX - gap - b;
         int langX = a11yX - gap - b;
         syncMusic();
+        syncMenuSwitch();
         corner(music, musicX, inset, b);
         corner(accessibility, a11yX, inset, b);
         corner(language, langX, inset, b);
+        int ch = Math.round(c.lineHeight(copyStyle));
+        if (menuSwitch != null) {
+            // the row above the copyright line. the dock's pill ends 72 design px up (70 with the parallax) and this
+            // row's top is about 65 up, so once the entry animation has lifted the dock the two can't touch
+            int sh = r(SWITCH_H);
+            int sw = (int) Math.ceil(c.measure(menuSwitch.label, copyStyle)) + r(SWITCH_GAP) + r(TRACK_W);
+            menuSwitch.tile.mirror();
+            menuSwitch.x = w - inset - sw;
+            menuSwitch.y = h - inset - ch - r(4) - sh;
+            menuSwitch.w = sw;
+            menuSwitch.h = sh;
+            menuSwitch.r = sh / 2;
+            menuSwitch.tile.place(menuSwitch.x, menuSwitch.y, sw, sh);
+        }
         if (copyright != null) {
             copyright.tile.mirror();
             int cw = (int) Math.ceil(c.measure(copyright.label, copyStyle));
-            int ch = Math.round(c.lineHeight(copyStyle));
             copyright.x = w - inset - cw;
             copyright.y = h - inset - ch;
             copyright.w = cw;
@@ -752,6 +811,7 @@ public final class TitleMenu {
         paintDock(c);
         paintCorners(c);
         paintLines(c);
+        paintMenuSwitch(c);
         Piece focus = focused();
         paintRing(c, focus);
         paintLabel(c, focus, now);
@@ -851,6 +911,32 @@ public final class TitleMenu {
         }
     }
 
+    // the kit's Toggle at copyright line size, plain text next to it: this is a preference, not a seventh dock tile.
+    // it never slides, a press swaps the whole screen before there'd be a frame to slide in
+    private void paintMenuSwitch(Canvas c) {
+        Piece p = menuSwitch;
+        if (p == null) {
+            return;
+        }
+        boolean lit = hover == p || focused() == p;
+        c.text(p.label, p.x, p.y + Math.round((p.h - c.lineHeight(copyStyle)) / 2f) + c.ascent(copyStyle), copyStyle,
+                Theme.fade(lit ? WHITE : COPYRIGHT, eCorner));
+        int tw = r(TRACK_W);
+        int th = r(TRACK_H);
+        int tx = p.x + p.w - tw;
+        int ty = p.y + Math.round((p.h - th) / 2f);
+        if (menuOn) {
+            c.fillRoundRect(tx, ty, tw, th, th / 2f, Theme.fade(lit ? Theme.ACCENT_HOVER : Theme.ACCENT, eCorner));
+        } else {
+            c.fillRoundRect(tx, ty, tw, th, th / 2f, Theme.fade(lit ? GLASS_HOVER : GLASS, eCorner));
+            c.strokeRoundRect(tx, ty, tw, th, th / 2f, Theme.fade(HAIRLINE, eCorner));
+        }
+        int knob = r(KNOB);
+        int gap = Math.round((th - knob) / 2f);
+        int kx = menuOn ? tx + tw - gap - knob : tx + gap;
+        c.fillRoundRect(kx, ty + gap, knob, knob, knob / 2f, Theme.fade(Theme.ON_ACCENT, eCorner));
+    }
+
     // keyboard focus only: a click focuses the widget too, and that must not put a ring on it
     private Piece focused() {
         if (!mc.getLastInputType().isKeyboard()) {
@@ -870,6 +956,9 @@ public final class TitleMenu {
         if (music != null && music.tile.isFocused()) {
             return music;
         }
+        if (menuSwitch != null && menuSwitch.tile.isFocused()) {
+            return menuSwitch;
+        }
         if (copyright != null && copyright.tile.isFocused()) {
             return copyright;
         }
@@ -881,7 +970,7 @@ public final class TitleMenu {
         if (p == null || p == copyright) {
             return;
         }
-        boolean corner = p == language || p == accessibility || p == music;
+        boolean corner = p == language || p == accessibility || p == music || p == menuSwitch;
         int col = Theme.fade(RING, corner ? eCorner : eDock);
         int off = r(3);
         for (int k = 2; k >= 1; k--) {
@@ -939,7 +1028,8 @@ public final class TitleMenu {
     }
 
     private boolean labelled(Piece p) {
-        return p != null && p != copyright;
+        // the switch has its name written right next to it, a label on top would just say it twice
+        return p != null && p != copyright && p != menuSwitch;
     }
 
     // greedy word wrap, the same one the mock uses for the disabled reason

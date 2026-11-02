@@ -19,11 +19,13 @@ package baritone.launch.mixins;
 
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.mc.MenuMusic;
+import adris.altoclef.ui.gui.mc.MenuSwitchWidget;
 import adris.altoclef.ui.gui.mc.TitleMenu;
 import adris.altoclef.ui.gui.mc.TitleTile;
 import adris.altoclef.ui.gui.mc.UpdateCardWidget;
 import baritone.utils.update.Updater;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
@@ -108,14 +110,16 @@ public abstract class MixinTitleScreen extends Screen {
         }
         if (dressed) {
             try {
-                TitleTile copyright = menu.tileAfterCard();
-                if (copyright != null) {
-                    addRenderableWidget(copyright);
+                for (TitleTile tile : menu.tilesAfterCard()) {
+                    addRenderableWidget(tile);
                 }
             } catch (Throwable t) {
-                Safe.report("title menu copyright", t);
+                Safe.report("title menu corner", t);
                 soprano$undress(menu);
             }
+        }
+        if (soprano$menu == null) {
+            soprano$vanillaSwitch();
         }
     }
 
@@ -193,6 +197,24 @@ public abstract class MixinTitleScreen extends Screen {
         }
     }
 
+    // a vanilla title still needs a way back to ours. undress can land here in the middle of an init and again at the
+    // end of it, and a second switch on top of the first is two clicks that cancel out
+    @Unique
+    private void soprano$vanillaSwitch() {
+        try {
+            for (GuiEventListener child : children()) {
+                if (child instanceof MenuSwitchWidget) {
+                    return;
+                }
+            }
+            MenuSwitchWidget widget = new MenuSwitchWidget(width, height);
+            widget.fitAround(children());
+            addRenderableWidget(widget);
+        } catch (Throwable t) {
+            Safe.report("title menu switch", t);
+        }
+    }
+
     // vanilla back: our hidden buttons visible again, our tiles out. the chrome renderable can't be taken out (Screen
     // only removes listeners), it draws nothing once the menu is broken
     @Unique
@@ -207,5 +229,6 @@ public abstract class MixinTitleScreen extends Screen {
         } catch (Throwable t) {
             Safe.report("title menu undress", t);
         }
+        soprano$vanillaSwitch();
     }
 }
