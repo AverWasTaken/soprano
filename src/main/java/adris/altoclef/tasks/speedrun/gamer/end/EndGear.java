@@ -68,14 +68,6 @@ public final class EndGear {
         return bagBeds >= cfg.beds;
     }
 
-    // the spawn bed goes down before the bed errand only when placing it cannot leave the End short: a spare beyond the required
-    // ones, a source that replaces it (BedPlan MINE, or CRAFT with the wool for what the placing leaves missing), or enough beds
-    // that the beds strategy still has its RESUME_BEDS after. otherwise the errand runs first, and when it gives up the
-    // spawn bed is skipped (spawnBedAffordable). nothing in the bag = nothing to place
-    public static boolean spawnFirst(int bagBeds, int required, boolean replaceable) {
-        return bagBeds >= 1 && (bagBeds > required || replaceable || bagBeds - 1 >= DragonStrat.RESUME_BEDS);
-    }
-
     // the spawn bed goes down once the bag covers it too, or right away when we are by the portal anyway (a death on a long search
     // should respawn here, and the gate makes sure it gets replaced). from across the map it waits, that's a long walk back for one
     // bed with the search still to finish. nothing in the bag = nothing to place
@@ -244,7 +236,7 @@ public final class EndGear {
         return null;
     }
 
-    // bed self damage is why this exists, see DragonStrat
+    // the walk in and the end of the bridge are where this helps, the pillar fight itself doesn't ask
     public static boolean armorLow(GamerFacts facts, EndConfig cfg) {
         return facts.armorPoints() < cfg.bedMinArmor;
     }

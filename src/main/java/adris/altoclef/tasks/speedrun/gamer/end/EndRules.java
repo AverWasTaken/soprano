@@ -9,7 +9,17 @@ import java.util.Locale;
 
 // small pure questions about the End that both handlers and EndGear ask, all over RunState
 public final class EndRules {
+    // end stone for the stand's floor comes from around here, the bot isn't leaving the fountain for it
+    public static final int END_STONE_RANGE = 12;
+    public static final int END_STONE_DROP = 6;
+    public static final int END_STONE_RISE = 3;
+
     private EndRules() {
+    }
+
+    // offsets from our feet
+    public static boolean endStoneClose(int dx, int dy, int dz) {
+        return Math.abs(dx) <= END_STONE_RANGE && Math.abs(dz) <= END_STONE_RANGE && dy >= -END_STONE_DROP && dy <= END_STONE_RISE;
     }
 
     // RunState.Death.dimension is whatever the engine wrote ("END", "the_end", "minecraft:the_end"), none of the others has "end" in it

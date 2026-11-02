@@ -60,6 +60,16 @@ public class EndPhasesTest {
         assertTrue(prep.stallSeconds() > 0);
     }
 
+    @Test
+    public void endStoneOnlyCountsRightAroundUs() {
+        assertTrue(EndRules.endStoneClose(0, -1, 0));
+        assertTrue(EndRules.endStoneClose(12, -6, -12));
+        assertFalse(EndRules.endStoneClose(13, -1, 0));
+        // a long drop for a stack is how we'd miss the landing
+        assertFalse(EndRules.endStoneClose(0, -7, 0));
+        assertFalse(EndRules.endStoneClose(0, -44, 0));
+    }
+
     private void poke(String field, Object v) throws Exception {
         var f = prep.getClass().getDeclaredField(field);
         f.setAccessible(true);

@@ -94,6 +94,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private Task _breathTask;
     private BreathDodge.Move _breathMove = BreathDodge.Move.NONE;
     private BreathDodge.Move _breathEscalated = BreathDodge.Move.NONE;
+    private int _breathClearTicks;
     private Vec3 _breathRunFrom;
     private int _breathRunTicks;
 
@@ -374,6 +375,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         BreathDodge.Move move = BreathDodge.choose(inCloud, mod.getPlayer().onGround(), floorAround(mod, feet), spareWater(mod));
         move = escalateStuckRun(mod, feet, move);
+        _breathClearTicks = move == BreathDodge.Move.NONE ? _breathClearTicks + 1 : 0;
+        move = BreathDodge.follow(move, _breathMove, _breath.isNearDragonBreath(feet, BreathDodge.CLEAR_BLOCKS), _breathClearTicks,
+                mod.getPlayer().onGround(), mod.getPlayer().getDeltaMovement().y);
         // a drop is committed: sliding half a block along the pillar top would otherwise see the pillar as floor and swap
         // it for a run before we ever fall
         if (_breathMove == BreathDodge.Move.DROP && inCloud && mod.getPlayer().onGround()) {

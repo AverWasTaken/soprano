@@ -262,6 +262,18 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void theOldEndBlockLinesMoveWithTheDefaultButAChosenOneStays() throws IOException {
+        write("{\"version\": 11, \"end\": {\"minBuildBlocks\": 40, \"endMinBlocks\": 20}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(new GamerConfig().end.minBuildBlocks, c.end.minBuildBlocks);
+        assertEquals(new GamerConfig().end.endMinBlocks, c.end.endMinBlocks);
+        write("{\"version\": 11, \"end\": {\"minBuildBlocks\": 60, \"endMinBlocks\": 12}}");
+        c = GamerConfigs.load();
+        assertEquals(60, c.end.minBuildBlocks);
+        assertEquals(12, c.end.endMinBlocks);
+    }
+
+    @Test
     public void aV2FileIsSavedAsTheCurrentVersionWithABackup() throws IOException {
         write(V2_FILE);
         GamerConfigs.load();
@@ -394,7 +406,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 12;
+    private static final int PINNED_VERSION = 13;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

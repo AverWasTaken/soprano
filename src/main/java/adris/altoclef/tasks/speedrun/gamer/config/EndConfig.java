@@ -13,22 +13,21 @@ public class EndConfig {
     // an errand (or the walk back) farther than this from the portal wants the food floor first, and the phase budget waits for the walk
     public double farErrandBlocks = 150;
     public int buildBlocks = 64;
-    // the gate: below this we collect up to buildBlocks. 40 because the arrival platform is ~30 void blocks from the island
-    public int minBuildBlocks = 40;
-    // inside the End: below this and the dragon not perched, mine end stone
-    public int endMinBlocks = 20;
+    // the gate: below this we collect up to buildBlocks. the bridge from the arrival platform eats ~30, what's left is the fight's
+    public int minBuildBlocks = 48;
+    // inside the End: below this and the dragon not coming down, mine end stone close by. all the fight needs is a floor under the stand
+    public int endMinBlocks = 8;
     // cooked steak is 8, the fight is minutes long so this is only here so we do not walk in starving
     public int minFoodUnits = 24;
-    // armor points below this and the bed strat is not used (bed self damage), the sword instead
+    // END_PREP wants this many armor points for the walk in. the bed fight itself doesn't ask, the pillar takes the blast
     public int bedMinArmor = 10;
-    // every dragon death asks for this many more armor points before beds are tried again
+    // nothing reads this since beds stopped caring about armor, kept so old config files still load
     public int bedArmorPerAttempt = 4;
     // END_PREP below bedMinArmor makes iron armor for this long (ticks the step ran), then walks to the End anyway
     public double armorFloorSeconds = 360;
     // dragon fight attempts (a death sends us back to END_PREP) before the run is STUCK
     public int attempts = 3;
-    // nothing reads this since the bed went on the floor under the head (BedPairSearch picks the cells), kept so old
-    // config files still load
+    // nothing reads this (PillarBed.HEAD_RANGE is the real one), kept so old config files still load
     public double dragonHeadCloseEnoughClickBedRange = 5.3;
     // exit portal not needed: chunk (0,0) loaded and the dragon entity gone this long = dead
     public double dragonGoneSeconds = 5;

@@ -424,25 +424,6 @@ public class EndGearTest {
     }
 
     @Test
-    public void spawnBedGoesFirstOnlyWhenItCannotLeaveTheEndShort() {
-        int req = 5;
-        // nothing in the bag, nothing to place
-        assertFalse(EndGear.spawnFirst(0, req, true));
-        assertFalse(EndGear.spawnFirst(0, 0, false));
-        // 1-4 beds and no source: keep them
-        assertFalse(EndGear.spawnFirst(1, req, false));
-        assertFalse(EndGear.spawnFirst(3, req, false));
-        // a source that covers it
-        assertTrue(EndGear.spawnFirst(1, req, true));
-        assertTrue(EndGear.spawnFirst(3, req, true));
-        // a spare beyond the required ones
-        assertTrue(EndGear.spawnFirst(6, req, false));
-        // RESUME_BEDS (3) still left after placing one, even with no source
-        assertTrue(EndGear.spawnFirst(DragonStrat.RESUME_BEDS + 1, 9, false));
-        assertFalse(EndGear.spawnFirst(DragonStrat.RESUME_BEDS, 9, false));
-    }
-
-    @Test
     public void theBedPlanNeverComesUpEmpty() {
         for (int wool = 0; wool < 4; wool++) {
             for (boolean known : new boolean[]{true, false}) {

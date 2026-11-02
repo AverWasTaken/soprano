@@ -17,7 +17,8 @@ public class GamerConfig {
     // (10 moved the End beds 8 -> 5 and dropped the wool_beds stock-up, a saved 8 is the old default and goes along)
     // (11 moved the floor eyes 12 -> 13, one spare for the first trip, a saved 12 is the old default and goes along)
     // (12 moved the End beds to 9 and the sheep clock 3 -> 6 minutes, a saved 5, 8 or 3 is an old default and goes along)
-    public static final int VERSION = 12;
+    // (13 moved the End's block lines, minBuildBlocks 40 -> 48 and endMinBlocks 20 -> 8, a saved 40 or 20 is the old default and goes along)
+    public static final int VERSION = 13;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;
