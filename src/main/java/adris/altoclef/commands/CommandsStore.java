@@ -1,5 +1,6 @@
 package adris.altoclef.commands;
 
+import adris.altoclef.commands.graph.GraphStore;
 import adris.altoclef.util.helpers.ConfigHelper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 // CustomTasks.json, for #custom and the commands tab both. not ConfigHelper: its load writes the file back every time
@@ -62,6 +64,8 @@ public final class CommandsStore {
 
     // the folder is asked for every time, the game dir doesn't exist when this class loads
     private final Supplier<Path> file;
+    // an id the graphs in routines/ already use. ids are unique across both, #custom only takes one word
+    private final Predicate<String> takenElsewhere;
 
     private boolean loaded;
     private boolean readExists;
@@ -76,12 +80,17 @@ public final class CommandsStore {
     private byte[] baselineBytes;
 
     CommandsStore(Supplier<Path> file) {
+        this(file, id -> false);
+    }
+
+    CommandsStore(Supplier<Path> file, Predicate<String> takenElsewhere) {
         this.file = file;
+        this.takenElsewhere = takenElsewhere;
     }
 
     public static synchronized CommandsStore get() {
         if (shared == null) {
-            shared = new CommandsStore(() -> ConfigHelper.getConfigFolder().resolve(PATH));
+            shared = new CommandsStore(() -> ConfigHelper.getConfigFolder().resolve(PATH), id -> GraphStore.enabled() && GraphStore.get().exists(id));
         }
         return shared;
     }
@@ -153,6 +162,9 @@ public final class CommandsStore {
             } else if (other.equalsIgnoreCase(id)) {
                 return Result.fail("there is already one called " + other);
             }
+        }
+        if (!id.equalsIgnoreCase(previousId) && takenElsewhere.test(id)) {
+            return Result.fail("there is already one called " + id);
         }
         String name = routine.name().trim().replaceAll("\\s+", " ");
         String description = routine.description() == null ? "" : routine.description().trim();

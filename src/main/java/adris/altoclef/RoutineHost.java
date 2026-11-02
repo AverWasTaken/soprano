@@ -5,6 +5,7 @@ import adris.altoclef.commands.CrossDimensionGoto;
 import adris.altoclef.commands.GameChecks;
 import adris.altoclef.commands.RoutineLines;
 import adris.altoclef.commands.RoutineStep;
+import adris.altoclef.tasks.misc.ConditionWaitTask;
 import adris.altoclef.tasks.movement.RoutineGotoTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -12,6 +13,7 @@ import baritone.altoclef.AltoClefBridge;
 import baritone.api.command.exception.CommandException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 // RoutineRunner's game side: how each kind of step starts, and what "done" means for it
 final class RoutineHost implements RoutineRunner.Host {
@@ -69,6 +71,45 @@ final class RoutineHost implements RoutineRunner.Host {
         Task t = task;
         mod.runUserTask(t, outcome -> end.ended(outcome, t instanceof RoutineGotoTask g ? g.failure() : null));
         return RoutineRunner.Start.WAITING;
+    }
+
+    @Override
+    public RoutineRunner.Start startQuiet(RoutineStep step, RoutineRunner.StepEnd end) {
+        AltoClef mod = AltoClefBridge.instanceOrNull();
+        if (mod == null) {
+            return start(step, end);
+        }
+        mod.getUserTaskChain().signalNextTaskQuiet();
+        try {
+            return start(step, end);
+        } finally {
+            // a raw line that never started a task must not make somebody else's next one quiet
+            mod.getUserTaskChain().clearNextTaskQuiet();
+        }
+    }
+
+    @Override
+    public RoutineRunner.Start startWait(Supplier<RoutineRunner.Result> poll, double timeoutSeconds, String label, RoutineRunner.WaitEnd end) {
+        AltoClef mod;
+        try {
+            mod = AltoClefBridge.require();
+        } catch (CommandException e) {
+            return RoutineRunner.Start.failed(e.getMessage());
+        }
+        ConditionWaitTask task = new ConditionWaitTask(poll, timeoutSeconds, label);
+        mod.getUserTaskChain().signalNextTaskQuiet();
+        mod.runUserTask(task, outcome -> end.ended(outcome, task.result()));
+        return RoutineRunner.Start.WAITING;
+    }
+
+    @Override
+    public void quietRunEnded(String name, RoutineRunner.State state, String message) {
+        // a stop or a replace has somebody who already knows
+        if (state == RoutineRunner.State.DONE) {
+            Debug.logMessage(name + " is done");
+        } else if (state == RoutineRunner.State.FAILED) {
+            Debug.logMessage(name + " failed: " + message);
+        }
     }
 
     @Override

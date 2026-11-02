@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.facade;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 // the commands tab: saved routines (CustomTasks.json, the same ones #custom runs) and the one run that can go at a time.
 // the run lives in the game and not in the screen, so closing the gui doesn't stop it and reopening shows it again
@@ -73,6 +74,123 @@ public interface RoutinesAccess {
     RunStatus status();
 
     RunStatus IDLE_STATUS = new RunStatus(null, null, 0, 0, null, RunState.IDLE, null);
+
+    // ---- graphs, for the node editor. all of it answers "not here" until experimentalRoutineGraphs is on ----
+
+    // type = start get equip goto raw if repeat wait stop. x and y are design px. params hold what NodeSpec's fields ask
+    // for (strings, half typed numbers are fine), cond is the If's or the until's condition, null when there's none
+    record GraphNode(String id, String type, int x, int y, Map<String, String> params, CondTree cond) {
+    }
+
+    // toPort = "in", or "again" for a wire from a Repeat's own body back into it
+    record GraphEdge(String from, String port, String to, String toPort) {
+    }
+
+    // op = all any not leaf. a leaf has kind + args (what its CondSpec asks for), the rest have children. not has one
+    record CondTree(String op, String kind, Map<String, String> args, List<CondTree> children) {
+    }
+
+    // id = null for one that was never saved. the id comes from the name, like a list routine's
+    record Graph(String id, String name, String description, List<GraphNode> nodes, List<GraphEdge> edges) {
+    }
+
+    // one file in routines/. error set = the file is bad and read only, a person has to fix it
+    record GraphEntry(String id, String name, String description, boolean straight, String error) {
+    }
+
+    // saved with error set = it's in, but something after it didn't go through (the note says what). id = what it's called now
+    record GraphSaveResult(boolean ok, String error, String id) {
+    }
+
+    record NodeCheck(String error, String warning) {
+    }
+
+    // errors = about the whole graph. nodes has every node in it. ok = it may run
+    record GraphCheck(boolean ok, List<String> errors, Map<String, NodeCheck> nodes) {
+    }
+
+    // kind = INT COORD CHOICE OP ITEM BLOCK MOB LINE SECONDS COND. whenMode = only asked for in that mode, null = always.
+    // a LINE opens in the same boxes as the list view's rows: fieldsOf / lineFor with the node's step type
+    record FieldSpec(String key, String label, String kind, boolean required, int min, int max, List<String> choices, String whenMode) {
+    }
+
+    // group = act flow end. outputs = every port it can have, outputsOf says which ones this node has right now
+    record NodeSpec(String type, String group, String label, List<FieldSpec> fields, List<String> inputs, List<String> outputs) {
+    }
+
+    record CondSpec(String kind, String label, List<FieldSpec> fields) {
+    }
+
+    // what the cards show. activeNode = running now, null once it's over. failedNode = where a failed run stopped.
+    // recent = the last 32 nodes it went through. outcomes = node -> how it last came out (OK FAILED TIMEOUT YES NO; a
+    // repeat is YES for another lap and NO for done). repeats = laps per repeat. taken = wires that ran, "from:port:to:toPort"
+    record GraphRunStatus(String id, RunState state, String message, String activeNode, String failedNode, List<String> recent,
+                          Map<String, String> outcomes, Map<String, Integer> repeats, Set<String> taken) {
+    }
+
+    GraphRunStatus IDLE_GRAPH_STATUS = new GraphRunStatus(null, RunState.IDLE, null, null, null, List.of(), Map.of(), Map.of(), Set.of());
+
+    default boolean graphsEnabled() {
+        return false;
+    }
+
+    default List<GraphEntry> listGraphs() {
+        return List.of();
+    }
+
+    // a graph file, or a list routine as a straight chain (saving that with its id as previousId is the upgrade).
+    // null when there's neither
+    default Graph loadGraph(String id) {
+        return null;
+    }
+
+    // previousId = the id it was opened under, null for a new one. a half built graph saves fine, it just can't run
+    default GraphSaveResult saveGraph(Graph graph, String previousId) {
+        return new GraphSaveResult(false, "not available here", null);
+    }
+
+    default boolean deleteGraph(String id) {
+        return false;
+    }
+
+    default GraphCheck validateGraph(Graph graph) {
+        return new GraphCheck(false, List.of("not available here"), Map.of());
+    }
+
+    // the steps of a straight graph, null when the list view can't show it
+    default List<Step> stepsOf(Graph graph) {
+        return null;
+    }
+
+    default List<NodeSpec> nodeSpecs() {
+        return List.of();
+    }
+
+    default List<CondSpec> condSpecs() {
+        return List.of();
+    }
+
+    default List<String> outputsOf(GraphNode node) {
+        return List.of();
+    }
+
+    // the nodes inside a repeat. a wire from one of these into the repeat is toPort "again", the mock draws only one input
+    default Set<String> bodyOf(Graph graph, String repeatId) {
+        return Set.of();
+    }
+
+    // the line a card shows
+    default String summaryOf(GraphNode node) {
+        return "";
+    }
+
+    // the saved one, run saves first. a second run replaces the first one, stop() and status() work on it like any run
+    default void runGraph(String id) {
+    }
+
+    default GraphRunStatus graphStatus() {
+        return IDLE_GRAPH_STATUS;
+    }
 
     RoutinesAccess NONE = new RoutinesAccess() {
         @Override

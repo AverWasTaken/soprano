@@ -15,6 +15,13 @@ import org.junit.Test;
 // nothing at all). the ";" lines still have to see exactly what they always saw
 public class UserTaskOutcomeTest {
 
+    @Test
+    public void anOwedIdleCommandOnlyRunsWhenNothingElseGotIn() {
+        assertEquals(true, UserTaskChain.idleStillWanted(false, true));
+        assertEquals(false, UserTaskChain.idleStillWanted(true, true));
+        assertEquals(false, UserTaskChain.idleStillWanted(false, false));
+    }
+
     private static class Fake extends Task {
         @Override
         protected void onStart(AltoClef mod) {

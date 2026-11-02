@@ -37,7 +37,9 @@ final class McStatus implements StatusAccess {
             // strip's Stop is #stop, which ends the run too
             RoutineRunner.Status run = RoutineRunner.get().status();
             if (run.state() == RoutineRunner.State.RUNNING) {
-                String step = "Step " + run.step() + "/" + run.total() + (run.line() == null || run.line().isBlank() ? "" : ": " + run.line());
+                // a graph of nothing but ifs and repeats has no steps to count
+                String count = run.total() == 0 ? "Running" : "Step " + run.step() + "/" + run.total();
+                String step = count + (run.line() == null || run.line().isBlank() ? "" : ": " + run.line());
                 return new Activity(true, step, run.name() == null ? "" : run.name(), phase);
             }
             String line = null;

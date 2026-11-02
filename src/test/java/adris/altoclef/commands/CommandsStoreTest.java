@@ -92,6 +92,20 @@ public class CommandsStoreTest {
     }
 
     @Test
+    public void anIdAGraphUsesIsTaken() {
+        CommandsStore both = new CommandsStore(() -> file, id -> id.equalsIgnoreCase("wood"));
+        CommandsStore.Result r = both.save(new StoredRoutine(null, "wood", "", List.of(step(RoutineStep.Kind.RAW, "say hi"))), null);
+        assertFalse(r.ok());
+        assertTrue(r.error(), r.error().contains("already"));
+        assertTrue(both.save(new StoredRoutine(null, "stone", "", List.of(step(RoutineStep.Kind.RAW, "say hi"))), null).ok());
+        // renaming onto it is the same thing
+        assertFalse(both.save(new StoredRoutine(null, "Wood", "", List.of(step(RoutineStep.Kind.RAW, "say hi"))), "stone").ok());
+        // and a list entry an upgrade left behind can still be saved under its own id
+        assertTrue(new CommandsStore(() -> file, id -> id.equalsIgnoreCase("stone"))
+                .save(new StoredRoutine(null, "stone", "edited", List.of(step(RoutineStep.Kind.RAW, "say hi"))), "stone").ok());
+    }
+
+    @Test
     public void theFirstSaveMigratesAndKeepsTheOriginal() throws Exception {
         write(LEGACY);
         CommandsStore.Result r = store.save(new StoredRoutine(null, "wood run", "", List.of(step(RoutineStep.Kind.GET, "#get log 16"))), null);

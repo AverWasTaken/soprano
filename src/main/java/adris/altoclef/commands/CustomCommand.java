@@ -2,6 +2,10 @@ package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.RoutineRunner;
+import adris.altoclef.commands.graph.GameConditions;
+import adris.altoclef.commands.graph.GraphStore;
+import adris.altoclef.commands.graph.GraphValidator;
 import baritone.api.IBaritone;
 import baritone.api.command.argument.IArgConsumer;
 import baritone.api.command.exception.CommandException;
@@ -24,6 +28,9 @@ public class CustomCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireExactly(1);
         String name = args.getString();
+        if (GraphStore.enabled() && runGraph(name)) {
+            return;
+        }
         // the store builds the lines (line, or the old command + parameters), the same ones the commands tab runs
         List<String> lines = CommandsStore.get().customLines(name);
         if (lines == null) {
@@ -64,10 +71,35 @@ public class CustomCommand extends AltoClefCommand {
         AltoClefCommands.execute(String.join(";", lines), AltoClefCommands.takeFinish(), Debug::logWarning, false);
     }
 
+    // graphs first, an upgrade that couldn't clean up after itself leaves a list entry with the same id behind
+    private static boolean runGraph(String name) throws CommandException {
+        GraphStore.Entry entry = GraphStore.get().find(name);
+        if (entry == null) {
+            return false;
+        }
+        if (entry.graph() == null) {
+            throw new CommandInvalidStateException("routines/" + entry.id() + ".json has a problem: " + entry.error());
+        }
+        // a graph can branch into anything, so the up front deny list check a whisper gets on a list has no good answer
+        if (AltoClefCommands.currentIsButler()) {
+            throw new CommandInvalidStateException("custom " + name + " is a graph, a whisper can't run those");
+        }
+        String why = GraphValidator.validate(entry.graph(), GameChecks.INSTANCE).firstError();
+        if (why != null) {
+            throw new CommandInvalidStateException("custom " + name + ": " + why);
+        }
+        // "custom a;goto home" waits for the graph, the same as for a list
+        RoutineRunner.get().start(entry.id(), entry.graph().name(), GameConditions.program(entry.graph()), AltoClefCommands.takeFinish());
+        return true;
+    }
+
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
-            List<String> names = CommandsStore.get().customIds();
+            List<String> names = new ArrayList<>(CommandsStore.get().customIds());
+            if (GraphStore.enabled()) {
+                GraphStore.get().list().forEach(e -> names.add(e.id()));
+            }
             return new TabCompleteHelper().append(names.stream()).filterPrefix(args.getString()).sortAlphabetically().stream();
         }
         return Stream.empty();
@@ -92,6 +124,12 @@ public class CustomCommand extends AltoClefCommand {
             lines.add("Your task lists:");
             for (StoredRoutine entry : entries) {
                 lines.add("> custom " + entry.id() + (entry.description().isEmpty() ? "" : " - " + entry.description()));
+            }
+        }
+        if (GraphStore.enabled()) {
+            for (GraphStore.Entry entry : GraphStore.get().list()) {
+                String about = entry.graph() == null ? entry.error() : entry.graph().description();
+                lines.add("> custom " + entry.id() + (about.isEmpty() ? "" : " - " + about));
             }
         }
         return lines;

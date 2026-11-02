@@ -5,6 +5,7 @@ import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.RoutineRunner;
 import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
@@ -24,6 +25,11 @@ public class UserTaskChain extends SingleTaskChain {
 
     private boolean _runningIdleTask;
     private boolean _nextTaskIdleFlag;
+    // a graph routine starts a user task per node, a loop of those would fill the chat with task set / finished lines
+    private boolean _runningQuiet;
+    private boolean _nextTaskQuietFlag;
+    // a parked graph held the idle command back, and if the run ends on a tick with no task nobody else starts it
+    private boolean _idleOwed;
 
     public UserTaskChain(TaskRunner runner) {
         super(runner);
@@ -137,6 +143,8 @@ public class UserTaskChain extends SingleTaskChain {
     public void runTask(AltoClef mod, Task task, Listener onFinish) {
         _runningIdleTask = _nextTaskIdleFlag;
         _nextTaskIdleFlag = false;
+        _runningQuiet = _nextTaskQuietFlag;
+        _nextTaskQuietFlag = false;
 
         // whoever was waiting on the old task hears about it now, or it waits forever. told before the new task goes in,
         // so it can't mistake the new one for its own
@@ -151,7 +159,7 @@ public class UserTaskChain extends SingleTaskChain {
         }
 
         if (!_runningIdleTask) {
-            Debug.logMessage("User Task Set: " + task.toString());
+            logTask("User Task Set: " + task.toString());
         }
         mod.getTaskRunner().enable();
         _taskStopwatch.begin();
@@ -197,19 +205,61 @@ public class UserTaskChain extends SingleTaskChain {
         boolean actuallyDone = _mainTask == null;
         if (actuallyDone) {
             if (!_runningIdleTask) {
-                Debug.logMessage("User task FINISHED. Took %s seconds.", prettyPrintTimeDuration(seconds));
+                logTask("User task FINISHED. Took " + prettyPrintTimeDuration(seconds) + " seconds.");
                 EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
             }
-            if (shouldIdle) {
-                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
-                signalNextTaskToBeIdleTask();
-                _runningIdleTask = true;
+            // a graph routine parked between two nodes isn't idle, the next node is one tick away and the idle command
+            // would run on every lap
+            if (shouldIdle && RoutineRunner.get().isRunning()) {
+                _idleOwed = true;
+            } else if (shouldIdle) {
+                _idleOwed = false;
+                startIdleCommand();
             }
+        }
+    }
+
+    private void startIdleCommand() {
+        AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
+        signalNextTaskToBeIdleTask();
+        _runningIdleTask = true;
+    }
+
+    // right after the routine runner's tick, which is where a parked graph finds out it's over
+    public void runOwedIdle() {
+        if (!_idleOwed || RoutineRunner.get().isRunning()) {
+            return;
+        }
+        _idleOwed = false;
+        if (idleStillWanted(_mainTask != null, AltoSettings.shouldRunIdleCommandWhenNotActive())) {
+            startIdleCommand();
+        }
+    }
+
+    // a task that got in first has the bot, and its own finish starts the idle command when it's time
+    static boolean idleStillWanted(boolean hasTask, boolean shouldIdle) {
+        return !hasTask && shouldIdle;
+    }
+
+    private void logTask(String line) {
+        if (_runningQuiet) {
+            Debug.logInternal(line);
+        } else {
+            Debug.logMessage(line);
         }
     }
 
     public boolean isRunningIdleTask() {
         return isActive() && _runningIdleTask;
+    }
+
+    // the next task logs to the log file only. clear it again if the command turned out not to start one
+    public void signalNextTaskQuiet() {
+        _nextTaskQuietFlag = true;
+    }
+
+    public void clearNextTaskQuiet() {
+        _nextTaskQuietFlag = false;
     }
 
     // The next task will be an idle task.

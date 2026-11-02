@@ -171,6 +171,7 @@ public class AltoClef {
         runEnqueuedPostInits();
         // its watchdog and the death cancel, before anything else gets to start or drop a task this tick
         RoutineRunner.get().tick();
+        _userTaskChain.runOwedIdle();
 
         // The idle gate (altoRunsWhenIdle, read every tick so a #set takes effect at once): with it on we always run,
         // with it off we only run while a user task is going. Turning it off while idle disables the runner here, and
