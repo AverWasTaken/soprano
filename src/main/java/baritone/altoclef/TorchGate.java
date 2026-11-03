@@ -42,7 +42,7 @@ import adris.altoclef.util.helpers.CombatRules;
 import baritone.api.utils.input.Input;
 
 // when autoTorch may click while altoclef has the bot. torches only go down while it is plainly mining, gathering or
-// walking. a fight, a fall, a meal or a fire needs the hands and the camera this tick, and a task that places or clicks
+// walking. a fight, a fall or a meal needs the hands and the camera this tick, and a task that places or clicks
 // things itself would have its aim and its hotbar slot pulled out from under it by our torch
 final class TorchGate {
 
@@ -56,7 +56,7 @@ final class TorchGate {
     private static boolean survivalQuiet(AltoClef ac) {
         MobDefenseChain defense = ac.getMobDefenseChain();
         if (defense.combatMode() != CombatCommit.Mode.NONE || defense.getCombatStance(ac) != CombatRules.Stance.CALM
-                || defense.isPuttingOutFire() || ac.getFoodChain().isTryingToEat()) {
+                || ac.getFoodChain().isTryingToEat()) {
             return false;
         }
         MLGBucketFallChain mlg = ac.getMLGBucketChain();
