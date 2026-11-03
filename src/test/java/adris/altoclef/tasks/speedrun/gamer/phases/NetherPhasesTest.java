@@ -30,6 +30,14 @@ public class NetherPhasesTest {
         ItemFixture.boot();
     }
 
+    @Test
+    public void aPickedSpawnerBeatsTheSweep() {
+        assertTrue(NetherPhase.sweepInstead(true, false));
+        assertFalse(NetherPhase.sweepInstead(true, true));
+        assertFalse(NetherPhase.sweepInstead(false, false));
+        assertFalse(NetherPhase.sweepInstead(false, true));
+    }
+
     private static FakeFacts bag(int rods, int powder, int pearls, int eyes) {
         FakeFacts f = new FakeFacts();
         f.give(Items.BLAZE_ROD, rods).give(Items.BLAZE_POWDER, powder).give(Items.ENDER_PEARL, pearls).give(Items.ENDER_EYE, eyes);
