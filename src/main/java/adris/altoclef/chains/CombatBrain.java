@@ -805,9 +805,10 @@ final class CombatBrain {
     }
 
     // the bag is only walked when something is in contact: that is the only time an in the way fight can start
+    // (or a sniper shooting us, the walk up to it wants a sword too. same ask as armed)
     private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT || witherClose(foe)) return hasWeapon(mod);
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting()) || witherClose(foe)) return hasWeapon(mod);
         }
         return true;
     }

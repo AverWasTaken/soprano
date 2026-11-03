@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.CombatCommit.Why;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.Test;
 
 // a skeleton that is shooting us is one target: kill it. walking or standing, no pin window, no waiting for a second arrow.
@@ -402,6 +403,118 @@ public class CombatCommitPinnedTest {
     public void bareHandsStillRunFromAHurtShooterFight() {
         CombatCommit c = new CombatCommit();
         assertEquals(Event.RUN_START, c.step(tick(NOW, 6, false, null, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // ---- a walk up to a skeleton wants a sword, a pickaxe is only armed for what is already on us
+
+    // the bag answered: tools only, or a sword. half a block a tick like walking, so the run has somewhere to go
+    private static Tick bag(long now, float hp, boolean sword, RecoverHold.Body body, Foe... foes) {
+        return new Tick(now, hp, (now - NOW) * 0.5, 0, List.of(foes), null, new Way(Set.of(), false, 0, sword), true, false, false, body);
+    }
+
+    private static Tick toolOnly(long now, float hp, Foe... foes) {
+        return bag(now, hp, false, RecoverHold.Body.NONE, foes);
+    }
+
+    @Test
+    public void aPickaxeRunsFromASkeletonWhenHurt() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(toolOnly(NOW, CombatCommit.FLEE_HP, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    @Test
+    public void aPickaxeDoesNotGoAndGetASkeletonWhenFine() {
+        CombatCommit c = new CombatCommit();
+        for (long t = NOW; t < NOW + 100; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 20, skeleton(12, 2, true))));
+        }
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aSwordStillDoesBoth() {
+        CombatCommit fine = new CombatCommit();
+        assertEquals(Event.FIGHT_START, fine.step(bag(NOW, 20, true, RecoverHold.Body.NONE, shooter())));
+        assertEquals(Why.PINNED, fine.why());
+        CombatCommit hurt = new CombatCommit();
+        assertEquals(Event.FIGHT_START, hurt.step(bag(NOW, CombatCommit.FLEE_HP, true, RecoverHold.Body.NONE, shooter())));
+        assertEquals(Why.PINNED, hurt.why());
+    }
+
+    // one that is on us and hitting is still a swing, it is only the walk over that went away
+    @Test
+    public void aPickaxeStillSwingsAtASkeletonThatIsOnUs() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(toolOnly(NOW, 20, skeleton(2, 2, true))));
+        assertEquals(Why.HIT, c.why());
+    }
+
+    // no spinning: the run has to actually end, only a new arrow starts another one, and it is never the walk over
+    @Test
+    public void aPickaxeRunEndsAndOnlyAFreshArrowStartsTheNext() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(toolOnly(NOW, 6, shooter())));
+        long t = NOW + 1;
+        for (; t < NOW + 1 + CombatCommit.LOS_CLEAR_TICKS; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 6, skeleton(PAST_THE_BOW, 30, false))));
+        }
+        assertEquals(Event.RUN_CLEAR, c.step(toolOnly(t++, 6, skeleton(PAST_THE_BOW, 30, false))));
+        assertTrue(c.coolingDown(t));
+        // back in its sights in the cooldown with an old arrow: nothing, on every tick
+        for (long end = t + 40; t < end; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 6, skeleton(12, 30, true))));
+        }
+        assertEquals(Event.RUN_START, c.step(toolOnly(t, 6, skeleton(12, 1, true))));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // the heal hold says the skeleton is the next kill (see rerun). with a pickaxe it is not, hurt that is still the run
+    @Test
+    public void aPickaxeInTheHealHoldRunsToo() {
+        RecoverHold.Body fed = new RecoverHold.Body(20, false, false, false);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(bag(NOW, 20, false, fed, zombieOnUs(10))));
+        assertEquals(Event.FIGHT_DEAD, c.step(bag(NOW + 1, 6, false, fed)));
+        assertTrue(c.recovering());
+        assertEquals(Event.RUN_START, c.step(bag(NOW + 2, 6, false, fed, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // into the heal hold at 6 hp off a dead zombie, the next tick is whatever the test wants
+    private static final RecoverHold.Body FED = new RecoverHold.Body(20, false, false, false);
+
+    private static CombatCommit inTheHold(boolean sword) {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(bag(NOW, 20, sword, FED, zombieOnUs(10))));
+        assertEquals(Event.FIGHT_DEAD, c.step(bag(NOW + 1, 6, sword, FED)));
+        assertTrue(c.recovering());
+        return c;
+    }
+
+    // over the flee line, no fresh arrow, one close with a line. nobody is going to get it, so no healing in its sights
+    @Test
+    public void aPickaxeDoesNotHealInASkeletonsSights() {
+        CombatCommit c = inTheHold(false);
+        assertEquals(Event.RUN_START, c.step(bag(NOW + 2, 12, false, FED, skeleton(9, 45, true))));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    // with a sword it is still the next kill, so the same tick is no run
+    @Test
+    public void aSwordStillIsNotRunFromInTheHold() {
+        CombatCommit c = inTheHold(true);
+        assertEquals(Event.NONE, c.step(bag(NOW + 2, 12, true, FED, skeleton(9, 45, true))));
+        assertTrue(c.recovering());
+    }
+
+    // the chain remembers an arrow for longer than fresh does, so in the hold a run can follow an old one out of range too
+    @Test
+    public void aWatchedPickaxeRunsOnAnArrowThatIsNotFresh() {
+        CombatCommit c = inTheHold(false);
+        Way tools = new Way(Set.of(), false, 0, false);
+        assertEquals(Event.RUN_START, c.step(new Tick(NOW + 2, 12, 1, 0, List.of(skeleton(14, 22, true)), null, tools, true, false, false, FED, false, 0, true, false)));
         assertEquals(Why.SHOT, c.why());
     }
 

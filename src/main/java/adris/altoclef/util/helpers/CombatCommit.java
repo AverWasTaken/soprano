@@ -482,7 +482,8 @@ public final class CombatCommit {
 
     // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
     // to move (a path or a search going), y: our height, a pillar out of a hole is progress too
-    // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight needs. true when nobody asked
+    // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight or a walk up to a skeleton needs.
+    // true when nobody asked
     // rim: we stand on a lava rim or a ledge over a drop (LavaShore.edgeNear) with a melee foe close, path or no path
     // lavaClose: lava within LavaShore.GROUND_CLEAR of us. only a cube ever asks, so the brain only looks with one about
     public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim, boolean lavaClose) {
@@ -1411,13 +1412,16 @@ public final class CombatCommit {
         List<Foe> shooters = snipers(t, cooling);
         if (!shooters.isEmpty()) {
             Foe sniper = shooters.get(0);
+            // a pickaxe beats a fist but it is still ten swings on the far end of a walk full of arrows. armed is for what is
+            // already on us, going to get one wants the real thing
+            boolean realWeapon = t.armed() && t.way().weapon();
             // (with an enderman about the run is off, a skeleton on us is the armed fight below or nothing)
-            boolean hurtRun = t.low() && !(t.armed() && shooterFight(candidates(t), cooling, t.guardHealth()));
+            boolean hurtRun = t.low() && !(realWeapon && shooterFight(candidates(t), cooling, t.guardHealth()));
             if ((hurtRun || secondShooter(shooters) || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
                 return startRun(t, Why.SHOT, Event.RUN_START);
             }
-            // (bare hands do not go and get a skeleton)
-            if (t.armed()) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
+            // (bare hands and pickaxes do not go and get a skeleton, they keep walking till it hurts and then it is the run above)
+            if (realWeapon) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
         }
         // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
         // with what is around us, and this one is a path that cannot go on until it is gone
@@ -1553,7 +1557,8 @@ public final class CombatCommit {
         boolean near = false;
         boolean shot = false;
         // (the shooter fight is not run from while healing either, the skeleton is the next kill. a watched blaze still counts)
-        if (t.armed() && shooterFight(candidates(t), false, t.guardHealth())) return t.watched() ? Why.SHOT : Why.NONE;
+        // (only if we'd actually go and get it: with a pickaxe nobody's coming, and that was us healing in its sights)
+        if (t.armed() && t.way().weapon() && shooterFight(candidates(t), false, t.guardHealth())) return t.watched() ? Why.SHOT : Why.NONE;
         for (Foe foe : candidates(t)) {
             if (foe.standsAndFights() || gaveUpOn(foe, t.now())) continue;
             if (foe.distance() <= RecoverHold.RERUN_RANGE) near = true;
