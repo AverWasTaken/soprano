@@ -15,7 +15,7 @@ import java.util.function.ToIntFunction;
 // the "where is the lava and how do we get there" half of the lava portal, with no minecraft in it so it can be tested.
 // LPortalTask feeds it the scanned lava seeds and what the lake surveys found, it says walk, wait or give up (to the cast).
 // every lake in the loaded chunks gets a verdict before the first walk, so a walk goes to a lake that passed and not to the
-// cheapest seed
+// cheapest seed. a lake at the view edge can't get one from here, so with nothing better on offer we go and read it
 public final class LavaHunt {
     // only lakes this far above and below us count. a lake 50 blocks down is a cave lake and those always fail the floor rule
     public static final int BAND = 24;
@@ -29,8 +29,9 @@ public final class LavaHunt {
     static final int SITE_RADIUS = 24;
     // a good lake this close is built on from where we stand, a farther one is walked to first
     static final int PICK_REACH = 40;
-    // nobody walks 75 s to a lake. it's not reachable
-    static final int WALK_TICKS = 20 * 75;
+    // a lake at the view edge is well over 100 blocks off and we do under 2 blocks a second around the trees. running out of this
+    // rejects the lake, so it has to be a walk nobody would really be on and not just a long one
+    static final int WALK_TICKS = 20 * 120;
     // a walk that is not this much closer than its best in this long is stuck. the goal being re-issued does not count
     static final int PROGRESS_BLOCKS = 3;
     static final int PROGRESS_TICKS = 20 * 15;
@@ -38,6 +39,9 @@ public final class LavaHunt {
     static final int UNKNOWN_TICKS = 20 * 10;
     // going up or down costs more than going sideways, so a lake at our level wins over one under our feet
     static final int DY_COST = 4;
+    // walking loads chunks, and new chunks show new half read lakes. this would go on forever, so a half read lake only gets
+    // this many walks, then it counts as bad and the cast takes over
+    static final int UNREAD_WALKS = 2;
 
     enum Move {WALK, WAIT, GIVE_UP}
 
@@ -102,6 +106,9 @@ public final class LavaHunt {
     private final List<P> rejected;
     private final List<Entry> lakes = new ArrayList<>();
     private P target;
+    // the target is a half read lake's anchor and not a site, so there is nothing to stay good yet
+    private boolean blindWalk;
+    private int unreadWalks;
     private int walkStart;
     private double bestDist;
     private int progressTick;
@@ -116,6 +123,21 @@ public final class LavaHunt {
 
     P target() {
         return target;
+    }
+
+    boolean blindWalk() {
+        return blindWalk;
+    }
+
+    // what the give up says, so it is more than "no"
+    String tally() {
+        int unread = 0;
+        for (Entry e : lakes) {
+            if (e.lake().unknown()) {
+                unread++;
+            }
+        }
+        return lakes.size() + " lakes, " + unread + " half read, " + unreadWalks + " walks to read one";
     }
 
     // every seed we may still look at, cheapest first
@@ -227,14 +249,80 @@ public final class LavaHunt {
         return false;
     }
 
+    // a walk to a half read lake lasts until that lake has a real verdict, or a lake we can use shows up (a site beats a maybe).
+    // no entry for it at all is just its 10 s look again, the walk doesn't get to forget where it was going over that
+    private boolean stillUnread(int blocks) {
+        for (Entry e : lakes) {
+            if (usableLake(e.lake(), blocks) || (!e.lake().unknown() && e.lake().cells().contains(target))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private P cheapestGood(int px, int py, int pz, int blocks) {
+        P best = null;
+        double bestCost = 0;
+        for (Entry e : lakes) {
+            if (!usableLake(e.lake(), blocks)) {
+                continue;
+            }
+            P m = mid(e.lake().site());
+            double c = cost(m, px, py, pz) + e.lake().cost();
+            if (best == null || c < bestCost) {
+                best = m;
+                bestCost = c;
+            }
+        }
+        return best;
+    }
+
+    private P nearestUnread(int px, int py, int pz) {
+        if (unreadWalks >= UNREAD_WALKS) {
+            return null;
+        }
+        P best = null;
+        double bestCost = 0;
+        for (Entry e : lakes) {
+            P a = e.lake().anchor();
+            if (!e.lake().unknown() || nearRejected(a)) {
+                continue;
+            }
+            double c = cost(a, px, py, pz);
+            if (best == null || c < bestCost) {
+                best = a;
+                bestCost = c;
+            }
+        }
+        return best;
+    }
+
+    // a site first, a half read lake if there's no site, and false when it's neither
+    private boolean startWalk(int px, int py, int pz, int tick, int blocks) {
+        P to = cheapestGood(px, py, pz, blocks);
+        blindWalk = to == null;
+        if (blindWalk) {
+            to = nearestUnread(px, py, pz);
+            if (to == null) {
+                return false;
+            }
+            unreadWalks++;
+        }
+        target = to;
+        walkStart = tick;
+        bestDist = dist(target, new P(px, py, pz));
+        progressTick = tick;
+        return true;
+    }
+
     // what to do this tick, with nothing near enough to build on. scanned = a seed scan has finished, so an empty list means
     // there is really no lava in the loaded chunks and not that we haven't looked yet. giving up (to the cast) needs that, a
-    // verdict on every lake, and none of them good
+    // verdict on every lake, none of them good, and no half read lake left that we may still walk to
     Move decide(List<P> seeds, boolean scanned, boolean surveying, int px, int py, int pz, int tick, int blocks) {
         if (!scanned) {
             return Move.WAIT;
         }
-        if (target != null && !stillGood(blocks)) {
+        if (target != null && !(blindWalk ? stillUnread(blocks) : stillGood(blocks))) {
             target = null;
         }
         if (target == null) {
@@ -243,33 +331,16 @@ public final class LavaHunt {
             if (surveying || nextToSurvey(seeds, px, py, pz, tick) != null) {
                 return Move.WAIT;
             }
-            P best = null;
-            double bestCost = 0;
-            for (Entry e : lakes) {
-                if (!usableLake(e.lake(), blocks)) {
-                    continue;
-                }
-                P m = mid(e.lake().site());
-                double c = cost(m, px, py, pz) + e.lake().cost();
-                if (best == null || c < bestCost) {
-                    best = m;
-                    bestCost = c;
-                }
-            }
-            if (best == null) {
+            if (!startWalk(px, py, pz, tick, blocks)) {
                 return Move.GIVE_UP;
             }
-            target = best;
-            walkStart = tick;
-            bestDist = dist(target, new P(px, py, pz));
-            progressTick = tick;
         }
         double d = dist(target, new P(px, py, pz));
         if (d < bestDist - PROGRESS_BLOCKS) {
             bestDist = d;
             progressTick = tick;
         }
-        // the cap is on the whole walk: always a bit closer is still a walk nobody waits 75 s for
+        // the cap is on the whole walk: always a bit closer is still a walk nobody waits 2 minutes for
         if (tick - progressTick > PROGRESS_TICKS || tick - walkStart > WALK_TICKS) {
             siteFailed(target);
             return Move.WAIT;

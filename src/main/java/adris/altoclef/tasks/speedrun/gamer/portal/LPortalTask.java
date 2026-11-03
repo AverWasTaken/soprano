@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.portal;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceStructureBlockTask;
@@ -39,6 +40,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -109,6 +111,9 @@ public class LPortalTask extends Task {
     private volatile boolean scanned;
     private int lastKick = -100000;
     private String huntHud = "";
+    // what the log was already told. a half read lake comes back every 10 s with the same news
+    private final Set<String> saidLakes = new HashSet<>();
+    private P saidTarget;
 
     // rejected = the lakes earlier tries gave up on (the phase keeps the list, so a retry doesn't walk to them again)
     public LPortalTask(List<P> rejected) {
@@ -341,11 +346,12 @@ public class LPortalTask extends Task {
         if (lakeSurvey == null) {
             P next = hunt.nextToSurvey(seeds, me.getX(), me.getY(), me.getZ(), tick);
             if (next != null) {
-                lakeSurvey = LakeSurvey.of(terrain, next, me.getX(), me.getZ());
+                lakeSurvey = LakeSurvey.of(terrain, next, me.getX(), me.getZ(), p -> mod.getWorld().isLoaded(toPos(p)));
             }
         }
         if (lakeSurvey != null && lakeSurvey.step(LAYOUTS_PER_TICK, terrain, l -> boxLoaded(mod, l))) {
             hunt.surveyed(lakeSurvey.lake(), tick);
+            logLake(lakeSurvey);
             lakeSurvey = null;
         }
         // a perfect site is taken at once, a rough one when every lake has been looked at
@@ -363,6 +369,7 @@ public class LPortalTask extends Task {
         switch (hunt.decide(seeds, looked, lakeSurvey != null, me.getX(), me.getY(), me.getZ(), tick, blocks)) {
             case WALK -> {
                 huntHud = "Going to lava";
+                logWalk();
                 setDebugState("walking to lava " + hunt.target());
                 // near the lava cell and never on it, a goal inside lava is a goal baritone refuses
                 return new GetWithinRangeOfBlockTask(toPos(hunt.target()).above(), 4);
@@ -374,8 +381,26 @@ public class LPortalTask extends Task {
             }
             default -> {
                 // every lake in the loaded chunks was looked at and none is good: the cast finds its own lava
-                return giveUp("no lake here fits the build");
+                return giveUp("no lake here fits the build (" + hunt.tally() + ")");
             }
+        }
+    }
+
+    private void logLake(LakeSurvey survey) {
+        LakeSurvey.Lake lake = survey.lake();
+        P a = lake.anchor();
+        String verdict = lake.good() ? "best cost " + lake.cost() + ", fills " + lake.fills() : lake.unknown() ? "half read" : "no site";
+        String line = "lava hunt: lake at " + a.x() + " " + a.y() + " " + a.z() + ", " + survey.sources() + " sources, " + verdict;
+        if (saidLakes.add(line)) {
+            Debug.logInternal(line);
+        }
+    }
+
+    private void logWalk() {
+        P to = hunt.target();
+        if (!Objects.equals(to, saidTarget)) {
+            saidTarget = to;
+            Debug.logInternal("lava hunt: walking to " + to.x() + " " + to.y() + " " + to.z() + (hunt.blindWalk() ? " to read it" : " to build there"));
         }
     }
 
@@ -404,6 +429,7 @@ public class LPortalTask extends Task {
     // the site we were clearing is no good after all (lava showed up, the clock ran out, a block won't break). back to
     // looking, and not at this lake again
     private Task dropSite() {
+        Debug.logInternal("lava hunt: dropped the site at " + layout.cell(1, 0, 0) + ", was at " + lastDebug);
         hunt.siteFailed(layout.cell(1, 0, 0));
         layout = null;
         // a dropped site doesn't get a fresh search clock, but it gets a little time to look again

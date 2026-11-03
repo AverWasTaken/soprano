@@ -16,7 +16,7 @@ public class LakeSurveyTest {
     private static final P SEED = new P(20, 63, 5);
 
     private static Lake run(World w) {
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
         int guard = 0;
         while (!s.step(6, w, l -> true)) {
             assertTrue("never finishes", ++guard < 100000);
@@ -67,7 +67,7 @@ public class LakeSurveyTest {
     @Test
     public void aBoxThatIsntLoadedIsUnknownNotBad() {
         World w = LPortalPlanTest.pool();
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
         while (!s.step(6, w, l -> false)) {
             // keep going
         }
@@ -76,10 +76,83 @@ public class LakeSurveyTest {
         assertTrue(lake.unknown());
     }
 
+    // the east side of the seed's read box isn't loaded, every build box is
+    private static Lake runWithEastUnloaded(World w, int firstUnloadedX) {
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> p.x() < firstUnloadedX);
+        while (!s.step(6, w, l -> true)) {
+            // keep going
+        }
+        return s.lake();
+    }
+
+    private static final int READ_EDGE = SEED.x() + LakeSurvey.READ_BOX;
+
+    @Test
+    public void noSiteWithTheReadBoxPartlyUnloadedIsUnknownNotBad() {
+        // the same water ring as above, a no when we can see it all
+        World w = LPortalPlanTest.pool();
+        for (int x = 6; x < 44; x++) {
+            for (int z = -4; z <= 14; z++) {
+                boolean inPool = x >= 10 && x < 40 && z >= 0 && z <= 10;
+                if (!inPool) {
+                    w.over.put(new P(x, 64, z), Mat.WATER);
+                }
+            }
+        }
+        Lake lake = runWithEastUnloaded(w, READ_EDGE);
+        assertNull(lake.site());
+        assertTrue(lake.unknown());
+    }
+
+    @Test
+    public void aSiteIsASiteEvenWithTheReadBoxPartlyUnloaded() {
+        Lake lake = runWithEastUnloaded(LPortalPlanTest.pool(), READ_EDGE);
+        assertTrue(lake.good());
+        assertFalse(lake.unknown());
+    }
+
+    private static World puddle() {
+        World w = new World();
+        w.over.put(SEED, Mat.LAVA);
+        w.over.put(new P(SEED.x() + 1, SEED.y(), SEED.z()), Mat.LAVA);
+        w.over.put(new P(SEED.x(), SEED.y(), SEED.z() + 1), Mat.LAVA);
+        return w;
+    }
+
+    @Test
+    public void aPuddleThatEndsInSightIsANoEvenAtTheViewEdge() {
+        Lake lake = runWithEastUnloaded(puddle(), READ_EDGE);
+        assertNull(lake.site());
+        assertFalse("a walk to read three blocks of lava is a walk wasted", lake.unknown());
+    }
+
+    @Test
+    public void aFewCellsRightAgainstTheUnloadedChunkMayBeTheCornerOfABigLake() {
+        Lake lake = runWithEastUnloaded(puddle(), SEED.x() + 2);
+        assertNull(lake.site());
+        assertTrue(lake.unknown());
+    }
+
+    @Test
+    public void aFewOpenCellsWithARoofedNeckToMoreLavaAreNotAPuddle() {
+        // four open cells, then the lake carries on under a rock roof, way past the grid around the seed
+        World w = new World();
+        for (int x = SEED.x(); x <= SEED.x() + 3; x++) {
+            w.over.put(new P(x, SEED.y(), SEED.z()), Mat.LAVA);
+        }
+        for (int x = SEED.x() + 4; x <= SEED.x() + 8; x++) {
+            w.over.put(new P(x, SEED.y(), SEED.z()), Mat.LAVA);
+            w.over.put(new P(x, SEED.y() + 1, SEED.z()), Mat.SOLID);
+        }
+        Lake lake = runWithEastUnloaded(w, READ_EDGE);
+        assertNull(lake.site());
+        assertTrue(lake.unknown());
+    }
+
     @Test
     public void aSurveyIsDoneAFewLayoutsAtATime() {
         World w = LPortalPlanTest.pool();
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
         assertFalse(s.step(1, w, l -> true));
         assertNotNull(s.lake());
     }

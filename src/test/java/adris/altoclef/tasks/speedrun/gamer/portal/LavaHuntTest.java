@@ -31,6 +31,10 @@ public class LavaHuntTest {
         return new Lake(anchor, Set.of(anchor), null, 0, 0, false);
     }
 
+    private static Lake halfRead(P anchor) {
+        return new Lake(anchor, Set.of(anchor), null, 0, 0, true);
+    }
+
     @Test
     public void seedsComeCheapestFirstAndHeightCostsMore() {
         P flatFar = new P(40, 64, 0);
@@ -141,12 +145,180 @@ public class LavaHuntTest {
         List<P> rejected = new ArrayList<>();
         LavaHunt h = new LavaHunt(rejected);
         P a = new P(100, 64, 0);
-        h.surveyed(new Lake(a, Set.of(a), null, 0, 0, true), 0);
-        // not a walk target. nothing walks toward a lake it can't read, the cast is the answer then
-        assertEquals(Move.GIVE_UP, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        h.surveyed(halfRead(a), 0);
+        // not a no, so we go and read the rest of it
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(a, h.target());
+        assertTrue(h.blindWalk());
         assertTrue(rejected.isEmpty());
         assertNull(h.nextToSurvey(List.of(a), 0, 64, 0, LavaHunt.UNKNOWN_TICKS));
         assertEquals(a, h.nextToSurvey(List.of(a), 0, 64, 0, LavaHunt.UNKNOWN_TICKS + 1));
+    }
+
+    @Test
+    public void theNearestHalfReadLakeIsTheOneWalkedTo() {
+        LavaHunt h = new LavaHunt();
+        P near = new P(100, 64, 0);
+        P far = new P(180, 64, 0);
+        h.surveyed(halfRead(far), 0);
+        h.surveyed(halfRead(near), 0);
+        assertEquals(Move.WALK, h.decide(List.of(near, far), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(near, h.target());
+    }
+
+    @Test
+    public void aSiteBeatsAHalfReadLakeFromTheStart() {
+        LavaHunt h = new LavaHunt();
+        P maybe = new P(60, 64, 0);
+        P real = new P(150, 64, 0);
+        h.surveyed(halfRead(maybe), 0);
+        h.surveyed(good(real, 150, 0, 0), 0);
+        assertEquals(Move.WALK, h.decide(List.of(maybe, real), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(real, h.target());
+        assertFalse(h.blindWalk());
+    }
+
+    @Test
+    public void theWalkKeepsItsTargetThroughTheLookAgain() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(100, 64, 0);
+        List<P> seeds = List.of(a);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 0, 64, 0, 1, BAG));
+        // its verdict went stale, it's being read again and has no entry at all right now
+        int later = LavaHunt.UNKNOWN_TICKS + 1;
+        assertEquals(a, h.nextToSurvey(seeds, 10, 64, 0, later));
+        assertEquals(Move.WALK, h.decide(seeds, true, true, 10, 64, 0, later, BAG));
+        assertEquals(a, h.target());
+        // still half read when it comes back, still walking
+        h.surveyed(halfRead(a), later + 1);
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 20, 64, 0, later + 2, BAG));
+        assertEquals(a, h.target());
+    }
+
+    @Test
+    public void aRealNoEndsTheWalkAndCountsAsAWalk() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(100, 64, 0);
+        P b = new P(120, 64, 40);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(a, h.target());
+        int later = LavaHunt.UNKNOWN_TICKS + 1;
+        assertEquals(a, h.nextToSurvey(List.of(a, b), 90, 64, 0, later));
+        h.surveyed(bad(a), later);
+        // the walk over there showed another half read one, and that gets the second walk
+        h.surveyed(halfRead(b), later);
+        assertEquals(Move.WALK, h.decide(List.of(a, b), true, false, 90, 64, 0, later + 1, BAG));
+        assertEquals(b, h.target());
+    }
+
+    @Test
+    public void aRealYesEndsTheBlindWalkAndWalksToTheSite() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(100, 64, 0);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        h.nextToSurvey(List.of(a), 40, 64, 0, LavaHunt.UNKNOWN_TICKS + 1);
+        h.surveyed(good(a, 104, 3, 0), LavaHunt.UNKNOWN_TICKS + 1);
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 40, 64, 0, LavaHunt.UNKNOWN_TICKS + 2, BAG));
+        assertEquals(new P(104, 64, 0), h.target());
+        assertFalse(h.blindWalk());
+    }
+
+    @Test
+    public void aSiteShowingUpSomewhereElseEndsTheBlindWalk() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(100, 64, 0);
+        P real = new P(0, 64, 90);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        h.surveyed(new Lake(real, Set.of(real), new Layout(-1, 64, 90, 1, 0, 0, 1), 0, 0, false), 2);
+        assertEquals(Move.WALK, h.decide(List.of(a, real), true, false, 10, 64, 0, 3, BAG));
+        assertEquals(new P(0, 64, 90), h.target());
+        assertFalse(h.blindWalk());
+    }
+
+    @Test
+    public void twoWalksToReadALakeAndThenTheCast() {
+        List<P> rejected = new ArrayList<>();
+        LavaHunt h = new LavaHunt(rejected);
+        P a = new P(100, 64, 0);
+        P b = new P(150, 64, 0);
+        P c = new P(200, 64, 0);
+        List<P> seeds = List.of(a, b, c);
+        h.surveyed(halfRead(a), 0);
+        h.surveyed(halfRead(b), 0);
+        h.surveyed(halfRead(c), 0);
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 0, 64, 0, 1, BAG));
+        assertEquals(a, h.target());
+        int t = LavaHunt.UNKNOWN_TICKS + 1;
+        h.nextToSurvey(seeds, 95, 64, 0, t);
+        h.surveyed(bad(a), t);
+        h.surveyed(halfRead(b), t);
+        h.surveyed(halfRead(c), t);
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 95, 64, 0, t + 1, BAG));
+        assertEquals(b, h.target());
+        t += LavaHunt.UNKNOWN_TICKS + 1;
+        h.nextToSurvey(seeds, 145, 64, 0, t);
+        h.surveyed(bad(b), t);
+        h.surveyed(halfRead(c), t);
+        // c is still half read, and that is now as good as a no. nothing is rejected though, it just isn't our problem
+        assertEquals(Move.GIVE_UP, h.decide(seeds, true, false, 145, 64, 0, t + 1, BAG));
+        assertNull(h.target());
+        assertTrue(rejected.isEmpty());
+    }
+
+    @Test
+    public void aBlindWalkThatGetsNowhereRejectsTheLakeAndUsesItsTurn() {
+        List<P> rejected = new ArrayList<>();
+        LavaHunt h = new LavaHunt(rejected);
+        P a = new P(100, 64, 0);
+        P b = new P(100, 64, 100);
+        P c = new P(100, 64, 200);
+        List<P> seeds = List.of(a, b, c);
+        h.surveyed(halfRead(a), 0);
+        h.surveyed(halfRead(b), 0);
+        h.surveyed(halfRead(c), 0);
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 0, 64, 0, 0, BAG));
+        assertEquals(Move.WAIT, h.decide(seeds, true, false, 0, 64, 0, LavaHunt.PROGRESS_TICKS + 1, BAG));
+        assertEquals(1, rejected.size());
+        assertNull(h.target());
+        // the stale half read ones get their look again first
+        int t = LavaHunt.PROGRESS_TICKS + 2;
+        assertEquals(b, h.nextToSurvey(seeds, 0, 64, 0, t));
+        h.surveyed(halfRead(b), t);
+        h.surveyed(halfRead(c), t);
+        assertNull(h.nextToSurvey(seeds, 0, 64, 0, t));
+        assertEquals(Move.WALK, h.decide(seeds, true, false, 0, 64, 0, t, BAG));
+        assertEquals(b, h.target());
+        assertEquals(Move.WAIT, h.decide(seeds, true, false, 0, 64, 0, t + LavaHunt.PROGRESS_TICKS + 1, BAG));
+        t += LavaHunt.PROGRESS_TICKS + 2;
+        h.nextToSurvey(seeds, 0, 64, 0, t);
+        h.surveyed(halfRead(c), t);
+        assertEquals(Move.GIVE_UP, h.decide(seeds, true, false, 0, 64, 0, t, BAG));
+    }
+
+    @Test
+    public void aRejectedHalfReadLakeIsNotWalkedTo() {
+        List<P> rejected = new ArrayList<>();
+        rejected.add(new P(100, 64, 0));
+        LavaHunt h = new LavaHunt(rejected);
+        P a = new P(101, 64, 0);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.GIVE_UP, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+    }
+
+    @Test
+    public void aBagTooLightForTheSiteDoesNotKeepABlindWalkGoingOnIt() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(100, 64, 0);
+        h.surveyed(halfRead(a), 0);
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, 9));
+        h.nextToSurvey(List.of(a), 50, 64, 0, LavaHunt.UNKNOWN_TICKS + 1);
+        // a real verdict we can't afford is still a real verdict, and skipped like any other
+        h.surveyed(good(a, 100, 3, 2), LavaHunt.UNKNOWN_TICKS + 1);
+        assertEquals(Move.GIVE_UP, h.decide(List.of(a), true, false, 50, 64, 0, LavaHunt.UNKNOWN_TICKS + 2, 9));
     }
 
     @Test

@@ -317,7 +317,9 @@ public class PortalPhase implements PhaseHandler {
             }
             poolFailed = true;
             resetCastClock();
-            ctx.progress("lava pool gave up: " + pool.failReason());
+            // progress throws its text away, and this is the one line that says why we are not building the fast one
+            ctx.log("lava pool gave up: " + pool.failReason());
+            ctx.progress("lava pool gave up");
         }
         Task toLake = castLakeStep(mod, ctx, portalExists);
         if (toLake != null) {
