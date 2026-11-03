@@ -35,7 +35,8 @@ public class LocateStrongholdTask extends Task {
     private static final int STILL_TICKS = 4;
     // after a throw we wait this long for the eye entity to be gone so the item drop exists
     private static final double COLLECT_WAIT_SECONDS = 9;
-    private static final double PICKUP_SECONDS = 20;
+    // a drop over rough ground can take longer than 20 to reach, and a lost eye costs way more than the extra wait
+    private static final double PICKUP_SECONDS = 40;
     private static final double PICKUP_RANGE = 40;
     private static final int ADVISE_EVERY_TICKS = 10;
     private static final int FRAME_CHECK_EVERY_TICKS = 5;

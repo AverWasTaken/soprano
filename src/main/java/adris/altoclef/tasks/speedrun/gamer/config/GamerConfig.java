@@ -21,7 +21,8 @@ public class GamerConfig {
     // (14 moved the nether entry stack 128 -> 56 and its low mark 96 -> 40, the rest gets dug on arrival. a saved 128 or 96 is the old default and goes along)
     // (15 moved the deaths per phase 3 -> 8, a saved 3 is the old default and goes along)
     // (16 moved the night wool radius 40 -> 128, a saved 40 is the old default and goes along)
-    public static final int VERSION = 16;
+    // (17 moved the target eyes 14 -> 16, a saved 14 is the old default and goes along)
+    public static final int VERSION = 17;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;
@@ -29,9 +30,9 @@ public class GamerConfig {
     public int version = VERSION;
     // a failing phase gets this many tries before it is skipped or the run goes STUCK
     public int maxAttempts = 2;
-    // eyes of ender: craft this many in the nether, the portal needs 12 minus the ~1.2 that are pre filled,
-    // and every throw loses an eye one time in five
-    public int targetEyes = 14;
+    // eyes of ender: craft this many in the nether, the portal needs 12 minus the ~1.2 that are pre filled, and the search
+    // for the stronghold eats about 2, 4 when it's feeling mean. a second nether trip costs way more than 2 pearls
+    public int targetEyes = 16;
     // leave the nether / start the stronghold with at least this many when the pearl budget ran out. 12 fills the ring
     // with nothing to spare, one more covers the odd lost throw
     public int floorEyes = 13;

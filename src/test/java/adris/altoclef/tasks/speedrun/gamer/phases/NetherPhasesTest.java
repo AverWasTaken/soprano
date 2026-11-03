@@ -105,11 +105,11 @@ public class NetherPhasesTest {
 
     @Test
     public void netherIsDoneWithTheFullKit() {
-        assertTrue(nether.isDone(bag(8, 0, 14, 0), state, cfg));
-        // 7 rods is the floor, the exit waits for the spare one
-        assertFalse(nether.isDone(bag(7, 0, 14, 0), state, cfg));
-        assertFalse(nether.isDone(bag(7, 0, 13, 0), state, cfg));
-        assertFalse(nether.isDone(bag(6, 0, 14, 0), state, cfg));
+        assertTrue(nether.isDone(bag(9, 0, 16, 0), state, cfg));
+        // 8 rods covers the target, the exit waits for the spare one
+        assertFalse(nether.isDone(bag(8, 0, 16, 0), state, cfg));
+        assertFalse(nether.isDone(bag(9, 0, 15, 0), state, cfg));
+        assertFalse(nether.isDone(bag(7, 0, 16, 0), state, cfg));
         assertFalse(nether.isDone(bag(0, 0, 0, 0), state, cfg));
     }
 
@@ -155,12 +155,12 @@ public class NetherPhasesTest {
 
     @Test
     public void aNetherTripBackFromOpenOnlyNeedsTheEmptyFrames() {
-        // OPEN filled 5 of 12 and ran dry: 7 empty frames + the 2 spare, not another 14
+        // OPEN filled 5 of 12 and ran dry: 7 empty frames + the 4 spare, not another 16
         state.framesFilled = 5;
         state.netherRevisits = 1;
-        // the ring was never read here, so the spare rod rides on top (6 rods, not 5)
-        assertTrue(nether.isDone(bag(6, 0, 9, 0), state, cfg));
-        assertFalse(nether.isDone(bag(5, 0, 9, 0), state, cfg));
+        // the ring was never read here, so the spare rod rides on top (7 rods, not 6)
+        assertTrue(nether.isDone(bag(7, 0, 11, 0), state, cfg));
+        assertFalse(nether.isDone(bag(6, 0, 11, 0), state, cfg));
         // the floor (7 empty + the 1 spare) when the budget or the rods run out
         FakeFacts eight = bag(4, 0, 8, 0);
         assertFalse(nether.isDone(eight, state, cfg));
@@ -185,7 +185,7 @@ public class NetherPhasesTest {
     @Test
     public void eyesPhaseAgreesAboutTheEmptyFrames() {
         state.framesFilled = 5;
-        assertTrue(eyes.isDone(bag(0, 0, 0, 9), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 0, 11), state, cfg));
         assertTrue(eyes.isDone(bag(0, 0, 2, 8), state, cfg));
         assertFalse(eyes.isDone(bag(0, 0, 0, 7), state, cfg));
         // 8 eyes' worth in the bag is enough to stay, 7 sends us back (once)
@@ -195,8 +195,8 @@ public class NetherPhasesTest {
 
     @Test
     public void eyesDoneAtTargetOrFloorWithNothingLeft() {
-        assertTrue(eyes.isDone(bag(0, 0, 0, 14), state, cfg));
-        assertFalse(eyes.isDone(bag(7, 0, 14, 0), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 0, 16), state, cfg));
+        assertFalse(eyes.isDone(bag(8, 0, 16, 0), state, cfg));
         assertTrue(eyes.isDone(bag(0, 0, 2, 13), state, cfg));
         assertFalse(eyes.isDone(bag(1, 0, 2, 13), state, cfg));
     }

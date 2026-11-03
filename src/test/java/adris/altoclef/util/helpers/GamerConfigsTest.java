@@ -53,7 +53,7 @@ public class GamerConfigsTest {
     public void aMissingFileGetsCreatedWithTheDefaults() throws IOException {
         GamerConfig c = GamerConfigs.load();
         assertEquals(GamerConfig.VERSION, c.version);
-        assertEquals(14, c.targetEyes);
+        assertEquals(16, c.targetEyes);
         assertTrue(Files.exists(file));
         assertEquals(GamerConfig.VERSION, onDisk().get("version").getAsInt());
     }
@@ -352,6 +352,18 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysFourteenEyesGetsTheNewTarget() throws IOException {
+        write("{\"version\": 16, \"targetEyes\": 14}");
+        assertEquals(16, GamerConfigs.load().targetEyes);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 16, \"targetEyes\": 15}");
+        assertEquals(15, GamerConfigs.load().targetEyes);
+        // and a current file that says 14 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 14}");
+        assertEquals(14, GamerConfigs.load().targetEyes);
+    }
+
+    @Test
     public void anOldFileWithAnOldDefaultEndBedCountLandsOnNine() throws IOException {
         write("{\"version\": 11, \"end\": {\"beds\": 5}}");
         assertEquals(9, GamerConfigs.load().end.beds);
@@ -456,7 +468,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 16;
+    private static final int PINNED_VERSION = 17;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

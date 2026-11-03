@@ -59,17 +59,17 @@ public class EyeMathTest {
 
     @Test
     public void leavesWithTheFullTarget() {
-        assertTrue(EyeMath.canLeaveNether(bag(7, 0, 14, 0), cfg, 0, false));
-        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 14, 0), cfg, 0, false));
-        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 13, 0), cfg, 0, false));
+        assertTrue(EyeMath.canLeaveNether(bag(8, 0, 16, 0), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 16, 0), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(8, 0, 15, 0), cfg, 0, false));
     }
 
     @Test
     public void powderAndEyesStandInForRods() {
-        // 4 eyes, 6 powder: 10 of 14 covered, 2 more rods; 10 pearls finish it
-        assertTrue(EyeMath.canLeaveNether(bag(2, 6, 10, 4), cfg, 0, false));
-        assertFalse(EyeMath.canLeaveNether(bag(1, 6, 10, 4), cfg, 0, false));
-        assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, 14), cfg, 0, false));
+        // 4 eyes, 6 powder: 10 of 16 covered, 3 more rods; 12 pearls finish it
+        assertTrue(EyeMath.canLeaveNether(bag(3, 6, 12, 4), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(2, 6, 12, 4), cfg, 0, false));
+        assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, 16), cfg, 0, false));
     }
 
     @Test
@@ -92,8 +92,8 @@ public class EyeMathTest {
 
     @Test
     public void eyesPhaseExit() {
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 14), cfg, 0));
-        assertFalse(EyeMath.eyesDone(bag(7, 0, 14, 0), cfg, 0));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 16), cfg, 0));
+        assertFalse(EyeMath.eyesDone(bag(8, 0, 16, 0), cfg, 0));
         // at the floor with something left to craft: keep crafting up to the target
         assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 13), cfg, 0));
         // at the floor with nothing left to craft from: done
@@ -105,23 +105,23 @@ public class EyeMathTest {
 
     @Test
     public void goalsShrinkWithTheFramesAlreadyFilled() {
-        assertEquals(14, EyeMath.targetGoal(cfg, 0));
+        assertEquals(16, EyeMath.targetGoal(cfg, 0));
         // the floor keeps its one spare on the first trip (floorEyes 13), it would be capped to 12 without that
         assertEquals(13, EyeMath.floorGoal(cfg, 0));
-        // 5 of 12 in: 7 empty, the spare (target - 12 = 2, floor - 12 = 1) rides on top
-        assertEquals(9, EyeMath.targetGoal(cfg, 5));
+        // 5 of 12 in: 7 empty, the spare (target - 12 = 4, floor - 12 = 1) rides on top
+        assertEquals(11, EyeMath.targetGoal(cfg, 5));
         assertEquals(8, EyeMath.floorGoal(cfg, 5));
         // never negative, never above the configured numbers
-        assertEquals(2, EyeMath.targetGoal(cfg, 12));
+        assertEquals(4, EyeMath.targetGoal(cfg, 12));
         assertEquals(0, EyeMath.floorGoal(cfg, 12));
         assertEquals(0, EyeMath.floorGoal(cfg, 99));
     }
 
     @Test
-    public void nineEyesLeaveTheNetherAfterAFiveFrameOpen() {
-        // the audit scenario: OPEN ran out at 5/12, 7 more are enough (9 with the spare)
-        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 5, false));
-        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 0, false));
+    public void elevenEyesLeaveTheNetherAfterAFiveFrameOpen() {
+        // the audit scenario: OPEN ran out at 5/12, 7 more are enough (11 with the spare)
+        assertTrue(EyeMath.canLeaveNether(bag(6, 0, 11, 0), cfg, 5, false));
+        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 11, 0), cfg, 0, false));
         // 8 is the floor for that state: only once the budget is nearly over
         FakeFacts eight = bag(4, 0, 8, 0);
         assertFalse(EyeMath.canLeaveNether(eight, cfg, 5, false));
@@ -131,7 +131,7 @@ public class EyeMathTest {
 
     @Test
     public void eyesPhaseUsesTheSameGoals() {
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 5));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 11), cfg, 5));
         assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 0));
         assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 8), cfg, 5));
         assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 7), cfg, 5));
@@ -176,32 +176,32 @@ public class EyeMathTest {
     public void aRevisitThatNeverReadTheRingKeepsTheSpare() {
         // LOCATE/ROOM sent us back (hopeless): framesFilled is the unread zero, no exact goal
         RunState noRead = revisit(0, false);
-        assertEquals(14, EyeMath.targetGoal(cfg, noRead));
+        assertEquals(16, EyeMath.targetGoal(cfg, noRead));
         assertEquals(13, EyeMath.floorGoal(cfg, noRead));
         // a read ring on the first trip is not a revisit yet
         RunState first = revisit(5, true);
         first.netherRevisits = 0;
-        assertEquals(9, EyeMath.targetGoal(cfg, first));
+        assertEquals(11, EyeMath.targetGoal(cfg, first));
         assertEquals(8, EyeMath.floorGoal(cfg, first));
     }
 
     @Test
     public void rodGoalCarriesTheSpareUntilTheRingIsKnown() {
         RunState first = new RunState();
-        assertEquals(16, EyeMath.rodGoal(cfg, first));
-        assertEquals(8, EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, first), 0, 0));
+        assertEquals(18, EyeMath.rodGoal(cfg, first));
+        assertEquals(9, EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, first), 0, 0));
         // a return trip knows the ring: plain goal, no spare
         RunState trip = revisit(5, true);
         assertEquals(7, EyeMath.rodGoal(cfg, trip));
         cfg.spareRods = 0;
-        assertEquals(14, EyeMath.rodGoal(cfg, first));
+        assertEquals(16, EyeMath.rodGoal(cfg, first));
     }
 
     @Test
     public void exitWaitsForTheSpareRodButTheFloorStaysThirteen() {
         RunState first = new RunState();
-        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 14, 0), cfg, first, false));
-        assertTrue(EyeMath.canLeaveNether(bag(8, 0, 14, 0), cfg, first, false));
+        assertFalse(EyeMath.canLeaveNether(bag(8, 0, 16, 0), cfg, first, false));
+        assertTrue(EyeMath.canLeaveNether(bag(9, 0, 16, 0), cfg, first, false));
         assertTrue(EyeMath.canLeaveNether(bag(7, 0, 13, 0), cfg, first, true));
     }
 

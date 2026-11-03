@@ -87,6 +87,10 @@ public final class GamerConfigs {
         if (from < 16 && c.overworld != null && c.overworld.nightWoolRadius == 40) {
             c.overworld.nightWoolRadius = new GamerConfig().overworld.nightWoolRadius;
         }
+        // and the target eyes: 14 was the default until it turned out 2 spare is not enough room for the lost throws
+        if (from < 17 && c.targetEyes == 14) {
+            c.targetEyes = new GamerConfig().targetEyes;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;
