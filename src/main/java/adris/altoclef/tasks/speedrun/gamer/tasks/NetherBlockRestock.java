@@ -19,6 +19,8 @@ import java.util.List;
 // the netherrack dig that keeps a bag of throwaways topped up, one home for the whole Nether phase and the death trip. NetherRestock
 // decides when, this owns the task that does it
 public class NetherBlockRestock {
+
+    private static final int DROP_REACH = 8;
     private final NetherRestock restock = new NetherRestock();
     private MineAndCollectTask task;
 
@@ -80,7 +82,10 @@ public class NetherBlockRestock {
                             && mod.getWorld().getBlockState(p).is(Blocks.NETHERRACK)
                             : NetherRestock.inReach(mod.getPlayer().getEyePosition(), p))
                             && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p))
-                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)));
+                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)))
+                    // what we broke lands at our feet. any wanted item in the world beats the next block otherwise, and a dig
+                    // turns into a long walk across the nether after somebody else's dirt
+                    .dropsOnlyWhere(p -> p.closerThan(mod.getPlayer().blockPosition(), DROP_REACH));
         } else if (!on) {
             task = null;
         }
