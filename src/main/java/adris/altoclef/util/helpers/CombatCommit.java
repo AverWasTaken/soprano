@@ -348,6 +348,12 @@ public final class CombatCommit {
             return reachGap <= ReachRules.MELEE_REACH;
         }
 
+        // close enough that the kill task swings instead of letting it come (ReachRules.killReach, on a plain player's arm). the
+        // aura goes by inReach, so for the last 0.3 of it the aura may swing and the task won't
+        public boolean inTaskReach() {
+            return reachGap <= ReachRules.MELEE_REACH - ReachRules.KILL_REACH_MARGIN;
+        }
+
         // never a reason to run, whatever the hp or the headcount
         public boolean standsAndFights() {
             return kind == Kind.ENDERMAN;
@@ -478,7 +484,8 @@ public final class CombatCommit {
     // to move (a path or a search going), y: our height, a pillar out of a hole is progress too
     // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight needs. true when nobody asked
     // rim: we stand on a lava rim or a ledge over a drop (LavaShore.edgeNear) with a melee foe close, path or no path
-    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim) {
+    // lavaClose: lava within LavaShore.GROUND_CLEAR of us. only a cube ever asks, so the brain only looks with one about
+    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim, boolean lavaClose) {
         public static final Way NONE = new Way(Set.of(), false, 0);
 
         public Way(Set<Integer> inWay, boolean pathing, double y) {
@@ -486,11 +493,15 @@ public final class CombatCommit {
         }
 
         public Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon) {
-            this(inWay, pathing, y, weapon, false);
+            this(inWay, pathing, y, weapon, false, false);
         }
 
         public Way withRim(boolean rim) {
-            return new Way(inWay, pathing, y, weapon, rim);
+            return new Way(inWay, pathing, y, weapon, rim, lavaClose);
+        }
+
+        public Way withLavaClose(boolean lavaClose) {
+            return new Way(inWay, pathing, y, weapon, rim, lavaClose);
         }
     }
 
@@ -1458,11 +1469,14 @@ public final class CombatCommit {
 
     // the closest knocker within RIM_ENGAGE_RANGE while we stand on a rim. armed, above the flee line, not crowded and not in a
     // run latch (those are the run rules' call, and idle already asked them), and never one we gave up on
+    // not a cube with lava this close: the fight parks us next to the lava to wait for it and the hop lands anyway. we walk on,
+    // and if it does catch us that is the plain HIT fight
     private Foe rimEngage(Tick t, boolean cooling) {
         if (!t.way().rim() || !t.armed() || runLatch || t.health() <= FLEE_HP || crowded(t.health(), t.foes(), cooling)) return null;
         Foe best = null;
         for (Foe foe : candidates(t)) {
             if (!CombatRules.rimKnocker(foe) || foe.distance() > CombatRules.RIM_ENGAGE_RANGE) continue;
+            if (t.way().lavaClose() && foe.splitType() != null) continue;
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
@@ -1896,6 +1910,18 @@ public final class CombatCommit {
         }
         Foe swap = takeover(t, target);
         if (swap != null) return startFight(t, swap, swapWhy, Event.FIGHT_NEXT, chain);
+        // a cube we can't swing at with lava this close: all the task does from here is stand and let it come. written off like a
+        // stall, so the route runs until it hits us again. goes by the task's reach and not the aura's: in the gap between them the
+        // task still won't swing and StandCap doesn't count it. boxed in there is no route to go back to
+        if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed()) {
+            ignored.put(target.id(), t.now());
+            idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
+            Event cleared = end(t, Event.FIGHT_CLEARED);
+            // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
+            // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
+            recover.reset();
+            return cleared;
+        }
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)

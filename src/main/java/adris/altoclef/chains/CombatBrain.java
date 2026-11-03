@@ -462,6 +462,7 @@ final class CombatBrain {
             }
             noteEnderGone(dimension, entity, entity instanceof Mob m && m.isAlive(), player);
         }
+        boolean lavaClose = lavaClose(mod, player, foes, target);
 
         // the name is written down while the target is alive, a dead mob is already gone from the world by the time we say so.
         // by id: "the last name we saw" said zombie for a skeleton whose fight ended before anyone looked at it
@@ -472,7 +473,7 @@ final class CombatBrain {
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
+                    way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
             String note = _commit.takeNote();
             if (note != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + note);
@@ -579,7 +580,7 @@ final class CombatBrain {
                 mod.getClientBaritone().getPathingBehavior().getCurrent() != null, target != null ? target.distance() : Double.POSITIVE_INFINITY);
         _walkNoArrowShield = _fightWalking && target != null && (target.kind() == Kind.FLYER || target.patrol());
         // (outside a fight the shield pauses pathing, so it waits until the walk is done instead of pinning us on the edge)
-        _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes, lavaClose) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
@@ -621,6 +622,13 @@ final class CombatBrain {
         if (mod.getClientBaritone().bsi == null) return false;
         if (!CombatRules.rimScan(blazeContact, foes)) return false;
         return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
+    }
+
+    // same lava the walk off a shore looks for (LavaShore.groundCell), a knock carries about that far. only a cube asks, so 49
+    // columns of cell lookups only happen with one about. the target counts too, it can be missing from a hostile pass
+    private static boolean lavaClose(AltoClef mod, LocalPlayer player, List<Foe> foes, Foe target) {
+        if (mod.getClientBaritone().bsi == null || !CombatRules.cubeAbout(foes, target)) return false;
+        return LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ(), LavaShore.GROUND_CLEAR);
     }
 
     private static boolean blazeInContact(AltoClef mod, LocalPlayer player) {

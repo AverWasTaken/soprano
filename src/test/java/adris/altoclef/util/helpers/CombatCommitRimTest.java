@@ -96,6 +96,201 @@ public class CombatCommitRimTest {
         assertEquals(Mode.NONE, c.mode());
     }
 
+    // ---- a cube with lava within GROUND_CLEAR: no fight picked, none kept out of reach
+
+    private static final Way LAVA = new Way(Set.of(), true, 64).withLavaClose(true);
+    private static final Way RIM_LAVA = RIM.withLavaClose(true);
+
+    private static Foe realCube(int id, double distance, double gap, long sinceHit) {
+        return new Foe(id, distance, false, false, sinceHit, Kind.NORMAL, gap).withSplit("magma_cube", true, 0, 64, 0).withKnocker(true);
+    }
+
+    private static Tick boxedTick(long now, List<Foe> foes, Foe target, Way way) {
+        return new Tick(now, 20, 0, 0, foes, target, way, true, false, false, RecoverHold.Body.NONE, true);
+    }
+
+    @Test
+    public void wayCarriesBothFlags() {
+        Way both = new Way(Set.of(), true, 64).withLavaClose(true).withRim(true);
+        assertTrue(both.rim());
+        assertTrue(both.lavaClose());
+        assertTrue(both.withLavaClose(false).rim());
+        assertFalse(Way.NONE.lavaClose());
+    }
+
+    @Test
+    public void onlyACubeAsksForTheLavaScan() {
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        Foe plain = new Foe(2, 4, false, false, NEVER).withKnocker(true);
+        assertTrue(CombatRules.cubeAbout(List.of(plain, cube), null));
+        assertTrue(CombatRules.cubeAbout(List.of(), cube));
+        assertFalse(CombatRules.cubeAbout(List.of(plain), plain));
+        assertFalse(CombatRules.cubeAbout(List.of(), null));
+    }
+
+    @Test
+    public void aCubeOnARimByLavaIsNoFight() {
+        CombatCommit c = new CombatCommit();
+        for (long t = 0; t < 40; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(realCube(1, 4, 3.5, NEVER)), null, RIM_LAVA)));
+        }
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aCubeOnARimWithTheLavaFurtherOffIsStillTheRimFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(realCube(1, 4, 3.5, NEVER)), null, RIM)));
+        assertEquals(Why.RIM, c.why());
+    }
+
+    @Test
+    public void anAngryPiglinOnARimByLavaIsStillTheRimFight() {
+        CombatCommit c = new CombatCommit();
+        Foe piglin = new Foe(1, 4, false, false, NEVER, Kind.NORMAL, 3.5).withKnocker(true);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(piglin), null, RIM_LAVA)));
+        assertEquals(Why.RIM, c.why());
+        // and it isn't let go for being out of reach either, that is a cube's deal
+        assertEquals(Event.NONE, c.step(tick(1, 20, List.of(piglin), piglin, RIM_LAVA)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aCubeOutOfReachByLavaIsLetGoAndStaysGone() {
+        CombatCommit c = new CombatCommit();
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        c.step(tick(0, 20, List.of(cube), null, RIM));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, 20, List.of(cube), cube, LAVA)));
+        assertEquals(Mode.NONE, c.mode());
+        String note = c.takeNote();
+        assertNotNull(note);
+        assertTrue(note, note.contains("let go of #1"));
+        // long past the cooldown, in contact, rim rule back on: it has not hit us since, so it is scenery
+        Foe close = realCube(1, 2.5, 2, NEVER);
+        for (long t = 2; t < 300; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(close), null, RIM)));
+        }
+    }
+
+    @Test
+    public void aHitFightLetGoStaysGoneUntilAFreshHitInReach() {
+        CombatCommit c = new CombatCommit();
+        Foe bit = realCube(1, 2.5, 2, 0);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(bit), null, LAVA)));
+        assertEquals(Why.HIT, c.why());
+        // the swing knocked it out of reach. the old hit is no news: no fight, even back in contact and even with the memory on
+        Foe knocked = realCube(1, 4.5, 3.5, 1);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, 20, List.of(knocked), knocked, LAVA)));
+        for (long t = 2; t < 40; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(realCube(1, 2.5, 2, t)), null, LAVA)));
+        }
+        // a new hit is, cooldown or not
+        Foe again = realCube(1, 2, 1.5, 0);
+        assertEquals(Event.FIGHT_START, c.step(tick(40, 20, List.of(again), null, LAVA)));
+        assertEquals(Why.HIT, c.why());
+        assertEquals(1, c.targetId());
+        // and in reach it stays a fight
+        for (long t = 41; t < 100; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(again), again, LAVA)));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    // between the task's reach and the arm's the task still won't swing, so that gap can't be a place to wait either
+    @Test
+    public void theLineIsTheTasksReachNotTheArms() {
+        CombatCommit in = new CombatCommit();
+        Foe bit = realCube(1, 2.5, 2, 0);
+        in.step(tick(0, 20, List.of(bit), null, LAVA));
+        Foe justIn = realCube(1, 3, 2.6, 1);
+        assertEquals(Event.NONE, in.step(tick(1, 20, List.of(justIn), justIn, LAVA)));
+        assertEquals(Mode.FIGHT, in.mode());
+
+        CombatCommit out = new CombatCommit();
+        out.step(tick(0, 20, List.of(bit), null, LAVA));
+        Foe justOut = realCube(1, 3, 2.8, 1);
+        assertTrue(justOut.inReach());
+        assertEquals(Event.FIGHT_CLEARED, out.step(tick(1, 20, List.of(justOut), justOut, LAVA)));
+    }
+
+    @Test
+    public void boxedInItKeepsFightingAndLetsGoOnceTheBoxOpens() {
+        CombatCommit c = new CombatCommit();
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        c.step(tick(0, 20, List.of(cube), null, RIM));
+        for (long t = 1; t < 20; t++) {
+            assertEquals(Event.NONE, c.step(boxedTick(t, List.of(cube), cube, LAVA)));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(20, 20, List.of(cube), cube, LAVA)));
+    }
+
+    @Test
+    public void noLavaNoLettingGo() {
+        CombatCommit c = new CombatCommit();
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        c.step(tick(0, 20, List.of(cube), null, RIM));
+        assertEquals(Event.NONE, c.step(tick(1, 20, List.of(cube), cube, RIM)));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    // under the hp line a fast cube is the cornered fight, and the let go must not hand it straight back to that rule
+    @Test
+    public void aFastCornerLetGoDoesNotComeRightBack() {
+        long now = 10_000;
+        CombatCommit c = new CombatCommit();
+        Foe bit = realCube(1, 2, 1.5, 0).withFast(true);
+        assertEquals(Event.RUN_TO_FIGHT, c.step(tick(now, 6, List.of(bit), null, LAVA)));
+        assertEquals(Mode.FIGHT, c.mode());
+        Foe knocked = realCube(1, 3.5, 3.5, 1).withFast(true);
+        // under the line the low hp run takes over on the same step
+        assertEquals(Event.RUN_START, c.step(tick(now + 1, 6, List.of(knocked), knocked, LAVA)));
+        assertEquals(Event.FIGHT_CLEARED, c.endedFirst());
+        for (long t = 2; t < 8; t++) {
+            c.step(tick(now + t, 6, List.of(realCube(1, 3.5, 3.5, t).withFast(true)), null, LAVA));
+            assertEquals(Mode.RUN, c.mode());
+        }
+    }
+
+    private static Tick lingeringTick(long now, Foe cube, Foe target, Way way) {
+        return new Tick(now, 14, 0, 0, List.of(cube), target, way, true, false, false, new RecoverHold.Body(20, false, false, false, true), false);
+    }
+
+    @Test
+    public void lettingGoIsNoHealHold() {
+        CombatCommit c = new CombatCommit();
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        c.step(lingeringTick(0, cube, null, RIM));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_CLEARED, c.step(lingeringTick(1, cube, cube, LAVA)));
+        assertFalse(c.recovering());
+    }
+
+    // the same body after a rim fight that ends with no lava about does hold, or the test above proves nothing
+    @Test
+    public void aPlainRimReleaseStillHolds() {
+        CombatCommit c = new CombatCommit();
+        c.step(lingeringTick(0, realCube(1, 4, 3.5, NEVER), null, RIM));
+        Foe far = realCube(1, 6.5, 6, NEVER);
+        // (the hold's own rerun rule hears about the cube on the same step, that is what a hold is for)
+        assertEquals(Event.RUN_START, c.step(lingeringTick(1, far, far, RIM)));
+        assertEquals(Event.FIGHT_CLEARED, c.endedFirst());
+        assertTrue(c.recovering());
+    }
+
+    @Test
+    public void theIdleRimShieldSkipsACubeItCannotHitByLava() {
+        Foe out = realCube(1, 3, 3.5, 5);
+        Foe in = realCube(1, 3, 2.5, 5);
+        Foe plain = new Foe(2, 3, false, false, NEVER, Kind.NORMAL, 3.5);
+        assertTrue(CombatRules.rimShield(true, false, List.of(out)));
+        assertFalse(CombatRules.rimShield(true, false, List.of(out), true));
+        assertTrue(CombatRules.rimShield(true, false, List.of(in), true));
+        assertTrue(CombatRules.rimShield(true, false, List.of(out, plain), true));
+        assertTrue(CombatRules.rimShield(true, true, List.of(out), true));
+    }
+
     @Test
     public void aRunOnARimWantsTheCubeAtTwo() {
         List<Foe> foes = List.of(cube(1, 2));
