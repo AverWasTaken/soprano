@@ -268,6 +268,75 @@ public class NetherRestockTest {
     }
 
     @Test
+    public void theArrivalAskFiresOncePerRestock() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.takeArrivalAsk());
+        assertFalse(r.takeArrivalAsk());
+        assertFalse(r.takeArrivalAsk());
+        // a new phase entry is a new restock
+        assertTrue(new NetherRestock().takeArrivalAsk());
+    }
+
+    @Test
+    public void theArrivalDigRunsPastTheSweepsTargetAndTheSweepsBarsComeBackAfter() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(56, NetherRestock.ARRIVAL_TARGET, NetherRestock.ARRIVAL_TARGET, true, false, 0));
+        // later ticks ask with the sweep's numbers, the dig under way keeps its own stop
+        assertTrue(r.update(NetherRestock.TARGET, NetherRestock.LOW, NetherRestock.TARGET, true, false, 10));
+        assertFalse(r.update(NetherRestock.ARRIVAL_TARGET, NetherRestock.LOW, NetherRestock.TARGET, true, false, 20));
+        // the bag going back to the entry size is no new dig, cooldown or not
+        assertFalse(r.update(56, NetherRestock.LOW, NetherRestock.TARGET, true, false, 20 + NetherRestock.COOLDOWN_SECONDS));
+    }
+
+    private static NetherRestock arrivalDigThatRanDry(int held) {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(held, NetherRestock.ARRIVAL_TARGET, NetherRestock.ARRIVAL_TARGET, true, true, 0));
+        assertTrue(r.update(held, NetherRestock.LOW, NetherRestock.TARGET, true, true, 1));
+        assertFalse(r.update(held, NetherRestock.LOW, NetherRestock.TARGET, true, true, 1 + NetherRestock.EXHAUSTED_SECONDS));
+        return r;
+    }
+
+    @Test
+    public void aDryArrivalDigOnAHealthyBagCountsForNothing() {
+        assertEquals(0, arrivalDigThatRanDry(56).exhaustedEnds());
+        assertEquals(0, arrivalDigThatRanDry(NetherRestock.LOW).exhaustedEnds());
+    }
+
+    @Test
+    public void aDryArrivalDigOnAThinBagIsADryDigLikeAnyOther() {
+        assertEquals(1, arrivalDigThatRanDry(NetherRestock.LOW - 1).exhaustedEnds());
+    }
+
+    @Test
+    public void anArrivalDigThatRunsTheClockWithNothingCountsForNothingEither() {
+        NetherRestock r = new NetherRestock();
+        assertTrue(r.update(56, NetherRestock.ARRIVAL_TARGET, NetherRestock.ARRIVAL_TARGET, true, false, 0));
+        assertFalse(r.update(56, NetherRestock.LOW, NetherRestock.TARGET, true, false, NetherRestock.MAX_SECONDS));
+        assertEquals(0, r.exhaustedEnds());
+    }
+
+    @Test
+    public void theTrackerLinesSayWhyTheDigStopped() {
+        NetherRestock full = new NetherRestock();
+        full.update(56, NetherRestock.ARRIVAL_TARGET, NetherRestock.ARRIVAL_TARGET, true, false, 100);
+        assertEquals("restock: dig start, 56 blocks, filling to 128", full.startLine());
+        full.update(128, NetherRestock.LOW, NetherRestock.TARGET, true, false, 142);
+        assertEquals("restock: dig end, 56 -> 128 blocks in 42 s, full", full.endLine(128, 142));
+
+        assertEquals("restock: dig end, 20 -> 20 blocks in 5 s, dry", arrivalDigThatRanDry(20).endLine(20, 5));
+
+        NetherRestock clock = new NetherRestock();
+        clock.update(56, NetherRestock.ARRIVAL_TARGET, NetherRestock.ARRIVAL_TARGET, true, false, 0);
+        clock.update(90, NetherRestock.LOW, NetherRestock.TARGET, true, false, NetherRestock.MAX_SECONDS);
+        assertEquals("restock: dig end, 56 -> 90 blocks in 75 s, clock", clock.endLine(90, NetherRestock.MAX_SECONDS));
+
+        NetherRestock noPick = new NetherRestock();
+        noPick.update(10, NetherRestock.LOW, NetherRestock.TARGET, true, false, 0);
+        noPick.update(10, NetherRestock.LOW, NetherRestock.TARGET, false, false, 3);
+        assertEquals("restock: dig end, 10 -> 10 blocks in 3 s, no pick", noPick.endLine(10, 3));
+    }
+
+    @Test
     public void theFallbackOnlyDigsWhatIsInArmsReach() {
         Vec3 eye = new Vec3(0.5, 65.62, 0.5);
         // the wall beside us and the one at head height

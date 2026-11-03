@@ -67,6 +67,18 @@ public class PillarBedTest {
     }
 
     @Test
+    public void onlyAnEastFootIsTheRightWay() {
+        assertTrue(PillarBed.rightWay(Direction.EAST, true));
+        for (Direction other : Direction.values()) {
+            if (other != Direction.EAST) {
+                assertFalse(other.name(), PillarBed.rightWay(other, true));
+            }
+        }
+        // the head half on the pillar means the foot is hanging off it, whichever way that reads
+        assertFalse(PillarBed.rightWay(Direction.EAST, false));
+    }
+
+    @Test
     public void clicksAreSpacedPastTheInvulnerableWindow() {
         assertTrue(PillarBed.clickNow(true, 5, 100, 89));
         assertFalse(PillarBed.clickNow(true, 5, 100, 90));

@@ -11,8 +11,8 @@ import java.util.List;
 // same floor and same top-up the IRON phase uses (the floor starts it, the overworld minimum ends it, FoodPlan.floorNext),
 // overworld only: there is nothing to hunt in the nether or the End. the instance only holds the latch and the runner
 public final class FoodFloor {
-    // the blocks a nether trip tops the bag up to. the portal gate wants the full entry stack (netherEntryBlocks), a trip home is
-    // a short hop for a stack that the nether digs back for itself, so it is not worth a 128 block mining session
+    // the blocks a nether trip tops the bag up to. a trip home is a short hop for a stack that the nether digs back for itself, so
+    // it is not worth a long mining session. a bit over the entry stack (netherEntryBlocks) these days, no harm in that
     public static final int TRIP_BLOCKS = 64;
 
     private final KitRunner runner = new KitRunner();

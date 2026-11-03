@@ -230,12 +230,13 @@ final class CombatBrain {
 
     // the fight has a path going and the target is not in contact yet, see CombatRules.fightShieldDown
     private boolean _fightWalking;
-    private boolean _blazeWalking;
+    private boolean _walkNoArrowShield;
 
     // same reason, for the chain's arrow shield: a volley is three shots, and raising it for each one is the walk gone. a skeleton
-    // keeps it, the walk up to one under arrows is the point of that shield
-    boolean walkingToBlaze() {
-        return _blazeWalking;
+    // keeps it, the walk up to one under arrows is the point of that shield. a patrol does not: a raise is 5 ticks, a bolt from
+    // this close lands in 2 to 4, and with five of them shooting the shield would just slow the walk and block nothing
+    boolean walkNoArrowShield() {
+        return _walkNoArrowShield;
     }
 
     boolean auraShield() {
@@ -457,10 +458,11 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
             if (entity instanceof Mob mob && mob.isAlive()) {
-                target = foe(dimension, mob, mob.distanceTo(player), book, now, player);
+                target = foe(dimension, mob, mob.distanceTo(player), book, now, player).withPatrol(patrol(mod, mob, player));
             }
             noteEnderGone(dimension, entity, entity instanceof Mob m && m.isAlive(), player);
         }
+        boolean lavaClose = lavaClose(mod, player, foes, target);
 
         // the name is written down while the target is alive, a dead mob is already gone from the world by the time we say so.
         // by id: "the last name we saw" said zombie for a skeleton whose fight ended before anyone looked at it
@@ -471,7 +473,7 @@ final class CombatBrain {
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes).withRim(rim), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
+                    way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
             String note = _commit.takeNote();
             if (note != null) Debug.logInternal("combat: [" + dimension.name().toLowerCase(java.util.Locale.ROOT) + "] " + note);
@@ -576,9 +578,9 @@ final class CombatBrain {
         _fightShield = _commit.mode() == Mode.FIGHT && !_commit.perching() && CombatRules.fightShield(_fightShield, _commit.targetId(), shieldFoes);
         _fightWalking = _commit.mode() == Mode.FIGHT && !_commit.perching() && CombatRules.fightShieldDown(
                 mod.getClientBaritone().getPathingBehavior().getCurrent() != null, target != null ? target.distance() : Double.POSITIVE_INFINITY);
-        _blazeWalking = _fightWalking && target != null && target.kind() == Kind.FLYER;
+        _walkNoArrowShield = _fightWalking && target != null && (target.kind() == Kind.FLYER || target.patrol());
         // (outside a fight the shield pauses pathing, so it waits until the walk is done instead of pinning us on the edge)
-        _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        _rim = rim && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes, lavaClose) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, foes) : null;
@@ -622,6 +624,13 @@ final class CombatBrain {
         return LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
     }
 
+    // same lava the walk off a shore looks for (LavaShore.groundCell), a knock carries about that far. only a cube asks, so 49
+    // columns of cell lookups only happen with one about. the target counts too, it can be missing from a hostile pass
+    private static boolean lavaClose(AltoClef mod, LocalPlayer player, List<Foe> foes, Foe target) {
+        if (mod.getClientBaritone().bsi == null || !CombatRules.cubeAbout(foes, target)) return false;
+        return LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ(), LavaShore.GROUND_CLEAR);
+    }
+
     private static boolean blazeInContact(AltoClef mod, LocalPlayer player) {
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
@@ -649,7 +658,7 @@ final class CombatBrain {
                 Foe foe = FoeRules.accept(dimension, candidate);
                 if (foe != null) {
                     mobs.add(mob);
-                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)), mob, player));
+                    foes.add(withSplit(foe.withFast(fast(mob)).withWet(wet(mob, player)).withPatrol(patrol(mod, mob, player)), mob, player));
                 } else if (!shotByExcluded) {
                     shotByExcluded = FoeRules.excludedShooterOnUs(dimension, candidate);
                 }
@@ -796,9 +805,10 @@ final class CombatBrain {
     }
 
     // the bag is only walked when something is in contact: that is the only time an in the way fight can start
+    // (or a sniper shooting us, the walk up to it wants a sword too. same ask as armed)
     private static boolean weaponIfNear(AltoClef mod, List<Foe> foes) {
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT || witherClose(foe)) return hasWeapon(mod);
+            if (foe.distance() <= CombatCommit.CONTACT || (foe.sniper() && foe.shooting()) || witherClose(foe)) return hasWeapon(mod);
         }
         return true;
     }
@@ -809,6 +819,10 @@ final class CombatBrain {
     }
 
     // a sword or an axe only, for the fights we pick (a pickaxe is fine for the one that is already hitting us)
+    private static boolean patrol(AltoClef mod, Mob mob, LocalPlayer player) {
+        return FoeRules.patrol(typeOf(mob), player.getArmorValue(), () -> hasWeapon(mod));
+    }
+
     private static boolean hasWeapon(AltoClef mod) {
         return WeaponPick.best(bagCandidates(mod)) != null;
     }

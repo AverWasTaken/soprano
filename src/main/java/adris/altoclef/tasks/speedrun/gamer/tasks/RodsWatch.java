@@ -36,9 +36,15 @@ public final class RodsWatch {
         return update(now, rods, camping, false);
     }
 
+    public Verdict update(double now, int rods, boolean camping, boolean atSpawner) {
+        return update(now, rods, camping, atSpawner, true);
+    }
+
     // the camp timer alone misses a spawner whose blazes keep us busy (hiding, walking out to them) and never die, that
     // is never "camping". so a second, longer timer runs the whole time we have a spawner, whatever we are doing at it
-    public Verdict update(double now, int rods, boolean camping, boolean atSpawner) {
+    // budgetApplies off skips the budget and only the budget: if the phase just ignored the verdict, GIVE_UP_RODS would
+    // return first every tick and the dry and camp clocks would be dead for good
+    public Verdict update(double now, int rods, boolean camping, boolean atSpawner, boolean budgetApplies) {
         if (Double.isNaN(startedAt)) {
             startedAt = now;
             lastGain = now;
@@ -51,7 +57,7 @@ public final class RodsWatch {
         if (atSpawner && Double.isNaN(spawnerSince)) {
             spawnerSince = now;
         }
-        if (now - startedAt >= budgetSeconds) {
+        if (budgetApplies && now - startedAt >= budgetSeconds) {
             return Verdict.GIVE_UP_RODS;
         }
         if (atSpawner && now - Math.max(spawnerSince, lastGain) >= drySeconds) {

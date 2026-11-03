@@ -1196,13 +1196,14 @@ public class NetherPhase implements PhaseHandler {
         int goal = EyeMath.targetGoal(cfg, s);
         int rodsNeed = EyeMath.rodsNeeded(EyeMath.rodGoal(cfg, s), eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
-        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. NetherRestock.LOW decides.
+        // before rods, pearls and the sweep: whichever of them is walking is what burns the bag. the first time here after a phase
+        // entry it's the arrival dig, then NetherRestock.LOW decides. both sit behind the escapes and the side trips above.
         // the dig runs on the game clock like RodsWatch and FORTRESS_WALK_SECONDS do, so it eats into those too, accepted
         boolean atSpawner = rodsTask != null && ctx.facts().gameTime() - rodsTaskRanAt <= 5
                 && !FoodTripRules.restockAllowed(rodsTask.isCampingSpawner(), rodsTask.currentSpawner() != null,
                         rodsTask.isBusyWithBlazes());
         if (!atSpawner) {
-            Task dig = restock.tick(mod, false, ctx.secondsInPhase());
+            Task dig = restock.tickPhase(mod, ctx.secondsInPhase());
             if (dig != null) {
                 hudState = "Restocking building blocks";
                 return dig;
@@ -1264,7 +1265,7 @@ public class NetherPhase implements PhaseHandler {
 
     private Task rodsStep(AltoClef mod, GamerContext ctx, double now, int rods, int rodsNeed) {
         RunState s = ctx.state();
-        if (s.fortress.isEmpty()) {
+        if (sweepInstead(s.fortress.isEmpty(), rodsTask != null && rodsTask.currentSpawner() != null)) {
             return findStep(ctx, findFortress, "Looking for a fortress");
         }
         if (rodsTask == null || rodsTaskTarget != rodsNeed) {
@@ -1282,7 +1283,10 @@ public class NetherPhase implements PhaseHandler {
                 ctx.save();
             }
         }
-        RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping, camped != null);
+        // moving on below the floor is no moving on: the pearls come, then the game has no way out of here anyway
+        // (canLeaveNether wants floor rods whatever the flag says). so the budget only counts once the floor is in the bag
+        int rodsFloor = EyeMath.rodsNeeded(EyeMath.floorGoal(ctx.cfg(), s), EyeMath.eyes(ctx.facts()), ctx.facts().count(Items.BLAZE_POWDER));
+        RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping, camped != null, rods >= rodsFloor);
         if (verdict == RodsWatch.Verdict.GIVE_UP_RODS) {
             s.netherRodsGaveUp = true;
             ctx.log("blaze rods are taking too long, moving on with " + rods);
@@ -1317,6 +1321,12 @@ public class NetherPhase implements PhaseHandler {
         hudState = rodsHud(camping, rodsTask.blazesAround()) + " (" + rods + "/" + rodsNeed + ")";
         rodsTaskRanAt = ctx.facts().gameTime();
         return rodsTask;
+    }
+
+    // giving up on a fortress walk can empty the list right as the task picks a real spawner. a spawner in hand beats any
+    // sweep, and it can't hog the wheel: a dud goes through giveUpSpawner, which drops the task, and a walk that stalls gets banned
+    static boolean sweepInstead(boolean noFortressKnown, boolean spawnerPicked) {
+        return noFortressKnown && !spawnerPicked;
     }
 
     // no closer to the spawner than a while ago

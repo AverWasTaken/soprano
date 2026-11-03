@@ -338,6 +338,44 @@ public class FoodPlanTest {
     }
 
     @Test
+    public void theEndLineCountsLikeTheFloorForAnyNumber() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 40;
+        FoodPlan p = plan(f);
+        assertFalse(p.shortOfEndFloor());
+        assertFalse(p.shortOfEnd(40));
+        assertTrue(p.shortOfEnd(41));
+        assertEquals(p.shortOfEndFloor(), p.shortOfEnd(end.minFoodUnits));
+    }
+
+    @Test
+    public void aBatchInTheSmokerDoesNotCountTowardTheTopUpEither() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 40;
+        f.cookingFood("cooked_porkchop", 4, 8, 20);
+        FoodPlan p = planIn(f, GamerPhase.END_PREP);
+        assertEquals(32, p.pending());
+        assertTrue(p.shortOfEnd(41));
+        assertFalse(p.shortOfEndFloor());
+    }
+
+    @Test
+    public void theHuntToAnyLineIsTheSameSum() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 10;
+        f.junkFoodUnits = 12;
+        FoodPlan p = plan(f);
+        assertEquals(p.endCollect(), p.endCollect(end.minFoodUnits));
+        assertEquals(56 + FoodPlan.END_MARGIN + 12, p.endCollect(56));
+        // a batch out goes on top, same as the floor's hunt
+        FakeFacts cooking = new FakeFacts();
+        cooking.foodUnits = 10;
+        cooking.cookingFood("cooked_porkchop", 4, 8, 20);
+        FoodPlan c = planIn(cooking, GamerPhase.END_PREP);
+        assertEquals(56 + FoodPlan.END_MARGIN + 32, c.endCollect(56));
+    }
+
+    @Test
     public void bandsAreTheTwoOverworldLines() {
         assertEquals(0, held(23, 0).band());
         assertEquals(1, held(24, 0).band());

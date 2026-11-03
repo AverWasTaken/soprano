@@ -121,9 +121,25 @@ public class ShelterTask extends Task {
         if (player == null || !player.onGround()) {
             return "not on ground";
         }
+        List<BlockPos> spots = new ArrayList<>();
         List<NightShelter.Column> columns = new ArrayList<>();
-        scan(mod, player, skip, new ArrayList<>(), columns);
-        return NightShelter.failCounts(columns);
+        scan(mod, player, skip, spots, columns);
+        return NightShelter.failCounts(columns) + ", nearest " + cellIds(mod.getWorld(), spots);
+    }
+
+    // what the three cells of the nearest column are made of. the counts say what failed, not what the ground was
+    private static String cellIds(Level level, List<BlockPos> spots) {
+        if (spots.isEmpty()) {
+            return "none";
+        }
+        StringBuilder ids = new StringBuilder();
+        for (int i = 0; i < NightShelter.DEPTH; i++) {
+            if (i > 0) {
+                ids.append('/');
+            }
+            ids.append(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(level.getBlockState(spots.get(0).below(i + 1)).getBlock()).getPath());
+        }
+        return ids.toString();
     }
 
     private static void scan(AltoClef mod, LocalPlayer player, BlockPos skip, List<BlockPos> spots, List<NightShelter.Column> columns) {

@@ -60,6 +60,12 @@ public final class PillarBed {
         return facing == Direction.EAST && tick % PLACE_EVERY == 0;
     }
 
+    // the blast starts at the head half, so the foot sits on the pillar and the head hangs off the far side from us. anything
+    // else has nothing between us and it
+    public static boolean rightWay(Direction facing, boolean foot) {
+        return foot && facing == Direction.EAST;
+    }
+
     // on the ground: in the air the pillar stops covering us
     public static boolean clickNow(boolean grounded, double headDistance, long tick, long lastClick) {
         return grounded && headDistance < HEAD_RANGE && tick - lastClick >= CLICK_SPACING;

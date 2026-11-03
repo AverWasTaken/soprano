@@ -33,7 +33,6 @@ import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.RayTraceUtils;
-import baritone.api.utils.Rotation;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.Minecraft;
@@ -62,8 +61,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.BaseFireBlock;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.phys.BlockHitResult;
@@ -88,7 +85,6 @@ public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
     private static boolean _shielding = false;
     private final KillAura _killAura = new KillAura();
-    private boolean _wasPuttingOutFire = false;
     // above a fight (65) and the food chain (55), under a run (80, which keeps its own number while it steps), lava and fire
     private static final float CREEPER_STEP_PRIORITY = 70;
     private final CreeperStep _creeperStep = new CreeperStep();
@@ -276,16 +272,9 @@ public class MobDefenseChain extends SingleTaskChain {
         // every tick, not just in the hold: the ghast ball that sent us there is older than the game's 40 tick memory of it
         HealUpTask.noteGhastHit(mod.getPlayer(), mod.getWorld().getGameTime());
 
-        // Put out fire if we're standing on one like an idiot
-        BlockPos fireBlock = isInsideFireAndOnFire(mod);
-        if (fireBlock != null) {
-            putOutFire(mod, fireBlock);
-            _wasPuttingOutFire = true;
-        } else {
-            // Stop putting stuff out if we no longer need to put out a fire.
-            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
-            _wasPuttingOutFire = false;
-        }
+        // the fire handling that lived here is gone (WorldSurvivalChain.breakFireWeTouch), this line stays: it ran every tick for
+        // ages and other tasks' forced clicks may be counting on it to let go
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
 
         // a commitment does not stand down for a meal. eating is async (the food chain holds the use key and picks the food,
         // it never needed the wheel), so the run walks on at chewing speed and the fight just stops swinging while it
@@ -395,7 +384,7 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean fighting = mode == CombatCommit.Mode.FIGHT;
         if (creeperShield) {
             // the creeper's shield is up, leave it be
-        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !_brain.walkingToBlaze() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !_brain.walkNoArrowShield() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
                 && isProjectileClose(mod) && !(_closeFireball && mod.getBehaviour().noFireballShield())
                 && (!mod.getFoodChain().biting() || _beatsBite)
                 && !mod.getEntityTracker().entityFound(ThrownSplashPotion.class, ThrownLingeringPotion.class)
@@ -423,43 +412,6 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         setTask(wheel);
         return hold;
-    }
-
-    private BlockPos isInsideFireAndOnFire(AltoClef mod) {
-        boolean onFire = mod.getPlayer().isOnFire();
-        if (!onFire) return null;
-        BlockPos p = mod.getPlayer().blockPosition();
-        BlockPos[] toCheck = new BlockPos[]{
-                p,
-                p.offset(1, 0, 0),
-                p.offset(1, 0, -1),
-                p.offset(0, 0, -1),
-                p.offset(-1, 0, -1),
-                p.offset(-1, 0, 0),
-                p.offset(-1, 0, 1),
-                p.offset(0, 0, 1),
-                p.offset(1, 0, 1)
-        };
-        for (BlockPos check : toCheck) {
-            Block b = mod.getWorld().getBlockState(check).getBlock();
-            if (b instanceof BaseFireBlock) {
-                return check;
-            }
-        }
-        return null;
-    }
-
-    private void putOutFire(AltoClef mod, BlockPos pos) {
-        Optional<Rotation> reach = LookHelper.getReach(pos);
-        if (reach.isPresent()) {
-            Baritone b = mod.getClientBaritone();
-            if (LookHelper.isLookingAt(mod, pos)) {
-                b.getPathingBehavior().requestPause();
-                b.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
-                return;
-            }
-            LookHelper.lookAt(mod, reach.get());
-        }
     }
 
     private void doForceField(AltoClef mod) {
@@ -939,10 +891,6 @@ public class MobDefenseChain extends SingleTaskChain {
 
     public void resetForceField() {
         _killAura.setRange(Double.POSITIVE_INFINITY);
-    }
-
-    public boolean isPuttingOutFire() {
-        return _wasPuttingOutFire;
     }
 
     @Override

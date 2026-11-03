@@ -39,7 +39,7 @@ public final class EyeMath {
     }
 
     // the bag only has to cover the frames that are still empty. an OPEN that filled 5 and ran dry sends us back for 7
-    // more, not for another 14 it would sit out the whole budget hunting. the spare (target - 12) stays on top
+    // more, not for another 16 it would sit out the whole budget hunting. the spare (target - 12) stays on top
     public static int targetGoal(GamerConfig cfg, int framesFilled) {
         int spare = Math.max(0, cfg.targetEyes - FrameGeometry.FRAME_COUNT);
         return Math.min(cfg.targetEyes, emptyFrames(framesFilled) + spare);

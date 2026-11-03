@@ -165,7 +165,7 @@ public class PhaseMachineTest {
     }
 
     @Test
-    public void aBudgetOverrunRetriesOnceThenGetsStuck() {
+    public void aBudgetOverrunRetriesThenStartsOverThenGetsStuck() {
         start();
         // gather budget is 8 minutes. stall off so only the budget speaks
         h(GamerPhase.GATHER).stall = 0;
@@ -177,15 +177,191 @@ public class PhaseMachineTest {
         // the retry has its own fresh budget
         tickAfter(8 * 60 - 1);
         assertFalse(machine.ended());
+        // out of retries on the clock: back in at attempt 1 with a fresh budget, nobody gave up
         tickAfter(2);
+        assertStartedOver(GamerPhase.GATHER, "took longer than 8 minutes");
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2", "timeout2", "exit", "enter1"), h(GamerPhase.GATHER).events);
+        // the same road again, and this time it really is the end
+        tickAfter(8 * 60 + 1);
+        assertEquals(2, host.state.attemptsOf(GamerPhase.GATHER));
+        assertFalse(machine.ended());
+        tickAfter(8 * 60 + 1);
         assertTrue(machine.ended());
         assertTrue(host.state.stuck);
         assertTrue(host.state.stuckReason, host.state.stuckReason.contains("8 minutes"));
         // the phase stays where it was, so #gamer resumes there
         assertEquals(GamerPhase.GATHER, host.state.phase);
+        assertTrue(host.said.get(host.said.size() - 1).contains("Gave up at"));
         assertTrue(host.said.get(host.said.size() - 1).contains("State saved, type #gamer to pick it back up."));
         assertTrue(host.said.get(host.said.size() - 1).contains("getting started"));
         assertNull(machine.tick(null));
+    }
+
+    // what a restart has to leave behind, whichever clock ran out
+    private void assertStartedOver(GamerPhase phase, String reason) {
+        assertFalse(machine.ended());
+        assertFalse(host.state.stuck);
+        assertTrue(host.state.restartedThisPhase);
+        assertEquals(phase, host.state.phase);
+        assertEquals(1, host.state.attemptsOf(phase));
+        assertEquals(0, machine.secondsInPhase(), 1e-9);
+        assertEquals(0, machine.watchdog().secondsSinceProgress(machine.now()), 1e-9);
+        assertEquals(host.facts.gameTime, host.state.phaseEnteredGameTime);
+        String line = host.said.get(host.said.size() - 1);
+        assertTrue(line, line.contains("starting this part over"));
+        assertTrue(line, line.contains(reason));
+        // the harness reads these three as the end of a game (or a resume)
+        assertFalse(line, line.contains("Gave up at"));
+        assertFalse(line, line.contains("Resuming"));
+        assertFalse(line, line.contains("spawned over a lava lake"));
+    }
+
+    @Test
+    public void aStalledPhaseRetriesThenStartsOverThenGetsStuck() {
+        start();
+        tickAfter(121);
+        assertEquals(2, host.state.attemptsOf(GamerPhase.GATHER));
+        tickAfter(121);
+        assertStartedOver(GamerPhase.GATHER, "no progress for 121 seconds");
+        tickAfter(121);
+        assertFalse(machine.ended());
+        tickAfter(121);
+        assertTrue(host.state.stuck);
+        assertTrue(host.state.stuckReason, host.state.stuckReason.contains("no progress"));
+        assertTrue(host.said.get(host.said.size() - 1).contains("Gave up at"));
+    }
+
+    @Test
+    public void aHandlerThatSaysStuckOnTheClockStartsOverToo() {
+        // the portal and dragon shape: no retry left in the handler's own opinion, from the first timeout
+        h(GamerPhase.GATHER).onTimeout = Timeout.STUCK;
+        start();
+        tickAfter(121);
+        assertStartedOver(GamerPhase.GATHER, "no progress");
+        tickAfter(121);
+        assertTrue(host.state.stuck);
+    }
+
+    @Test
+    public void aDeathCapOnTheClockStopsWithNoRestart() {
+        h(GamerPhase.DRAGON).onTimeout = Timeout.STUCK_NO_RESTART;
+        host.state.phase = GamerPhase.DRAGON;
+        start();
+        tickAfter(121);
+        assertTrue(host.state.stuck);
+        assertFalse(host.state.restartedThisPhase);
+        assertTrue(host.said.stream().noneMatch(s -> s.contains("starting this part over")));
+    }
+
+    @Test
+    public void aFailWithNoRetriesLeftStopsWithNoRestart() {
+        start();
+        machine.fail("first");
+        machine.tick(null);
+        machine.fail("the dragon killed us");
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertFalse(host.state.restartedThisPhase);
+        assertEquals("the dragon killed us", host.state.stuckReason);
+        assertEquals(1, host.said.stream().filter(s -> s.startsWith("Gave up at")).count());
+        assertTrue(host.said.stream().noneMatch(s -> s.contains("starting this part over")));
+    }
+
+    @Test
+    public void aThrowingOnTimeoutOnTheClockStopsWithNoRestart() {
+        FakeHandler gather = new FakeHandler(GamerPhase.GATHER) {
+            @Override
+            public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
+                throw new IllegalArgumentException("bad handler");
+            }
+        };
+        List<PhaseHandler> hs = new ArrayList<>(handlers);
+        hs.set(0, gather);
+        machine = new PhaseMachine(hs, host);
+        machine.begin(null);
+        host.facts.seconds(121);
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertFalse(host.state.restartedThisPhase);
+        assertTrue(host.said.stream().noneMatch(s -> s.contains("starting this part over")));
+    }
+
+    @Test
+    public void aNewPhaseGetsItsOwnRestart() {
+        start();
+        tickAfter(121);
+        tickAfter(121);
+        assertTrue(host.state.restartedThisPhase);
+        h(GamerPhase.GATHER).alwaysDone();
+        machine.tick(null);
+        assertEquals(GamerPhase.IRON, host.state.phase);
+        assertFalse(host.state.restartedThisPhase);
+        tickAfter(121);
+        tickAfter(121);
+        assertStartedOver(GamerPhase.IRON, "no progress");
+    }
+
+    @Test
+    public void aRelogDoesNotBuyAnotherRestart() {
+        host.facts.gameTime = 20 * 10000;
+        host.state.phase = GamerPhase.IRON;
+        host.state.phaseEnteredGameTime = host.facts.gameTime - 60 * 20;
+        host.state.phaseAttempts.put(GamerPhase.IRON.name(), 2);
+        host.state.restartedThisPhase = true;
+        machine.begin(null, true);
+        assertTrue(host.state.restartedThisPhase);
+        tickAfter(121);
+        assertTrue(host.state.stuck);
+    }
+
+    @Test
+    public void aRestartKeepsTheDeathsAndTheRegressCounts() {
+        start();
+        host.state.deathsThisPhase = 5;
+        host.state.regressCounts.put("LOCATE>NETHER", 2);
+        tickAfter(121);
+        tickAfter(121);
+        assertStartedOver(GamerPhase.GATHER, "no progress");
+        assertEquals(5, host.state.deathsThisPhase);
+        assertEquals(Integer.valueOf(2), host.state.regressCounts.get("LOCATE>NETHER"));
+    }
+
+    @Test
+    public void aRestartDumpsTheTraceAndSaves() {
+        start();
+        tickAfter(121);
+        int saves = host.saves;
+        List<String> dumped = new ArrayList<>();
+        Trace.setSink(dumped::add);
+        try {
+            tickAfter(121);
+        } finally {
+            Trace.setSink(null);
+        }
+        assertTrue(dumped.get(0), dumped.get(0).startsWith("TRACE DUMP (restart: no progress for 121 seconds) build "));
+        assertTrue(dumped.get(dumped.size() - 1).startsWith("END TRACE DUMP"));
+        assertTrue(host.saves > saves);
+    }
+
+    @Test
+    public void aRestartDropsTheOldChildBeforeTheEnter() {
+        List<String> order = new ArrayList<>();
+        TestHost h2 = new TestHost() {
+            @Override
+            public void onPhaseReset() {
+                order.add("reset");
+            }
+        };
+        List<FakeHandler> hs = FakeHandler.full();
+        hs.forEach(fh -> fh.shared = order);
+        PhaseMachine m = new PhaseMachine(new ArrayList<PhaseHandler>(hs), h2);
+        m.begin(null);
+        h2.facts.seconds(121);
+        m.tick(null);
+        order.clear();
+        h2.facts.seconds(121);
+        m.tick(null);
+        assertEquals(List.of("GATHER:timeout2", "GATHER:exit", "reset", "GATHER:enter1"), order);
     }
 
     @Test

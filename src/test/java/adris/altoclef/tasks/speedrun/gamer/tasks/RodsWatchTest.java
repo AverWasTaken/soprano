@@ -126,6 +126,37 @@ public class RodsWatchTest {
     }
 
     @Test
+    public void theBudgetSitsOutBelowTheFloor() {
+        RodsWatch w = new RodsWatch(100000, 100000, 720);
+        w.update(0, 0, false, false, false);
+        assertEquals(Verdict.KEEP_GOING, w.update(720, 0, false, false, false));
+        assertEquals(Verdict.KEEP_GOING, w.update(50000, 6, false, false, false));
+    }
+
+    @Test
+    public void theDryAndCampClocksStillFirePastTheBudgetBelowTheFloor() {
+        // budget 720, dry 480, spawner from 1000 on: both clocks only start well past the budget
+        RodsWatch d = new RodsWatch(100000, 480, 720);
+        d.update(0, 0, false, false, false);
+        assertEquals(Verdict.KEEP_GOING, d.update(1000, 0, false, true, false));
+        assertEquals(Verdict.KEEP_GOING, d.update(1479, 0, false, true, false));
+        assertEquals(Verdict.GIVE_UP_SPAWNER, d.update(1480, 0, false, true, false));
+        RodsWatch c = new RodsWatch(360, 100000, 720);
+        c.update(0, 0, false, false, false);
+        assertEquals(Verdict.KEEP_GOING, c.update(1000, 0, true, true, false));
+        assertEquals(Verdict.KEEP_GOING, c.update(1359, 0, true, true, false));
+        assertEquals(Verdict.GIVE_UP_SPAWNER, c.update(1360, 0, true, true, false));
+    }
+
+    @Test
+    public void theBudgetFiresOnceTheFloorIsReached() {
+        RodsWatch w = new RodsWatch(100000, 100000, 720);
+        w.update(0, 0, false, false, false);
+        assertEquals(Verdict.KEEP_GOING, w.update(1000, 6, false, false, false));
+        assertEquals(Verdict.GIVE_UP_RODS, w.update(1001, 7, false, false, true));
+    }
+
+    @Test
     public void aSpawnerWeCannotReachGivesUpTheFortressOnlyWhenItWasTheLastOne() {
         assertEquals(Verdict.KEEP_GOING, RodsWatch.afterNoWay(true));
         assertEquals(Verdict.GIVE_UP_SPAWNER, RodsWatch.afterNoWay(false));

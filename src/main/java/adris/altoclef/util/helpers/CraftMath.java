@@ -103,6 +103,20 @@ public final class CraftMath {
         return lo;
     }
 
+    // what the grid fill can really do per slot. maxCrafts is happy to feed each slot from its own wood, the fill isn't: it drags one
+    // wood over the lot, then the single slot path right clicks the next wood onto that, which swaps, and over satisfied takes half
+    // back, forever. having enough of one wood doesn't save it, both paths pick by stack size and not by who could pay, and one slot
+    // can do it all by itself (7 oak logs on the slot, 6 birch in hand, 12 wanted). so a batch is only for an ingredient we own one
+    // type of, there's nothing to swap with. anything else is one craft a round: any wood satisfies a slot at one and nothing ever
+    // lands on anything
+    public static <T> int perSlotToFill(List<? extends List<T>> slots, ToIntFunction<T> have, int perSlot) {
+        if (perSlot <= 1) return perSlot;
+        for (List<T> options : slots) {
+            if (options.stream().distinct().filter(option -> have.applyAsInt(option) > 0).count() > 1) return 1;
+        }
+        return perSlot;
+    }
+
     private static <T> boolean feasible(List<List<T>> slots, ToIntFunction<T> have, Map<T, Integer> owned, int crafts) {
         Map<T, Integer> left = new HashMap<>();
         for (List<T> options : slots) {

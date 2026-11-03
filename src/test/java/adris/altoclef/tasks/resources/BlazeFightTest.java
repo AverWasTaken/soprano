@@ -28,6 +28,12 @@ public class BlazeFightTest {
         assertTrue(BlazeFight.merge(List.of(), List.of()).isEmpty());
     }
 
+    // shorter than fire range and a blaze with a line on us counts as far enough, so the run stands there and takes it
+    @Test
+    public void aRunGoesPastFireRange() {
+        assertTrue(BlazeFight.RUN_DISTANCE > BlazeFightRules.FIRE_RANGE);
+    }
+
     @Test
     public void feetLevelAndUpStayBannedWhileFighting() {
         assertTrue(BlazeFight.placingBanned(true, 68, 68));

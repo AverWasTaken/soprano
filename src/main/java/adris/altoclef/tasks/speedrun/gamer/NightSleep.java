@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.util.helpers.CombatRules;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 
 // sleeping through the night instead of fighting through it. every decision lives here and nothing here knows there is a game:
 // when the trip applies, where the bed has to be to be out of the monsters' reach, the budget of a night, when mob defense
@@ -213,6 +214,13 @@ public final class NightSleep {
             return Prep.GAVE_UP;
         }
         return in.sheepNear() ? Prep.WOOL : Prep.NO_SHEEP;
+    }
+
+    // the wood prep asks for. a ready bed only ever wants its own three, and so does a hunt that is running: a sheep 100 blocks out
+    // walks us past the table's reach, then the four planks for a new table make it NO_WOOD halfway there, the phase walks home, the
+    // table is close again and the hunt is back on. same idea as SheepHold. the craft still asks the real number
+    public static int prepWoodNeeded(boolean bedReady, boolean hunting, IntSupplier withTable) {
+        return bedReady || hunting ? 3 : withTable.getAsInt();
     }
 
     // which colour to hunt: the one we hold the most of that the sheep around could still make three of (a kill is one wool, a

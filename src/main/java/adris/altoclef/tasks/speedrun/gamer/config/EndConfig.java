@@ -19,6 +19,9 @@ public class EndConfig {
     public int endMinBlocks = 8;
     // cooked steak is 8, the fight is minutes long so this is only here so we do not walk in starving
     public int minFoodUnits = 24;
+    // the surface prep ahead of the dig tops up to this while its 5 minute cap lasts. soft: never a gate, never ahead of the beds.
+    // 24 is a bag that gets to the fight empty, the walk to the portal alone can eat 8
+    public int wantFoodUnits = 56;
     // END_PREP wants this many armor points for the walk in. the bed fight itself doesn't ask, the pillar takes the blast
     public int bedMinArmor = 10;
     // nothing reads this since beds stopped caring about armor, kept so old config files still load

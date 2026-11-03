@@ -257,6 +257,12 @@ public final class EndGear {
         return !wayHome && foodFirst(foodShort, errandBlocksFromPortal, farBlocks);
     }
 
+    // the prep's soft top-up: only with room to carry it, and not in front of an empty field (FoodDry ends it in about 90 s, so a
+    // field with nothing on it costs that and not the whole cap)
+    public static boolean wantsTopUp(boolean foodShort, boolean bagFull, boolean dry) {
+        return foodShort && !bagFull && !dry;
+    }
+
     // the bed search, from what the bag and the world offer: wool in the bag is crafted, a known bed is mined wherever it is, and with
     // neither we go find sheep. there is no fourth answer on purpose
     public enum BedPlan {

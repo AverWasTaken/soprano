@@ -142,13 +142,14 @@ public final class CombatRules {
         return health > FLEE_HEALTH;
     }
 
-    // the shield in every committed melee fight: the target is melee and close. with a sword there is no crit hop for it to
+    // the shield in every committed melee fight: the target is melee and close, or the pillager we walked up to (point blank
+    // its bolts come from right where the shield faces). with a sword there is no crit hop for it to
     // veto (a sword never hops) and a melee target comes to us, one that never does is dropped by the stall rule. up: it is up
     // already, and then the hold range is the one asked
     public static boolean fightShield(boolean up, int targetId, List<CombatCommit.Foe> foes) {
         double reach = up ? FIGHT_SHIELD_HOLD : FIGHT_SHIELD_RANGE;
         for (CombatCommit.Foe foe : foes) {
-            if (foe.id() == targetId && foe.melee() && foe.distance() <= reach) return true;
+            if (foe.id() == targetId && (foe.melee() || foe.patrol()) && foe.distance() <= reach) return true;
         }
         return false;
     }
@@ -169,9 +170,16 @@ public final class CombatRules {
     // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
     // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem
     public static boolean rimShield(boolean edgeNear, boolean blazeInContact, List<CombatCommit.Foe> foes) {
+        return rimShield(edgeNear, blazeInContact, foes, false);
+    }
+
+    // lavaClose: a cube past arm's reach doesn't count. this shield stands us still and the aura can't land a swing from there, so
+    // it would be the wait CombatCommit.rimEngage just talked us out of. one in reach keeps it, that stand has a swing in it
+    public static boolean rimShield(boolean edgeNear, boolean blazeInContact, List<CombatCommit.Foe> foes, boolean lavaClose) {
         if (!edgeNear) return false;
         if (blazeInContact) return true;
         for (CombatCommit.Foe foe : foes) {
+            if (lavaClose && foe.splitType() != null && !foe.inReach()) continue;
             if (foe.melee() && foe.distance() <= RIM_SHIELD_FOE_RANGE) return true;
         }
         return false;
@@ -193,6 +201,15 @@ public final class CombatRules {
     // not it: the aura keeps its shield off them and a run from them is the heavy rules' business
     public static boolean rimKnocker(CombatCommit.Foe foe) {
         return foe.knocker() && foe.melee() && foe.kind() == CombatCommit.Kind.NORMAL;
+    }
+
+    // a slime or magma cube among them. target may be null
+    public static boolean cubeAbout(List<CombatCommit.Foe> foes, CombatCommit.Foe target) {
+        if (target != null && target.splitType() != null) return true;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.splitType() != null) return true;
+        }
+        return false;
     }
 
     // on a rim in a run: the closest foe within RIM_RUN_RANGE that is a knocker or has hit us (plain melee only), or null.

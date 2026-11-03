@@ -485,4 +485,24 @@ public class FoeRulesTest {
         assertFalse(FoeRules.liftsExclusion("iron_golem", true, 3));
         assertFalse(FoeRules.liftsExclusion("enderman", true, 3));
     }
+
+    @Test
+    public void aPatrolIsAPillagerWithArmorAndAWeapon() {
+        assertTrue(FoeRules.patrol("pillager", FoeRules.PATROL_ARMOR, () -> true));
+        assertFalse(FoeRules.patrol("pillager", FoeRules.PATROL_ARMOR - 1, () -> true));
+        assertFalse(FoeRules.patrol("pillager", 20, () -> false));
+        // its friends keep their old rules, the vindicator is a heavy hitter and the evoker is worse
+        assertFalse(FoeRules.patrol("vindicator", 20, () -> true));
+        assertFalse(FoeRules.patrol("evoker", 20, () -> true));
+        assertFalse(FoeRules.patrol("ravager", 20, () -> true));
+    }
+
+    @Test
+    public void thePatrolRuleOnlyWalksTheBagForAPillagerInArmor() {
+        java.util.function.BooleanSupplier never = () -> {
+            throw new AssertionError("asked the bag");
+        };
+        assertFalse(FoeRules.patrol("zombie", 20, never));
+        assertFalse(FoeRules.patrol("pillager", 0, never));
+    }
 }

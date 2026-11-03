@@ -124,7 +124,7 @@ public class CombatCommitShotTest {
         long t = NOW + 1;
         Event ended = Event.NONE;
         for (; t < NOW + CombatCommit.RUN_CAP + 10 && ended == Event.NONE; t++) {
-            ended = c.step(tick(t, 6, (t - NOW) * 0.5, skeleton(14, 60, false), skeleton(7, 14, 60, false)));
+            ended = c.step(tick(t, 6, (t - NOW) * 0.5, skeleton(CombatRules.SHOOTER_RANGE + 1, 60, false), skeleton(7, CombatRules.SHOOTER_RANGE + 1, 60, false)));
         }
         assertNotEquals(Event.NONE, ended);
         assertEquals(Mode.NONE, c.mode());

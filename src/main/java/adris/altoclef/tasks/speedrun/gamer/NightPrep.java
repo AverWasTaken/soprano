@@ -35,6 +35,7 @@ public final class NightPrep {
     private Prep last = Prep.TOO_EARLY;
     private int colour = -1;
     private Task woolTask;
+    private long saidNoSheep = Long.MIN_VALUE;
 
     public NightPrep(Supplier<OverworldConfig> cfg) {
         this.cfg = cfg;
@@ -87,10 +88,15 @@ public final class NightPrep {
             sheep = sheepHold.see(running == Prep.WOOL && woolTask != null, () -> pickColour(mod, c) >= 0, gameTime);
         }
         NightSleep.PrepInputs in = new NightSleep.PrepInputs(true, true, gate.phaseOk(), gate.busy(), gate.fighting(), gate.lowHealth(),
-                gate.nightSpent(), false, timeOfDay, ready, wool, BedCraft.wood(mod), ready ? 3 : BedCraft.woodNeeded(mod),
+                gate.nightSpent(), false, timeOfDay, ready, wool, BedCraft.wood(mod),
+                NightSleep.prepWoodNeeded(ready, running == Prep.WOOL && woolTask != null, () -> BedCraft.woodNeeded(mod)),
                 sheep, woolClock.over(c.nightWoolSeconds), craftClock.over(c.nightCraftSeconds));
         Prep p = NightSleep.prep(in, craftLead, woolLead);
         last = p;
+        if (p == Prep.NO_SHEEP && saidNoSheep != dayId) {
+            saidNoSheep = dayId;
+            sayNoSheep(mod);
+        }
         Task task = switch (p) {
             case WOOL -> wool(mod, c);
             case CRAFT -> craft(mod, c);
@@ -139,6 +145,37 @@ public final class NightPrep {
             return colour;
         }
         return NightSleep.woolColour(held, near);
+    }
+
+    // once an evening: how far off the sheep really were, so the next games can tell if the wall was the radius or the three of a colour
+    private void sayNoSheep(AltoClef mod) {
+        int[] within40 = new int[COLOURS];
+        int[] within128 = new int[COLOURS];
+        double nearest = Double.MAX_VALUE;
+        for (Sheep s : mod.getEntityTracker().getTrackedEntities(Sheep.class)) {
+            if (!s.isAlive() || s.isBaby()) {
+                continue;
+            }
+            double d = mod.getPlayer().distanceTo(s);
+            nearest = Math.min(nearest, d);
+            // (a sheared one is no wool, all it gets to say is how far the nearest sheep was)
+            if (!s.isSheared() && d <= 128) {
+                within128[s.getColor().ordinal()]++;
+                if (d <= 40) {
+                    within40[s.getColor().ordinal()]++;
+                }
+            }
+        }
+        Debug.logInternal("night prep: NO_SHEEP, nearest adult sheep " + (nearest == Double.MAX_VALUE ? "none" : (int) nearest + " blocks")
+                + ", best colour " + mostOf(within40) + " within 40, " + mostOf(within128) + " within 128");
+    }
+
+    private static int mostOf(int[] counts) {
+        int most = 0;
+        for (int n : counts) {
+            most = Math.max(most, n);
+        }
+        return most;
     }
 
     private Task wool(AltoClef mod, OverworldConfig c) {

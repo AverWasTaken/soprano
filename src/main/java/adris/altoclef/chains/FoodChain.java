@@ -474,7 +474,7 @@ public class FoodChain extends SingleTaskChain {
 
     // everything that makes the eat branch back off. cheap enough to read from getPriority, needsToEat() uses the cached answer
     private boolean eatingBlocked(AltoClef mod) {
-        if (WorldHelper.isInNetherPortal(mod) || mod.getMobDefenseChain().isPuttingOutFire()) return true;
+        if (WorldHelper.isInNetherPortal(mod)) return true;
         for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
             if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) return true;
         }

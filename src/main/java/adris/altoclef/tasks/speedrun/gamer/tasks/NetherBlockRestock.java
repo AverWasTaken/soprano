@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
@@ -11,12 +12,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.List;
 
 // the netherrack dig that keeps a bag of throwaways topped up, one home for the whole Nether phase and the death trip. NetherRestock
 // decides when, this owns the task that does it
 public class NetherBlockRestock {
+
+    private static final int DROP_REACH = 8;
+    private static final int LOCAL_SEARCH = 8;
     private final NetherRestock restock = new NetherRestock();
     private MineAndCollectTask task;
 
@@ -40,9 +45,11 @@ public class NetherBlockRestock {
     // the whole bag, counted with the list baritone places from, and the dig goes for exactly that list too (the alto build
     // list also has soul sand and magma in it, which baritone never places, so a bag of those would end the dig and stay
     // "empty"). MineAndCollectTask breaks through baritone, so its lava checks apply to every block. no pick (the same check
-    // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack. returns the dig to run, or null for "not now"
-    public Task tick(AltoClef mod, boolean gaveUp, double now) {
-        return tick(mod, gaveUp ? NetherRestock.GIVE_UP_LOW : NetherRestock.LOW, now);
+    // MineAndCollectTask makes) = no restock, a hand cannot dig netherrack. returns the dig to run, or null for "not now". the first
+    // ask of this restock fills to the arrival stack, the ones after it are the sweep's bars (a dig under way keeps its own stop)
+    public Task tickPhase(AltoClef mod, double now) {
+        boolean arrival = restock.takeArrivalAsk();
+        return tick(mod, arrival ? NetherRestock.ARRIVAL_TARGET : NetherRestock.LOW, arrival ? NetherRestock.ARRIVAL_TARGET : NetherRestock.TARGET, now);
     }
 
     // startBelow: see NetherRestock.update
@@ -55,21 +62,33 @@ public class NetherBlockRestock {
         Item[] placeable = placeableOnly(mod.getClientBaritoneSettings().acceptableThrowawayItems.value);
         int held = mod.getItemStorage().getItemCount(placeable);
         boolean exhausted = task != null && task.wandering();
+        boolean wasOn = restock.isActive();
         boolean on = restock.update(held, startBelow, stopAt, StorageHelper.miningRequirementMet(mod, MiningRequirement.WOOD),
                 exhausted, now);
+        if (on != wasOn) {
+            Debug.logInternal(on ? restock.startLine() : restock.endLine(held, now));
+        }
         if (on && task == null) {
             // the band is frozen where the dig starts, following live feet would walk it down its own shaft
             BlockPos origin = mod.getPlayer().blockPosition();
             // near lava is off limits first. a dig that came up dry with that (an island in a lava sea, our own span over it, or a
             // band whose only blocks are ones we can't path to) goes again with only what is in arm's reach and only the
-            // touching rule: boxed in with an empty bag, the walls round us are the blocks, a far one is a path we can't make
+            // touching rule: boxed in with an empty bag, the walls round us are the blocks, a far one is a path we can't make.
+            // netherrack only until then, dirt and cobble in the nether are our own bridges (same call as
+            // GetBuildingMaterialsTask.miningTargets)
             boolean strict = restock.exhaustedEnds() == 0;
             // the same array counts and digs, two lists would disagree on done and hand a finished task back every tick
             task = new MineAndCollectTask(new ItemTarget[]{new ItemTarget(placeable, stopAt)},
                     MiningRequirement.WOOD).noReserve().onlyWhere(p -> (strict ? NetherRestock.inRestockBand(origin, p)
+                            && mod.getWorld().getBlockState(p).is(Blocks.NETHERRACK)
                             : NetherRestock.inReach(mod.getPlayer().getEyePosition(), p))
                             && NetherRestock.keepsFooting(feetY(mod), p, solidBelow(mod, p))
-                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)));
+                            && !(strict ? nearLava(mod, p) : touchesLava(mod, p)))
+                    // what we broke lands at our feet. any wanted item in the world beats the next block otherwise, and a dig
+                    // turns into a long walk across the nether after somebody else's dirt
+                    .dropsOnlyWhere(p -> p.closerThan(mod.getPlayer().blockPosition(), DROP_REACH))
+                    // the tracker's few netherrack can all sit under the band in solid rock, the band itself is not short of any
+                    .localSearch(LOCAL_SEARCH);
         } else if (!on) {
             task = null;
         }

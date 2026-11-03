@@ -6,7 +6,6 @@ import adris.altoclef.Debug;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
-import adris.altoclef.tasks.construction.PutOutFireTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
@@ -32,7 +31,10 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
@@ -124,6 +126,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // before anything returns: the arrival line must go out even when a lava escape takes the wheel
         boolean holding = arrivalHold(mod);
 
+        // up here so the lava return can't skip it, burning in a fire on the way out of lava is still burning in a fire
+        breakFireWeTouch(mod);
+
         // Lava Escape
         boolean lava = isInLavaOhShit(mod) && mod.getBehaviour().shouldEscapeLava();
         // a portal that dropped us by lava is the safest way out, the other side is home
@@ -134,14 +139,6 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         if (lava) {
             setTask(new EscapeFromLavaTask());
-            return 100;
-        }
-
-        // Fire escape
-        BlockPos fire = fireWeTouch(mod);
-        if (fire != null) {
-            // a fresh fire is not in the tracker yet, so punch the block touching us
-            setTask(new PutOutFireTask(fire));
             return 100;
         }
 
@@ -156,7 +153,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             return 100;
         }
 
-        // standing in dragon breath burns through whatever else holds the wheel (below fire and the falls, above the pickup
+        // standing in dragon breath burns through whatever else holds the wheel (below the lava and the falls, above the pickup
         // and the mob chains). the breath ticks damage every half second, a long walk to a bucket is not worth it
         Task dodge = breathDodge(mod);
         if (dodge != null) {
@@ -165,7 +162,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         // no chunks yet after a dimension change means the planner sees air where the lava is, so the user task waits until they
-        // land. under the fights (mob defense) and the fires above, over everything the user task does
+        // land. under the fights (mob defense) and the lava above, over everything the user task does
         if (holding) {
             setTask(new IdleTask());
             return 70;
@@ -570,7 +567,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 else if (b == Blocks.NETHER_PORTAL) portal++;
             }
             Debug.logInternal("arrival: nether at " + at.toShortString() + ", 5x3x5 has lava " + lava + " portal " + portal
-                    + arrivalState(mod) + (loaded ? "" : " (chunks never all showed up)"));
+                    + arrivalState(mod) + ", build blocks " + StorageHelper.getBuildingMaterialCount(mod)
+                    + (loaded ? "" : " (chunks never all showed up)"));
         } else if (_arrivalDim == Dimension.END) {
             Debug.logInternal("arrival: end at " + at.toShortString() + arrivalState(mod) + ", build blocks " + StorageHelper.getBuildingMaterialCount(mod)
                     + (loaded ? "" : " (chunks never all showed up)"));
@@ -610,20 +608,32 @@ public class WorldSurvivalChain extends SingleTaskChain {
         return mod.getPlayer().isOnFire() && !_wasInLavaTimer.elapsed();
     }
 
-    private BlockPos fireWeTouch(AltoClef mod) {
-        if (mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
-            return firstMatch(WorldHelper.getBlocksTouchingPlayer(mod),
-                    pos -> mod.getWorld().getBlockState(pos).getBlock() instanceof BaseFireBlock);
+    // no task, no look, no wheel: a task at the top of the pile stops the path and the fight while it waits on a click that a
+    // raised shield can hold off forever, and the fire keeps biting the whole time. the server only checks range here, it
+    // never asks where we are looking
+    private void breakFireWeTouch(AltoClef mod) {
+        if (!mod.getPlayer().isOnFire() || mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) return;
+        MultiPlayerGameMode controller = mod.getController();
+        if (controller == null) return;
+        List<BlockPos> fires = allMatches(WorldHelper.getBlocksTouchingPlayer(mod),
+                pos -> mod.getWorld().getBlockState(pos).getBlock() instanceof BaseFireBlock);
+        if (fires.isEmpty()) return;
+        // startDestroyBlock aborts the old dig to the server but leaves isDestroying up on our side, so stop it properly. a
+        // dig that loses its progress starts again, it is a cheap price for not being on fire
+        controller.stopDestroyBlock();
+        for (BlockPos fire : fires) {
+            controller.startDestroyBlock(fire, Direction.UP);
         }
-        return null;
+        Debug.logInternal("fire: broke " + fires.size() + " touching, using=" + mod.getPlayer().isUsingItem());
     }
 
-    // scanRegion may hand back the same mutable pos every step, so the hit is copied
-    static BlockPos firstMatch(Iterable<BlockPos> positions, java.util.function.Predicate<BlockPos> test) {
+    // scanRegion may hand back the same mutable pos every step, so the hits are copied
+    static List<BlockPos> allMatches(Iterable<BlockPos> positions, java.util.function.Predicate<BlockPos> test) {
+        List<BlockPos> hits = new ArrayList<>();
         for (BlockPos pos : positions) {
-            if (test.test(pos)) return pos.immutable();
+            if (test.test(pos)) hits.add(pos.immutable());
         }
-        return null;
+        return hits;
     }
 
     private boolean isStuckInNetherPortal(AltoClef mod) {
