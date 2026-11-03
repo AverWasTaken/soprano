@@ -35,6 +35,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -358,12 +359,18 @@ public class PortalPhase implements PhaseHandler {
         var me = mod.getPlayer();
         // all three axes, the goal is a sphere and a lake 20 blocks down a cliff is not "here"
         double dist = Math.sqrt(castLake.distToCenterSqr(me.getX(), me.getY(), me.getZ()));
-        if (dist <= LAKE_ARRIVE || lakeWalk.stalled(ctx.secondsInPhase(), dist)) {
+        if (lakeArrived(castLake, mod.getClientBaritone().getPlayerContext().playerFeet()) || lakeWalk.stalled(ctx.secondsInPhase(), dist)) {
             castLakeDone = true;
             return null;
         }
         hudState = "Walking to a lava lake";
         return new GetWithinRangeOfBlockTask(castLake.above(), LAKE_ARRIVE);
+    }
+
+    // the walk's own goal asked the way the path asks it, cell against cell. a float distance from the source's centre can
+    // stay over 8 where the goal says done, and then the walk stands there being returned until the stall clock is bored
+    static boolean lakeArrived(BlockPos lake, BlockPos feet) {
+        return new GoalNear(lake.above(), LAKE_ARRIVE).isInGoal(feet);
     }
 
     // a bed from the bag goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the
