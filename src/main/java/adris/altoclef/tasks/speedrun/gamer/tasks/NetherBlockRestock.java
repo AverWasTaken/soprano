@@ -21,6 +21,7 @@ import java.util.List;
 public class NetherBlockRestock {
 
     private static final int DROP_REACH = 8;
+    private static final int LOCAL_SEARCH = 8;
     private final NetherRestock restock = new NetherRestock();
     private MineAndCollectTask task;
 
@@ -85,7 +86,9 @@ public class NetherBlockRestock {
                             && !(strict ? nearLava(mod, p) : touchesLava(mod, p)))
                     // what we broke lands at our feet. any wanted item in the world beats the next block otherwise, and a dig
                     // turns into a long walk across the nether after somebody else's dirt
-                    .dropsOnlyWhere(p -> p.closerThan(mod.getPlayer().blockPosition(), DROP_REACH));
+                    .dropsOnlyWhere(p -> p.closerThan(mod.getPlayer().blockPosition(), DROP_REACH))
+                    // the tracker's few netherrack can all sit under the band in solid rock, the band itself is not short of any
+                    .localSearch(LOCAL_SEARCH);
         } else if (!on) {
             task = null;
         }

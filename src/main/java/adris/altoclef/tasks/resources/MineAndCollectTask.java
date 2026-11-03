@@ -20,6 +20,7 @@ import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
+import adris.altoclef.util.helpers.LocalBlockSearch;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -272,6 +273,13 @@ public class MineAndCollectTask extends ResourceTask {
         return this;
     }
 
+    // when the tracker's blocks all get refused, look at the world itself this far round the feet before calling it empty.
+    // only for a caller whose onlyWhere is narrow, the tracker's short list has no reason to hold the blocks it wants
+    public MineAndCollectTask localSearch(int radius) {
+        _subtask._localSearchRadius = radius;
+        return this;
+    }
+
     @Override
     public MineAndCollectTask noReserve() {
         super.noReserve();
@@ -471,6 +479,10 @@ public class MineAndCollectTask extends ResourceTask {
         // a caller's extra say on which blocks may be picked (see onlyWhere). last in the test, it may be the costly one
         private Predicate<BlockPos> _only = check -> true;
         private Predicate<BlockPos> _onlyDrops = check -> true;
+        // see localSearch, -1 is off. the tick the last look came back empty, and whether the first hit got its log line
+        private int _localSearchRadius = -1;
+        private int _localSearchEmptyAt = Integer.MIN_VALUE / 2;
+        private boolean _localSearchLogged;
         // failed breaks per tree. static because the parent rebuilds this task whenever it likes and the count has to outlive that
         private static final TreeStrikes STRIKES = new TreeStrikes();
         private final TreeReachScan _scan = new TreeReachScan();
@@ -735,18 +747,47 @@ public class MineAndCollectTask extends ResourceTask {
                 // the strikes (see giveUpTree) are what move us on from the tree
                 pick = pickBlock(mod, pos, false);
             }
-            return pick;
+            return pick.isPresent() ? pick : localPick(mod);
+        }
+
+        // the tracker keeps a handful per type and they don't have to be anywhere near what _only will take, with a wall of the
+        // right stuff in arm's reach it can still come back with nothing. same idea as localStones, but for whoever asks
+        private Optional<BlockPos> localPick(AltoClef mod) {
+            int now = WorldHelper.getTicks();
+            if (_localSearchRadius < 0 || LocalBlockSearch.emptyStands(pursuing() != null, now, _localSearchEmptyAt)) {
+                return Optional.empty();
+            }
+            // the type first, the rules are the costly part and most of the cube is air or lava anyway
+            Optional<BlockPos> hit = LocalBlockSearch.nearest(mod.getPlayer().blockPosition(), _localSearchRadius,
+                    check -> isOneOfOurs(mod.getWorld().getBlockState(check)) && usable(mod, check, false));
+            if (hit.isEmpty()) {
+                _localSearchEmptyAt = now;
+            } else if (!_localSearchLogged) {
+                _localSearchLogged = true;
+                BlockPos at = hit.get();
+                Debug.logInternal("restock: tracker had nothing usable, local pick at " + at.getX() + " " + at.getY() + " " + at.getZ());
+            }
+            return hit;
+        }
+
+        private boolean isOneOfOurs(BlockState state) {
+            for (Block block : _blocks) {
+                if (state.is(block)) return true;
+            }
+            return false;
+        }
+
+        private boolean usable(AltoClef mod, BlockPos check, boolean sparing) {
+            if (mod.getBlockTracker().unreachable(check)) return false;
+            if (hangsInTheNether(mod, check)) return false;
+            // ahead of worthTheTrip, so a mine post doesn't spend a column scan on the way out
+            if (buriedLog(mod, check)) return false;
+            return WorldHelper.canBreak(mod, check) && _only.test(check) && (!sparing || worthTheTrip(mod, check));
         }
 
         // sparing leaves out the logs we have no way up to (TreeReach.skip)
         private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos, boolean sparing) {
-            Predicate<BlockPos> usable = check -> {
-                if (mod.getBlockTracker().unreachable(check)) return false;
-                if (hangsInTheNether(mod, check)) return false;
-                // ahead of worthTheTrip, so a mine post doesn't spend a column scan on the way out
-                if (buriedLog(mod, check)) return false;
-                return WorldHelper.canBreak(mod, check) && _only.test(check) && (!sparing || worthTheTrip(mod, check));
-            };
+            Predicate<BlockPos> usable = check -> usable(mod, check, sparing);
             // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
             // our feet) and eating it is how the table placement looped. only when nothing else is close do we take it
             long gameTime = mod.getWorld().getGameTime();
