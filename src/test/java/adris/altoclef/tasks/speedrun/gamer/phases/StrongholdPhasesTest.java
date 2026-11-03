@@ -404,6 +404,39 @@ public class StrongholdPhasesTest {
     }
 
     @Test
+    public void theTopUpOnlyGetsTheTurnNobodyElseWants() {
+        Task errand = new Task() {
+            @Override
+            protected void onStart(AltoClef mod) {
+            }
+
+            @Override
+            protected Task onTick(AltoClef mod) {
+                return null;
+            }
+
+            @Override
+            protected void onStop(AltoClef mod, Task interruptTask) {
+            }
+
+            @Override
+            protected boolean isEqual(Task other) {
+                return other == this;
+            }
+
+            @Override
+            protected String toDebugString() {
+                return "bed errand";
+            }
+        };
+        assertTrue(EndPrepPhase.topUpsNow(null, true));
+        // short on beds: the bed errand is picked, and it stays picked
+        assertFalse(EndPrepPhase.topUpsNow(errand, true));
+        // the cap ran out: over, however short we are
+        assertFalse(EndPrepPhase.topUpsNow(null, false));
+    }
+
+    @Test
     public void aNewVisitForgetsThePrep() {
         StubContext ctx = new StubContext();
         RoomPhase r = new RoomPhase();

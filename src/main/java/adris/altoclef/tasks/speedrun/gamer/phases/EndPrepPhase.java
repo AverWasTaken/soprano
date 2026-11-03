@@ -15,6 +15,8 @@ import adris.altoclef.tasks.resources.CollectWoolTask;
 import adris.altoclef.tasks.resources.CraftBedTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.speedrun.gamer.FoodDry;
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -61,6 +63,7 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _enterPortal;
     private Task _buildBlocks;
     private Task _food;
+    private boolean _topUpSaid;
     private int _foodTarget;
     private Task _toPortal;
     private BlockPos _toPortalAt;
@@ -294,7 +297,30 @@ public class EndPrepPhase implements PhaseHandler {
         if (step == null && gearToo) {
             step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
+        if (topUpsNow(step, gearToo)) {
+            step = topUpStep(ctx, cfg);
+        }
         return foodFirstThenCount(ctx, cfg, gap, step);
+    }
+
+    // last in line: the beds and the gear went first, and gearToo going false (the cap) ends this along with the gear
+    static boolean topUpsNow(Task picked, boolean gearToo) {
+        return picked == null && gearToo;
+    }
+
+    // over the End's floor but not by enough for the fight. gap.food stays the hard line on purpose: foodFirstThenCount reads it, and
+    // a soft line in there would send a bot that's short on beds off hunting instead
+    private Task topUpStep(GamerContext ctx, EndConfig cfg) {
+        FoodPlan food = ctx.food();
+        GamerFacts f = ctx.facts();
+        if (!EndGear.wantsTopUp(food.shortOfEnd(cfg.wantFoodUnits), f.bagFull(), FoodDry.defers(f.foodDryLatched(), f.preyNear()))) {
+            return null;
+        }
+        if (!_topUpSaid) {
+            _topUpSaid = true;
+            ctx.log("room: topping food up from " + (food.held() - food.pending()) + ", want " + cfg.wantFoodUnits);
+        }
+        return foodStep(ctx, cfg.wantFoodUnits);
     }
 
     private void noteErrandBlocks(AltoClef mod, RunState state) {
@@ -593,11 +619,15 @@ public class EndPrepPhase implements PhaseHandler {
     }
 
     private Task foodStep(GamerContext ctx) {
+        return foodStep(ctx, ctx.food().endFloor());
+    }
+
+    private Task foodStep(GamerContext ctx, int line) {
         _hudState = "Getting food";
         // the gate counts food we would eat, CollectFoodTask counts rotten flesh too, so a bag of junk makes it finish
         // instantly while the gate stays short and we idle. FoodPlan adds the junk (the same call KitRunner.foodTarget makes),
         // rebuilt only when the number moves
-        int target = ctx.food().endCollect();
+        int target = ctx.food().endCollect(line);
         if (_food == null || target != _foodTarget) {
             _foodTarget = target;
             _food = new CollectFoodTask(target);
