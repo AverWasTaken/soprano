@@ -127,11 +127,6 @@ final class BlazeFight {
         return runGaveUp;
     }
 
-    // a wither skeleton pack is within PACK_PLAYER_RADIUS of us as of the last scan: no blaze target, no walking in
-    boolean packHere() {
-        return packHere;
-    }
-
     Task tick(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
@@ -163,7 +158,7 @@ final class BlazeFight {
         logChange(mod, health);
         notePack(mod, now);
         return switch (mode) {
-            // (a pack on top of us gets a short run, a pack a bit further off is the caller's hold)
+            // (a pack on top of us gets a short run. further off they are behind a wall or not coming, the walk goes on and the zone routes round them)
             case CAMP -> packClose ? new RunAwayFromHostilesTask(BlazeFightRules.PACK_BACKOFF_DISTANCE, true, () -> runCrowd(mod)) : null;
             case KILL -> new KillEntityTask(target);
             // never stand still in a run: with no blaze on us the wither skeletons that kept chasing still count, only an empty
@@ -188,7 +183,7 @@ final class BlazeFight {
         if (packCenter != null) RunZones.INSTANCE.add(packCenter[0], packCenter[1], now, RunZones.PACK_RADIUS);
         Vec3 at = mod.getPlayer().position();
         Debug.logInternal("pack: " + packSize + " wither skeletons within " + (int) BlazeFightRules.PACK_PLAYER_RADIUS + " at "
-                + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z) + ", " + (packClose ? "backing off" : "holding"));
+                + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z) + ", " + (packClose ? "backing off" : "walking on"));
     }
 
     // projectile hits, every tick: the game hands a fresh source object per hit
@@ -336,7 +331,7 @@ final class BlazeFight {
         packHere = BlazeFightRules.packNear(nearUs.size());
         packSize = nearUs.size();
         packCenter = packHere ? BlazeFightRules.packCenter(nearUs) : null;
-        // (once the back off starts it runs until the pack is out of the hold radius too, else it stops at 8.1 blocks with them still on top of us)
+        // (once the back off starts it runs until the pack is out of PACK_PLAYER_RADIUS too, else it stops at 8.1 blocks with them still on top of us)
         packClose = packHere && (packClose || BlazeFightRules.packNear(witherSkeletonsNear(mod, player.position(), BlazeFightRules.PACK_BACKOFF_RADIUS)));
         around = 0;
         targetTracked = false;
