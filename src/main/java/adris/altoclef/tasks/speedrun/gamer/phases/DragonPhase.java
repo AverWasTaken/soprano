@@ -134,7 +134,7 @@ public class DragonPhase implements PhaseHandler {
     // only the End deaths can end this. a slow fight is still the fight, the dragon has all day and so do we
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        return EndRules.attemptsLeft(ctx.state(), ctx.cfg().end) ? Timeout.RETRY : Timeout.STUCK;
+        return EndRules.attemptsLeft(ctx.state(), ctx.cfg().end) ? Timeout.RETRY : Timeout.STUCK_NO_RESTART;
     }
 
     @Override

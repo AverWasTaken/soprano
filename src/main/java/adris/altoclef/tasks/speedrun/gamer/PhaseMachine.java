@@ -327,18 +327,20 @@ public final class PhaseMachine implements GamerContext {
     private void checkWatchdog() {
         String failure = pendingFail;
         pendingFail = null;
+        boolean fromWatchdog = false;
         if (failure == null) {
             Watchdog.Verdict v = watchdog.check(now(), host.state().phase, host.cfg(), current());
             if (!v.ok()) {
                 failure = v.reason();
+                fromWatchdog = true;
             }
         }
         if (failure != null) {
-            onTimeout(failure);
+            onTimeout(failure, fromWatchdog);
         }
     }
 
-    private void onTimeout(String reason) {
+    private void onTimeout(String reason, boolean fromWatchdog) {
         PhaseHandler h = current();
         int attempt = attempt();
         Timeout what;
@@ -346,12 +348,23 @@ public final class PhaseMachine implements GamerContext {
             what = h.onTimeout(this, attempt, reason);
         } catch (RuntimeException e) {
             Debug.logWarning("onTimeout of " + h.phase() + " threw " + e);
-            what = Timeout.STUCK;
+            // a handler that can't answer the question doesn't get to ask it again
+            stuck(reason);
+            return;
         }
         switch (what) {
             case RETRY -> retry(h, attempt, reason);
             case SKIP -> skip(reason);
-            default -> stuck(reason);
+            case STUCK_NO_RESTART -> stuck(reason);
+            default -> {
+                // only the clock earns a restart. a ctx.fail is somebody saying "the dragon killed us" or "no way to get it",
+                // and a fresh phase entry has no answer to that
+                if (fromWatchdog && !host.state().restartedThisPhase) {
+                    restart(h, reason);
+                } else {
+                    stuck(reason);
+                }
+            }
         }
     }
 
@@ -359,6 +372,25 @@ public final class PhaseMachine implements GamerContext {
         RunState s = host.state();
         host.say(where(h, s.phase) + " is not working (" + reason + "), trying again");
         s.phaseAttempts.put(s.phase.name(), attempt + 1);
+        enterAgain(h);
+    }
+
+    // out of retries on the clock and nobody around to type #gamer, so do what typing it would do. deaths and regress counts
+    // stay on the books or a restart would quietly buy a fresh death cap. one per phase entry: attempts = 1 means the retries
+    // come back once (4 budgets by the default rules, the portal's pool and the free retries get theirs on top), then the real give up
+    private void restart(PhaseHandler h, String reason) {
+        RunState s = host.state();
+        host.say(where(h, s.phase) + " still isn't working (" + reason + "), starting this part over");
+        // after the message for the same reason as stuck, and before the exit so it's the stall on tape and not the way back in
+        Trace.dump("restart: " + reason);
+        s.restartedThisPhase = true;
+        // before the enter: Room and EndPrep clear their free retries when they read attempt 1 there
+        s.phaseAttempts.put(s.phase.name(), 1);
+        enterAgain(h);
+    }
+
+    // the common part of a retry and a restart, the handler goes out and comes back in on fresh clocks
+    private void enterAgain(PhaseHandler h) {
         safeExit(h);
         host.onPhaseReset();
         restartClocks();
@@ -430,6 +462,7 @@ public final class PhaseMachine implements GamerContext {
         s.phase = target;
         s.phaseAttempts.put(target.name(), 1);
         s.deathsThisPhase = 0;
+        s.restartedThisPhase = false;
         pendingFail = null;
         host.onPhaseReset();
         restartClocks();

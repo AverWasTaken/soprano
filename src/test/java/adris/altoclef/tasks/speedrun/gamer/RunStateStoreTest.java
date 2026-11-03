@@ -40,6 +40,7 @@ public class RunStateStoreTest {
         s.deathsThisPhase = 2;
         s.regressCounts.put("LOCATE>NETHER", 2);
         s.regressCounts.put("DRAGON>END_PREP", 1);
+        s.restartedThisPhase = true;
 
         RunState.Death d = new RunState.Death();
         d.dimension = "NETHER";
@@ -163,6 +164,7 @@ public class RunStateStoreTest {
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
         assertEquals(2, out.deathsThisPhase);
+        assertTrue(out.restartedThisPhase);
         assertEquals(1_700_000_000_123L, out.startedEpochMs);
         assertEquals(424_242L, out.startedGameTime);
         assertTrue(out.stuck);
@@ -225,6 +227,8 @@ public class RunStateStoreTest {
         assertEquals(GamerPhase.IRON, loaded.state().phase);
         assertEquals(3, loaded.state().eyeThrows);
         assertEquals("CAST", loaded.state().portalMethod);
+        // a save from before the restart was a thing hasn't used one
+        assertFalse(loaded.state().restartedThisPhase);
         assertNotNull(loaded.state().visitedCells);
         assertTrue(loaded.state().deaths.isEmpty());
     }

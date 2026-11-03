@@ -241,7 +241,7 @@ public class OverworldPhasesTest {
             d.dimension = "END";
             ctx.state.deaths.add(d);
         }
-        assertEquals(Timeout.STUCK, dragon.onTimeout(ctx, 1, "slow"));
+        assertEquals(Timeout.STUCK_NO_RESTART, dragon.onTimeout(ctx, 1, "slow"));
     }
 
     @Test
