@@ -169,13 +169,24 @@ public final class LPortalPlan {
     // ---- is this a place for it ----
 
     // the cheap part: four lava sources in a row with shore right behind them, lava in front of the middle two, and the
-    // pool floor under the row
+    // pool floor under the row. real lakes have wobbly edges, so a notch or two of lava in the shore row is allowed: a block
+    // on the rock under it and it's shore like any other
     static boolean quick(Layout l, Terrain t) {
+        int notches = 0;
         for (int u = 0; u <= 3; u++) {
             // sand and gravel hold up a shore just fine, only the floor under the row gets broken out so it stays plain rock
-            if (m(l, t, u, 0, 0) != Mat.LAVA || !m(l, t, u, 0, 1).solid() || m(l, t, u, -1, 0) != Mat.SOLID) {
+            if (m(l, t, u, 0, 0) != Mat.LAVA || m(l, t, u, -1, 0) != Mat.SOLID) {
                 return false;
             }
+            Mat shore = m(l, t, u, 0, 1);
+            if (shore == Mat.LAVA && m(l, t, u, -1, 1).solid()) {
+                notches++;
+            } else if (!shore.solid()) {
+                return false;
+            }
+        }
+        if (notches > MAX_NOTCHES) {
+            return false;
         }
         for (int u = 1; u <= 2; u++) {
             if (m(l, t, u, 0, -1) != Mat.LAVA || m(l, t, u, -1, -1) != Mat.SOLID) {
@@ -193,12 +204,16 @@ public final class LPortalPlan {
 
     // what a site needs before it is a site. mines = solids in the way (inside the build's air, the arm cell aside),
     // prepMines = the ones behind the frame (d >= 1) that get cleared before the base, fills = holes in the backing row to plug
+    // and lava notches in the shore row to fill
     public record Survey(boolean ok, int mines, int prepMines, int fills) {
     }
 
     private static final Survey NO_SITE = new Survey(false, 0, 0, 0);
-    static final int MAX_MINES = 24;
+    // nearly no bank out there is flush with the lava, and the cheap dig back is what lets a real lake pass at all
+    static final int MAX_MINES = 36;
     static final int MAX_FILLS = 4;
+    // three of the four and it isn't a shore with notches, it's more lake
+    static final int MAX_NOTCHES = 2;
     // the mines in the frame plane and the lane are dug after the base, on the build clock
     static final int MAX_FRONT_MINES = 8;
     // a gravel column this high over a cell we open would come down on us
@@ -256,6 +271,9 @@ public final class LPortalPlan {
                 fills++;
             } else if (!back.solid()) {
                 return NO_SITE;
+            }
+            if (m(l, t, u, 0, 1) == Mat.LAVA) {
+                fills++;
             }
         }
         if (fills > MAX_FILLS) {
@@ -381,14 +399,15 @@ public final class LPortalPlan {
     }
 
     // a lava source we may take: open on top, and not one of the cells the frame is built on (the row and the platform in
-    // front of it). once the base is set the lava around them has nothing to do with the build
+    // front of it) or a notch in the shore behind it, that one is a block soon. once the base is set the lava around them has
+    // nothing to do with the build
     private static boolean eligible(Terrain t, Layout l, P p) {
         if (t.at(p.x(), p.y(), p.z()) != Mat.LAVA || t.at(p.x(), p.y() + 1, p.z()) != Mat.AIR) {
             return false;
         }
         if (l != null) {
             for (int u = 0; u <= 3; u++) {
-                for (int d = -1; d <= 0; d++) {
+                for (int d = -1; d <= 1; d++) {
                     if (l.cell(u, 0, d).equals(p)) {
                         return false;
                     }
@@ -620,7 +639,8 @@ public final class LPortalPlan {
     }
 
     // the work a rough site wants before the base: the rock behind the frame out, top down so nothing is dug from under
-    // its own feet, then the holes in the backing plugged. nothing at d <= 0 is touched, that is the lava. null = ready.
+    // its own feet, then the holes in the backing plugged, then the notches in the shore (we stand on the backing for those).
+    // nothing at d <= 0 is touched, that is the lava. null = ready.
     // no supply check, the lava around does not change while we dig
     private static Step prep(Layout l, Terrain t, Inv inv) {
         Survey s = survey(l, t, false);
@@ -646,6 +666,15 @@ public final class LPortalPlan {
                         return stuck("no block to plug the shore");
                     }
                     return new Step(Kind.PLACE_BLOCK, l.cell(u, 0, 2), null, 0, 0, 0, null, PREP_FILL);
+                }
+            }
+            for (int u = 0; u <= 3; u++) {
+                if (m(l, t, u, 0, 1) == Mat.LAVA) {
+                    if (inv.blocks() < 1) {
+                        return stuck("no block to plug the shore");
+                    }
+                    // not the builder, it would stroll along the lava's edge looking for an angle. same click as the placeholder
+                    return click(l, Kind.PLACE_STACK, new int[]{u, 0, 1}, new int[]{u, -1, 1}, new int[]{u, 1, 2}, PREP_FILL);
                 }
             }
         }
