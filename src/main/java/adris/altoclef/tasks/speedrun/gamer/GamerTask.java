@@ -483,8 +483,8 @@ public class GamerTask extends Task {
         // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
         SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
-        // junk disposal keeps this many throwaway blocks and drops the rest, so under the entry stack it would throw away the very
-        // stack the portal gate just went and got
+        // junk disposal keeps this many throwaway blocks and drops the rest, so under the arrival stack it would throw away the very
+        // stack the nether just dug (see BuildBlocks.reserveFor)
         int keep = userReserve != null ? userReserve : s.altoReservedBuildingBlockCount.value;
         SettingsOverrides.put(s.altoReservedBuildingBlockCount, BuildBlocks.reserveFor(keep, GamerConfigs.get().overworld.netherEntryBlocks));
     }
@@ -699,6 +699,7 @@ public class GamerTask extends Task {
         state.phaseAttempts.put(phase.name(), 1);
         state.deathsThisPhase = 0;
         state.regressCounts.clear();
+        state.restartedThisPhase = false;
         host.say("Starting at: " + phase.hud());
     }
 
@@ -717,6 +718,7 @@ public class GamerTask extends Task {
             state.deathsThisPhase = 0;
             state.regressCounts.clear();
             state.phaseAttempts.put(state.phase.name(), 1);
+            state.restartedThisPhase = false;
         } else {
             host.say("Resuming at: " + state.phase.hud());
             resumedAsIs = true;
@@ -1524,7 +1526,8 @@ public class GamerTask extends Task {
             if (noBed) {
                 String why = ShelterTask.whyNoColumn(mod, skipSpot);
                 // the counts shift as we walk, so the key is the text with the nonzero numbers blanked: it says again when the failing mix changes
-                if (shelterNoHoleSaid.worthSaying(why.replaceAll("[1-9]\\d*", "N"), gameTime, 0)) {
+                // (the block ids are in the key too, and those change every few steps on mixed ground, hence the gap)
+                if (shelterNoHoleSaid.worthSaying(why.replaceAll("[1-9]\\d*", "N"), gameTime, 100)) {
                     Debug.logInternal("night: shelter wanted, no hole (" + why + ")");
                 }
             }

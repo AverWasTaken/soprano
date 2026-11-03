@@ -268,16 +268,22 @@ public final class CombatCommit {
     // behind when it dies. x/y/z is where it stands (only read for the family, see splitHeir)
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                       boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
-                      boolean knocker, boolean brute, boolean wet, boolean wither) {
+                      boolean knocker, boolean brute, boolean wet, boolean wither, boolean patrol) {
+        public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
+                   boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
+                   boolean knocker, boolean brute, boolean wet, boolean wither) {
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, false);
+        }
+
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast, String splitType, boolean splits, double x, double y, double z,
                    boolean knocker) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false, false, false);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, false, false, false, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
                    boolean sight, long sinceHitBefore, boolean fast) {
-            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false, false, false);
+            this(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, null, false, 0, 0, 0, false, false, false, false, false);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap,
@@ -286,31 +292,37 @@ public final class CombatCommit {
         }
 
         public Foe withFast(boolean fast) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         // knocker: a melee hit of its shoves us (cubes of any size, an angry zombified piglin), see CombatRules.rimKnocker
         public Foe withKnocker(boolean knocker) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         // brute: a piglin brute, the one heavy hitter we run from before it swings (see bruteComing)
         public Foe withBrute(boolean brute) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         // wither: a wither skeleton, the fortress swordsman we start on when it comes within WITHER_START_RANGE (see witherComing)
         public Foe withWither(boolean wither) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
+        }
+
+        // patrol: a pillager and we are dressed and armed for it (FoeRules.patrol). it keeps up with a run at 0.35 and a run kills
+        // nothing, so a pack of them is one target at a time until the hp line, not a crowd or a second shooter to leave
+        public Foe withPatrol(boolean patrol) {
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         // wet: it, or we, are in the water. a trident drowned in the sea is not a skeleton on a ledge, see sniper
         public Foe withWet(boolean wet) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         public Foe withSplit(String splitType, boolean splits, double x, double y, double z) {
-            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither);
+            return new Foe(id, distance, ranged, creeper, sinceHit, kind, reachGap, sight, sinceHitBefore, fast, splitType, splits, x, y, z, knocker, brute, wet, wither, patrol);
         }
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
@@ -336,6 +348,12 @@ public final class CombatCommit {
             return reachGap <= ReachRules.MELEE_REACH;
         }
 
+        // close enough that the kill task swings instead of letting it come (ReachRules.killReach, on a plain player's arm). the
+        // aura goes by inReach, so for the last 0.3 of it the aura may swing and the task won't
+        public boolean inTaskReach() {
+            return reachGap <= ReachRules.MELEE_REACH - ReachRules.KILL_REACH_MARGIN;
+        }
+
         // never a reason to run, whatever the hp or the headcount
         public boolean standsAndFights() {
             return kind == Kind.ENDERMAN;
@@ -357,7 +375,12 @@ public final class CombatCommit {
         // water: nobody walks up to a skeleton by swimming, and a trident drowned out there swims faster than we do, so the
         // hp runs stay on (the lone sniper exemption would pin us in a fight we cannot take)
         public boolean sniper() {
-            return ranged && !creeper && kind == Kind.NORMAL && !wet;
+            return bow() && !wet;
+        }
+
+        // the sniper with the water left out: a skeleton up to its knees still shoots, and on a swim every one of them reads as wet
+        public boolean bow() {
+            return ranged && !creeper && kind == Kind.NORMAL;
         }
 
         // it shot us lately and still has a line: at low hp that is as good as standing next to us
@@ -459,9 +482,11 @@ public final class CombatCommit {
 
     // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
     // to move (a path or a search going), y: our height, a pillar out of a hole is progress too
-    // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight needs. true when nobody asked
+    // weapon: a sword or an axe in the bag (not just a tool), which is what an in the way fight or a walk up to a skeleton needs.
+    // true when nobody asked
     // rim: we stand on a lava rim or a ledge over a drop (LavaShore.edgeNear) with a melee foe close, path or no path
-    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim) {
+    // lavaClose: lava within LavaShore.GROUND_CLEAR of us. only a cube ever asks, so the brain only looks with one about
+    public record Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon, boolean rim, boolean lavaClose) {
         public static final Way NONE = new Way(Set.of(), false, 0);
 
         public Way(Set<Integer> inWay, boolean pathing, double y) {
@@ -469,11 +494,15 @@ public final class CombatCommit {
         }
 
         public Way(Set<Integer> inWay, boolean pathing, double y, boolean weapon) {
-            this(inWay, pathing, y, weapon, false);
+            this(inWay, pathing, y, weapon, false, false);
         }
 
         public Way withRim(boolean rim) {
-            return new Way(inWay, pathing, y, weapon, rim);
+            return new Way(inWay, pathing, y, weapon, rim, lavaClose);
+        }
+
+        public Way withLavaClose(boolean lavaClose) {
+            return new Way(inWay, pathing, y, weapon, rim, lavaClose);
         }
     }
 
@@ -582,7 +611,8 @@ public final class CombatCommit {
     static boolean crowded(float health, List<Foe> foes, boolean freshOnly, boolean onFight) {
         int on = 0;
         for (Foe foe : foes) {
-            if (engaged(foe, freshOnly)) on++;
+            // (a patrol is the one crowd we stay for, see withPatrol. the hp line still ends it)
+            if (engaged(foe, freshOnly) && !foe.patrol()) on++;
         }
         return on >= CROWD_SIZE;
     }
@@ -1382,13 +1412,16 @@ public final class CombatCommit {
         List<Foe> shooters = snipers(t, cooling);
         if (!shooters.isEmpty()) {
             Foe sniper = shooters.get(0);
+            // a pickaxe beats a fist but it is still ten swings on the far end of a walk full of arrows. armed is for what is
+            // already on us, going to get one wants the real thing
+            boolean realWeapon = t.armed() && t.way().weapon();
             // (with an enderman about the run is off, a skeleton on us is the armed fight below or nothing)
-            boolean hurtRun = t.low() && !(t.armed() && shooterFight(candidates(t), cooling, t.guardHealth()));
-            if ((hurtRun || shooters.size() >= 2 || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
+            boolean hurtRun = t.low() && !(realWeapon && shooterFight(candidates(t), cooling, t.guardHealth()));
+            if ((hurtRun || secondShooter(shooters) || gaveUpOn(sniper, t.now())) && endermanAbout(t) == null) {
                 return startRun(t, Why.SHOT, Event.RUN_START);
             }
-            // (bare hands do not go and get a skeleton)
-            if (t.armed()) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
+            // (bare hands and pickaxes do not go and get a skeleton, they keep walking till it hurts and then it is the run above)
+            if (realWeapon) return startFight(t, sniper, Why.PINNED, Event.FIGHT_START, false);
         }
         // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
         // with what is around us, and this one is a path that cannot go on until it is gone
@@ -1440,11 +1473,14 @@ public final class CombatCommit {
 
     // the closest knocker within RIM_ENGAGE_RANGE while we stand on a rim. armed, above the flee line, not crowded and not in a
     // run latch (those are the run rules' call, and idle already asked them), and never one we gave up on
+    // not a cube with lava this close: the fight parks us next to the lava to wait for it and the hop lands anyway. we walk on,
+    // and if it does catch us that is the plain HIT fight
     private Foe rimEngage(Tick t, boolean cooling) {
         if (!t.way().rim() || !t.armed() || runLatch || t.health() <= FLEE_HP || crowded(t.health(), t.foes(), cooling)) return null;
         Foe best = null;
         for (Foe foe : candidates(t)) {
             if (!CombatRules.rimKnocker(foe) || foe.distance() > CombatRules.RIM_ENGAGE_RANGE) continue;
+            if (t.way().lavaClose() && foe.splitType() != null) continue;
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
@@ -1521,7 +1557,8 @@ public final class CombatCommit {
         boolean near = false;
         boolean shot = false;
         // (the shooter fight is not run from while healing either, the skeleton is the next kill. a watched blaze still counts)
-        if (t.armed() && shooterFight(candidates(t), false, t.guardHealth())) return t.watched() ? Why.SHOT : Why.NONE;
+        // (only if we'd actually go and get it: with a pickaxe nobody's coming, and that was us healing in its sights)
+        if (t.armed() && t.way().weapon() && shooterFight(candidates(t), false, t.guardHealth())) return t.watched() ? Why.SHOT : Why.NONE;
         for (Foe foe : candidates(t)) {
             if (foe.standsAndFights() || gaveUpOn(foe, t.now())) continue;
             if (foe.distance() <= RecoverHold.RERUN_RANGE) near = true;
@@ -1538,6 +1575,11 @@ public final class CombatCommit {
                 .filter(foe -> foe.sniper() && foe.shooting() && (!freshOnly || foe.fresh()))
                 .sorted(java.util.Comparator.comparingDouble(Foe::distance))
                 .toList();
+    }
+
+    // two of them shooting ends the one target deal, unless they are a patrol: those we kill in turn (see withPatrol)
+    private static boolean secondShooter(List<Foe> shooters) {
+        return shooters.stream().filter(foe -> !foe.patrol()).count() >= 2;
     }
 
     // the closest one in contact that is in the path, or any in contact when the path has gone nowhere for 1.5 s. never a
@@ -1821,7 +1863,7 @@ public final class CombatCommit {
         // minute while we hit zombies): the hp line is the hard one, at or under it the run is on again
         // (only the part the witch itself causes: a second skeleton or a crowd still ends it, one skeleton is the shooter fight)
         // a second skeleton on us is not the one-target fight any more
-        if (bail == Why.NONE && why == Why.PINNED && snipers(t, false).size() >= 2 && endermanAbout(t) == null) bail = Why.SHOT;
+        if (bail == Why.NONE && why == Why.PINNED && secondShooter(snipers(t, false)) && endermanAbout(t) == null) bail = Why.SHOT;
         if (lobberPick && endermanAbout(t) == null) {
             if ((bail == Why.LOW_HP || bail == Why.SHOT) && t.health() > FLEE_HP) bail = runReason(withoutFoe(t, targetId), false, t.nextHit(), true);
             if (bail == Why.NONE && t.health() <= FLEE_HP) bail = Why.LOW_HP;
@@ -1873,6 +1915,20 @@ public final class CombatCommit {
         }
         Foe swap = takeover(t, target);
         if (swap != null) return startFight(t, swap, swapWhy, Event.FIGHT_NEXT, chain);
+        // a cube we can't swing at with lava this close: all the task does from here is stand and let it come. written off like a
+        // stall, so the route runs until it hits us again. goes by the task's reach and not the aura's: in the gap between them the
+        // task still won't swing and StandCap doesn't count it. boxed in there is no route to go back to. a stuck run's fight stays too:
+        // the walk already failed, letting go is the same stuck run and this same pick ten ticks later
+        boolean stuckRunFight = cornered && !boxCorner && !fastCorner;
+        if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed() && !stuckRunFight) {
+            ignored.put(target.id(), t.now());
+            idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
+            Event cleared = end(t, Event.FIGHT_CLEARED);
+            // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
+            // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
+            recover.reset();
+            return cleared;
+        }
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
         // (the rim fight lets go one block past where it starts, CombatRules.RIM_RELEASE, so it does not flip back on)
@@ -1999,6 +2055,9 @@ public final class CombatCommit {
         if (heir != null) return startFight(t, heir, chain ? boxed : Why.HIT, Event.FIGHT_NEXT, chain);
         Foe next = nextTarget(t);
         if (next != null) return startFight(t, next, chain ? boxed : Why.HIT, Event.FIGHT_NEXT, chain);
+        // (PINNED: it is a walk away by design, a HIT fight would call that lost after three seconds)
+        Foe patrol = patrolNext(t);
+        if (patrol != null) return startFight(t, patrol, Why.PINNED, Event.FIGHT_NEXT, false);
         // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
         // leave: a gap and a five second cooldown next to it is not a plan
         if (cornered && anyDanger(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
@@ -2017,6 +2076,19 @@ public final class CombatCommit {
             if (t.now() - splitGoneAt <= ENDER_WAIT_TICKS) return Event.NONE;
         }
         return end(t, Event.FIGHT_DEAD);
+    }
+
+    // the next one of a patrol that is shooting us. nextTarget only takes what is in contact and the rest of them shoot from
+    // six blocks, so that was fight over, a cooldown and arrows in the meantime. the hp line already had its say in fight().
+    // cornered or boxed there is no walking over to it, those keep their own rules
+    private Foe patrolNext(Tick t) {
+        if (cornered || t.boxed()) return null;
+        Foe best = null;
+        for (Foe foe : candidates(t)) {
+            if (!foe.patrol() || !foe.shooting() || foe.id() == targetId || ignored.containsKey(foe.id()) || gaveUpOn(foe, t.now())) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
     }
 
     // a lobber that has been landing hits on us just now, from where it can see us, when the last target dies: it is the next one, ahead
@@ -2195,9 +2267,12 @@ public final class CombatCommit {
         for (Foe foe : t.foes()) {
             nearest = Math.min(nearest, foe.distance());
         }
+        // RUN_CLEAR and the sight count both stop short of a bow: 12 blocks is well inside SHOOTER_RANGE, and a skeleton round a
+        // corner is one step from its line again. neither ending counts until it is out of range. the cap still ends the run
+        boolean bowRange = inBowRange(t);
         // clear means nothing angry within RUN_CLEAR. the clock is on whether or not we are far enough yet, so the moment
         // we are far enough the answer is already in
-        if (nearest <= RUN_CLEAR) {
+        if (nearest <= RUN_CLEAR || bowRange) {
             clearSince = -1;
         } else if (clearSince < 0) {
             clearSince = t.now();
@@ -2206,7 +2281,7 @@ public final class CombatCommit {
         if (losRun) {
             // the line is the whole point: out of sight is out of range, however few blocks that took
             boolean seen = t.foes().stream().anyMatch(foe -> foe.ranged() && !foe.creeper() && foe.sight());
-            if (seen) {
+            if (seen || bowRange) {
                 noSightSince = -1;
             } else if (noSightSince < 0) {
                 noSightSince = t.now();
@@ -2254,6 +2329,13 @@ public final class CombatCommit {
         // nobody worth a fight: the run goes on, the cap or the mob settles it
         if (closest == null) return Event.NONE;
         return startFight(t, closest, Why.CORNERED, Event.RUN_TO_FIGHT, true);
+    }
+
+    private static boolean inBowRange(Tick t) {
+        for (Foe foe : t.foes()) {
+            if (foe.bow() && foe.distance() <= CombatRules.SHOOTER_RANGE) return true;
+        }
+        return false;
     }
 
     // the cap with nothing on us is just the end of a run. chased with something still inside 8, ending it only meant a fresh

@@ -5,6 +5,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.baritone.GoalCommittedRun;
 import adris.altoclef.util.baritone.SnapshotGoal;
 import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.tasks.construction.PlaceStationTask;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
@@ -21,9 +22,9 @@ import net.minecraft.world.entity.Entity;
 // is at its goal (that is when eating is allowed) and walks again when something comes back within reach
 public class CommittedRunTask extends CustomBaritoneGoalTask {
 
-    // a bit more than the commitment's "clear" line (14 against its 12), so a mob sitting right on the 12 does not make the
-    // goal flicker
-    private static final double CROWD_CLEAR = CombatCommit.RUN_CLEAR + 2;
+    // a bit more than the furthest line the commitment holds a run for (17 against a bow's 15), so a mob sitting right on it does
+    // not make the goal flicker. any closer and we'd stand at the goal in bow range waiting for an end that isn't coming
+    private static final double CROWD_CLEAR = CombatRules.SHOOTER_RANGE + 2;
 
     // how long the pathfinder is left alone after a goal was handed to it and it did not stick. a goal nothing can reach (a lava
     // lake in the way, the edge of the loaded world) was asked for again on the very next tick, a full search every tick

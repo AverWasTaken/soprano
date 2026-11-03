@@ -56,32 +56,41 @@ public class AngryClockTest {
     }
 
     @Test
-    public void theThirdLavaBackOffOnTheSameEndermanGivesUpOnIt() {
+    public void theThirdLavaBackOffInOnePlaceHits() {
         PearlHuntTask.LavaStrikes strikes = new PearlHuntTask.LavaStrikes();
-        PearlHuntTask.AngryClock clock = new PearlHuntTask.AngryClock();
-        // nothing pursued yet: no strike can land on nobody
-        assertFalse(strikes.strike());
-        strikes.pursue(9);
-        assertFalse(strikes.strike());
-        assertFalse(strikes.strike());
-        assertTrue(strikes.strike());
-        clock.giveUp(strikes.id());
-        assertTrue(clock.givenUp(9));
-        assertFalse(PearlHuntTask.lootable(clock.givenUp(9), () -> false));
+        assertFalse(strikes.strike(100, 100, 1000));
+        assertFalse(strikes.strike(100, 100, 1100));
+        assertTrue(strikes.strike(100, 100, 1200));
+        // that one is spent, the next hit takes three more
+        assertFalse(strikes.strike(100, 100, 1300));
+        assertFalse(strikes.strike(100, 100, 1400));
+        assertTrue(strikes.strike(100, 100, 1500));
     }
 
     @Test
-    public void aNewTargetStartsTheLavaCountOver() {
+    public void aFarLavaBackOffStartsTheCountOver() {
         PearlHuntTask.LavaStrikes strikes = new PearlHuntTask.LavaStrikes();
-        strikes.pursue(1);
-        assertFalse(strikes.strike());
-        assertFalse(strikes.strike());
-        strikes.pursue(2);
-        assertFalse(strikes.strike());
-        assertFalse(strikes.strike());
-        // looking at the same one again every tick does not reset it
-        strikes.pursue(2);
-        assertTrue(strikes.strike());
+        assertFalse(strikes.strike(0, 0, 0));
+        assertFalse(strikes.strike(PearlHuntTask.LavaStrikes.NEAR_BLOCKS, 0, 10));
+        // one past the edge, and everything after it counts from there
+        assertFalse(strikes.strike(PearlHuntTask.LavaStrikes.NEAR_BLOCKS + 1, 0, 20));
+        assertFalse(strikes.strike(PearlHuntTask.LavaStrikes.NEAR_BLOCKS + 1, 0, 30));
+        assertTrue(strikes.strike(PearlHuntTask.LavaStrikes.NEAR_BLOCKS + 1, 0, 40));
+    }
+
+    @Test
+    public void anOldLavaBackOffStartsTheCountOver() {
+        PearlHuntTask.LavaStrikes strikes = new PearlHuntTask.LavaStrikes();
+        assertFalse(strikes.strike(0, 0, 0));
+        assertFalse(strikes.strike(0, 0, 100));
+        assertFalse(strikes.strike(0, 0, PearlHuntTask.LavaStrikes.WINDOW_TICKS + 1));
+        assertFalse(strikes.strike(0, 0, PearlHuntTask.LavaStrikes.WINDOW_TICKS + 2));
+        assertTrue(strikes.strike(0, 0, PearlHuntTask.LavaStrikes.WINDOW_TICKS + 3));
+        // the edge of the window still counts
+        PearlHuntTask.LavaStrikes edge = new PearlHuntTask.LavaStrikes();
+        assertFalse(edge.strike(0, 0, 0));
+        assertFalse(edge.strike(0, 0, 1));
+        assertTrue(edge.strike(0, 0, PearlHuntTask.LavaStrikes.WINDOW_TICKS));
     }
 
     @Test

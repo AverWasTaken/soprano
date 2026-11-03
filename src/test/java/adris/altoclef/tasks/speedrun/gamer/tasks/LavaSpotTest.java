@@ -53,6 +53,46 @@ public class LavaSpotTest {
     }
 
     @Test
+    public void aWalkThroughTheSpotIsBlocked() {
+        LavaSpot spot = new LavaSpot();
+        spot.arm(0, 60, 0, 0);
+        // us on one side, the enderman on the other, both well outside it
+        assertTrue(spot.blocksWalk(-50, 0, 50, 0, 1));
+        // grazing the edge counts, one block further off does not
+        assertTrue(spot.blocksWalk(-50, LavaSpot.RADIUS, 50, LavaSpot.RADIUS, 1));
+        assertFalse(spot.blocksWalk(-50, LavaSpot.RADIUS + 1, 50, LavaSpot.RADIUS + 1, 1));
+    }
+
+    @Test
+    public void anEndermanOnOurSideOfTheSpotIsFine() {
+        LavaSpot spot = new LavaSpot();
+        spot.arm(0, 60, 0, 0);
+        // the line carried on would hit it, the walk stops short
+        assertFalse(spot.blocksWalk(-60, 0, -30, 0, 1));
+        // and walking off away from it never gets close
+        assertFalse(spot.blocksWalk(40, 0, 80, 0, 1));
+    }
+
+    @Test
+    public void everyWalkFromInsideTheSpotIsBlocked() {
+        LavaSpot spot = new LavaSpot();
+        spot.arm(0, 60, 0, 0);
+        assertTrue(spot.blocksWalk(10, 0, 80, 0, 1));
+        // standing right on the enderman, no walk at all, the zero length line must not blow up
+        assertTrue(spot.blocksWalk(10, 0, 10, 0, 1));
+        assertFalse(spot.blocksWalk(80, 0, 80, 0, 1));
+    }
+
+    @Test
+    public void aSpotThatRanOutBlocksNothing() {
+        LavaSpot spot = new LavaSpot();
+        assertFalse(spot.blocksWalk(-50, 0, 50, 0, 1));
+        spot.arm(0, 60, 0, 0);
+        assertTrue(spot.blocksWalk(-50, 0, 50, 0, LavaSpot.LIFETIME_TICKS - 1));
+        assertFalse(spot.blocksWalk(-50, 0, 50, 0, LavaSpot.LIFETIME_TICKS));
+    }
+
+    @Test
     public void aClockThatWentBackwardsIsNotLive() {
         LavaSpot spot = new LavaSpot();
         spot.arm(0, 0, 0, 5000);

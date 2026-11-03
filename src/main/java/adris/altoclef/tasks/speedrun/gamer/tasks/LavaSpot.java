@@ -41,6 +41,22 @@ final class LavaSpot {
         return true;
     }
 
+    // the walk to that enderman goes through the spot (or starts inside it). flat on purpose: covers only asks where the
+    // enderman stands, and the one past the lava is the one that walks us straight back in
+    boolean blocksWalk(double usX, double usZ, double manX, double manZ, long now) {
+        if (!active(now)) {
+            return false;
+        }
+        double walkX = manX - usX;
+        double walkZ = manZ - usZ;
+        double length = walkX * walkX + walkZ * walkZ;
+        // closest point of the walk to the spot, 0 is us and 1 is the enderman
+        double along = length == 0 ? 0 : Math.max(0, Math.min(1, ((x - usX) * walkX + (z - usZ) * walkZ) / length));
+        double dx = usX + along * walkX - x;
+        double dz = usZ + along * walkZ - z;
+        return dx * dx + dz * dz <= RADIUS * RADIUS;
+    }
+
     boolean covers(double ex, double ey, double ez, long now) {
         if (!active(now)) {
             return false;

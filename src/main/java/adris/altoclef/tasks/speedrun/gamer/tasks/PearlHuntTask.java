@@ -210,33 +210,34 @@ public class PearlHuntTask extends Task {
         boolean givenUp(int id) {
             return gaveUp.contains(id);
         }
-
-        void giveUp(int id) {
-            gaveUp.add(id);
-        }
     }
 
-    // lava back offs against the enderman we were walking at: the same one every cycle is a foe that is not worth it, even
-    // when each back off on its own looks fine. a new target starts the count over
+    // lava back offs by place. they used to count per enderman, and a forest spawns a new one every few seconds, each with a
+    // clean slate. third one close to the first inside a minute: it is the spot, not the mob
     static final class LavaStrikes {
         static final int LIMIT = 3;
-        private int id = -1;
+        static final double NEAR_BLOCKS = 32;
+        static final long WINDOW_TICKS = 1200;
+        private double x;
+        private double z;
+        private long firstAt;
         private int count;
 
-        void pursue(int pursued) {
-            if (pursued != id) {
-                id = pursued;
+        // true on the strike that hits the limit, the next one starts a new count
+        boolean strike(double atX, double atZ, long now) {
+            double dx = atX - x;
+            double dz = atZ - z;
+            if (count == 0 || now - firstAt > WINDOW_TICKS || now < firstAt || dx * dx + dz * dz > NEAR_BLOCKS * NEAR_BLOCKS) {
+                x = atX;
+                z = atZ;
+                firstAt = now;
                 count = 0;
             }
-        }
-
-        // true on the strike that hits the limit
-        boolean strike() {
-            return id >= 0 && ++count >= LIMIT;
-        }
-
-        int id() {
-            return id;
+            if (++count < LIMIT) {
+                return false;
+            }
+            count = 0;
+            return true;
         }
     }
 
@@ -390,9 +391,6 @@ public class PearlHuntTask extends Task {
         }
         // read before the back off below: it may be the tick that picks the target, and the back off clears it again
         int lootId = loot.pursuingId();
-        if (lootId >= 0) {
-            lavaStrikes.pursue(lootId);
-        }
         if (backsOffFrom(dimension == Dimension.NETHER && mod.getEntityTracker().entityFound(Enderman.class), anyLootable(mod, lootId))) {
             // no nook to do it from: lava or fire means step away, low hp means wait while it heals
             List<BlockPos> lava = exposedLava(mod.getWorld(), mod.getPlayer().blockPosition(), EndermanNook.AGGRO_LAVA_GAP);
@@ -401,12 +399,18 @@ public class PearlHuntTask extends Task {
             // a flee that started runs to the end even when the lava is out of reach by the first step, or it is a one block shuffle
             boolean fleeing = stance == EndermanNook.Stance.AWAY || (away != null && !away.isFinished(mod));
             awayCount = awayCount.step(gameTime, fleeing);
-            // one strike per back off, on the tick it starts. the id was saved while looting, the loot task may have let go of it by now
-            if (fleeing && gameTime - lastFleeAt > 1 && !lava.isEmpty() && lavaStrikes.strike()) {
-                angrySpent.giveUp(lavaStrikes.id());
-            }
+            // one strike per back off, on the tick it starts
+            boolean struck = fleeing && gameTime - lastFleeAt > 1 && !lava.isEmpty()
+                    && lavaStrikes.strike(mod.getPlayer().getX(), mod.getPlayer().getZ(), gameTime);
             if (fleeing) {
                 lastFleeAt = gameTime;
+            }
+            if (struck) {
+                armLavaSpot(mod, gameTime, true);
+                if (leaveSpot != null) {
+                    away = null;
+                    return say("Leaving the lava", leaveSpot);
+                }
             }
             if (fleeing && awayCount.ticks() <= AWAY_GIVE_UP_TICKS) {
                 return say("Backing off", stepAway(mod, lava));
@@ -467,6 +471,11 @@ public class PearlHuntTask extends Task {
 
     private boolean baseLootTarget(Entity man, boolean chasing) {
         if (!lootable(angrySpent.givenUp(man.getId()), () -> avoid(man))) {
+            return false;
+        }
+        // here and not in avoid(): one that is angry and on top of us still gets fought, fightAngry never asks this
+        var us = AltoClef.getInstance().getPlayer();
+        if (lavaSpot.blocksWalk(us.getX(), us.getZ(), man.getX(), man.getZ(), man.level().getGameTime())) {
             return false;
         }
         if (farBelow(man, chasing)) {

@@ -301,7 +301,7 @@ public class RecoverHoldTest {
 
     @Test
     public void onlyBlazesAndSkeletonTypesAreAHoldRerunSource() {
-        for (String type : new String[]{"blaze", "skeleton", "stray", "bogged"}) {
+        for (String type : new String[]{"blaze", "skeleton", "stray", "bogged", "parched"}) {
             assertTrue(type, RecoverHold.rerunSource(type));
         }
         // a ghast shoots from sixty blocks and the nether run would end in lava, the shield is its answer. a wither skeleton swings

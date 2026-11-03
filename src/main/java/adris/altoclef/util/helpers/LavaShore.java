@@ -343,7 +343,9 @@ public final class LavaShore {
                     continue;
                 }
                 double foeGap = Math.hypot(cx + dx + 0.5 - fx, cz + dz + 0.5 - fz);
-                double score = foeGap + (lavaNear(cells, cx + dx + 0.5, cy, cz + dz + 0.5, NEAR) ? 100 : 0);
+                // the deep one too: from a rim the lava is two down, and lavaNear stops looking after one
+                boolean byLava = lavaNear(cells, cx + dx + 0.5, cy, cz + dz + 0.5, NEAR) || lavaDeepNear(cells, cx + dx + 0.5, cy, cz + dz + 0.5, NEAR);
+                double score = foeGap + (byLava ? 100 : 0);
                 if (score < bestScore) {
                     bestScore = score;
                     best = new int[]{dx, dz};
@@ -351,6 +353,83 @@ public final class LavaShore {
             }
         }
         return best;
+    }
+
+    // a knock carries about two and a half blocks, plus half our width. closer to lava than this and one hit can put us in it.
+    // same line for "leave here" and "this is ground", so a walk can't end somewhere that starts the next walk
+    public static final int GROUND_CLEAR = 3;
+    // how far we'll walk for it, past that the fight happens where it is
+    static final int GROUND_SEARCH = 6;
+    // nether floors are never flat, a cell one or two up or down still counts
+    static final int GROUND_CLIMB = 2;
+    // a one cell step gets STEP_STALL_TICKS, a walk gets longer: a path search can take 500 ms by itself (10 ticks) and the way
+    // round a wall starts out sideways, which isn't closer and isn't stuck either. GROUND_WALK_TICKS still ends it
+    static final int WALK_STALL_TICKS = 20;
+
+    public static boolean walkStalled(int idleTicks) {
+        return idleTicks >= WALK_STALL_TICKS;
+    }
+
+    // cells the walk has already given up on
+    public interface Skip {
+        boolean skip(int x, int y, int z);
+    }
+
+    // safeStep looks one cell away and one cell away from a channel is still in knock range. this is the walk: the nearest cell
+    // with no lava within GROUND_CLEAR, {x, y, z}. null when there's no lava in range or nowhere to go (a basalt delta). doesn't
+    // ask rimUnsafe first like safeStep does: that only sees the knock line and 1.5 blocks around us
+    public static int[] groundCell(Cells cells, double ux, double uy, double uz, double fx, double fz) {
+        return groundCell(cells, ux, uy, uz, fx, fz, (x, y, z) -> false);
+    }
+
+    public static int[] groundCell(Cells cells, double ux, double uy, double uz, double fx, double fz, Skip skip) {
+        if (!lavaDeepNear(cells, ux, uy, uz, GROUND_CLEAR)) {
+            return null;
+        }
+        int cx = (int) Math.floor(ux);
+        int cy = (int) Math.floor(uy);
+        int cz = (int) Math.floor(uz);
+        int[] best = null;
+        double bestGap = Double.MAX_VALUE;
+        for (int dx = -GROUND_SEARCH; dx <= GROUND_SEARCH; dx++) {
+            for (int dz = -GROUND_SEARCH; dz <= GROUND_SEARCH; dz++) {
+                double flat = Math.hypot(dx, dz);
+                if (flat > GROUND_SEARCH) {
+                    continue;
+                }
+                for (int dy = -GROUND_CLIMB; dy <= GROUND_CLIMB; dy++) {
+                    double gap = flat + Math.abs(dy);
+                    int x = cx + dx;
+                    int y = cy + dy;
+                    int z = cz + dz;
+                    if (gap < bestGap && !skip.skip(x, y, z) && groundFit(cells, x, y, z, fx, fz) && !wayCrossesLava(cells, ux, uy, uz, x, y, z)) {
+                        bestGap = gap;
+                        best = new int[]{x, y, z};
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // the floor first: most of the search box is rock or air and never gets as far as the slow questions
+    public static boolean groundFit(Cells cells, int x, int y, int z, double fx, double fz) {
+        return cells.at(x, y - 1, z) == Cell.SOLID && !lavaDeepNear(cells, x + 0.5, y, z + 0.5, GROUND_CLEAR) && stepFit(cells, x, y, z, fx, fz);
+    }
+
+    // the far bank of a channel is close as the crow flies and a lake away on foot. lineHitsLava stops one under the feet, this
+    // goes all the way down the open column like lavaBelow does
+    static boolean wayCrossesLava(Cells cells, double ux, double uy, double uz, int x, int y, int z) {
+        double dx = x + 0.5 - ux;
+        double dz = z + 0.5 - uz;
+        int steps = Math.max(1, (int) Math.ceil(Math.hypot(dx, dz) / STEP));
+        for (int i = 0; i <= steps; i++) {
+            double t = (double) i / steps;
+            if (lavaBelow(cells, (int) Math.floor(ux + dx * t), (int) Math.floor(uy + (y - uy) * t), (int) Math.floor(uz + dz * t))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // safeStep with no foe: a standing-still spot that is on a rim by the same edge test. null when we are fine or nothing

@@ -227,6 +227,77 @@ public class CraftMathTest {
         assertNull(topUp(Arrays.asList("birch"), inv(), inv("birch", 1), 0));
     }
 
+    private static int perSlot(List<List<String>> slots, Map<String, Integer> have, int perSlot) {
+        return CraftMath.perSlotToFill(slots, item -> have.getOrDefault(item, 0), perSlot);
+    }
+
+    // six slots of any wood and one of iron, the shield
+    private static List<List<String>> shield() {
+        List<String> planks = Arrays.asList("oak", "birch");
+        return Arrays.asList(planks, planks, planks, planks, planks, planks, Arrays.asList("iron"));
+    }
+
+    @Test
+    public void aBatchOfMixedWoodIsOneCraftARound() {
+        // maxCrafts says 3 and it is right, three slots of each. the fill can't do that
+        Map<String, Integer> have = inv("oak", 9, "birch", 9, "iron", 3);
+        assertEquals(3, CraftMath.maxCrafts(shield(), item -> have.getOrDefault(item, 0), ALL));
+        assertEquals(1, perSlot(shield(), have, 3));
+    }
+
+    @Test
+    public void oneWoodKeepsTheBatch() {
+        assertEquals(3, perSlot(shield(), inv("oak", 18, "iron", 3), 3));
+        assertEquals(3, perSlot(shield(), inv("birch", 40, "iron", 3), 3));
+    }
+
+    @Test
+    public void enoughOfOneWoodIsNotEnoughWithAnotherAround() {
+        // oak could pay for all of it, but the fill goes by stack size: split the oak and the birch gets picked
+        assertEquals(1, perSlot(shield(), inv("oak", 18, "birch", 2, "iron", 3), 3));
+        assertEquals(1, perSlot(shield(), inv("oak", 64, "birch", 1, "iron", 3), 3));
+    }
+
+    @Test
+    public void theBatchIsBackOnceTheOtherWoodIsGone() {
+        assertEquals(1, perSlot(shield(), inv("oak", 12, "birch", 1, "iron", 2), 2));
+        assertEquals(2, perSlot(shield(), inv("oak", 12, "birch", 0, "iron", 2), 2));
+    }
+
+    @Test
+    public void oneCraftIsLeftAloneAndSoIsNothing() {
+        assertEquals(1, perSlot(shield(), inv("oak", 3, "birch", 3, "iron", 1), 1));
+        assertEquals(0, perSlot(shield(), inv(), 0));
+    }
+
+    @Test
+    public void aSingleItemIngredientCantBeMixed() {
+        // short of the batch is craftsPossible's business, the fill has nothing to swap
+        List<String> wheat = Arrays.asList("wheat");
+        assertEquals(5, perSlot(Arrays.asList(wheat, wheat, wheat), inv("wheat", 3), 5));
+    }
+
+    @Test
+    public void everyMixedIngredientHasToBeCovered() {
+        List<String> planks = Arrays.asList("oak", "birch");
+        List<String> stones = Arrays.asList("cobble", "blackstone");
+        List<List<String>> slots = Arrays.asList(planks, planks, stones, stones);
+        assertEquals(2, perSlot(slots, inv("oak", 4, "cobble", 4), 2));
+        assertEquals(1, perSlot(slots, inv("oak", 4, "cobble", 2, "blackstone", 2), 2));
+        assertEquals(1, perSlot(slots, inv("oak", 4, "birch", 1, "cobble", 4), 2));
+    }
+
+    @Test
+    public void aLoneSlotCanSwapToo() {
+        // one stack on the slot and another in hand, neither reaches the batch
+        List<String> logs = Arrays.asList("oak", "birch");
+        assertEquals(1, perSlot(Arrays.asList(logs), inv("oak", 7, "birch", 12), 12));
+        assertEquals(12, perSlot(Arrays.asList(logs), inv("birch", 12), 12));
+        // the same item twice in the options is still one type
+        List<String> twice = Arrays.asList("oak", "oak");
+        assertEquals(2, perSlot(Arrays.asList(twice, twice), inv("oak", 4), 2));
+    }
+
     @Test
     public void theMatchingTargetCountsOnlyTheColourItMakes() {
         // 3 village beds of other colours, 9 white wool, 6 still wanted: white goes to 3, not 3 + 3 that the wool can't pay for

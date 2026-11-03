@@ -424,6 +424,135 @@ public class LavaShoreTest {
         assertEquals(160, LavaShore.WAIT_CAP_TICKS);
     }
 
+    // a long channel along z, open from the feet down with the lava two under them
+    private static World channel(int fromX, int toX) {
+        World w = new World();
+        for (int x = fromX; x <= toX; x++) {
+            for (int z = -12; z <= 12; z++) {
+                w.pit(x, z).lava(x, -2, z);
+            }
+        }
+        return w;
+    }
+
+    @Test
+    public void lavaBelowARimStillGetsAWalkToGround() {
+        World w = channel(2, 4);
+        // the miss the walk is for: lavaNear stops one under the feet and calls this spot clean
+        assertFalse(LavaShore.lavaNear(w, 0.5, 0, 0.5, LavaShore.GROUND_CLEAR));
+        int[] cell = LavaShore.groundCell(w, 0.5, 0, 0.5, 1.5, 0.5);
+        assertNotNull(cell);
+        assertEquals(-2, cell[0]);
+        assertEquals(0, cell[1]);
+        assertEquals(0, cell[2]);
+        assertFalse(LavaShore.lavaDeepNear(w, cell[0] + 0.5, cell[1], cell[2] + 0.5, LavaShore.GROUND_CLEAR));
+    }
+
+    @Test
+    public void groundIsFoundUpOrDownAStep() {
+        // everything west of the channel's knock range is one block higher, the walk has to climb to it
+        World w = channel(2, 4);
+        for (int x = -12; x <= -2; x++) {
+            for (int z = -12; z <= 12; z++) {
+                w.solid(x, 0, z);
+            }
+        }
+        int[] cell = LavaShore.groundCell(w, 0.5, 0, 0.5, 1.5, 0.5);
+        assertNotNull(cell);
+        assertEquals(-2, cell[0]);
+        assertEquals(1, cell[1]);
+    }
+
+    @Test
+    public void noGroundInReachMeansNoWalk() {
+        // an island in a lava sea, every cell around is in knock range of something
+        World w = new World();
+        for (int x = -12; x <= 12; x++) {
+            for (int z = -12; z <= 12; z++) {
+                if (Math.abs(x) > 1 || Math.abs(z) > 1) w.lava(x, -1, z);
+            }
+        }
+        assertNull(LavaShore.groundCell(w, 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    @Test
+    public void aClearSpotGivesNoWalk() {
+        assertNull(LavaShore.groundCell(new World(), 0.5, 0, 0.5, 1.5, 0.5));
+        assertNull(LavaShore.groundCell(new World().lava(4, -1, 0), 0.5, 0, 0.5, 1.5, 0.5));
+        // three away is the last one that counts
+        assertNotNull(LavaShore.groundCell(new World().lava(3, -1, 0), 0.5, 0, 0.5, 1.5, 0.5));
+    }
+
+    // a one wide channel, rock at our back up past what a climb can reach: the only clean cells are over on the far bank
+    @Test
+    public void theFarBankOfAChannelIsNoWalk() {
+        World w = channel(1, 1);
+        for (int x = -12; x <= -1; x++) {
+            for (int z = -12; z <= 12; z++) {
+                for (int y = 0; y <= 3; y++) {
+                    w.solid(x, y, z);
+                }
+            }
+        }
+        assertTrue(LavaShore.groundFit(w, 5, 0, 0, 0.5, 2.5));
+        assertTrue(LavaShore.wayCrossesLava(w, 0.5, 0, 0.5, 5, 0, 0));
+        assertNull(LavaShore.groundCell(w, 0.5, 0, 0.5, 0.5, 2.5));
+    }
+
+    @Test
+    public void aCellOutsideTheSearchIsNoWalk() {
+        // rock everywhere west until seven out, past the six we'll walk
+        World w = channel(2, 4);
+        for (int x = -6; x <= -1; x++) {
+            for (int z = -12; z <= 12; z++) {
+                for (int y = 0; y <= 3; y++) {
+                    w.solid(x, y, z);
+                }
+            }
+        }
+        assertTrue(LavaShore.groundFit(w, -7, 0, 0, 0.5, 2.5));
+        assertNull(LavaShore.groundCell(w, 0.5, 0, 0.5, 0.5, 2.5));
+    }
+
+    @Test
+    public void theFoesOwnCellIsNotGround() {
+        World w = channel(2, 4);
+        // the foe stands right on the nearest cell, so the walk takes the next one along
+        int[] cell = LavaShore.groundCell(w, 0.5, 0, 0.5, -1.5, 0.5);
+        assertNotNull(cell);
+        assertFalse(cell[0] == -2 && cell[2] == 0);
+    }
+
+    @Test
+    public void aCellThatWentNowhereGivesTheNextOne() {
+        World w = channel(2, 4);
+        int[] cell = LavaShore.groundCell(w, 0.5, 0, 0.5, 1.5, 0.5, (x, y, z) -> x == -2 && z == 0);
+        assertNotNull(cell);
+        assertEquals(-2, cell[0]);
+        assertEquals(1, Math.abs(cell[2]));
+        // every cell gone is no walk, same as none being there
+        assertNull(LavaShore.groundCell(w, 0.5, 0, 0.5, 1.5, 0.5, (x, y, z) -> true));
+    }
+
+    @Test
+    public void aWalkGetsLongerThanAStepBeforeItCountsAsStuck() {
+        assertTrue(LavaShore.STEP_STALL_TICKS < LavaShore.WALK_STALL_TICKS);
+        assertFalse(LavaShore.walkStalled(LavaShore.WALK_STALL_TICKS - 1));
+        assertTrue(LavaShore.walkStalled(LavaShore.WALK_STALL_TICKS));
+    }
+
+    // the fallback step: lava two under the feet of one neighbour's range, lavaNear would have called them all the same
+    @Test
+    public void rimStepCountsLavaFarDownAsLava() {
+        World w = new World().lava(0, -1, -3).pit(2, 2).lava(2, -2, 2);
+        assertFalse(LavaShore.lavaNear(w, 0.5, 0, 1.5, LavaShore.NEAR));
+        assertTrue(LavaShore.lavaDeepNear(w, 0.5, 0, 1.5, LavaShore.NEAR));
+        int[] step = LavaShore.safeStep(w, 0.5, 0, 0.5, 0.5, 2.5);
+        assertNotNull(step);
+        assertEquals(-1, step[0]);
+        assertEquals(1, step[1]);
+    }
+
     @Test
     public void edgeStepLeavesAnInlandSpotAlone() {
         assertNull(LavaShore.edgeStep(new World(), 0.5, 0, 0.5));

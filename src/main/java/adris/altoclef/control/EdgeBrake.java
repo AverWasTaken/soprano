@@ -20,8 +20,10 @@ public final class EdgeBrake {
     // our own pin owner, so the magma sneak's pin on the same key is never touched
     public static final Object OWNER = new Object();
 
-    private static final double START_SPEED = 0.03;
-    private static final double STOP_SPEED = 0.005;
+    // a soft shove on a rim is well under walking speed and still walks us off, so this only has to beat the noise
+    private static final double START_SPEED = 0.01;
+    // the jar zeroes a player's flat speed under 0.003 (LivingEntity.aiStep), letting go any sooner hands the tail back its slide
+    private static final double STOP_SPEED = 0.003;
     // ground friction slide is about 2.2x the speed, 3 is margin
     private static final double SLIDE_TICKS = 3;
     private static final long LOG_GAP_MS = 2000;

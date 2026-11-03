@@ -350,4 +350,15 @@ public class CombatRulesTest {
         assertFalse(CombatRules.auraShieldStandsStill(true));
         assertTrue(CombatRules.auraShieldStandsStill(false));
     }
+
+    @Test
+    public void aPatrolTargetGetsTheFightShieldAPlainShooterDoesNot() {
+        CombatCommit.Foe skeleton = new CombatCommit.Foe(1, 4, true, false, NEVER);
+        assertFalse(shield(false, skeleton));
+        assertTrue(shield(false, skeleton.withPatrol(true)));
+        assertTrue(shield(true, new CombatCommit.Foe(1, 5, true, false, NEVER).withPatrol(true)));
+        assertFalse(shield(false, new CombatCommit.Foe(1, 5, true, false, NEVER).withPatrol(true)));
+        // only the one we are on, the other four are not who it faces
+        assertFalse(shield(false, new CombatCommit.Foe(2, 4, true, false, NEVER).withPatrol(true)));
+    }
 }

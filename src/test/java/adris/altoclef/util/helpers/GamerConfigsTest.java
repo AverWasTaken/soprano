@@ -53,7 +53,7 @@ public class GamerConfigsTest {
     public void aMissingFileGetsCreatedWithTheDefaults() throws IOException {
         GamerConfig c = GamerConfigs.load();
         assertEquals(GamerConfig.VERSION, c.version);
-        assertEquals(14, c.targetEyes);
+        assertEquals(16, c.targetEyes);
         assertTrue(Files.exists(file));
         assertEquals(GamerConfig.VERSION, onDisk().get("version").getAsInt());
     }
@@ -352,6 +352,18 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysFourteenEyesGetsTheNewTarget() throws IOException {
+        write("{\"version\": 16, \"targetEyes\": 14}");
+        assertEquals(16, GamerConfigs.load().targetEyes);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 16, \"targetEyes\": 15}");
+        assertEquals(15, GamerConfigs.load().targetEyes);
+        // and a current file that says 14 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 14}");
+        assertEquals(14, GamerConfigs.load().targetEyes);
+    }
+
+    @Test
     public void anOldFileWithAnOldDefaultEndBedCountLandsOnNine() throws IOException {
         write("{\"version\": 11, \"end\": {\"beds\": 5}}");
         assertEquals(9, GamerConfigs.load().end.beds);
@@ -374,6 +386,24 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileWithTheOldEntryStackGetsTheNewOne() throws IOException {
+        write("{\"version\": 13, \"overworld\": {\"netherEntryBlocks\": 128, \"netherEntryBlocksLow\": 96}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(56, c.overworld.netherEntryBlocks);
+        assertEquals(40, c.overworld.netherEntryBlocksLow);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 13, \"overworld\": {\"netherEntryBlocks\": 200, \"netherEntryBlocksLow\": 150}}");
+        c = GamerConfigs.load();
+        assertEquals(200, c.overworld.netherEntryBlocks);
+        assertEquals(150, c.overworld.netherEntryBlocksLow);
+        // and a current file that says 128 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherEntryBlocks\": 128, \"netherEntryBlocksLow\": 96}}");
+        c = GamerConfigs.load();
+        assertEquals(128, c.overworld.netherEntryBlocks);
+        assertEquals(96, c.overworld.netherEntryBlocksLow);
+    }
+
+    @Test
     public void anOldSavedStockUpListLosesTheWoolBeds() throws IOException {
         write("{\"version\": 9, \"overworld\": {\"smeltExtras\": [{\"item\": \"wool_beds\", \"count\": 3}]}}");
         assertTrue(GamerConfigs.load().overworld.smeltExtras.stream().noneMatch(e -> e.item.equals("wool_beds")));
@@ -392,6 +422,38 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileThatStillSaysFortyForTheNightWoolGetsTheNewDefault() throws IOException {
+        assertEquals(128, new GamerConfig().overworld.nightWoolRadius);
+        write("{\"version\": 15, \"overworld\": {\"nightWoolRadius\": 40, \"nightBedRadius\": 40}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(128, c.overworld.nightWoolRadius);
+        // the bed radius is the same number by accident: a bed 128 off would count as ready
+        assertEquals(40, c.overworld.nightBedRadius);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 15, \"overworld\": {\"nightWoolRadius\": 60}}");
+        assertEquals(60, GamerConfigs.load().overworld.nightWoolRadius);
+        // and a current file that says 40 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"nightWoolRadius\": 40}}");
+        assertEquals(40, GamerConfigs.load().overworld.nightWoolRadius);
+    }
+
+    @Test
+    public void anOldFileThatStillSaysThreeDeathsPerPhaseGetsTheNewDefault() throws IOException {
+        assertEquals(8, new GamerConfig().death.maxPerPhase);
+        write("{\"version\": 14, \"death\": {\"maxPerPhase\": 3, \"maxTotal\": 12}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(8, c.death.maxPerPhase);
+        // the loop breaker stays where it was
+        assertEquals(12, c.death.maxTotal);
+        // a number somebody picked on purpose stays
+        write("{\"version\": 14, \"death\": {\"maxPerPhase\": 5}}");
+        assertEquals(5, GamerConfigs.load().death.maxPerPhase);
+        // and a current file that says 3 chose it
+        write("{\"version\": " + GamerConfig.VERSION + ", \"death\": {\"maxPerPhase\": 3}}");
+        assertEquals(3, GamerConfigs.load().death.maxPerPhase);
+    }
+
+    @Test
     public void aSavedFileWithoutSpareSwordsGetsOne() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"netherSparePicks\": 1}}");
         assertEquals(1, GamerConfigs.load().overworld.netherSpareSwords);
@@ -406,7 +468,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 13;
+    private static final int PINNED_VERSION = 17;
     private static final String PINNED_KIT_HASH = "79d6a950";
 
     @Test

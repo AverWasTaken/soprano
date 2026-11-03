@@ -8,8 +8,11 @@ public final class BlazeFightRules {
 
     // a blaze this close is a threat whatever it is doing, it will bite
     public static final double MELEE_RANGE = 3;
-    // past this a blaze is background noise. blazes shoot from further, but nothing they throw from here lands
+    // past this a blaze is background noise for a fight: not worth a look, not worth the walk. it can still hit us, see FIRE_RANGE
     public static final double SIGHT_RANGE = 20;
+    // a blaze shoots whatever it has a line on inside its follow range, 48 in the 26.3 jar. the spread gets wide out there but
+    // fireballs still land, and the burn does the rest
+    public static final double FIRE_RANGE = 48;
     // above the floor, in blocks, a blaze we are not after yet can still be hit by a bot standing under it. the one we are after
     // is kept up to STAY_REACHABLE_HEIGHT, blazes bob and one hovering right on the line would get dropped for breathing
     public static final double MAX_REACHABLE_HEIGHT = 3.5;
@@ -103,6 +106,11 @@ public final class BlazeFightRules {
     // fireball lands and not after the second
     public static boolean watching(double distance, boolean lineOfSight) {
         return lineOfSight && distance <= SIGHT_RANGE;
+    }
+
+    // who a run has to get away from. no line means no shot however close the number says it is, the run's close crowd has those
+    public static boolean inFireRange(double distance, boolean lineOfSight) {
+        return lineOfSight && distance <= FIRE_RANGE;
     }
 
     // a blaze or skeleton shot that landed this lately keeps a run going: an empty crowd is not a safe one while shots still land

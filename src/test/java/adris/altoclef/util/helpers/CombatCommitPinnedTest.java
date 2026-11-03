@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -13,6 +14,7 @@ import adris.altoclef.util.helpers.CombatCommit.Why;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.Test;
 
 // a skeleton that is shooting us is one target: kill it. walking or standing, no pin window, no waiting for a second arrow.
@@ -30,6 +32,9 @@ public class CombatCommitPinnedTest {
     private static Foe skeleton(double distance, long sinceHit, boolean sight) {
         return skeleton(SKELETON, distance, sinceHit, sight);
     }
+
+    // still a foe (FOE_RANGE) and out of its bow, so a run can end with it about
+    private static final double PAST_THE_BOW = CombatRules.SHOOTER_RANGE + 1;
 
     // an arrow a few ticks ago, from twelve blocks with a line
     private static Foe shooter() {
@@ -178,12 +183,12 @@ public class CombatCommitPinnedTest {
         assertEquals(Event.RUN_START, c.step(tick(gaveUp + 40, 20, null, skeleton(12, 2, true))));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.SHOT, c.why());
-        // and it is the sight run: out of its line for the count ends it, far or not
+        // and it is the sight run: out of its line (and its bow) for the count ends it, far or not
         long t = gaveUp + 41;
         for (; t < gaveUp + 41 + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 20, skeleton(14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 20, skeleton(PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 20, skeleton(14, 2, false))));
+        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 20, skeleton(PAST_THE_BOW, 2, false))));
     }
 
     @Test
@@ -243,15 +248,89 @@ public class CombatCommitPinnedTest {
         // the line drops for one tick short of the count, then flickers back and the count starts over
         long t = NOW + 1;
         for (; t < NOW + 1 + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
+        assertEquals(Event.NONE, c.step(walking(t++, 6, skeleton(PAST_THE_BOW, 2, true), skeleton(7, PAST_THE_BOW, 2, true))));
         long from = t;
         for (; t < from + CombatCommit.LOS_CLEAR_TICKS; t++) {
-            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         }
-        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(14, 2, false), skeleton(7, 14, 2, false))));
+        assertEquals(Event.RUN_CLEAR, c.step(walking(t, 6, skeleton(PAST_THE_BOW, 2, false), skeleton(7, PAST_THE_BOW, 2, false))));
         assertEquals(Mode.NONE, c.mode());
+    }
+
+    // ---- a run does not end inside a bow's reach
+
+    // a run that is not about sight: three zombies on us. then they are gone and a far skeleton is what is left
+    private static CombatCommit crowdRun() {
+        CombatCommit c = new CombatCommit();
+        Foe zombie = new Foe(1, 2, false, false, NEVER);
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 20, zombie, new Foe(2, 2, false, false, NEVER), new Foe(3, 2, false, false, NEVER))));
+        assertEquals(Why.CROWD, c.why());
+        return c;
+    }
+
+    // goes the whole way to the cap with this foe about, walking the whole time
+    private static void holdsToTheCap(CombatCommit c, float hp, Foe foe) {
+        for (long t = NOW + 1; t < NOW + CombatCommit.RUN_CAP; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(walking(t, hp, foe)));
+        }
+        assertEquals(Event.RUN_CAP, c.step(walking(NOW + CombatCommit.RUN_CAP, hp, foe)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void theSightRunHoldsInBowRangeWithNoLineUntilTheCap() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(walking(NOW, 6, skeleton(14, 2, true), skeleton(7, 14, 2, true))));
+        // round a corner, right on the bow's line: no line for ages is not out of range
+        holdsToTheCap(c, 6, skeleton(CombatRules.SHOOTER_RANGE, 2, false));
+    }
+
+    @Test
+    public void theDistanceRunHoldsInBowRangeUntilTheCap() {
+        // far past the 24 and past RUN_CLEAR, with a line or without
+        holdsToTheCap(crowdRun(), 20, skeleton(13, NEVER, false));
+        holdsToTheCap(crowdRun(), 20, skeleton(CombatRules.SHOOTER_RANGE, NEVER, true));
+    }
+
+    @Test
+    public void justPastTheBowTheRunEndsAsUsual() {
+        CombatCommit c = crowdRun();
+        Foe out = skeleton(CombatRules.SHOOTER_RANGE + 0.1, NEVER, false);
+        Event last = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + 200 && last == Event.NONE; t++) last = c.step(walking(t, 20, out));
+        assertEquals(Event.RUN_CLEAR, last);
+    }
+
+    @Test
+    public void aSkeletonInTheWaterIsStillABow() {
+        // a swim makes every one of them wet, that is no time to call the run over
+        Foe wet = skeleton(14, NEVER, false).withWet(true);
+        assertFalse(wet.sniper());
+        holdsToTheCap(crowdRun(), 20, wet);
+    }
+
+    @Test
+    public void onlyBowsHoldTheRunOutThere() {
+        // a zombie past RUN_CLEAR, a calm blaze hovering (BlazeFight's), a witch: the old clear
+        for (Foe foe : List.of(new Foe(9, 14, false, false, NEVER), new Foe(9, 14, true, false, NEVER, Kind.FLYER, Double.POSITIVE_INFINITY, false, NEVER),
+                new Foe(9, 14, true, false, NEVER, Kind.LOBBER, Double.POSITIVE_INFINITY, false, NEVER))) {
+            CombatCommit c = crowdRun();
+            Event last = Event.NONE;
+            for (long t = NOW + 1; t <= NOW + 200 && last == Event.NONE; t++) last = c.step(walking(t, 20, foe));
+            assertEquals(foe.toString(), Event.RUN_CLEAR, last);
+        }
+    }
+
+    @Test
+    public void aRunThatCannotMoveStillGivesUpInBowRange() {
+        // the stuck rule is untouched: standing still in the arrows until the cap would be worse
+        CombatCommit c = crowdRun();
+        Foe foe = skeleton(14, NEVER, false);
+        Event last = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + CombatCommit.RUN_CAP && last == Event.NONE; t++) last = c.step(tick(t, 20, null, foe));
+        assertEquals(Event.RUN_STUCK, last);
     }
 
     // ---- the shooter fight: one skeleton with a line and at most one melee mob on us is never run from for hp
@@ -324,6 +403,118 @@ public class CombatCommitPinnedTest {
     public void bareHandsStillRunFromAHurtShooterFight() {
         CombatCommit c = new CombatCommit();
         assertEquals(Event.RUN_START, c.step(tick(NOW, 6, false, null, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // ---- a walk up to a skeleton wants a sword, a pickaxe is only armed for what is already on us
+
+    // the bag answered: tools only, or a sword. half a block a tick like walking, so the run has somewhere to go
+    private static Tick bag(long now, float hp, boolean sword, RecoverHold.Body body, Foe... foes) {
+        return new Tick(now, hp, (now - NOW) * 0.5, 0, List.of(foes), null, new Way(Set.of(), false, 0, sword), true, false, false, body);
+    }
+
+    private static Tick toolOnly(long now, float hp, Foe... foes) {
+        return bag(now, hp, false, RecoverHold.Body.NONE, foes);
+    }
+
+    @Test
+    public void aPickaxeRunsFromASkeletonWhenHurt() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(toolOnly(NOW, CombatCommit.FLEE_HP, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    @Test
+    public void aPickaxeDoesNotGoAndGetASkeletonWhenFine() {
+        CombatCommit c = new CombatCommit();
+        for (long t = NOW; t < NOW + 100; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 20, skeleton(12, 2, true))));
+        }
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aSwordStillDoesBoth() {
+        CombatCommit fine = new CombatCommit();
+        assertEquals(Event.FIGHT_START, fine.step(bag(NOW, 20, true, RecoverHold.Body.NONE, shooter())));
+        assertEquals(Why.PINNED, fine.why());
+        CombatCommit hurt = new CombatCommit();
+        assertEquals(Event.FIGHT_START, hurt.step(bag(NOW, CombatCommit.FLEE_HP, true, RecoverHold.Body.NONE, shooter())));
+        assertEquals(Why.PINNED, hurt.why());
+    }
+
+    // one that is on us and hitting is still a swing, it is only the walk over that went away
+    @Test
+    public void aPickaxeStillSwingsAtASkeletonThatIsOnUs() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(toolOnly(NOW, 20, skeleton(2, 2, true))));
+        assertEquals(Why.HIT, c.why());
+    }
+
+    // no spinning: the run has to actually end, only a new arrow starts another one, and it is never the walk over
+    @Test
+    public void aPickaxeRunEndsAndOnlyAFreshArrowStartsTheNext() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(toolOnly(NOW, 6, shooter())));
+        long t = NOW + 1;
+        for (; t < NOW + 1 + CombatCommit.LOS_CLEAR_TICKS; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 6, skeleton(PAST_THE_BOW, 30, false))));
+        }
+        assertEquals(Event.RUN_CLEAR, c.step(toolOnly(t++, 6, skeleton(PAST_THE_BOW, 30, false))));
+        assertTrue(c.coolingDown(t));
+        // back in its sights in the cooldown with an old arrow: nothing, on every tick
+        for (long end = t + 40; t < end; t++) {
+            assertEquals("tick " + t, Event.NONE, c.step(toolOnly(t, 6, skeleton(12, 30, true))));
+        }
+        assertEquals(Event.RUN_START, c.step(toolOnly(t, 6, skeleton(12, 1, true))));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // the heal hold says the skeleton is the next kill (see rerun). with a pickaxe it is not, hurt that is still the run
+    @Test
+    public void aPickaxeInTheHealHoldRunsToo() {
+        RecoverHold.Body fed = new RecoverHold.Body(20, false, false, false);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(bag(NOW, 20, false, fed, zombieOnUs(10))));
+        assertEquals(Event.FIGHT_DEAD, c.step(bag(NOW + 1, 6, false, fed)));
+        assertTrue(c.recovering());
+        assertEquals(Event.RUN_START, c.step(bag(NOW + 2, 6, false, fed, shooter())));
+        assertEquals(Why.SHOT, c.why());
+    }
+
+    // into the heal hold at 6 hp off a dead zombie, the next tick is whatever the test wants
+    private static final RecoverHold.Body FED = new RecoverHold.Body(20, false, false, false);
+
+    private static CombatCommit inTheHold(boolean sword) {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(bag(NOW, 20, sword, FED, zombieOnUs(10))));
+        assertEquals(Event.FIGHT_DEAD, c.step(bag(NOW + 1, 6, sword, FED)));
+        assertTrue(c.recovering());
+        return c;
+    }
+
+    // over the flee line, no fresh arrow, one close with a line. nobody is going to get it, so no healing in its sights
+    @Test
+    public void aPickaxeDoesNotHealInASkeletonsSights() {
+        CombatCommit c = inTheHold(false);
+        assertEquals(Event.RUN_START, c.step(bag(NOW + 2, 12, false, FED, skeleton(9, 45, true))));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    // with a sword it is still the next kill, so the same tick is no run
+    @Test
+    public void aSwordStillIsNotRunFromInTheHold() {
+        CombatCommit c = inTheHold(true);
+        assertEquals(Event.NONE, c.step(bag(NOW + 2, 12, true, FED, skeleton(9, 45, true))));
+        assertTrue(c.recovering());
+    }
+
+    // the chain remembers an arrow for longer than fresh does, so in the hold a run can follow an old one out of range too
+    @Test
+    public void aWatchedPickaxeRunsOnAnArrowThatIsNotFresh() {
+        CombatCommit c = inTheHold(false);
+        Way tools = new Way(Set.of(), false, 0, false);
+        assertEquals(Event.RUN_START, c.step(new Tick(NOW + 2, 12, 1, 0, List.of(skeleton(14, 22, true)), null, tools, true, false, false, FED, false, 0, true, false)));
         assertEquals(Why.SHOT, c.why());
     }
 

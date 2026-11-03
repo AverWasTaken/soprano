@@ -411,7 +411,7 @@ public class StrongholdRoomSearchTask extends Task {
         return retargets;
     }
 
-    private static RoomRetarget.Probe probe(AltoClef mod) {
+    static RoomRetarget.Probe probe(AltoClef mod) {
         Level level = mod.getWorld();
         return new RoomRetarget.Probe() {
             @Override

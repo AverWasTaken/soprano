@@ -72,6 +72,25 @@ public final class GamerConfigs {
         if (from < 13 && c.end != null && c.end.endMinBlocks == 20) {
             c.end.endMinBlocks = new GamerConfig().end.endMinBlocks;
         }
+        // and the nether entry stack: 128 and 96 were the defaults until the nether started digging its own on arrival
+        if (from < 14 && c.overworld != null && c.overworld.netherEntryBlocks == 128) {
+            c.overworld.netherEntryBlocks = new GamerConfig().overworld.netherEntryBlocks;
+        }
+        if (from < 14 && c.overworld != null && c.overworld.netherEntryBlocksLow == 96) {
+            c.overworld.netherEntryBlocksLow = new GamerConfig().overworld.netherEntryBlocksLow;
+        }
+        // and the deaths per phase: 3 was the default until the stop turned out to cost more than the deaths did
+        if (from < 15 && c.death != null && c.death.maxPerPhase == 3) {
+            c.death.maxPerPhase = new GamerConfig().death.maxPerPhase;
+        }
+        // and the night wool radius: 40 was the default until the hunt got moved out of the dark
+        if (from < 16 && c.overworld != null && c.overworld.nightWoolRadius == 40) {
+            c.overworld.nightWoolRadius = new GamerConfig().overworld.nightWoolRadius;
+        }
+        // and the target eyes: 14 was the default until it turned out 2 spare is not enough room for the lost throws
+        if (from < 17 && c.targetEyes == 14) {
+            c.targetEyes = new GamerConfig().targetEyes;
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;

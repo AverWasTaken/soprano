@@ -31,7 +31,7 @@ public final class RecoverHold {
     // balls), not the wither skeleton (it is a melee mob)
     public static boolean rerunSource(String entityType) {
         return switch (entityType) {
-            case "blaze", "skeleton", "stray", "bogged" -> true;
+            case "blaze", "skeleton", "stray", "bogged", "parched" -> true;
             default -> false;
         };
     }

@@ -424,6 +424,29 @@ public class EndGearTest {
     }
 
     @Test
+    public void theTopUpNeedsRoomAndPrey() {
+        assertTrue(EndGear.wantsTopUp(true, false, false));
+        assertFalse(EndGear.wantsTopUp(false, false, false));
+        assertFalse(EndGear.wantsTopUp(true, true, false));
+        assertFalse(EndGear.wantsTopUp(true, false, true));
+    }
+
+    @Test
+    public void aBagOverTheFloorButUnderTheWantIsNotAGapAndDoesNotReplaceAFarErrand() {
+        EndConfig cfg = new EndConfig();
+        assertEquals(24, cfg.minFoodUnits);
+        assertEquals(56, cfg.wantFoodUnits);
+        FakeFacts f = new FakeFacts();
+        f.food = 30;
+        FoodPlan food = FoodPlan.of(f, new GamerConfig(), GamerPhase.END_PREP, false);
+        assertTrue(food.shortOfEnd(cfg.wantFoodUnits));
+        boolean gap = EndGear.missing(f, new RunState(), cfg, food).food();
+        assertFalse(gap);
+        // the bed errand from across the map stays the bed errand
+        assertFalse(EndGear.foodFirst(gap, 900, cfg.farErrandBlocks, false));
+    }
+
+    @Test
     public void theBedPlanNeverComesUpEmpty() {
         for (int wool = 0; wool < 4; wool++) {
             for (boolean known : new boolean[]{true, false}) {

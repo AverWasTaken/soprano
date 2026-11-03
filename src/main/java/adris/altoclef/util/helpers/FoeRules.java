@@ -15,6 +15,9 @@ import java.util.function.ToDoubleFunction;
 // are not a fight. entity types come in as registry paths ("blaze") so the whole table can be tested without minecraft
 public final class FoeRules {
 
+    // a whole set of iron is 15. a bolt lands 1.2 to 2.2 through 13 to 16, and this is about where that stops being true
+    public static final int PATROL_ARMOR = 10;
+
     // lands 8 to 13 in one swing, a run at HEAVY_FLEE_HEALTH instead of the usual line
     private static final Set<String> HEAVY = Set.of("hoglin", "zoglin", "piglin_brute", "vindicator", "ravager");
     // not a fight at any hp. the warden one shots a full bar, the wither is a boss we never summoned
@@ -110,6 +113,12 @@ public final class FoeRules {
     // foe again for as long as a fight of ours is on. only then: the walk to the spawner still ignores them like the task asked
     public static boolean liftsExclusion(String type, boolean fighting, long sinceHit) {
         return fighting && type.equals("blaze") && sinceHit <= CombatCommit.HIT_MEMORY;
+    }
+
+    // a pillager we stand and fight: most of a set of iron and a real weapon (a pickaxe is not a plan). under that the old rules are
+    // the right ones, a bolt through no armor is a lot more than the 2 this deal is priced on. the bag only gets asked when the rest said yes
+    public static boolean patrol(String type, int armor, BooleanSupplier weapon) {
+        return type.equals("pillager") && armor >= PATROL_ARMOR && weapon.getAsBoolean();
     }
 
     // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither

@@ -224,7 +224,9 @@ public class AltoClef {
         _butler.tick();
         _messageSender.tick();
         // outside the runner block above: a gate going false (task over, runner idle) has to let go of the sneak too
-        _edgeBrake.tick(this, _userTaskChain.isActive() && !_userTaskChain.isRunningIdleTask());
+        // (an idle command counts: that can be a whole #gamer game and its ledges are just as tall. a human on the keys still
+        // wins, realMoveKey reads the real key)
+        _edgeBrake.tick(this, _userTaskChain.isActive());
 
         _inputControls.onTickPost();
     }
