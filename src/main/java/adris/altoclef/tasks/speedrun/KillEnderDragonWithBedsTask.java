@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun;
 import adris.altoclef.AltoClef;
 import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
@@ -30,6 +31,8 @@ import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -213,9 +216,17 @@ public class KillEnderDragonWithBedsTask extends Task {
             }
             case CLICK -> {
                 setDebugState("Wait for it...");
+                BlockState placed = mod.getWorld().getBlockState(bed);
+                Direction facing = placed.getValue(BedBlock.FACING);
+                // a bed the wrong way round goes off on our side of the pillar and there's no click worth that. no cap on the
+                // retries, the beds are the cap and the sword is what's after them
+                if (!PillarBed.rightWay(facing, placed.getValue(BedBlock.PART) == BedPart.FOOT)) {
+                    logPlace("pillar bed: wrong bed, facing " + facing.name() + ", breaking it");
+                    return new DestroyBlockTask(bed);
+                }
                 // keep facing east so the next bed goes straight down
                 LookHelper.lookAt(mod, bed.below(), Direction.UP, true);
-                clickWhenClose(mod, dragon, bed);
+                clickWhenClose(mod, dragon, bed, facing);
             }
         }
         return null;
@@ -224,12 +235,22 @@ public class KillEnderDragonWithBedsTask extends Task {
     // from the stand the crosshair only grazes the pillar's top face, so an aimed click needs a jump and a lucky frame. sent
     // directly instead
     private void placeOnPillar(AltoClef mod, BlockPos top, EnderDragonPhase<?> phase) {
-        Direction facing = Direction.fromYRot(LookHelper.getLookRotation(mod.getPlayer()).getYaw());
+        // the use packet carries no rotation, the server aims the bed with the last yaw it heard and this tick's look goes out
+        // after us. the camera's no help, it says east the moment lookAt runs while the server still has the walk's last step.
+        // same race as EnsureFreeInventorySlotTask.aimed, but no orElse: nothing heard yet is no bed, a guess here is a blast
+        // in the face
+        Direction facing = mod.getClientBaritone().getLookBehavior().serverRotation().map(r -> Direction.fromYRot(r.getYaw())).orElse(null);
+        if (facing != Direction.EAST) {
+            logPlace("pillar bed: server still has " + (facing == null ? "nothing" : facing.name()) + ", turning east first");
+        }
         if (!PillarBed.placeNow(facing, mod.getWorld().getGameTime())) {
             return;
         }
         InteractionResult used = useOn(mod, new Vec3(top.getX() + 0.5, top.getY() + 1, top.getZ() + 0.5), top);
-        String line = String.format("pillar bed: place on %s, phase %s, %s", top.toShortString(), phase, used);
+        logPlace(String.format("pillar bed: place on %s, phase %s, %s", top.toShortString(), phase, used));
+    }
+
+    private void logPlace(String line) {
         if (!line.equals(_placeLog)) {
             _placeLog = line;
             Debug.logMessage(line);
@@ -237,7 +258,7 @@ public class KillEnderDragonWithBedsTask extends Task {
     }
 
     // direct as well: the walk and re-aim of an interact task cost seconds per bed, and the landing doesn't wait
-    private void clickWhenClose(AltoClef mod, EnderDragon dragon, BlockPos bed) {
+    private void clickWhenClose(AltoClef mod, EnderDragon dragon, BlockPos bed, Direction facing) {
         BlockPos foot = WorldHelper.getBedFoot(mod, bed);
         if (foot == null) {
             return;
@@ -247,7 +268,7 @@ public class KillEnderDragonWithBedsTask extends Task {
         if (PillarBed.clickNow(mod.getPlayer().onGround(), dist, tick, _lastClick)) {
             _lastClick = tick;
             _landing.clicked();
-            Debug.logMessage(String.format("pillar bed: click, head %.1f, dragon hp %.0f, us hp %.1f", dist, dragon.getHealth(), mod.getPlayer().getHealth()));
+            Debug.logMessage(String.format("pillar bed: click, facing %s, head %.1f, dragon hp %.0f, us hp %.1f", facing.name(), dist, dragon.getHealth(), mod.getPlayer().getHealth()));
             useOn(mod, new Vec3(bed.getX() + 0.5, bed.getY() + 0.5, bed.getZ() + 0.5), bed);
         }
     }
