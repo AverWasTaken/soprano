@@ -119,6 +119,8 @@ public class NetherPhase implements PhaseHandler {
     private final WalkProgress spawnerProgress = new WalkProgress();
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
+    private boolean warpedSweeping;
+    private boolean warpedUnseenLogged;
     // the one block dig for the whole phase (walks to the fortress and the spawner spend the bag, not just the sweep)
     private NetherBlockRestock restock = new NetherBlockRestock();
     private CollectBlazeRodsTask rodsTask;
@@ -339,6 +341,8 @@ public class NetherPhase implements PhaseHandler {
         spawnerProgress.reset();
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+        warpedSweeping = false;
+        warpedUnseenLogged = false;
         restock = new NetherBlockRestock();
         homeWalk.reset();
         foodFloor.reset();
@@ -1121,6 +1125,22 @@ public class NetherPhase implements PhaseHandler {
             ctx.progress("saw something");
             ctx.save();
         }
+        if (sight == Sight.WARPED) {
+            noteWarpedUnseen(mod, ctx);
+        }
+    }
+
+    // the warped sweep only takes nylium it can look at. one line the first time the tracker knows some and we can't see any,
+    // so a game can say whether line of sight is what the sweep was missing
+    private void noteWarpedUnseen(AltoClef mod, GamerContext ctx) {
+        if (!warpedSweeping || warpedUnseenLogged || warpedSearchOver || ctx.state().warpedForest != null) {
+            return;
+        }
+        int known = mod.getBlockTracker().getKnownLocations(WARPED).size();
+        if (known > 0) {
+            warpedUnseenLogged = true;
+            Debug.logInternal("warped sweep: tracker knows " + known + " nylium, none in sight");
+        }
     }
 
     // the nearest tracked blocks of this kind that are really still there and in line of sight. the tracker hands them
@@ -1439,6 +1459,7 @@ public class NetherPhase implements PhaseHandler {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;
             } else {
+                warpedSweeping = true;
                 return findStep(ctx, findWarped, "Looking for a warped forest");
             }
         }

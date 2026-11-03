@@ -49,6 +49,9 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
     // half a million chunks a scan, 8 km out from the origin. past that the ring stops and it reads as nothing found: a
     // crossing, whose first look at dry land scans around the player and re-anchors there
     static final int FRONTIER_MAX_RING = 512;
+    // ten seconds on one goal. a member changing is what makes forceRevalidate soft cancel the path, and a fresh scan changed
+    // one about once per chunk. the same members in a new array were never the problem, GoalComposite compares by value
+    static final int GOAL_HOLD_TICKS = 200;
 
     private BlockPos explorationOrigin;
 
@@ -60,11 +63,11 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
     private LandGate gate;
     private boolean gateOn;
     private boolean crossing;
-    // survives a cancel on purpose. every interrupt cancels every process, and a turn back still has to know what it swam at
-    private List<ChunkPos> lastFrontier = List.of();
+    private List<ChunkPos> scannedFrontier = List.of();
     private Goal[] frontierGoals;
     private int frontierAge;
     private int emptyScans;
+    private final GoalHold goalHold = new GoalHold();
 
     public ExploreProcess(Baritone baritone) {
         super(baritone);
@@ -95,6 +98,7 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         frontierGoals = null;
         frontierAge = 0;
         emptyScans = 0;
+        goalHold.clear();
     }
 
     // nothing left on this side of the water. a plain explore around a point way out there, so the rings pull us across
@@ -103,6 +107,7 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
             explorationOrigin = gate.startCrossing(x, z);
             distanceCompleted = 0;
             crossing = true;
+            goalHold.clear();
         }
     }
 
@@ -114,9 +119,9 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
         return explorationOrigin;
     }
 
-    // what the last scan was going for
+    // what the goal we are on was made from, not what the last scan said
     public List<ChunkPos> lastFrontier() {
-        return lastFrontier;
+        return goalHold.frontier();
     }
 
     public boolean landFrontierExists(int x, int z) {
@@ -172,12 +177,17 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
                 }
             }
         }
+        // the rings walk out from the origin every single time, no point while we still like the goal we have
+        PathingCommand held = tickHold();
+        if (held != null) {
+            return held;
+        }
         Goal[] closestUncached = closestUncachedChunks(explorationOrigin, filter);
         if (closestUncached == null) {
             logDebug("awaiting region load from disk");
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        return new PathingCommand(new GoalComposite(closestUncached), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
+        return goalHold.hold(closestUncached);
     }
 
     // null means a crossing just started and the old path below takes it from here. the scan walks the rings from the
@@ -194,7 +204,7 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
             switch (ScanOutcome.of(scan, emptyScans)) {
                 case GO -> {
                     emptyScans = 0;
-                    lastFrontier = scan.found();
+                    scannedFrontier = scan.found();
                     frontierGoals = scan.found().stream().map(chunk -> frontierGoal(chunk, chunkX, chunkZ)).toArray(Goal[]::new);
                 }
                 case AWAIT -> frontierAge = 0;
@@ -208,9 +218,19 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
             }
         }
         if (frontierGoals == null) {
+            // the scan says nothing's left, a held goal would walk us at land it just crossed off. and the pause is what
+            // lets emptyScans get to a crossing
+            goalHold.clear();
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        return new PathingCommand(new GoalComposite(frontierGoals), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
+        // the scan keeps its once a second, emptyScans needs it. the goal just doesn't have to follow every time
+        PathingCommand held = tickHold();
+        return held != null ? held : goalHold.hold(frontierGoals, scannedFrontier);
+    }
+
+    // not playerFeet, that's two objects and a block read a tick. these goals only look at x and z and those come out the same
+    private PathingCommand tickHold() {
+        return goalHold.tick(ctx.player().getBlockX(), ctx.player().getBlockY(), ctx.player().getBlockZ());
     }
 
     private static Goal frontierGoal(ChunkPos chunk, int originChunkX, int originChunkZ) {
@@ -319,6 +339,46 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
                 return super.heuristic(x, y, z) + GoalYLevel.calculate(Baritone.settings().exploreMaintainY.value, y);
             }
         };
+    }
+
+    // one command kept and handed out again, so a tick of walking at the same goal costs nothing but the isInGoal
+    static final class GoalHold {
+
+        private PathingCommand command;
+        private int age;
+        // survives a clear on purpose. every interrupt cancels every process, and a turn back still has to know what it swam at
+        private List<ChunkPos> frontier = List.of();
+
+        // once per tick. null means go pick a new goal: it's old, or our feet are in it and it has nothing left to give
+        PathingCommand tick(int x, int y, int z) {
+            if (command != null && (++age >= GOAL_HOLD_TICKS || command.goal.isInGoal(x, y, z))) {
+                command = null;
+            }
+            return command;
+        }
+
+        PathingCommand hold(Goal[] goals) {
+            command = new PathingCommand(new GoalComposite(goals), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
+            age = 0;
+            return command;
+        }
+
+        PathingCommand hold(Goal[] goals, List<ChunkPos> madeFrom) {
+            frontier = madeFrom;
+            return hold(goals);
+        }
+
+        List<ChunkPos> frontier() {
+            return frontier;
+        }
+
+        Goal goal() {
+            return command == null ? null : command.goal;
+        }
+
+        void clear() {
+            command = null;
+        }
     }
 
     enum Status {
@@ -493,10 +553,15 @@ public final class ExploreProcess extends BaritoneProcessHelper implements IExpl
     @Override
     public String displayName0() {
         if (gate != null && gateOn && !crossing) {
-            return "Exploring land around " + explorationOrigin + ", " + lastFrontier.size() + " frontier chunks";
+            return "Exploring land around " + explorationOrigin + ", " + lastFrontier().size() + " frontier chunks";
         }
-        // null is regions still loading, a GoalComposite of null is a crash in a debug string
-        Goal[] goals = closestUncachedChunks(explorationOrigin, calcFilter());
-        return (crossing ? "Crossing to " : "Exploring around ") + explorationOrigin + ", distance completed " + distanceCompleted + ", currently going to " + (goals == null ? "nowhere yet" : new GoalComposite(goals));
+        // the held one is where we really are going, and a status line shouldn't cost a ring scan
+        Goal going = goalHold.goal();
+        if (going == null) {
+            // null is regions still loading, a GoalComposite of null is a crash in a debug string
+            Goal[] goals = closestUncachedChunks(explorationOrigin, calcFilter());
+            going = goals == null ? null : new GoalComposite(goals);
+        }
+        return (crossing ? "Crossing to " : "Exploring around ") + explorationOrigin + ", distance completed " + distanceCompleted + ", currently going to " + (going == null ? "nowhere yet" : going);
     }
 }
