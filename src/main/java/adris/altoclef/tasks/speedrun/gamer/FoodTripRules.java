@@ -33,9 +33,10 @@ public final class FoodTripRules {
         return FLOOR_BASE + distToPortal / BLOCKS_PER_UNIT;
     }
 
-    // the one count the line is read against: FoodPlan's held with nothing pending. out here raw meat is raw (FoodPlan already
-    // knows nothing cooks past PORTAL) and a smoker still cooking up top is not food we can reach. the open screen's share is
-    // out too: meat going into a smoker mid-load reads as cooked food, and a trip that ends on that walks off with the bag empty
+    // the one count the line is read against: FoodPlan's held with nothing pending. out here raw meat is raw (the plan has no cook past
+    // PORTAL, cookHere below is the phase's own and only ever fixes the bag by cooking it) and a smoker still cooking up top is not
+    // food we can reach. the open screen's share is out too: meat going into a smoker mid-load reads as cooked food, and a trip
+    // that ends on that walks off with the bag empty
     public static int units(FoodPlan food) {
         return bagOnly(food.held(), food.pending(), food.station());
     }
@@ -53,6 +54,22 @@ public final class FoodTripRules {
 
     public static boolean underFloor(double foodUnits, double distToPortal) {
         return foodUnits < floorLine(distToPortal);
+    }
+
+    // the walk home is many minutes, a smoker does a chop in 5 s. only when cooking clears the line, or we would cook and then walk
+    // home anyway. the smoker in the bag only: a craft out here means logs. fuel for every piece up front, because a smelt that
+    // comes up short goes to fetch coal, and in the nether fetching coal is the walk home this was meant to save
+    public static boolean cookHere(int units, int rawGap, int raw, int fuelSmelts, boolean hasSmoker, boolean suspended, double distToPortal) {
+        double line = goHomeLine(distToPortal);
+        return units < line && units + rawGap >= line && raw >= CookGate.MIN_RAW && hasSmoker && !suspended && fuelSmelts >= raw;
+    }
+
+    // a cook is a minute and a half of standing still. nothing in the station spot rules knows about a drop, so a bridge of ours
+    // passes them fine, and one fireball there is the whole kit in the lava. two sides open covers the bends too, and the corner
+    // of a ledge isn't somewhere to stand still either
+    public static boolean onABridge(boolean floorEast, boolean floorWest, boolean floorSouth, boolean floorNorth) {
+        int floors = (floorEast ? 1 : 0) + (floorWest ? 1 : 0) + (floorSouth ? 1 : 0) + (floorNorth ? 1 : 0);
+        return floors < 3;
     }
 
     // something is trying to hurt us right now. pure so the wait below can be tested

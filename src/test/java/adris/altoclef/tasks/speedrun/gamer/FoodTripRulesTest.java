@@ -24,6 +24,38 @@ public class FoodTripRulesTest {
 
 
     @Test
+    public void cookHereOnlyWhenTheCookClearsTheLine() {
+        // 17 raw chops at 3 is 51, the line 36 + 640 / 40 = 52, and a smoker adds 5 a chop
+        assertTrue(FoodTripRules.cookHere(51, 85, 17, 24, true, false, 640));
+        // over the line already, no cook and no trip
+        assertFalse(FoodTripRules.cookHere(52, 85, 17, 24, true, false, 640));
+        // the cook does not get it over the line, that one walks home either way
+        assertFalse(FoodTripRules.cookHere(10, 41, 9, 24, true, false, 640));
+        assertTrue(FoodTripRules.cookHere(10, 42, 9, 24, true, false, 640));
+        // fuel for every piece, one short walks home for coal in the middle of the cook
+        assertFalse(FoodTripRules.cookHere(51, 85, 17, 16, true, false, 640));
+        assertTrue(FoodTripRules.cookHere(51, 85, 17, 17, true, false, 640));
+        // no smoker in the bag, or the cook parked itself
+        assertFalse(FoodTripRules.cookHere(51, 85, 17, 24, false, false, 640));
+        assertFalse(FoodTripRules.cookHere(51, 85, 17, 24, true, true, 640));
+        // two chops are not worth putting a smoker down
+        assertFalse(FoodTripRules.cookHere(30, 10, CookGate.MIN_RAW - 1, 24, true, false, 0));
+        assertTrue(FoodTripRules.cookHere(30, 15, CookGate.MIN_RAW, 24, true, false, 0));
+    }
+
+    @Test
+    public void aBridgeIsTwoSidesWithNoFloor() {
+        assertTrue(FoodTripRules.onABridge(false, false, true, true));
+        assertTrue(FoodTripRules.onABridge(true, true, false, false));
+        assertTrue(FoodTripRules.onABridge(false, false, false, false));
+        // the bend in one
+        assertTrue(FoodTripRules.onABridge(true, false, true, false));
+        // a straight ledge has a drop on one side, a tunnel has rock on all of them
+        assertFalse(FoodTripRules.onABridge(true, true, true, false));
+        assertFalse(FoodTripRules.onABridge(true, true, true, true));
+    }
+
+    @Test
     public void aTripRunsToItsEndNotTheMinimum() {
         // 70 is the overworld minimum, 130 the trip's stop: the bag at 70 is fine for the floor and short for a trip
         assertTrue(FoodTripRules.tripFoodShort(70, 130));

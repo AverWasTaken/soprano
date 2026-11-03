@@ -9,7 +9,10 @@ import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.BlazeDisengageTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
+import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
+import adris.altoclef.tasks.speedrun.gamer.CookGate;
+import adris.altoclef.tasks.speedrun.gamer.CookTrip;
 import adris.altoclef.tasks.speedrun.gamer.DeathZones;
 import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
@@ -17,6 +20,7 @@ import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
 import adris.altoclef.tasks.speedrun.gamer.FoodPickup;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -55,6 +59,8 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
@@ -62,6 +68,7 @@ import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
+import net.minecraft.world.inventory.SmokerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -88,6 +95,10 @@ public class NetherPhase implements PhaseHandler {
     // the known-ore look is a walk over every tracked gold ore, twice a second is plenty
     private static final int ORE_LOOK_TICKS = 10;
     private static final int GUARD_HOLD_TICKS = 20;
+    // 15 s, three chops' worth of smoker
+    private static final int COOK_QUIET_TICKS = 300;
+    // a knockback or a misstep away. two down as well: a floor that thin over lava is no floor
+    private static final int COOK_LAVA_REACH = 2;
 
     private static final int SCAN_EVERY_TICKS = 6;
     // the nearest this many tracked blocks of a kind get asked about, the tracker can hold thousands of bricks
@@ -185,6 +196,13 @@ public class NetherPhase implements PhaseHandler {
     // the game tick the last trip ended on a stalled walk home (-1 none): the next one waits FoodTripRules.COOLDOWN_TICKS
     private long tripEndedTick = -1;
     private long lastNoTripLog = -1;
+    // the raw meat cooking right here instead of a trip (FoodTripRules.cookHere), null when none. the task is kept across a fight
+    private CookRawFoodTask cook;
+    private double cookStart;
+    private int cookUnits;
+    private long cookGainTick;
+    // ticks at the open smoker with no meat left in the bag and nothing new coming out
+    private int cookQuiet;
     // food units at the last look up top, so a gain pings the watchdog (-1 = no look yet)
     private int lastTripUnits = -1;
     // the live trip already came back from a watchdog retry once
@@ -295,7 +313,8 @@ public class NetherPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return EyeMath.canLeaveNether(facts, cfg, state, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
+        // not with dinner in the smoker. cookStep's no gain clock is what stops this holding the phase for long
+        return cook == null && EyeMath.canLeaveNether(facts, cfg, state, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
     }
 
     static boolean budgetOver(GamerFacts facts, RunState state, GamerConfig cfg) {
@@ -346,6 +365,7 @@ public class NetherPhase implements PhaseHandler {
         restock = new NetherBlockRestock();
         homeWalk.reset();
         foodFloor.reset();
+        cook = null;
         goHome = null;
         // a retry that lands in the overworld with the hunt half of a trip in flight: that trip is not over, so it is kept
         // (below) instead of cleared and walked straight back down with an empty bag
@@ -468,6 +488,8 @@ public class NetherPhase implements PhaseHandler {
             unguard(mod);
             placingOff(mod);
             escapeRun.reset();
+            // a smoker in the nether is no use from up here
+            cook = null;
             if (foodTrip) {
                 // the hunt's clock starts when we are up here, not when we left the fortress
                 if (!foodTripUp) {
@@ -647,6 +669,11 @@ public class NetherPhase implements PhaseHandler {
     private Task foodTripHome(AltoClef mod, GamerContext ctx) {
         double now = ctx.secondsInPhase();
         if (!foodTrip) {
+            // ahead of everything below: with the meat in the slot the bag reads empty, and the line would send us home on that
+            Task cooking = cookStep(mod, ctx, now);
+            if (cooking != null) {
+                return cooking;
+            }
             // the nether side of the pair is the way home (ReturnPhase.recordPortal keeps state.netherPortal), the overworld one is
             // where we come out
             boolean portalKnown = ctx.state().netherPortal != null
@@ -660,6 +687,21 @@ public class NetherPhase implements PhaseHandler {
             // blocks trip is the same walk home (and tops the food up on the way), so it waits too and a food trip that is
             // waiting does not hand over to it
             long tick = ctx.facts().gameTime();
+            // a cook starts whatever the last trip's cooldown says, that one is about walking the same wall twice
+            if (!deathTrip && cookWanted(ctx, units, portalDistance)
+                    && FoodTripRules.mayStart(FoodTripRules.underFloor(units, portalDistance), tick, lastUnsafeTick)) {
+                if (cookSpotOk(mod)) {
+                    return startCook(ctx, units, portalDistance, now);
+                }
+                // keep moving and cook on the next decent floor, the floor line still sends us home if that never comes
+                if (!FoodTripRules.underFloor(units, portalDistance)) {
+                    if (lastNoTripLog < 0 || GameClock.since(lastNoTripLog, tick) >= 600) {
+                        lastNoTripLog = tick;
+                        ctx.log("nether: not cooking on a bridge or next to lava, food " + units + ", looking for better floor");
+                    }
+                    return null;
+                }
+            }
             // the last walk home stalled: the next try waits out the cooldown instead of walking the same wall again
             if (FoodTripRules.coolingDown(tick, tripEndedTick) && !FoodTripRules.underFloor(units, portalDistance)) {
                 return null;
@@ -735,6 +777,84 @@ public class NetherPhase implements PhaseHandler {
         return goHome;
     }
 
+    private boolean cookWanted(GamerContext ctx, int units, double portalDistance) {
+        GamerFacts f = ctx.facts();
+        // with fire and forget on (a user setting, the phases leave it off out here) the smelt loads and leaves, and nothing out
+        // here comes back for it. the trip it is then
+        return units < FoodTripRules.goHomeLine(portalDistance) && !baritone.api.BaritoneAPI.getSettings().altoAsyncSmelting.value
+                && FoodTripRules.cookHere(units, CookGate.rawGap(f), CookGate.raw(f), CookGate.fuelSmelts(f, ctx.cfg().overworld, ctx.cfg().end.beds),
+                f.has(Items.SMOKER), f.cookSuspended(), portalDistance);
+    }
+
+    private Task startCook(GamerContext ctx, int units, double portalDistance, double now) {
+        GamerFacts f = ctx.facts();
+        cook = new CookRawFoodTask(true);
+        cookStart = now;
+        cookUnits = units;
+        cookGainTick = f.gameTime();
+        cookQuiet = 0;
+        ctx.log("nether: cooking " + CookGate.raw(f) + " raw meat here, food " + units + ", line " + (int) FoodTripRules.goHomeLine(portalDistance)
+                + ", fuel " + CookGate.fuelSmelts(f, ctx.cfg().overworld, ctx.cfg().end.beds) + ", smoker in the bag");
+        ctx.progress("cook");
+        hudState = "Cooking the raw meat";
+        return cook;
+    }
+
+    // one tick of the cook in place, null when there is none or it just ended. a give up parks itself (CookTrip.suspend), so cookHere is
+    // false for a while and the ordinary trip takes over. no new clock for that
+    private Task cookStep(AltoClef mod, GamerContext ctx, double now) {
+        if (cook == null) {
+            return null;
+        }
+        int units = FoodTripRules.units(ctx.food());
+        boolean gained = FoodTripRules.gained(cookUnits, units);
+        cookUnits = units;
+        long tick = ctx.facts().gameTime();
+        if (gained) {
+            cookGainTick = tick;
+        }
+        // the smelt ends itself once the slots run empty (keepToTheBag). this is for meat that sits in the slot and doesn't cook: a smoker
+        // gives one every 5 s, so 15 s of nothing with the screen open and no raw meat in the bag is no batch. at the screen only: the
+        // walk back from a fight has nothing to do with it, and if it never gets there the task's own give up ends it
+        cookQuiet = gained || CookGate.raw(ctx.facts()) > 0 || !(mod.getPlayer().containerMenu instanceof SmokerMenu) ? 0 : cookQuiet + 1;
+        if (cook.isFinished(mod) || cookQuiet >= COOK_QUIET_TICKS) {
+            cook = null;
+            rodsWatch.pause(now - cookStart);
+            ctx.log("nether: cook done, food " + units + " in " + (int) (now - cookStart) + " s");
+            return null;
+        }
+        // the task's own give up starts over after every interrupt, so a string of short fights would never reach it. game time, fights
+        // included, and same length as that one
+        if (GameClock.since(cookGainTick, tick) >= FurnacePlan.COOK_GIVE_UP_TICKS) {
+            CookTrip.suspend(tick);
+            cook = null;
+            rodsWatch.pause(now - cookStart);
+            ctx.log("nether: cook going nowhere, leaving it, food " + units);
+            return null;
+        }
+        // every tick, not just on a gain: the watchdog is shorter than the clock above, and a retry from it costs the phase an attempt and
+        // forgets the meat. the clock above is what bounds this
+        ctx.progress("cook");
+        hudState = "Cooking the raw meat";
+        return cook;
+    }
+
+    // lava close enough to be knocked into, or our own one wide bridge
+    private static boolean cookSpotOk(AltoClef mod) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        for (BlockPos p : BlockPos.betweenClosed(feet.offset(-COOK_LAVA_REACH, -COOK_LAVA_REACH, -COOK_LAVA_REACH), feet.offset(COOK_LAVA_REACH, 1, COOK_LAVA_REACH))) {
+            if (mod.getWorld().getFluidState(p).is(FluidTags.LAVA)) {
+                return false;
+            }
+        }
+        BlockPos under = feet.below();
+        return !FoodTripRules.onABridge(floorAt(mod, under.east()), floorAt(mod, under.west()), floorAt(mod, under.south()), floorAt(mod, under.north()));
+    }
+
+    private static boolean floorAt(AltoClef mod, BlockPos p) {
+        return mod.getWorld().getBlockState(p).isFaceSturdy(mod.getWorld(), p, Direction.UP);
+    }
+
     private boolean blocksTrip() {
         return tripReason == FoodTripRules.Reason.BLOCKS;
     }
@@ -747,6 +867,7 @@ public class NetherPhase implements PhaseHandler {
             foodDeathsSeen = deaths;
             foodTrip = false;
             foodTripUp = false;
+            cook = null;
             foodFloor.reset();
             restock.clearExhaustedEnds();
         }
