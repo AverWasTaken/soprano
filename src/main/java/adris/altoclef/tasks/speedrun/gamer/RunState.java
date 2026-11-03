@@ -33,6 +33,9 @@ public class RunState {
     public int deathsThisPhase;
     // "FROM>TO" -> how often the engine regressed that way, so a regress loop ends in STUCK instead of resetting every clock forever
     public Map<String, Integer> regressCounts = new HashMap<>();
+    // this phase entry already used its one restart after running out of retries on the clock (PhaseMachine.restart). a relog
+    // keeps it, or logging out would buy another. an old save has no key and reads false
+    public boolean restartedThisPhase;
 
     public List<Death> deaths = new ArrayList<>();
 

@@ -699,6 +699,7 @@ public class GamerTask extends Task {
         state.phaseAttempts.put(phase.name(), 1);
         state.deathsThisPhase = 0;
         state.regressCounts.clear();
+        state.restartedThisPhase = false;
         host.say("Starting at: " + phase.hud());
     }
 
@@ -717,6 +718,7 @@ public class GamerTask extends Task {
             state.deathsThisPhase = 0;
             state.regressCounts.clear();
             state.phaseAttempts.put(state.phase.name(), 1);
+            state.restartedThisPhase = false;
         } else {
             host.say("Resuming at: " + state.phase.hud());
             resumedAsIs = true;
