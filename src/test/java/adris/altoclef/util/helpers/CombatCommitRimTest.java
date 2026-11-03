@@ -253,6 +253,25 @@ public class CombatCommitRimTest {
         }
     }
 
+    @Test
+    public void aFightFromAStuckRunIsNotLetGo() {
+        long now = 10_000;
+        CombatCommit c = new CombatCommit();
+        // in the aura's reach and past the task's, the one gap where the let go and the no room rule both want it
+        Foe cube = realCube(1, 2.9, 2.8, NEVER);
+        c.step(new Tick(now, 6, 0, 0, List.of(cube), null, LAVA, true, true));
+        assertEquals(Mode.RUN, c.mode());
+        long t = now + 1;
+        while (c.mode() == Mode.RUN && t < now + CombatCommit.NO_ROOM_TICKS + 5) {
+            c.step(new Tick(t++, 6, 0, 0, List.of(cube), null, LAVA, true, true));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+        for (long end = t + 5; t < end; t++) {
+            assertEquals(Event.NONE, c.step(new Tick(t, 6, 0, 0, List.of(cube), cube, LAVA, true, true)));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
     private static Tick lingeringTick(long now, Foe cube, Foe target, Way way) {
         return new Tick(now, 14, 0, 0, List.of(cube), target, way, true, false, false, new RecoverHold.Body(20, false, false, false, true), false);
     }

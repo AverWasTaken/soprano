@@ -1912,8 +1912,10 @@ public final class CombatCommit {
         if (swap != null) return startFight(t, swap, swapWhy, Event.FIGHT_NEXT, chain);
         // a cube we can't swing at with lava this close: all the task does from here is stand and let it come. written off like a
         // stall, so the route runs until it hits us again. goes by the task's reach and not the aura's: in the gap between them the
-        // task still won't swing and StandCap doesn't count it. boxed in there is no route to go back to
-        if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed()) {
+        // task still won't swing and StandCap doesn't count it. boxed in there is no route to go back to. a stuck run's fight stays too:
+        // the walk already failed, letting go is the same stuck run and this same pick ten ticks later
+        boolean stuckRunFight = cornered && !boxCorner && !fastCorner;
+        if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed() && !stuckRunFight) {
             ignored.put(target.id(), t.now());
             idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
             Event cleared = end(t, Event.FIGHT_CLEARED);
