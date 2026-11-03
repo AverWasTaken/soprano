@@ -14,6 +14,7 @@ import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.BuriedLogs;
 import adris.altoclef.util.helpers.FloatingBlock;
 import adris.altoclef.util.helpers.GameClock;
 import baritone.Baritone;
@@ -486,6 +487,7 @@ public class MineAndCollectTask extends ResourceTask {
         // failed breaks per tree. static because the parent rebuilds this task whenever it likes and the count has to outlive that
         private static final TreeStrikes STRIKES = new TreeStrikes();
         private final TreeReachScan _scan = new TreeReachScan();
+        private final BuriedLogs _buried = new BuriedLogs();
         // no digging for dirt before this tick. static for the same reason as the strikes, a rebuilt task would start another trip
         private static int dirtOffUntil = Integer.MIN_VALUE;
         // the last tree we dug dirt for, and when
@@ -824,7 +826,7 @@ public class MineAndCollectTask extends ResourceTask {
         // not a tree, see TreeReach.buried. all three asks go through here (the pick, isValid, stillOurs): a pursuit that is already
         // on its way never hears from the pick again, and a cached log in an unloaded chunk only shows what it is once we get close
         private boolean buriedLog(AltoClef mod, BlockPos pos) {
-            return _logsOnly && TreeReachScan.buried(mod, pos);
+            return _logsOnly && _buried.buried(pos, check -> TreeReachScan.buried(mod, check));
         }
 
         // nothing of the real stuff within 16: a block we placed ourselves is a fair meal after all
