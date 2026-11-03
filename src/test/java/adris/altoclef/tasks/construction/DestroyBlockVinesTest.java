@@ -272,11 +272,12 @@ public class DestroyBlockVinesTest {
     }
 
     @Test
-    public void aVineInFrontOfAFarLogStillGoes() {
-        // vines never had the "is the block itself close" question, they go in one swing either way
+    public void aVineInFrontOfAFarLogStaysUpUntilTheLogIsInReach() {
+        // same question as the gravel: the vine is in reach, the log (3 out) is not. we can walk through it and climb it
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
-        assertEquals(LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 2.5));
+        assertNull(DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 2.5));
+        assertEquals(LOG.east(), DestroyBlockTask.clearableInTheWay(w, EYE, LOG, 3.1));
     }
 
     @Test
