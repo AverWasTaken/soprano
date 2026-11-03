@@ -27,6 +27,7 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PortalDig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.util.ItemTarget;
@@ -101,6 +102,7 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _armorTask;
     // only RoomPhase's instance sets this (prepAhead), see portalCenter
     private BlockPos _prepAt;
+    private PortalDig _portalDig = new PortalDig();
 
     @Override
     public GamerPhase phase() {
@@ -145,10 +147,15 @@ public class EndPrepPhase implements PhaseHandler {
             _shortRetries = 0;
         }
         resetOnDeath(ctx.state().deaths.size());
+        _portalDig.walkStalled();
     }
 
     // everything a visit remembers about its errands: onEnter, and a death in the overworld (it does not re-enter the phase)
     public void resetOnDeath(int deaths) {
+        // onEnter comes through here too, and a phase restart must not throw away a dig that's going fine: only a new death counts
+        if (deaths != _bucketDeaths) {
+            _portalDig = new PortalDig();
+        }
         _spawnStartedAt = -1;
         _spawnGo = false;
         _bedTarget = null;
@@ -259,7 +266,7 @@ public class EndPrepPhase implements PhaseHandler {
         _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
         // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
         ctx.walkOnEndPortal(step == null);
-        return step != null ? step : walkIn();
+        return step != null ? step : walkIn(mod, ctx);
     }
 
     // the gate, for RoomPhase's own instance before the dig: at stands in for the portal while no ring is known. the spawn bed is
@@ -644,7 +651,12 @@ public class EndPrepPhase implements PhaseHandler {
         return _buildBlocks;
     }
 
-    private Task walkIn() {
+    private Task walkIn(AltoClef mod, GamerContext ctx) {
+        Task dig = _portalDig.step(mod, ctx, portalCenter(mod, ctx.state()));
+        if (dig != null) {
+            _hudState = "Digging down to the End portal";
+            return dig;
+        }
         _hudState = "Walking into the End portal";
         return _enterPortal;
     }
