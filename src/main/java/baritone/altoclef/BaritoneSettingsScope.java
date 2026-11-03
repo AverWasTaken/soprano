@@ -23,6 +23,7 @@ import baritone.Baritone;
 import baritone.api.Settings;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
@@ -74,13 +75,7 @@ public final class BaritoneSettingsScope {
             // digging the block under our feet is the only move that goes down through rock. with it off an ore far below is a
             // search that eats the whole failure timeout, and the mining task then bans ore after ore of the same vein for it
             set(s.allowDownward, true);
-            set(s.blocksToAvoid, List.of(Blocks.FLOWERING_AZALEA, Blocks.AZALEA,
-                    Blocks.POWDER_SNOW, Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.CAVE_VINES,
-                    Blocks.CAVE_VINES_PLANT, Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.SWEET_BERRY_BUSH,
-                    Blocks.WARPED_ROOTS, Blocks.VINE, Blocks.FERN, Blocks.TALL_GRASS, Blocks.LARGE_FERN,
-                    Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD,
-                    Blocks.AMETHYST_CLUSTER, Blocks.SCULK, Blocks.SCULK_VEIN, Blocks.SUNFLOWER, Blocks.LILAC,
-                    Blocks.ROSE_BUSH, Blocks.PEONY));
+            set(s.blocksToAvoid, blocksToAvoid());
             // fadePath stays whatever the user picked. forcing it on cut the path off 20 blocks out, for a few fps nobody asked for
             // Don't let baritone scan dropped items, we handle that ourselves.
             set(s.mineScanDroppedItems, false);
@@ -122,6 +117,20 @@ public final class BaritoneSettingsScope {
         // the registry keeps the user's list from the first put, so a second apply only swaps what we hand baritone
         set(s.acceptableThrowawayItems, merged);
         lastMerged = merged;
+    }
+
+    // nothing climbable goes on this list. the planner reads isClimbable and happily plans the climb, canWalkThrough reads
+    // this list and says no, and Movement.prepared swings at whatever fails canWalkThrough. so we'd cut down our own ladder
+    // and then wonder where it went. cave vines stay, you can't climb those, they only look like it
+    // a method and not a field: ThrowawayMergeTest touches this class without booting the game, Blocks would blow up in there
+    static List<Block> blocksToAvoid() {
+        return List.of(Blocks.FLOWERING_AZALEA, Blocks.AZALEA,
+                Blocks.POWDER_SNOW, Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.CAVE_VINES,
+                Blocks.CAVE_VINES_PLANT, Blocks.SWEET_BERRY_BUSH,
+                Blocks.WARPED_ROOTS, Blocks.FERN, Blocks.TALL_GRASS, Blocks.LARGE_FERN,
+                Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD,
+                Blocks.AMETHYST_CLUSTER, Blocks.SCULK, Blocks.SCULK_VEIN, Blocks.SUNFLOWER, Blocks.LILAC,
+                Blocks.ROSE_BUSH, Blocks.PEONY);
     }
 
     static <T> List<T> mergeUnique(List<T> first, List<T> second) {
