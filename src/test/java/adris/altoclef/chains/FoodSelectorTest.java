@@ -18,6 +18,7 @@
 package adris.altoclef.chains;
 
 import adris.altoclef.util.helpers.FoodHelper;
+import baritone.Baritone;
 import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
@@ -201,5 +202,25 @@ public class FoodSelectorTest {
         Item latched = high.get();
         assertEquals(Optional.of(latched), FoodSelector.latch(low, latched, true, 4));
         assertEquals(Optional.of(latched), FoodSelector.latch(high, latched, true, 4));
+    }
+
+    // CollectFoodTask protects every food from the bin while it runs. that's no reason to sit hurt next to a stack of it
+    @Test
+    public void eatsFoodATaskKeepsFromTheBin() {
+        List<ItemStack> bag = inv(Items.COOKED_PORKCHOP, 8);
+        assertTrue(FoodChain.mayEat(bag.get(0)));
+        assertEquals(Optional.of(Items.COOKED_PORKCHOP), FoodSelector.select(bag, FoodChain::mayEat, 5, 16, 0, CONFIG).best());
+    }
+
+    @Test
+    public void leavesImportantItemsOutOfAMeal() {
+        List<Item> was = Baritone.settings().altoImportantItems.value;
+        try {
+            Baritone.settings().altoImportantItems.value = List.of(Items.COOKED_PORKCHOP);
+            assertFalse(FoodChain.mayEat(new ItemStack(Items.COOKED_PORKCHOP, 8)));
+            assertTrue(FoodChain.mayEat(new ItemStack(Items.BREAD, 8)));
+        } finally {
+            Baritone.settings().altoImportantItems.value = was;
+        }
     }
 }

@@ -455,7 +455,7 @@ public class ItemHelper {
     }
 
     // canThrowAwayStack plus the food floor: food we cannot spare is not a stack to throw. this is the question every
-    // "make room" path asks. canThrowAwayStack alone stays for the ones that only mean "may we touch this" (FoodChain eats by it)
+    // "make room" path asks. canThrowAwayStack alone stays for the ones that only mean "may we touch this" (eating asks FoodChain.mayEat)
     public static boolean canDropStack(AltoClef mod, ItemStack stack) {
         // the bag total is only counted for food, this gets asked about every cursor stack
         return canDropStack(mod, stack, GarbageRules.keepUnits(stack) == 0 ? 0 : StorageHelper.bagFoodUnits(mod));
