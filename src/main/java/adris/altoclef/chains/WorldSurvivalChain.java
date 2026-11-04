@@ -31,6 +31,7 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
+import baritone.behavior.LegacyCombat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +39,7 @@ import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.entity.monster.Enderman;
@@ -619,10 +621,12 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 pos -> mod.getWorld().getBlockState(pos).getBlock() instanceof BaseFireBlock);
         if (fires.isEmpty()) return;
         // startDestroyBlock aborts the old dig to the server but leaves isDestroying up on our side, so stop it properly. a
-        // dig that loses its progress starts again, it is a cheap price for not being on fire
+        // dig that loses its progress starts again, it is a cheap price for not being on fire. each dig swings like
+        // Minecraft#startAttack does after its startDestroyBlock, so the server gets the punch packet with it
         controller.stopDestroyBlock();
         for (BlockPos fire : fires) {
             controller.startDestroyBlock(fire, Direction.UP);
+            LegacyCombat.swing(mod.getPlayer(), InteractionHand.MAIN_HAND);
         }
         Debug.logInternal("fire: broke " + fires.size() + " touching, using=" + mod.getPlayer().isUsingItem());
     }
