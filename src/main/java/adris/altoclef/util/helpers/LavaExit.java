@@ -1,7 +1,7 @@
 package adris.altoclef.util.helpers;
 
 // where to swim when we are in lava and baritone has no path for us yet: the closest cell a body could stand in, dry and
-// on something solid. pure, it only asks the same Terrain the pickup rules ask
+// on something solid, with magma losing the close calls. pure, it only asks the same Terrain the pickup rules ask
 public final class LavaExit {
 
     // a lake bigger than this around us is not something a blind swim gets out of anyway
@@ -94,23 +94,97 @@ public final class LavaExit {
         return false;
     }
 
-    // null when nothing is standable in range. feet position, so for a player in lava that is the lava cell itself
+    // squared distance a hop will go out of its way to not land on magma. a tie break, nothing more: magma behind everything
+    // sounds nice until it's magma a block away and netherrack six away, then there's no hop and we crawl through lava for it
+    static final int MAGMA_SLACK = 2;
+
+    // closest(), except a magma exit gives way to a non magma one that's about as close and that we can hop to.
+    // null when nothing is standable in range
     public static Cell nearest(int px, int py, int pz, ItemPickupRules.Terrain t, ItemPickupRules.Lava lava) {
+        Cell best = closest(px, py, pz, t, lava);
+        if (best == null || !t.magma(best.x(), best.y() - 1, best.z())) {
+            return best;
+        }
+        Cell cool = coolerBeside(best, px, py, pz, t, lava);
+        return cool == null ? best : cool;
+    }
+
+    private static Cell coolerBeside(Cell magma, int px, int py, int pz, ItemPickupRules.Terrain t, ItemPickupRules.Lava lava) {
+        int surface = surfaceOver(px, py, pz, lava);
+        long limit = dist2(magma.x() - px, magma.y() - py, magma.z() - pz) + MAGMA_SLACK;
+        Cell best = null;
+        long bestDist = Long.MAX_VALUE;
+        for (int dx = -HOP_REACH; dx <= HOP_REACH; dx++) {
+            for (int dz = -HOP_REACH; dz <= HOP_REACH; dz++) {
+                for (int y = surface - BELOW_SURFACE; y <= surface + ABOVE_SURFACE; y++) {
+                    long dist = dist2(dx, y - py, dz);
+                    Cell c = new Cell(px + dx, y, pz + dz);
+                    if (dist > limit || dist >= bestDist || !withinHop(c, px, py, pz)) continue;
+                    if (standable(c.x(), y, c.z(), t) && !t.magma(c.x(), y - 1, c.z())) {
+                        best = c;
+                        bestDist = dist;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // half of a player's width. the box is square, so it hangs over a block when it's this close to it on both axes
+    private static final double BODY_HALF_WIDTH = 0.3;
+
+    // the standable cell our box is actually over, for a body on a lip with its middle over the lava. takes the exact position
+    // because the whole question is which side of the column we're on. y is the feet block. null when the box is over nothing
+    public static Cell under(double x, int y, double z, ItemPickupRules.Terrain t) {
+        int cx = (int) Math.floor(x);
+        int cz = (int) Math.floor(z);
+        Cell best = null;
+        double bestGap = BODY_HALF_WIDTH;
+        for (int nx = cx - 1; nx <= cx + 1; nx++) {
+            for (int nz = cz - 1; nz <= cz + 1; nz++) {
+                double gap = Math.max(gap(x, nx), gap(z, nz));
+                if (gap < bestGap && standable(nx, y, nz, t)) {
+                    best = new Cell(nx, y, nz);
+                    bestGap = gap;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static double gap(double p, int cell) {
+        return Math.max(0, Math.max(cell - p, p - (cell + 1)));
+    }
+
+    private static long dist2(int dx, int dy, int dz) {
+        return (long) dx * dx + (long) dy * dy + (long) dz * dz;
+    }
+
+    private static boolean standable(int x, int y, int z, ItemPickupRules.Terrain t) {
+        return t.solid(x, y - 1, z) && t.open(x, y, z) && t.open(x, y + 1, z);
+    }
+
+    private static int surfaceOver(int px, int py, int pz, ItemPickupRules.Lava lava) {
         int surface = py;
         while (surface - py < MAX_DEPTH && lava.at(px, surface + 1, pz)) {
             surface++;
         }
+        return surface;
+    }
+
+    // the plain closest standable cell, magma or not. feet position, so for a player in lava that is the lava cell itself
+    private static Cell closest(int px, int py, int pz, ItemPickupRules.Terrain t, ItemPickupRules.Lava lava) {
+        int surface = surfaceOver(px, py, pz, lava);
         Cell best = null;
         long bestDist = Long.MAX_VALUE;
         for (int dx = -RADIUS; dx <= RADIUS; dx++) {
             for (int dz = -RADIUS; dz <= RADIUS; dz++) {
                 for (int y = surface - BELOW_SURFACE; y <= surface + ABOVE_SURFACE; y++) {
-                    int dy = y - py;
-                    long dist = (long) dx * dx + (long) dy * dy + (long) dz * dz;
+                    long dist = dist2(dx, y - py, dz);
                     if (dist >= bestDist) continue;
                     int x = px + dx;
                     int z = pz + dz;
-                    if (t.solid(x, y - 1, z) && t.open(x, y, z) && t.open(x, y + 1, z)) {
+                    if (standable(x, y, z, t)) {
                         best = new Cell(x, y, z);
                         bestDist = dist;
                     }

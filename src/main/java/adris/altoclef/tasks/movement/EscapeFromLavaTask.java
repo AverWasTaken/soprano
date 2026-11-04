@@ -18,6 +18,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.function.Supplier;
+
 public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     private final float _strength;
@@ -62,6 +64,10 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     private void updateLavaRule(AltoClef mod) {
         boolean inLava = mod.getPlayer().isInLava();
         _outOfLava = inLava ? 0 : Math.min(_outOfLava + 1, LAVA_GRACE_TICKS);
+        applyLavaRule(mod, inLava);
+    }
+
+    private void applyLavaRule(AltoClef mod, boolean inLava) {
         boolean allow = lavaPathingAllowed(inLava, _outOfLava);
         if (allow == _lavaAllowed) {
             return;
@@ -79,6 +85,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         updateLavaRule(mod);
         boolean inLava = mod.getPlayer().isInLava();
         boolean lavaBelow = mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA;
+        boolean onGround = mod.getPlayer().onGround();
         // tryStair holds back when it's leaning on the cell, and every way out of it has to let go
         mod.getInputControls().release(Input.MOVE_BACK);
         if (inLava && !_hop.active() && tryStair(mod)) {
@@ -86,9 +93,9 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             return null;
         }
         if (_hop.active()) {
-            _hop.tick(!inLava && !lavaBelow);
-            if (_hop.active()) {
-                hopInputs(mod);
+            HopLatch.Keys keys = _hop.step(inLava, onGround, lavaBelow);
+            if (keys != HopLatch.Keys.NONE) {
+                hopInputs(mod, keys);
                 setDebugState("Hopping out of the lava.");
                 return null;
             }
@@ -96,9 +103,15 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             mod.getInputControls().release(Input.JUMP);
             mod.getInputControls().release(Input.SPRINT);
             mod.getInputControls().release(Input.MOVE_FORWARD);
+            if (!inLava && !lavaBelow) {
+                // the latch used to outlive the grace window, so baritone never got to plan inside it. landing early hands it
+                // that window, and a path planned with lava allowed walks right back through the lake. we're out, shut it now
+                _outOfLava = LAVA_GRACE_TICKS;
+                applyLavaRule(mod, false);
+            }
         }
         // Sprint through lava + jump, it's faster
-        if (inLava || lavaBelow) {
+        if (HopLatch.swimKeys(inLava, lavaBelow, onGround)) {
             mod.getInputControls().hold(Input.JUMP);
             faceTheShore(mod);
             mod.getInputControls().hold(Input.SPRINT);
@@ -107,6 +120,11 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
                 setDebugState("Hopping out of the lava.");
                 return null;
             }
+        } else {
+            // these are sticky, and with no path to take over they'd run us off the lip we just got onto
+            mod.getInputControls().release(Input.JUMP);
+            mod.getInputControls().release(Input.SPRINT);
+            mod.getInputControls().release(Input.MOVE_FORWARD);
         }
         return super.onTick(mod);
     }
@@ -128,7 +146,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
             mod.getClientBaritone().getPathingBehavior().forceCancel();
         }
         mod.getClientBaritone().getCustomGoalProcess().onLostControl();
-        hopInputs(mod);
+        hopInputs(mod, HopLatch.Keys.SWIM);
         return true;
     }
 
@@ -186,15 +204,34 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         return true;
     }
 
-    private void hopInputs(AltoClef mod) {
-        mod.getInputControls().hold(Input.JUMP);
-        mod.getInputControls().hold(Input.SPRINT);
+    private void hopInputs(AltoClef mod, HopLatch.Keys keys) {
+        boolean walkOn = keys == HopLatch.Keys.WALK_ON;
+        if (walkOn) {
+            mod.getInputControls().release(Input.JUMP);
+            mod.getInputControls().release(Input.SPRINT);
+            // letting go of the key doesn't stop a sprint while forward is down
+            mod.getPlayer().setSprinting(false);
+        } else {
+            mod.getInputControls().hold(Input.JUMP);
+            mod.getInputControls().hold(Input.SPRINT);
+        }
         mod.getInputControls().hold(Input.MOVE_FORWARD);
         BlockPos at = mod.getPlayer().blockPosition();
-        LavaExit.Cell exit = LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld()));
-        if (exit == null) return;
-        float yaw = LookHelper.getLookRotation(mod, new Vec3(exit.x() + 0.5, exit.y() + 0.5, exit.z() + 0.5)).getYaw();
+        LavaExit.Cell under = walkOn ? LavaExit.under(mod.getPlayer().getX(), at.getY(), mod.getPlayer().getZ(), ItemPickupRules.terrain(mod.getWorld())) : null;
+        _hopAim = hopAim(keys, _hopAim, under, () -> LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld())));
+        if (_hopAim == null) return;
+        float yaw = LookHelper.getLookRotation(mod, new Vec3(_hopAim.x() + 0.5, _hopAim.y() + 0.5, _hopAim.z() + 0.5)).getYaw();
         mod.getInputControls().forceLook(yaw, mod.getPlayer().getXRot());
+    }
+
+    private LavaExit.Cell _hopAim;
+
+    // on the lip we walk onto the block we are hanging off, which a knockback can make a different one than we came for. asking
+    // nearest from up here won't do: our middle is over the lava, so the far shore of a narrow channel can tie with it and walk us
+    // back off. in the middle of a blink there's no block under us at all, so the last answer stands
+    static LavaExit.Cell hopAim(HopLatch.Keys keys, LavaExit.Cell held, LavaExit.Cell under, Supplier<LavaExit.Cell> fresh) {
+        if (keys != HopLatch.Keys.WALK_ON) return fresh.get();
+        return under != null ? under : held;
     }
 
     // baritone steers while it has a path. with none (the first ticks, or a search that failed) holding forward swims
@@ -231,7 +268,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        // a latched hop sees its dry ticks out, a flicker tick with the fire out is not an escape
+        // a latched hop sees its landing out, a flicker tick with the fire out is not an escape
         return !_hop.active() && !mod.getPlayer().isInLava() && !mod.getPlayer().isOnFire();
     }
 
