@@ -37,7 +37,7 @@ public class DeepDarkRulesTest {
         assertTrue(bans.blockBanned(Dimension.OVERWORLD, -20, -40, 10));
         assertFalse("village wool up top stays fair", bans.blockBanned(Dimension.OVERWORLD, 30, 70, 0));
         assertEquals(lines.toString(), 1, lines.size());
-        assertEquals("ban: + 2 wool in the deep dark near -15 5, for the run", lines.get(0));
+        assertEquals("ban: + 2 wool down low or in the deep dark near -15 5, for the run", lines.get(0));
         // the next pass finds them banned already and keeps quiet
         assertEquals(0, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, tracked, ALL_LOADED, pos -> true, CITY));
         assertEquals(1, lines.size());
@@ -47,12 +47,38 @@ public class DeepDarkRulesTest {
     public void unloadedChunksWaitForTheNextPass() {
         Bans bans = new Bans(line -> {
         });
-        BlockPos far = new BlockPos(-300, -40, 0);
-        List<BlockPos> tracked = List.of(new BlockPos(-10, -40, 0), far);
+        BlockPos far = new BlockPos(-300, 40, 0);
+        List<BlockPos> tracked = List.of(new BlockPos(-10, 40, 0), far);
         assertEquals(1, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, tracked, pos -> !pos.equals(far), pos -> true, CITY));
-        assertFalse(bans.blockBanned(Dimension.OVERWORLD, -300, -40, 0));
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, -300, 40, 0));
         assertEquals(1, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, tracked, ALL_LOADED, pos -> true, CITY));
-        assertTrue(bans.blockBanned(Dimension.OVERWORLD, -300, -40, 0));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, -300, 40, 0));
+    }
+
+    private static final Predicate<BlockPos> NOT_LOADED = pos -> false;
+    private static final Predicate<BlockPos> NEVER_DARK = pos -> false;
+
+    @Test
+    public void lowWoolGoesEvenIfTheChunkNeverLoadedOrTheBiomeLies() {
+        Bans bans = new Bans(line -> {
+        });
+        // what an unloaded chunk reads as, air and plains
+        Predicate<BlockPos> notWool = pos -> false;
+        assertEquals(1, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, List.of(new BlockPos(50, -46, 0)), NOT_LOADED, notWool, NEVER_DARK));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 50, -46, 0));
+        // loaded, and the biome test missed it
+        assertEquals(1, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, List.of(new BlockPos(60, -46, 0)), ALL_LOADED, pos -> true, NEVER_DARK));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 60, -46, 0));
+    }
+
+    @Test
+    public void theLineIsAtThirty() {
+        Bans bans = new Bans(line -> {
+        });
+        assertEquals(1, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, List.of(new BlockPos(1, 29, 1)), ALL_LOADED, pos -> true, NEVER_DARK));
+        assertEquals(0, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, List.of(new BlockPos(1, 30, 1)), ALL_LOADED, pos -> true, NEVER_DARK));
+        assertEquals(0, DeepDarkRules.banPass(bans, Dimension.OVERWORLD, List.of(new BlockPos(1, 30, 2)), NOT_LOADED, pos -> true, NEVER_DARK));
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 30, 1));
     }
 
     @Test

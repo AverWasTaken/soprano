@@ -484,6 +484,38 @@ public class EndGearTest {
     }
 
     @Test
+    public void theSpareGoesWhenNoneIsCloseOrTheBagIsFull() {
+        int need = cfg.beds;
+        assertTrue("none close by", EndGear.spareBedWaived(true, need, need, 0, false, false));
+        assertTrue("nowhere to put it", EndGear.spareBedWaived(true, need, need, 0, true, true));
+        assertFalse("one close by and room for it", EndGear.spareBedWaived(true, need, need, 0, true, false));
+    }
+
+    @Test
+    public void theFightsBedsAndWoolAreNeverWaived() {
+        int need = cfg.beds;
+        assertFalse("short of the fight's beds, the errand has no cap", EndGear.spareBedWaived(true, need - 1, need, 0, false, true));
+        assertFalse("wool in the bag still gets crafted", EndGear.spareBedWaived(true, need, need, 1, false, true));
+        assertFalse("nothing owed, nothing to waive", EndGear.spareBedWaived(false, need, need, 0, false, true));
+    }
+
+    @Test
+    public void theSpareReachIsFlatFromTheStart() {
+        assertTrue(EndGear.spareBedInReach(0, 0, 100, 0));
+        assertFalse(EndGear.spareBedInReach(0, 0, 101, 0));
+        assertFalse(EndGear.spareBedInReach(0, 0, 80, 80));
+        assertTrue(EndGear.spareBedInReach(500, -500, 460, -440));
+    }
+
+    @Test
+    public void bedsWayDownLowAreNotForTheTaking() {
+        assertTrue(EndGear.bedTooLow(-40));
+        assertTrue(EndGear.bedTooLow(29));
+        assertFalse(EndGear.bedTooLow(30));
+        assertFalse(EndGear.bedTooLow(70));
+    }
+
+    @Test
     public void theRoomBedIsOwedOnlyWhileNothingHoldsTheStronghold() {
         RunState s = new RunState();
         s.strongholdStart = new RunState.Pos(0, 70, 0);

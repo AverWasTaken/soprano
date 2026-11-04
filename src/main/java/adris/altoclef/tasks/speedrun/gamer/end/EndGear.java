@@ -81,6 +81,28 @@ public final class EndGear {
         return cfg.placeSpawnNearPortal && !state.spawnBedGaveUp && Respawn.nothingNearStronghold(state);
     }
 
+    // how far from the start the room bed's spare may stand. the fight's beds get any distance, this one is only an extra
+    public static final int SPARE_BED_REACH = 100;
+
+    // a spare is worth a short walk and nothing more: with the fight's beds in the bag and no wool to craft it from, it goes when
+    // there's none close by or nowhere to put it. asked fresh every tick, a bed that turns up later still counts. not spawnBedGaveUp:
+    // that one sticks for the run and would cost us the spawn by the portal too
+    public static boolean spareBedWaived(boolean roomBedOwed, int bagBeds, int bedsRequired, int woolBeds, boolean allowedBedNear, boolean noFreeSlot) {
+        return roomBedOwed && bagBeds >= bedsRequired && woolBeds == 0 && (!allowedBedNear || noFreeSlot);
+    }
+
+    public static boolean spareBedInReach(int atX, int atZ, int x, int z) {
+        return Math.hypot(x - atX, z - atZ) <= SPARE_BED_REACH;
+    }
+
+    // below this a bed has no honest source: villages live up top. asked at pick time because a far chunk reads as air, so the copper
+    // under a chamber bed can't be seen from here. not a DangerFilter ban, there's no placed list and it would ban our own
+    private static final int LOWEST_BED_Y = 30;
+
+    public static boolean bedTooLow(int y) {
+        return y < LOWEST_BED_Y;
+    }
+
     // what the portal and room beds may spend: only what's past the reserve
     public static int surplusBeds(int bagBeds, int reserve) {
         return Math.max(0, bagBeds - reserve);

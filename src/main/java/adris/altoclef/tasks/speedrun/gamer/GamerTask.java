@@ -100,6 +100,8 @@ public class GamerTask extends Task {
     private final Host host = new Host();
     // the pickup for phases that do not run their own (sweepBenches)
     private final Workbenches benches = new Workbenches();
+    // the traps the tracker offers. here and not in the phases, every overworld phase walks to tracked blocks
+    private final DangerFilter danger = new DangerFilter();
 
     private AltoClef mod;
     private MinecraftFacts facts;
@@ -848,6 +850,9 @@ public class GamerTask extends Task {
             machine.observe();
             machine.holdClocks();
             return null;
+        }
+        if (facts.dimension() == Dimension.OVERWORLD) {
+            danger.tick(mod, state);
         }
         // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
         // for our things (the recovery branches below return before the night branch is asked)

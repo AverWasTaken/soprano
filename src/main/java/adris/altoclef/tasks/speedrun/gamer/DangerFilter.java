@@ -23,7 +23,8 @@ import java.util.Map;
 // things the block tracker offers that are traps wearing a crafting table: trial chamber furniture (sits on copper),
 // pillager outpost wool and logs, witch hut tables. the tracked blocks get banned (Bans, which the tracker honours) so the
 // leaf tasks never walk to them. only looks at block types somebody already tracks (no extra scanning) and only every couple
-// of seconds
+// of seconds. one of these for the run, GamerTask ticks it in the overworld only: a phase that doesn't run it is a phase that
+// walks straight into the furniture
 public final class DangerFilter {
     private static final int EVERY_TICKS = 40;
     private static final double PILLAGER_RADIUS = 40;
@@ -146,7 +147,7 @@ public final class DangerFilter {
 
     // an outpost nobody has seen a live pillager at for a few minutes is gone (cleared, or we left and it despawned them),
     // its logs and wool go back on the menu unless another outpost still covers them. pure past the watch, so a test can
-    // run it. the book is not per dimension like the tracker's blacklist was, so this works from the nether too
+    // run it. the watch's clock only runs in the overworld (GamerTask), or a nether trip would quietly expire every outpost
     static int liftExpiredBans(Bans bans, PillagerWatch watch) {
         int lifted = 0;
         for (double[] gone : watch.drainExpired()) {
