@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 // pearls from endermen, in the dimension we are told to hunt in. in the nether it walks to the warped forest first when
@@ -51,9 +52,10 @@ import java.util.function.Supplier;
 // angry endermen (the ones that already saw us) die first, like KillEndermanTask did, and the pearls are picked up by
 // the resource task underneath. the stronghold phases can use the overworld mode as their pearl top up
 public class PearlHuntTask extends Task {
-    // close enough to the forest that the endermen are in view distance
-    private static final double AT_HOTSPOT_BLOCKS = 40;
-    // a sighted forest block is a floor, the hills around it are not. further off than this up or down is not "there"
+    // close enough to the forest that the endermen are in view distance. not much more than this: the spot is known through
+    // rock now, and this close to it with rock in between isn't there at all
+    private static final double AT_HOTSPOT_BLOCKS = 24;
+    // a known forest block is a floor, the hills around it are not. further off than this up or down is not "there"
     private static final double AT_HOTSPOT_Y = 8;
     // a nook that came up empty is not tried again for this long (the loot walk below moves us somewhere else meanwhile)
     private static final long NOOK_RETRY_TICKS = 400;
@@ -65,7 +67,7 @@ public class PearlHuntTask extends Task {
     // closer than the best so far by this much counts as progress, a half block creep is the path wobbling
     private static final double HOTSPOT_PROGRESS_BLOCKS = 2;
     // arrived once and now this far off (flat) means the hunt wandered away from the forest
-    private static final double HOTSPOT_DRIFT_BLOCKS = 3 * AT_HOTSPOT_BLOCKS;
+    private static final double HOTSPOT_DRIFT_BLOCKS = 120;
     // not being ticked this long is a food trip or the like, mob defense is seconds
     private static final long AWAY_REOPEN_TICKS = 600;
     // an angry one across a lava lake never arrives: after this long on one target it is somebody else's problem
@@ -102,6 +104,8 @@ public class PearlHuntTask extends Task {
     private final int pearlsTotal;
     private final Dimension dimension;
     private final Supplier<RunState.Pos> hotspot;
+    // the walk to the hotspot ended without getting there
+    private final Consumer<RunState.Pos> onWalkFailed;
     // told when an enderman dies, and only then (a stare that goes nowhere is not progress, see NetherPhase.stallSeconds)
     private final Runnable onKill;
     // the angry ones seen last tick, so one that is dead now was one we killed
@@ -178,6 +182,13 @@ public class PearlHuntTask extends Task {
     }
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill, BiPredicate<Integer, Integer> nearBastion) {
+        this(pearlsTotal, dimension, hotspot, onKill, nearBastion, spot -> {
+        });
+    }
+
+    public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot, Runnable onKill, BiPredicate<Integer, Integer> nearBastion,
+                         Consumer<RunState.Pos> onWalkFailed) {
+        this.onWalkFailed = onWalkFailed;
         this.nearBastion = nearBastion;
         this.onKill = onKill;
         this.pearlsTotal = pearlsTotal;
@@ -249,6 +260,10 @@ public class PearlHuntTask extends Task {
     // stalled (no real progress for a while) or out of total time
     static boolean walkOver(double stallSeconds, double totalSeconds) {
         return stallSeconds > HOTSPOT_STALL_SECONDS || totalSeconds > HOTSPOT_WALK_CAP_SECONDS;
+    }
+
+    static boolean atForest(double dx, double dy, double dz) {
+        return EndermanNook.atHotspot(dx, dy, dz, AT_HOTSPOT_BLOCKS, AT_HOTSPOT_Y);
     }
 
     static boolean walkProgressed(double xz, double bestXZ) {
@@ -930,6 +945,8 @@ public class PearlHuntTask extends Task {
         // a new hotspot is a new walk, the same one coming back after an interrupt is not
         if (!spot.equals(hotspotWalkingTo)) {
             hotspotDone = false;
+            hotspotArrived = false;
+            hotspotGaveUp = false;
         }
         double dx = mod.getPlayer().getX() - spot.x;
         double dz = mod.getPlayer().getZ() - spot.z;
@@ -948,7 +965,7 @@ public class PearlHuntTask extends Task {
             // near the spot in 3D, not its column: GoalXZ is happy on top of a hill. the block itself may sit under fungus
             toHotspot = new GetWithinRangeOfBlockTask(new BlockPos(spot.x, spot.y, spot.z), (int) AT_HOTSPOT_Y);
         }
-        boolean there = EndermanNook.atHotspot(dx, mod.getPlayer().getY() - spot.y, dz, AT_HOTSPOT_BLOCKS, AT_HOTSPOT_Y);
+        boolean there = atForest(dx, mod.getPlayer().getY() - spot.y, dz);
         // hurt: stand still and heal first, the walk waits (its clock too). hp that stopped coming back is not waited on
         if (!there && !EndermanNook.mayWalkIn(mod.getPlayer().getHealth()) && EndermanNook.hpRising(mod.getWorld().getGameTime(), lastRiseAt)) {
             walkHeld = true;
@@ -964,6 +981,12 @@ public class PearlHuntTask extends Task {
             hotspotDone = true;
             hotspotArrived = there;
             hotspotGaveUp = !there;
+            if (!there) {
+                Debug.logInternal("warped forest given up: " + spot.x + " " + spot.y + " " + spot.z + ", "
+                        + Math.round(hotspotStall.spentSeconds()) + " s with no progress, " + Math.round(hotspotSpent.spentSeconds())
+                        + " s walking, " + Math.round(xz) + " away flat and " + Math.round(mod.getPlayer().getY() - spot.y) + " off in y");
+                onWalkFailed.accept(spot);
+            }
             return null;
         }
         return toHotspot;

@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -23,6 +24,14 @@ public class BastionClusterTest {
     public void nineteenBlocksIsNotABastionAndTwentyIs() {
         assertFalse(NetherPhase.bastionCluster(blocks(19, 0), new BlockPos(0, 60, 0)));
         assertTrue(NetherPhase.bastionCluster(blocks(20, 0), new BlockPos(0, 60, 0)));
+    }
+
+    @Test
+    public void aForestWantsTwelveAndASliverDoesNot() {
+        assertFalse(NetherPhase.bastionCluster(blocks(11, 0), new BlockPos(0, 60, 0), NetherPhase.WARPED_MIN_BLOCKS));
+        assertTrue(NetherPhase.bastionCluster(blocks(12, 0), new BlockPos(0, 60, 0), NetherPhase.WARPED_MIN_BLOCKS));
+        assertEquals(12, NetherPhase.clusterCount(blocks(12, 0), new BlockPos(0, 60, 0)));
+        assertEquals(0, NetherPhase.clusterCount(blocks(12, 500), new BlockPos(0, 60, 0)));
     }
 
     // the cluster is counted over every known block, a known bastion's near edge included

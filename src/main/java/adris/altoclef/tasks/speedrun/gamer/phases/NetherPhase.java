@@ -56,7 +56,6 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
-import adris.altoclef.util.helpers.SeenFilter;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -130,8 +129,6 @@ public class NetherPhase implements PhaseHandler {
     private final WalkProgress spawnerProgress = new WalkProgress();
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
-    private boolean warpedSweeping;
-    private boolean warpedUnseenLogged;
     // the one block dig for the whole phase (walks to the fortress and the spawner spend the bag, not just the sweep)
     private NetherBlockRestock restock = new NetherBlockRestock();
     private CollectBlazeRodsTask rodsTask;
@@ -360,8 +357,6 @@ public class NetherPhase implements PhaseHandler {
         spawnerProgress.reset();
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
-        warpedSweeping = false;
-        warpedUnseenLogged = false;
         restock = new NetherBlockRestock();
         homeWalk.reset();
         foodFloor.reset();
@@ -1238,44 +1233,37 @@ public class NetherPhase implements PhaseHandler {
         }
     }
 
-    // what the player has really seen (fortress bricks: see below). one kind per scan, rotating: the seen filter has a raycast budget per tick and
-    // the Nether is full of bricks behind rock, so three kinds in one tick would let the first starve the other two
+    // what the tracker knows is out there. one kind per scan, rotating: each one sorts its blocks and the bastion and forest ones
+    // count crowds too, and there is no rush on any of it
     private void scanSights(AltoClef mod, GamerContext ctx) {
         Sight sight = Sight.values()[rotation++ % Sight.values().length];
         if (planner.scan(s -> seen(mod, s, planner), sight)) {
+            if (sight == Sight.WARPED) {
+                logWarpedForest(mod, ctx.state().warpedForest);
+            }
             ctx.progress("saw something");
             ctx.save();
         }
-        if (sight == Sight.WARPED) {
-            noteWarpedUnseen(mod, ctx);
-        }
     }
 
-    // the warped sweep only takes nylium it can look at. one line the first time the tracker knows some and we can't see any,
-    // so a game can say whether line of sight is what the sweep was missing
-    private void noteWarpedUnseen(AltoClef mod, GamerContext ctx) {
-        if (!warpedSweeping || warpedUnseenLogged || warpedSearchOver || ctx.state().warpedForest != null) {
-            return;
-        }
-        int known = mod.getBlockTracker().getKnownLocations(WARPED).size();
-        if (known > 0) {
-            warpedUnseenLogged = true;
-            Debug.logInternal("warped sweep: tracker knows " + known + " nylium, none in sight");
-        }
+    private void logWarpedForest(AltoClef mod, RunState.Pos at) {
+        BlockPos spot = new BlockPos(at.x, at.y, at.z);
+        int near = clusterCount(mod.getBlockTracker().getKnownLocations(WARPED), spot);
+        long away = Math.round(Math.sqrt(mod.getPlayer().blockPosition().distSqr(spot)));
+        Debug.logInternal("warped forest: " + at.x + " " + at.y + " " + at.z + ", " + near + " known near it, " + away + " from us");
     }
 
-    // the nearest tracked blocks of this kind that are really still there and in line of sight. the tracker hands them
-    // out in scan order and keeps unloaded ones, so sort by distance and check the block itself. fortress bricks skip the
-    // line of sight: the tracker has every loaded chunk and nether brick is nothing but fortress, so a fortress behind
-    // rock is as good as seen (the sweep was walking past ones it could not look at). the ones of a fortress we gave up
-    // on are dropped before the sort, or the dud's thousand bricks would be the nearest forty for ever
+    // the nearest tracked blocks of this kind that are really still there. the tracker hands them out in scan order and keeps
+    // unloaded ones, so sort by distance and check the block itself. no line of sight for any of them: the tracker has every
+    // loaded chunk, and a fortress or a forest behind rock is as good as seen (the sweep was walking past ones it could not look
+    // at). one that turns out to be walled off is what the give-ups are for. the ones of a fortress or a forest we gave up on are
+    // dropped before the sort, or the dud's thousand blocks would be the nearest forty for ever
     private static Optional<RunState.Pos> seen(AltoClef mod, Sight sight, NetherSweepPlanner planner) {
         Block[] blocks = switch (sight) {
             case FORTRESS -> FORTRESS;
             case BASTION -> BASTION;
             case WARPED -> WARPED;
         };
-        boolean xray = sight != Sight.WARPED;
         List<BlockPos> known = mod.getBlockTracker().getKnownLocations(blocks);
         // the cluster count wants every block, known bastion or not: a few of them can sit on the near side of the 64 line
         List<BlockPos> all = known;
@@ -1284,11 +1272,13 @@ public class NetherPhase implements PhaseHandler {
         } else if (sight == Sight.BASTION) {
             // the blocks of a bastion we know are always the nearest, they would eat the whole candidate list
             known = known.stream().filter(p -> !planner.isKnownBastion(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
+        } else if (sight == Sight.WARPED) {
+            known = known.stream().filter(p -> !planner.isGivenUpWarped(new RunState.Pos(p.getX(), p.getY(), p.getZ()))).toList();
         }
         List<BlockPos> near = StrongholdScan.nearest(known, mod.getPlayer().blockPosition(), SCAN_CANDIDATES);
         for (BlockPos p : near) {
             BlockState state = mod.getWorld().getBlockState(p);
-            if (isOneOf(state, blocks) && (xray || SeenFilter.isSeen(mod, p)) && (sight != Sight.BASTION || bastionCluster(all, p))) {
+            if (isOneOf(state, blocks) && crowdedEnough(sight, all, p)) {
                 return Optional.of(new RunState.Pos(p.getX(), p.getY(), p.getZ()));
             }
         }
@@ -1299,15 +1289,35 @@ public class NetherPhase implements PhaseHandler {
     static final int BASTION_MIN_BLOCKS = 20;
     static final int BASTION_CLUSTER_RADIUS = 16;
 
+    // a sliver of warped biome at the edge of a crimson one is a few nylium and no endermen. lower than the bastion's 20 because
+    // the tracker only keeps 25 of a block type, 20 of those would have to land within a hair of each other
+    static final int WARPED_MIN_BLOCKS = 12;
+
+    private static boolean crowdedEnough(Sight sight, List<BlockPos> all, BlockPos p) {
+        return switch (sight) {
+            case FORTRESS -> true;
+            case BASTION -> bastionCluster(all, p);
+            case WARPED -> bastionCluster(all, p, WARPED_MIN_BLOCKS);
+        };
+    }
+
     static boolean bastionCluster(List<BlockPos> known, BlockPos at) {
+        return bastionCluster(known, at, BASTION_MIN_BLOCKS);
+    }
+
+    static boolean bastionCluster(List<BlockPos> known, BlockPos at, int minBlocks) {
+        return clusterCount(known, at) >= minBlocks;
+    }
+
+    static int clusterCount(List<BlockPos> known, BlockPos at) {
         int count = 0;
         for (BlockPos p : known) {
             if (Math.abs(p.getX() - at.getX()) <= BASTION_CLUSTER_RADIUS && Math.abs(p.getY() - at.getY()) <= BASTION_CLUSTER_RADIUS
-                    && Math.abs(p.getZ() - at.getZ()) <= BASTION_CLUSTER_RADIUS && ++count >= BASTION_MIN_BLOCKS) {
-                return true;
+                    && Math.abs(p.getZ() - at.getZ()) <= BASTION_CLUSTER_RADIUS) {
+                count++;
             }
         }
-        return false;
+        return count;
     }
 
     private static boolean isOneOf(BlockState state, Block[] blocks) {
@@ -1580,11 +1590,19 @@ public class NetherPhase implements PhaseHandler {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;
             } else {
-                warpedSweeping = true;
                 return findStep(ctx, findWarped, "Looking for a warped forest");
             }
         }
         return huntStep(mod, ctx, now, pearlsNeed);
+    }
+
+    // the walk to the forest didn't make it. findWarped holds on to its old failure until it restarts and pearlStep reads that
+    // before it ever runs, so it takes a new one or the search just calls itself over again
+    private void warpedWalkFailed(GamerContext ctx, RunState.Pos spot) {
+        planner.giveUpWarped(spot);
+        findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+        warpedSearchOver = false;
+        ctx.save();
     }
 
     // the no-pearl clock only counts time the hunt actually ran: food trips, the walk home, ghast cover and fights return
@@ -1600,7 +1618,7 @@ public class NetherPhase implements PhaseHandler {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"), planner::nearBastion);
+                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot));
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
