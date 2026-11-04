@@ -157,7 +157,6 @@ public abstract class Movement implements IMovement, MovementHelper {
         currentState = updateState(currentState);
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) || ctx.player().isInWater()) {
             checkLowRoof();
-            swimTick();
             boolean sinking = sinkToEscape();
             // sinkToEscape starts every tick by clearing this. it's what stops PathExecutor arming sprint, and an armed sprint
             // is all MixinEntity needs to latch the swim state again
@@ -491,44 +490,6 @@ public abstract class Movement implements IMovement, MovementHelper {
             logDebug("swim: never sank low enough to get under the roof at " + dest + ", replanning");
             currentState.setStatus(MovementStatus.FAILED);
         }
-    }
-
-    // temporary (swimtick): the server's teleports are the part of the low roof story nobody has seen yet. one line a second while in water
-    private static long swimTickAt;
-    private static double swimTickX, swimTickY, swimTickZ;
-    private static boolean swimTickSwimming;
-    private static int swimTickFlips;
-    private static int swimTickPackets;
-
-    private void swimTick() {
-        var p = ctx.player();
-        if (!p.isInWater()) {
-            return;
-        }
-        if (p.isSwimming() != swimTickSwimming) {
-            swimTickSwimming = p.isSwimming();
-            swimTickFlips++;
-        }
-        long now = System.currentTimeMillis();
-        if (now - swimTickAt < 1000) {
-            return;
-        }
-        swimTickAt = now;
-        int packets = ((PathingBehavior) baritone.getPathingBehavior()).positionPackets();
-        System.out.println("[swimtick] " + getClass().getSimpleName() + " " + src + " -> " + dest
-                + " pos=" + p.getX() + "," + p.getY() + "," + p.getZ()
-                + " moved=" + (p.getX() - swimTickX) + "," + (p.getY() - swimTickY) + "," + (p.getZ() - swimTickZ)
-                + " delta=" + p.getDeltaMovement() + " hc=" + p.horizontalCollision + " minor=" + p.minorHorizontalCollision
-                + " vc=" + p.verticalCollision + " ground=" + p.onGround() + " xxa=" + p.xxa + " zza=" + p.zza
-                + " yaw=" + p.getYRot() + " pitch=" + p.getXRot() + " pose=" + p.getPose() + " swim=" + p.isSwimming()
-                + " sprint=" + p.isSprinting() + " air=" + p.getAirSupply() + " box=" + p.getBoundingBox()
-                + " status=" + currentState.getStatus() + " lowOwn=" + lowRoofOwn + " lowDest=" + lowRoofDest
-                + " flips=" + swimTickFlips + " posPackets=" + (packets - swimTickPackets) + " posPacketsTotal=" + packets);
-        swimTickX = p.getX();
-        swimTickY = p.getY();
-        swimTickZ = p.getZ();
-        swimTickFlips = 0;
-        swimTickPackets = packets;
     }
 
     // the cell keeps failing whichever way out we pick, so stop swimming and sink out of it, see SwimEscape

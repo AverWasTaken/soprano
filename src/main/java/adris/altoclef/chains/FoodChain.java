@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.speedrun.DragonBreathTracker;
@@ -23,6 +24,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
@@ -609,8 +611,15 @@ public class FoodChain extends SingleTaskChain {
         float hunger = player != null ? player.getFoodData().getFoodLevel() : 20;
         float saturation = player != null ? player.getFoodData().getSaturationLevel() : 20;
         FoodSelector.Result result = FoodSelector.select(mod.getItemStorage().getItemStacksPlayerInventory(true),
-                stack -> ItemHelper.canThrowAwayStack(mod, stack), health, hunger, saturation, _config);
+                FoodChain::mayEat, health, hunger, saturation, _config);
         return new Pair<>(result.foodTotal(), result.best());
+    }
+
+    // "may we eat it" is not "may we throw it away". CollectFoodTask protects every food from the bin while it runs, so
+    // with canThrowAwayStack here a bot out getting food sat at 5 hp next to eight cooked porkchops and never ate one.
+    // only altoImportantItems stay out of a meal, the selector's own kinds already keep gapples and pufferfish out
+    static boolean mayEat(ItemStack stack) {
+        return !stack.isEmpty() && !AltoSettings.isImportant(stack.getItem());
     }
 
     // walking the whole inventory and scoring every stack 20 times a second is a lot of work for an answer

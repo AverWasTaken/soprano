@@ -399,9 +399,8 @@ public interface WorldHelper {
 
     static boolean canReach(AltoClef mod, BlockPos pos) {
         if (Baritone.settings().altoAvoidOceanBlocks.value) {
-            // 45 is roughly the ocean floor. We add 2 just cause why not.
-            // This > 47 can clearly cause a stuck bug.
-            if (mod.getPlayer().getY() > 47 && mod.getChunkTracker().isChunkLoaded(pos) && isOcean(mod.getWorld().getBiome(pos))) { // But if we stuck, add more oceans
+            // are we up at the surface: a line at y 47 that only flips once we are clearly past it (OceanRule)
+            if (OceanRule.PLAYER.atSurface(mod.getPlayer().getY()) && mod.getChunkTracker().isChunkLoaded(pos) && isOcean(mod.getWorld().getBiome(pos))) {
                 // Block is in an ocean biome. If it's below sea level...
                 if (pos.getY() < 64 && getGroundHeight(mod, pos.getX(), pos.getZ(), Blocks.WATER) > pos.getY()) {
                     return false;
