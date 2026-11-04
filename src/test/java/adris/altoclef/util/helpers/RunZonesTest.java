@@ -2,8 +2,11 @@ package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.List;
 import org.junit.Test;
 
 public class RunZonesTest {
@@ -197,5 +200,130 @@ public class RunZonesTest {
         double[] at = z.packZoneAt(35, -40, 1000);
         assertEquals(30, at[0], 0);
         assertEquals(-40, at[1], 0);
+    }
+
+    // ---- hoglin packs
+
+    private static double[] hoglin(double x, double y, double z) {
+        return new double[]{x, y, z};
+    }
+
+    // nothing noted yet
+    private static RunZones.Pack pack(List<double[]> hoglins, double x, double y, double z) {
+        return new RunZones().newHoglinPack(hoglins, x, y, z, 1000);
+    }
+
+    private static List<double[]> threeAt(double x, double y, double z) {
+        return List.of(hoglin(x, y, z), hoglin(x + 2, y, z), hoglin(x, y, z + 2));
+    }
+
+    @Test
+    public void threeTogetherAreAPackAtTheirMiddle() {
+        RunZones.Pack pack = pack(threeAt(30, 64, 0), 0, 64, 0);
+        assertNotNull(pack);
+        assertEquals(3, pack.count());
+        assertEquals(30 + 2.0 / 3, pack.x(), 1e-9);
+        assertEquals(2.0 / 3, pack.z(), 1e-9);
+    }
+
+    @Test
+    public void twoAreNoPack() {
+        assertNull(pack(List.of(hoglin(30, 64, 0), hoglin(31, 64, 0)), 0, 64, 0));
+        assertNull(pack(List.of(), 0, 64, 0));
+    }
+
+    @Test
+    public void threeScatteredAreNoPack() {
+        assertNull(pack(List.of(hoglin(0, 64, 0), hoglin(20, 64, 0), hoglin(0, 64, 20)), 5, 64, 5));
+    }
+
+    // no two of them within 8 of each other, all three within 8 of the middle
+    @Test
+    public void threeThatOnlyFitAroundTheirMiddleAreStillAPack() {
+        RunZones.Pack pack = pack(List.of(hoglin(-7, 64, 0), hoglin(7, 64, 0), hoglin(0, 64, 7)), 0, 64, 0);
+        assertNotNull(pack);
+        assertEquals(3, pack.count());
+        assertEquals(0, pack.x(), 1e-9);
+        assertEquals(7.0 / 3, pack.z(), 1e-9);
+    }
+
+    // the big one has its zone: it must not hide the small one behind it for as long as both are in sight
+    @Test
+    public void aPackWithAZoneDoesNotHideTheNextOne() {
+        List<double[]> two = new java.util.ArrayList<>(threeAt(-30, 64, 0));
+        two.addAll(threeAt(30, 64, 0));
+        two.add(hoglin(31, 64, 1));
+        RunZones z = new RunZones();
+        RunZones.Pack big = z.newHoglinPack(two, 0, 64, 0, 1000);
+        assertNotNull(big);
+        assertTrue(big.x() > 29);
+        z.add(big.x(), big.z(), 1000, RunZones.HOGLIN_RADIUS);
+        RunZones.Pack small = z.newHoglinPack(two, 0, 64, 0, 1020);
+        assertNotNull(small);
+        assertTrue(small.x() < -29);
+        z.add(small.x(), small.z(), 1020, RunZones.HOGLIN_RADIUS);
+        assertNull(z.newHoglinPack(two, 0, 64, 0, 1040));
+        assertEquals(2, z.active(1040));
+    }
+
+    @Test
+    public void onlyThoseInSightCount() {
+        assertNotNull(pack(threeAt(37, 64, 0), 0, 64, 0));
+        // flat
+        assertNull(pack(threeAt(41, 64, 0), 0, 64, 0));
+        // and up or down
+        assertNotNull(pack(threeAt(10, 88, 0), 0, 64, 0));
+        assertNull(pack(threeAt(10, 89, 0), 0, 64, 0));
+        assertNull(pack(threeAt(10, 39, 0), 0, 64, 0));
+    }
+
+    // the middle of all six would be an empty field between them
+    @Test
+    public void twoPacksPickTheBiggerNotTheFieldBetween() {
+        List<double[]> two = new java.util.ArrayList<>(threeAt(-30, 64, 0));
+        two.addAll(threeAt(30, 64, 0));
+        two.add(hoglin(31, 64, 1));
+        RunZones.Pack pack = pack(two, 0, 64, 0);
+        assertNotNull(pack);
+        assertEquals(4, pack.count());
+        assertTrue(pack.x() > 29);
+    }
+
+    @Test
+    public void aHoglinZoneIsAWallForWalksAndNothingElse() {
+        RunZones z = new RunZones();
+        z.add(100, 100, 1000, RunZones.HOGLIN_RADIUS);
+        assertTrue(z.blocks(110, 100, 1000, 500, 500, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocks(117, 100, 1000, 500, 500, NO_GOAL, NO_GOAL));
+        // the blaze picking and the spawner picking don't hear about it
+        assertFalse(z.covers(100, 100, 1000));
+        assertFalse(z.coversPack(100, 100, 1000));
+        assertNull(z.packZoneAt(100, 100, 1000));
+        // stood in, or walking to something in it, it's no wall
+        assertFalse(z.blocks(110, 100, 1000, 105, 105, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocks(110, 100, 1000, 500, 500, 95, 95));
+    }
+
+    @Test
+    public void otherZonesStillCoverNextToAHoglinOne() {
+        RunZones z = new RunZones();
+        z.add(100, 100, 1000, RunZones.HOGLIN_RADIUS);
+        z.add(100, 100, 1000, RunZones.PACK_RADIUS);
+        assertTrue(z.covers(100, 100, 1000));
+        assertTrue(z.coversPack(100, 100, 1000));
+    }
+
+    @Test
+    public void aLiveHoglinZoneNearbyMeansNoSecondOne() {
+        RunZones z = new RunZones();
+        assertFalse(z.hoglinZoneNear(0, 0, 1000));
+        z.add(0, 0, 1000, RunZones.HOGLIN_RADIUS);
+        assertTrue(z.hoglinZoneNear(16, 0, 1000));
+        assertFalse(z.hoglinZoneNear(17, 0, 1000));
+        assertFalse(z.hoglinZoneNear(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+        // somebody else's zone on the spot doesn't count
+        RunZones other = new RunZones();
+        other.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        assertFalse(other.hoglinZoneNear(0, 0, 1000));
     }
 }
