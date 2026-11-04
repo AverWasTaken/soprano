@@ -15,6 +15,8 @@ public final class DropRoom {
 
     public enum Kind { FIT, EVICT, NONE }
 
+    private static final List<Item> LATE = List.of(Items.RAW_GOLD, Items.FURNACE, Items.SHEARS, Items.DIAMOND, Items.COAL);
+
     // where an EVICT's slot comes from: the ordinary garbage pick, the armor last resort, or the core victim pick
     public enum Source { NONE, GARBAGE, WEAR, VICTIM }
 
@@ -93,6 +95,35 @@ public final class DropRoom {
         }
         if (surplus >= 0) return surplus;
         return build >= 0 ? build : plain;
+    }
+
+    // the bed errand's full bag and nobody else's: a bed in the bag is worth more than a pearl's victim list will give up. the garbage
+    // pick, then whatever a core drop could push out, then the late list. -1 = nothing may go. a pick that's somebody's keep doesn't
+    // count, the throw would refuse a reserved bed and we'd sit there asking again
+    public static int shed(int garbagePick, List<Stack> bag) {
+        if (garbagePick >= 0 && !bag.get(garbagePick).keep()) return garbagePick;
+        int v = victim(bag);
+        return v >= 0 ? v : late(bag);
+    }
+
+    // kit nothing else lets go of, cheapest to lose first. the bucket isn't here, the gate counts it. a furnace only goes when
+    // the smoker can do its job, and the raw gold was only ever piglin money. diamonds sit on the important list out of the box,
+    // so never holds on to them until somebody takes them off it
+    static int late(List<Stack> bag) {
+        Map<Item, Integer> stacks = new HashMap<>();
+        for (Stack s : bag) {
+            if (!s.stack().isEmpty()) stacks.merge(s.stack().getItem(), 1, Integer::sum);
+        }
+        for (Item item : LATE) {
+            if (item == Items.FURNACE && !stacks.containsKey(Items.SMOKER)) continue;
+            int best = -1;
+            for (int i = 0; i < bag.size(); i++) {
+                Stack s = bag.get(i);
+                if (!s.stack().isEmpty() && s.stack().getItem() == item && !never(s, stacks)) best = smaller(bag, best, i);
+            }
+            if (best >= 0) return best;
+        }
+        return -1;
     }
 
     private static boolean surplus(Stack s, Map<Item, Integer> stacks, Map<String, Integer> bestTool, int wool) {
