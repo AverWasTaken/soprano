@@ -286,17 +286,29 @@ public class LowRoofTest {
     @Test
     public void wrongYUnderTheRoofStillPressesForward() {
         // the cap under a top slab over deep water, feet a block under dest, and the jump can't lift them any further
-        assertTrue(LowRoof.leanIn(Forward.GO, true, Y - 1, Y));
+        assertTrue(LowRoof.leanIn(Forward.GO, true, false, Y - 1, Y, Y));
         // right level: the movement has its own keys
-        assertFalse(LowRoof.leanIn(Forward.GO, true, Y, Y));
-        assertFalse(LowRoof.leanIn(Forward.GO, true, Y, Y - 1));
+        assertFalse(LowRoof.leanIn(Forward.GO, true, false, Y, Y, Y));
+    }
+
+    @Test
+    public void onlyLevelMovesLeanIn() {
+        // an ascend sits under dest the whole way, that's not the wrong y branch and it has its own W
+        assertFalse(LowRoof.leanIn(Forward.GO, true, false, Y - 1, Y - 1, Y));
+        assertFalse(LowRoof.leanIn(Forward.GO, true, false, Y - 1, Y + 1, Y));
+    }
+
+    @Test
+    public void aForcedAimKeepsTheCrosshair() {
+        // a gate to open or a block to place, moveTowards would swing the aim off it every tick
+        assertFalse(LowRoof.leanIn(Forward.GO, true, true, Y - 1, Y, Y));
     }
 
     @Test
     public void leaningInNeverBeatsTheLipOrThePrep() {
-        assertFalse(LowRoof.leanIn(Forward.HOLD, true, Y - 1, Y));
-        assertFalse(LowRoof.leanIn(Forward.GIVE_UP, true, Y - 1, Y));
-        assertFalse(LowRoof.leanIn(Forward.GO, false, Y - 1, Y));
+        assertFalse(LowRoof.leanIn(Forward.HOLD, true, false, Y - 1, Y, Y));
+        assertFalse(LowRoof.leanIn(Forward.GIVE_UP, true, false, Y - 1, Y, Y));
+        assertFalse(LowRoof.leanIn(Forward.GO, false, false, Y - 1, Y, Y));
     }
 
     @Test

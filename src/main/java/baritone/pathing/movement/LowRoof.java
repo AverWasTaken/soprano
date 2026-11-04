@@ -108,9 +108,10 @@ public final class LowRoof {
     }
 
     // traverse's wrong y branch lets go of W and waits for the bob to lift it to dest's level. under a roof that lift may
-    // never come, a top slab over deep water caps the feet a block under dest. so we hold W for it
-    static boolean leanIn(Forward forward, boolean running, int feetBlock, int destY) {
-        return forward == Forward.GO && running && feetBlock < destY;
+    // never come, a top slab over deep water caps the feet a block under dest. so we hold W for it. level moves only, a
+    // climb has its own W, and hands off a forced aim: that's somebody opening a gate or placing a block, it needs the crosshair
+    static boolean leanIn(Forward forward, boolean running, boolean forcedAim, int feetBlock, int srcY, int destY) {
+        return forward == Forward.GO && running && !forcedAim && srcY == destY && feetBlock < destY;
     }
 
     // the walk in from open water. vanilla hops 0.3 out of a fluid whenever we're pressed against something with room

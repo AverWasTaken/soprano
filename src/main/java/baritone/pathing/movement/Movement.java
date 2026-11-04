@@ -477,7 +477,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         currentState.setInput(Input.JUMP, jump || bob || Surfacing.wantsAir(ctx.player()));
         boolean fits = !lowRoofOwn && lowRoofDest && standingBoxFits(dest.x + 0.5, feetY, dest.z + 0.5);
         LowRoof.Forward forward = lowRoofLip.tick(lowRoofOwn, lowRoofDest, fits, running);
-        if (LowRoof.leanIn(forward, running, ctx.playerFeet().y, dest.y)) {
+        if (LowRoof.leanIn(forward, running, currentState.getTarget().hasToForceRotations(), ctx.playerFeet().y, src.y, dest.y)) {
             MovementHelper.moveTowards(ctx, currentState, dest);
         }
         if (forward == LowRoof.Forward.GO) {
