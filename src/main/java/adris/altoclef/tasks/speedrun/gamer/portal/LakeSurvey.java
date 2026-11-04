@@ -7,6 +7,7 @@ import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Terrain;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,10 +18,10 @@ import java.util.function.Predicate;
 final class LakeSurvey {
     // the lake around a seed, read live, because the scan only keeps a few cells of each chunk
     static final int NEAR_SEED = 6;
-    // cells of lake taken per seed, a lake is a lot of layouts
-    static final int LAKE_GROW = 40;
     // the cap is per lake, so a far lake gets the same share a near one does
     static final int SOURCES = 160;
+    // cells of lake walked per seed. as far as the source cap can use, 40 of these on open lava doesn't even leave the grid
+    static final int LAKE_GROW = SOURCES;
     // the supply scan reads +-22 around the row, so this much around the seed has to be loaded before a no is a no
     static final int READ_BOX = 24;
     // the four cells of the row and the two of the lane in front of it, open on top. fewer and no layout can ever fit
@@ -117,9 +118,13 @@ final class LakeSurvey {
         return sources;
     }
 
+    // found already holds the whole grid, so it can't double as the visited set: the seed's neighbours all look visited and
+    // the flood stops before it starts, and the one good row of a lake can sit just past the grid
     private static void grow(Terrain t, P seed, Set<P> found) {
         ArrayDeque<P> queue = new ArrayDeque<>();
+        Set<P> seen = new HashSet<>();
         int taken = 0;
+        seen.add(seed);
         queue.add(seed);
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         while (!queue.isEmpty() && taken < LAKE_GROW) {
@@ -127,7 +132,7 @@ final class LakeSurvey {
             taken++;
             for (int[] d : dirs) {
                 P next = new P(at.x() + d[0], at.y(), at.z() + d[1]);
-                if (!found.contains(next) && t.at(next.x(), next.y(), next.z()) == Mat.LAVA) {
+                if (seen.add(next) && t.at(next.x(), next.y(), next.z()) == Mat.LAVA) {
                     found.add(next);
                     queue.add(next);
                 }

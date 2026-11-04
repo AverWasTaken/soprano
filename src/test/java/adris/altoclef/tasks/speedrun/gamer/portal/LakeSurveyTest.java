@@ -150,6 +150,19 @@ public class LakeSurveyTest {
     }
 
     @Test
+    public void theFloodLeavesTheGridAroundTheSeed() {
+        // a one wide lake running off east, so only the flood can read the far end
+        World w = new World();
+        int cells = LakeSurvey.NEAR_SEED + 14;
+        for (int x = 0; x < cells; x++) {
+            w.over.put(new P(SEED.x() + x, SEED.y(), SEED.z()), Mat.LAVA);
+        }
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
+        assertEquals(cells, s.sources());
+        assertTrue(s.lake().cells().contains(new P(SEED.x() + cells - 1, SEED.y(), SEED.z())));
+    }
+
+    @Test
     public void aSurveyIsDoneAFewLayoutsAtATime() {
         World w = LPortalPlanTest.pool();
         LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
