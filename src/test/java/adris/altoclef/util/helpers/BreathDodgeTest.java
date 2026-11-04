@@ -75,6 +75,20 @@ public class BreathDodgeTest {
         assertEquals(Move.NONE, BreathDodge.follow(Move.NONE, Move.RUN, true, 1, false, BreathDodge.FALL_SPEED - 0.1));
     }
 
+    @Test
+    public void keepRunningHoldsTillClearAndThatsAll() {
+        assertTrue(BreathDodge.keepRunning(true, false, true, 0, true, 0));
+        // one tick out of the box, cloud right there: still going
+        assertTrue(BreathDodge.keepRunning(false, true, true, 1, true, 0));
+        // on a hop too, that's where the flapping came from
+        assertTrue(BreathDodge.keepRunning(false, true, true, 1, false, 0.4));
+        assertFalse(BreathDodge.keepRunning(false, true, false, 1, true, 0));
+        assertFalse(BreathDodge.keepRunning(false, true, true, BreathDodge.MAX_CLEAR_TICKS, true, 0));
+        assertFalse(BreathDodge.keepRunning(false, true, true, 1, false, BreathDodge.FALL_SPEED - 0.1));
+        // near a cloud with no run on: nothing starts one
+        assertFalse(BreathDodge.keepRunning(false, false, true, 1, true, 0));
+    }
+
     // the dodge and the task that wants us back in the cloud, a cloud over cells -2..2 and a task walking to 0. the dodge walks
     // out, the task walks back, this counts how many times the dodge had to start over. the chain's order, in small
     private static int runStarts(boolean follow, int ticks, int hopEvery) {

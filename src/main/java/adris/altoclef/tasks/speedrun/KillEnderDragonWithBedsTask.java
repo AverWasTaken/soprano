@@ -25,6 +25,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.monster.Enderman;
@@ -33,6 +34,7 @@ import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -49,6 +51,8 @@ public class KillEnderDragonWithBedsTask extends Task {
     private static final double CLOUD_BLAME_RANGE = 8;
     // something this slow is fine a couple of times a second
     private static final int CLOUD_CELL_TICKS = 10;
+    // a landing is 10 s of everything happening at once, this is how we read it afterwards
+    private static final int TRACE_TICKS = 5;
 
     private final Task _whenNotPerchingTask;
     // instance state: this used to be two statics shared by every instance (and Playground), reset only in onStart
@@ -188,12 +192,26 @@ public class KillEnderDragonWithBedsTask extends Task {
         BlockPos bed = PillarBed.bed(_endPortalTop);
         boolean atStand = PillarBed.atStand(stand, player.getX(), player.getZ(), player.getBlockY());
         boolean bedDown = isBed(mod, bed);
-        logLanding(_landing.tick(mod.getWorld().getGameTime(), landing, sat, atStand, bedDown,
+        AABB box = player.getBoundingBox();
+        double seen = landing ? PillarBed.seen(_endPortalTop, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ) : 1;
+        boolean covered = landing && PillarBed.covered(player.onGround(),
+                PillarBed.reachGap(_endPortalTop, player.getX(), player.getEyeY(), player.getZ()), seen);
+        boolean fightHere = PillarBed.fightHere(covered, bedDown, PillarBed.looksEast(_endPortalTop, player.getX(), player.getZ()));
+        logLanding(_landing.tick(mod.getWorld().getGameTime(), landing, sat, atStand || covered, bedDown,
                 mod.getEntityTracker().entityFound(e -> e.closerThan(player, CLOUD_BLAME_RANGE), AreaEffectCloud.class),
                 dragon.getHealth(), player.getHealth() + player.getAbsorptionAmount()));
 
+        if (landing && mod.getWorld().getGameTime() % TRACE_TICKS == 0) {
+            traceLanding(dragon, player, bedDown, atStand, covered, seen);
+        }
         boolean walking = _standWalk != null && _standWalk.isActive() && !_standWalk.isFinished(mod);
-        switch (PillarBed.step(sat, landing, atStand && !walking, bedDown)) {
+        if (fightHere && walking) {
+            Debug.logMessage("pillar bed: covered at " + player.blockPosition().toShortString() + ", dropping the walk to the stand");
+            _standWalk = null;
+            walking = false;
+        }
+        // a hop on the stand isn't worth a walk, the click still waits for covered
+        switch (PillarBed.step(sat, landing, fightHere || atStand && !walking, bedDown)) {
             case RING -> {
                 setDebugState("The dragon is sitting, keeping clear");
                 return _whenNotPerchingTask;
@@ -226,7 +244,7 @@ public class KillEnderDragonWithBedsTask extends Task {
                 }
                 // keep facing east so the next bed goes straight down
                 LookHelper.lookAt(mod, bed.below(), Direction.UP, true);
-                clickWhenClose(mod, dragon, bed, facing);
+                clickWhenClose(mod, dragon, bed, facing, covered);
             }
         }
         return null;
@@ -258,19 +276,38 @@ public class KillEnderDragonWithBedsTask extends Task {
     }
 
     // direct as well: the walk and re-aim of an interact task cost seconds per bed, and the landing doesn't wait
-    private void clickWhenClose(AltoClef mod, EnderDragon dragon, BlockPos bed, Direction facing) {
+    private void clickWhenClose(AltoClef mod, EnderDragon dragon, BlockPos bed, Direction facing, boolean covered) {
         BlockPos foot = WorldHelper.getBedFoot(mod, bed);
         if (foot == null) {
             return;
         }
         double dist = dragon.head.getBoundingBox().getCenter().distanceTo(WorldHelper.toVec3d(foot));
         long tick = mod.getWorld().getGameTime();
-        if (PillarBed.clickNow(mod.getPlayer().onGround(), dist, tick, _lastClick)) {
+        double body = partToBlast(dragon, "body");
+        boolean finishing = PillarBed.finish(dragon.getHealth(), bedsLeft(mod), body);
+        if (PillarBed.clickNow(covered, dist, finishing, tick, _lastClick)) {
             _lastClick = tick;
             _landing.clicked();
-            Debug.logMessage(String.format("pillar bed: click, facing %s, head %.1f, dragon hp %.0f, us hp %.1f", facing.name(), dist, dragon.getHealth(), mod.getPlayer().getHealth()));
+            Debug.logMessage(String.format("pillar bed: click, facing %s, head %.1f, body %.1f, finishing %b, dragon hp %.0f, us hp %.1f", facing.name(), dist, body, finishing, dragon.getHealth(), mod.getPlayer().getHealth()));
             useOn(mod, new Vec3(bed.getX() + 0.5, bed.getY() + 0.5, bed.getZ() + 0.5), bed);
         }
+    }
+
+    // from the part's position, not its middle: that's the distance ServerExplosion does the damage by
+    private double partToBlast(EnderDragon dragon, String name) {
+        for (EnderDragonPart part : dragon.getSubEntities()) {
+            if (part.name.equals(name)) {
+                return part.position().distanceTo(PillarBed.blast(_endPortalTop));
+            }
+        }
+        return Double.MAX_VALUE;
+    }
+
+    private void traceLanding(EnderDragon dragon, LocalPlayer player, boolean bedDown, boolean atStand, boolean covered, double seen) {
+        Debug.logInternal("pillar bed: trace head %.1f neck %.1f body %.1f, dragon %.1f %.1f %.1f hp %.1f, bedDown %b, atStand %b, covered %b, seen %.2f, ground %b, us %.1f %.1f %.1f",
+                partToBlast(dragon, "head"), partToBlast(dragon, "neck"), partToBlast(dragon, "body"),
+                dragon.getX(), dragon.getY(), dragon.getZ(), dragon.getHealth(), bedDown, atStand, covered, seen,
+                player.onGround(), player.getX(), player.getY(), player.getZ());
     }
 
     private static InteractionResult useOn(AltoClef mod, Vec3 at, BlockPos block) {

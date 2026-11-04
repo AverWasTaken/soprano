@@ -122,4 +122,20 @@ public class DragonWaitRulesTest {
     public void theBedRingStaysInsideTheScanRange() {
         assertTrue(DragonWaitRules.BED_MAX + 1 < 20);
     }
+
+    @Test
+    public void tooHurtStaysAwayUntilHealedPastTheGap() {
+        assertFalse(DragonWaitRules.stayAway(false, 10, true));
+        assertTrue(DragonWaitRules.stayAway(false, 9.9, true));
+        assertTrue(DragonWaitRules.stayAway(true, 13.9, true));
+        assertFalse(DragonWaitRules.stayAway(true, 14, true));
+        // on the way back up it doesn't start again, only a new dip does
+        assertFalse(DragonWaitRules.stayAway(false, 12, true));
+    }
+
+    @Test
+    public void noWayToHealIsNoReasonToWait() {
+        assertFalse(DragonWaitRules.stayAway(false, 5, false));
+        assertFalse(DragonWaitRules.stayAway(true, 5, false));
+    }
 }
