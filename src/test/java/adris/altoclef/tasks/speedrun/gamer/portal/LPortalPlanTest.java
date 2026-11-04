@@ -596,7 +596,7 @@ public class LPortalPlanTest {
         assertEquals("behind the frame, so it is cleared before the base", 1, b.prepMines());
         assertEquals(0, b.fills());
         World tree = pool();
-        tree.set(L, 3, 4, 0, Mat.SOLID);
+        tree.set(L, 3, 2, 0, Mat.SOLID);
         assertFalse("the frame cells must be clear", LPortalPlan.fits(L, tree));
         LPortalPlan.Survey t = LPortalPlan.survey(L, tree);
         assertTrue(t.ok());
@@ -667,7 +667,7 @@ public class LPortalPlanTest {
         assertFalse(LPortalPlan.survey(L, in).ok());
         World high = pool();
         high.set(L, 2, 2, 1, Mat.SOLID);
-        high.set(L, 2, 9, 1, Mat.FALLS);
+        high.set(L, 2, 12, 1, Mat.FALLS);
         assertTrue("past the top it can't reach", LPortalPlan.survey(L, high).ok());
         assertTrue(Mat.FALLS.solid());
     }
@@ -690,8 +690,10 @@ public class LPortalPlanTest {
         assertEquals("36 is the most", LPortalPlan.MAX_MINES, s.mines());
         assertEquals("everything behind the frame", 28, s.prepMines());
         // one more. the front cap says no too, that's fine, there are only 28 cells behind the frame so 37 always breaks it
-        w.set(L, 2, 4, 0, Mat.SOLID);
-        assertFalse(LPortalPlan.survey(L, w).ok());
+        w.set(L, 2, 2, -1, Mat.SOLID);
+        LPortalPlan.Survey over = LPortalPlan.survey(L, w);
+        assertFalse(over.ok());
+        assertEquals("mines_cap", over.why());
     }
 
     // every cell behind the frame solid and the eight in front the front cap allows
@@ -705,11 +707,148 @@ public class LPortalPlanTest {
                 }
             }
         }
-        int[][] front = {{0, 2}, {0, 3}, {0, 4}, {1, 2}, {1, 3}, {1, 4}, {2, 2}, {2, 3}};
+        int[][] front = {{0, 2, 0}, {0, 3, 0}, {1, 2, 0}, {1, 3, 0}, {2, 2, 0}, {2, 3, 0}, {3, 2, 0}, {1, 2, -1}};
         for (int[] f : front) {
-            w.set(L, f[0], f[1], 0, Mat.SOLID);
+            w.set(L, f, Mat.SOLID);
         }
         return w;
+    }
+
+    // ---- the roof over the frame plane and the lane ----
+
+    private static World roofed() {
+        World w = pool();
+        for (int u = 0; u <= 3; u++) {
+            w.set(L, u, 4, 0, Mat.SOLID);
+        }
+        for (int u = 1; u <= 2; u++) {
+            w.set(L, u, 4, -1, Mat.SOLID);
+        }
+        return w;
+    }
+
+    @Test
+    public void rockOverTheFramePlaneAndTheLaneIsNoWorkAtAll() {
+        LPortalPlan.Survey s = LPortalPlan.survey(L, roofed());
+        assertTrue(s.ok());
+        assertEquals(0, s.mines());
+        assertTrue(LPortalPlan.fits(L, roofed()));
+    }
+
+    @Test
+    public void theShoreRowStillHasToBeClearAllTheWayUp() {
+        World w = pool();
+        w.set(L, 1, 4, 1, Mat.SOLID);
+        LPortalPlan.Survey s = LPortalPlan.survey(L, w);
+        assertTrue(s.ok());
+        assertEquals(1, s.mines());
+        assertEquals(1, s.prepMines());
+    }
+
+    @Test
+    public void gravelOrLavaInTheRoofStillSaysNo() {
+        for (Mat bad : new Mat[]{Mat.FALLS, Mat.LAVA, Mat.LAVA_FLOW}) {
+            World frame = pool();
+            frame.set(L, 1, 4, 0, bad);
+            assertEquals("frame plane " + bad, "roof_gravel_or_lava", LPortalPlan.survey(L, frame).why());
+            World lane = pool();
+            lane.set(L, 2, 4, -1, bad);
+            assertEquals("lane " + bad, "roof_gravel_or_lava", LPortalPlan.survey(L, lane).why());
+            // the arm goes under this one, and the arm cell gets no other look
+            World overArm = pool();
+            overArm.set(L, LPortalPlan.ARM, Mat.SOLID);
+            overArm.set(L, 3, 4, 0, bad);
+            assertEquals("over the arm " + bad, "roof_gravel_or_lava", LPortalPlan.survey(L, overArm).why());
+        }
+    }
+
+    @Test
+    public void gravelHangingOverAirIsNotASite() {
+        World lane = pool();
+        lane.set(L, 1, 6, -1, Mat.FALLS);
+        assertEquals("hanging_gravel", LPortalPlan.survey(L, lane).why());
+        World frame = pool();
+        frame.set(L, 2, 8, 0, Mat.FALLS);
+        assertEquals("hanging_gravel", LPortalPlan.survey(L, frame).why());
+        World back = pool();
+        back.set(L, 3, 5, 2, Mat.FALLS);
+        assertEquals("hanging_gravel", LPortalPlan.survey(L, back).why());
+        for (int y = 9; y <= 11; y++) {
+            World high = pool();
+            high.set(L, 2, y, 0, Mat.FALLS);
+            assertEquals("y " + y, "hanging_gravel", LPortalPlan.survey(L, high).why());
+        }
+        World tooHigh = pool();
+        tooHigh.set(L, 2, 12, 0, Mat.FALLS);
+        assertTrue("past the top it can't reach", LPortalPlan.survey(L, tooHigh).ok());
+        // a rock in between and it isn't hanging over us, it's hanging over the rock
+        World blocked = pool();
+        blocked.set(L, 2, 9, 0, Mat.SOLID);
+        blocked.set(L, 2, 10, 0, Mat.FALLS);
+        assertTrue(LPortalPlan.survey(L, blocked).ok());
+    }
+
+    @Test
+    public void gravelSittingOnRockWeLeaveAloneIsFine() {
+        World w = roofed();
+        w.set(L, 1, 5, 0, Mat.FALLS);
+        w.set(L, 2, 5, -1, Mat.FALLS);
+        assertTrue(LPortalPlan.survey(L, w).ok());
+        // dig the block under the roof though and the column is ours to worry about, same as ever
+        w.set(L, 1, 3, 0, Mat.SOLID);
+        assertEquals("gravel_over", LPortalPlan.survey(L, w).why());
+    }
+
+    @Test
+    public void theBuildNeverMinesTheRoofAndTheGuardsStillCoverIt() {
+        World w = built();
+        for (int u = 0; u <= 3; u++) {
+            w.set(L, u, 4, 0, Mat.SOLID);
+        }
+        for (int u = 1; u <= 2; u++) {
+            w.set(L, u, 4, -1, Mat.SOLID);
+        }
+        Step s = LPortalPlan.next(L, w, bag(1, true, 1, 8));
+        assertNotEquals("in the way", s.why());
+        // the same step as with an open sky
+        assertEquals(LPortalPlan.next(L, built(), bag(1, true, 1, 8)).kind(), s.kind());
+        World below = built();
+        below.set(L, 1, 3, -1, Mat.SOLID);
+        assertEquals("what's under the roof is still junk", "in the way", LPortalPlan.next(L, below, bag(1, true, 1, 8)).why());
+        // isFront and isReserved read this list: no scaffolding up there, no digging it during the prep
+        int roofCells = 0;
+        for (int[] c : LPortalPlan.keepClear()) {
+            if (c[1] == 4 && c[2] <= 0) {
+                roofCells++;
+            }
+        }
+        assertEquals("all six, the arm doesn't reach y=4", 6, roofCells);
+    }
+
+    @Test
+    public void eachNoSaysWhatItSaidNoTo() {
+        assertNull(LPortalPlan.survey(L, pool()).why());
+        World row = pool();
+        row.set(L, 2, 0, 0, Mat.AIR);
+        assertEquals("row_not_lava", LPortalPlan.quickWhy(L, row));
+        assertEquals("the survey doesn't get its own idea", "row_not_lava", LPortalPlan.survey(L, row).why());
+        World floor = pool();
+        floor.set(L, 2, -1, 0, Mat.LAVA);
+        assertEquals("row_floor", LPortalPlan.quickWhy(L, floor));
+        World shore = pool();
+        shore.set(L, 2, 0, 1, Mat.AIR);
+        assertEquals("shore_not_solid", LPortalPlan.quickWhy(L, shore));
+        World lane = pool();
+        lane.set(L, 2, 0, -1, Mat.AIR);
+        assertEquals("lane_not_lava", LPortalPlan.quickWhy(L, lane));
+        World laneFloor = pool();
+        laneFloor.set(L, 2, -1, -1, Mat.LAVA);
+        assertEquals("lane_floor", LPortalPlan.quickWhy(L, laneFloor));
+        World rock = pool();
+        rock.set(L, 2, 1, 0, Mat.SOLID);
+        assertEquals("block_on_source", LPortalPlan.survey(L, rock).why());
+        assertNull(LPortalPlan.quickWhy(L, rock));
+        assertTrue(LPortalPlan.quick(L, rock));
     }
 
     // ---- notches of lava in the shore row ----
@@ -927,9 +1066,9 @@ public class LPortalPlanTest {
                 }
             }
         }
-        int[][] front = {{0, 2}, {0, 3}, {0, 4}, {1, 2}, {1, 3}, {1, 4}, {2, 2}, {2, 3}};
+        int[][] front = {{0, 2, 0}, {0, 3, 0}, {1, 2, 0}, {1, 3, 0}, {2, 2, 0}, {2, 3, 0}, {3, 2, 0}, {1, 2, -1}};
         for (int[] f : front) {
-            w.set(L, f[0], f[1], 0, Mat.SOLID);
+            w.set(L, f, Mat.SOLID);
         }
         LPortalPlan.Survey s = LPortalPlan.survey(L, w);
         assertTrue(s.ok());
@@ -938,6 +1077,15 @@ public class LPortalPlanTest {
         assertEquals(2, s.fills());
         runToDone(w);
         assertTrue(LPortalPlan.allMade(L, w));
+    }
+
+    @Test
+    public void aRoofedSiteBuildsAllTheWayAndTheRoofIsStillThere() {
+        World w = roofed();
+        runToDone(w);
+        assertTrue(LPortalPlan.allMade(L, w));
+        assertEquals(Mat.SOLID, w.at(L.cell(1, 4, 0).x(), L.cell(1, 4, 0).y(), L.cell(1, 4, 0).z()));
+        assertEquals(Mat.SOLID, w.at(L.cell(2, 4, -1).x(), L.cell(2, 4, -1).y(), L.cell(2, 4, -1).z()));
     }
 
     @Test
@@ -1073,7 +1221,7 @@ public class LPortalPlanTest {
     @Test
     public void candidatesAreRowsInThePoolNearestFirst() {
         World w = pool();
-        List<Layout> got = LPortalPlan.candidates(w, w.lava(), 12, 20);
+        List<Layout> got = LPortalPlan.candidates(w, w.lava(), 12, 20, new HashMap<>());
         assertFalse(got.isEmpty());
         Layout first = null;
         for (Layout l : got) {
@@ -1087,7 +1235,27 @@ public class LPortalPlanTest {
 
     @Test
     public void noLavaNoCandidates() {
-        assertTrue(LPortalPlan.candidates(new World(), List.of(), 0, 0).isEmpty());
+        assertTrue(LPortalPlan.candidates(new World(), List.of(), 0, 0, new HashMap<>()).isEmpty());
+    }
+
+    @Test
+    public void candidatesCountWhatTheRowCheckThrewOut() {
+        World w = pool();
+        Map<String, Integer> tally = new HashMap<>();
+        List<Layout> got = LPortalPlan.candidates(w, List.of(new P(10, 63, 10)), 0, 0, tally);
+        int thrown = tally.values().stream().mapToInt(Integer::intValue).sum();
+        // 2 axes, 4 slides along the row, 2 sides
+        assertEquals(16, got.size() + thrown);
+        assertTrue(tally.containsKey("row_not_lava"));
+    }
+
+    @Test
+    public void thePoolClockCoversTheWholeTryButNotABuildThatIsGoing() {
+        assertNull(BuildClock.poolOut(BuildClock.POOL_TICKS, 0, false));
+        assertNotNull(BuildClock.poolOut(BuildClock.POOL_TICKS + 1, 0, false));
+        assertNull("it has its own 85 s", BuildClock.poolOut(BuildClock.POOL_TICKS + 1, 0, true));
+        assertNull(BuildClock.poolOut(100, BuildClock.MAX_DROPPED_SITES - 1, false));
+        assertNotNull(BuildClock.poolOut(100, BuildClock.MAX_DROPPED_SITES, false));
     }
 
     // ---- scooping ----

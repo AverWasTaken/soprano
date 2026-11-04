@@ -10,13 +10,15 @@ import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Mat;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.P;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlanTest.World;
 import adris.altoclef.tasks.speedrun.gamer.portal.LakeSurvey.Lake;
+import java.util.function.ToIntFunction;
 import org.junit.Test;
 
 public class LakeSurveyTest {
     private static final P SEED = new P(20, 63, 5);
+    private static final ToIntFunction<P> OPEN_SKY = p -> 0;
 
     private static Lake run(World w) {
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, OPEN_SKY);
         int guard = 0;
         while (!s.step(6, w, l -> true)) {
             assertTrue("never finishes", ++guard < 100000);
@@ -67,7 +69,7 @@ public class LakeSurveyTest {
     @Test
     public void aBoxThatIsntLoadedIsUnknownNotBad() {
         World w = LPortalPlanTest.pool();
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, OPEN_SKY);
         while (!s.step(6, w, l -> false)) {
             // keep going
         }
@@ -78,7 +80,7 @@ public class LakeSurveyTest {
 
     // the east side of the seed's read box isn't loaded, every build box is
     private static Lake runWithEastUnloaded(World w, int firstUnloadedX) {
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> p.x() < firstUnloadedX);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> p.x() < firstUnloadedX, OPEN_SKY);
         while (!s.step(6, w, l -> true)) {
             // keep going
         }
@@ -157,15 +159,90 @@ public class LakeSurveyTest {
         for (int x = 0; x < cells; x++) {
             w.over.put(new P(SEED.x() + x, SEED.y(), SEED.z()), Mat.LAVA);
         }
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, OPEN_SKY);
         assertEquals(cells, s.sources());
         assertTrue(s.lake().cells().contains(new P(SEED.x() + cells - 1, SEED.y(), SEED.z())));
+    }
+
+    private static LakeSurvey finished(World w, ToIntFunction<P> depth) {
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, depth);
+        while (!s.step(6, w, l -> true)) {
+            // keep going
+        }
+        return s;
+    }
+
+    @Test
+    public void aSiteUnderTooMuchGroundIsNoSiteAndSaysSo() {
+        LakeSurvey s = finished(LPortalPlanTest.pool(), p -> LavaHunt.MAX_DEPTH + 1);
+        assertNull(s.lake().site());
+        assertFalse("too deep is a no, not a maybe", s.lake().unknown());
+        assertTrue(s.tally(), s.tally().contains("too_deep="));
+        assertFalse(s.tally(), s.tally().contains("ok="));
+    }
+
+    @Test
+    public void aSiteRightAtTheCapStaysAndCarriesItsDepth() {
+        LakeSurvey s = finished(LPortalPlanTest.pool(), p -> LavaHunt.MAX_DEPTH);
+        assertTrue(s.lake().good());
+        assertEquals(LavaHunt.MAX_DEPTH, s.lake().depth());
+        assertEquals("the depth stays out of the work count, pick reads that", 0, s.lake().cost());
+    }
+
+    @Test
+    public void theShallowEndOfALakeBeatsTheDeepOne() {
+        // same work on every row, the ground over it climbs to the east
+        Lake lake = finished(LPortalPlanTest.pool(), p -> Math.min(p.x() - 10, LavaHunt.MAX_DEPTH)).lake();
+        assertTrue(lake.good());
+        assertEquals(LavaHunt.mid(lake.site()).x() - 10, lake.depth());
+        assertTrue(lake.depth() <= 2);
+    }
+
+    @Test
+    public void theTallySaysWhyAndCountsTheRowCheckToo() {
+        World w = LPortalPlanTest.pool();
+        LakeSurvey s = finished(w, OPEN_SKY);
+        String t = s.tally();
+        assertTrue(t, t.matches("\\d+ layouts, \\d+ quick \\| .*"));
+        assertTrue(t, t.contains("row_not_lava="));
+        assertTrue(t, t.contains("ok="));
+        // biggest first
+        String[] rows = t.substring(t.indexOf('|') + 2).split(" ");
+        for (int i = 1; i < rows.length; i++) {
+            assertTrue(t, Integer.parseInt(rows[i - 1].split("=")[1]) >= Integer.parseInt(rows[i].split("=")[1]));
+        }
+    }
+
+    @Test
+    public void aFullSurveyNoLandsInTheTallyUnderItsOwnName() {
+        // the same water ring as above: rows are fine, every full look reads a wet cell
+        World w = LPortalPlanTest.pool();
+        for (int x = 6; x < 44; x++) {
+            for (int z = -4; z <= 14; z++) {
+                boolean inPool = x >= 10 && x < 40 && z >= 0 && z <= 10;
+                if (!inPool) {
+                    w.over.put(new P(x, 64, z), Mat.WATER);
+                }
+            }
+        }
+        String t = finished(w, OPEN_SKY).tally();
+        assertTrue(t, t.contains("wet_box="));
+    }
+
+    @Test
+    public void anUnloadedBoxShowsUpInTheTally() {
+        World w = LPortalPlanTest.pool();
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, OPEN_SKY);
+        while (!s.step(6, w, l -> false)) {
+            // keep going
+        }
+        assertTrue(s.tally(), s.tally().contains("box_unloaded="));
     }
 
     @Test
     public void aSurveyIsDoneAFewLayoutsAtATime() {
         World w = LPortalPlanTest.pool();
-        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true);
+        LakeSurvey s = LakeSurvey.of(w, SEED, 0, 0, p -> true, OPEN_SKY);
         assertFalse(s.step(1, w, l -> true));
         assertNotNull(s.lake());
     }
