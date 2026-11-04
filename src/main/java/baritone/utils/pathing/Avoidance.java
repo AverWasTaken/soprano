@@ -19,6 +19,7 @@ package baritone.utils.pathing;
 
 import baritone.Baritone;
 import baritone.api.utils.BetterBlockPos;
+import baritone.api.utils.BlockUtils;
 import baritone.api.utils.IPlayerContext;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import net.minecraft.core.BlockPos;
@@ -26,12 +27,16 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 public class Avoidance {
+
+    // the cache keys tracked blocks by BlockUtils.blockToString, so a spawner is found as "spawner" (its id since 1.13)
+    public static final String SPAWNER = BlockUtils.blockToString(Blocks.SPAWNER);
 
     private final int centerX;
     private final int centerY;
@@ -68,7 +73,7 @@ public class Avoidance {
         double mobSpawnerCoeff = Baritone.settings().mobSpawnerAvoidanceCoefficient.value;
         double mobCoeff = Baritone.settings().mobAvoidanceCoefficient.value;
         if (mobSpawnerCoeff != 1.0D) {
-            ctx.worldData().getCachedWorld().getLocationsOf("mob_spawner", 1, ctx.playerFeet().x, ctx.playerFeet().z, 2)
+            ctx.worldData().getCachedWorld().getLocationsOf(SPAWNER, 1, ctx.playerFeet().x, ctx.playerFeet().z, 2)
                     .forEach(mobspawner -> res.add(new Avoidance(mobspawner, mobSpawnerCoeff, Baritone.settings().mobSpawnerAvoidanceRadius.value)));
         }
         if (mobCoeff != 1.0D) {

@@ -18,6 +18,8 @@
 package baritone.cache;
 
 import adris.altoclef.util.helpers.ItemFixture;
+import baritone.api.utils.BlockUtils;
+import baritone.utils.pathing.Avoidance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderSet;
 import net.minecraft.server.Bootstrap;
@@ -106,6 +108,16 @@ public class CachedSpecialBlocksTest {
         // and a plain solid block next to them is still just stone
         assertEquals(Blocks.STONE, chunk.getBlock(3, 71 + 64, 5, dim, Level.OVERWORLD).getBlock());
         assertEquals(Blocks.STONE, chunk.getBlock(3, 69 + 64, 5, dim, Level.OVERWORLD).getBlock());
+    }
+
+    @Test
+    public void spawnersAreFoundByTheNameAvoidanceAsksFor() {
+        // the packer keys each tracked block by BlockUtils.blockToString; Avoidance must ask by the same name
+        Map<String, List<BlockPos>> map = new HashMap<>();
+        map.put(BlockUtils.blockToString(Blocks.SPAWNER), new ArrayList<>(List.of(new BlockPos(3, 40, 5))));
+        CachedChunk chunk = new CachedChunk(0, 0, 384, solidColumn(384, 3, 5, 200), stoneOverview(), map, 0L);
+        assertNotNull(chunk.getAbsoluteBlocks(Avoidance.SPAWNER));
+        assertEquals(1, chunk.getAbsoluteBlocks(Avoidance.SPAWNER).size());
     }
 
     @Test
