@@ -385,6 +385,16 @@ final class CombatBrain {
         return out;
     }
 
+    // same as below, only the ones actually coming for us (the same check that makes one a foe): a skeleton on the next floor
+    // that never noticed us is no reason to keep running
+    private double nearestAngryWither(AltoClef mod, LocalPlayer player) {
+        double best = Double.POSITIVE_INFINITY;
+        for (Mob mob : _crowdBlazes) {
+            if (mob instanceof WitherSkeleton && mob.isAlive() && EntityHelper.isAngryAtPlayer(mod, mob)) best = Math.min(best, mob.distanceTo(player));
+        }
+        return best;
+    }
+
     // the closest tracked wither skeleton, out of sight or not (trackedBlazes already has every one of them, fresh this tick)
     private double nearestWither(LocalPlayer player) {
         double best = Double.POSITIVE_INFINITY;
@@ -472,6 +482,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
+            _commit.angryWither(dimension == Dimension.NETHER ? nearestAngryWither(mod, player) : Double.POSITIVE_INFINITY);
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));

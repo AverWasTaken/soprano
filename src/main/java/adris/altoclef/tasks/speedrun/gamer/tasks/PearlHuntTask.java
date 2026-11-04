@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
+import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -574,6 +575,9 @@ public class PearlHuntTask extends Task {
         var us = mod.getPlayer();
         var cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         if (!PullStare.allowed(dimension == Dimension.NETHER, LavaShore.edgeNear(cells, us.getX(), us.getY(), us.getZ()), pullStare.cooling(gameTime))) {
+            return null;
+        }
+        if (!PullStare.witherClear(CollectBlazeRodsTask.witherSkeletonsNear(mod, us.position(), PullStare.WITHER_CLEAR))) {
             return null;
         }
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);

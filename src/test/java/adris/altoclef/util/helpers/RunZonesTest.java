@@ -110,7 +110,8 @@ public class RunZonesTest {
         RunZones z = new RunZones();
         z.add(0, 0, 1000, RunZones.RADIUS);
         z.add(2, 2, 1100, RunZones.PACK_RADIUS);
-        assertEquals(1, z.active(1100));
+        // two zones now, a merge used to lose track of where the pack was
+        assertEquals(2, z.active(1100));
         assertTrue(z.blocks(20, 0, 1100, 500, 500, NO_GOAL, NO_GOAL));
     }
 
@@ -126,7 +127,7 @@ public class RunZonesTest {
     }
 
     @Test
-    public void aMergedZoneStillCoversInEitherOrder() {
+    public void aPackAndAFatZoneCoverInEitherOrder() {
         RunZones a = new RunZones();
         a.add(0, 0, 1000, RunZones.RADIUS);
         a.add(2, 2, 1100, RunZones.PACK_RADIUS);
@@ -137,5 +138,64 @@ public class RunZonesTest {
         b.add(2, 2, 1100, RunZones.RADIUS);
         assertTrue(b.covers(0, 0, 1100));
         assertTrue(b.covers(20, 0, 1100));
+    }
+
+    @Test
+    public void aPackZoneCoversItsOwnRadiusAndThenExpires() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        assertTrue(z.coversPack(11, 0, 1000));
+        assertFalse(z.coversPack(13, 0, 1000));
+        assertTrue(z.coversPack(0, 0, 1000 + RunZones.EXPIRY_TICKS - 1));
+        assertFalse(z.coversPack(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void aRunOffOneSkeletonIsNoPack() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.RADIUS);
+        assertTrue(z.covers(5, 0, 1000));
+        assertFalse(z.coversPack(5, 0, 1000));
+        assertEquals(null, z.packZoneAt(5, 0, 1000));
+    }
+
+    @Test
+    public void aFatRunOnTopOfAPackLeavesThePackWhereItWas() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        z.add(4, 0, 1100, RunZones.RADIUS);
+        // the pack's own edge, not one dragged over by the run
+        assertTrue(z.coversPack(-10.5, 0, 1100));
+        assertFalse(z.coversPack(13, 0, 1100));
+        // and its own clock
+        assertFalse(z.coversPack(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+        assertTrue(z.covers(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void aPackOnTopOfAFatRunDoesNotShrinkIt() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.RADIUS);
+        z.add(2, 2, 1100, RunZones.PACK_RADIUS);
+        assertTrue(z.coversPack(2, 2, 1100));
+        assertTrue(z.covers(20, 0, 1100));
+    }
+
+    @Test
+    public void theSamePackAgainMovesAndRefreshes() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        z.add(3, 0, 1100, RunZones.PACK_RADIUS);
+        assertEquals(1, z.active(1100));
+        assertTrue(z.coversPack(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void thePackZoneSaysWhereItsMiddleIs() {
+        RunZones z = new RunZones();
+        z.add(30, -40, 1000, RunZones.PACK_RADIUS);
+        double[] at = z.packZoneAt(35, -40, 1000);
+        assertEquals(30, at[0], 0);
+        assertEquals(-40, at[1], 0);
     }
 }

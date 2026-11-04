@@ -183,7 +183,9 @@ final class BlazeFight {
         if (packCenter != null) RunZones.INSTANCE.add(packCenter[0], packCenter[1], now, RunZones.PACK_RADIUS);
         Vec3 at = mod.getPlayer().position();
         Debug.logInternal("pack: " + packSize + " wither skeletons within " + (int) BlazeFightRules.PACK_PLAYER_RADIUS + " at "
-                + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z) + ", " + (packClose ? "backing off" : "walking on"));
+                + Math.round(at.x) + "," + Math.round(at.y) + "," + Math.round(at.z)
+                + (packCenter != null ? ", middle " + Math.round(packCenter[0]) + "," + Math.round(packCenter[1]) : "")
+                + ", " + (packClose ? "backing off" : "walking on"));
     }
 
     // projectile hits, every tick: the game hands a fresh source object per hit

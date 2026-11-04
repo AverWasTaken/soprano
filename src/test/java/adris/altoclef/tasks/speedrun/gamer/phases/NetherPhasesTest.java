@@ -8,6 +8,7 @@ import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.util.helpers.ItemFixture;
+import adris.altoclef.util.helpers.RunZones;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
@@ -28,6 +29,21 @@ public class NetherPhasesTest {
     @BeforeClass
     public static void boot() {
         ItemFixture.boot();
+    }
+
+    @Test
+    public void theFortressWalkWaitsOutAPackOnOurSpawner() {
+        RunState.Pos spawner = new RunState.Pos(100, 70, 100);
+        RunZones zones = new RunZones();
+        assertFalse(NetherPhase.waitOutPack(zones, spawner, 1000));
+        // one skeleton's fat zone is no reason to wait
+        zones.add(100, 100, 1000, RunZones.RADIUS);
+        assertFalse(NetherPhase.waitOutPack(zones, spawner, 1000));
+        zones.add(105, 100, 1000, RunZones.PACK_RADIUS);
+        assertTrue(NetherPhase.waitOutPack(zones, spawner, 1000));
+        assertFalse(NetherPhase.waitOutPack(zones, spawner, 1000 + RunZones.EXPIRY_TICKS));
+        // no spawner saved (a fortress given up clears it): the walk goes
+        assertFalse(NetherPhase.waitOutPack(zones, null, 1000));
     }
 
     @Test

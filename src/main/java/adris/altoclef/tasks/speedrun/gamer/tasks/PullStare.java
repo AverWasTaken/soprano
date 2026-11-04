@@ -19,6 +19,9 @@ final class PullStare {
     static final long COOLDOWN_TICKS = 600;
     // a stare that was not ticked for this long was interrupted, not answered or ignored
     static final long STALE_TICKS = 5;
+    // the stare's answer is an angry enderman, 8 a hit and it teleports. with a wither skeleton this close that lands on top of
+    // the run we are about to need. a bit past their follow range, a pack walks
+    static final double WITHER_CLEAR = 24;
 
     private final Map<Integer, Long> skipUntil = new HashMap<>();
     private int id = -1;
@@ -37,6 +40,11 @@ final class PullStare {
     // not in the cool down after a couple of ignored stares
     static boolean allowed(boolean nether, boolean onRim, boolean cooling) {
         return nether && !onRim && !cooling;
+    }
+
+    // no stare with a wither skeleton inside WITHER_CLEAR. the count is off the tracker, aware of us or not
+    static boolean witherClear(int withersClose) {
+        return withersClose == 0;
     }
 
     boolean cooling(long now) {

@@ -54,6 +54,9 @@ public final class CombatCommit {
     public static final double RUN_CLEAR = 12;
     public static final long RUN_CLEAR_TICKS = 40;
     public static final long RUN_CAP = 500;
+    // a wither skeleton keeps coming out to its follow range: 16, plus a spawn bonus of up to 11.5%, so 17.84 at worst. two
+    // more on top so one on the line can't undo the clear. RUN_CLEAR's 12 is well inside all of that
+    public static final double WITHER_AGGRO = 20;
 
     // cornered: a run that went nowhere for CORNER_TICKS with something on top of us (CORNER_RANGE), or for twice that with
     // something angry anywhere within CORNER_WATCH (a shooter we can't get away from). the window only runs while something
@@ -819,6 +822,7 @@ public final class CombatCommit {
     private boolean fastCorner;
     // that fast corner is the lone wither skeleton one (loneWither): a crowd still bails it
     private boolean witherCorner;
+    private double angryWither = Double.POSITIVE_INFINITY;
     // since when nothing fast has been on us in a fast corner, -1 while something is
     private long fastClearSince = -1;
     // since when the melee target has been out of reach (takeover)
@@ -911,6 +915,12 @@ public final class CombatCommit {
     // the brain hands over the world's side of the perch every tick, right before step
     public void perchFacts(PerchRules.Facts facts) {
         this.perch = facts;
+    }
+
+    // the closest wither skeleton that is after us, infinity for none, handed in each tick like perchFacts. the foe list can't
+    // answer this, it stops at FOE_RANGE and a skeleton gives up further out than that
+    public void angryWither(double nearest) {
+        this.angryWither = nearest;
     }
 
     public boolean perching() {
@@ -2269,7 +2279,8 @@ public final class CombatCommit {
         }
         // RUN_CLEAR and the sight count both stop short of a bow: 12 blocks is well inside SHOOTER_RANGE, and a skeleton round a
         // corner is one step from its line again. neither ending counts until it is out of range. the cap still ends the run
-        boolean bowRange = inBowRange(t);
+        // (a wither skeleton has no bow, it has 8 more blocks of walking after us, which comes to the same thing)
+        boolean bowRange = inBowRange(t) || witherAggro(t);
         // clear means nothing angry within RUN_CLEAR. the clock is on whether or not we are far enough yet, so the moment
         // we are far enough the answer is already in
         if (nearest <= RUN_CLEAR || bowRange) {
@@ -2334,6 +2345,14 @@ public final class CombatCommit {
     private static boolean inBowRange(Tick t) {
         for (Foe foe : t.foes()) {
             if (foe.bow() && foe.distance() <= CombatRules.SHOOTER_RANGE) return true;
+        }
+        return false;
+    }
+
+    private boolean witherAggro(Tick t) {
+        if (angryWither <= WITHER_AGGRO) return true;
+        for (Foe foe : t.foes()) {
+            if (foe.wither() && foe.distance() <= WITHER_AGGRO) return true;
         }
         return false;
     }

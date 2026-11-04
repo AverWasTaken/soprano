@@ -14,7 +14,7 @@ public final class RunZones {
     public static final double PACK_RADIUS = 12;
     // game ticks. three minutes is long enough for the hoglins to wander off and short enough that the zone is not forever
     public static final long EXPIRY_TICKS = 3 * 60 * 20L;
-    // two runs from the same spot are one zone, a new one just refreshes the clock
+    // two runs from the same spot are one zone of that size, a new one just refreshes the clock
     private static final double SAME_SPOT = 4;
     private static final int MAX = 16;
 
@@ -31,11 +31,9 @@ public final class RunZones {
         for (Zone zone : zones) {
             // (the clock going backwards is another world, nothing from the old one means anything)
             if (zone.at > now || now - zone.at >= EXPIRY_TICKS) continue;
-            if (Math.hypot(zone.x - x, zone.z - z) <= SAME_SPOT) {
-                // the same spot again: the fatter of the two radii wins, a pack zone must not shrink a bastion one
-                radius = Math.max(radius, zone.radius);
-                continue;
-            }
+            // a pack and a fat zone on one spot stay two zones. a merge would move the pack and restart its clock on a run that
+            // had nothing to do with it, and a pack zone still must not shrink a bastion one
+            if (zone.radius == radius && Math.hypot(zone.x - x, zone.z - z) <= SAME_SPOT) continue;
             next.add(zone);
         }
         next.add(new Zone(x, z, now, radius));
@@ -87,6 +85,20 @@ public final class RunZones {
             if (live(zone, now) && inside(zone, x, z)) return true;
         }
         return false;
+    }
+
+    // is (x, z) in a live wither pack zone. this is for picking spawners: the fat zones from a run off one skeleton don't count,
+    // one skeleton near a spawner is a fight we can have and 24 blocks is most of a fortress
+    public boolean coversPack(double x, double z, long now) {
+        return packZoneAt(x, z, now) != null;
+    }
+
+    // the middle of the pack zone covering (x, z) as {x, z}, null for none
+    public double[] packZoneAt(double x, double z, long now) {
+        for (Zone zone : zones) {
+            if (zone.radius == PACK_RADIUS && live(zone, now) && inside(zone, x, z)) return new double[]{zone.x, zone.z};
+        }
+        return null;
     }
 
     private static boolean live(Zone zone, long now) {
