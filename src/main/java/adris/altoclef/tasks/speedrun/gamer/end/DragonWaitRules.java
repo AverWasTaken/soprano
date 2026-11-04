@@ -22,6 +22,10 @@ public final class DragonWaitRules {
     // a fireball is dodged sideways when we are ahead of it and this close to its line
     public static final double FIREBALL_LINE_RANGE = 4;
     public static final double FIREBALL_SIDESTEP = 6;
+    // the sword fight: under this the crystals and the punk are how we get the respawn screen. the gap is so one heart of regen
+    // doesn't send us right back in
+    public static final double STAY_AWAY_BELOW = 10;
+    public static final double STAY_AWAY_UNTIL = 14;
 
     private DragonWaitRules() {
     }
@@ -39,6 +43,11 @@ public final class DragonWaitRules {
     }
 
     public record Spot(double x, double z) {
+    }
+
+    // canHeal: no food and a bar too low to regen means the wait never ends, and this fight has no clock to save us from that
+    public static boolean stayAway(boolean staying, double hp, boolean canHeal) {
+        return canHeal && hp < (staying ? STAY_AWAY_UNTIL : STAY_AWAY_BELOW);
     }
 
     public static boolean inGroundRing(double px, double pz, double fx, double fz) {

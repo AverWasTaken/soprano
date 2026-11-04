@@ -422,7 +422,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 continue;
             }
             BlockState state = world.getBlockState(hit.getBlockPos());
-            if (state.is(Blocks.VINE) || (targetClose && looseInTheWay(state))) {
+            // vines too: cutting the one that's in the ray to a log we can't reach yet just takes our way up away
+            if (targetClose && (state.is(Blocks.VINE) || looseInTheWay(state))) {
                 return hit.getBlockPos();
             }
         }

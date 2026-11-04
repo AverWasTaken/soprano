@@ -29,6 +29,7 @@ import adris.altoclef.tasks.speedrun.gamer.end.EndRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.BreathDodge;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -77,6 +78,7 @@ public class DragonPhase implements PhaseHandler {
     private Task _bridge;
     private MineAndCollectTask _endStone;
     private Task _runAway;
+    private int _breathOutTicks;
     private DragonDeadLatch _latch;
     private EndDropCache _drops;
     private KillEnderDragonWithBedsTask _bedTask;
@@ -215,6 +217,7 @@ public class DragonPhase implements PhaseHandler {
         _pickups.clear();
         _equip.clear();
         _runAway = null;
+        _breathOutTicks = 0;
         _onIsland = false;
         _pickupSeconds = 0;
         _blockSeconds = 0;
@@ -302,19 +305,34 @@ public class DragonPhase implements PhaseHandler {
 
     private Task breathStep(AltoClef mod) {
         _breath.updateBreath(mod);
+        boolean inCloud = touchingBreath(mod);
+        LocalPlayer me = mod.getPlayer();
+        _breathOutTicks = inCloud ? 0 : _breathOutTicks + 1;
+        // the chain's dodge does this too but lets go in the air, so a hop out of the cloud handed us straight back to the fight,
+        // and the fight walked us straight back in
+        boolean run = BreathDodge.keepRunning(inCloud, _runAway != null, _breath.isNearDragonBreath(me.blockPosition(), BreathDodge.CLEAR_BLOCKS),
+                _breathOutTicks, me.onGround(), me.getDeltaMovement().y);
+        // drop the task when it's over, its goal is frozen on the first cloud (CustomBaritoneGoalTask caches it) and the next cloud
+        // needs a fresh one. a run sitting at its goal counts as over: the runner keeps the old task for anything of the same
+        // class, so a tick of nothing is what gets a new goal looked at
+        if (!run || _runAway != null && _runAway.isFinished(mod)) {
+            _runAway = null;
+            return null;
+        }
+        _hudState = "Dodging dragon's breath";
+        if (_runAway == null) {
+            _runAway = _breath.getRunAwayTask();
+        }
+        return _runAway;
+    }
+
+    private boolean touchingBreath(AltoClef mod) {
         for (BlockPos in : WorldHelper.getBlocksTouchingPlayer(mod)) {
             if (_breath.isTouchingDragonBreath(in)) {
-                _hudState = "Dodging dragon's breath";
-                if (_runAway == null) {
-                    _runAway = _breath.getRunAwayTask();
-                }
-                return _runAway;
+                return true;
             }
         }
-        // out of the cloud: drop the task, its goal is frozen on the first cloud (CustomBaritoneGoalTask caches it), so the next
-        // cloud needs a fresh one or we would "run away" from a spot that is long gone
-        _runAway = null;
-        return null;
+        return false;
     }
 
     // dragon dead: into the exit portal as soon as it exists

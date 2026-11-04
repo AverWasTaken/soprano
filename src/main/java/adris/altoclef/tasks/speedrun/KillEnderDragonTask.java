@@ -9,10 +9,12 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
+import adris.altoclef.tasks.speedrun.gamer.end.DragonWaitRules;
 import adris.altoclef.util.slots.PlayerSlot;
 import net.minecraft.world.entity.EquipmentSlot;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -52,6 +54,10 @@ public class KillEnderDragonTask extends Task {
     private final TimerGame _lookDownTimer = new TimerGame(0.5);
     private final CrystalStep _crystals = new CrystalStep();
     private final PunkEnderDragonTask _punkTask = new PunkEnderDragonTask();
+    // the ring the bed fight waits on, breath and fireball dodge included
+    private final WaitForDragonAndPearlTask _keepClear = new WaitForDragonAndPearlTask(true);
+    // not cleared in onStart: a meal interrupts us and comes back through there
+    private boolean _stayingAway;
     // false for the outer islands trip: the gateways only show up once the dragon is dead, but we are not done after that
     private final boolean _enterExitPortal;
     // the level we pushed, for the hand over on a pause
@@ -180,6 +186,12 @@ public class KillEnderDragonTask extends Task {
             );
         }
 
+        if (stayAway(mod)) {
+            setDebugState("Too hurt for this, keeping clear", "Healing up");
+            _keepClear.setExitPortalTop(_exitPortalTop);
+            return _keepClear;
+        }
+
         // If we have no building materials (stone + cobble + end stone), get end stone
         // If there are crystals, suicide blow em up.
         // If there are no crystals, punk the dragon if it's close.
@@ -230,6 +242,18 @@ public class KillEnderDragonTask extends Task {
     @Override
     protected String toDebugString() {
         return "Killing Ender Dragon";
+    }
+
+    // the meal is the food chain's, it already eats under the same 14. what the crystals and the punk can't have is the hp
+    private boolean stayAway(AltoClef mod) {
+        float hp = mod.getPlayer().getHealth();
+        boolean canHeal = mod.getPlayer().getFoodData().getFoodLevel() >= CombatRules.REGEN_HUNGER || mod.getFoodChain().hasFood();
+        boolean next = _exitPortalTop != null && mod.getEntityTracker().entityFound(EnderDragon.class) && DragonWaitRules.stayAway(_stayingAway, hp, canHeal);
+        if (next != _stayingAway) {
+            Debug.logMessage(String.format("dragon: %s at hp %.1f", next ? "keeping clear" : "back to the fight", hp));
+            _stayingAway = next;
+        }
+        return next;
     }
 
     private boolean isRailingOnDragon() {

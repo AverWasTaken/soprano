@@ -52,6 +52,11 @@ public final class BreathDodge {
         return keep ? Move.RUN : picked;
     }
 
+    // the same rule for a caller that only ever runs. false is the moment to drop the run
+    public static boolean keepRunning(boolean inCloud, boolean running, boolean cloudClose, int ticksOut, boolean grounded, double ySpeed) {
+        return follow(inCloud ? Move.RUN : Move.NONE, running ? Move.RUN : Move.NONE, cloudClose, ticksOut, grounded, ySpeed) == Move.RUN;
+    }
+
     // a run that is still in the cloud and has not moved a block by now has nowhere to go (a wide pillar counts its own top
     // as floor). off the edge needs water, digging needs something we can dig in a few seconds. obsidian takes ~9 s, so on
     // a hard top even the last bucket goes over the side: standing in the cloud is the sure death, the clutch scoop usually

@@ -119,7 +119,7 @@ public final class NetherSweepPlanner {
         }
     };
 
-    // what the player has actually SEEN (block tracker + SeenFilter in the game, a set in tests)
+    // what we know is out there (the block tracker's loaded chunks in the game, a set in tests)
     public interface SightSource {
         Optional<RunState.Pos> nearestSeen(Sight sight);
     }
@@ -147,6 +147,8 @@ public final class NetherSweepPlanner {
     private static final int SAME_STRUCTURE_BLOCKS = 64;
     // fortresses are big and spill over cell borders, a given up one covers about this much
     private static final int EXHAUSTED_BLOCKS = 192;
+    // nylium this close to a forest we couldn't reach is that same forest behind that same rock
+    static final int WARPED_EXHAUSTED_BLOCKS = 64;
     // not asked for this long = something else had the wheel
     private static final double IDLE_SECONDS = 5;
     private static final int MAX_GAP_RESETS = 2;
@@ -268,7 +270,7 @@ public final class NetherSweepPlanner {
         return changed;
     }
 
-    // one kind only, so a caller that rotates through them gives each its own slice of the seen filter's raycast budget
+    // one kind only, so a caller can spread them over a few ticks instead of paying for all three at once
     public boolean scan(SightSource source, Sight sight) {
         Optional<RunState.Pos> pos = source.nearestSeen(sight);
         return pos.isPresent() && report(sight, pos.get());
@@ -329,11 +331,23 @@ public final class NetherSweepPlanner {
     }
 
     private boolean reportWarped(RunState.Pos pos) {
-        if (state.warpedForest != null) {
+        if (state.warpedForest != null || isGivenUpWarped(pos)) {
             return false;
         }
         state.warpedForest = pos;
         return true;
+    }
+
+    // same as isGivenUp, for nylium: dropped before the scan's nearest forty or the dud forest is all it ever looks at
+    public boolean isGivenUpWarped(RunState.Pos pos) {
+        return nearAny(state.warpedExhausted, pos, WARPED_EXHAUSTED_BLOCKS);
+    }
+
+    // the walk there stalled or ran out of time, so it's behind something. nothing else ever clears the forest and it survives a
+    // retry, so without this a bad one gets walked at for the rest of the run. goalMet flips back and the sweep can go again
+    public void giveUpWarped(RunState.Pos spot) {
+        state.warpedExhausted.add(spot);
+        state.warpedForest = null;
     }
 
     // the spawner ran dry (or we could not reach it): forget the fortress it sits in so the search looks for another cell.

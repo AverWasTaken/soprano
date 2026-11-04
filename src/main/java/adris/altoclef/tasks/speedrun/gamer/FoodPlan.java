@@ -12,7 +12,8 @@ import java.util.function.Consumer;
 // line minFoodUnits. held is the one valuation: the bag and the furnace screen we have open (raw meat at its cooked value), plus
 // what a smoker is cooking for us, minus the cooked value of raw meat nothing can cook (it gets eaten raw, 3 a porkchop and not 8).
 // what can cook depends on the phase: GATHER, IRON and PORTAL run the cook, so a standing smoker with fuel and three raw meat
-// makes dinner, from the nether on nothing does and the meat counts raw, a pending batch or not (GamerPhase.cooks).
+// makes dinner, from the nether on the plan counts on no cook and the meat counts raw, a pending batch or not (GamerPhase.cooks;
+// NetherPhase may still cook in place instead of a trip, FoodTripRules.cookHere, and that raises the bag when it happens).
 // counted is the same without that correction and is only for "did we get closer", held jumps by a chicken whenever a smoker comes
 // or goes. the lines are named so the two minFoodUnits cannot be mixed up: overworldMinimum is 70 (OverworldConfig), endFloor is 24
 // (EndConfig), floor is OverworldConfig.minHeldFoodUnits. pure: facts and configs in, numbers out

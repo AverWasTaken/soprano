@@ -30,8 +30,9 @@ public enum GamerPhase {
         return this == DONE || this == STUCK;
     }
 
-    // the phases that run the cook (the kit's COOK need, the furnace watch). from the nether on nothing loads a smoker or comes
-    // back to empty one, so meat in the bag is eaten raw whatever stands in the overworld
+    // the phases that run the cook (the kit's COOK need, the furnace watch). from the nether on nothing loads a smoker and comes back
+    // to empty it later, so meat in the bag counts raw whatever stands in the overworld. the nether's cook in place (FoodTripRules.cookHere)
+    // stands at the screen until it is done, so it is food when it lands in the bag and not a plan
     public boolean cooks() {
         return this == GATHER || this == IRON || this == PORTAL;
     }

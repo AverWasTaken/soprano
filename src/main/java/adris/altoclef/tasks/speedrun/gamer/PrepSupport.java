@@ -7,11 +7,10 @@ import net.minecraft.world.level.block.Blocks;
 import java.util.List;
 
 
-// the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
+// the side jobs the overworld phases share: taking our crafting table and furnace back, ruined portal chests,
 // village chests, the odd iron golem, and a bit of diamond, coal or gravel (for flint) when it is right there.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
-    private final DangerFilter danger = new DangerFilter();
     private final RuinedPortalLoot loot;
     private final VillageLoot village;
     private final VillageBeds villageBeds = new VillageBeds();
@@ -99,7 +98,6 @@ public final class PrepSupport {
     // fight already going outranks it, same as it outranks everything. a pickup that already started is not a side job, it runs
     // to the end (a half taken furnace is how stations got left behind)
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
-        danger.tick(mod, ctx.state());
         hud = null;
         // standing by the smoker is the plan, a mining detour that was going is over
         diamond.preempted(ctx.facts().gameTime());
@@ -210,7 +208,6 @@ public final class PrepSupport {
 
     // once per tick, before any job is asked
     public void beginTick(AltoClef mod, GamerContext ctx) {
-        danger.tick(mod, ctx.state());
         hud = null;
     }
 

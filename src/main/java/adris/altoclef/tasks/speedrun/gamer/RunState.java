@@ -222,6 +222,8 @@ public class RunState {
     public boolean netherRodsGaveUp;
     // fortresses we already gave up on (their blaze spawner never paid out)
     public List<Pos> fortressExhausted = new ArrayList<>();
+    // warped forests the walk never reached, same idea
+    public List<Pos> warpedExhausted = new ArrayList<>();
 
     // w6
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed

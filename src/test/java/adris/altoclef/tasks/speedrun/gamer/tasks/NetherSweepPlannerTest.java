@@ -197,6 +197,47 @@ public class NetherSweepPlannerTest {
         assertEquals(Kind.FOUND, planner.step(Goal.WARPED, 0, 0, 1).kind());
     }
 
+    @Test
+    public void aForestGivenUpOnIsForgottenAndTheSweepGoesAgain() {
+        planner.report(Sight.WARPED, pos(30, 30));
+        assertEquals(Kind.FOUND, planner.step(Goal.WARPED, 0, 0, 0).kind());
+        planner.giveUpWarped(pos(30, 30));
+        assertNull(state.warpedForest);
+        assertEquals(List.of(pos(30, 30)), state.warpedExhausted);
+        assertFalse(planner.goalMet(Goal.WARPED));
+        assertEquals(Kind.GOTO, planner.step(Goal.WARPED, 0, 0, 1).kind());
+    }
+
+    @Test
+    public void nyliumNearAGivenUpForestIsTheSameForest() {
+        planner.report(Sight.WARPED, pos(30, 30));
+        planner.giveUpWarped(pos(30, 30));
+        assertTrue(planner.isGivenUpWarped(pos(93, 30)));
+        assertFalse(planner.report(Sight.WARPED, pos(93, 30)));
+        assertNull(state.warpedForest);
+        // 64 out is somewhere else
+        assertFalse(planner.isGivenUpWarped(pos(94, 30)));
+        assertTrue(planner.report(Sight.WARPED, pos(94, 30)));
+        assertEquals(pos(94, 30), state.warpedForest);
+    }
+
+    @Test
+    public void aGivenUpForestSurvivesARelog() {
+        planner.report(Sight.WARPED, pos(30, 30));
+        planner.giveUpWarped(pos(30, 30));
+        RunState back = new Gson().fromJson(RunStateStore.toJson(state), RunState.class);
+        assertEquals(state.warpedExhausted, back.warpedExhausted);
+        assertNull(back.warpedForest);
+        NetherSweepPlanner again = new NetherSweepPlanner(back, cfg, ROW, 12);
+        assertFalse(again.report(Sight.WARPED, pos(40, 30)));
+    }
+
+    @Test
+    public void aSaveFromBeforeTheListStillLoads() {
+        RunState old = new Gson().fromJson("{}", RunState.class);
+        assertTrue(old.warpedExhausted.isEmpty());
+    }
+
     // asks once a second like the task does (a bigger gap reads as "something else had the wheel")
     private static Action stepAt(NetherSweepPlanner p, Goal goal, int px, int pz, int from, int to) {
         Action a = null;

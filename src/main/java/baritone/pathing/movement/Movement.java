@@ -34,10 +34,12 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import baritone.utils.ExperimentalMovement;
 
 public abstract class Movement implements IMovement, MovementHelper {
@@ -76,6 +78,12 @@ public abstract class Movement implements IMovement, MovementHelper {
     private final SwimStall swimStall = new SwimStall();
     private SwimEscape swimEscape = new SwimEscape();
     private boolean standingUp;
+    // this tick's answer for the player's column and dest's, see LowRoof
+    private boolean lowRoofOwn;
+    private boolean lowRoofDest;
+    private LowRoof.Lip lowRoofLip = new LowRoof.Lip();
+    // temporary (swimprobe)
+    private boolean probeSprintBefore;
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
@@ -148,7 +156,12 @@ public abstract class Movement implements IMovement, MovementHelper {
         ctx.player().getAbilities().flying = false;
         currentState = updateState(currentState);
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) || ctx.player().isInWater()) {
-            if (standUpToEscape()) {
+            checkLowRoof();
+            boolean sinking = sinkToEscape();
+            // sinkToEscape starts every tick by clearing this. it's what stops PathExecutor arming sprint, and an armed sprint
+            // is all MixinEntity needs to latch the swim state again
+            standingUp |= lowRoof();
+            if (sinking) {
                 swimStall.reset();
             } else if (shouldSwim()) {
                 // sprint is what enters and keeps the swim state. vanilla only STARTS sprinting from
@@ -157,6 +170,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 // MixinEntity.allowSwimStart then latches the swim state this same tick instead of
                 // waiting for gravity to pull the eye under
                 currentState.setInput(Input.SPRINT, true);
+                probeSprintBefore = ctx.player().isSprinting();
                 ctx.player().setSprinting(true);
                 boolean floating = ctx.player().isSwimming() && !ctx.player().onGround();
                 if (currentState.getStatus() == MovementStatus.RUNNING) {
@@ -169,7 +183,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                     if (!swimStall.diving()) {
                         preTurnIntoTheBend();
                     }
-                } else if (!ctx.player().isSwimming() && ctx.player().onGround() && ctx.player().position().y < dest.y + 0.6) {
+                } else if (!ctx.player().isSwimming() && ctx.player().onGround() && ctx.player().position().y < dest.y + BOB_CLEARANCE) {
                     // swim state hasn't latched yet and we're on the bottom: the old bob, for one tick
                     currentState.setInput(Input.JUMP, true);
                 }
@@ -177,7 +191,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 swimStall.reset();
                 // (a movement that shut the swim gate lets go of sprint even before the swim state latches, or the mixin
                 // would latch it this very tick)
-                if (ExperimentalMovement.allowSwimming() && (ctx.player().isSwimming() || !swimAllowed())) {
+                if (ExperimentalMovement.allowSwimming() && (ctx.player().isSwimming() || !swimAllowed() || lowRoof())) {
                     // standing up to breathe (see shouldSwim). sprintInWater is on by default and traverse
                     // requests sprint every tick, which would keep us crawling along the bottom with our
                     // head under, so drop it explicitly
@@ -186,12 +200,16 @@ public abstract class Movement implements IMovement, MovementHelper {
                 }
                 // the dest.y rule is the old bob. deep under (a clutch into a pool, a dive gone long) dest can be level with
                 // us or below and that never lets go of the bottom, so running low on air goes up no matter where dest is
-                if (ctx.player().position().y < dest.y + 0.6 || Surfacing.wantsAir(ctx.player())) {
+                if (lowRoof()) {
+                    obeyLowRoof();
+                } else if (ctx.player().position().y < dest.y + BOB_CLEARANCE || Surfacing.wantsAir(ctx.player())) {
                     currentState.setInput(Input.JUMP, true);
                 }
             }
         } else {
             swimStall.reset();
+            // nothing else clears it once we're out of the water, and it would hold sprint off for the rest of the movement
+            standingUp = false;
         }
         if (ctx.player().isInWall()) {
             ctx.getSelectedBlock().ifPresent(pos -> MovementHelper.switchToBestToolFor(ctx, BlockStateInterface.get(ctx, pos)));
@@ -224,14 +242,17 @@ public abstract class Movement implements IMovement, MovementHelper {
      * at any depth above 0. This is the middle of that band: head out, shoulders in, as much margin as
      * possible each way
      */
-    private static final double WATERLINE_DEPTH = 0.15;
+    static final double WATERLINE_DEPTH = 0.15;
 
     /**
      * How far above a destination's block the feet aim when that would be higher than the waterline, i.e.
      * climbing out onto land. Below the waterline (a destination on the water itself, or a shore at the
      * same level that step assist handles) the waterline wins
      */
-    private static final double DEST_CLEARANCE = 0.3;
+    static final double DEST_CLEARANCE = 0.3;
+
+    // the old bob holds jump until the feet are this far above dest's block
+    static final double BOB_CLEARANCE = 0.6;
 
     /**
      * Air ticks (of the 300 max) at which a swimmer crawling along the bottom of shallow water stands up to
@@ -287,6 +308,9 @@ public abstract class Movement implements IMovement, MovementHelper {
                 || ctx.player().getFoodData().getFoodLevel() <= 6) {
             return false;
         }
+        if (lowRoof()) {
+            return false;
+        }
         if (currentState.getStatus() == MovementStatus.PREPPING) {
             // something's in the way and prepared() is mining it. the swim pose is the worst place to do
             // that from: vanilla mines 5x slower off the ground and 5x slower again with the eye under,
@@ -323,7 +347,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         double feetY = ctx.player().position().y;
         double surfaceY = feetY + ctx.player().getFluidHeight(FluidTags.WATER);
         // the waterline, unless the movement is taking us higher (climbing out onto land)
-        double targetY = Math.max(surfaceY - WATERLINE_DEPTH, dest.y + DEST_CLEARANCE);
+        double targetY = LowRoof.waterline(surfaceY, dest.y);
         if (swimStall.diving()) {
             // down from the waterline, where the box pokes into head height, to just above dest's floor
             targetY = dest.y + DIVE_FEET;
@@ -393,23 +417,124 @@ public abstract class Movement implements IMovement, MovementHelper {
         }
     }
 
-    // the cell keeps failing whichever way out we pick, so stop swimming and stand up for a moment, see SwimEscape
-    private boolean standUpToEscape() {
+    private boolean lowRoof() {
+        return lowRoofOwn || lowRoofDest;
+    }
+
+    // once a tick, before anybody asks. a movement that says no to the swim (pillar) keeps its own keys, that one has to climb
+    private void checkLowRoof() {
+        lowRoofOwn = false;
+        lowRoofDest = false;
+        if (!swimAllowed() || !ExperimentalMovement.allowSwimming() || !ctx.player().isInWater()) {
+            return;
+        }
+        int feet = Mth.floor(ctx.player().getY());
+        lowRoofOwn = LowRoof.tooLow(roofColumn(ctx.player().getX(), ctx.player().getZ(), feet), dest.y);
+        lowRoofDest = LowRoof.tooLow(roofColumn(dest.x + 0.5, dest.z + 0.5, feet), dest.y);
+    }
+
+    private LowRoof.Column roofColumn(double x, double z, int feet) {
+        double top = LowRoof.waterTop(ctx.world(), Mth.floor(x), feet, Mth.floor(z));
+        return new LowRoof.Column() {
+            @Override
+            public double waterTop() {
+                return top;
+            }
+
+            @Override
+            public boolean standingFits(double feetY) {
+                return standingBoxFits(x, feetY, z);
+            }
+
+            @Override
+            public double roofOver(double feetY) {
+                double roof = Double.POSITIVE_INFINITY;
+                for (VoxelShape shape : ctx.world().getBlockCollisions(ctx.player(), standingBox(x, feetY, z))) {
+                    roof = Math.min(roof, shape.min(Direction.Axis.Y));
+                }
+                return roof;
+            }
+        };
+    }
+
+    // deflated like the server's own check, or a box touching the roof exactly at the cap would count as stuck in it
+    private AABB standingBox(double x, double feetY, double z) {
+        return ctx.player().getDimensions(Pose.STANDING).makeBoundingBox(x, feetY, z).deflate(1.0E-5);
+    }
+
+    private boolean standingBoxFits(double x, double feetY, double z) {
+        return ctx.world().noBlockCollision(ctx.player(), standingBox(x, feetY, z));
+    }
+
+    // these go over whatever the movement asked for: traverse's wrong y branch presses jump all by itself
+    private void obeyLowRoof() {
+        boolean running = currentState.getStatus() == MovementStatus.RUNNING;
+        double feetY = ctx.player().position().y;
+        boolean jump = LowRoof.jump(lowRoofOwn, ctx.player().getPose() == Pose.STANDING, feetY, dest.y);
+        // still prepping in open water: nobody's pressed against the lip, and prepared() wants the eye out to mine from, so the old bob stays
+        boolean bob = !lowRoofOwn && !running && feetY < dest.y + BOB_CLEARANCE;
+        currentState.setInput(Input.JUMP, jump || bob || Surfacing.wantsAir(ctx.player()));
+        boolean fits = !lowRoofOwn && lowRoofDest && standingBoxFits(dest.x + 0.5, feetY, dest.z + 0.5);
+        LowRoof.Forward forward = lowRoofLip.tick(lowRoofOwn, lowRoofDest, fits, running);
+        if (LowRoof.leanIn(forward, running, currentState.getTarget().hasToForceRotations(), ctx.playerFeet().y, src.y, dest.y)) {
+            MovementHelper.moveTowards(ctx, currentState, dest);
+        }
+        if (forward == LowRoof.Forward.GO) {
+            return;
+        }
+        currentState.setInput(Input.MOVE_FORWARD, false);
+        currentState.setInput(Input.MOVE_BACK, false);
+        currentState.setInput(Input.MOVE_LEFT, false);
+        currentState.setInput(Input.MOVE_RIGHT, false);
+        if (forward == LowRoof.Forward.GIVE_UP) {
+            logDebug("swim: never sank low enough to get under the roof at " + dest + ", replanning");
+            currentState.setStatus(MovementStatus.FAILED);
+        }
+    }
+
+    // the cell keeps failing whichever way out we pick, so stop swimming and sink out of it, see SwimEscape
+    private boolean sinkToEscape() {
         standingUp = false;
         if (currentState.getStatus() != MovementStatus.RUNNING || !ctx.player().isInWater()) {
             return false;
         }
         PathingBehavior pb = (PathingBehavior) baritone.getPathingBehavior();
         int exits = pb.failedMoves().exitsFrom(src, ctx.world(), System.currentTimeMillis());
-        if (!swimEscape.tick(exits)) {
-            return false;
-        }
-        if (swimEscape.began()) {
-            logDirect("swim: " + exits + " exits from " + src + " failed, standing up to get out");
+        // needsAir, not wantsAir: low on air under a flooded roof isn't the moment to sit still either. the normal swim
+        // takes over from here and it's the one that goes up when up is open
+        boolean needsAir = Surfacing.needsAir(ctx.player().getAirSupply(), ctx.player().isUnderWater());
+        // both ends: a move that goes down wants us under src, that's just the move working
+        boolean belowMove = ctx.playerFeet().y < Math.min(src.y, dest.y);
+        switch (swimEscape.tick(exits, needsAir, ctx.player().onGround(), belowMove)) {
+            case NONE -> {
+                return false;
+            }
+            case GIVE_BACK -> {
+                // floating back up for another go is the loop we came here to break, the replan gets to start from down here
+                logDebug("swim: sank out of " + src + ", replanning from here");
+                currentState.setStatus(MovementStatus.FAILED);
+                return true;
+            }
+            case SINK -> {
+                if (swimEscape.changed()) {
+                    logDirect("swim: " + exits + " exits from " + src + " failed, sinking to get out");
+                }
+                currentState.setInput(Input.MOVE_FORWARD, false);
+                currentState.setInput(Input.MOVE_BACK, false);
+                currentState.setInput(Input.MOVE_LEFT, false);
+                currentState.setInput(Input.MOVE_RIGHT, false);
+                currentState.setInput(Input.JUMP, false);
+            }
+            case WALK -> {
+                if (swimEscape.changed()) {
+                    logDebug("swim: on the bottom at " + src + ", walking out");
+                }
+                // a climb still needs the bob, anything else would only lift us back off the floor
+                currentState.setInput(Input.JUMP, dest.y > src.y);
+            }
         }
         currentState.setInput(Input.SPRINT, false);
         ctx.player().setSprinting(false);
-        currentState.setInput(Input.JUMP, true);
         standingUp = true;
         return true;
     }
@@ -460,7 +585,13 @@ public abstract class Movement implements IMovement, MovementHelper {
                 + " floating=" + floating + " pose=" + ctx.player().getPose() + " swimming=" + ctx.player().isSwimming()
                 + " inWater=" + ctx.player().isInWater() + " underWater=" + ctx.player().isUnderWater() + " onGround=" + ctx.player().onGround()
                 + " box=" + box.minY + ".." + box.maxY + " src+1=" + blockName(src.above(1)) + " dest+1=" + blockName(dest.above(1)) + " dest+2=" + blockName(dest.above(2))
-                + " src+2=" + blockName(src.above(2)) + " sprinting=" + ctx.player().isSprinting() + " move=" + getClass().getSimpleName() + " branch=" + swimStall.lastGiveUp);
+                + " src+2=" + blockName(src.above(2)) + " sprinting=" + ctx.player().isSprinting() + " move=" + getClass().getSimpleName() + " branch=" + swimStall.lastGiveUp
+                + " delta=" + ctx.player().getDeltaMovement()
+                // all three as of last tick, this tick's aren't decided yet (holdWaterline asks for jump after the stall fires).
+                // sprint is the flag from before we armed it, sprinting= above is always true here and the key is always cleared
+                + " forward=" + baritone.getInputOverrideHandler().isInputForcedDown(Input.MOVE_FORWARD)
+                + " jump=" + baritone.getInputOverrideHandler().isInputForcedDown(Input.JUMP)
+                + " sprintBefore=" + probeSprintBefore);
     }
 
     private String blockName(BlockPos pos) {
@@ -692,9 +823,12 @@ public abstract class Movement implements IMovement, MovementHelper {
         swimStall.reset();
         swimEscape = new SwimEscape();
         standingUp = false;
+        lowRoofOwn = false;
+        lowRoofDest = false;
+        lowRoofLip = new LowRoof.Lip();
     }
 
-    // true on ticks the swim escape is holding us upright, PathExecutor must not turn sprint back on over it
+    // true on ticks the swim escape has the keys or a low roof is around, PathExecutor must not turn sprint back on over it
     public boolean standingUp() {
         return standingUp;
     }

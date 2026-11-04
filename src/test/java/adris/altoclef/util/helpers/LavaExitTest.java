@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import static adris.altoclef.util.helpers.LavaWorld.Cell.AIR;
 import static adris.altoclef.util.helpers.LavaWorld.Cell.LAVA;
 import static adris.altoclef.util.helpers.LavaWorld.Cell.STONE;
 import static org.junit.Assert.assertEquals;
@@ -137,6 +138,67 @@ public class LavaExitTest {
         // two up from the floor cell is not a jump yet, a cell higher in the pool it is
         assertFalse(LavaExit.withinHop(exit, 0, 62, 10));
         assertTrue(LavaExit.withinHop(nearest(0, 63, 10, w), 0, 63, 10));
+    }
+
+    @Test
+    public void magmaRightBesideUsBeatsARockSixAway() {
+        // losing this one means no hop at all and a long crawl through lava for the sake of a little fire
+        LavaWorld w = lake().putMagma(6, 63, 10);
+        LavaExit.Cell exit = nearest(5, 63, 10, w);
+        assertEquals(new LavaExit.Cell(6, 64, 10), exit);
+        assertTrue(LavaExit.withinHop(exit, 5, 63, 10));
+    }
+
+    @Test
+    public void anExactTieGoesToTheNonMagmaEitherWayRound() {
+        LavaWorld magmaEast = lake().putMagma(6, 63, 10).set(4, 63, 10, STONE);
+        assertEquals(new LavaExit.Cell(4, 64, 10), nearest(5, 63, 10, magmaEast));
+        LavaWorld magmaWest = lake().putMagma(4, 63, 10).set(6, 63, 10, STONE);
+        assertEquals(new LavaExit.Cell(6, 64, 10), nearest(5, 63, 10, magmaWest));
+    }
+
+    @Test
+    public void theSlackIsTwoAndNotThree() {
+        // magma is 1 over + 1 up = 2. a dry floor two over at our own level is 4, that's within it
+        LavaWorld within = lake().putMagma(6, 63, 10).set(5, 63, 12, AIR);
+        assertEquals(new LavaExit.Cell(5, 63, 12), nearest(5, 63, 10, within));
+        // the top of a rock two over is 4 + 1 = 5, that's not
+        LavaWorld past = lake().putMagma(6, 63, 10).set(3, 63, 10, STONE);
+        assertEquals(new LavaExit.Cell(6, 64, 10), nearest(5, 63, 10, past));
+    }
+
+    @Test
+    public void aNonMagmaOutOfHopRangeDoesNotGetIn() {
+        // magma at 2, 2 and one up is 9, in hop range. a rock 3 over and one up is 10: within the slack, but that's a swim
+        LavaWorld w = lake().putMagma(7, 63, 12).set(8, 63, 10, STONE);
+        assertEquals(new LavaExit.Cell(7, 64, 12), nearest(5, 63, 10, w));
+    }
+
+    @Test
+    public void nothingButMagmaIsStillAWayOut() {
+        assertEquals(new LavaExit.Cell(6, 64, 10), nearest(5, 63, 10, lake().putMagma(6, 63, 10).putMagma(3, 63, 10)));
+    }
+
+    // a one wide channel at x = 5 with a lip on each side, one up from the lava
+    private static LavaWorld channel() {
+        return lake().putMagma(4, 63, 10).set(6, 63, 10, STONE);
+    }
+
+    @Test
+    public void underIsTheSideOfTheColumnWeAreHangingOff() {
+        assertEquals(new LavaExit.Cell(6, 64, 10), LavaExit.under(5.8, 64, 10.5, channel()));
+        assertEquals(new LavaExit.Cell(4, 64, 10), LavaExit.under(5.1, 64, 10.5, channel()));
+    }
+
+    @Test
+    public void underIsNothingWhenOurBoxIsOverNothing() {
+        assertNull(LavaExit.under(5.5, 64, 10.5, channel()));
+        assertNull(LavaExit.under(5.65, 64, 10.5, channel()));
+    }
+
+    @Test
+    public void underWantsRoomToStand() {
+        assertNull(LavaExit.under(5.8, 64, 10.5, lake().set(6, 63, 10, STONE).set(6, 65, 10, STONE)));
     }
 
     private static LavaExit.Cell stair(int x, int y, int z, LavaWorld w, float yaw) {

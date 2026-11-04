@@ -51,6 +51,14 @@ public class PearlHuntWalkTest {
     }
 
     @Test
+    public void thereMeansTwentyFourFlatAndEightUp() {
+        assertTrue(PearlHuntTask.atForest(24, 0, 0));
+        assertTrue(PearlHuntTask.atForest(0, -8, 0));
+        assertFalse(PearlHuntTask.atForest(24.5, 0, 0));
+        assertFalse(PearlHuntTask.atForest(0, 8.5, 0));
+    }
+
+    @Test
     public void onlyALongGapCountsAsAway() {
         assertFalse(PearlHuntTask.awayLong(Long.MIN_VALUE, 5000));
         assertFalse(PearlHuntTask.awayLong(1000, 1200));

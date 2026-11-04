@@ -15,6 +15,8 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.SmeltTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.slots.SmokerSlot;
 import adris.altoclef.ui.HudText;
@@ -66,6 +68,22 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
 
     public void ignoreMaterials() {
         _doTask.ignoreMaterials();
+    }
+
+    // only what is in the bag gets cooked. the target is fixed when the task is made, so one cooked chop eaten mid batch reads as
+    // meat we are short of, and "go get it" walked off to hunt with the rest of the batch still in the smoker
+    public void keepToTheBag() {
+        _doTask._keepToTheBag = true;
+    }
+
+    // the last look at the screen had meat in the slots. coal alone doesn't count, that one has nothing to come back to
+    public boolean holdsMeat() {
+        return !_doTask._smokerCache.materialSlot.isEmpty() || !_doTask._smokerCache.outputSlot.isEmpty();
+    }
+
+    // short of fuel with nowhere to get it (see canFetchFuel)
+    public boolean outOfFuel() {
+        return _doTask._outOfFuel;
     }
 
     @Override
@@ -154,6 +172,10 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
         private final SmokerCache _smokerCache = new SmokerCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        private boolean _keepToTheBag;
+        // keepToTheBag: slots and bag both empty with the target still short, because some of it got eaten. the target never fills
+        private boolean _batchOver;
+        private boolean _outOfFuel;
         // async cooking: everything is in the smoker and we walked away, this task is done and must not walk back to it
         private boolean _loaded;
         // recordStranded left a job for what the screen last showed: once per look, a second stop (an interrupt, then the end) must not
@@ -191,7 +213,13 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
 
         @Override
         public boolean isFinished(AltoClef mod) {
-            return _loaded;
+            return _loaded || _batchOver;
+        }
+
+        // CollectFuelTask out of the overworld is a walk home, and a cook that keeps to the bag is here so we don't have to do that.
+        // the cook gets told instead, and it gives up the normal way
+        private boolean canFetchFuel() {
+            return !_keepToTheBag || WorldHelper.getCurrentDimension() == Dimension.OVERWORLD;
         }
 
         @Override
@@ -229,7 +257,7 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
                     outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0, totalFuelInSmoker);
 
             // We don't have enough materials...
-            if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
+            if (!_keepToTheBag && mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
                 setDebugState("Getting Materials");
                 // the shortfall, not the whole target, same as the furnace
                 return getMaterialTask(new ItemTarget(_target.getMaterial(), materialsNeeded));
@@ -243,11 +271,18 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
                 double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
                 double trip = _dryInside.fetchTarget(bagFuel);
                 if (trip > 0) {
+                    if (!canFetchFuel()) {
+                        setDebugState("Out of fuel and none to find here");
+                        _outOfFuel = true;
+                        return null;
+                    }
                     setDebugState("Getting Fuel");
                     return new CollectFuelTask(trip);
                 }
                 boolean lacking = _smokerCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
-                if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
+                // can't fetch: this one is a guess from outside (a new smelt has seen no fire yet), so go and look. the check inside the
+                // open screen reads the real slots and lands in the branch above
+                if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime()) && canFetchFuel()) {
                     setDebugState("Getting Fuel");
                     // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
                     // there is nothing to round up for. 8 items is one coal, not two
@@ -394,7 +429,17 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
                     - mod.getItemStorage().getItemCountInventoryOnly(_target.getItem().getMatches())
                     - (_target.getItem().matches(output.getItem()) ? output.getCount() : 0);
             // We don't have the right material or we need more
-            if (!_allMaterials.matches(material.getItem()) || neededMaterialsInSlot > material.getCount()) {
+            // the bag has none left to add, so asking for more only stands in front of the fuel below. the cursor counts: a whole
+            // stack on its way to the slot is not in the bag for the one tick it takes
+            boolean bagDry = _keepToTheBag && mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) == 0
+                    && !materialTarget.matches(StorageHelper.getItemStackInCursorSlot().getItem());
+            // the cursor has to be clear as well, the last cooked one rides it on the way to the bag. and the menu has to have heard from
+            // the server: a screen just opened shows every slot empty for a tick, with the whole batch sitting in there
+            if (bagDry && material.isEmpty() && StorageHelper.getItemStackInCursorSlot().isEmpty() && mod.getPlayer().containerMenu.getStateId() > 0) {
+                _batchOver = true;
+                return null;
+            }
+            if (!bagDry && (!_allMaterials.matches(material.getItem()) || neededMaterialsInSlot > material.getCount())) {
                 int materialsAlreadyIn = (materialTarget.matches(material.getItem()) ? material.getCount() : 0);
                 setDebugState("Moving Materials");
                 return new MoveItemToSlotFromInventoryTask(new ItemTarget(materialTarget, neededMaterialsInSlot - materialsAlreadyIn), SmokerSlot.INPUT_SLOT_MATERIALS);

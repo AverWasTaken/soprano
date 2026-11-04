@@ -42,7 +42,9 @@ import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.HashMap;
@@ -105,6 +107,10 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _armorTask;
     // only RoomPhase's instance sets this (prepAhead), see portalCenter
     private BlockPos _prepAt;
+    // the spare bed's waiver has said its line, until it stops applying
+    private boolean _spareSaid;
+    // set while the spare is all that's missing: the pick has to stand within reach of this. null = any distance
+    private BlockPos _spareAt;
     private PortalDig _portalDig = new PortalDig();
 
     @Override
@@ -292,8 +298,15 @@ public class EndPrepPhase implements PhaseHandler {
         noteGate(mod, ctx, gap, armorFloor);
         noteErrandBlocks(mod, state);
         int lacking = EndGear.bedShortfall(ctx.facts(), cfg.beds, EndGear.roomBedOwed(state, cfg));
+        // ahead of the errand and the clocks, or going without would still look like a search that's short
+        boolean spareOnly = lacking > 0 && ctx.facts().bedsInBag() >= cfg.beds;
+        boolean waived = spareOnly && spareWaived(mod, ctx, cfg, at);
+        if (waived) {
+            lacking = 0;
+        }
+        _spareAt = spareOnly && !waived ? at : null;
         noteShort(mod, ctx, lacking);
-        Task step = lacking > 0 ? bedErrand(mod, ctx, lacking) : null;
+        Task step = lacking > 0 ? bedErrand(mod, ctx, lacking) : waived ? spareOnFloor(mod) : null;
         if (step == null && gearToo) {
             step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
@@ -321,6 +334,29 @@ public class EndPrepPhase implements PhaseHandler {
             ctx.log("room: topping food up from " + (food.held() - food.pending()) + ", want " + cfg.wantFoodUnits);
         }
         return foodStep(ctx, cfg.wantFoodUnits);
+    }
+
+    private boolean spareWaived(AltoClef mod, GamerContext ctx, EndConfig cfg, BlockPos at) {
+        GamerFacts f = ctx.facts();
+        // an actual empty slot, not f.bagFull(): that one calls a bag with junk in it roomy, and this isn't worth throwing things for
+        boolean noFreeSlot = StorageHelper.freeBagSlots(mod) == 0;
+        // from the start and not from us: that's where the room bed goes, and the bot may be off on an errand
+        boolean near = mod.getBlockTracker().getNearestTracking(Vec3.atCenterOf(at),
+                p -> EndGear.spareBedInReach(at.getX(), at.getZ(), p.getX(), p.getZ()) && bedAllowed(mod, p), CollectBedTask.BEDS).isPresent();
+        boolean waived = EndGear.spareBedWaived(EndGear.roomBedOwed(ctx.state(), cfg), f.bedsInBag(), cfg.beds, KitPlanner.usableWool(f) / 3, near, noFreeSlot);
+        if (waived && !_spareSaid) {
+            ctx.log("room: going without the spare bed, " + (near ? "no room for it in the bag" : "none within " + EndGear.SPARE_BED_REACH + " of the start"));
+        }
+        _spareSaid = waived;
+        return waived;
+    }
+
+    // the spare we just broke can be the last one close by, and it's still on the floor. only that though: the miner also reads as busy
+    // on its way to a bed that's still standing, and going without means stop walking
+    private Task spareOnFloor(AltoClef mod) {
+        boolean broken = _bedTarget != null && mod.getWorld().hasChunkAt(_bedTarget)
+                && !(mod.getWorld().getBlockState(_bedTarget).getBlock() instanceof BedBlock);
+        return broken ? bedMineTail(mod) : null;
     }
 
     private void noteErrandBlocks(AltoClef mod, RunState state) {
@@ -427,8 +463,11 @@ public class EndPrepPhase implements PhaseHandler {
         EndGear.BedPlan plan = EndGear.bedPlan(woolBeds, bed != null);
         // the bed we just broke is still on the floor: the lookup is empty but the pickup is not done (bounded, a drop that never
         // shows up must not hold us)
-        if (plan != EndGear.BedPlan.MINE && _bedMine != null && _bedMine.isActive() && !_bedMine.isFinished(mod) && _bedMineTail++ < 400) {
-            return _bedMine;
+        if (plan != EndGear.BedPlan.MINE) {
+            Task tail = bedMineTail(mod);
+            if (tail != null) {
+                return tail;
+            }
         }
         switch (plan) {
             case MINE -> {
@@ -458,6 +497,10 @@ public class EndPrepPhase implements PhaseHandler {
         }
     }
 
+    private Task bedMineTail(AltoClef mod) {
+        return _bedMine != null && _bedMine.isActive() && !_bedMine.isFinished(mod) && _bedMineTail++ < 400 ? _bedMine : null;
+    }
+
     private static String shortHud(int lacking, String doing) {
         return "Short " + lacking + (lacking == 1 ? " bed: " : " beds: ") + doing;
     }
@@ -466,7 +509,7 @@ public class EndPrepPhase implements PhaseHandler {
     // same distance don't get to play tennis with us
     private BlockPos bedTarget(AltoClef mod) {
         BlockTracker tracker = mod.getBlockTracker();
-        if (_bedTarget == null || tracker.unreachable(_bedTarget) || !bedOk(mod, _bedTarget)
+        if (_bedTarget == null || tracker.unreachable(_bedTarget) || !bedOk(mod, _bedTarget) || !spareFits(_bedTarget)
                 || !tracker.getKnownLocations(CollectBedTask.BEDS).contains(_bedTarget)) {
             _bedTarget = nearestBed(mod);
         }
@@ -474,13 +517,25 @@ public class EndPrepPhase implements PhaseHandler {
     }
 
     private BlockPos nearestBed(AltoClef mod) {
-        Predicate<BlockPos> ok = p -> bedOk(mod, p) && WorldHelper.canBreak(mod, p);
+        Predicate<BlockPos> ok = p -> spareFits(p) && bedAllowed(mod, p);
         return mod.getBlockTracker().getNearestTracking(ok, CollectBedTask.BEDS).orElse(null);
     }
 
-    // any distance, but not the bed we respawn at, and not one on copper (that's a trial chamber, CollectBedTask blacklists those too)
+    // the waiver only says a close one exists, the pick goes by distance from us. and the target sticks, so one picked for the
+    // fight's beds would carry on across the map as the spare
+    private boolean spareFits(BlockPos p) {
+        return _spareAt == null || EndGear.spareBedInReach(_spareAt.getX(), _spareAt.getZ(), p.getX(), p.getZ());
+    }
+
+    private static boolean bedAllowed(AltoClef mod, BlockPos p) {
+        return bedOk(mod, p) && WorldHelper.canBreak(mod, p);
+    }
+
+    // any distance, but not the bed we respawn at, not one way down low, and not one on copper (that's a trial chamber, CollectBedTask
+    // blacklists those too)
     private static boolean bedOk(AltoClef mod, BlockPos p) {
         return !Respawn.isSpawnBed(p.getX(), p.getY(), p.getZ())
+                && !EndGear.bedTooLow(p.getY())
                 && !ArrayUtils.contains(ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS), mod.getWorld().getBlockState(p.below()).getBlock());
     }
 

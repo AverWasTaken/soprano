@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.portal;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceStructureBlockTask;
@@ -8,6 +9,7 @@ import adris.altoclef.tasks.construction.compound.ConstructNetherPortalBucketTas
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Inv;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Kind;
 import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Layout;
@@ -33,12 +35,14 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -49,10 +53,8 @@ import java.util.function.Supplier;
 // it only ever makes the portal faster. anything that goes wrong (no site, a cell that won't cast, the clock) ends in
 // failed(), and the phase falls back to the old per block cast
 public class LPortalTask extends Task {
-    // the search looks at every lake in the loaded chunks, walks to one that passed and builds there. walks feed the phase's
-    // 120 s stall clock, waiting doesn't (that ends in the phase's free retry instead of this cap). it counts our own ticks and
-    // not the wall clock, so a snack or a fight in the middle doesn't eat it
-    private static final int SEARCH_TICKS = 20 * 300;
+    // the search looks at every lake in the loaded chunks, walks to one that passed and builds there. BuildClock.poolOut says when
+    // that has gone on long enough
     private static final int SCAN_GAP = 20 * 3;
     // layouts surveyed a tick, each full check is a couple hundred reads
     private static final int LAYOUTS_PER_TICK = 6;
@@ -69,7 +71,7 @@ public class LPortalTask extends Task {
     private static final int CLICK_GAP = 8;
 
     private int tick;
-    private int searchStart = -1;
+    private int droppedSites;
     // the build clock and the clearing clock (BuildClock), and whether the last step was clearing
     private BuildClock clock = new BuildClock();
     private boolean prepping;
@@ -109,6 +111,9 @@ public class LPortalTask extends Task {
     private volatile boolean scanned;
     private int lastKick = -100000;
     private String huntHud = "";
+    // what the log was already told. a half read lake comes back every 10 s with the same news
+    private final Set<String> saidLakes = new HashSet<>();
+    private P saidTarget;
 
     // rejected = the lakes earlier tries gave up on (the phase keeps the list, so a retry doesn't walk to them again)
     public LPortalTask(List<P> rejected) {
@@ -250,6 +255,10 @@ public class LPortalTask extends Task {
         if (failing != null) {
             return cleanUp(mod);
         }
+        String out = BuildClock.poolOut(tick, droppedSites, layout != null && !prepping);
+        if (out != null) {
+            return giveUp(out + " (" + hunt.tally() + ")");
+        }
         if (unstick != null && unstick.isActive() && !unstick.isFinished(mod)) {
             setDebugState("shaking loose");
             return unstick;
@@ -325,12 +334,6 @@ public class LPortalTask extends Task {
     // ---- finding the spot ----
 
     private Task search(AltoClef mod) {
-        if (searchStart < 0) {
-            searchStart = tick;
-        }
-        if (tick - searchStart > SEARCH_TICKS) {
-            return giveUp("no 4 long lava row with a shore");
-        }
         kickScan(mod);
         BlockPos me = mod.getPlayer().blockPosition();
         // the flag first: the scan sets the seeds before it, so these seeds are at least as new as the scan it announces
@@ -341,11 +344,12 @@ public class LPortalTask extends Task {
         if (lakeSurvey == null) {
             P next = hunt.nextToSurvey(seeds, me.getX(), me.getY(), me.getZ(), tick);
             if (next != null) {
-                lakeSurvey = LakeSurvey.of(terrain, next, me.getX(), me.getZ());
+                lakeSurvey = LakeSurvey.of(terrain, next, me.getX(), me.getZ(), p -> mod.getWorld().isLoaded(toPos(p)), p -> groundOver(mod, p));
             }
         }
         if (lakeSurvey != null && lakeSurvey.step(LAYOUTS_PER_TICK, terrain, l -> boxLoaded(mod, l))) {
             hunt.surveyed(lakeSurvey.lake(), tick);
+            logLake(lakeSurvey);
             lakeSurvey = null;
         }
         // a perfect site is taken at once, a rough one when every lake has been looked at
@@ -363,6 +367,7 @@ public class LPortalTask extends Task {
         switch (hunt.decide(seeds, looked, lakeSurvey != null, me.getX(), me.getY(), me.getZ(), tick, blocks)) {
             case WALK -> {
                 huntHud = "Going to lava";
+                logWalk();
                 setDebugState("walking to lava " + hunt.target());
                 // near the lava cell and never on it, a goal inside lava is a goal baritone refuses
                 return new GetWithinRangeOfBlockTask(toPos(hunt.target()).above(), 4);
@@ -374,8 +379,37 @@ public class LPortalTask extends Task {
             }
             default -> {
                 // every lake in the loaded chunks was looked at and none is good: the cast finds its own lava
-                return giveUp("no lake here fits the build");
+                return giveUp("no lake here fits the build (" + hunt.tally() + ")");
             }
+        }
+    }
+
+    // the heightmap counts the lava, so an open pool tops out right on its own surface and reads 0. an unloaded chunk has nothing
+    // to say, those layouts are skipped before anybody asks anyway
+    private static int groundOver(AltoClef mod, P p) {
+        if (!mod.getWorld().isLoaded(toPos(p))) {
+            return 0;
+        }
+        int top = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.x(), p.z());
+        return Math.max(0, SmeltSurface.depth(top, p.y() + 1));
+    }
+
+    private void logLake(LakeSurvey survey) {
+        LakeSurvey.Lake lake = survey.lake();
+        P a = lake.anchor();
+        String verdict = lake.good() ? "best cost " + lake.cost() + ", fills " + lake.fills() + ", depth " + lake.depth() : lake.unknown() ? "half read" : "no site";
+        String line = "lava hunt: lake at " + a.x() + " " + a.y() + " " + a.z() + ", " + survey.sources() + " sources, " + verdict;
+        // the tally moves every time a half read lake gets read a bit further, that's no reason to say the lake again
+        if (saidLakes.add(line)) {
+            Debug.logInternal(line + " | " + survey.tally());
+        }
+    }
+
+    private void logWalk() {
+        P to = hunt.target();
+        if (!Objects.equals(to, saidTarget)) {
+            saidTarget = to;
+            Debug.logInternal("lava hunt: walking to " + to.x() + " " + to.y() + " " + to.z() + (hunt.blindWalk() ? " to read it" : " to build there"));
         }
     }
 
@@ -404,10 +438,10 @@ public class LPortalTask extends Task {
     // the site we were clearing is no good after all (lava showed up, the clock ran out, a block won't break). back to
     // looking, and not at this lake again
     private Task dropSite() {
+        Debug.logInternal("lava hunt: dropped the site at " + layout.cell(1, 0, 0) + ", was at " + lastDebug);
         hunt.siteFailed(layout.cell(1, 0, 0));
         layout = null;
-        // a dropped site doesn't get a fresh search clock, but it gets a little time to look again
-        searchStart = Math.max(searchStart, tick - SEARCH_TICKS + 20 * 90);
+        droppedSites++;
         lakeSurvey = null;
         prepping = false;
         baseSet = false;

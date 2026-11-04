@@ -13,6 +13,17 @@ public final class HopLatch {
     private boolean _spent;
     private int _ticks;
     private int _clear;
+    // touched ground since the last lava tick. onGround blinks on a lip, so this only comes down when we are back in the lava
+    private boolean _landed;
+
+    public enum Keys {
+        // still getting out: jump, sprint, forward
+        SWIM,
+        // feet on the lip and our middle still over the lava: forward alone, a jump from here sails right over the shore
+        WALK_ON,
+        // over, hold nothing
+        NONE
+    }
 
     public boolean active() {
         return _active;
@@ -25,6 +36,7 @@ public final class HopLatch {
         _active = true;
         _ticks = 0;
         _clear = 0;
+        _landed = false;
         return true;
     }
 
@@ -35,6 +47,31 @@ public final class HopLatch {
 
     public boolean spent() {
         return _spent;
+    }
+
+    // the whole hop decision for one tick. solid ground under our middle ends it on the spot, no counting: the dry ticks that
+    // tick() waits for are spent jumping forward, and that is how a hop clears the block it was aiming for
+    public Keys step(boolean inLava, boolean onGround, boolean lavaBelow) {
+        if (!_active) return Keys.NONE;
+        if (inLava) {
+            _landed = false;
+        } else if (onGround) {
+            _landed = true;
+        }
+        if (_landed && !lavaBelow) {
+            _active = false;
+            _landed = false;
+            return Keys.NONE;
+        }
+        tick(!inLava && !lavaBelow);
+        if (!_active) return Keys.NONE;
+        return _landed ? Keys.WALK_ON : Keys.SWIM;
+    }
+
+    // same question with no hop running. standing on a lip counts as out even with lava under our middle, or the jump key
+    // stays down and throws us back in
+    public static boolean swimKeys(boolean inLava, boolean lavaBelow, boolean onGround) {
+        return inLava || (lavaBelow && !onGround);
     }
 
     // every tick while latched counts, lava or not. clear = out of lava and nothing lava under us

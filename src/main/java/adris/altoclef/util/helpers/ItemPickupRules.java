@@ -7,6 +7,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 // the one place that decides if a drop is worth walking to. the rule is: items in water are not, unless we can grab
@@ -66,6 +67,11 @@ public final class ItemPickupRules {
 
         // nothing to collide with and no liquid, so a body fits here
         boolean open(int x, int y, int z);
+
+        // burns whoever stands on it. off by default, only the lava exit cares and this interface has a lot of fakes
+        default boolean magma(int x, int y, int z) {
+            return false;
+        }
     }
 
     // any lava at all, source or flowing
@@ -121,6 +127,11 @@ public final class ItemPickupRules {
                 BlockPos pos = new BlockPos(x, y, z);
                 BlockState state = level.getBlockState(pos);
                 return state.getFluidState().isEmpty() && state.isFaceSturdy(level, pos, Direction.UP);
+            }
+
+            @Override
+            public boolean magma(int x, int y, int z) {
+                return level.getBlockState(new BlockPos(x, y, z)).is(Blocks.MAGMA_BLOCK);
             }
 
             @Override

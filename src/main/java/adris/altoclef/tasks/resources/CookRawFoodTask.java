@@ -40,8 +40,14 @@ public class CookRawFoodTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        smelt = null;
-        smelting = null;
+        // a fight is not the end of the cook. with the whole pile in the slot the bag reads no raw meat, so a fresh look says done and
+        // walks off without it. anything else gets a new smelt: its target counts the bag as it is now, a bite on the walk over
+        // leaves the old one short for ever
+        if (!keepSmelt(smelt instanceof SmeltInSmokerTask task && task.holdsMeat(), handedOff(),
+                smelting == null ? 0 : mod.getItemStorage().getItemCount(smelting))) {
+            smelt = null;
+            smelting = null;
+        }
         lastRaw = -1;
         lastCooked = -1;
         lastFuel = -1;
@@ -114,7 +120,7 @@ public class CookRawFoodTask extends Task {
             lastFuel = fuel;
             lastChange = now;
         }
-        if (FurnacePlan.cookGaveUp(lastChange, now)) {
+        if (FurnacePlan.cookGaveUp(lastChange, now) || smelt instanceof SmeltInSmokerTask task && task.outOfFuel()) {
             Debug.logMessage("Cooking the " + smelting.getDescriptionId() + " is going nowhere, leaving it raw for a while.");
             CookTrip.suspend(now);
             gaveUp = true;
@@ -147,6 +153,11 @@ public class CookRawFoodTask extends Task {
         return smelt instanceof AsyncSmelting.Handoff handoff && handoff.handedOff();
     }
 
+    // coming back to a smoker we saw our meat in with none of this kind left in the bag: the rest of it is in that smoker
+    static boolean keepSmelt(boolean holdsMeat, boolean handedOff, int rawOfKindInBag) {
+        return holdsMeat && !handedOff && rawOfKindInBag == 0;
+    }
+
     // every road that hands back no child ends here, so the hud says why instead of sitting silent (the 35 s freeze left nothing
     // in the log at all). all three are finishes: the planner drops the need once the job lands or the station is let go of. if
     // it is still asking for us seconds later something upstream is holding a finished task, and the log says which kind
@@ -170,6 +181,7 @@ public class CookRawFoodTask extends Task {
         if (smoker) {
             SmeltInSmokerTask task = new SmeltInSmokerTask(target);
             task.ignoreMaterials();
+            task.keepToTheBag();
             return task;
         }
         SmeltInFurnaceTask task = new SmeltInFurnaceTask(target);

@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 // pure: the lava bucket portal, built in the pool the way the speedrun does it. the frame stands in the shore row of a
@@ -169,20 +171,42 @@ public final class LPortalPlan {
     // ---- is this a place for it ----
 
     // the cheap part: four lava sources in a row with shore right behind them, lava in front of the middle two, and the
-    // pool floor under the row
+    // pool floor under the row. real lakes have wobbly edges, so a notch or two of lava in the shore row is allowed: a block
+    // on the rock under it and it's shore like any other
     static boolean quick(Layout l, Terrain t) {
+        return quickWhy(l, t) == null;
+    }
+
+    // the same rule, with the first thing it said no to. null = passed. the log reads this and not a copy, so the two can't drift
+    static String quickWhy(Layout l, Terrain t) {
+        int notches = 0;
         for (int u = 0; u <= 3; u++) {
             // sand and gravel hold up a shore just fine, only the floor under the row gets broken out so it stays plain rock
-            if (m(l, t, u, 0, 0) != Mat.LAVA || !m(l, t, u, 0, 1).solid() || m(l, t, u, -1, 0) != Mat.SOLID) {
-                return false;
+            if (m(l, t, u, 0, 0) != Mat.LAVA) {
+                return "row_not_lava";
             }
+            if (m(l, t, u, -1, 0) != Mat.SOLID) {
+                return "row_floor";
+            }
+            Mat shore = m(l, t, u, 0, 1);
+            if (shore == Mat.LAVA && m(l, t, u, -1, 1).solid()) {
+                notches++;
+            } else if (!shore.solid()) {
+                return "shore_not_solid";
+            }
+        }
+        if (notches > MAX_NOTCHES) {
+            return "notches";
         }
         for (int u = 1; u <= 2; u++) {
-            if (m(l, t, u, 0, -1) != Mat.LAVA || m(l, t, u, -1, -1) != Mat.SOLID) {
-                return false;
+            if (m(l, t, u, 0, -1) != Mat.LAVA) {
+                return "lane_not_lava";
+            }
+            if (m(l, t, u, -1, -1) != Mat.SOLID) {
+                return "lane_floor";
             }
         }
-        return true;
+        return null;
     }
 
     // the perfect site: nothing to clear, nothing to fill
@@ -193,28 +217,42 @@ public final class LPortalPlan {
 
     // what a site needs before it is a site. mines = solids in the way (inside the build's air, the arm cell aside),
     // prepMines = the ones behind the frame (d >= 1) that get cleared before the base, fills = holes in the backing row to plug
-    public record Survey(boolean ok, int mines, int prepMines, int fills) {
+    // and lava notches in the shore row to fill. why = the first thing it said no to, null on a yes
+    public record Survey(boolean ok, int mines, int prepMines, int fills, String why) {
     }
 
-    private static final Survey NO_SITE = new Survey(false, 0, 0, 0);
-    static final int MAX_MINES = 24;
+    private static Survey no(String why) {
+        return new Survey(false, 0, 0, 0, why);
+    }
+
+    // nearly no bank out there is flush with the lava, and the cheap dig back is what lets a real lake pass at all
+    static final int MAX_MINES = 36;
     static final int MAX_FILLS = 4;
+    // three of the four and it isn't a shore with notches, it's more lake
+    static final int MAX_NOTCHES = 2;
     // the mines in the frame plane and the lane are dug after the base, on the build clock
     static final int MAX_FRONT_MINES = 8;
     // a gravel column this high over a cell we open would come down on us
     private static final int FALL_CHECK_TOP = 8;
+    // gravel over open air has the whole drop to come down, so this looks further up than the one over a rock
+    private static final int HANG_CHECK_TOP = 11;
     public static final String PREP_CLEAR = "clearing the spot";
     public static final String PREP_FILL = "filling the shore";
 
-    // every cell the finished build wants empty: the frame plane and the shore row up to y=4, the row behind that up to y=3,
-    // the platform lane in front. the walls and the arm go into some of these
+    // every cell the finished build wants empty: the shore row up to y=4 (we stand up there to take the water back), the frame
+    // plane, the row behind the shore and the platform lane up to y=3. the walls and the arm go into some of these
     private static final List<int[]> NEED_AIR = needAir();
+    // the layer over the frame plane and the lane. the frame tops out at y=3 and we stand on y=1, so rock up here can just stay.
+    // real lakes have a low roof a lot, and having to clear it turned down most of them
+    private static final List<int[]> ROOF = roof();
 
     private static List<int[]> needAir() {
         List<int[]> cells = new ArrayList<>();
         for (int u = 0; u <= 3; u++) {
             for (int y = 1; y <= 4; y++) {
-                cells.add(new int[]{u, y, 0});
+                if (y <= 3) {
+                    cells.add(new int[]{u, y, 0});
+                }
                 cells.add(new int[]{u, y, 1});
                 if (y <= 3) {
                     cells.add(new int[]{u, y, 2});
@@ -222,11 +260,37 @@ public final class LPortalPlan {
             }
         }
         for (int u = 1; u <= 2; u++) {
-            for (int y = 1; y <= 4; y++) {
+            for (int y = 1; y <= 3; y++) {
                 cells.add(new int[]{u, y, -1});
             }
         }
         return cells;
+    }
+
+    private static List<int[]> roof() {
+        List<int[]> cells = new ArrayList<>();
+        for (int u = 0; u <= 3; u++) {
+            cells.add(new int[]{u, 4, 0});
+        }
+        for (int u = 1; u <= 2; u++) {
+            cells.add(new int[]{u, 4, -1});
+        }
+        return cells;
+    }
+
+    // gravel with nothing but air under it, worldgen leaves these around. it hangs there until something bumps it, and we are
+    // about to spend a minute pouring things right under it. gravel sitting on rock we don't dig is just gravel
+    private static boolean hangsOver(Layout l, Terrain t, int[] c) {
+        for (int y = c[1] + 1; y <= HANG_CHECK_TOP; y++) {
+            Mat now = m(l, t, c[0], y, c[2]);
+            if (now == Mat.FALLS) {
+                return true;
+            }
+            if (now != Mat.AIR) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private static final int[][] NEIGHBOURS = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -238,37 +302,51 @@ public final class LPortalPlan {
     }
 
     private static Survey survey(Layout l, Terrain t, boolean withSupply) {
-        if (!quick(l, t)) {
-            return NO_SITE;
+        String quickNo = quickWhy(l, t);
+        if (quickNo != null) {
+            return no(quickNo);
         }
         int fills = 0;
         for (int u = 0; u <= 3; u++) {
             // air under the shore is a cave under our feet, nothing to fill there
             if (!m(l, t, u, -1, 1).solid()) {
-                return NO_SITE;
+                return no("air_under_shore");
             }
             Mat back = m(l, t, u, 0, 2);
             if (back == Mat.AIR) {
                 // a plug over air would just be a hole in the shore with a block missing under it
                 if (!m(l, t, u, -1, 2).solid()) {
-                    return NO_SITE;
+                    return no("back_hole");
                 }
                 fills++;
             } else if (!back.solid()) {
-                return NO_SITE;
+                return no("back_bad");
+            }
+            if (m(l, t, u, 0, 1) == Mat.LAVA) {
+                fills++;
             }
         }
         if (fills > MAX_FILLS) {
-            return NO_SITE;
+            return no("fills_cap");
         }
         for (int u = -2; u <= 5; u++) {
             for (int d = -3; d <= 3; d++) {
                 for (int y = -2; y <= 6; y++) {
                     Mat now = m(l, t, u, y, d);
                     if (now.wet() || now == Mat.PORTAL) {
-                        return NO_SITE;
+                        return no("wet_box");
                     }
                 }
+            }
+        }
+        for (int[] c : ROOF) {
+            Mat now = m(l, t, c);
+            // rock can stay, this can't: gravel lands on us in the lane and lava lands on everything
+            if (now == Mat.FALLS || now.lava()) {
+                return no("roof_gravel_or_lava");
+            }
+            if (now == Mat.AIR && hangsOver(l, t, c)) {
+                return no("hanging_gravel");
             }
         }
         int mines = 0;
@@ -277,42 +355,45 @@ public final class LPortalPlan {
         for (int[] c : NEED_AIR) {
             Mat now = m(l, t, c);
             if (now == Mat.AIR) {
+                if (hangsOver(l, t, c)) {
+                    return no("hanging_gravel");
+                }
                 continue;
             }
             // lava, gravel, obsidian, bedrock in there: not ours to clear
             if (now != Mat.SOLID) {
-                return NO_SITE;
+                return no("need_air_is_" + now.name().toLowerCase(Locale.ROOT));
             }
             if (c[0] == ARM[0] && c[1] == ARM[1] && c[2] == ARM[2]) {
                 continue;
             }
             // a block sitting on a source: the lava has to stay put and we don't dig at d <= 0 before the base
             if (c[1] == 1 && c[2] <= 0) {
-                return NO_SITE;
+                return no("block_on_source");
             }
             if (++mines > MAX_MINES) {
-                return NO_SITE;
+                return no("mines_cap");
             }
             if (c[2] >= 1) {
                 prepMines++;
             } else if (++frontMines > MAX_FRONT_MINES) {
-                return NO_SITE;
+                return no("front_cap");
             }
             for (int[] n : NEIGHBOURS) {
                 if (m(l, t, c[0] + n[0], c[1] + n[1], c[2] + n[2]).lava()) {
-                    return NO_SITE;
+                    return no("mine_by_lava");
                 }
             }
             for (int y = c[1] + 1; y <= FALL_CHECK_TOP; y++) {
                 if (m(l, t, c[0], y, c[2]) == Mat.FALLS) {
-                    return NO_SITE;
+                    return no("gravel_over");
                 }
             }
         }
         if (withSupply && supply(l, t) < SUPPLY_NEEDED) {
-            return NO_SITE;
+            return no("supply");
         }
-        return new Survey(true, mines, prepMines, fills);
+        return new Survey(true, mines, prepMines, fills, null);
     }
 
     // the lava sources we could scoop (the same ones scoopSpot takes) in the layer of the row around it, which is the stretch the
@@ -330,8 +411,9 @@ public final class LPortalPlan {
         return n;
     }
 
-    // layouts worth a full look, nearest first. sources = lava source cells
-    public static List<Layout> candidates(Terrain t, List<P> sources, int px, int pz) {
+    // layouts worth a full look, nearest first. sources = lava source cells. tally gets one count per layout that didn't make it,
+    // under quickWhy's reason, this is the only place those are seen
+    public static List<Layout> candidates(Terrain t, List<P> sources, int px, int pz, Map<String, Integer> tally) {
         Set<Layout> seen = new HashSet<>();
         List<Layout> out = new ArrayList<>();
         int[][] axes = {{1, 0}, {0, 1}};
@@ -340,8 +422,13 @@ public final class LPortalPlan {
                 for (int k = 0; k < 4; k++) {
                     for (int sign = -1; sign <= 1; sign += 2) {
                         Layout l = new Layout(s.x() - k * a[0], s.y(), s.z() - k * a[1], a[0], a[1], -a[1] * sign, a[0] * sign);
-                        if (seen.add(l) && quick(l, t)) {
-                            out.add(l);
+                        if (seen.add(l)) {
+                            String why = quickWhy(l, t);
+                            if (why == null) {
+                                out.add(l);
+                            } else {
+                                tally.merge(why, 1, Integer::sum);
+                            }
                         }
                     }
                 }
@@ -381,14 +468,15 @@ public final class LPortalPlan {
     }
 
     // a lava source we may take: open on top, and not one of the cells the frame is built on (the row and the platform in
-    // front of it). once the base is set the lava around them has nothing to do with the build
+    // front of it) or a notch in the shore behind it, that one is a block soon. once the base is set the lava around them has
+    // nothing to do with the build
     private static boolean eligible(Terrain t, Layout l, P p) {
         if (t.at(p.x(), p.y(), p.z()) != Mat.LAVA || t.at(p.x(), p.y() + 1, p.z()) != Mat.AIR) {
             return false;
         }
         if (l != null) {
             for (int u = 0; u <= 3; u++) {
-                for (int d = -1; d <= 0; d++) {
+                for (int d = -1; d <= 1; d++) {
                     if (l.cell(u, 0, d).equals(p)) {
                         return false;
                     }
@@ -598,8 +686,13 @@ public final class LPortalPlan {
     }
 
     // anything solid and not ours in those, and in the pit
+    // the roof stays in keepClear so nobody puts a block up there or digs it during the prep, it just isn't junk: it's rock over
+    // our heads that was never in the way
     private static int[] junk(Layout l, Terrain t) {
         for (int[] c : keepClear()) {
+            if (c[1] == 4 && c[2] <= 0) {
+                continue;
+            }
             Mat now = m(l, t, c);
             if (now == Mat.SOLID || now == Mat.FALLS) {
                 return c;
@@ -620,7 +713,8 @@ public final class LPortalPlan {
     }
 
     // the work a rough site wants before the base: the rock behind the frame out, top down so nothing is dug from under
-    // its own feet, then the holes in the backing plugged. nothing at d <= 0 is touched, that is the lava. null = ready.
+    // its own feet, then the holes in the backing plugged, then the notches in the shore (we stand on the backing for those).
+    // nothing at d <= 0 is touched, that is the lava. null = ready.
     // no supply check, the lava around does not change while we dig
     private static Step prep(Layout l, Terrain t, Inv inv) {
         Survey s = survey(l, t, false);
@@ -646,6 +740,15 @@ public final class LPortalPlan {
                         return stuck("no block to plug the shore");
                     }
                     return new Step(Kind.PLACE_BLOCK, l.cell(u, 0, 2), null, 0, 0, 0, null, PREP_FILL);
+                }
+            }
+            for (int u = 0; u <= 3; u++) {
+                if (m(l, t, u, 0, 1) == Mat.LAVA) {
+                    if (inv.blocks() < 1) {
+                        return stuck("no block to plug the shore");
+                    }
+                    // not the builder, it would stroll along the lava's edge looking for an angle. same click as the placeholder
+                    return click(l, Kind.PLACE_STACK, new int[]{u, 0, 1}, new int[]{u, -1, 1}, new int[]{u, 1, 2}, PREP_FILL);
                 }
             }
         }
