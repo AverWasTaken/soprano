@@ -110,6 +110,9 @@ public final class CombatCommit {
     // that corner lets go once the fast mob has been off us this long. one tick is not enough: its own hit knocks it past the range
     // above, and at low hp that would be us turning our back on the first bite
     public static final long FAST_CORNER_RELEASE_TICKS = 20;
+    // one cube out of reach by lava gets let go, not standing around for it is the whole point. the next one this soon is a swarm:
+    // writing them off one at a time is a walk with cubes taking turns on our back
+    public static final long SHORE_LET_GO_WINDOW_TICKS = 200;
 
     // a blaze this close on our own floor is worth the walk: past this, or hovering, is the chase the rods task warns about
     public static final double BLAZE_SWAP_RANGE = 6;
@@ -866,6 +869,9 @@ public final class CombatCommit {
     // the same for a sniper we went after because it pinned us down. its own clock: a witch we could not reach says nothing
     // about a skeleton
     private long sniperGaveUpAt = Long.MIN_VALUE / 2;
+    // the last tick a cube stood out of reach by lava in a fight, let go or not. a kept fight stamps it too, or the window runs out
+    // halfway through the swarm and the next cube gets written off anyway
+    private long lastShoreLetGo = Long.MIN_VALUE / 2;
     // this fight is with a ranged foe we chose to go and get (a lobber, or a sniper that is shooting us): a stall or a lost track means we
     // could not get to it, and that is remembered
     private boolean atRange;
@@ -1019,6 +1025,7 @@ public final class CombatCommit {
         rePerches = 0;
         lobberGaveUpAt = Long.MIN_VALUE / 2;
         sniperGaveUpAt = Long.MIN_VALUE / 2;
+        lastShoreLetGo = Long.MIN_VALUE / 2;
         atRange = false;
         recover.reset();
     }
@@ -1520,17 +1527,26 @@ public final class CombatCommit {
 
     // a fast melee mob that has hit us, close, with a weapon in hand to answer it: a run is a jog with it biting our back, so
     // that is the fight. cubes, slimes and spiders move at 0.3 or better (see CombatBrain.fast). in the heal-up hold it is
-    // seen from further off: knockback puts the thing past the close range and a re-run from it is the cornered death anyway
+    // seen from further off: knockback puts the thing past the close range and a re-run from it is the cornered death anyway.
+    // same for a cube in a shore swarm, a run from there just swaps the let go loop for a run past the next cube
     private Foe fastTarget(Tick t) {
         if (!t.armed()) return null;
-        double range = recover.on() ? RecoverHold.RERUN_RANGE : FAST_FIGHT_RANGE;
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > range || foe.kind() == Kind.UNTOUCHABLE) continue;
+            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > fastRange(foe, t.now()) || foe.kind() == Kind.UNTOUCHABLE) continue;
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
         return best != null ? best : loneWither(t);
+    }
+
+    // (cubes only for the swarm: a hoglin or a spider that wanders up inside the window still gets the normal answer)
+    private double fastRange(Foe foe, long now) {
+        return recover.on() || (foe.splitType() != null && shoreSwarm(now)) ? RecoverHold.RERUN_RANGE : FAST_FIGHT_RANGE;
+    }
+
+    private boolean shoreSwarm(long now) {
+        return now >= lastShoreLetGo && now - lastShoreLetGo <= SHORE_LET_GO_WINDOW_TICKS;
     }
 
     // a wither skeleton that hit us from close, with no other melee mob within 8: not fast, but the same cornered fight. 4.5 a
@@ -1931,13 +1947,18 @@ public final class CombatCommit {
         // the walk already failed, letting go is the same stuck run and this same pick ten ticks later
         boolean stuckRunFight = cornered && !boxCorner && !fastCorner;
         if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed() && !stuckRunFight) {
-            ignored.put(target.id(), t.now());
-            idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
-            Event cleared = end(t, Event.FIGHT_CLEARED);
-            // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
-            // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
-            recover.reset();
-            return cleared;
+            // inside the window it stays a plain fight: the task swings when it can and stands per lavaHold when it can't
+            boolean swarm = shoreSwarm(t.now());
+            lastShoreLetGo = t.now();
+            if (!swarm) {
+                ignored.put(target.id(), t.now());
+                idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
+                Event cleared = end(t, Event.FIGHT_CLEARED);
+                // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
+                // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
+                recover.reset();
+                return cleared;
+            }
         }
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
