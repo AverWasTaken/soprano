@@ -20,6 +20,7 @@ package baritone.behavior;
 import baritone.Baritone;
 import baritone.api.behavior.IPathingBehavior;
 import baritone.api.event.events.*;
+import baritone.api.event.events.type.EventState;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalXZ;
@@ -45,12 +46,14 @@ import baritone.utils.pathing.Favoring;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class PathingBehavior extends Behavior implements IPathingBehavior, Helper {
 
@@ -132,6 +135,20 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public FailedMoves failedMoves() {
         return failedMoves;
+    }
+
+    // temporary (swimtick): the server's teleports. netty thread writes, the tick reads
+    private final AtomicInteger positionPackets = new AtomicInteger();
+
+    public int positionPackets() {
+        return positionPackets.get();
+    }
+
+    @Override
+    public void onReceivePacket(PacketEvent event) {
+        if (event.getState() == EventState.PRE && event.getPacket() instanceof ClientboundPlayerPositionPacket) {
+            positionPackets.incrementAndGet();
+        }
     }
 
     private void queuePathEvent(PathEvent event) {
