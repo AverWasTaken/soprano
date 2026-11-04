@@ -76,6 +76,8 @@ public abstract class Movement implements IMovement, MovementHelper {
     private final SwimStall swimStall = new SwimStall();
     private SwimEscape swimEscape = new SwimEscape();
     private boolean standingUp;
+    // temporary (swimprobe)
+    private boolean probeSprintBefore;
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
@@ -148,7 +150,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         ctx.player().getAbilities().flying = false;
         currentState = updateState(currentState);
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) || ctx.player().isInWater()) {
-            if (standUpToEscape()) {
+            if (sinkToEscape()) {
                 swimStall.reset();
             } else if (shouldSwim()) {
                 // sprint is what enters and keeps the swim state. vanilla only STARTS sprinting from
@@ -157,6 +159,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 // MixinEntity.allowSwimStart then latches the swim state this same tick instead of
                 // waiting for gravity to pull the eye under
                 currentState.setInput(Input.SPRINT, true);
+                probeSprintBefore = ctx.player().isSprinting();
                 ctx.player().setSprinting(true);
                 boolean floating = ctx.player().isSwimming() && !ctx.player().onGround();
                 if (currentState.getStatus() == MovementStatus.RUNNING) {
@@ -393,23 +396,49 @@ public abstract class Movement implements IMovement, MovementHelper {
         }
     }
 
-    // the cell keeps failing whichever way out we pick, so stop swimming and stand up for a moment, see SwimEscape
-    private boolean standUpToEscape() {
+    // the cell keeps failing whichever way out we pick, so stop swimming and sink out of it, see SwimEscape
+    private boolean sinkToEscape() {
         standingUp = false;
         if (currentState.getStatus() != MovementStatus.RUNNING || !ctx.player().isInWater()) {
             return false;
         }
         PathingBehavior pb = (PathingBehavior) baritone.getPathingBehavior();
         int exits = pb.failedMoves().exitsFrom(src, ctx.world(), System.currentTimeMillis());
-        if (!swimEscape.tick(exits)) {
-            return false;
-        }
-        if (swimEscape.began()) {
-            logDirect("swim: " + exits + " exits from " + src + " failed, standing up to get out");
+        // needsAir, not wantsAir: low on air under a flooded roof isn't the moment to sit still either. the normal swim
+        // takes over from here and it's the one that goes up when up is open
+        boolean needsAir = Surfacing.needsAir(ctx.player().getAirSupply(), ctx.player().isUnderWater());
+        // both ends: a move that goes down wants us under src, that's just the move working
+        boolean belowMove = ctx.playerFeet().y < Math.min(src.y, dest.y);
+        switch (swimEscape.tick(exits, needsAir, ctx.player().onGround(), belowMove)) {
+            case NONE -> {
+                return false;
+            }
+            case GIVE_BACK -> {
+                // floating back up for another go is the loop we came here to break, the replan gets to start from down here
+                logDebug("swim: sank out of " + src + ", replanning from here");
+                currentState.setStatus(MovementStatus.FAILED);
+                return true;
+            }
+            case SINK -> {
+                if (swimEscape.changed()) {
+                    logDirect("swim: " + exits + " exits from " + src + " failed, sinking to get out");
+                }
+                currentState.setInput(Input.MOVE_FORWARD, false);
+                currentState.setInput(Input.MOVE_BACK, false);
+                currentState.setInput(Input.MOVE_LEFT, false);
+                currentState.setInput(Input.MOVE_RIGHT, false);
+                currentState.setInput(Input.JUMP, false);
+            }
+            case WALK -> {
+                if (swimEscape.changed()) {
+                    logDebug("swim: on the bottom at " + src + ", walking out");
+                }
+                // a climb still needs the bob, anything else would only lift us back off the floor
+                currentState.setInput(Input.JUMP, dest.y > src.y);
+            }
         }
         currentState.setInput(Input.SPRINT, false);
         ctx.player().setSprinting(false);
-        currentState.setInput(Input.JUMP, true);
         standingUp = true;
         return true;
     }
@@ -460,7 +489,13 @@ public abstract class Movement implements IMovement, MovementHelper {
                 + " floating=" + floating + " pose=" + ctx.player().getPose() + " swimming=" + ctx.player().isSwimming()
                 + " inWater=" + ctx.player().isInWater() + " underWater=" + ctx.player().isUnderWater() + " onGround=" + ctx.player().onGround()
                 + " box=" + box.minY + ".." + box.maxY + " src+1=" + blockName(src.above(1)) + " dest+1=" + blockName(dest.above(1)) + " dest+2=" + blockName(dest.above(2))
-                + " src+2=" + blockName(src.above(2)) + " sprinting=" + ctx.player().isSprinting() + " move=" + getClass().getSimpleName() + " branch=" + swimStall.lastGiveUp);
+                + " src+2=" + blockName(src.above(2)) + " sprinting=" + ctx.player().isSprinting() + " move=" + getClass().getSimpleName() + " branch=" + swimStall.lastGiveUp
+                + " delta=" + ctx.player().getDeltaMovement()
+                // all three as of last tick, this tick's aren't decided yet (holdWaterline asks for jump after the stall fires).
+                // sprint is the flag from before we armed it, sprinting= above is always true here and the key is always cleared
+                + " forward=" + baritone.getInputOverrideHandler().isInputForcedDown(Input.MOVE_FORWARD)
+                + " jump=" + baritone.getInputOverrideHandler().isInputForcedDown(Input.JUMP)
+                + " sprintBefore=" + probeSprintBefore);
     }
 
     private String blockName(BlockPos pos) {
@@ -694,7 +729,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         standingUp = false;
     }
 
-    // true on ticks the swim escape is holding us upright, PathExecutor must not turn sprint back on over it
+    // true on ticks the swim escape has the keys, PathExecutor must not turn sprint back on over it
     public boolean standingUp() {
         return standingUp;
     }
