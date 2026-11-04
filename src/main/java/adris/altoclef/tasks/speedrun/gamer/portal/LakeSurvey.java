@@ -7,11 +7,15 @@ import adris.altoclef.tasks.speedrun.gamer.portal.LPortalPlan.Terrain;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 // one lake looked at from where we stand, a few layouts a tick, with no minecraft in it so it can be tested. the verdict is
 // about the terrain only: the bag is asked at choose time, a lake that is fine but not affordable right now is not a bad lake
@@ -27,9 +31,9 @@ final class LakeSurvey {
     // the four cells of the row and the two of the lane in front of it, open on top. fewer and no layout can ever fit
     static final int FEWEST_SOURCES = 6;
 
-    // what we know about the lake. site = the cheapest layout that survived, null = nothing here. unknown = no site, and part
-    // of what it read was not loaded, so that is not a no
-    record Lake(P anchor, Set<P> cells, Layout site, int cost, int fills, boolean unknown) {
+    // what we know about the lake. site = the cheapest layout that survived, null = nothing here. depth = ground over the site.
+    // unknown = no site, and part of what it read was not loaded, so that is not a no
+    record Lake(P anchor, Set<P> cells, Layout site, int cost, int fills, int depth, boolean unknown) {
         boolean good() {
             return site != null;
         }
@@ -39,22 +43,33 @@ final class LakeSurvey {
     private final Set<P> cells;
     private final List<Layout> layouts;
     private final int sources;
+    // ground over a cell. a function so this stays minecraft free, and it's only asked about layouts in loaded chunks
+    private final ToIntFunction<P> depthAt;
+    // why each layout said no, row checks and full surveys in one list. it's the survey's own answers and not a second pass
+    private final Map<String, Integer> tally;
+    private final int layoutsRead;
     private int at;
     private Layout best;
+    private int bestScore;
     private int bestCost;
     private int bestFills;
+    private int bestDepth;
     private boolean skipped;
 
-    private LakeSurvey(P anchor, Set<P> cells, List<Layout> layouts, int sources, boolean outOfSight) {
+    private LakeSurvey(P anchor, Set<P> cells, List<Layout> layouts, int sources, boolean outOfSight, ToIntFunction<P> depthAt, Map<String, Integer> tally) {
         this.anchor = anchor;
         this.cells = cells;
         this.layouts = layouts;
         this.sources = sources;
         this.skipped = outOfSight;
+        this.depthAt = depthAt;
+        this.tally = tally;
+        // all that's in the tally so far is the ones the row check threw out
+        this.layoutsRead = layouts.size() + tally.values().stream().mapToInt(Integer::intValue).sum();
     }
 
     // the grid at the seed's height plus the lake grown from it, the same cells the walk's arrival used to read
-    static LakeSurvey of(Terrain t, P seed, int px, int pz, Predicate<P> loadedAt) {
+    static LakeSurvey of(Terrain t, P seed, int px, int pz, Predicate<P> loadedAt, ToIntFunction<P> depthAt) {
         Set<P> cells = new LinkedHashSet<>();
         for (int dx = -NEAR_SEED; dx <= NEAR_SEED; dx++) {
             for (int dz = -NEAR_SEED; dz <= NEAR_SEED; dz++) {
@@ -71,8 +86,9 @@ final class LakeSurvey {
                 }
             }
         }
-        return new LakeSurvey(seed, cells, LPortalPlan.candidates(t, sources, px, pz), sources.size(),
-                outOfSight(t, seed, sources.size(), loadedAt));
+        Map<String, Integer> tally = new HashMap<>();
+        List<Layout> layouts = LPortalPlan.candidates(t, sources, px, pz, tally);
+        return new LakeSurvey(seed, cells, layouts, sources.size(), outOfSight(t, seed, sources.size(), loadedAt), depthAt, tally);
     }
 
     // the build boxes can all be loaded and the lake still fail on supply, because the rest of it is past the view edge. so the
@@ -147,23 +163,53 @@ final class LakeSurvey {
             Layout l = layouts.get(at++);
             if (!loaded.test(l)) {
                 skipped = true;
+                count("box_unloaded");
                 continue;
             }
             LPortalPlan.Survey s = LPortalPlan.survey(l, t);
             if (!s.ok()) {
+                count(s.why());
                 continue;
             }
+            // asked last, so too_deep in the tally means a site that passed everything else
+            int depth = depthAt.applyAsInt(LavaHunt.mid(l));
+            if (depth > LavaHunt.MAX_DEPTH) {
+                count("too_deep");
+                continue;
+            }
+            count("ok");
             int cost = s.mines() + 2 * s.fills();
-            if (best == null || cost < bestCost) {
+            // the same sum LavaHunt walks by. a lake can run under a hillside, and one end of it is a lot less digging
+            int score = cost + LavaHunt.DEPTH_COST * depth;
+            if (best == null || score < bestScore) {
                 best = l;
+                bestScore = score;
                 bestCost = cost;
                 bestFills = s.fills();
+                bestDepth = depth;
             }
         }
         return at >= layouts.size();
     }
 
+    private void count(String why) {
+        tally.merge(why, 1, Integer::sum);
+    }
+
+    // the log's half of the verdict: how many layouts, how many got past the row check, then every reason, biggest first
+    String tally() {
+        StringBuilder out = new StringBuilder(layoutsRead + " layouts, " + layouts.size() + " quick");
+        String sep = " | ";
+        List<Map.Entry<String, Integer>> rows = new ArrayList<>(tally.entrySet());
+        rows.sort(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()));
+        for (Map.Entry<String, Integer> e : rows) {
+            out.append(sep).append(e.getKey()).append('=').append(e.getValue());
+            sep = " ";
+        }
+        return out.toString();
+    }
+
     Lake lake() {
-        return new Lake(anchor, cells, best, bestCost, bestFills, best == null && skipped);
+        return new Lake(anchor, cells, best, bestCost, bestFills, bestDepth, best == null && skipped);
     }
 }

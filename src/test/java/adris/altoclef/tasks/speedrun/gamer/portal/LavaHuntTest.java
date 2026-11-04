@@ -24,15 +24,15 @@ public class LavaHuntTest {
     }
 
     private static Lake good(P anchor, int x, int cost, int fills) {
-        return new Lake(anchor, Set.of(anchor), siteAt(x), cost, fills, false);
+        return new Lake(anchor, Set.of(anchor), siteAt(x), cost, fills, 0, false);
     }
 
     private static Lake bad(P anchor) {
-        return new Lake(anchor, Set.of(anchor), null, 0, 0, false);
+        return new Lake(anchor, Set.of(anchor), null, 0, 0, 0, false);
     }
 
     private static Lake halfRead(P anchor) {
-        return new Lake(anchor, Set.of(anchor), null, 0, 0, true);
+        return new Lake(anchor, Set.of(anchor), null, 0, 0, 0, true);
     }
 
     @Test
@@ -136,7 +136,7 @@ public class LavaHuntTest {
         LavaHunt h = new LavaHunt();
         P a = new P(100, 64, 0);
         P cellOfA = new P(101, 64, 0);
-        h.surveyed(new Lake(a, Set.of(a, cellOfA), null, 0, 0, false), 0);
+        h.surveyed(new Lake(a, Set.of(a, cellOfA), null, 0, 0, 0, false), 0);
         assertNull(h.nextToSurvey(List.of(cellOfA), 0, 64, 0, 1));
     }
 
@@ -233,7 +233,7 @@ public class LavaHuntTest {
         P real = new P(0, 64, 90);
         h.surveyed(halfRead(a), 0);
         assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
-        h.surveyed(new Lake(real, Set.of(real), new Layout(-1, 64, 90, 1, 0, 0, 1), 0, 0, false), 2);
+        h.surveyed(new Lake(real, Set.of(real), new Layout(-1, 64, 90, 1, 0, 0, 1), 0, 0, 0, false), 2);
         assertEquals(Move.WALK, h.decide(List.of(a, real), true, false, 10, 64, 0, 3, BAG));
         assertEquals(new P(0, 64, 90), h.target());
         assertFalse(h.blindWalk());
@@ -348,17 +348,62 @@ public class LavaHuntTest {
     @Test
     public void pickTakesALakeInReachAndOnlyAPerfectOneWhileOthersAreStillBeingLookedAt() {
         LavaHunt h = new LavaHunt();
-        P rough = new P(20, 64, 0);
-        P perfect = new P(30, 64, 0);
+        P rough = new P(4, 64, 0);
+        P perfect = new P(8, 64, 0);
         P far = new P(FAR, 64, 0);
-        h.surveyed(good(rough, 20, 4, 0), 0);
+        h.surveyed(good(rough, 4, 4, 0), 0);
         h.surveyed(good(far, FAR, 0, 0), 0);
         assertNull(h.pick(0, 64, 0, BAG, true));
-        assertEquals(siteAt(20), h.pick(0, 64, 0, BAG, false));
-        h.surveyed(good(perfect, 30, 0, 0), 0);
-        assertEquals(siteAt(30), h.pick(0, 64, 0, BAG, true));
-        // a lake far above or below us is not in reach
-        assertNull(h.pick(0, 64 + LavaHunt.BAND + 1, 0, BAG, false));
+        assertEquals(siteAt(4), h.pick(0, 64, 0, BAG, false));
+        h.surveyed(good(perfect, 8, 0, 0), 0);
+        assertEquals(siteAt(8), h.pick(0, 64, 0, BAG, true));
+    }
+
+    @Test
+    public void onlyALakeWeAreBasicallyAtIsPicked() {
+        LavaHunt h = new LavaHunt();
+        h.surveyed(good(new P(LavaHunt.PICK_REACH, 64, 0), LavaHunt.PICK_REACH, 0, 0), 0);
+        assertEquals(siteAt(LavaHunt.PICK_REACH), h.pick(0, 64, 0, BAG, false));
+        assertNull("a step further is a walk", h.pick(-1, 64, 0, BAG, false));
+        assertEquals(siteAt(LavaHunt.PICK_REACH), h.pick(0, 64 + LavaHunt.PICK_DY, 0, BAG, false));
+        assertNull("over it is not at it", h.pick(0, 64 + LavaHunt.PICK_DY + 1, 0, BAG, false));
+        assertNull(h.pick(0, 64 - LavaHunt.PICK_DY - 1, 0, BAG, false));
+    }
+
+    @Test
+    public void aLakeOutOfPickReachIsWalkedToSoTheClocksStartOnArrival() {
+        LavaHunt h = new LavaHunt();
+        P a = new P(30, 64, 0);
+        h.surveyed(good(a, 30, 0, 0), 0);
+        assertNull("this used to be close enough to build from", h.pick(0, 64, 0, BAG, false));
+        assertEquals(Move.WALK, h.decide(List.of(a), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(new P(30, 64, 0), h.target());
+        // right over it is still a walk, the dig in is part of the walk too
+        assertNull(h.pick(28, 84, 0, BAG, true));
+        assertEquals(siteAt(30), h.pick(25, 66, 0, BAG, true));
+    }
+
+    @Test
+    public void groundOverALakeCountsAgainstItInTheWalk() {
+        LavaHunt h = new LavaHunt();
+        P buried = new P(60, 64, 0);
+        P open = new P(75, 64, 0);
+        h.surveyed(new Lake(buried, Set.of(buried), siteAt(60), 0, 0, 15, false), 0);
+        h.surveyed(good(open, 75, 0, 0), 0);
+        assertEquals(Move.WALK, h.decide(List.of(buried, open), true, false, 0, 64, 0, 1, BAG));
+        // 60 + 15 blocks of dirt at 2 each is farther than 75 of plain walking
+        assertEquals(new P(75, 64, 0), h.target());
+    }
+
+    @Test
+    public void aLittleGroundDoesntLoseToALongWalk() {
+        LavaHunt h = new LavaHunt();
+        P buried = new P(60, 64, 0);
+        P open = new P(100, 64, 0);
+        h.surveyed(new Lake(buried, Set.of(buried), siteAt(60), 0, 0, 15, false), 0);
+        h.surveyed(good(open, 100, 0, 0), 0);
+        assertEquals(Move.WALK, h.decide(List.of(buried, open), true, false, 0, 64, 0, 1, BAG));
+        assertEquals(new P(60, 64, 0), h.target());
     }
 
     @Test

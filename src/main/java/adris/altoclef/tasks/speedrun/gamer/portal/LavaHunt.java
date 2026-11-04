@@ -27,8 +27,15 @@ public final class LavaHunt {
     static final int SEED_MAX = 200;
     // a seed with no site found this close to it clears every seed in the same lake
     static final int SITE_RADIUS = 24;
-    // a good lake this close is built on from where we stand, a farther one is walked to first
-    static final int PICK_REACH = 40;
+    // a good lake this close is built on from where we stand, a farther one is walked to first. picking starts the clearing and
+    // build clocks, and those are not for walking or digging in, so we have to basically be there already
+    static final int PICK_REACH = 10;
+    static final int PICK_DY = 6;
+    // a lake under this much ground is not a surface lake with a roof, it's a mining trip with a portal at the end
+    static final int MAX_DEPTH = 20;
+    // a block of ground over the lake against a block of walking. digging in is slower than walking but it's not a whole lot
+    // slower, and DY_COST already charges the climb from where we stand
+    static final int DEPTH_COST = 2;
     // a lake at the view edge is well over 100 blocks off and we do under 2 blocks a second around the trees. running out of this
     // rejects the lake, so it has to be a walk nobody would really be on and not just a long one
     static final int WALK_TICKS = 20 * 120;
@@ -203,7 +210,7 @@ public final class LavaHunt {
                 continue;
             }
             double flat = Math.hypot(m.x() - px, m.z() - pz);
-            if (flat > PICK_REACH || Math.abs(m.y() - py) > BAND) {
+            if (flat > PICK_REACH || Math.abs(m.y() - py) > PICK_DY) {
                 continue;
             }
             if (best == null || l.cost() < bestCost || (l.cost() == bestCost && flat < bestFlat)) {
@@ -268,7 +275,7 @@ public final class LavaHunt {
                 continue;
             }
             P m = mid(e.lake().site());
-            double c = cost(m, px, py, pz) + e.lake().cost();
+            double c = cost(m, px, py, pz) + e.lake().cost() + DEPTH_COST * e.lake().depth();
             if (best == null || c < bestCost) {
                 best = m;
                 bestCost = c;
