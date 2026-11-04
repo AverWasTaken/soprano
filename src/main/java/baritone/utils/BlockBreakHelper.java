@@ -20,10 +20,10 @@ package baritone.utils;
 import adris.altoclef.Debug;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.IPlayerContext;
+import baritone.behavior.LegacyCombat;
 import baritone.utils.accessor.IPlayerControllerMP;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -128,7 +128,7 @@ public final class BlockBreakHelper {
                 BlockState before = who == null ? null : ctx.world().getBlockState(pos);
                 ctx.playerController().syncHeldItem();
                 ctx.playerController().clickBlock(pos, ((BlockHitResult) trace).getDirection());
-                ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+                LegacyCombat.swing(ctx.player(), InteractionHand.MAIN_HAND);
                 // an insta mine (creative, or a good enough tool) is gone on the first click and never goes through the
                 // damage branch below, which is where scaffold usually dies
                 if (before != null && !before.isAir() && ctx.playerController().hasBrokenBlock() && !ctx.world().getBlockState(pos).equals(before)) {
@@ -137,7 +137,7 @@ public final class BlockBreakHelper {
             } else {
                 BlockState before = who == null ? null : ctx.world().getBlockState(((BlockHitResult) trace).getBlockPos());
                 if (ctx.playerController().onPlayerDamageBlock(((BlockHitResult) trace).getBlockPos(), ((BlockHitResult) trace).getDirection())) {
-                    ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+                    LegacyCombat.swing(ctx.player(), InteractionHand.MAIN_HAND);
                 }
                 if (ctx.playerController().hasBrokenBlock()) { // block broken this tick
                     traceBroke(who, ((BlockHitResult) trace).getBlockPos(), before);

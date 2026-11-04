@@ -19,9 +19,9 @@ package baritone.behavior;
 
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.component.SwingAnimation;
 
 // pre 1.9 combat: no cooldown, spam click, swing packet before the hit. every melee swing goes through hit() so the packet
 // order lives in one place, and the callers that pace themselves off the cooldown ask active() for the clicker instead
@@ -40,11 +40,20 @@ public final class LegacyCombat {
     // ViaFabricPlus only fixes the order inside Minecraft#startAttack and we never go through that
     public static void hit(MultiPlayerGameMode gameMode, LocalPlayer player, Entity target, InteractionHand hand) {
         if (active()) {
-            player.swing(hand, SwingAnimation.DEFAULT, false);
+            swing(player, hand);
             gameMode.attack(player, target);
         } else {
             gameMode.attack(player, target);
-            player.swing(hand, SwingAnimation.DEFAULT, false);
+            swing(player, hand);
         }
+    }
+
+    // a hit or a dig swings the way Minecraft#startAttack and #continueAttack do in 26.3. the arm animation is client side
+    // only and the server hears about the swing from the punch packet alone (there's no swing packet anymore), so without
+    // it every hit and dig was an attack nobody swung, and anticheats noticed (Vulcan's Bad Packets 7 and 9). placing a
+    // block or using an item sends no punch, same as vanilla
+    public static void swing(LocalPlayer player, InteractionHand hand) {
+        player.swing(hand, player.getItemInHand(hand).getAttackAnimation(), false);
+        player.connection.send(ServerboundPunchPacket.INSTANCE);
     }
 }
