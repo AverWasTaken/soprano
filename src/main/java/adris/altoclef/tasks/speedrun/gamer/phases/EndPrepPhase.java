@@ -15,6 +15,7 @@ import adris.altoclef.tasks.resources.CollectWoolTask;
 import adris.altoclef.tasks.resources.CraftBedTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
+import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasks.speedrun.gamer.FoodDry;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.FoodTripRules;
@@ -29,11 +30,13 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.end.ShedTally;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PortalDig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.DropRoom;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WaterUpkeep;
@@ -91,6 +94,7 @@ public class EndPrepPhase implements PhaseHandler {
     // the bed mine task that was running, kept through the pickup of the bed it just broke (the lookup is empty by then)
     private Task _bedMine;
     private int _bedMineTail;
+    private ShedTally _shed = new ShedTally();
     private String _hudState;
     // the gap the last gate line named, so a line goes out only when it changes
     private String _lastGate;
@@ -170,6 +174,7 @@ public class EndPrepPhase implements PhaseHandler {
         _bedTarget = null;
         _bedMine = null;
         _bedMineTail = 0;
+        _shed = new ShedTally();
         _armorTicks = 0;
         _armorGaveUp = false;
         _armorTask = null;
@@ -455,6 +460,10 @@ public class EndPrepPhase implements PhaseHandler {
     // the one search and it always has a next step: wool in the bag gets crafted, a known bed gets broken however far off it is, and
     // with neither CollectWoolTask finds sheep (its wander does the exploring). a village or a sheep is out there, we just keep walking
     private Task bedErrand(AltoClef mod, GamerContext ctx, int lacking) {
+        Task shed = shedForBeds(mod);
+        if (shed != null) {
+            return shed;
+        }
         GamerFacts f = ctx.facts();
         int held = f.count(ItemHelper.BED);
         BlockPos portal = portalCenter(mod, ctx.state());
@@ -495,6 +504,42 @@ public class EndPrepPhase implements PhaseHandler {
                 return catalogue("bedwool", want, () -> new CollectWoolTask(want));
             }
         }
+    }
+
+    // beds don't stack, so every one the errand finds needs a slot of its own and a full bag means it never lands. one stack out, then
+    // back to the errand. no clock on any of this, the tally bounds the throws and only the throws
+    private Task shedForBeds(AltoClef mod) {
+        if (StorageHelper.freeBagSlots(mod) > 0) {
+            return null;
+        }
+        // stopping the craft task clicks whatever's on the cursor out of the window, kept or not. the craft puts it down by itself
+        if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
+            return null;
+        }
+        if (_shed.spent()) {
+            if (_shed.sayCap()) {
+                Debug.logInternal("endprep: threw " + ShedTally.CAP + " stacks for beds and the bag is full again, leaving it be");
+            }
+            return null;
+        }
+        StorageHelper.GarbageView view = StorageHelper.garbageView(mod);
+        StorageHelper.Room room = view.shed();
+        if (room.kind() != DropRoom.Kind.EVICT) {
+            if (_shed.sayStuck()) {
+                Debug.logInternal("endprep: full bag and nothing may go for beds: " + view.dump());
+            }
+            return null;
+        }
+        if (_shed.first()) {
+            Debug.logInternal("endprep: first throw for beds, bag: " + view.dump());
+        }
+        ShedTally tally = _shed;
+        String what = ItemHelper.stripItemName(room.victim().getItem()) + " x" + room.victim().getCount();
+        _hudState = "Full bag: throwing " + what + " for beds";
+        return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim(), () -> {
+            tally.thrown();
+            Debug.logInternal("endprep: threw " + what + " for beds");
+        });
     }
 
     private Task bedMineTail(AltoClef mod) {

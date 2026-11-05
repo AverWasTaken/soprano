@@ -54,6 +54,9 @@ public final class CombatCommit {
     public static final double RUN_CLEAR = 12;
     public static final long RUN_CLEAR_TICKS = 40;
     public static final long RUN_CAP = 500;
+    // a wither skeleton keeps coming out to its follow range: 16, plus a spawn bonus of up to 11.5%, so 17.84 at worst. two
+    // more on top so one on the line can't undo the clear. RUN_CLEAR's 12 is well inside all of that
+    public static final double WITHER_AGGRO = 20;
 
     // cornered: a run that went nowhere for CORNER_TICKS with something on top of us (CORNER_RANGE), or for twice that with
     // something angry anywhere within CORNER_WATCH (a shooter we can't get away from). the window only runs while something
@@ -107,6 +110,9 @@ public final class CombatCommit {
     // that corner lets go once the fast mob has been off us this long. one tick is not enough: its own hit knocks it past the range
     // above, and at low hp that would be us turning our back on the first bite
     public static final long FAST_CORNER_RELEASE_TICKS = 20;
+    // one cube out of reach by lava gets let go, not standing around for it is the whole point. the next one this soon is a swarm:
+    // writing them off one at a time is a walk with cubes taking turns on our back
+    public static final long SHORE_LET_GO_WINDOW_TICKS = 200;
 
     // a blaze this close on our own floor is worth the walk: past this, or hovering, is the chase the rods task warns about
     public static final double BLAZE_SWAP_RANGE = 6;
@@ -819,6 +825,7 @@ public final class CombatCommit {
     private boolean fastCorner;
     // that fast corner is the lone wither skeleton one (loneWither): a crowd still bails it
     private boolean witherCorner;
+    private double angryWither = Double.POSITIVE_INFINITY;
     // since when nothing fast has been on us in a fast corner, -1 while something is
     private long fastClearSince = -1;
     // since when the melee target has been out of reach (takeover)
@@ -862,6 +869,9 @@ public final class CombatCommit {
     // the same for a sniper we went after because it pinned us down. its own clock: a witch we could not reach says nothing
     // about a skeleton
     private long sniperGaveUpAt = Long.MIN_VALUE / 2;
+    // the last tick a cube stood out of reach by lava in a fight, let go or not. a kept fight stamps it too, or the window runs out
+    // halfway through the swarm and the next cube gets written off anyway
+    private long lastShoreLetGo = Long.MIN_VALUE / 2;
     // this fight is with a ranged foe we chose to go and get (a lobber, or a sniper that is shooting us): a stall or a lost track means we
     // could not get to it, and that is remembered
     private boolean atRange;
@@ -911,6 +921,12 @@ public final class CombatCommit {
     // the brain hands over the world's side of the perch every tick, right before step
     public void perchFacts(PerchRules.Facts facts) {
         this.perch = facts;
+    }
+
+    // the closest wither skeleton that is after us, infinity for none, handed in each tick like perchFacts. the foe list can't
+    // answer this, it stops at FOE_RANGE and a skeleton gives up further out than that
+    public void angryWither(double nearest) {
+        this.angryWither = nearest;
     }
 
     public boolean perching() {
@@ -1009,6 +1025,7 @@ public final class CombatCommit {
         rePerches = 0;
         lobberGaveUpAt = Long.MIN_VALUE / 2;
         sniperGaveUpAt = Long.MIN_VALUE / 2;
+        lastShoreLetGo = Long.MIN_VALUE / 2;
         atRange = false;
         recover.reset();
     }
@@ -1510,17 +1527,26 @@ public final class CombatCommit {
 
     // a fast melee mob that has hit us, close, with a weapon in hand to answer it: a run is a jog with it biting our back, so
     // that is the fight. cubes, slimes and spiders move at 0.3 or better (see CombatBrain.fast). in the heal-up hold it is
-    // seen from further off: knockback puts the thing past the close range and a re-run from it is the cornered death anyway
+    // seen from further off: knockback puts the thing past the close range and a re-run from it is the cornered death anyway.
+    // same for a cube in a shore swarm, a run from there just swaps the let go loop for a run past the next cube
     private Foe fastTarget(Tick t) {
         if (!t.armed()) return null;
-        double range = recover.on() ? RecoverHold.RERUN_RANGE : FAST_FIGHT_RANGE;
         Foe best = null;
         for (Foe foe : t.foes()) {
-            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > range || foe.kind() == Kind.UNTOUCHABLE) continue;
+            if (!foe.fast() || !foe.melee() || !foe.hitUs() || foe.distance() > fastRange(foe, t.now()) || foe.kind() == Kind.UNTOUCHABLE) continue;
             if (foe.mustRun(t.guardHealth()) || gaveUpOn(foe, t.now()) || stillIgnored(foe, t.now())) continue;
             if (best == null || foe.distance() < best.distance()) best = foe;
         }
         return best != null ? best : loneWither(t);
+    }
+
+    // (cubes only for the swarm: a hoglin or a spider that wanders up inside the window still gets the normal answer)
+    private double fastRange(Foe foe, long now) {
+        return recover.on() || (foe.splitType() != null && shoreSwarm(now)) ? RecoverHold.RERUN_RANGE : FAST_FIGHT_RANGE;
+    }
+
+    private boolean shoreSwarm(long now) {
+        return now >= lastShoreLetGo && now - lastShoreLetGo <= SHORE_LET_GO_WINDOW_TICKS;
     }
 
     // a wither skeleton that hit us from close, with no other melee mob within 8: not fast, but the same cornered fight. 4.5 a
@@ -1921,13 +1947,18 @@ public final class CombatCommit {
         // the walk already failed, letting go is the same stuck run and this same pick ten ticks later
         boolean stuckRunFight = cornered && !boxCorner && !fastCorner;
         if (target.splitType() != null && t.way().lavaClose() && !target.inTaskReach() && !t.boxed() && !stuckRunFight) {
-            ignored.put(target.id(), t.now());
-            idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
-            Event cleared = end(t, Event.FIGHT_CLEARED);
-            // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
-            // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
-            recover.reset();
-            return cleared;
+            // inside the window it stays a plain fight: the task swings when it can and stands per lavaHold when it can't
+            boolean swarm = shoreSwarm(t.now());
+            lastShoreLetGo = t.now();
+            if (!swarm) {
+                ignored.put(target.id(), t.now());
+                idleNote = String.format(java.util.Locale.ROOT, "let go of #%d, out of reach by lava (gap %.1f, hp %.1f)", target.id(), target.reachGap(), t.health());
+                Event cleared = end(t, Event.FIGHT_CLEARED);
+                // (end just offered us a heal hold, which is the same stand beside the same lava under a nicer name, and rerun won't
+                // hear about this cube now. RecoverHold gets its chance after a run or a fight somewhere better)
+                recover.reset();
+                return cleared;
+            }
         }
         // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
         // goes by the normal rules below)
@@ -2269,7 +2300,8 @@ public final class CombatCommit {
         }
         // RUN_CLEAR and the sight count both stop short of a bow: 12 blocks is well inside SHOOTER_RANGE, and a skeleton round a
         // corner is one step from its line again. neither ending counts until it is out of range. the cap still ends the run
-        boolean bowRange = inBowRange(t);
+        // (a wither skeleton has no bow, it has 8 more blocks of walking after us, which comes to the same thing)
+        boolean bowRange = inBowRange(t) || witherAggro(t);
         // clear means nothing angry within RUN_CLEAR. the clock is on whether or not we are far enough yet, so the moment
         // we are far enough the answer is already in
         if (nearest <= RUN_CLEAR || bowRange) {
@@ -2334,6 +2366,14 @@ public final class CombatCommit {
     private static boolean inBowRange(Tick t) {
         for (Foe foe : t.foes()) {
             if (foe.bow() && foe.distance() <= CombatRules.SHOOTER_RANGE) return true;
+        }
+        return false;
+    }
+
+    private boolean witherAggro(Tick t) {
+        if (angryWither <= WITHER_AGGRO) return true;
+        for (Foe foe : t.foes()) {
+            if (foe.wither() && foe.distance() <= WITHER_AGGRO) return true;
         }
         return false;
     }

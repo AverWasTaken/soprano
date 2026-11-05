@@ -272,6 +272,145 @@ public class CombatCommitRimTest {
         assertEquals(Mode.FIGHT, c.mode());
     }
 
+    // ---- a swarm on a shore: the first cube out of reach gets let go, the rest inside the window don't
+
+    private static Foe swarmCube(int id, double distance, double gap, long sinceHit) {
+        return realCube(id, distance, gap, sinceHit).withFast(true);
+    }
+
+    // the first let go, on tick 1. stamps the window
+    private static CombatCommit letGoOnce() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(0, 20, List.of(swarmCube(1, 2.5, 2, 0)), null, LAVA));
+        Foe knocked = swarmCube(1, 4.5, 3.5, 1);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, 20, List.of(knocked), knocked, LAVA)));
+        String note = c.takeNote();
+        assertNotNull(note);
+        assertTrue(note, note.contains("let go of #1"));
+        return c;
+    }
+
+    private static void noLetGoNote(CombatCommit c) {
+        String note = c.takeNote();
+        assertTrue(note, note == null || !note.contains("let go"));
+    }
+
+    @Test
+    public void theSecondCubeInsideTheWindowIsNotLetGo() {
+        CombatCommit c = letGoOnce();
+        assertEquals(Event.FIGHT_START, c.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA)));
+        Foe knocked = swarmCube(2, 4.5, 3.5, 1);
+        for (long t = 31; t < 60; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(knocked), knocked, LAVA)));
+            assertEquals(Mode.FIGHT, c.mode());
+            assertEquals(2, c.targetId());
+            noLetGoNote(c);
+        }
+    }
+
+    // the last tick of the window still counts, and the tick after it doesn't. two machines, the first look stamps
+    @Test
+    public void theWindowIsTwoHundredTicksAndThenTheLetGoIsBack() {
+        CombatCommit inside = letGoOnce();
+        inside.step(tick(200, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 4.5, 3.5, 1);
+        assertEquals(Event.NONE, inside.step(tick(1 + CombatCommit.SHORE_LET_GO_WINDOW_TICKS, 20, List.of(knocked), knocked, LAVA)));
+        assertEquals(Mode.FIGHT, inside.mode());
+
+        CombatCommit after = letGoOnce();
+        after.step(tick(201, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        assertEquals(Event.FIGHT_CLEARED, after.step(tick(2 + CombatCommit.SHORE_LET_GO_WINDOW_TICKS, 20, List.of(knocked), knocked, LAVA)));
+        String note = after.takeNote();
+        assertNotNull(note);
+        assertTrue(note, note.contains("let go of #2"));
+    }
+
+    // a kept fight has to keep the window open, 200 ticks from the first let go is the middle of the swarm
+    @Test
+    public void aKeptFightStampsTheWindowToo() {
+        CombatCommit c = letGoOnce();
+        c.step(tick(150, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 4.5, 3.5, 1);
+        for (long t = 151; t <= 180; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(knocked), knocked, LAVA)));
+        }
+        Foe back = swarmCube(2, 2, 1.5, 1);
+        for (long t = 181; t < 375; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(back), back, LAVA)));
+        }
+        // 374 ticks after the let go, 195 after the last kept tick
+        assertEquals(Event.NONE, c.step(tick(375, 20, List.of(knocked), knocked, LAVA)));
+        assertEquals(Mode.FIGHT, c.mode());
+        noLetGoNote(c);
+    }
+
+    @Test
+    public void resetClearsTheWindow() {
+        CombatCommit c = letGoOnce();
+        c.reset();
+        c.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 4.5, 3.5, 1);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(31, 20, List.of(knocked), knocked, LAVA)));
+    }
+
+    // knockback puts the cube past FAST_FIGHT_RANGE, and the bail runs before the let go ever looks. without the wider range the
+    // let go loop just comes back as a run
+    @Test
+    public void aKnockedBackCubePastFourAtLowHpIsNoRunInsideTheWindow() {
+        CombatCommit c = letGoOnce();
+        c.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 6, 5.5, 1);
+        for (long t = 31; t < 60; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 6, List.of(knocked), knocked, LAVA)));
+            assertEquals(Mode.FIGHT, c.mode());
+        }
+    }
+
+    // the same fight with no let go before it, or the test above proves nothing
+    @Test
+    public void theSameCubeWithNoWindowIsTheRun() {
+        CombatCommit c = new CombatCommit();
+        c.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 6, 5.5, 1);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(31, 6, List.of(knocked), knocked, LAVA)));
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void aCrowdOfCubesPastFourIsNoRunInsideTheWindow() {
+        CombatCommit c = letGoOnce();
+        c.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        Foe knocked = swarmCube(2, 5, 4.5, 1);
+        List<Foe> three = List.of(knocked, swarmCube(3, 5.5, 5, 1), swarmCube(4, 6, 5.5, 1));
+        assertEquals(Event.NONE, c.step(tick(31, 20, three, knocked, LAVA)));
+        assertEquals(Mode.FIGHT, c.mode());
+
+        CombatCommit fresh = new CombatCommit();
+        fresh.step(tick(30, 20, List.of(swarmCube(2, 2, 1.5, 0)), null, LAVA));
+        assertEquals(Event.FIGHT_TO_RUN, fresh.step(tick(31, 20, three, knocked, LAVA)));
+        assertEquals(Why.CROWD, fresh.why());
+    }
+
+    // walking along with nothing on, the low hp run picks the fresh cube inside the window: this is the run past the next cube
+    @Test
+    public void aFreshBiteAtLowHpOffAFightIsTheFightInsideTheWindow() {
+        CombatCommit c = letGoOnce();
+        Foe bit = swarmCube(2, 6, 5.5, 0);
+        assertEquals(Event.RUN_TO_FIGHT, c.step(tick(30, 6, List.of(bit), null, LAVA)));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(2, c.targetId());
+        assertEquals(Why.CORNERED, c.why());
+    }
+
+    // the wider range is the swarm's, a spider walking up in the window is not a cube
+    @Test
+    public void theWiderRangeIsOnlyForCubes() {
+        CombatCommit c = letGoOnce();
+        Foe other = new Foe(2, 6, false, false, 0).withFast(true);
+        assertEquals(Event.RUN_START, c.step(tick(30, 6, List.of(other), null, LAVA)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
     private static Tick lingeringTick(long now, Foe cube, Foe target, Way way) {
         return new Tick(now, 14, 0, 0, List.of(cube), target, way, true, false, false, new RecoverHold.Body(20, false, false, false, true), false);
     }

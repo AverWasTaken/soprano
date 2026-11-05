@@ -239,4 +239,117 @@ public class DropRoomTest {
         assertEquals(false, kept[0]);
         assertEquals(false, kept[1]);
     }
+    // ---- the bed errand's shed
+
+    // in window order, the way the view reads it: the main bag and then the hotbar. bag order is the tie break
+    private static List<ItemStack> stuffed() {
+        Object[][] rows = {
+                {Items.COOKED_BEEF, 2}, {Items.IRON_HELMET, 1}, {Items.BLAZE_ROD, 1}, {Items.BED.white(), 1}, {Items.WOOL.lightGray(), 2},
+                {Items.COOKED_CHICKEN, 10}, {Items.WOOL.white(), 8}, {Items.BED.white(), 1}, {Items.DIAMOND, 1}, {Items.WOOL.black(), 1},
+                {Items.BUCKET, 1}, {Items.SHEARS, 1}, {Items.ENDER_EYE, 13}, {Items.SHIELD, 1}, {Items.BED.white(), 1},
+                {Items.FLINT_AND_STEEL, 1}, {Items.WATER_BUCKET, 1}, {Items.COAL, 1}, {Items.FURNACE, 3}, {Items.SHIELD, 1},
+                {Items.RAW_GOLD, 4}, {Items.IRON_PICKAXE, 1}, {Items.SMOKER, 1}, {Items.BED.white(), 1}, {Items.STONE_SWORD, 1},
+                {Items.BED.white(), 1}, {Items.IRON_SWORD, 1},
+                {Items.DIAMOND_PICKAXE, 1}, {Items.CRAFTING_TABLE, 1}, {Items.LADDER, 3}, {Items.BED.white(), 1}, {Items.IRON_SWORD, 1},
+                {Items.BED.white(), 1}, {Items.WOODEN_PICKAXE, 1}, {Items.BED.lightGray(), 1}, {Items.NETHERRACK, 41}};
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Object[] row : rows) {
+            stacks.add(new ItemStack((Item) row[0], (Integer) row[1]));
+        }
+        return stacks;
+    }
+
+    // what the view would hand over: the End's reserve read off the bag (ten beds, a spare among them), the helmet is one we'd
+    // wear, the important list holds its three, and only the netherrack is plain enough to be tier 3, the gamer's list covers the rest
+    private static List<Stack> stuffedStacks(List<ItemStack> stacks) {
+        boolean[] end = DropRoom.reserved(stacks, 10);
+        List<Stack> bag = new ArrayList<>();
+        for (int i = 0; i < stacks.size(); i++) {
+            ItemStack st = stacks.get(i);
+            Item item = st.getItem();
+            boolean rock = item == Items.NETHERRACK;
+            boolean important = item == Items.DIAMOND || item == Items.DIAMOND_PICKAXE || item == Items.ENDER_EYE;
+            bag.add(new Stack(st, ItemValue.tier(false, false, ItemValue.isCore(item), !rock), end[i] || important || item == Items.IRON_HELMET, rock));
+        }
+        return bag;
+    }
+
+    // keeps throwing until nothing may go and returns the order
+    private static List<Item> shedAll(List<ItemStack> stacks) {
+        List<Item> thrown = new ArrayList<>();
+        for (int i = DropRoom.shed(-1, stuffedStacks(stacks)); i >= 0; i = DropRoom.shed(-1, stuffedStacks(stacks))) {
+            thrown.add(stacks.get(i).getItem());
+            stacks.set(i, ItemStack.EMPTY);
+        }
+        return thrown;
+    }
+
+    @Test
+    public void aStuffedBagOffersTheCheapStuffFirst() {
+        List<ItemStack> stacks = stuffed();
+        assertEquals(36, stacks.size());
+        assertEquals(List.of(Items.WOOL.black(), Items.SHIELD, Items.IRON_PICKAXE, Items.STONE_SWORD, Items.IRON_SWORD, Items.WOODEN_PICKAXE,
+                Items.WOOL.lightGray(), Items.RAW_GOLD, Items.FURNACE, Items.SHEARS, Items.COAL), shedAll(stacks));
+    }
+
+    @Test
+    public void aStuffedBagKeepsWhatTheEndNeeds() {
+        List<ItemStack> stacks = stuffed();
+        shedAll(stacks);
+        List<Item> left = new ArrayList<>();
+        for (ItemStack st : stacks) {
+            if (!st.isEmpty()) left.add(st.getItem());
+        }
+        assertEquals(List.of(Items.COOKED_BEEF, Items.IRON_HELMET, Items.BLAZE_ROD, Items.BED.white(), Items.COOKED_CHICKEN, Items.WOOL.white(),
+                Items.BED.white(), Items.DIAMOND, Items.BUCKET, Items.ENDER_EYE, Items.BED.white(), Items.FLINT_AND_STEEL, Items.WATER_BUCKET,
+                Items.SHIELD, Items.SMOKER, Items.BED.white(), Items.BED.white(), Items.DIAMOND_PICKAXE, Items.CRAFTING_TABLE, Items.LADDER,
+                Items.BED.white(), Items.IRON_SWORD, Items.BED.white(), Items.BED.lightGray(), Items.NETHERRACK), left);
+    }
+
+    @Test
+    public void aDiamondOnTheImportantListStays() {
+        List<Stack> bag = new ArrayList<>(List.of(kept(Items.DIAMOND, 1), kit(Items.COAL, 1)));
+        assertEquals(1, DropRoom.shed(-1, bag));
+        bag.set(1, new Stack(ItemStack.EMPTY, ItemValue.REST, false, false));
+        assertEquals(-1, DropRoom.shed(-1, bag));
+    }
+
+    @Test
+    public void thePearlsListDoesNotGrowTheLateItems() {
+        List<Stack> bag = new ArrayList<>(List.of(kit(Items.RAW_GOLD, 4), kit(Items.FURNACE, 3), kit(Items.SMOKER, 1), kit(Items.SHEARS, 1),
+                kit(Items.DIAMOND, 1), kit(Items.COAL, 1)));
+        assertEquals(-1, DropRoom.victim(bag));
+        assertSame(Decision.NO, pearl(bag));
+        assertEquals(0, DropRoom.shed(-1, bag));
+    }
+
+    @Test
+    public void theLateListGoesInItsOwnOrder() {
+        List<Stack> bag = new ArrayList<>(List.of(kit(Items.COAL, 1), kit(Items.DIAMOND, 1), kit(Items.SHEARS, 1), kit(Items.FURNACE, 3),
+                kit(Items.RAW_GOLD, 4), kit(Items.SMOKER, 1)));
+        int[] order = {4, 3, 2, 1, 0};
+        for (int want : order) {
+            assertEquals(want, DropRoom.shed(-1, bag));
+            bag.set(want, new Stack(ItemStack.EMPTY, ItemValue.REST, false, false));
+        }
+        assertEquals(-1, DropRoom.shed(-1, bag));
+    }
+
+    @Test
+    public void aFurnaceStaysWithoutASmoker() {
+        assertEquals(-1, DropRoom.shed(-1, new ArrayList<>(List.of(kit(Items.FURNACE, 3), kit(Items.BUCKET, 1)))));
+    }
+
+    @Test
+    public void garbageGoesBeforeAnyoneWeLike() {
+        List<Stack> bag = with(kit(Items.IRON_SWORD, 1), kit(Items.IRON_SWORD, 1), rest(Items.DIRT, 64));
+        assertEquals(bag.size() - 1, DropRoom.shed(bag.size() - 1, bag));
+    }
+
+    @Test
+    public void aGarbagePickWeKeepIsNotAnAnswer() {
+        List<Stack> bag = with(kept(Items.BED.white(), 1), kit(Items.IRON_SWORD, 1), kit(Items.IRON_SWORD, 1));
+        int bed = bag.size() - 3;
+        assertEquals(bed + 1, DropRoom.shed(bed, bag));
+    }
 }

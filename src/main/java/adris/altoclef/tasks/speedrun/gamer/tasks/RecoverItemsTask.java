@@ -116,7 +116,8 @@ public class RecoverItemsTask extends Task {
             return null;
         }
         // whatever killed us is probably still standing on it. walking in again is how the same two zombies got us twice
-        List<Entity> threats = threatsAtPile(mod);
+        List<Entity> threats = RecoverRules.crowdCounts(Math.sqrt(mod.getPlayer().blockPosition().distSqr(_deathPos)))
+                ? threatsAtPile(mod) : List.of();
         switch (_gate.update(mod.getWorld().getGameTime() / 20.0, threats.size())) {
             case GIVE_UP -> {
                 Debug.logMessage("Still " + threats.size() + " hostile(s) on our stuff after " + (int) RecoverRules.WAIT_SECONDS

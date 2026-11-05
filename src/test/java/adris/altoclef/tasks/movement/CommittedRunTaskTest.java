@@ -4,11 +4,19 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.util.helpers.CombatRules;
 import org.junit.Test;
 
 // the pathfinder is left alone for a bit after a goal was handed to it and did not stick. a goal nothing can reach was
 // re-sent on every tick, a full search each time, for as long as the run lasted
 public class CommittedRunTaskTest {
+
+    @Test
+    public void theGoalPushesPastEveryLineTheCommitmentHoldsARunFor() {
+        assertTrue(CommittedRunTask.CROWD_CLEAR > CombatCommit.WITHER_AGGRO);
+        assertTrue(CommittedRunTask.CROWD_CLEAR > CombatRules.SHOOTER_RANGE);
+    }
 
     @Test
     public void theFirstIssueAlwaysGoesThrough() {

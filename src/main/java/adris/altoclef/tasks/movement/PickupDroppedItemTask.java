@@ -4,6 +4,7 @@ import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
+import adris.altoclef.util.time.TimerReal;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
@@ -36,6 +37,7 @@ import java.util.Optional;
 
 public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEntity> implements ITaskRequiresGrounded {
     private static final Task getPickaxeFirstTask = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
+    private static final TimerReal NO_ROOM_DUMP = new TimerReal(60);
     // Not clean practice, but it helps keep things self contained I think.
     private static boolean isGettingPickaxeFirstFlag = false;
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5, true);
@@ -318,12 +320,18 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         if (touching) {
             if (_freeInventoryIfFull) {
                 // same answer the death pile filters by, so a drop it walked us to is never one we refuse here
-                StorageHelper.Room room = StorageHelper.garbageView(_mod).room(itemEntity.getItem());
+                StorageHelper.GarbageView view = StorageHelper.garbageView(_mod);
+                StorageHelper.Room room = view.room(itemEntity.getItem());
                 if (room.kind() == DropRoom.Kind.EVICT) {
                     return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim());
                 }
                 if (room.kind() == DropRoom.Kind.NONE) {
                     Debug.logMessage("no room for " + itemEntity.getItem().getItem().getDescriptionId() + ", nothing in the bag may go");
+                    // this line can fire a few times a second for as long as it likes, the bag only needs saying now and then
+                    if (NO_ROOM_DUMP.elapsed()) {
+                        NO_ROOM_DUMP.reset();
+                        Debug.logMessage("no room: bag is " + view.dump());
+                    }
                     _gaveUpReason = "no room";
                     BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
                     _currentDrop = null;
