@@ -17,6 +17,9 @@ public final class RecoverRules {
     public static final double WAIT_SECONDS = 30;
     // and how far from the threats we wait
     public static final double SAFE_DISTANCE = 24;
+    // the crowd only counts from here in. the tracker sees a zombie on the pile from a hundred blocks off, and waiting out the clock
+    // from there can't tell if it leaves. threat radius plus safe distance: this is the spot the stand off would back us up to anyway
+    public static final double CROWD_CLOCK_BLOCKS = THREAT_RADIUS + SAFE_DISTANCE;
 
     private RecoverRules() {
     }
@@ -28,6 +31,11 @@ public final class RecoverRules {
         WAIT,
         // they are not leaving. the items were not worth a second death
         GIVE_UP
+    }
+
+    // too far off to judge the pile, keep walking
+    public static boolean crowdCounts(double blocksToPile) {
+        return blocksToPile <= CROWD_CLOCK_BLOCKS;
     }
 
     // offsets from the death spot
