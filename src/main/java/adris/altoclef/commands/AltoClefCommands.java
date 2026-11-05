@@ -88,6 +88,7 @@ public final class AltoClefCommands {
         return List.of(
                 new WhitelistCommand(baritone),
                 new GetCommand(baritone),
+                new BranchMineCommand(baritone),
                 new GiveCommand(baritone),
                 new EquipCommand(baritone),
                 new DepositCommand(baritone),

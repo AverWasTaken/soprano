@@ -119,6 +119,8 @@ Soprano is Baritone, made by [cabaletta](https://github.com/cabaletta), [leijurv
 
 The built-in AltoClef is [AltoClef](https://github.com/gaucho-matrero/altoclef) by gaucho-matrero and Adris Jautakas, using MarvionKirito's 1.21 fork. It's MIT licensed, see [LICENSE-AltoClef](LICENSE-AltoClef).
 
+`#branchmine` is adapted from `BranchMiningTask` in [Hackerokuz's AltoClef fork](https://github.com/Hackerokuz/altoclef/tree/LegitMineFeature) (`LegitMineFeature` branch). That fork carries the same MIT license and copyright as AltoClef, so [LICENSE-AltoClef](LICENSE-AltoClef) covers it.
+
 ## License
 
 Soprano is licensed under the [LGPL-3.0](LICENSE), same as Baritone.
