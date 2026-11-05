@@ -175,6 +175,7 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `goto <x y z | x z | y> <overworld|nether|the_end>` to go somewhere in another dimension, walking through portals to get there. `goto the_end` on its own just takes you to that dimension. Coordinates have to be plain numbers here (no `~`), and `end` and `the_nether` work as spellings too. Without a dimension on the end, `goto` is Soprano's own
 - `stop`, `cancel` and `forcecancel` also stop AltoClef's task
 - `get <item> [count] ...` to get items or resources (`get iron_ingot 3 diamond 2`, `get [iron_pickaxe, stone_sword 1]`). `list` shows what it knows how to get
+- `branchmine <ore> [count] [y]` to strip mine for an ore (`branchmine diamond 8`): it digs down to the ore's usual y, then a trunk the way you are looking with a 32 block branch off both sides every 4 blocks, and only mines ore it can see from the tunnel. The count is the total held, same as `get`, and leaving it out (or 0) means until stopped. Ores are `diamond`, `redstone`, `raw_gold` (`gold`), `lapis_lazuli` (`lapis`), `raw_iron` (`iron`), `raw_copper` (`copper`), `coal` and `emerald`, which has no usual y and needs one (`branchmine emerald 0 100`). Overworld only
 - `give <player> <item> [count]` to collect something and hand it to a player
 - `equip <set | piece ...>` to equip armor, like `equip diamond`
 - `deposit [item ...]` to store items in a container, `stash x1 y1 z1 x2 y2 z2 [item ...]` to put them in a chest stash

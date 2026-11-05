@@ -218,7 +218,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
         // Check for chests and grab resources from them.
         // no containers known is the common case, and the lookup walks every cached one, so ask once a second at most
-        if (_currentContainer == null && --_containerLookupCooldown <= 0 && mod.getItemStorage().hasAnyContainers()) {
+        if (usesContainers() && _currentContainer == null && --_containerLookupCooldown <= 0 && mod.getItemStorage().hasAnyContainers()) {
             _containerLookupCooldown = CONTAINER_LOOKUP_TICKS;
             List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(_allMatches).stream()
                     .filter(cache -> cache.getContainerType().lootable()).toList();
@@ -373,6 +373,11 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     // same thing as shouldAvoidPickingUp: crafts and smelts say yes to that and pick up nothing, their parents still sweep
     public boolean ownsDrops() {
         return false;
+    }
+
+    // no means a known chest holding the target doesn't count as a way to get it
+    protected boolean usesContainers() {
+        return true;
     }
 
     // a miner says yes when these are blocks it breaks anyway (see the mineIfPresent branch in onTick)

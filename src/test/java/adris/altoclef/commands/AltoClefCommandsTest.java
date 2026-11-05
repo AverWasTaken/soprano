@@ -169,7 +169,7 @@ public class AltoClefCommandsTest {
 
     @Test
     public void theNamesTheLeadAskedFor() {
-        String[] expected = {"get", "give", "equip", "deposit", "stash", "food", "meat", "gamer", "hero", "punk",
+        String[] expected = {"get", "branchmine", "give", "equip", "deposit", "stash", "food", "meat", "gamer", "hero", "punk",
                 "coords", "inventory", "list", "locate_structure", "locatestructure", "status", "idle", "selfcare",
                 "gamma", "setgamma", "set_gamma", "coverwithblocks", "coverwithsand", "altoreload", "reload_settings"};
         for (String name : expected) {
@@ -190,6 +190,14 @@ public class AltoClefCommandsTest {
         for (String denied : new String[]{"set", "build", "mine", "settings", "waypoints", "reloadall", "saveall", "sel", "click", "elytra", "farm", "explore", "", "#set", "set;get"}) {
             assertFalse(denied + " must not be allowed", AltoClefCommands.isButlerAllowed(denied));
         }
+    }
+
+    @Test
+    public void branchmineCompletesTheOres() throws Exception {
+        assertEquals(List.of("diamond"), tab("branchmine", "dia"));
+        assertEquals(List.of("gold"), tab("branchmine", "go"));
+        assertTrue(tab("branchmine", "").contains("raw_iron"));
+        assertTrue(tab("branchmine", "diamond ").isEmpty());
     }
 
     @Test
