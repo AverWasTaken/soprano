@@ -12,14 +12,19 @@ public final class RunZones {
     public static final double RADIUS = 24;
     // a wither pack is a closet, not a bastion
     public static final double PACK_RADIUS = 12;
-    // a hoglin pack seen from a way off, before anything has had to run from it. a wall for walks and nothing else, see covers
-    public static final double HOGLIN_RADIUS = 16;
-    // past this they are not on any walk of ours yet, and a floor 24 up or down is somebody else's problem
-    public static final double HOGLIN_SEEN_FLAT = 40;
-    public static final double HOGLIN_SEEN_Y = 24;
-    // two hoglins is a fight the bail can answer, three is 20 hp in 8 s
-    public static final int HOGLIN_PACK_SIZE = 3;
-    public static final double HOGLIN_PACK_SPREAD = 8;
+    // a pack seen from a way off, before anything has had to run from it. a wall for walks and nothing else, see covers
+    public static final double FLOOR_RADIUS = 16;
+    // past this they are not on any walk of ours yet. the y has to reach the floor under a fortress ledge, a 20 block drop
+    // is decided up top and by the bottom it's too late to have an opinion
+    public static final double PACK_SEEN_FLAT = 40;
+    public static final double PACK_SEEN_Y = 32;
+    // two hoglins is a fight the bail can answer, three is 20 hp in 8 s. three wither skeletons is 4.5 a swing from all sides
+    public static final int PACK_SIZE = 3;
+    public static final double PACK_SPREAD = 8;
+    // a floor zone is only these cells around the pack's feet. fortress floors stack, a wall from bedrock to roof shuts the
+    // bridge overhead for a pack that can't even see it. the top is what refuses a fall: its column gets asked on the way down
+    public static final int FLOOR_BELOW = 2;
+    public static final int FLOOR_ABOVE = 4;
     // game ticks. three minutes is long enough for the hoglins to wander off and short enough that the zone is not forever
     public static final long EXPIRY_TICKS = 3 * 60 * 20L;
     // two runs from the same spot are one zone of that size, a new one just refreshes the clock
@@ -28,10 +33,14 @@ public final class RunZones {
 
     public static final RunZones INSTANCE = new RunZones();
 
-    private record Zone(double x, double z, long at, double radius) {
+    // y is NaN for the flat ones, they go all the way up
+    private record Zone(double x, double z, long at, double radius, double y) {
+        boolean floor() {
+            return !Double.isNaN(y);
+        }
     }
 
-    public record Pack(double x, double z, int count) {
+    public record Pack(double x, double y, double z, int count) {
     }
 
     private volatile List<Zone> zones = List.of();
@@ -47,9 +56,35 @@ public final class RunZones {
             if (zone.radius == radius && Math.hypot(zone.x - x, zone.z - z) <= SAME_SPOT) continue;
             next.add(zone);
         }
-        next.add(new Zone(x, z, now, radius));
-        while (next.size() > MAX) next.remove(0);
+        next.add(new Zone(x, z, now, radius, Double.NaN));
+        trim(next);
         zones = List.copyOf(next);
+    }
+
+    // a pack on one floor, see FLOOR_BELOW. newPack already asked floorZoneNear, so there is nothing to merge in here
+    public void addFloor(double x, double y, double z, long now) {
+        List<Zone> next = new ArrayList<>();
+        for (Zone zone : zones) {
+            if (live(zone, now)) next.add(zone);
+        }
+        next.add(new Zone(x, z, now, FLOOR_RADIUS, Math.floor(y)));
+        trim(next);
+        zones = List.copyOf(next);
+    }
+
+    // over the cap the floor zones go first: we saw those from a way off and see them again in a second, a place we were chased
+    // out of nobody will tell us about twice
+    private static void trim(List<Zone> zones) {
+        while (zones.size() > MAX) {
+            int drop = 0;
+            for (int i = 0; i < zones.size(); i++) {
+                if (zones.get(i).floor()) {
+                    drop = i;
+                    break;
+                }
+            }
+            zones.remove(drop);
+        }
     }
 
     // swaps the whole list in one go, for a source that is rebuilt from scratch every so often (no empty gap for the other
@@ -57,7 +92,7 @@ public final class RunZones {
     public void replaceAll(List<double[]> spots, long now, double radius) {
         List<Zone> next = new ArrayList<>();
         for (double[] spot : spots) {
-            next.add(new Zone(spot[0], spot[1], now, radius));
+            next.add(new Zone(spot[0], spot[1], now, radius, Double.NaN));
         }
         while (next.size() > MAX) next.remove(0);
         zones = List.copyOf(next);
@@ -88,12 +123,35 @@ public final class RunZones {
         return false;
     }
 
+    // blocks with a y, what a walk's predicate asks. a flat zone answers the same as blocks. a floor zone only has its band of
+    // cells, and only stands aside for a player who isn't over it: from 25 up the floor below is still somewhere not to land
+    public boolean blocksAt(int x, int y, int z, long now, double playerX, double playerY, double playerZ, double goalX, double goalZ) {
+        for (Zone zone : zones) {
+            if (!live(zone, now) || !inside(zone, x, z)) continue;
+            if (zone.floor() && !inBand(zone, y)) continue;
+            if (inside(zone, playerX, playerZ) && (!zone.floor() || !overFloor(zone, playerY))) continue;
+            if (inside(zone, goalX, goalZ)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean inBand(Zone zone, double y) {
+        return y >= zone.y - FLOOR_BELOW && y <= zone.y + FLOOR_ABOVE;
+    }
+
+    // under the band counts as not over it. the predicate gets head cells too, so a step up from just below asks about the band
+    // and a no there is the hard ring around the player the exemption is there to stop. the fall this is all for only comes from above
+    private static boolean overFloor(Zone zone, double feetY) {
+        return feetY > zone.y + FLOOR_ABOVE;
+    }
+
     // is (x, z) inside any live zone, no exemptions. this is for picking blazes, not paths: a blaze over the closet is the walk
     // into the closet whether we stand in the zone or not. every zone counts (two runs from one spot merge into the fatter one,
-    // and in a fortress the fat ones are wither skeleton runs anyway). hoglins sat near a fortress say nothing about its blazes
+    // and in a fortress the fat ones are wither skeleton runs anyway). a pack seen from afar says nothing about the blazes over it
     public boolean covers(double x, double z, long now) {
         for (Zone zone : zones) {
-            if (zone.radius != HOGLIN_RADIUS && live(zone, now) && inside(zone, x, z)) return true;
+            if (!zone.floor() && live(zone, now) && inside(zone, x, z)) return true;
         }
         return false;
     }
@@ -112,54 +170,64 @@ public final class RunZones {
         return null;
     }
 
-    // a hoglin zone's middle this close already: a pack ambling about is the same pack, not a new wall and a new clock every second
-    public boolean hoglinZoneNear(double x, double z, long now) {
+    // a floor zone's middle this close on this floor already: a pack ambling about is the same pack, not a new wall and a new
+    // clock every second. tighter in y than sameFloor on purpose: a pack 4 under a zone stands below its band, and calling that
+    // the same zone leaves it with no wall at all
+    public boolean floorZoneNear(double x, double y, double z, long now) {
         for (Zone zone : zones) {
-            if (zone.radius == HOGLIN_RADIUS && live(zone, now) && Math.hypot(zone.x - x, zone.z - z) <= HOGLIN_RADIUS) return true;
+            if (zone.floor() && live(zone, now) && Math.hypot(zone.x - x, zone.z - z) <= FLOOR_RADIUS
+                    && Math.abs(zone.y - Math.floor(y)) <= FLOOR_BELOW) return true;
         }
         return false;
     }
 
-    // the middle of the biggest hoglin pack around the player that has no zone yet, null for none. spots are {x, y, z}. the zone
+    private static boolean sameFloor(double a, double b) {
+        return Math.abs(a - b) <= FLOOR_ABOVE;
+    }
+
+    // the middle of the biggest pack around the player that has no zone yet, null for none. spots are {x, y, z}. the zone
     // check goes in the pick and not after it, or the big pack we already know about hides the small one behind it forever.
     // every hoglin gets a go as the seed: the middle of everybody is an empty field when there are two packs. and at twice the
     // spread too, three of them 14 apart all fit around their middle without any one of them being near another
-    public Pack newHoglinPack(List<double[]> hoglins, double playerX, double playerY, double playerZ, long now) {
+    public Pack newPack(List<double[]> mobs, double playerX, double playerY, double playerZ, long now) {
         List<double[]> seen = new ArrayList<>();
-        for (double[] hoglin : hoglins) {
-            if (Math.hypot(hoglin[0] - playerX, hoglin[2] - playerZ) <= HOGLIN_SEEN_FLAT && Math.abs(hoglin[1] - playerY) <= HOGLIN_SEEN_Y) seen.add(hoglin);
+        for (double[] mob : mobs) {
+            if (Math.hypot(mob[0] - playerX, mob[2] - playerZ) <= PACK_SEEN_FLAT && Math.abs(mob[1] - playerY) <= PACK_SEEN_Y) seen.add(mob);
         }
         Pack best = null;
         for (double[] seed : seen) {
-            best = bigger(best, packAround(seen, seed, HOGLIN_PACK_SPREAD), now);
-            best = bigger(best, packAround(seen, seed, HOGLIN_PACK_SPREAD * 2), now);
+            best = bigger(best, packAround(seen, seed, PACK_SPREAD), now);
+            best = bigger(best, packAround(seen, seed, PACK_SPREAD * 2), now);
         }
         return best;
     }
 
     private Pack bigger(Pack best, Pack pack, long now) {
-        if (pack.count < HOGLIN_PACK_SIZE || (best != null && pack.count <= best.count)) return best;
-        return hoglinZoneNear(pack.x, pack.z, now) ? best : pack;
+        if (pack.count < PACK_SIZE || (best != null && pack.count <= best.count)) return best;
+        return floorZoneNear(pack.x, pack.y, pack.z, now) ? best : pack;
     }
 
     private static Pack packAround(List<double[]> seen, double[] seed, double reach) {
         double x = 0;
         double z = 0;
         int group = 0;
-        for (double[] hoglin : seen) {
-            if (Math.hypot(hoglin[0] - seed[0], hoglin[2] - seed[2]) > reach) continue;
-            x += hoglin[0];
-            z += hoglin[2];
+        // (one floor at a time. three skeletons stacked in one column are not a pack anybody can walk into)
+        for (double[] mob : seen) {
+            if (!sameFloor(mob[1], seed[1]) || Math.hypot(mob[0] - seed[0], mob[2] - seed[2]) > reach) continue;
+            x += mob[0];
+            z += mob[2];
             group++;
         }
         x /= group;
         z /= group;
         // counted again from the real middle, the seed may have been the odd one out on the edge
-        int count = 0;
-        for (double[] hoglin : seen) {
-            if (Math.hypot(hoglin[0] - x, hoglin[2] - z) <= HOGLIN_PACK_SPREAD) count++;
+        List<Double> ys = new ArrayList<>();
+        for (double[] mob : seen) {
+            if (sameFloor(mob[1], seed[1]) && Math.hypot(mob[0] - x, mob[2] - z) <= PACK_SPREAD) ys.add(mob[1]);
         }
-        return new Pack(x, z, count);
+        // the median: one of them mid jump or up a step should not move the floor
+        ys.sort(null);
+        return new Pack(x, ys.isEmpty() ? seed[1] : ys.get(ys.size() / 2), z, ys.size());
     }
 
     private static boolean live(Zone zone, long now) {

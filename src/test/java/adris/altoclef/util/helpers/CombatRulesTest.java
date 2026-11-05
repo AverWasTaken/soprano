@@ -15,6 +15,14 @@ import org.junit.Test;
 // the eat / fight / flee call and the one hp line, as numbers
 public class CombatRulesTest {
 
+    @Test
+    public void aRunListensToEverySkeletonOnlyAtTheFleeLine() {
+        assertEquals(10, CombatRules.runWither(CombatRules.FLEE_HEALTH, Double.POSITIVE_INFINITY, 10), 0);
+        assertEquals(10, CombatRules.runWither(2, 15, 10), 0);
+        assertEquals(Double.POSITIVE_INFINITY, CombatRules.runWither(CombatRules.FLEE_HEALTH + 0.5f, Double.POSITIVE_INFINITY, 10), 0);
+        assertEquals(15, CombatRules.runWither(20, 15, 10), 0);
+    }
+
     private static final double NOBODY = Double.POSITIVE_INFINITY;
 
     // in a fight with the nearest thing at `threat` blocks

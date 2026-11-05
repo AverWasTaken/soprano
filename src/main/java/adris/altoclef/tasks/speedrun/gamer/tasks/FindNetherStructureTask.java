@@ -25,6 +25,7 @@ public class FindNetherStructureTask extends Task {
     // what the path predicate sees, from baritone's thread: where we stand, the game clock, and the waypoint we are walking to
     // (NaN = none yet). written every tick, so the zones from RunZones are judged against where we are now
     private volatile int zoneX;
+    private volatile int zoneY;
     private volatile int zoneZ;
     private volatile long zoneNow;
     private volatile double goalX = Double.NaN;
@@ -55,7 +56,7 @@ public class FindNetherStructureTask extends Task {
         noteZoneInputs(mod);
         // (and the spots a heavy hitter ran us off from lately, see RunZones for which zones never count as a wall)
         mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ())
-                || RunZones.INSTANCE.blocks(p.getX(), p.getZ(), zoneNow, zoneX, zoneZ, goalX, goalZ));
+                || RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, goalX, goalZ));
     }
 
     @Override
@@ -83,6 +84,7 @@ public class FindNetherStructureTask extends Task {
 
     private void noteZoneInputs(AltoClef mod) {
         zoneX = mod.getPlayer().blockPosition().getX();
+        zoneY = mod.getPlayer().blockPosition().getY();
         zoneZ = mod.getPlayer().blockPosition().getZ();
         zoneNow = mod.getWorld().getGameTime();
     }

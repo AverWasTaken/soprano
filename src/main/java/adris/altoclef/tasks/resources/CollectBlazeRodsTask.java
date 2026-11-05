@@ -58,6 +58,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
     // what the path predicate sees, from baritone's thread: where we stand, the game clock and the spawner we walk to
     // (NaN = none). written every tick, same idea as FindNetherStructureTask
     private volatile int _zoneX;
+    private volatile int _zoneY;
     private volatile int _zoneZ;
     private volatile long _zoneNow;
     private volatile double _goalX = Double.NaN;
@@ -87,6 +88,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     private void noteZoneInputs(AltoClef mod) {
         _zoneX = mod.getPlayer().blockPosition().getX();
+        _zoneY = mod.getPlayer().blockPosition().getY();
         _zoneZ = mod.getPlayer().blockPosition().getZ();
         _zoneNow = mod.getWorld().getGameTime();
         _zoneNether = WorldHelper.getCurrentDimension() == Dimension.NETHER;
@@ -149,7 +151,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // the walk in (the player and the spawner being inside one still keeps it open, see RunZones)
         noteZoneInputs(mod);
         mod.getBehaviour().avoidWalkingThrough(p -> _zoneNether
-                && (RunZones.INSTANCE.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)
+                && (RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), _zoneNow, _zoneX, _zoneY, _zoneZ, _goalX, _goalZ)
                 || _deathZones.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)));
     }
 

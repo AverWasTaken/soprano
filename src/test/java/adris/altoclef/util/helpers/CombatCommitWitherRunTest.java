@@ -41,6 +41,41 @@ public class CombatCommitWitherRunTest {
         throw new AssertionError("the run never ended");
     }
 
+    // the run the brain feeds: hp flat, nobody on the foe list, one skeleton that never noticed us this far off
+    private static Event unawareEnd(float hp, double unaware, long[] at) {
+        CombatCommit c = running();
+        for (long t = 1; t <= CombatCommit.RUN_CAP; t++) {
+            c.angryWither(CombatRules.runWither(hp, Double.POSITIVE_INFINITY, unaware));
+            Event event = c.step(new Tick(t, hp, t * 0.5, 0, List.of(), null, Way.NONE));
+            if (event != Event.NONE) {
+                at[0] = t;
+                return event;
+            }
+        }
+        throw new AssertionError("the run never ended");
+    }
+
+    @Test
+    public void atTheFleeLineAnUnawareSkeletonKeepsTheRunGoingToTheCap() {
+        long[] at = new long[1];
+        assertEquals(Event.RUN_CAP, unawareEnd(CombatRules.FLEE_HEALTH, 10, at));
+        assertEquals(CombatCommit.RUN_CAP, at[0]);
+    }
+
+    @Test
+    public void aboveTheFleeLineAnUnawareSkeletonIsNoReason() {
+        long[] at = new long[1];
+        assertEquals(Event.RUN_CLEAR, unawareEnd(CombatRules.FLEE_HEALTH + 0.5f, 10, at));
+        assertEquals(true, at[0] < CombatCommit.RUN_CAP);
+    }
+
+    @Test
+    public void atTheFleeLineOnePastTheAggroLineIsClearAnyway() {
+        long[] at = new long[1];
+        assertEquals(Event.RUN_CLEAR, unawareEnd(CombatRules.FLEE_HEALTH, CombatCommit.WITHER_AGGRO + 1, at));
+        assertEquals(true, at[0] < CombatCommit.RUN_CAP);
+    }
+
     @Test
     public void oneAt15OnlyEndsAtTheCap() {
         CombatCommit c = running();
