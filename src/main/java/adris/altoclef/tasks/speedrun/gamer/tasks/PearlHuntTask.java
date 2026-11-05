@@ -344,8 +344,11 @@ public class PearlHuntTask extends Task {
         mod.getBehaviour().push();
         zoneOn = false;
         // (see RunZones for which zones never count as a wall: the one we stand in and the one the forest is in stay open)
-        mod.getBehaviour().avoidWalkingThrough(p -> zoneOn
-                && RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, zoneGoalX, zoneGoalZ));
+        java.util.function.Predicate<BlockPos> packWall = p -> zoneOn
+                && RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, zoneGoalX, zoneGoalZ);
+        mod.getBehaviour().avoidWalkingThrough(packWall);
+        // and solid, see RunZones.blocksAt
+        mod.getBehaviour().avoidBlockBreaking(packWall);
     }
 
     @Override

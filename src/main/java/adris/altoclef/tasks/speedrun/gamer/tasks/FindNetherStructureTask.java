@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.RunZones;
 
 import java.util.function.DoubleSupplier;
+import net.minecraft.core.BlockPos;
 
 // walks the sweep the planner lays out: one structure cell after another, waypoint by waypoint. it does not look at
 // blocks itself, whoever owns the planner scans for sightings (NetherPhase does it every few ticks, so the same scan
@@ -55,8 +56,11 @@ public class FindNetherStructureTask extends Task {
         mod.getBehaviour().push();
         noteZoneInputs(mod);
         // (and the spots a heavy hitter ran us off from lately, see RunZones for which zones never count as a wall)
-        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ())
-                || RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, goalX, goalZ));
+        java.util.function.Predicate<BlockPos> packWall =
+                p -> RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, goalX, goalZ);
+        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ()) || packWall.test(p));
+        // the pack walls are solid, see RunZones.blocksAt. the planner's bastion walls stay soft
+        mod.getBehaviour().avoidBlockBreaking(packWall);
     }
 
     @Override

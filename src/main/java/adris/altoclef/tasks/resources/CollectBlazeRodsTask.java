@@ -150,9 +150,12 @@ public class CollectBlazeRodsTask extends ResourceTask {
         // the base class pushed our behaviour level and pops it on stop. the pack closets and where we died lately are walls for
         // the walk in (the player and the spawner being inside one still keeps it open, see RunZones)
         noteZoneInputs(mod);
-        mod.getBehaviour().avoidWalkingThrough(p -> _zoneNether
-                && (RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), _zoneNow, _zoneX, _zoneY, _zoneZ, _goalX, _goalZ)
-                || _deathZones.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)));
+        java.util.function.Predicate<BlockPos> packWall = p -> _zoneNether
+                && RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), _zoneNow, _zoneX, _zoneY, _zoneZ, _goalX, _goalZ);
+        mod.getBehaviour().avoidWalkingThrough(p -> packWall.test(p)
+                || (_zoneNether && _deathZones.blocks(p.getX(), p.getZ(), _zoneNow, _zoneX, _zoneZ, _goalX, _goalZ)));
+        // the pack walls are solid, see RunZones.blocksAt. the death zones stay as they were
+        mod.getBehaviour().avoidBlockBreaking(packWall);
     }
 
     @Override

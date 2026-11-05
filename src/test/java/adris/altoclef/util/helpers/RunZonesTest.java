@@ -505,4 +505,38 @@ public class RunZonesTest {
         assertTrue(z.covers(0, 0, 1000));
         assertTrue(z.covers(9000, 0, 1000));
     }
+
+    @Test
+    public void aBlazeByAFloorZoneIsThePacks() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 64, 0, 1000);
+        // past the zone's own 16 and inside the ring past it, on the floor and hovering over it
+        assertNotNull(z.floorZoneByBlaze(20, 64, 0, 1000));
+        assertNotNull(z.floorZoneByBlaze(RunZones.FLOOR_RADIUS + RunZones.BLAZE_MARGIN - 0.5, 70, 0, 1000));
+        assertNotNull(z.floorZoneByBlaze(0, 64 + RunZones.FLOOR_ABOVE + RunZones.BLAZE_HOVER, 0, 1000));
+        double[] middle = z.floorZoneByBlaze(20, 64, 0, 1000);
+        assertEquals(0, middle[0], 1e-9);
+        assertEquals(64, middle[1], 1e-9);
+        assertEquals(0, middle[2], 1e-9);
+    }
+
+    @Test
+    public void aBlazeAwayFromAFloorZoneIsFairGame() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 64, 0, 1000);
+        assertNull(z.floorZoneByBlaze(RunZones.FLOOR_RADIUS + RunZones.BLAZE_MARGIN + 0.5, 64, 0, 1000));
+        // two floors up, and a corridor under the pack's floor
+        assertNull(z.floorZoneByBlaze(0, 64 + RunZones.FLOOR_ABOVE + RunZones.BLAZE_HOVER + 1, 0, 1000));
+        assertNull(z.floorZoneByBlaze(0, 64 - RunZones.FLOOR_BELOW - 1, 0, 1000));
+        // gone after three minutes
+        assertNull(z.floorZoneByBlaze(5, 64, 0, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void aFlatZoneSaysNothingAboutBlazesHere() {
+        // covers already has those, this is the floor zones' ring
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        assertNull(z.floorZoneByBlaze(0, 64, 0, 1000));
+    }
 }

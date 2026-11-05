@@ -25,6 +25,11 @@ public final class RunZones {
     // bridge overhead for a pack that can't even see it. the top is what refuses a fall: its column gets asked on the way down
     public static final int FLOOR_BELOW = 2;
     public static final int FLOOR_ABOVE = 4;
+    // a blaze this far past a floor zone's edge is still the pack's: the chase ends wherever the blaze is, and the pack's own edge
+    // members stand a few blocks past the middle's circle
+    public static final double BLAZE_MARGIN = 8;
+    // how high a blaze hangs over the floor we'd fight it from, the same 8 BlazeFight looks down for that floor
+    public static final int BLAZE_HOVER = 8;
     // game ticks. three minutes is long enough for the hoglins to wander off and short enough that the zone is not forever
     public static final long EXPIRY_TICKS = 3 * 60 * 20L;
     // two runs from the same spot are one zone of that size, a new one just refreshes the clock
@@ -124,7 +129,11 @@ public final class RunZones {
     }
 
     // blocks with a y, what a walk's predicate asks. a flat zone answers the same as blocks. a floor zone only has its band of
-    // cells, and only stands aside for a player who isn't over it: from 25 up the floor below is still somewhere not to land
+    // cells, and only stands aside for a player who isn't over it: from 25 up the floor below is still somewhere not to land.
+    // the walks hand this to avoidBlockBreaking as well as avoidWalkingThrough. a cell we may not walk through is priced as a
+    // block to mine, and a cell of air mines for one tick, so the path went through and the movement clicked at nothing until
+    // it timed out. break protected is COST_INF. only these walls: the dragon cloud and the bastion planner stay soft, a bot
+    // stood in a cloud cell needs a way out of it
     public boolean blocksAt(int x, int y, int z, long now, double playerX, double playerY, double playerZ, double goalX, double goalZ) {
         for (Zone zone : zones) {
             if (!live(zone, now) || !inside(zone, x, z)) continue;
@@ -154,6 +163,19 @@ public final class RunZones {
             if (!zone.floor() && live(zone, now) && inside(zone, x, z)) return true;
         }
         return false;
+    }
+
+    // the middle of the floor zone this blaze is too close to as {x, y, z}, null for none. on the pack's floor or hanging over it
+    // is a fight next to the pack. two floors up gets fought from up there, nowhere near them. hoglin packs too, three hoglins
+    // next to a blaze fight is the same mistake
+    public double[] floorZoneByBlaze(double x, double y, double z, long now) {
+        for (Zone zone : zones) {
+            if (!zone.floor() || !live(zone, now)) continue;
+            if (Math.hypot(zone.x - x, zone.z - z) > zone.radius + BLAZE_MARGIN) continue;
+            if (y < zone.y - FLOOR_BELOW || y > zone.y + FLOOR_ABOVE + BLAZE_HOVER) continue;
+            return new double[]{zone.x, zone.y, zone.z};
+        }
+        return null;
     }
 
     // is (x, z) in a live wither pack zone. this is for picking spawners: the fat zones from a run off one skeleton don't count,

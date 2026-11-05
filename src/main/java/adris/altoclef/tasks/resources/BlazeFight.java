@@ -72,6 +72,8 @@ final class BlazeFight {
     private int packSize;
     private double[] packCenter;
     private boolean packLogged;
+    // blazes we already said we're skipping for a pack zone, one line each and not one a tick
+    private final java.util.Set<Integer> packSkipLogged = new java.util.HashSet<>();
     private long outOfReachSince = Long.MIN_VALUE;
     private double range = BlazeFightRules.PICK_RANGE;
     // read off the pathfinder thread. fighting and running never place blocks at our feet or above: pillaring up at a hovering
@@ -348,6 +350,13 @@ final class BlazeFight {
                     && BlazeFightRules.packNear(witherSkeletonsNear(mod, blaze.position(), BlazeFightRules.PACK_BLAZE_RADIUS)));
             // a pack we already met is still there when one of them walks out of tracking, the zone remembers it for us
             packed |= RunZones.INSTANCE.covers(blaze.getX(), blaze.getZ(), now);
+            // and a ring past a floor zone, which covers leaves out. the pack's edge is a few blocks past the zone's, and a chase
+            // ends wherever the blaze is
+            double[] floorPack = RunZones.INSTANCE.floorZoneByBlaze(blaze.getX(), blaze.getY(), blaze.getZ(), now);
+            if (floorPack != null) {
+                packed = true;
+                logPackSkip(blaze, floorPack);
+            }
             if (packed && blaze == target) packDrop = true;
             if (distance <= range && !packed) {
                 around++;
@@ -365,6 +374,15 @@ final class BlazeFight {
                 threats.add(blaze);
             }
         }
+        // (a long camp sees a lot of blazes come and go, only the ones still about need remembering)
+        packSkipLogged.removeIf(id -> blazes.stream().noneMatch(b -> b.getId() == id && b.isAlive()));
+    }
+
+    private void logPackSkip(Blaze blaze, double[] zone) {
+        if (!packSkipLogged.add(blaze.getId())) return;
+        Debug.logInternal("rods: skipping the blaze at " + blaze.blockPosition().toShortString() + ", "
+                + Math.round(Math.hypot(blaze.getX() - zone[0], blaze.getZ() - zone[2])) + " from the pack zone at "
+                + Math.round(zone[0]) + "," + Math.round(zone[1]) + "," + Math.round(zone[2]));
     }
 
     // keep the blaze we have until it is dead, gone or has been out of reach a while, then take the nearest one in reach

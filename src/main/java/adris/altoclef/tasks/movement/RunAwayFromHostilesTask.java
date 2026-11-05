@@ -72,6 +72,20 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
                 && LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
     }
 
+    // the blaze fight's runs and the pack back off are this task. the rods task's walls are under us but they let the spawner's
+    // zone through, and a run has no business near the spawner's pack either
+    @Override
+    protected boolean keepsOffPacks() {
+        return true;
+    }
+
+    // nothing ends this run while a blaze can see us (the commitment's corner rules are for its own runs), so a run walled in by
+    // a pack zone would stand there taking shots. five seconds, then it's allowed through like before the walls
+    @Override
+    protected long zoneWallPatience() {
+        return 100;
+    }
+
     @Override
     protected boolean isEqual(Task other) {
         if (other instanceof RunAwayFromHostilesTask task) {
