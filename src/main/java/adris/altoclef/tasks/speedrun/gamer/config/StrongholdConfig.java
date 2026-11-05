@@ -20,7 +20,7 @@ public class StrongholdConfig {
     // how long digging down the start column may take before we search sideways at whatever depth we got to
     // (surface to the floor is ~125 blocks)
     public double digDownSeconds = 420;
-    // after the ring centre is known: this long to walk over and see the frames before the rest are taken as given
+    // after the ring centre is known: this long with no progress towards it before the frames we have not seen are taken as given
     public double approachSeconds = 45;
     // walking to the start chunk when we are further than this from it (blocks)
     public double startReachBlocks = 8;

@@ -13,6 +13,14 @@ import static org.junit.Assert.assertTrue;
 public class RecoverRulesTest {
 
     @Test
+    public void theCrowdClockOnlyCountsFromCloseEnoughToJudgeThePile() {
+        assertTrue(RecoverRules.crowdCounts(0));
+        assertTrue(RecoverRules.crowdCounts(RecoverRules.CROWD_CLOCK_BLOCKS));
+        assertFalse(RecoverRules.crowdCounts(RecoverRules.CROWD_CLOCK_BLOCKS + 0.5));
+        assertFalse(RecoverRules.crowdCounts(97));
+    }
+
+    @Test
     public void aHostileOnThePileIsAThreatOneFarAwayIsNot() {
         assertTrue(RecoverRules.threatens(3, 0, 4));
         assertTrue(RecoverRules.threatens(16, 0, 0));

@@ -67,6 +67,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.monster.cubemob.Slime;
@@ -91,6 +92,9 @@ final class CombatBrain {
     // counts out to 15 (CombatCommit.BOOM_RANGE), so this stays 16 even though a run now calls 12 clear
     private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
 
+    // once a second is plenty, a pack doesn't go anywhere fast
+    private static final long HOGLIN_LOOK_TICKS = 20;
+    private long _hoglinLookAt = Long.MIN_VALUE / 2;
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
@@ -266,6 +270,7 @@ final class CombatBrain {
     }
 
     void reset() {
+        _hoglinLookAt = Long.MIN_VALUE / 2;
         _commit.reset();
         _lastRunEnd = Long.MIN_VALUE / 2;
         _ranSince = false;
@@ -371,6 +376,25 @@ final class CombatBrain {
         return new ArrayList<>(FoeRules.<Mob>crowdWithBlazes(_foeMobs, _crowdBlazes, m -> m.distanceTo(player), Mob::isAlive, BLAZE_CROWD_RANGE));
     }
 
+    // the walks keep off a pack they can see coming, nothing has to bite us first. by the time one is a foe we are in the pit with it
+    private void noteHoglinPack(AltoClef mod, LocalPlayer player, long now) {
+        if (now >= _hoglinLookAt && now - _hoglinLookAt < HOGLIN_LOOK_TICKS) return;
+        _hoglinLookAt = now;
+        List<double[]> spots = new ArrayList<>();
+        try {
+            for (Hoglin hoglin : mod.getEntityTracker().getTrackedEntities(Hoglin.class)) {
+                // (a piglet of a hoglin runs from nothing and hits for nothing)
+                if (hoglin.isAlive() && !hoglin.isBaby()) spots.add(new double[]{hoglin.getX(), hoglin.getY(), hoglin.getZ()});
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // the tracker rebuilds on another thread sometimes, there's another look in a second
+        }
+        RunZones.Pack pack = RunZones.INSTANCE.newHoglinPack(spots, player.getX(), player.getY(), player.getZ(), now);
+        if (pack == null) return;
+        RunZones.INSTANCE.add(pack.x(), pack.z(), now, RunZones.HOGLIN_RADIUS);
+        Debug.logInternal("zone: hoglin pack at " + Math.round(pack.x()) + "," + Math.round(pack.z()) + " n " + pack.count());
+    }
+
     private static List<Mob> trackedBlazes(AltoClef mod) {
         List<Mob> out = new ArrayList<>();
         try {
@@ -383,6 +407,16 @@ final class CombatBrain {
             // one tick of stale blazes is fine
         }
         return out;
+    }
+
+    // same as below, only the ones actually coming for us (the same check that makes one a foe): a skeleton on the next floor
+    // that never noticed us is no reason to keep running
+    private double nearestAngryWither(AltoClef mod, LocalPlayer player) {
+        double best = Double.POSITIVE_INFINITY;
+        for (Mob mob : _crowdBlazes) {
+            if (mob instanceof WitherSkeleton && mob.isAlive() && EntityHelper.isAngryAtPlayer(mod, mob)) best = Math.min(best, mob.distanceTo(player));
+        }
+        return best;
     }
 
     // the closest tracked wither skeleton, out of sight or not (trackedBlazes already has every one of them, fresh this tick)
@@ -419,6 +453,7 @@ final class CombatBrain {
             return;
         }
         countShots(player, now);
+        if (dimension == Dimension.NETHER) noteHoglinPack(mod, player, now);
         EntityTracker tracker = mod.getEntityTracker();
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
@@ -472,6 +507,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
+            _commit.angryWither(dimension == Dimension.NETHER ? nearestAngryWither(mod, player) : Double.POSITIVE_INFINITY);
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));

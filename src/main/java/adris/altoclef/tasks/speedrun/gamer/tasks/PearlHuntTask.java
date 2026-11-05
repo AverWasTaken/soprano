@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
+import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.EndermanNook;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -19,6 +20,7 @@ import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.LavaShore;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.PearlHuntHook;
+import adris.altoclef.util.helpers.RunZones;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.utils.Dimension;
@@ -117,6 +119,14 @@ public class PearlHuntTask extends Task {
     private final Task goToDimension;
 
     private GetWithinRangeOfBlockTask toHotspot;
+    // what the path predicate sees, from baritone's thread, same deal as FindNetherStructureTask. on only for the hotspot walk in the
+    // nether: the fights and the loot walks go where the endermen are, and a nether zone means nothing on overworld coordinates
+    private volatile boolean zoneOn;
+    private volatile int zoneX;
+    private volatile int zoneZ;
+    private volatile long zoneNow;
+    private volatile double zoneGoalX = Double.NaN;
+    private volatile double zoneGoalZ = Double.NaN;
     // the walk is waiting on hp, not done
     private boolean walkHeld;
     private RunState.Pos hotspotWalkingTo;
@@ -330,10 +340,16 @@ public class PearlHuntTask extends Task {
         // an interrupt breaks the run of ticks, the loot task restarts anyway
         lootRanAt = Long.MIN_VALUE;
         roamRanAt = Long.MIN_VALUE;
+        mod.getBehaviour().push();
+        zoneOn = false;
+        // (see RunZones for which zones never count as a wall: the one we stand in and the one the forest is in stay open)
+        mod.getBehaviour().avoidWalkingThrough(p -> zoneOn
+                && RunZones.INSTANCE.blocks(p.getX(), p.getZ(), zoneNow, zoneX, zoneZ, zoneGoalX, zoneGoalZ));
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        zoneOn = false;
         if (WorldHelper.getCurrentDimension() != dimension) {
             return say("Heading to " + HudText.dimension(dimension), goToDimension);
         }
@@ -574,6 +590,9 @@ public class PearlHuntTask extends Task {
         var us = mod.getPlayer();
         var cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         if (!PullStare.allowed(dimension == Dimension.NETHER, LavaShore.edgeNear(cells, us.getX(), us.getY(), us.getZ()), pullStare.cooling(gameTime))) {
+            return null;
+        }
+        if (!PullStare.witherClear(CollectBlazeRodsTask.witherSkeletonsNear(mod, us.position(), PullStare.WITHER_CLEAR))) {
             return null;
         }
         List<Enderman> men = mod.getEntityTracker().getTrackedEntities(Enderman.class);
@@ -989,11 +1008,18 @@ public class PearlHuntTask extends Task {
             }
             return null;
         }
+        zoneX = mod.getPlayer().blockPosition().getX();
+        zoneZ = mod.getPlayer().blockPosition().getZ();
+        zoneNow = mod.getWorld().getGameTime();
+        zoneGoalX = spot.x;
+        zoneGoalZ = spot.z;
+        zoneOn = dimension == Dimension.NETHER;
         return toHotspot;
     }
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        mod.getBehaviour().pop();
         // (an interrupt is a meal, not the end of the hunt: the stamp goes stale by itself soon enough)
         if (!isInterrupting()) {
             PearlHuntHook.clear();

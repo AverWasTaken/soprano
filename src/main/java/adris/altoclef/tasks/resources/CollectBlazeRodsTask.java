@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -77,6 +78,11 @@ public class CollectBlazeRodsTask extends ResourceTask {
     // the middle of the wither pack around a spot, null when there is no pack there
     public static double[] witherPackCenter(AltoClef mod, Vec3 at, double radius) {
         return BlazeFightRules.packCenter(BlazeFight.witherSkeletonSpots(mod, at, radius), BlazeFightRules.ZONE_PACK_SIZE);
+    }
+
+    // wither skeletons around a spot, aware of us or not, for the tasks that don't get to see BlazeFight
+    public static int witherSkeletonsNear(AltoClef mod, Vec3 at, double radius) {
+        return BlazeFight.witherSkeletonsNear(mod, at, radius);
     }
 
     private void noteZoneInputs(AltoClef mod) {
@@ -261,9 +267,15 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     private void pickSpawner(AltoClef mod) {
         // If the blaze spawner somehow isn't valid
-        if (_foundBlazeSpawner != null && mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)) {
+        // (a pack needs no loaded chunk to be there: a long run can leave the spawner unloaded, and we'd walk straight back to it)
+        if (_foundBlazeSpawner != null && (underPack(mod, _foundBlazeSpawner)
+                || (mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)))) {
+            notePackDrop(mod, _foundBlazeSpawner);
             Debug.logMessage("Blaze spawner at " + _foundBlazeSpawner + " too far away or invalid. Re-searching.");
             _foundBlazeSpawner = null;
+            // (a step left over from this spawner's camp would make the next one skip its walk)
+            _campStep = null;
+            _campStepTicks = 0;
         }
         if (_foundBlazeSpawner != null || !mod.getBlockTracker().isTracking(Blocks.SPAWNER)) return;
         // nearest one we can actually look at: asking for the single nearest and then throwing it out for being in an
@@ -272,12 +284,25 @@ public class CollectBlazeRodsTask extends ResourceTask {
         spawner.ifPresent(found -> _foundBlazeSpawner = found);
     }
 
+    private static void notePackDrop(AltoClef mod, BlockPos spawner) {
+        double[] zone = RunZones.INSTANCE.packZoneAt(spawner.getX() + 0.5, spawner.getZ() + 0.5, mod.getWorld().getGameTime());
+        if (zone == null) return;
+        Debug.logInternal("rods: spawner at " + spawner.toShortString() + " is in the wither pack zone at " + Math.round(zone[0]) + "," + Math.round(zone[1])
+                + ", " + Math.round(Math.sqrt(mod.getPlayer().distanceToSqr(Vec3.atCenterOf(spawner)))) + " blocks from us, dropping it");
+    }
+
+    private static boolean underPack(AltoClef mod, BlockPos pos) {
+        return RunZones.INSTANCE.coversPack(pos.getX() + 0.5, pos.getZ() + 0.5, mod.getWorld().getGameTime());
+    }
+
     private boolean isValidBlazeSpawner(AltoClef mod, BlockPos pos) {
         if (!mod.getChunkTracker().isChunkLoaded(pos)) {
             // If unloaded, go to it. Unless it's super far away.
             return false;
             //return pos.isWithinDistance(mod.getPlayer().getPos(),3000);
         }
+        // the pack is still standing on it. the zone runs out by itself and the spawner is good again
+        if (underPack(mod, pos)) return false;
         return WorldHelper.getSpawnerEntity(mod, pos) instanceof Blaze;
     }
 
@@ -301,8 +326,15 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return "Collect " + _count + " blaze rods";
     }
 
+    // the base class asks this ahead of onResourceTick, and a rod pickup can keep that from running for a while. so the spawner
+    // check and the walls go first, or a stale spawner holds the pack zone open for the walk to the rod
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
-        return false;
+        if (WorldHelper.getCurrentDimension() != Dimension.NETHER) return false;
+        pickSpawner(mod);
+        noteZoneInputs(mod);
+        // a rod on the pack's floor is the same walk as the spawner. it lasts longer than the zone does, it can wait
+        Optional<ItemEntity> rod = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), Items.BLAZE_ROD);
+        return rod.isPresent() && RunZones.INSTANCE.coversPack(rod.get().getX(), rod.get().getZ(), _zoneNow);
     }
 }

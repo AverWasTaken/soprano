@@ -397,6 +397,16 @@ public class StorageHelper {
             return new Room(d, slot, getItemStackInSlot(slot.get()).copy());
         }
 
+        // a full bag the bed errand wants a slot in, no drop in sight (DropRoom.shed). same throw as a room() EVICT, or NO
+        public Room shed() {
+            int i = DropRoom.shed(_pick, victims());
+            if (i < 0) {
+                return new Room(DropRoom.Decision.NO, Optional.empty(), null);
+            }
+            Slot slot = _bag.slots.get(i);
+            return new Room(new DropRoom.Decision(DropRoom.Kind.EVICT, DropRoom.Source.VICTIM, i), Optional.of(slot), getItemStackInSlot(slot).copy());
+        }
+
         private List<DropRoom.Stack> victims() {
             List<DropRoom.Stack> out = new ArrayList<>(_bag.stacks.size());
             boolean[] forTheEnd = DropRoom.reserved(_bag.stacks, EndGear.reserveBeds());

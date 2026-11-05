@@ -6,10 +6,13 @@ import java.util.Optional;
 // the pure half of that, so the rule and the column pick are testable without a world
 final class RoomRetarget {
     // close enough to walk straight at the ring: this near sideways and within a dig-less climb vertically
-    static final double NEAR_HORIZONTAL = 48;
+    // SEARCH_RADIUS plus a dig shift, the frame's offset from the ring middle and a sloppy stand on the column
+    static final double NEAR_HORIZONTAL = 109;
     static final double NEAR_VERTICAL = 12;
-    // how far from the frame we look for dry land. inside NEAR_HORIZONTAL so the dig column itself counts as near
-    static final int SEARCH_RADIUS = 40;
+    // how far from the frame we look for dry land. inside NEAR_HORIZONTAL so the dig column itself counts as near.
+    // 100 means a tunnel of a few minutes in the worst case, which still beats floating over a ring you can't dig to
+    // with drowned throwing tridents at you
+    static final int SEARCH_RADIUS = 100;
     // the lava pool sits right under the portal, keep the dig column well off it
     static final double KEEP_OFF_RING = 6;
     // blocks under the surface that must be free of fluid (a dig column goes through them)
@@ -18,6 +21,11 @@ final class RoomRetarget {
     // the approach counts as stuck when it has not come this much closer in this long
     static final double PROGRESS_BLOCKS = 3;
     static final double PROGRESS_SECONDS = 10;
+    // the shore around a ring this far off is loaded, so "no dry land" is an answer and not just a chunk we haven't got yet
+    static final double SHORE_LOADED_BLOCKS = 96;
+    // nobody swims a stronghold's worth of ocean in this long, stop believing in the walk. total stage time on purpose, the
+    // no progress clock never gets here while a crawl keeps earning its three blocks. the longest tunnel is well inside it
+    static final double FAR_WALK_CAP_SECONDS = 600;
 
     interface Probe {
         boolean loaded(int x, int z);
@@ -34,6 +42,17 @@ final class RoomRetarget {
     }
 
     // walk straight at it only from here, anything else goes down a dry column first
+    static boolean shoreLoaded(double px, double pz, int fx, int fz) {
+        return Math.hypot(fx - px, fz - pz) <= SHORE_LOADED_BLOCKS;
+    }
+
+    // the approach clock is for a ring we got to and can't see the rest of. a walk that started two thousand blocks out runs it down in
+    // the first minute and hands OPEN a frame 70 blocks under the sea with no dig. it counts time with no progress: a tunnel to the
+    // ring is slow and getting there, and calling it off halfway starts the fill interacts through solid rock
+    static boolean approachOver(double stageSeconds, double stuckSeconds, double approachSeconds, double px, double pz, int fx, int fz) {
+        return stageSeconds >= FAR_WALK_CAP_SECONDS || (stuckSeconds >= approachSeconds && shoreLoaded(px, pz, fx, fz));
+    }
+
     static boolean near(double px, double py, double pz, int fx, int fy, int fz) {
         return Math.hypot(fx - px, fz - pz) <= NEAR_HORIZONTAL && Math.abs(fy - py) <= NEAR_VERTICAL;
     }
@@ -42,21 +61,32 @@ final class RoomRetarget {
         return dist <= bestDist - PROGRESS_BLOCKS;
     }
 
-    // solid on top, no water or lava on it or in the few blocks a dig goes through (ice over an ocean fails on what is under it)
+    // solid on top, no water or lava on it or in the few blocks a dig goes through (ice over an ocean fails on what is under it).
+    // the sides count too: avoidBreaking won't touch a block next to a source, so a column at the waterline can't be dug at all
+    // and every cell of it burns a minute finding that out
     static boolean dry(Probe probe, int x, int z) {
         if (!probe.loaded(x, z)) {
             return false;
         }
         int top = probe.topY(x, z);
-        if (!probe.solid(x, top, z) || probe.fluid(x, top, z) || probe.fluid(x, top + 1, z)) {
-            return false;
-        }
-        for (int i = 1; i <= FLUID_DEPTH; i++) {
-            if (probe.fluid(x, top - i, z)) {
+        return probe.solid(x, top, z) && noFluid(probe, x, z, top)
+                && sideDry(probe, x + 1, z, top) && sideDry(probe, x - 1, z, top)
+                && sideDry(probe, x, z + 1, top) && sideDry(probe, x, z - 1, top);
+    }
+
+    private static boolean noFluid(Probe probe, int x, int z, int top) {
+        for (int y = top + 1; y >= top - FLUID_DEPTH; y--) {
+            if (probe.fluid(x, y, z)) {
                 return false;
             }
         }
         return true;
+    }
+
+    // an unloaded chunk reads as no fluid at all, which is not the same as dry. the side's own surface is for a cliff over the sea:
+    // the water is way under the depth we check here, and exactly where the dig runs into it
+    private static boolean sideDry(Probe probe, int x, int z, int top) {
+        return probe.loaded(x, z) && noFluid(probe, x, z, top) && !probe.fluid(x, probe.topY(x, z), z);
     }
 
     // the nearest dry column to the frame's x/z (square rings out, nearest of the first ring that has one), at least

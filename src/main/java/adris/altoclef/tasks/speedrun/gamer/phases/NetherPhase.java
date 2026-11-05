@@ -56,6 +56,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.GameClock;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.RunZones;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -1496,7 +1497,7 @@ public class NetherPhase implements PhaseHandler {
     // gets the wander instead of this walk for ever
     private Task walkToKnownFortress(AltoClef mod, GamerContext ctx, double now) {
         RunState s = ctx.state();
-        if (rodsTask.currentSpawner() != null || s.fortress.isEmpty()) {
+        if (rodsTask.currentSpawner() != null || s.fortress.isEmpty() || waitOutPack(RunZones.INSTANCE, s.spawner, mod.getWorld().getGameTime())) {
             return null;
         }
         RunState.Pos spot = fortressToWalkTo(mod, s);
@@ -1526,6 +1527,13 @@ public class NetherPhase implements PhaseHandler {
             return null;
         }
         return walkToFortress;
+    }
+
+    // the rods task dropped its spawner for a pack: this walk would go straight back to them, and without the rods task's zone
+    // walls too. so the task's own search gets the wheel until the zone is over (it keeps off the zones and looks for bricks
+    // further out). asks the saved spawner so a new task can't forget, and giving up a fortress clears that one
+    static boolean waitOutPack(RunZones zones, RunState.Pos spawner, long now) {
+        return spawner != null && zones.coversPack(spawner.x + 0.5, spawner.z + 0.5, now);
     }
 
     // the one we are already walking at while it is still on the list (two that trade places as nearest would restart the

@@ -35,6 +35,14 @@ public class PullStareTest {
     }
 
     @Test
+    public void noStareWithAWitherSkeletonClose() {
+        assertEquals(24, PullStare.WITHER_CLEAR, 0);
+        assertTrue(PullStare.witherClear(0));
+        assertFalse(PullStare.witherClear(1));
+        assertFalse(PullStare.witherClear(4));
+    }
+
+    @Test
     public void hpFireAndLavaGatesComeFromTheNookRules() {
         // the hunt asks stareWorthwhile with nothing else angry
         assertTrue(EndermanNook.stareWorthwhile(false, 20, true, 0, 30, true, false, true, false));

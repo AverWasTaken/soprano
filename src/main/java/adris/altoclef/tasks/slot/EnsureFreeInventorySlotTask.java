@@ -11,6 +11,8 @@ import adris.altoclef.util.slots.Slot;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
@@ -28,17 +30,35 @@ public class EnsureFreeInventorySlotTask extends Task {
     // was the veto
     private final Slot _evict;
     private final ItemStack _victim;
+    // the menu the slot was read under, see throwVictim
+    private final int _menuId;
+    private final Runnable _onThrown;
 
     public EnsureFreeInventorySlotTask(boolean lastResort) {
         _lastResort = lastResort;
         _evict = null;
         _victim = null;
+        _menuId = -1;
+        _onThrown = null;
     }
 
     public EnsureFreeInventorySlotTask(Slot evict, ItemStack victim) {
+        this(evict, victim, () -> {
+        });
+    }
+
+    // onThrown runs when the click really went out, a click refused during the move delay doesn't count
+    public EnsureFreeInventorySlotTask(Slot evict, ItemStack victim, Runnable onThrown) {
         _lastResort = false;
         _evict = evict;
         _victim = victim.copy();
+        _menuId = menuId();
+        _onThrown = onThrown;
+    }
+
+    private static int menuId() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player == null ? -1 : player.containerMenu.containerId;
     }
 
     private boolean _stuck = false;
@@ -126,7 +146,9 @@ public class EnsureFreeInventorySlotTask extends Task {
     // already sees the free slot could walk off and leave it there. a slot that no longer holds that exact stack ends us,
     // the pickup asks for room again with the bag as it is now
     private Task throwVictim(AltoClef mod) {
-        if (!ItemStack.isSameItemSameComponents(StorageHelper.getItemStackInSlot(_evict), _victim) || StorageHelper.reservedForTheEnd(mod, _evict)) {
+        // a slot number dies with its menu. the crafting screen shutting on the way here (the craft task's stop) leaves it pointing
+        // at the next stack over, and the same item with a bigger count passes the check below
+        if (menuId() != _menuId || !ItemStack.isSameItemSameComponents(StorageHelper.getItemStackInSlot(_evict), _victim) || StorageHelper.reservedForTheEnd(mod, _evict)) {
             _stuck = true;
             _hasAim = false;
             return null;
@@ -134,8 +156,8 @@ public class EnsureFreeInventorySlotTask extends Task {
         _stuck = false;
         setDebugState("Throwing out " + ItemHelper.stripItemName(_victim.getItem()) + " to make room");
         pickAim(mod);
-        if (aimed(mod)) {
-            mod.getSlotHandler().clickSlot(_evict, 1, ContainerInput.THROW);
+        if (aimed(mod) && mod.getSlotHandler().clickSlot(_evict, 1, ContainerInput.THROW)) {
+            _onThrown.run();
         }
         mod.getInputControls().forceLook(_aimYaw, ThrowAim.PITCH);
         return null;
@@ -155,7 +177,7 @@ public class EnsureFreeInventorySlotTask extends Task {
 
     @Override
     protected boolean isEqual(Task obj) {
-        return obj instanceof EnsureFreeInventorySlotTask t && t._lastResort == _lastResort && Objects.equals(t._evict, _evict)
+        return obj instanceof EnsureFreeInventorySlotTask t && t._lastResort == _lastResort && t._menuId == _menuId && Objects.equals(t._evict, _evict)
                 && (t._victim == null ? _victim == null : _victim != null && ItemStack.isSameItemSameComponents(t._victim, _victim));
     }
 
