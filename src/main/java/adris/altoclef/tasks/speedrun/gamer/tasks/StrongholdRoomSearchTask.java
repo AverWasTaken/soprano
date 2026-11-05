@@ -906,7 +906,7 @@ public class StrongholdRoomSearchTask extends Task {
             finish();
             return null;
         }
-        if (RoomRetarget.approachOver(seconds(mod) - stageSince, cfg.approachSeconds, mod.getPlayer().getX(), mod.getPlayer().getZ(), c[0], c[2])) {
+        if (RoomRetarget.approachOver(seconds(mod) - stageSince, seconds(mod) - approachBestAt, cfg.approachSeconds, mod.getPlayer().getX(), mod.getPlayer().getZ(), c[0], c[2])) {
             Debug.logMessage("taking the frames we have not seen as given, the ring is rigid");
             finish();
             return null;

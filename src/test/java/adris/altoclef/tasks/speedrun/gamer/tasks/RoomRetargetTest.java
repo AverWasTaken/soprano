@@ -20,12 +20,25 @@ public class RoomRetargetTest {
     @Test
     public void theApproachClockWaitsForAShoreItCanSee() {
         // 45 s in and 1700 blocks out: the clock means nothing yet
-        assertFalse(RoomRetarget.approachOver(45, 45, 1700, 0, 0, 0));
-        // at the ring it's the old rule
-        assertFalse(RoomRetarget.approachOver(44, 45, 50, 0, 0, 0));
-        assertTrue(RoomRetarget.approachOver(45, 45, 50, 0, 0, 0));
+        assertFalse(RoomRetarget.approachOver(45, 45, 45, 1700, 0, 0, 0));
+        // at the ring it counts time with no progress
+        assertFalse(RoomRetarget.approachOver(44, 44, 45, 50, 0, 0, 0));
+        assertTrue(RoomRetarget.approachOver(45, 45, 45, 50, 0, 0, 0));
         // and a walk that never arrives still ends
-        assertTrue(RoomRetarget.approachOver(RoomRetarget.FAR_WALK_CAP_SECONDS, 45, 1700, 0, 0, 0));
+        assertTrue(RoomRetarget.approachOver(RoomRetarget.FAR_WALK_CAP_SECONDS, 45, 45, 1700, 0, 0, 0));
+    }
+
+    // minutes into a tunnel but it dug three blocks closer just now, that's not over
+    @Test
+    public void aTunnelThatKeepsGettingCloserKeepsGoing() {
+        assertFalse(RoomRetarget.approachOver(300, 5, 45, 46, 0, 0, 0));
+    }
+
+    // the cap reads total time, a crawl that keeps resetting the no progress clock still has to end
+    @Test
+    public void aCrawlStillHitsTheCap() {
+        assertTrue(RoomRetarget.approachOver(RoomRetarget.FAR_WALK_CAP_SECONDS, 5, 45, 46, 0, 0, 0));
+        assertFalse(RoomRetarget.approachOver(RoomRetarget.FAR_WALK_CAP_SECONDS - 1, 5, 45, 46, 0, 0, 0));
     }
 
     @Test
@@ -74,7 +87,15 @@ public class RoomRetargetTest {
         // right above it but 50 up, a dig first
         assertFalse(RoomRetarget.near(0, 60, 0, 3, 10, 3));
         assertTrue(RoomRetarget.near(0, 60, 0, 3, 48, 3));
-        assertFalse(RoomRetarget.near(0, 60, 0, 49, 60, 0));
+        assertFalse(RoomRetarget.near(0, 60, 0, 110, 60, 0));
+    }
+
+    // the whole point of NEAR_HORIZONTAL: the bottom of the worst dig column has to count as near or the room search goes
+    // right back to looking for a column. furthest pick, plus a footprint shift, plus dug radius, plus frame to ring middle
+    @Test
+    public void theFarthestDigColumnStillCountsAsNear() {
+        double worst = RoomRetarget.SEARCH_RADIUS + 2 + RoomCoverage.DUG_RADIUS + Math.hypot(2, 1);
+        assertTrue(RoomRetarget.near(worst, 20, 0, 0, 14, 0));
     }
 
     @Test
@@ -97,8 +118,83 @@ public class RoomRetargetTest {
         // water everywhere with x < 120
         w.water = (x, z) -> x < 120;
         int[] col = RoomRetarget.pickColumn(w, 100, 100, 100, 100).orElseThrow();
-        assertEquals(120, col[0]);
+        // 120 is land, but the water right next to it means nothing there can be mined
+        assertEquals(121, col[0]);
         assertEquals(100, col[1]);
+    }
+
+    @Test
+    public void aRingUnderTheSeaFindsTheFarShore() {
+        World w = new World();
+        w.water = (x, z) -> Math.hypot(x, z) < 46;
+        int[] col = RoomRetarget.pickColumn(w, 0, 0, 0, 0).orElseThrow();
+        assertTrue(Math.hypot(col[0], col[1]) >= 46);
+        assertTrue(Math.hypot(col[0], col[1]) < 50);
+    }
+
+    @Test
+    public void landJustInsideTheRadiusCounts() {
+        World w = new World();
+        w.water = (x, z) -> Math.hypot(x, z) < RoomRetarget.SEARCH_RADIUS - 2;
+        int[] col = RoomRetarget.pickColumn(w, 0, 0, 0, 0).orElseThrow();
+        assertTrue(Math.hypot(col[0], col[1]) <= RoomRetarget.SEARCH_RADIUS);
+    }
+
+    @Test
+    public void everySideOfTheColumnHasToBeDry() {
+        for (int[] side : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            World w = new World();
+            w.water = (x, z) -> x == side[0] && z == side[1];
+            assertFalse(RoomRetarget.dry(w, 0, 0));
+        }
+    }
+
+    @Test
+    public void aDiagonalPuddleIsNotASide() {
+        World w = new World();
+        w.water = (x, z) -> x == 1 && z == 1;
+        assertTrue(RoomRetarget.dry(w, 0, 0));
+    }
+
+    @Test
+    public void aSideInAnUnloadedChunkIsNotDry() {
+        World w = new World();
+        w.loadedAt = (x, z) -> x <= 4;
+        assertFalse(RoomRetarget.dry(w, 4, 0));
+        assertTrue(RoomRetarget.dry(w, 3, 0));
+    }
+
+    private static RoomRetarget.Probe sideFluidAt(int fluidY, int sideTop) {
+        return new RoomRetarget.Probe() {
+            public boolean loaded(int x, int z) {
+                return true;
+            }
+
+            public int topY(int x, int z) {
+                return x == 1 ? sideTop : 70;
+            }
+
+            public boolean solid(int x, int y, int z) {
+                return true;
+            }
+
+            public boolean fluid(int x, int y, int z) {
+                return x == 1 && y == fluidY;
+            }
+        };
+    }
+
+    @Test
+    public void aSideIsCheckedAsDeepAsTheColumn() {
+        // top 70, the deepest checked is 4 under it
+        assertFalse(RoomRetarget.dry(sideFluidAt(70 - RoomRetarget.FLUID_DEPTH, 70), 0, 0));
+        assertTrue(RoomRetarget.dry(sideFluidAt(70 - RoomRetarget.FLUID_DEPTH - 1, 70), 0, 0));
+    }
+
+    @Test
+    public void aCliffOverTheSeaIsNotDry() {
+        // the water is way under the checked depth, but it's the side's surface, and the dig gets there
+        assertFalse(RoomRetarget.dry(sideFluidAt(62, 62), 0, 0));
     }
 
     @Test
@@ -122,7 +218,7 @@ public class RoomRetargetTest {
             }
         };
         int[] col = RoomRetarget.pickColumn(w, 100, 100, 100, 100).orElseThrow();
-        assertEquals(120, col[0]);
+        assertEquals(121, col[0]);
     }
 
     @Test
@@ -176,7 +272,7 @@ public class RoomRetargetTest {
     public void cornersOutsideTheRadiusAreNotPicked() {
         World w = new World();
         // only the far diagonal is dry: inside the square, outside the circle
-        w.water = (x, z) -> !(x == 40 && z == 40);
+        w.water = (x, z) -> x < 71 || z < 71;
         assertTrue(RoomRetarget.pickColumn(w, 0, 0, 0, 0).isEmpty());
     }
 

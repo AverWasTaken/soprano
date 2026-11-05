@@ -72,7 +72,7 @@ public class PortalDigTest {
 
     @Test
     public void portalLevelButFarSidewaysDigsOnlyToTheFloor() {
-        assertEquals(PORTAL_Y, at(100, PORTAL_Y + 5, 0));
+        assertEquals(PORTAL_Y, at(120, PORTAL_Y + 5, 0));
     }
 
     @Test
