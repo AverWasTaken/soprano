@@ -24,6 +24,7 @@ import adris.altoclef.ui.HudText;
 import net.minecraft.world.level.Level;
 import net.minecraft.client.Minecraft;
 import baritone.api.pathing.goals.Goal;
+import baritone.api.pathing.goals.GoalComposite;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalTwoBlocks;
 import baritone.api.process.ICustomGoalProcess;
@@ -228,6 +229,16 @@ public class InteractWithBlockTask extends Task {
         };
     }
 
+    // the cell above the target may not be broken, so stand next to the target instead. any of the four sides will do:
+    // north alone fails whenever that one cell is a wall or out of reach, and the move checker then gives up on the block
+    static Goal goalBesideTarget(BlockPos target) {
+        return new GoalComposite(
+                new GoalTwoBlocks(target.north()),
+                new GoalTwoBlocks(target.south()),
+                new GoalTwoBlocks(target.east()),
+                new GoalTwoBlocks(target.west()));
+    }
+
     private static Goal createGoalForInteract(BlockPos target, int reachDistance, Direction interactSide, Vec3i interactOffset, boolean walkInto) {
 
         boolean sideMatters = interactSide != null;
@@ -363,7 +374,7 @@ public class InteractWithBlockTask extends Task {
         int reachDistance = 0;
         Goal moveGoal;
         if (mod.getExtraBaritoneSettings().shouldAvoidBreaking(_target.above())) {
-            moveGoal = new GoalTwoBlocks(_target.north());
+            moveGoal = goalBesideTarget(_target);
         } else if (_goalFor != null) {
             moveGoal = _goalFor.apply(_target);
         } else {
