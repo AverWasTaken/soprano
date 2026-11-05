@@ -892,8 +892,11 @@ public class StrongholdRoomSearchTask extends Task {
         if (RoomRetarget.progressed(approachBest, d)) {
             approachBest = d;
             approachBestAt = seconds(mod);
-        } else if (seconds(mod) - approachBestAt >= RoomRetarget.PROGRESS_SECONDS && far(mod, c)
-                && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
+        }
+        // stuck, or close enough that the shore finally has chunks: the first "no dry land" from out at sea only meant we hadn't seen it
+        boolean askShore = seconds(mod) - approachBestAt >= RoomRetarget.PROGRESS_SECONDS
+                || RoomRetarget.shoreLoaded(mod.getPlayer().getX(), mod.getPlayer().getZ(), c[0], c[2]);
+        if (askShore && far(mod, c) && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
             return null;
         }
         // we're there. OPEN reads the frames and walks itself, so there is nothing left to wait for. waiting anyway is how you
@@ -903,7 +906,7 @@ public class StrongholdRoomSearchTask extends Task {
             finish();
             return null;
         }
-        if (seconds(mod) - stageSince >= cfg.approachSeconds) {
+        if (RoomRetarget.approachOver(seconds(mod) - stageSince, cfg.approachSeconds, mod.getPlayer().getX(), mod.getPlayer().getZ(), c[0], c[2])) {
             Debug.logMessage("taking the frames we have not seen as given, the ring is rigid");
             finish();
             return null;

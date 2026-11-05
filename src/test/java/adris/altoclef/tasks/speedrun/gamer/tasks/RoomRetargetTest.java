@@ -16,6 +16,24 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class RoomRetargetTest {
+
+    @Test
+    public void theApproachClockWaitsForAShoreItCanSee() {
+        // 45 s in and 1700 blocks out: the clock means nothing yet
+        assertFalse(RoomRetarget.approachOver(45, 45, 1700, 0, 0, 0));
+        // at the ring it's the old rule
+        assertFalse(RoomRetarget.approachOver(44, 45, 50, 0, 0, 0));
+        assertTrue(RoomRetarget.approachOver(45, 45, 50, 0, 0, 0));
+        // and a walk that never arrives still ends
+        assertTrue(RoomRetarget.approachOver(RoomRetarget.FAR_WALK_CAP_SECONDS, 45, 1700, 0, 0, 0));
+    }
+
+    @Test
+    public void theShoreCountsAsLoadedInsideItsRange() {
+        assertTrue(RoomRetarget.shoreLoaded(RoomRetarget.SHORE_LOADED_BLOCKS, 0, 0, 0));
+        assertFalse(RoomRetarget.shoreLoaded(RoomRetarget.SHORE_LOADED_BLOCKS + 1, 0, 0, 0));
+    }
+
     @BeforeClass
     public static void bootstrap() {
         ItemFixture.boot();

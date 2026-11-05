@@ -18,6 +18,10 @@ final class RoomRetarget {
     // the approach counts as stuck when it has not come this much closer in this long
     static final double PROGRESS_BLOCKS = 3;
     static final double PROGRESS_SECONDS = 10;
+    // the shore around a ring this far off is loaded, so "no dry land" is an answer and not just a chunk we haven't got yet
+    static final double SHORE_LOADED_BLOCKS = 96;
+    // nobody swims a stronghold's worth of ocean in this long, stop believing in the walk
+    static final double FAR_WALK_CAP_SECONDS = 600;
 
     interface Probe {
         boolean loaded(int x, int z);
@@ -34,6 +38,16 @@ final class RoomRetarget {
     }
 
     // walk straight at it only from here, anything else goes down a dry column first
+    static boolean shoreLoaded(double px, double pz, int fx, int fz) {
+        return Math.hypot(fx - px, fz - pz) <= SHORE_LOADED_BLOCKS;
+    }
+
+    // the approach clock is for a ring we got to and can't see the rest of. a walk that started two thousand blocks out runs it down in
+    // the first minute and hands OPEN a frame 70 blocks under the sea with no dig
+    static boolean approachOver(double stageSeconds, double approachSeconds, double px, double pz, int fx, int fz) {
+        return stageSeconds >= FAR_WALK_CAP_SECONDS || (stageSeconds >= approachSeconds && shoreLoaded(px, pz, fx, fz));
+    }
+
     static boolean near(double px, double py, double pz, int fx, int fy, int fz) {
         return Math.hypot(fx - px, fz - pz) <= NEAR_HORIZONTAL && Math.abs(fy - py) <= NEAR_VERTICAL;
     }
