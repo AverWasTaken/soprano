@@ -15,38 +15,12 @@ import baritone.command.argument.ArgConsumer;
 import baritone.command.manager.CommandManager;
 import baritone.api.utils.Pair;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-// the command registry for the help tab and a way to run a line. runs the command itself rather than going through
+// runs a line for the command bar. runs the command itself rather than going through
 // ICommandManager.execute: that one prints a failure to chat and tells us nothing, this one hands the message back
 final class McCommands implements CommandsAccess {
-
-    @Override
-    public List<CommandInfo> commands() {
-        List<CommandInfo> out = new ArrayList<>();
-        try {
-            for (ICommand c : manager().getRegistry().entries) {
-                if (c.hiddenFromHelp() || c.getNames().isEmpty()) {
-                    continue;
-                }
-                List<String> longDesc = new ArrayList<>();
-                if (c.getLongDesc() != null) {
-                    for (String line : c.getLongDesc()) {
-                        longDesc.add(Wording.soprano(line));
-                    }
-                }
-                String shortDesc = c.getShortDesc() == null ? "" : Wording.soprano(c.getShortDesc());
-                out.add(new CommandInfo(List.copyOf(c.getNames()), shortDesc, List.copyOf(longDesc)));
-            }
-            out.sort(Comparator.comparing(CommandInfo::name));
-        } catch (Throwable t) {
-            Safe.report("commands list", t);
-        }
-        return out;
-    }
 
     @Override
     public Result run(String line) {

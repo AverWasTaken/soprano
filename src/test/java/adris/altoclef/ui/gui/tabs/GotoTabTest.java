@@ -365,7 +365,9 @@ public class GotoTabTest {
         assertSame(tab.hereButton(), p.shell.focusedWidget());
         p.key(Keys.TAB);
         assertSame(tab.clearButton(), p.shell.focusedWidget());
-        // nothing recent yet, so focus goes straight to the shell's footer controls
+        // nothing recent yet, so focus goes straight to the shell's command bar and footer controls
+        p.key(Keys.TAB);
+        assertSame(p.shell.commandBar().field(), p.shell.focusedWidget());
         p.key(Keys.TAB);
         assertSame(p.shell.appearance(), p.shell.focusedWidget());
         p.key(Keys.TAB);

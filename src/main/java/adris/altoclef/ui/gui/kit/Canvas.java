@@ -24,6 +24,35 @@ public interface Canvas extends TextMeasurer {
     // one pixel hairline drawn inside the box
     void strokeRoundRect(float x, float y, float w, float h, float radius, int argb);
 
+    // one quarter of a 1px ring, r x r, with left/top the slice's top left pixel. quadrants are ShapeAtlas.TL and friends.
+    // the default clips per corner, fine for a backend nobody's counting frames on. TexturedCanvas just blits the slice
+    default void cornerLine(int left, int top, int r, int quadrant, int argb) {
+        if (r < 1) {
+            return;
+        }
+        pushClip(left, top, r, r);
+        strokeRoundRect(circleX(left, r, quadrant), circleY(top, r, quadrant), 2 * r, 2 * r, r, argb);
+        popClip();
+    }
+
+    // the same slice, filled
+    default void cornerFill(int left, int top, int r, int quadrant, int argb) {
+        if (r < 1) {
+            return;
+        }
+        pushClip(left, top, r, r);
+        fillRoundRect(circleX(left, r, quadrant), circleY(top, r, quadrant), 2 * r, 2 * r, r, argb);
+        popClip();
+    }
+
+    private static int circleX(int left, int r, int quadrant) {
+        return quadrant == ShapeAtlas.TR || quadrant == ShapeAtlas.BR ? left - r : left;
+    }
+
+    private static int circleY(int top, int r, int quadrant) {
+        return quadrant == ShapeAtlas.BL || quadrant == ShapeAtlas.BR ? top - r : top;
+    }
+
     // soft shadow under a rounded box: blur about 1.5x the radius, pushed down by half the radius
     void shadow(float x, float y, float w, float h, float radius, int argb);
 

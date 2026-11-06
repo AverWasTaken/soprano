@@ -133,6 +133,21 @@ public abstract class TexturedCanvas implements Canvas {
         }
     }
 
+    // no scissor per corner: a wire elbow is one blit, which is the whole point when there are 400 wires
+    @Override
+    public void cornerLine(int left, int top, int r, int quadrant, int argb) {
+        if (r >= 1 && (argb >>> 24) != 0) {
+            corner(shapes.ring(r)[quadrant], left, top, argb);
+        }
+    }
+
+    @Override
+    public void cornerFill(int left, int top, int r, int quadrant, int argb) {
+        if (r >= 1 && (argb >>> 24) != 0) {
+            corner(shapes.disc(r)[quadrant], left, top, argb);
+        }
+    }
+
     @Override
     public void shadow(float x, float y, float w, float h, float radius, int argb) {
         if ((argb >>> 24) == 0) {

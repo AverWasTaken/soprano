@@ -24,6 +24,7 @@ import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualList;
 import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.kit.TextWrap;
 
 import java.util.List;
 
@@ -564,7 +565,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
             float room = Math.max(theme.px(80), Math.min(theme.px(420), spanW - 2 * theme.px(24)));
             java.util.ArrayList<String> lines = new java.util.ArrayList<>(List.of(lead));
             if (!rest.isEmpty()) {
-                lines.addAll(HelpList.wrap(c, rest, theme.small, room));
+                lines.addAll(TextWrap.words(c, rest, theme.small, room));
             }
             if (path != null && !path.isEmpty()) {
                 lines.add(c.ellipsize(path, theme.small, room));
@@ -587,7 +588,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
             }
             TextStyle s = theme.small;
             float maxW = theme.px(360);
-            List<String> lines = HelpList.wrap(c, text, s, maxW - 2 * theme.px(10));
+            List<String> lines = TextWrap.words(c, text, s, maxW - 2 * theme.px(10));
             float tw = 0;
             for (String l : lines) {
                 tw = Math.max(tw, c.measure(l, s));

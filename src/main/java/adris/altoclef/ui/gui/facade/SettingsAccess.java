@@ -25,6 +25,15 @@ public interface SettingsAccess {
 
     Result toggle(String name);
 
+    // every changed setting back to its default, each one the way reset does it, one save at the end
+    Result resetAll();
+
+    // null when the real parser takes the text, else a sentence saying why not. nothing changes either way
+    String check(String name, String text);
+
+    // the old names a renamed setting still answers to in #set, lowercase. empty for nearly everything
+    List<String> oldNames(String name);
+
     // plain text from the javadoc, "" when there is none
     String description(String name);
 }

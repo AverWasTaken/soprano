@@ -95,6 +95,7 @@ public class GuiScreen extends Screen {
         Shell sh = new Shell(t, makeTabs(f, t, ctx), f.status(), f.keyNames(), s.guiKey.value, this::rebind,
                 f.clipboard(), this::closeRequested);
         ctx.attach(sh);
+        sh.setCommandRunner(line -> f.commands().run(line));
         sh.setOpenKeyEnabled(s.guiKeyEnabled.value);
         sh.setOnAppearanceChanged(dark -> {
             Result result = f.settings().set("guiDarkMode", Boolean.toString(dark));

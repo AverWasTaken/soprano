@@ -1,126 +1,132 @@
 package adris.altoclef.ui.gui.tabs;
 
-import adris.altoclef.ui.gui.facade.SettingsAccess.Kind;
-import adris.altoclef.ui.gui.facade.SettingsAccess.SettingView;
 import adris.altoclef.ui.gui.kit.Keys;
-import adris.altoclef.ui.gui.kit.StubCanvas;
-import adris.altoclef.ui.gui.kit.TextMeasurer;
-import adris.altoclef.ui.gui.kit.TextStyle;
-import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.kit.Tile;
+import adris.altoclef.ui.gui.kit.TileGrid;
 import adris.altoclef.ui.gui.preview.FakeFacade;
 import adris.altoclef.ui.gui.preview.Preview;
 import org.junit.Test;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
+// the first page as a grid of common settings: it and Show all between them cover every setting once, a tile and the
+// same setting in a search are one tile, keyboard and scroll reach everything, and it holds up small and in both looks
 public class CommonSettingsTest {
+
     private SettingsTab tab;
+    private FakeFacade f;
 
     private Preview open(int width, int height) throws Exception {
-        return new Preview(width, height, new FakeFacade(), p -> {
-            tab = new SettingsTab(p.theme, p.facade, p.ctx);
+        f = new FakeFacade();
+        Preview p = new Preview(width, height, f, pv -> {
+            tab = new SettingsTab(pv.theme, pv.facade, pv.ctx);
             return List.of(tab);
         });
-    }
-
-    private Widget tile(String name) {
-        int i = 0;
-        for (CommonSettings.Spec spec : CommonSettings.SPECS) {
-            if (spec.name().equals(name)) {
-                return tab.common().children().get(i);
-            }
-            i++;
-        }
-        throw new AssertionError(name);
+        p.settle();
+        return p;
     }
 
     @Test
-    public void commonTilesAndAdvancedRowsCoverTheSettingsWithoutDuplicates() throws Exception {
-        Preview p = open(1920, 1080);
+    public void firstPageAndShowAllCoverTheSettingsWithoutDuplicates() throws Exception {
+        Preview p = open(1600, 900);
+        Set<Tile> home = new HashSet<>(tab.grid().tiles());
+        assertEquals(tab.grid().tiles().size(), home.size());
+        for (int i = 0; i < 60; i++) {
+            p.shell.scroll(tab.grid().x() + 40, tab.grid().y() + 40, -1);
+        }
+        p.advance(600);
         p.settle();
-        assertEquals(12, tab.common().size());
-        assertEquals(p.facade.settings.all().size(), tab.common().size() + tab.list().items().size());
-        assertTrue(tab.list().items().stream().noneMatch(v -> tab.common().containsSetting(v.name())));
-        assertTrue(tab.list().items().stream().anyMatch(v -> v.name().equals("costHeuristic")));
+        p.click(tab.showAll().button().x() + 4, tab.showAll().button().y() + 4);
+        p.settle();
+        List<Tile> all = tab.grid().tiles();
+        assertEquals(f.settings.map.size(), new HashSet<>(all).size());
+        assertTrue(new HashSet<>(all).containsAll(home));
+        // every section in Show all has something in it
+        for (TileGrid.Section s : tab.grid().sections()) {
+            assertFalse(s.title(), s.tiles().isEmpty());
+        }
     }
 
     @Test
     public void clickAndKeyboardSaveAndStayInSyncWithSearch() throws Exception {
-        Preview p = open(1920, 1080);
+        Preview p = open(1600, 900);
+        Tile parkour = tab.tileOf("allowParkour");
+        p.click(parkour.x() + parkour.w() / 2f, parkour.y() + parkour.h() / 2f);
         p.settle();
-        Widget boat = tile("allowBoats");
-        p.click(boat.x() + boat.w() / 2f, boat.y() + boat.h() / 2f);
-        assertEquals("true", p.facade.settings.get("allowBoats").value());
-        assertTrue(p.facade.actions.contains("set allowBoats true"));
-        tab.onSearch("allowBoats");
+        assertTrue(parkour.on());
+        assertEquals("set allowParkour true", f.actions.get(f.actions.size() - 1));
+        p.shell.focus(parkour);
+        p.key(Keys.ENTER);
         p.settle();
-        assertFalse(tab.common().visible());
-        assertTrue(tab.rows().stream().anyMatch(r -> "allowBoats".equals(r.name()) && r.toggle().on()));
+        assertFalse(parkour.on());
+        assertEquals("set reset allowParkour", f.actions.get(f.actions.size() - 1));
+        tab.onSearch("parkour");
+        p.settle();
+        assertTrue(tab.grid().tiles().contains(parkour));
+        assertFalse(parkour.on());
         tab.onSearch("");
         p.settle();
-        p.shell.focus(boat);
-        p.key(Keys.SPACE);
-        assertEquals("false", p.facade.settings.get("allowBoats").value());
-        p.settle();
-        assertEquals("allowBoats", tab.settingsContent().detail().name());
+        assertSame(parkour, tab.tileOf("allowParkour"));
     }
 
     @Test
-    public void rejectedTileChangeKeepsItsSavedState() throws Exception {
-        Preview p = open(1920, 1080);
+    public void rejectedNumberKeepsTheSavedValue() throws Exception {
+        Preview p = open(1600, 900);
+        Tile hud = tab.tileOf("altoHudScale");
+        int before = f.actions.size();
+        tab.grid().scrollToTile(hud);
+        p.advance(400);
         p.settle();
-        Widget boat = tile("allowBoats");
-        p.facade.settings.map.remove("allowBoats");
-        p.click(boat.x() + boat.w() / 2f, boat.y() + boat.h() / 2f);
         p.settle();
-        assertEquals("false", tab.settingsContent().detail().value());
-        assertFalse(p.facade.actions.contains("set allowBoats true"));
+        p.click(hud.x() + hud.w() / 2f, hud.y() + hud.h() / 2f);
+        p.settle();
+        assertNotNull(tab.openPopover());
+        p.shell.keyDown(Keys.A, Keys.MOD_CTRL);
+        p.shell.keyUp(Keys.A);
+        p.type("-");
+        // an outside click keeps the old value for a draft that does not parse, and says nothing
+        p.click(p.shell.contentX() + 40, p.shell.y() + 20);
+        p.settle();
+        assertEquals(before, f.actions.size());
+        assertEquals("1", hud.valueText());
     }
 
     @Test
-    public void releasingInTheDescriptionPanelDoesNotToggleAPartlyClippedTile() throws Exception {
-        Preview p = open(1920, 1080);
-        p.settle();
-        SettingsBrowser browser = tab.settingsContent().browser();
-        browser.setBounds(browser.x(), browser.y(), browser.w(), p.theme.px(60));
-        p.settle();
-        Widget boat = tile("allowBoats");
-        p.press(boat.x() + boat.w() / 2f, boat.y() + p.theme.px(4));
-        float releaseY = browser.y() + browser.h() + p.theme.px(2);
-        assertTrue(boat.contains(boat.x() + boat.w() / 2f, releaseY));
-        p.release(boat.x() + boat.w() / 2f, releaseY);
-        assertEquals("false", p.facade.settings.get("allowBoats").value());
-    }
-
-    @Test
-    public void keyboardFocusRevealsOffscreenTilesAndScrollingReachesTheAdvancedRows() throws Exception {
+    public void keyboardFocusRevealsOffscreenTilesAndTheWheelReachesShowAll() throws Exception {
         Preview p = open(960, 540);
-        p.settle();
-        SettingsBrowser browser = tab.settingsContent().browser();
-        Widget last = tile("renderPath");
+        TileGrid grid = tab.grid();
+        Tile last = tab.tileOf("altoHudScale");
         p.shell.focus(last);
+        // the reveal starts on the next draw and then glides, so one frame to start it and one after it landed
+        p.settle();
         p.advance(500);
         p.settle();
-        assertTrue(browser.scroller().target() > 0);
-        assertTrue(last.y() >= browser.y());
-        assertTrue(last.y() + last.h() <= browser.y() + browser.h());
-        p.shell.focus(browser);
-        p.key(Keys.END);
-        p.advance(500);
+        assertTrue(last.y() >= grid.y());
+        assertTrue(last.y() + last.h() <= grid.y() + grid.h());
+        p.shell.blur();
+        for (int i = 0; i < 40; i++) {
+            p.shell.scroll(grid.x() + 40, grid.y() + 40, -1);
+        }
+        p.advance(600);
         p.settle();
-        assertTrue(tab.list().liveRows() > 0);
-        assertTrue(tab.rows().size() < 20);
+        var button = tab.showAll().button();
+        assertTrue(button.y() + button.h() <= grid.y() + grid.h());
+        assertTrue(button.y() >= grid.y());
     }
 
     @Test
-    public void commonGridInBothAppearancesAndMinimumSize() throws Exception {
+    public void gridInBothAppearancesAndMinimumSize() throws Exception {
         Preview p = open(1920, 1080);
-        p.settle();
-        Widget parkour = tile("allowParkour");
+        assertEquals(4, tab.grid().columns());
+        Tile parkour = tab.tileOf("allowParkour");
         p.hover(parkour.x() + parkour.w() / 2f, parkour.y() + parkour.h() / 2f);
         for (boolean dark : new boolean[]{true, false}) {
             p.shell.setDarkMode(dark);
@@ -128,56 +134,27 @@ public class CommonSettingsTest {
             p.advance(500);
             p.savePanel("settings_grid_" + (dark ? "dark" : "light"));
         }
-        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(400));
         p.settle();
         p.savePanel("settings_grid_minimum");
-        SettingsBrowser browser = tab.settingsContent().browser();
-        assertTrue(browser.h() >= p.theme.px(48));
-        assertTrue(browser.scroller().scrollable());
-    }
-
-    private static final class MetricsCanvas extends StubCanvas {
-        record Text(String value, float baseline, TextStyle style, float[] clip) { }
-        final TextMeasurer metrics;
-        final ArrayDeque<float[]> clips = new ArrayDeque<>();
-        final List<Text> drawn = new ArrayList<>();
-
-        MetricsCanvas(TextMeasurer metrics) { this.metrics = metrics; }
-        @Override public float ascent(TextStyle style) { return metrics.ascent(style); }
-        @Override public float descent(TextStyle style) { return metrics.descent(style); }
-        @Override public float measure(String text, TextStyle style) { return metrics.measure(text, style); }
-        @Override public void pushClip(float x, float y, float w, float h) { clips.push(new float[]{x, y, w, h}); }
-        @Override public void popClip() { clips.pop(); }
-        @Override public float text(String text, float x, float baseline, TextStyle style, int color) {
-            drawn.add(new Text(text, baseline, style, clips.peek()));
-            return measure(text, style);
+        // two columns when there is no room for four, and every tile stays inside the grid sideways
+        assertEquals(2, tab.grid().columns());
+        for (Tile t : tab.grid().tiles()) {
+            assertTrue(t.name(), t.x() >= tab.grid().x());
+            assertTrue(t.name(), t.x() + t.w() <= tab.grid().x() + tab.grid().w());
         }
     }
 
     @Test
-    public void longDescriptionsFitInsideTheirOwnClipAtEveryScale() throws Exception {
+    public void tilesFitAtEveryScale() throws Exception {
         for (int height : new int[]{540, 1080, 1440, 2160}) {
             Preview p = open(height * 16 / 9, height);
-            p.settle();
-            SettingView climb = new SettingView("allowClimbJumps", Kind.BOOLEAN, "Boolean", "false", "false", false, List.of());
-            for (boolean compact : new boolean[]{false, true}) {
-                if (compact) {
-                    p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+            for (Tile t : tab.grid().tiles()) {
+                if (!t.visible() || t.h() == 0) {
+                    continue;
                 }
-                SettingsContent content = tab.settingsContent();
-                content.showDetail(climb, "Jump onto ladders and vines across a gap, and off of them again, instead of walking the long way round. Only actually takes effect if allowParkour is also true. ".repeat(6));
-                MetricsCanvas c = new MetricsCanvas(p.theme.measurer);
-                content.draw(c, p.frame());
-                MetricsCanvas.Text title = c.drawn.stream().filter(t -> t.value().equals("allowClimbJumps")).findFirst().orElseThrow();
-                assertNotNull("description needs its own clip", title.clip());
-                List<MetricsCanvas.Text> detail = c.drawn.stream().filter(t -> t.clip() == title.clip()).toList();
-                assertTrue(detail.size() >= 3);
-                for (MetricsCanvas.Text text : detail) {
-                    assertTrue(text.baseline() - c.ascent(text.style()) >= title.clip()[1]);
-                    assertTrue(text.baseline() + c.descent(text.style()) <= title.clip()[1] + title.clip()[3] - p.theme.px(6));
-                }
-                assertTrue(tab.settingsContent().browser().y() + tab.settingsContent().browser().h() < title.clip()[1]);
-                assertTrue(c.clips.isEmpty());
+                assertTrue(height + " " + t.name(), t.x() + t.w() <= tab.grid().x() + tab.grid().w());
+                assertTrue(height + " " + t.name(), t.x() >= tab.grid().x());
             }
         }
     }

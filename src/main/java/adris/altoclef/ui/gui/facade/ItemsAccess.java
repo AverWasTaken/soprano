@@ -41,6 +41,12 @@ public interface ItemsAccess {
 
     List<ItemEntry> mineable();
 
+    // every mob a condition or a follow could name, for the commands tab's type-ahead. name is the id a near_mob
+    // takes ("zombie", a modded one keeps its namespace), iconItemId the spawn egg. empty in fakes that don't care
+    default List<ItemEntry> mobs() {
+        return List.of();
+    }
+
     Result get(List<BasketLine> lines);
 
     // count 0 means "no limit"

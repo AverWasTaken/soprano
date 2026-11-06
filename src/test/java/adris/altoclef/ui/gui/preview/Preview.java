@@ -60,6 +60,7 @@ public final class Preview {
         shell = new Shell(theme, tabs.apply(this), facade.status(), facade.keyNames(), 344, k -> facade.actions.add("rebind " + k),
                 facade.clipboard(), () -> facade.actions.add("close"));
         ctx.attach(shell);
+        shell.setCommandRunner(line -> facade.commands().run(line));
         shell.setViewport(winW, winH);
         // land on the fully open state unless a test asks for a mid-animation frame. the game sends the key up
         // of the opening key right after; without it the shell keeps swallowing that key and its char

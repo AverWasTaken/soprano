@@ -177,6 +177,59 @@ final class McSettings implements SettingsAccess {
     }
 
     @Override
+    public Result resetAll() {
+        try {
+            int n = 0;
+            for (Settings.Setting<?> s : SettingsUtil.modifiedSettings(Baritone.settings())) {
+                // modifiedSettings goes by reference, so a boxed number set back to its own default is in there too.
+                // resetting it is harmless, counting it would make the toast say more than the gui showed as changed
+                if (!Objects.equals(s.value, s.defaultValue)) {
+                    n++;
+                }
+                s.reset();
+                AltoClefBridge.userChanged(s);
+            }
+            // one save for the lot, not one per setting
+            AltoClefBridge.saveSettings(Baritone.settings());
+            return Result.ok(n == 0 ? "Nothing to reset" : "Reset " + n + (n == 1 ? " setting" : " settings") + " to default",
+                    "set reset all");
+        } catch (Throwable t) {
+            Safe.report("settings reset all", t);
+            return Result.fail("Could not reset the settings.");
+        }
+    }
+
+    @Override
+    public String check(String name, String text) {
+        try {
+            Settings.Setting<?> s = find(name);
+            if (s == null || s.isJavaOnly()) {
+                return "There is no setting called " + name + ".";
+            }
+            try {
+                SettingsUtil.parseValue(s, text);
+                return null;
+            } catch (Throwable t) {
+                return cleanError(t, s);
+            }
+        } catch (Throwable t) {
+            Safe.report("settings check", t);
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> oldNames(String name) {
+        try {
+            Settings.Setting<?> s = find(name);
+            return s == null ? List.of() : List.copyOf(Baritone.settings().oldNames(s));
+        } catch (Throwable t) {
+            Safe.report("settings old names", t);
+            return List.of();
+        }
+    }
+
+    @Override
     public String description(String name) {
         try {
             if (descriptions == null) {
@@ -222,7 +275,10 @@ final class McSettings implements SettingsAccess {
             return "Not a number. Try something like 64 or 1.5.";
         }
         String m = t.getMessage();
-        if (m == null || m.isBlank() || m.length() > 100) {
+        // "Index 2 out of bounds for length 2" is the colour parser meeting "255,0". true, and no help to anyone
+        boolean javaSpeak = t instanceof IndexOutOfBoundsException || t instanceof NullPointerException
+                || t instanceof ClassCastException;
+        if (javaSpeak || m == null || m.isBlank() || m.length() > 100) {
             return "That is not a valid value for " + s.getName() + ".";
         }
         return Wording.soprano(m);

@@ -57,8 +57,12 @@ public class AppearancePreviewTest {
 
     @Test
     public void smallWindowKeepsAppearanceBelowTheTabs() throws Exception {
-        Preview p = new Preview(960, 540, new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
-        int tabsBottom = p.shell.tabRowY(6) + p.shell.tabRowH();
+        List<Tab> tabs = new ArrayList<>();
+        Preview p = new Preview(960, 540, new FakeFacade(), pv -> {
+            tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
+            return tabs;
+        });
+        int tabsBottom = p.shell.tabRowY(tabs.size() - 1) + p.shell.tabRowH();
         assertTrue(tabsBottom < p.shell.appearance().y() - p.theme.px(20));
         assertTrue(p.shell.appearance().y() + p.shell.appearance().h() < p.shell.keyCapture().y());
         p.settle();
@@ -70,9 +74,14 @@ public class AppearancePreviewTest {
 
     @Test
     public void minimumResizeKeepsNavigationClearOfAppearance() throws Exception {
-        Preview p = new Preview(1920, 1080, new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
-        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
-        int bottom = p.shell.tabRowY(6) + p.shell.tabRowH();
+        List<Tab> tabs = new ArrayList<>();
+        Preview p = new Preview(1920, 1080, new FakeFacade(), pv -> {
+            tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
+            return tabs;
+        });
+        // the smallest a drag can make it (Shell.resizePanel)
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(400));
+        int bottom = p.shell.tabRowY(tabs.size() - 1) + p.shell.tabRowH();
         assertTrue(bottom < p.shell.appearance().y() - p.theme.px(20));
         p.settle();
         p.savePanel("gui_minimum_size");
@@ -80,9 +89,13 @@ public class AppearancePreviewTest {
 
     @Test
     public void appearanceAndTabMotionFrames() throws Exception {
-        Preview p = new Preview(new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
+        List<Tab> tabs = new ArrayList<>();
+        Preview p = new Preview(new FakeFacade(), pv -> {
+            tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
+            return tabs;
+        });
         // settings, the last tab
-        p.shell.switchTab(7);
+        p.shell.switchTab(tabs.size() - 1);
         p.settle();
         p.advance(500);
         p.settle();

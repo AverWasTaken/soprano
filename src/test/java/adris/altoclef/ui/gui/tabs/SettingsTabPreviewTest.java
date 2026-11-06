@@ -1,53 +1,41 @@
 package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.kit.Keys;
+import adris.altoclef.ui.gui.kit.Tile;
+import adris.altoclef.ui.gui.kit.TileGrid;
 import adris.altoclef.ui.gui.kit.Widget;
-import adris.altoclef.ui.gui.model.SettingCategories;
 import adris.altoclef.ui.gui.preview.FakeFacade;
 import adris.altoclef.ui.gui.preview.Preview;
 import org.junit.Test;
 
 import java.util.List;
 
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-// lives next to the tab (not in the preview package) because it clicks things by asking the tab where they are
+// the look of the settings tab, in pngs under build/gui-preview (settings_page_*): the first page, halfway down,
+// Show all, a search, every popover kind and a tooltip, dark and light. lives next to the tab because it clicks
+// things by asking the tab where they are
 public class SettingsTabPreviewTest {
 
     private SettingsTab tab;
 
-    private Preview open(int w, int h) throws Exception {
+    private Preview open(int w, int h, boolean dark) throws Exception {
         Preview p = new Preview(w, h, new FakeFacade(), pv -> {
             tab = new SettingsTab(pv.theme, pv.facade, pv.ctx);
             return List.of(tab);
         });
-        p.settle();
-        // these previews reach for settings of every kind, so keep the advanced ones in sight
-        tab.setAdvanced(true);
-        p.settle();
-        p.advance(400);
-        p.settle();
+        p.shell.setDarkMode(dark);
+        rest(p);
         return p;
     }
 
-    // through the shell's own box, so the header says what the list is filtered by
-    private void search(Preview p, String text) {
-        p.shell.search().clearAndNotify();
-        clickCentre(p, p.shell.search());
-        p.type(text);
-    }
-
-    private SettingRow show(Preview p, String name) {
-        search(p, name);
+    // animations done, the pointer parked somewhere harmless
+    private static void rest(Preview p) {
         p.settle();
-        p.advance(300);
+        p.advance(500);
         p.settle();
-        for (SettingRow r : tab.rows()) {
-            if (name.equals(r.name()) && r.visible()) {
-                return r;
-            }
-        }
-        throw new AssertionError(name + " is not on screen");
     }
 
     private void clickCentre(Preview p, Widget w) {
@@ -55,153 +43,106 @@ public class SettingsTabPreviewTest {
         p.settle();
     }
 
-    private void category(Preview p, String label) {
-        clickCentre(p, tab.toolbar().categories());
-        p.type(label);
-        p.key(Keys.ENTER);
-        p.settle();
-    }
-
-    @Test
-    public void states() throws Exception {
-        Preview p = open(1600, 900);
-        assertTrue(p.savePanel("settings_default").toFile().length() > 0);
-
-        // hovering a row fills the detail strip
-        Widget first = tab.common().children().get(1);
-        p.hover(first.x() + 40, first.y() + first.h() / 2f);
-        p.settle();
-        p.savePanel("settings_hover");
-
-        // categories unfold from their own control and keep keyboard navigation
-        clickCentre(p, tab.toolbar().categories());
-        p.advance(300);
-        p.savePanel("settings_category_menu");
-        p.key(Keys.ESCAPE);
-        var col = tab.toolbar();
-        category(p, SettingCategories.MOVEMENT);
-        p.settle();
-        p.savePanel("settings_category_movement");
-
-        // back to all, then the search
-        category(p, "All");
-        p.settle();
-        search(p, "parkour");
-        p.settle();
-        p.savePanel("settings_search_parkour");
+    // typed into the header box, so the shot shows what was searched for
+    private void search(Preview p, String q) {
         p.shell.search().clearAndNotify();
-
-        // modified only
-        clickCentre(p, col.modifiedToggle());
-        p.advance(300);
-        p.savePanel("settings_modified_only");
-        clickCentre(p, col.modifiedToggle());
-
-        // a number box with an error
-        SettingRow r = show(p, "followRadius");
-        clickCentre(p, r.number().field());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("-");
-        p.key(Keys.ENTER);
-        p.settle();
-        p.savePanel("settings_number_error");
-
-        // the colour editor
-        r = show(p, "colorCurrentPath");
-        clickCentre(p, r.channel(1));
-        p.savePanel("settings_colour");
-
-        // the enum dropdown open
-        r = show(p, "mirror");
-        clickCentre(p, r.dropdown());
-        p.advance(200);
-        p.savePanel("settings_enum_open");
-        p.key(Keys.ESCAPE);
-
-        // the key capture waiting
-        clickCentre(p, tab.keyCard().capture());
-        p.advance(200);
-        p.savePanel("settings_key_capture");
-        p.key(Keys.ESCAPE);
-
-        // the other editor with a parse error
-        r = show(p, "blocksToAvoid");
-        clickCentre(p, r.other());
-        p.type("!nope");
-        p.key(Keys.ENTER);
-        p.settle();
-        p.savePanel("settings_other_error");
-
-        // no results
-        search(p, "zzzzzz");
-        p.settle();
-        p.savePanel("settings_no_results");
+        Widget box = p.shell.search();
+        p.click(box.x() + box.w() / 2f, box.y() + box.h() / 2f);
+        p.type(q);
+        rest(p);
     }
 
-    @Test
-    public void minimumResizeKeepsTheSettingsBrowserVisible() throws Exception {
-        Preview p = open(1920, 1080);
-        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
-        assertTrue(tab.settingsContent().browser().h() >= p.theme.px(48));
-        assertTrue(tab.toolbar().categories().x() + tab.toolbar().categories().w()
-                < tab.toolbar().togglesLeft());
-        p.settle();
-        p.savePanel("settings_minimum_size");
+    private void clearSearch(Preview p) {
+        p.shell.search().clearAndNotify();
+        p.shell.blur();
+        rest(p);
     }
 
-    // the hover fill follows the card: rounded at the top on the first row, at the bottom on the last, square between
-    @Test
-    public void rowHoverFollowsTheCardCorners() throws Exception {
-        Preview p = open(1600, 900);
-        tab.onSearch("allow");
-        p.settle();
-        p.advance(400);
-        p.settle();
-        List<SettingRow> rows = tab.rows().stream().filter(SettingRow::visible).sorted(java.util.Comparator.comparingInt(SettingRow::y)).toList();
-        assertTrue(rows.size() >= 3);
-        SettingRow first = rows.get(0);
-        SettingRow middle = rows.get(1);
-        for (SettingRow r : List.of(first, middle)) {
-            p.hover(r.x() + 60, r.y() + r.h() / 2f);
-            p.settle();
-            p.savePanel("settings_row_hover_" + (r == first ? "first" : "middle"));
+    private void popover(Preview p, String name, String shot) throws Exception {
+        Tile t = tab.tileOf(name);
+        if (!tab.grid().tiles().contains(t)) {
+            search(p, SettingWords.label(name).toLowerCase(java.util.Locale.ROOT));
         }
-        // the last row is only on screen once the list is scrolled to the end
-        p.shell.focus(tab.settingsContent().browser());
-        p.key(Keys.END);
-        p.advance(600);
+        tab.grid().scrollToTile(t);
+        rest(p);
+        clickCentre(p, t);
+        p.advance(300);
         p.settle();
-        SettingRow last = tab.rows().stream().filter(SettingRow::visible)
-                .filter(r -> r.y() + r.h() <= tab.settingsContent().browser().y() + tab.settingsContent().browser().h())
-                .max(java.util.Comparator.comparingInt(SettingRow::y)).orElseThrow();
-        p.hover(last.x() + 60, last.y() + last.h() / 2f);
+        assertNotNull(name + " popover", tab.openPopover());
+        p.savePanel(shot);
+        p.key(Keys.ESCAPE);
         p.settle();
-        p.savePanel("settings_row_hover_last");
-        // a pinned row makes room for the pin instead of sitting on the name
-        String pinned = first.name();
-        adris.altoclef.ui.gui.model.Pinned.toggleSetting(pinned);
-        try {
+        assertNull(p.shell.overlay());
+        clearSearch(p);
+    }
+
+    @Test
+    public void everyStateInBothAppearances() throws Exception {
+        for (boolean dark : new boolean[]{true, false}) {
+            String s = dark ? "_dark" : "_light";
+            Preview p = open(1920, 1080, dark);
+            p.savePanel("settings_page_home" + s);
+
+            // halfway down the first page
+            TileGrid grid = tab.grid();
+            for (int i = 0; i < 4; i++) {
+                p.shell.scroll(grid.x() + 40, grid.y() + 40, -1);
+            }
+            rest(p);
+            p.savePanel("settings_page_scrolled" + s);
+            grid.scrollToTop();
+            rest(p);
+
+            // a tooltip on a tile
+            Tile fast = tab.tileOf("fastMode");
+            p.hover(fast.x() + fast.w() / 2f, fast.y() + fast.h() / 2f);
             p.settle();
-            p.advance(300);
-            p.savePanel("settings_row_pinned");
-        } finally {
-            adris.altoclef.ui.gui.model.Pinned.toggleSetting(pinned);
+            p.advance(700);
+            p.settle();
+            p.advance(200);
+            p.settle();
+            p.savePanel("settings_page_tooltip" + s);
+            p.hover(-100, -100);
+            rest(p);
+
+            // every popover kind
+            popover(p, "fastModeMinHealth", "settings_page_pop_number" + s);
+            popover(p, "altoForceFieldStrategy", "settings_page_pop_choice" + s);
+            popover(p, "colorCurrentPath", "settings_page_pop_colour" + s);
+            popover(p, "prefix", "settings_page_pop_text" + s);
+            popover(p, "blocksToAvoidBreaking", "settings_page_pop_list" + s);
+            popover(p, "guiKey", "settings_page_pop_key" + s);
+
+            // search results, from both pages
+            search(p, "allow");
+            assertTrue(tab.grid().tiles().size() > 5);
+            p.savePanel("settings_page_search" + s);
+            search(p, "zzzz");
+            p.savePanel("settings_page_search_empty" + s);
+            clearSearch(p);
+
+            // show all, then reset all asking first. the button is under the last section
+            for (int i = 0; i < 60; i++) {
+                p.shell.scroll(grid.x() + 40, grid.y() + 40, -1);
+            }
+            rest(p);
+            p.savePanel("settings_page_bottom" + s);
+            clickCentre(p, tab.showAll().button());
+            rest(p);
+            p.savePanel("settings_page_all" + s);
+            clickCentre(p, tab.bar().resetAll());
+            rest(p);
+            p.savePanel("settings_page_reset_confirm" + s);
+            clickCentre(p, tab.bar().cancel());
         }
     }
 
     @Test
-    public void smallWindow() throws Exception {
-        Preview p = open(960, 540);
-        p.savePanel("settings_960x540");
-        SettingRow r = show(p, "colorCurrentPath");
-        p.hover(r.x() + 40, r.y() + r.h() / 2f);
-        p.settle();
-        p.savePanel("settings_960x540_colour");
-        p.shell.search().clearAndNotify();
-        p.settle();
-        var col = tab.toolbar();
-        category(p, SettingCategories.PATHING);
-        p.settle();
-        p.savePanel("settings_960x540_category");
+    public void smallWindowGoesToTwoColumns() throws Exception {
+        Preview p = open(960, 540, true);
+        p.savePanel("settings_page_960x540");
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(400));
+        rest(p);
+        p.savePanel("settings_page_minimum");
     }
 }

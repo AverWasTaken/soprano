@@ -56,7 +56,7 @@ public class SetCommand extends Command {
     public void execute(String label, IArgConsumer args) throws CommandException {
         String arg = args.hasAny() ? args.getString().toLowerCase(Locale.US) : "list";
         if (Arrays.asList("s", "save").contains(arg)) {
-            AltoClefBridge.saveSettings(Baritone.settings());
+            saveSettings();
             logDirect("Settings saved");
             return;
         }
@@ -119,7 +119,7 @@ public class SetCommand extends Command {
             return;
         }
         // a string setting takes the rest of the line (altoIdleCommand is "follow Jacob", not "follow"), everything else is one word
-        Settings.Setting<?> maybeString = Baritone.settings().byLowerName.get(arg);
+        Settings.Setting<?> maybeString = Baritone.settings().findByLowerName(arg);
         boolean wholeLine = maybeString != null && maybeString.getValueClass() == String.class;
         if (!wholeLine) {
             args.requireMax(1);
@@ -136,7 +136,7 @@ public class SetCommand extends Command {
                 SettingsUtil.modifiedSettings(Baritone.settings()).forEach(Settings.Setting::reset);
                 AltoClefBridge.userChangedAll();
                 logDirect("All settings have been reset to their default values");
-                AltoClefBridge.saveSettings(Baritone.settings());
+                saveSettings();
                 return;
             }
         }
@@ -209,6 +209,11 @@ public class SetCommand extends Command {
                 logDirect("Warning: Prefixed commands will no longer work. If you want to revert this change, use chat control (if enabled) or click the old value listed above.", ChatFormatting.RED);
             }
         }
+        saveSettings();
+    }
+
+    // the one write to settings.txt. its own method so a test can run the command without a game directory to save in
+    void saveSettings() {
         AltoClefBridge.saveSettings(Baritone.settings());
     }
 
@@ -232,7 +237,7 @@ public class SetCommand extends Command {
                     // settings always use the directory of the main Minecraft instance
                     return RelativeFile.tabComplete(args, Minecraft.getInstance().gameDirectory.toPath().resolve("baritone").toFile());
                 }
-                Settings.Setting setting = Baritone.settings().byLowerName.get(arg.toLowerCase(Locale.US));
+                Settings.Setting setting = Baritone.settings().findByLowerName(arg.toLowerCase(Locale.US));
                 if (setting != null) {
                     if (setting.getType() == Boolean.class) {
                         TabCompleteHelper helper = new TabCompleteHelper();

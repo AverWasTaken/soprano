@@ -63,7 +63,7 @@ public class GetCategoriesPreviewTest {
     @Test
     public void minimumWindowKeepsCategoryNavigationAndItemsReachable() throws Exception {
         var r = rig();
-        r.p.shell.setBounds(r.p.shell.x(), r.p.shell.y(), r.p.theme.px(560), r.p.theme.px(360));
+        r.p.shell.setBounds(r.p.shell.x(), r.p.shell.y(), r.p.theme.px(560), r.p.theme.px(400));
         CategoryTabs tabs = (CategoryTabs) r.tab.content().children().get(1);
         Widget grid = r.grid();
         r.p.shell.focus(tabs);

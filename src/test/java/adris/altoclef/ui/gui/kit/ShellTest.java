@@ -300,16 +300,17 @@ public class ShellTest {
     @Test
     public void tabCyclesFocusInOrder() {
         List<Widget> seen = new ArrayList<>();
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             shell.keyDown(Keys.TAB, 0);
             seen.add(shell.focusedWidget());
         }
         assertSame(shell.search(), seen.get(0));
         assertSame(a.box.button, seen.get(1));
         assertSame(a.box.field, seen.get(2));
-        assertSame(shell.appearance(), seen.get(3));
-        assertSame(shell.stopButton(), seen.get(4));
-        assertSame(shell.search(), seen.get(5));
+        assertSame(shell.commandBar().field(), seen.get(3));
+        assertSame(shell.appearance(), seen.get(4));
+        assertSame(shell.stopButton(), seen.get(5));
+        assertSame(shell.search(), seen.get(6));
     }
 
     @Test
@@ -318,6 +319,8 @@ public class ShellTest {
         assertSame(shell.stopButton(), shell.focusedWidget());
         shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
         assertSame(shell.appearance(), shell.focusedWidget());
+        shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
+        assertSame(shell.commandBar().field(), shell.focusedWidget());
         shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
         assertSame(a.box.field, shell.focusedWidget());
     }

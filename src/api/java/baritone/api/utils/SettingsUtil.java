@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -231,13 +232,27 @@ public class SettingsUtil {
         if (setting == null) {
             throw new IllegalStateException("No setting by that name");
         }
+        setting.value = parseValue(setting, settingValue);
+    }
+
+    /**
+     * Parses the text form of a value for a setting the same way {@link #parseAndApply} does, without applying it. The
+     * click gui uses this to say a typed value is wrong before anything changes.
+     *
+     * @param setting      the setting the value is for
+     * @param settingValue the value as it would be typed after the setting name
+     * @return a fresh value of the setting's type
+     * @throws IllegalStateException    if the parser hands back the wrong type
+     * @throws IllegalArgumentException if the text is not a valid value
+     */
+    public static Object parseValue(Settings.Setting setting, String settingValue) throws IllegalStateException, IllegalArgumentException {
         Class intendedType = setting.getValueClass();
         ISettingParser ioMethod = Parser.getParser(setting.getType());
         Object parsed = ioMethod.parse(setting.getType(), settingValue);
         if (!intendedType.isInstance(parsed)) {
             throw new IllegalStateException(ioMethod + " parser returned incorrect type, expected " + intendedType + " got " + parsed + " which is " + parsed.getClass());
         }
-        setting.value = parsed;
+        return parsed;
     }
 
     private interface ISettingParser<T> {
@@ -345,7 +360,10 @@ public class SettingsUtil {
                 Type valueType = ((ParameterizedType) type).getActualTypeArguments()[1];
                 Parser keyParser = Parser.getParser(keyType);
                 Parser valueParser = Parser.getParser(valueType);
-
+                // same as LIST: an emptied map saves as nothing, and "".split would hand back one entry with no arrow
+                if (raw.isBlank()) {
+                    return new HashMap<>();
+                }
                 return Stream.of(raw.split(",(?=[^,]*->)"))
                         .map(s -> s.split("->"))
                         .collect(Collectors.toMap(s -> keyParser.parse(keyType, s[0]), s -> valueParser.parse(valueType, s[1])));

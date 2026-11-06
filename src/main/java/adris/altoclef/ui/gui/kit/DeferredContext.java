@@ -52,6 +52,11 @@ public final class DeferredContext implements ShellContext {
     }
 
     @Override
+    public Widget focusedWidget() {
+        return real == null ? null : real.focusedWidget();
+    }
+
+    @Override
     public void blur() {
         if (real != null) {
             real.blur();
@@ -66,9 +71,30 @@ public final class DeferredContext implements ShellContext {
     }
 
     @Override
+    public void openOverlay(Widget overlay, Runnable onClose) {
+        if (real != null) {
+            real.openOverlay(overlay, onClose);
+        }
+    }
+
+    @Override
     public void closeOverlay() {
         if (real != null) {
             real.closeOverlay();
+        }
+    }
+
+    @Override
+    public void showFloating(Widget w) {
+        if (real != null) {
+            real.showFloating(w);
+        }
+    }
+
+    @Override
+    public void hideFloating(Widget w) {
+        if (real != null) {
+            real.hideFloating(w);
         }
     }
 

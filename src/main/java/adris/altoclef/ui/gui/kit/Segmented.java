@@ -14,6 +14,8 @@ public class Segmented extends Control {
     private final float[] segW;
     private final Spring slide;
     private int selected;
+    // greyed out and not clickable. the tab says why in its tip
+    private int off = -1;
 
     public Segmented(Theme theme, List<String> options, int selected, IntConsumer onChange) {
         super(theme);
@@ -42,6 +44,18 @@ public class Segmented extends Control {
         }
         selected = i;
         slide.set(i, now, Theme.ANIM);
+    }
+
+    public void setOff(int index) {
+        off = index;
+    }
+
+    public int off() {
+        return off;
+    }
+
+    public int segmentAtX(float mx) {
+        return segmentAt(mx);
     }
 
     private float inset() {
@@ -110,6 +124,9 @@ public class Segmented extends Control {
         for (int i = 0; i < n; i++) {
             float near = 1f - Math.min(1f, Math.abs(pos - i));
             int col = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), near);
+            if (i == off) {
+                col = Theme.fade(col, 0.4f);
+            }
             float tx = x + in + segX[i] + (segW[i] - textW[i]) / 2f;
             c.text(options.get(i), tx, baseline(c, theme.label, y, h), theme.label, col);
         }
@@ -126,7 +143,7 @@ public class Segmented extends Control {
     }
 
     private void choose(int i) {
-        if (i < 0 || i >= options.size() || i == selected) {
+        if (i < 0 || i >= options.size() || i == selected || i == off) {
             return;
         }
         selected = i;

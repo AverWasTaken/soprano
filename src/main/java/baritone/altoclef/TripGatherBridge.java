@@ -96,7 +96,8 @@ final class TripGatherBridge implements TripGatherer {
         status = Status.NONE;
         AltoClef mod = AltoClefBridge.instanceOrNull();
         if (mod != null && mod.getUserTaskChain().getCurrentTask() == t) {
-            mod.cancelUserTask();
+            // the bridge's cancel, a stop is a stop for every sequence waiting on it
+            AltoClefBridge.cancelUserTask();
         }
     }
 }

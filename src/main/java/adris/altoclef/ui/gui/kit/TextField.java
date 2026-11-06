@@ -14,6 +14,8 @@ public class TextField extends Control implements FocusOnClick {
     private String placeholder;
     private final Consumer<String> onCommit;
     private Consumer<String> onChange;
+    private SuggestList suggest;
+    private boolean picking;
     private final Anim focusA = new Anim(0f);
     private float scrollX;
     private boolean dragging;
@@ -73,6 +75,29 @@ public class TextField extends Control implements FocusOnClick {
         onChange = l;
     }
 
+    // the type-ahead under the box. SuggestList's constructor calls this, so a field only ever has the one
+    void setSuggest(SuggestList s) {
+        suggest = s;
+    }
+
+    public SuggestList suggest() {
+        return suggest;
+    }
+
+    // a row was picked: it replaces the whole text and goes through onChange like typing would, minus reopening
+    // the list that was just closed
+    void acceptSuggestion(String id) {
+        boolean wasPicking = picking;
+        picking = true;
+        try {
+            edit.setText(id == null ? "" : id);
+            scrollX = 0f;
+            edited(true);
+        } finally {
+            picking = wasPicking;
+        }
+    }
+
     public void setInvalid(boolean v) {
         invalid = v;
     }
@@ -90,6 +115,33 @@ public class TextField extends Control implements FocusOnClick {
         return theme.px(10);
     }
 
+    // the popover's big number wants a bigger face and the text in the middle, everything else is body on the left
+    protected TextStyle textStyle() {
+        return theme.body;
+    }
+
+    protected boolean centred() {
+        return false;
+    }
+
+    // the box behind the text. a field that sits inside something that already reads as a control can skip it
+    protected void drawBox(Canvas c, float r, int border) {
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.FIELD));
+        c.strokeRoundRect(x, y, w, h, r, border);
+    }
+
+    // the popover's big number hides it until you touch the value, so it opens as a clean figure like the mock
+    protected boolean showCaret() {
+        return true;
+    }
+
+    // where the first glyph sits. centred text only moves while it fits, a long one scrolls like any other
+    private float originX() {
+        float avail = textAreaW();
+        float shift = centred() && totalPx < avail ? (avail - totalPx) / 2f : 0f;
+        return x + leftInset() + shift;
+    }
+
     @Override
     public int preferredHeight() {
         return theme.px(Theme.CONTROL_H);
@@ -105,6 +157,10 @@ public class TextField extends Control implements FocusOnClick {
         super.setFocused(f);
         if (!f) {
             dragging = false;
+            // focus going anywhere else (a click, tab, a pooled row rebound to another step) takes the list with it
+            if (suggest != null) {
+                suggest.close();
+            }
         }
         editFlag = true;
     }
@@ -130,6 +186,10 @@ public class TextField extends Control implements FocusOnClick {
             String t = edit.text();
             Safe.run("text field change", () -> onChange.accept(t));
         }
+        if (suggest != null && focused && !picking) {
+            String t = edit.text();
+            Safe.run("suggest update", () -> suggest.update(t));
+        }
     }
 
     private void metrics() {
@@ -141,7 +201,7 @@ public class TextField extends Control implements FocusOnClick {
         cachedCaret = edit.caret();
         cachedAnchor = edit.anchor();
         TextMeasurer m = theme.measurer;
-        TextStyle s = theme.body;
+        TextStyle s = textStyle();
         caretPx = cachedCaret == 0 ? 0f : m.measure(t.substring(0, cachedCaret), s);
         if (cachedCaret == cachedAnchor) {
             selFromPx = caretPx;
@@ -175,7 +235,8 @@ public class TextField extends Control implements FocusOnClick {
     }
 
     public int indexAt(float mx) {
-        float rel = mx - (x + leftInset()) + scrollX;
+        metrics();
+        float rel = mx - originX() + scrollX;
         String t = edit.text();
         if (rel <= 0f || t.isEmpty()) {
             return 0;
@@ -185,7 +246,7 @@ public class TextField extends Control implements FocusOnClick {
         int hi = t.length();
         while (lo < hi) {
             int mid = (lo + hi) >>> 1;
-            if (m.measure(t.substring(0, mid), theme.body) < rel) {
+            if (m.measure(t.substring(0, mid), textStyle()) < rel) {
                 lo = mid + 1;
             } else {
                 hi = mid;
@@ -194,8 +255,8 @@ public class TextField extends Control implements FocusOnClick {
         if (lo == 0) {
             return 0;
         }
-        float m1 = m.measure(t.substring(0, lo), theme.body);
-        float m0 = m.measure(t.substring(0, lo - 1), theme.body);
+        float m1 = m.measure(t.substring(0, lo), textStyle());
+        float m0 = m.measure(t.substring(0, lo - 1), textStyle());
         return rel - m0 < m1 - rel ? lo - 1 : lo;
     }
 
@@ -211,16 +272,16 @@ public class TextField extends Control implements FocusOnClick {
         focusA.set(focused ? 1f : 0f, now, Theme.ANIM_FAST);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         int border = invalid ? theme.color(Theme.DANGER) : Theme.lerp(theme.color(Theme.HAIRLINE), theme.color(Theme.ACCENT), focusA.value(now));
-        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.FIELD));
-        c.strokeRoundRect(x, y, w, h, r, border);
+        drawBox(c, r, border);
 
-        float tx = x + leftInset();
+        TextStyle ts = textStyle();
+        float tx = originX();
         float avail = textAreaW();
-        float base = baseline(c, theme.body, y, h);
-        c.pushClip(tx, y + 1, avail, h - 2);
+        float base = baseline(c, ts, y, h);
+        c.pushClip(x + leftInset(), y + 1, avail, h - 2);
         if (edit.text().isEmpty()) {
             if (!placeholder.isEmpty()) {
-                c.text(placeholder, tx, base, theme.body, theme.color(Theme.TEXT_3));
+                c.text(placeholder, tx, base, ts, theme.color(Theme.TEXT_3));
             }
         } else {
             if (selToPx > selFromPx) {
@@ -228,14 +289,30 @@ public class TextField extends Control implements FocusOnClick {
                 c.fillRoundRect(tx + selFromPx - scrollX, y + inset, selToPx - selFromPx, h - 2 * inset, 2,
                         theme.color(Theme.ACCENT_SOFT));
             }
-            c.text(edit.text(), tx - scrollX, base, theme.body, theme.color(Theme.TEXT));
+            c.text(edit.text(), tx - scrollX, base, ts, theme.color(Theme.TEXT));
         }
-        if (focused && caretOn()) {
+        if (focused && showCaret() && caretOn()) {
             float inset = theme.px(7);
             c.fillRect(Math.round(tx + caretPx - scrollX), y + inset, 1, h - 2 * inset, theme.color(Theme.TEXT));
         }
         c.popClip();
         drawAdornments(c, f);
+    }
+
+    // the list gets first say over the keys it moves on, the box keeps everything else. tab only arrives here while a
+    // list is open (the shell's hook), and with a modifier it's still focus cycling
+    private boolean suggestKey(int key, int mods) {
+        if (suggest.isOpen()) {
+            if (key == Keys.TAB && mods != 0) {
+                return false;
+            }
+            return Safe.test("suggest key", () -> suggest.key(key));
+        }
+        if (key == Keys.DOWN && !edit.text().isBlank()) {
+            String t = edit.text();
+            return Safe.test("suggest reopen", () -> suggest.reopen(t));
+        }
+        return false;
     }
 
     // steady for half a second after you touch anything, then 530 on 530 off
@@ -259,6 +336,9 @@ public class TextField extends Control implements FocusOnClick {
         // altgr arrives as ctrl+alt on windows, and ctrl+alt+a must type its accented letter, not select everything
         boolean ctrl = Keys.ctrl(mods) && !Keys.alt(mods);
         boolean shift = Keys.shift(mods);
+        if (suggest != null && suggestKey(key, mods)) {
+            return true;
+        }
         switch (key) {
             case Keys.ENTER, Keys.KP_ENTER -> {
                 editFlag = true;
@@ -274,7 +354,14 @@ public class TextField extends Control implements FocusOnClick {
                 edit.setText(revertText());
                 scrollX = 0f;
                 editFlag = true;
-                onTextChanged();
+                // going back to the old text is not typing, the list it just closed stays closed
+                boolean wasPicking = picking;
+                picking = true;
+                try {
+                    onTextChanged();
+                } finally {
+                    picking = wasPicking;
+                }
                 return true;
             }
             case Keys.BACKSPACE -> {

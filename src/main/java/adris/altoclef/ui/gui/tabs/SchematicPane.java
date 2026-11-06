@@ -20,6 +20,7 @@ import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualList;
 import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.kit.TextWrap;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -450,7 +451,7 @@ final class SchematicPane extends Widget {
         // out. the band and the controls are what you build with, the caption only explains the boxes
         int lh = Math.round(m.lineHeight(theme.small));
         int capPad = 2 * theme.px(Theme.SPACE_1);
-        hintLinesAllowed = hint.isEmpty() ? 0 : Math.min(2, HelpList.wrap(m, hint, theme.small, hintRoom()).size());
+        hintLinesAllowed = hint.isEmpty() ? 0 : Math.min(2, TextWrap.words(m, hint, theme.small, hintRoom()).size());
         hintH = hintLinesAllowed == 0 ? 0 : hintLinesAllowed * lh + capPad;
         if (showMap) {
             // the control rows sit on the list's inset, not the header's: at the 640 floor the pane is about 160
@@ -679,7 +680,7 @@ final class SchematicPane extends Widget {
 
     // the lines the caption takes at this width: the whole sentence if it wraps to two or fewer, else the short one
     private List<String> hintLines(TextMeasurer m, float room) {
-        List<String> full = HelpList.wrap(m, hint, theme.small, room);
+        List<String> full = TextWrap.words(m, hint, theme.small, room);
         if (full.size() <= 2 && hintLinesAllowed >= full.size()) {
             return full;
         }
@@ -710,10 +711,10 @@ final class SchematicPane extends Widget {
             }
         }
         float room = Math.max(theme.px(80), w - 2 * theme.px(32));
-        List<String> lines = new ArrayList<>(HelpList.wrap(c, lead, theme.small, room));
+        List<String> lines = new ArrayList<>(TextWrap.words(c, lead, theme.small, room));
         int leadLines = lines.size();
         if (!rest.isEmpty()) {
-            lines.addAll(HelpList.wrap(c, rest, theme.small, room));
+            lines.addAll(TextWrap.words(c, rest, theme.small, room));
         }
         float lh = c.lineHeight(theme.small) + theme.px(2);
         float top = listTop + (listH - lines.size() * lh) / 2f;

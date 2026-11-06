@@ -9,6 +9,7 @@ import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.time.TimerGame;
 import adris.altoclef.util.time.TimerReal;
+import baritone.altoclef.AltoClefBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -141,8 +142,9 @@ public class DeathMenuChain extends TaskChain {
                     Minecraft.getInstance().player.respawn();
                     Minecraft.getInstance().gui.setScreen(null);
                 } else {
-                    // Cancel if we die and are not auto-respawning.
-                    mod.cancelUserTask();
+                    // Cancel if we die and are not auto-respawning. through the bridge so a ";" line or a routine ends
+                    // too, the plain cancel ran the line's next part as if the dead task had finished
+                    AltoClefBridge.cancelUserTask();
                 }
             }
         } else {
@@ -155,8 +157,8 @@ public class DeathMenuChain extends TaskChain {
                     _reconnecting = true;
                     Minecraft.getInstance().gui.setScreen(new JoinMultiplayerScreen(new TitleScreen()));
                 } else {
-                    // Cancel if we disconnect and are not auto-reconnecting.
-                    mod.cancelUserTask();
+                    // Cancel if we disconnect and are not auto-reconnecting. same deal as the death one above
+                    AltoClefBridge.cancelUserTask();
                 }
             } else if (screen instanceof JoinMultiplayerScreen && _reconnecting && _reconnectTimer.elapsed()) {
                 _reconnectTimer.reset();

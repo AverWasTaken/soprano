@@ -50,4 +50,25 @@ public class TextWrapTest {
         assertTrue(TextWrap.wrap(TEN, null, STYLE, 50f).isEmpty());
         assertEquals(List.of("a", "b"), TextWrap.wrap(TEN, "a\r\nb", STYLE, 50f));
     }
+
+    // words() is the help list's old wrap, moved into the kit for the schematics code. same answers as before the move
+
+    @Test
+    public void wordsIsTheOldGreedyWrap() {
+        assertEquals(List.of("one two", "three four"), TextWrap.words(TEN, "one two three four", STYLE, 100f));
+        // newlines are only spaces to it, unlike wrap()
+        assertEquals(List.of("a b"), TextWrap.words(TEN, "a\nb", STYLE, 100f));
+    }
+
+    @Test
+    public void wordsChopsALongWordAndKeepsTheTail() {
+        assertEquals(List.of("a", "abcde", "fghij", "k b"), TextWrap.words(TEN, "a abcdefghijk b", STYLE, 50f));
+    }
+
+    @Test
+    public void wordsGivesOneEmptyLineForNothing() {
+        assertEquals(List.of(""), TextWrap.words(TEN, "", STYLE, 50f));
+        assertEquals(List.of(""), TextWrap.words(TEN, "   ", STYLE, 50f));
+        assertEquals(List.of(""), TextWrap.words(TEN, null, STYLE, 50f));
+    }
 }
