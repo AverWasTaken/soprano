@@ -2,60 +2,74 @@ package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.facade.BotFacade;
 import adris.altoclef.ui.gui.facade.Result;
+import adris.altoclef.ui.gui.facade.SettingsAccess.Kind;
 import adris.altoclef.ui.gui.facade.SettingsAccess.SettingView;
+import adris.altoclef.ui.gui.kit.Button;
+import adris.altoclef.ui.gui.kit.Canvas;
+import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
-import adris.altoclef.ui.gui.kit.RowWidgets;
+import adris.altoclef.ui.gui.kit.NumberField;
+import adris.altoclef.ui.gui.kit.Popover;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.ShellContext;
 import adris.altoclef.ui.gui.kit.Tab;
 import adris.altoclef.ui.gui.kit.Theme;
+import adris.altoclef.ui.gui.kit.Tile;
+import adris.altoclef.ui.gui.kit.TileGrid;
+import adris.altoclef.ui.gui.kit.Tooltip;
 import adris.altoclef.ui.gui.kit.Widget;
-import adris.altoclef.ui.gui.model.SettingsFilter;
+import adris.altoclef.ui.gui.model.NumberRules;
+import adris.altoclef.ui.gui.model.SettingCategories;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-// every setting there is, with the right control for its type. the facade hands over a snapshot when the tab opens;
-// after that each change goes through set or reset (same road as #set), gets toasted, and the one setting that changed
-// is re-read and pushed into the row, the pinned key card and the counts. the list is never rebuilt for a single edit
-public final class SettingsTab implements Tab, SettingHost {
+// every setting as a tile. the first page is the 40 people touch (SettingsHome), Show all is everything grouped by
+// category, the header search looks through all of it. a switch tile flips on click, anything else opens a popover
+// that commits live. every change goes the #set road (McSettings.set: parse, userChanged, save) and then the one
+// setting is read back and pushed into its tile, the list is never rebuilt for a single edit
+public final class SettingsTab implements Tab {
 
-    private static final String KEY = "guiKey";
-    private static final String KEY_ENABLED = "guiKeyEnabled";
-    private static final int DEFAULT_KEY = 344;
+    private static final int SHOW_ALL_H = 46;
+
+    // the same order the old category dropdown had, roughly most used first. anything SettingCategories grows later
+    // still shows up, after these
+    private static final List<String> CATEGORY_ORDER = List.of(SettingCategories.GENERAL, SettingCategories.MOVEMENT,
+            SettingCategories.MINING, SettingCategories.BUILDING, SettingCategories.ELYTRA, SettingCategories.RENDERING,
+            SettingCategories.CHAT, SettingCategories.INTERFACE, SettingCategories.ALTO, SettingCategories.PATHING,
+            SettingCategories.CACHE);
+
+    enum Page { HOME, ALL }
 
     private final BotFacade facade;
     private final ShellContext ctx;
-    private final List<SettingRow> rows = new ArrayList<>();
+    private final Theme theme;
+    private final TileGrid grid;
+    private final SettingsBar bar;
+    private final ShowAllRow showAll;
+    // one Tile per setting for the life of the tab: the grid keeps focus on a tile across rebuilds by identity
+    private final Map<String, Tile> tiles = new HashMap<>();
     private final Map<String, String> descriptions = new HashMap<>();
-    private final RowWidgets<SettingView> list;
-    private final SettingsToolbar toolbar;
-    private final SettingKeyCard keyCard;
-    private final CommonSettings common;
-    private final SettingsContent content;
+    private final Map<String, List<String>> oldNames = new HashMap<>();
+    private final Map<String, SettingView> byName = new LinkedHashMap<>();
 
-    private List<SettingView> all = List.of();
-    private String category = SettingsFilter.ALL;
-    private boolean modifiedOnly;
-    private boolean advanced = true;
+    private Page page = Page.HOME;
     private String query = "";
+    private Popover open;
 
     public SettingsTab(Theme theme, BotFacade facade, ShellContext ctx) {
+        this.theme = theme;
         this.facade = facade;
         this.ctx = ctx;
-        list = new RowWidgets<>(theme, theme.px(56), () -> {
-            SettingRow row = new SettingRow(theme, ctx, facade.keyNames(), this);
-            rows.add(row);
-            return row;
-        });
-        list.setKeyFunction(SettingView::name);
-        toolbar = new SettingsToolbar(theme, ctx, this::pickCategory, this::pickModifiedOnly, this::pickAdvanced);
-        keyCard = new SettingKeyCard(theme, ctx, facade.keyNames(), currentKey(), currentKeyEnabled(), this::keyCaptured, this::keyToggled);
-        common = new CommonSettings(theme, ctx, this);
-        content = new SettingsContent(theme, toolbar, keyCard, list, common, this::flushEdits);
+        // a popover closes itself when its tile scrolls or the grid resizes, TileGrid sees to that
+        grid = new TileGrid(theme);
+        bar = new SettingsBar(theme, () -> go(Page.HOME), this::resetAll);
+        showAll = new ShowAllRow(theme, () -> go(Page.ALL));
         reload();
     }
 
@@ -76,7 +90,7 @@ public final class SettingsTab implements Tab, SettingHost {
 
     @Override
     public Widget content() {
-        return content;
+        return grid;
     }
 
     @Override
@@ -91,19 +105,19 @@ public final class SettingsTab implements Tab, SettingHost {
 
     @Override
     public void onSearch(String q) {
-        flushEdits();
-        query = q == null ? "" : q;
-        refilter();
+        String next = q == null ? "" : q;
+        boolean changed = !next.trim().equals(query.trim());
+        query = next;
+        // an armed Reset all hidden behind a search should not still be armed when it comes back
+        if (changed) {
+            bar.setArmed(false);
+        }
+        render(changed);
     }
 
     @Override
     public void onShown() {
         reload();
-    }
-
-    @Override
-    public void onHidden() {
-        flushEdits();
     }
 
     // ----- state
@@ -115,103 +129,113 @@ public final class SettingsTab implements Tab, SettingHost {
         } catch (Throwable t) {
             Safe.report("settings snapshot", t);
         }
-        List<SettingView> sorted = new ArrayList<>(got == null ? List.of() : got);
-        sorted.sort((a, b) -> a.name().compareToIgnoreCase(b.name()));
-        all = sorted;
-        syncKeyCard();
-        refilter();
-    }
-
-    private void refilter() {
-        List<SettingView> shown = SettingsFilter.apply(all, category, modifiedOnly, advanced, query, this::description);
-        boolean overview = query.isBlank() && category.equals(SettingsFilter.ALL) && !modifiedOnly;
-        common.setItems(shown);
-        common.setVisible(overview);
-        list.setItems(overview ? shown.stream().filter(v -> !common.containsSetting(v.name())).toList() : shown);
-        content.browser().refresh(true);
-        if (content.detail() != null && shown.stream().noneMatch(v -> v.name().equals(content.detail().name()))) {
-            content.clearDetail();
+        byName.clear();
+        for (SettingView v : got == null ? List.<SettingView>of() : got) {
+            byName.put(v.name(), v);
         }
-        list.setEmptyText(emptyText());
-        content.setCountLine(countLine(shown.size()));
-        pushToolbar();
+        // a setting that went away (it never does, but a test fake can) takes its tile with it
+        tiles.keySet().retainAll(byName.keySet());
+        for (SettingView v : byName.values()) {
+            bind(tile(v.name()), v);
+        }
+        render(false);
     }
 
-    private void pushToolbar() {
-        toolbar.setData(SettingsFilter.counts(all, advanced), category, modifiedOnly, advanced);
+    private void go(Page p) {
+        page = p;
+        bar.setArmed(false);
+        render(true);
     }
 
-    // the dropdown already says how many settings there are. this line only turns up when a search or the modified
-    // filter has narrowed things down, and an empty result says so in the list itself
-    private String countLine(int n) {
+    private void render(boolean toTop) {
         boolean searching = !query.isBlank();
-        if (n == 0 || !(searching || modifiedOnly)) {
-            return "";
-        }
+        List<TileGrid.Section> sections;
         if (searching) {
-            return n + (modifiedOnly ? " matching, modified only" : " matching");
+            List<SettingView> hits = new ArrayList<>();
+            for (SettingView v : byName.values()) {
+                if (SettingWords.matches(query, v.name(), oldNamesOf(v.name()), sentence(v.name()))) {
+                    hits.add(v);
+                }
+            }
+            sections = byCategory(hits);
+        } else if (page == Page.ALL) {
+            sections = byCategory(new ArrayList<>(byName.values()));
+        } else {
+            sections = home();
         }
-        return n + " modified";
+        bar.setChanged(changedCount());
+        // results are their own page: a Back over them would flip the page underneath and change nothing on screen
+        grid.setTop(page == Page.ALL && !searching ? bar : null, SettingsBar.HEIGHT);
+        grid.setBottom(page == Page.HOME && !searching ? showAll : null, SHOW_ALL_H);
+        grid.setSections(sections);
+        grid.setEmptyText(emptyText());
+        if (toTop) {
+            grid.scrollToTop();
+        }
+    }
+
+    private List<TileGrid.Section> home() {
+        List<TileGrid.Section> out = new ArrayList<>();
+        for (SettingsHome.Section s : SettingsHome.SECTIONS) {
+            List<Tile> ts = new ArrayList<>();
+            for (SettingsHome.Entry e : s.entries()) {
+                if (byName.containsKey(e.name())) {
+                    ts.add(tiles.get(e.name()));
+                }
+            }
+            if (!ts.isEmpty()) {
+                out.add(new TileGrid.Section(s.title(), ts));
+            }
+        }
+        return out;
+    }
+
+    private List<TileGrid.Section> byCategory(List<SettingView> views) {
+        Map<String, List<SettingView>> groups = new LinkedHashMap<>();
+        for (String c : CATEGORY_ORDER) {
+            groups.put(c, new ArrayList<>());
+        }
+        for (SettingView v : views) {
+            groups.computeIfAbsent(SettingCategories.categoryOf(v.name()), c -> new ArrayList<>()).add(v);
+        }
+        List<TileGrid.Section> out = new ArrayList<>();
+        for (Map.Entry<String, List<SettingView>> g : groups.entrySet()) {
+            if (g.getValue().isEmpty()) {
+                continue;
+            }
+            // by what the tile says, so the alto block reads A to Z without its prefix
+            List<SettingView> sorted = new ArrayList<>(g.getValue());
+            sorted.sort(Comparator.comparing((SettingView v) -> SettingWords.label(v.name()).toLowerCase(Locale.ROOT))
+                    .thenComparing(SettingView::name));
+            List<Tile> ts = new ArrayList<>(sorted.size());
+            for (SettingView v : sorted) {
+                ts.add(tiles.get(v.name()));
+            }
+            out.add(new TileGrid.Section(g.getKey(), ts));
+        }
+        return out;
     }
 
     private String emptyText() {
-        if (all.isEmpty()) {
+        if (byName.isEmpty()) {
             return "Settings are not available right now.";
         }
-        if (!query.isBlank()) {
-            return "No setting matches \"" + query.trim() + "\". Try a shorter word or pick All.";
+        return "No setting called \"" + query.trim() + "\". Try a shorter word.";
+    }
+
+    private int changedCount() {
+        int n = 0;
+        for (SettingView v : byName.values()) {
+            if (v.modified()) {
+                n++;
+            }
         }
-        if (modifiedOnly) {
-            return "Nothing modified yet. Settings you change show up here.";
-        }
-        return "Nothing in this category.";
+        return n;
     }
 
-    private void pickCategory(String c) {
-        flushEdits();
-        category = c;
-        refilter();
-    }
+    // ----- words
 
-    private void pickModifiedOnly(boolean on) {
-        flushEdits();
-        modifiedOnly = on;
-        refilter();
-    }
-
-    private void pickAdvanced(boolean on) {
-        flushEdits();
-        advanced = on;
-        refilter();
-    }
-
-    // test hook: the toolbar's toggle is a widget, tests flip the flag directly
-    void setAdvanced(boolean on) {
-        advanced = on;
-        refilter();
-    }
-
-    // an edit still in a box when the list is about to change under it gets committed first, not dropped
-    void flushEdits() {
-        flushEdits(Float.NaN, Float.NaN);
-    }
-
-    // a click lands at mx, my: a box under it is being clicked into, not left
-    void flushEdits(float mx, float my) {
-        for (SettingRow row : new ArrayList<>(rows)) {
-            row.flush(mx, my);
-        }
-    }
-
-    @Override
-    public boolean mouseOverRows(float x, float y) {
-        return content.browser().contains(x, y);
-    }
-
-    // ----- host
-
-    @Override
-    public String description(String name) {
+    private String description(String name) {
         return descriptions.computeIfAbsent(name, n -> {
             try {
                 String d = facade.settings().description(n);
@@ -223,48 +247,186 @@ public final class SettingsTab implements Tab, SettingHost {
         });
     }
 
-    @Override
-    public void hover(SettingView view) {
-        SettingView shown = content.detail();
-        if (shown != view) {
-            content.showDetail(view, description(view.name()));
+    private List<String> oldNamesOf(String name) {
+        return oldNames.computeIfAbsent(name, n -> {
+            try {
+                List<String> o = facade.settings().oldNames(n);
+                return o == null ? List.of() : o;
+            } catch (Throwable t) {
+                Safe.report("setting old names", t);
+                return List.of();
+            }
+        });
+    }
+
+    // the hand written sentence for the first page, the javadoc for the rest
+    String sentence(String name) {
+        SettingsHome.Entry e = SettingsHome.entry(name);
+        return e != null ? e.sentence() : description(name);
+    }
+
+    private String keyName(int k) {
+        try {
+            return facade.keyNames().name(k);
+        } catch (Throwable t) {
+            Safe.report("key name", t);
+            return null;
         }
     }
 
-    @Override
-    public Result set(String name, String text) {
+    // ----- tiles
+
+    private Tile tile(String name) {
+        return tiles.computeIfAbsent(name, n -> new Tile(theme).setOnClick(() -> clicked(n)));
+    }
+
+    private void bind(Tile t, SettingView v) {
+        SettingsHome.Entry e = SettingsHome.entry(v.name());
+        t.setName(SettingWords.label(v.name()));
+        t.setIcon(e != null ? e.icon() : Icon.GEAR);
+        if (v.kind() == Kind.BOOLEAN) {
+            t.setSwitch(Boolean.parseBoolean(v.value().trim()));
+        } else {
+            t.setPick(SettingWords.shown(v, this::keyName));
+        }
+        t.setSwatch(v.kind() == Kind.COLOR ? rgbOf(v.value()) : null);
+        t.setTooltip(new Tooltip(SettingWords.label(v.name()), sentence(v.name()),
+                List.of("#set " + v.name(), "Default: " + SettingWords.shownDefault(v, this::keyName))));
+    }
+
+    private void clicked(String name) {
+        SettingView v = byName.get(name);
+        Tile t = tiles.get(name);
+        if (v == null || t == null) {
+            return;
+        }
+        if (v.kind() == Kind.BOOLEAN) {
+            apply(name, String.valueOf(!Boolean.parseBoolean(v.value().trim())));
+            return;
+        }
+        Popover p = popover(v, t);
+        open = p;
+        p.onClosed(() -> {
+            if (open == p) {
+                open = null;
+            }
+            refreshOne(name);
+        }).open();
+    }
+
+    private Popover popover(SettingView v, Tile t) {
+        String name = v.name();
+        String title = SettingWords.label(name);
+        return switch (v.kind()) {
+            case INTEGER, LONG, FLOAT, DOUBLE -> Popover.number(ctx, t, title, format(v.kind()),
+                    () -> SettingWords.number(current(name).value()), s -> commit(name, s),
+                    SettingWords.number(v.defaultValue()), s -> check(name, s));
+            case ENUM -> {
+                List<String> constants = v.options();
+                List<String> words = constants.stream().map(SettingWords::word).toList();
+                yield Popover.choice(ctx, t, title, words, () -> indexOf(constants, current(name).value()), i -> {
+                    if (i >= 0 && i < constants.size()) {
+                        commit(name, constants.get(i));
+                    }
+                }, indexOf(constants, v.defaultValue()));
+            }
+            case COLOR -> Popover.color(ctx, t, title, () -> rgbOrBlack(current(name).value()),
+                    c -> commit(name, NumberRules.formatRgb((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)),
+                    rgbOrBlack(v.defaultValue()));
+            case KEY -> Popover.key(ctx, t, title, facade.keyNames(), () -> parseKey(current(name).value()),
+                    k -> keyCaptured(name, k, parseKey(v.defaultValue())), parseKey(v.defaultValue()));
+            // strings, and lists and maps in the parser's own syntax ("minecraft:stone,minecraft:dirt")
+            default -> Popover.text(ctx, t, title, () -> current(name).value(), s -> commit(name, s), v.defaultValue(),
+                    s -> check(name, s));
+        };
+    }
+
+    private SettingView current(String name) {
+        return byName.get(name);
+    }
+
+    private static NumberField.NumberFormat format(Kind k) {
+        return switch (k) {
+            case INTEGER -> NumberField.NumberFormat.INT;
+            case LONG -> NumberField.NumberFormat.LONG;
+            case FLOAT -> NumberField.NumberFormat.FLOAT;
+            default -> NumberField.NumberFormat.DOUBLE;
+        };
+    }
+
+    // ----- changes, all through the facade
+
+    // a popover commits live (every -/+ and swatch), so it only speaks up when something went wrong. the tile already
+    // shows the new value
+    private void commit(String name, String text) {
+        apply(name, text, true);
+    }
+
+    // a key the player just pressed is still held down: the shell has to know it is the open key now and swallow its
+    // repeat, or it closes the panel. backspace unbinds, nothing is held then. every other way guiKey changes (back to
+    // default, reset all, #set) reaches the shell through GuiScreen.syncPreferences, no swallowing wanted there.
+    // the popover's own Back to default lands here too, by mouse, so the default skips it. a captured key that happens
+    // to be the default is still fine: the shell swallows whatever key closed a popover
+    private void keyCaptured(String name, int key, int def) {
+        Result r = apply(name, String.valueOf(key), true);
+        if (r.ok() && key >= 0 && key != def) {
+            Safe.run("key rebound", () -> ctx.openKeyRebound(key));
+        }
+    }
+
+    Result apply(String name, String text) {
+        return apply(name, text, false);
+    }
+
+    // typing the default back in (or Back to default) is a reset, so settings.txt does not keep a line that says the
+    // same as nothing
+    private Result apply(String name, String text, boolean quiet) {
+        SettingView v = byName.get(name);
         Result r;
         try {
-            r = facade.settings().set(name, text);
+            boolean toDefault = v != null && SettingWords.sameValue(v.kind(), text, v.defaultValue());
+            r = toDefault ? facade.settings().reset(name) : facade.settings().set(name, text);
         } catch (Throwable t) {
             Safe.report("setting set", t);
             r = Result.fail("Could not change " + name + ".");
         }
-        // a rejected edit says why on its own row, a toast on top would only say it twice
-        if (r.ok()) {
+        if (r == null) {
+            r = Result.fail("Could not change " + name + ".");
+        }
+        // a popover already checked the text with the real parser, so a failure here is rare and always gets its toast
+        if (!r.ok() || !quiet) {
             ctx.toast(r);
+        }
+        if (r.ok()) {
             refreshOne(name);
         }
         return r;
     }
 
-    @Override
-    public Result reset(String name) {
+    private String check(String name, String text) {
+        try {
+            return facade.settings().check(name, text);
+        } catch (Throwable t) {
+            Safe.report("setting check", t);
+            return null;
+        }
+    }
+
+    private void resetAll() {
         Result r;
         try {
-            r = facade.settings().reset(name);
+            r = facade.settings().resetAll();
         } catch (Throwable t) {
-            Safe.report("setting reset", t);
-            r = Result.fail("Could not reset " + name + ".");
+            Safe.report("settings reset all", t);
+            r = Result.fail("Could not reset the settings.");
         }
-        if (r.ok()) {
+        if (r != null) {
             ctx.toast(r);
-            refreshOne(name);
         }
-        return r;
+        reload();
     }
 
-    // re-read one setting and push it everywhere it shows up
+    // re-read one setting and push it into its tile and the reset count
     private void refreshOne(String name) {
         SettingView v = null;
         try {
@@ -275,118 +437,107 @@ public final class SettingsTab implements Tab, SettingHost {
         if (v == null) {
             return;
         }
-        for (int i = 0; i < all.size(); i++) {
-            if (all.get(i).name().equals(name)) {
-                List<SettingView> next = new ArrayList<>(all);
-                next.set(i, v);
-                all = next;
-                break;
+        byName.put(v.name(), v);
+        bind(tile(v.name()), v);
+        bar.setChanged(changedCount());
+    }
+
+    // ----- parsing the #set text forms
+
+    private static Integer rgbOf(String s) {
+        int[] rgb = NumberRules.parseRgb(s);
+        return rgb == null ? null : (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+    }
+
+    private static int rgbOrBlack(String s) {
+        Integer c = rgbOf(s);
+        return c == null ? 0 : c;
+    }
+
+    private static int indexOf(List<String> constants, String value) {
+        String v = value == null ? "" : value.trim();
+        for (int i = 0; i < constants.size(); i++) {
+            if (constants.get(i).equalsIgnoreCase(v)) {
+                return i;
             }
         }
-        // in place, not setItems: a blur commit lands in the middle of a draw, and rebinding the list then would pull
-        // the row map out from under the loop that is drawing it
-        List<SettingView> shown = list.items();
-        for (int i = 0; i < shown.size(); i++) {
-            if (shown.get(i).name().equals(name)) {
-                shown.set(i, v);
-            }
-        }
-        for (SettingRow row : rows) {
-            row.update(v);
-        }
-        common.update(v);
-        SettingView d = content.detail();
-        if (d != null && d.name().equals(name)) {
-            content.showDetail(v, description(name));
-        }
-        pushToolbar();
-        if (name.equals(KEY) || name.equals(KEY_ENABLED)) {
-            syncKeyCard();
-        }
-        if (name.equals(KEY)) {
-            int key = parseKey(v.value());
-            Safe.run("key rebound", () -> ctx.openKeyRebound(key));
-        }
-    }
-
-    // ----- the pinned key card
-
-    private int currentKey() {
-        SettingView v = peek(KEY);
-        return v == null ? DEFAULT_KEY : parseKey(v.value());
-    }
-
-    private boolean currentKeyEnabled() {
-        SettingView v = peek(KEY_ENABLED);
-        return v == null || Boolean.parseBoolean(v.value());
-    }
-
-    private SettingView peek(String name) {
-        try {
-            return facade.settings().get(name);
-        } catch (Throwable t) {
-            Safe.report("setting get", t);
-            return null;
-        }
-    }
-
-    private void syncKeyCard() {
-        keyCard.setKey(currentKey());
-        keyCard.setEnabled(currentKeyEnabled());
-    }
-
-    // the card has no line of its own to say why, so here a failure is a toast
-    private void keyCaptured(int key) {
-        Result r = set(KEY, String.valueOf(key));
-        if (!r.ok()) {
-            ctx.toast(r);
-            syncKeyCard();
-        }
-    }
-
-    private void keyToggled(boolean on) {
-        Result r = set(KEY_ENABLED, String.valueOf(on));
-        if (!r.ok()) {
-            ctx.toast(r);
-            syncKeyCard();
-        }
+        return -1;
     }
 
     private static int parseKey(String s) {
         try {
-            return Integer.parseInt(s.trim().toLowerCase(Locale.ROOT));
+            return Integer.parseInt(s.trim());
         } catch (NumberFormatException | NullPointerException e) {
             return -1;
         }
     }
 
+    // ----- the Show all button under the first page, centred, chevron after the words like the mock
+
+    static final class ShowAllRow extends Widget {
+        private final Button button;
+
+        ShowAllRow(Theme theme, Runnable onClick) {
+            super(theme);
+            button = new Button(theme, "Show all settings", Button.Kind.SECONDARY, Icon.CHEVRON_RIGHT, onClick) {
+                @Override
+                protected void drawContent(Canvas c, int col, float hv) {
+                    // Button puts its icon first, a "go further" chevron reads after the words
+                    float is = theme.px(Theme.ICON);
+                    float gap = theme.px(6);
+                    float tw = c.measure(text(), theme.label);
+                    float cx = x + (w - tw - gap - is) / 2f;
+                    c.text(text(), cx, baseline(c, theme.label, y, h), theme.label, col);
+                    c.icon(Icon.CHEVRON_RIGHT, cx + tw + gap, y + (h - is) / 2f, is, col);
+                }
+            };
+        }
+
+        @Override
+        protected void layout() {
+            int bw = button.preferredWidth();
+            int bh = theme.px(Theme.CONTROL_H);
+            button.setBounds(x + (w - bw) / 2, y + theme.px(16), bw, bh);
+        }
+
+        @Override
+        public List<Widget> children() {
+            return List.of(button);
+        }
+
+        @Override
+        public void draw(Canvas c, Frame f) {
+            button.draw(c, f);
+        }
+
+        Button button() {
+            return button;
+        }
+    }
+
     // ----- for tests
 
-    RowWidgets<SettingView> list() {
-        return list;
+    TileGrid grid() {
+        return grid;
     }
 
-    CommonSettings common() {
-        return common;
+    SettingsBar bar() {
+        return bar;
     }
 
-    SettingsToolbar toolbar() {
-        return toolbar;
+    ShowAllRow showAll() {
+        return showAll;
     }
 
-    SettingKeyCard keyCard() {
-        return keyCard;
+    Page page() {
+        return page;
     }
 
-    SettingsContent settingsContent() {
-        return content;
+    Tile tileOf(String name) {
+        return tiles.get(name);
     }
 
-    List<SettingRow> rows() {
-        return rows;
-    }
-
-    String category() {
-        return category;
+    Popover openPopover() {
+        return open != null && open.isOpen() ? open : null;
     }
 }

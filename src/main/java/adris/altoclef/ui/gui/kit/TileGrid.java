@@ -310,6 +310,11 @@ public class TileGrid extends VirtualView<TileGrid.Row> {
         revealPending = t;
     }
 
+    // a different page in the same grid starts at its top, not wherever the last page was left
+    public void scrollToTop() {
+        scroller.snapTo(0f);
+    }
+
     // scrolls so the tile's row is on screen, with the section header too when it is the section's first row
     public void scrollToTile(Tile t) {
         int i = items.indexOf(rowOf(t));

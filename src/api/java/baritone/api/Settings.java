@@ -2613,6 +2613,24 @@ public final class Settings {
         return setting;
     }
 
+    /**
+     * The old lowercase names a setting still answers to through {@link #findByLowerName}, so a search for the old name
+     * can find it too.
+     *
+     * @param setting a setting of these settings
+     * @return its old lowercase names, empty for a setting that was never renamed
+     */
+    public List<String> oldNames(Setting<?> setting) {
+        List<String> out = new ArrayList<>();
+        String lower = setting.getName().toLowerCase(Locale.ROOT);
+        RENAMED.forEach((old, now) -> {
+            if (now.equals(lower)) {
+                out.add(old);
+            }
+        });
+        return out;
+    }
+
     public final Map<Setting<?>, Type> settingTypes;
 
     public final class Setting<T> {
