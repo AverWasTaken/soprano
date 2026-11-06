@@ -5,11 +5,19 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 // asking shouldn't cost anything
 public final class ShedTally {
     public static final int CAP = 12;
+    // two, not one: the errand walks and digs to its logs, and the first thing it picks up on the way fills a lone free slot
+    // right back up. the bed then has nowhere to land again
+    public static final int FREE = 2;
 
     private int _thrown;
     private boolean _firstSaid;
     private boolean _capSaid;
     private boolean _stuckSaid;
+
+    // does a bag with this many free slots want a throw
+    public static boolean wanted(int free) {
+        return free < FREE;
+    }
 
     public void thrown() {
         _thrown++;

@@ -5,6 +5,7 @@ import baritone.utils.ToolSet;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -14,7 +15,42 @@ import java.util.List;
 // outside a world so a real pickaxe reads as "not correct for anything" there), StorageHelper does the looking at slots
 // and the caller does the equipping
 public final class ToolPick {
+    // the bed errand digs through a tree for its logs with a full bag. shears on a leaf drop the leaf, it lands in the slot the
+    // shed just freed and the bed has nowhere to go again. hand or sword turns it to air and a sapling now and then. whoever
+    // wants it keeps asking, so a phase that ends without a goodbye doesn't leave it on. real clock, the path threads read it too
+    private static final long LEAF_SHEARS_HOLD_MS = 2000;
+    private static volatile long _leafShearsOffUntil;
+
     private ToolPick() {
+    }
+
+    // asked every tick the bed errand runs (EndPrepPhase.bedErrand)
+    public static void holdShearsOffLeaves() {
+        _leafShearsOffUntil = System.currentTimeMillis() + LEAF_SHEARS_HOLD_MS;
+    }
+
+    // shears on leaves while that's held. cobwebs and grass keep their shears, those don't end up in the bag
+    public static boolean leafShearsOff(ItemStack stack, BlockState state) {
+        return shearsOff(stack.getItem() == Items.SHEARS, state.getBlock() instanceof LeavesBlock, System.currentTimeMillis(), _leafShearsOffUntil);
+    }
+
+    // the bar slot to swing from when shearsAt marks the shears that may not touch this leaf: the selected one if it's fine,
+    // else the first that is. -1 for a bar of nine shears, which is a choice somebody made
+    public static int slotWithoutShears(boolean[] shearsAt, int selected) {
+        if (selected >= 0 && selected < shearsAt.length && !shearsAt[selected]) return selected;
+        for (int i = 0; i < shearsAt.length; i++) {
+            if (!shearsAt[i]) return i;
+        }
+        return -1;
+    }
+
+    // tests let go of it without waiting out the clock
+    static void leafShearsOffUntil(long until) {
+        _leafShearsOffUntil = until;
+    }
+
+    static boolean shearsOff(boolean shears, boolean leaves, long now, long until) {
+        return shears && leaves && now < until;
     }
 
     // one stack as it matters for one block. speed is what ToolSet.calculateSpeedVsBlock says (progress per tick, bigger is faster).
@@ -31,7 +67,7 @@ public final class ToolPick {
         boolean saved = Baritone.settings().itemSaver.value && stack.getMaxDamage() > 1
                 && stack.getDamageValue() + Baritone.settings().itemSaverThreshold.value >= stack.getMaxDamage();
         boolean tool = !saved && ItemHelper.isTool(stack.getItem());
-        boolean shears = stack.getItem() == Items.SHEARS && ItemHelper.areShearsEffective(state.getBlock());
+        boolean shears = stack.getItem() == Items.SHEARS && ItemHelper.areShearsEffective(state.getBlock()) && !leafShearsOff(stack, state);
         // only a tool that could matter gets the speed worked out, most of a bag is cobble and food
         boolean worthAsking = (tool || shears) && !stack.isEmpty();
         boolean sword = tool && ItemHelper.isSword(stack.getItem());

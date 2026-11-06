@@ -239,4 +239,46 @@ public class ToolPickTest {
         assertEquals("iron_pickaxe", ToolPick.nameOf(new ItemStack(Items.IRON_PICKAXE)));
         assertEquals("bare hand", ToolPick.nameOf(ItemStack.EMPTY));
     }
+
+    @Test
+    public void theBedErrandKeepsShearsOffLeaves() {
+        ItemStack shears = new ItemStack(Items.SHEARS);
+        var leaves = net.minecraft.world.level.block.Blocks.OAK_LEAVES.defaultBlockState();
+        var web = net.minecraft.world.level.block.Blocks.COBWEB.defaultBlockState();
+        try {
+            ToolPick.holdShearsOffLeaves();
+            assertTrue(ToolPick.leafShearsOff(shears, leaves));
+            assertFalse(ToolPick.optionOf(shears, leaves).shears());
+            // a cobweb still wants its shears, and a sword on leaves is no business of this
+            assertFalse(ToolPick.leafShearsOff(shears, web));
+            assertFalse(ToolPick.leafShearsOff(new ItemStack(Items.IRON_SWORD), leaves));
+        } finally {
+            ToolPick.leafShearsOffUntil(0);
+        }
+        // nobody asking: shears on leaves like always
+        assertFalse(ToolPick.leafShearsOff(shears, leaves));
+    }
+
+    @Test
+    public void theLeafHoldRunsOutByItself() {
+        assertTrue(ToolPick.shearsOff(true, true, 1000, 3000));
+        assertFalse(ToolPick.shearsOff(true, true, 3000, 3000));
+        assertFalse(ToolPick.shearsOff(false, true, 1000, 3000));
+        assertFalse(ToolPick.shearsOff(true, false, 1000, 3000));
+    }
+
+    @Test
+    public void shearsInHandGiveWayToAnyOtherBarSlot() {
+        boolean[] bar = new boolean[9];
+        bar[4] = true;
+        // shears selected, every other slot a pick or a sword: the first one that isn't shears
+        assertEquals(0, ToolPick.slotWithoutShears(bar, 4));
+        // not holding the shears: stay put
+        assertEquals(2, ToolPick.slotWithoutShears(bar, 2));
+        java.util.Arrays.fill(bar, true);
+        bar[7] = false;
+        assertEquals(7, ToolPick.slotWithoutShears(bar, 4));
+        bar[7] = true;
+        assertEquals(-1, ToolPick.slotWithoutShears(bar, 4));
+    }
 }

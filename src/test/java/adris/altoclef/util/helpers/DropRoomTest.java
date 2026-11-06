@@ -17,6 +17,9 @@ import org.junit.Test;
 
 public class DropRoomTest {
 
+    // the End gate's minBuildBlocks out of the box
+    private static final int FLOOR = 48;
+
     @BeforeClass
     public static void bootstrap() {
         ItemFixture.boot();
@@ -277,7 +280,7 @@ public class DropRoomTest {
     // keeps throwing until nothing may go and returns the order
     private static List<Item> shedAll(List<ItemStack> stacks) {
         List<Item> thrown = new ArrayList<>();
-        for (int i = DropRoom.shed(-1, stuffedStacks(stacks)); i >= 0; i = DropRoom.shed(-1, stuffedStacks(stacks))) {
+        for (int i = DropRoom.shed(-1, stuffedStacks(stacks), FLOOR); i >= 0; i = DropRoom.shed(-1, stuffedStacks(stacks), FLOOR)) {
             thrown.add(stacks.get(i).getItem());
             stacks.set(i, ItemStack.EMPTY);
         }
@@ -288,8 +291,9 @@ public class DropRoomTest {
     public void aStuffedBagOffersTheCheapStuffFirst() {
         List<ItemStack> stacks = stuffed();
         assertEquals(36, stacks.size());
-        assertEquals(List.of(Items.WOOL.black(), Items.SHIELD, Items.IRON_PICKAXE, Items.STONE_SWORD, Items.IRON_SWORD, Items.WOODEN_PICKAXE,
-                Items.WOOL.lightGray(), Items.RAW_GOLD, Items.FURNACE, Items.SHEARS, Items.COAL), shedAll(stacks));
+        // round 173: the wool scraps stay now, the errand's wool never goes
+        assertEquals(List.of(Items.SHIELD, Items.IRON_PICKAXE, Items.STONE_SWORD, Items.IRON_SWORD, Items.WOODEN_PICKAXE,
+                Items.RAW_GOLD, Items.FURNACE, Items.SHEARS, Items.COAL), shedAll(stacks));
     }
 
     @Test
@@ -300,8 +304,8 @@ public class DropRoomTest {
         for (ItemStack st : stacks) {
             if (!st.isEmpty()) left.add(st.getItem());
         }
-        assertEquals(List.of(Items.COOKED_BEEF, Items.IRON_HELMET, Items.BLAZE_ROD, Items.BED.white(), Items.COOKED_CHICKEN, Items.WOOL.white(),
-                Items.BED.white(), Items.DIAMOND, Items.BUCKET, Items.ENDER_EYE, Items.BED.white(), Items.FLINT_AND_STEEL, Items.WATER_BUCKET,
+        assertEquals(List.of(Items.COOKED_BEEF, Items.IRON_HELMET, Items.BLAZE_ROD, Items.BED.white(), Items.WOOL.lightGray(), Items.COOKED_CHICKEN,
+                Items.WOOL.white(), Items.BED.white(), Items.DIAMOND, Items.WOOL.black(), Items.BUCKET, Items.ENDER_EYE, Items.BED.white(), Items.FLINT_AND_STEEL, Items.WATER_BUCKET,
                 Items.SHIELD, Items.SMOKER, Items.BED.white(), Items.BED.white(), Items.DIAMOND_PICKAXE, Items.CRAFTING_TABLE, Items.LADDER,
                 Items.BED.white(), Items.IRON_SWORD, Items.BED.white(), Items.BED.lightGray(), Items.NETHERRACK), left);
     }
@@ -309,9 +313,9 @@ public class DropRoomTest {
     @Test
     public void aDiamondOnTheImportantListStays() {
         List<Stack> bag = new ArrayList<>(List.of(kept(Items.DIAMOND, 1), kit(Items.COAL, 1)));
-        assertEquals(1, DropRoom.shed(-1, bag));
+        assertEquals(1, DropRoom.shed(-1, bag, FLOOR));
         bag.set(1, new Stack(ItemStack.EMPTY, ItemValue.REST, false, false));
-        assertEquals(-1, DropRoom.shed(-1, bag));
+        assertEquals(-1, DropRoom.shed(-1, bag, FLOOR));
     }
 
     @Test
@@ -320,7 +324,7 @@ public class DropRoomTest {
                 kit(Items.DIAMOND, 1), kit(Items.COAL, 1)));
         assertEquals(-1, DropRoom.victim(bag));
         assertSame(Decision.NO, pearl(bag));
-        assertEquals(0, DropRoom.shed(-1, bag));
+        assertEquals(0, DropRoom.shed(-1, bag, FLOOR));
     }
 
     @Test
@@ -329,27 +333,99 @@ public class DropRoomTest {
                 kit(Items.RAW_GOLD, 4), kit(Items.SMOKER, 1)));
         int[] order = {4, 3, 2, 1, 0};
         for (int want : order) {
-            assertEquals(want, DropRoom.shed(-1, bag));
+            assertEquals(want, DropRoom.shed(-1, bag, FLOOR));
             bag.set(want, new Stack(ItemStack.EMPTY, ItemValue.REST, false, false));
         }
-        assertEquals(-1, DropRoom.shed(-1, bag));
+        assertEquals(-1, DropRoom.shed(-1, bag, FLOOR));
     }
 
     @Test
     public void aFurnaceStaysWithoutASmoker() {
-        assertEquals(-1, DropRoom.shed(-1, new ArrayList<>(List.of(kit(Items.FURNACE, 3), kit(Items.BUCKET, 1)))));
+        assertEquals(-1, DropRoom.shed(-1, new ArrayList<>(List.of(kit(Items.FURNACE, 3), kit(Items.BUCKET, 1))), FLOOR));
     }
 
     @Test
     public void garbageGoesBeforeAnyoneWeLike() {
         List<Stack> bag = with(kit(Items.IRON_SWORD, 1), kit(Items.IRON_SWORD, 1), rest(Items.DIRT, 64));
-        assertEquals(bag.size() - 1, DropRoom.shed(bag.size() - 1, bag));
+        assertEquals(bag.size() - 1, DropRoom.shed(bag.size() - 1, bag, FLOOR));
     }
 
     @Test
     public void aGarbagePickWeKeepIsNotAnAnswer() {
         List<Stack> bag = with(kept(Items.BED.white(), 1), kit(Items.IRON_SWORD, 1), kit(Items.IRON_SWORD, 1));
         int bed = bag.size() - 3;
-        assertEquals(bed + 1, DropRoom.shed(bed, bag));
+        assertEquals(bed + 1, DropRoom.shed(bed, bag, FLOOR));
+    }
+
+    private static Stack leaves(int count) {
+        return new Stack(new ItemStack(Items.OAK_LEAVES, count), ItemValue.REST, false, true, false);
+    }
+
+    private static List<Stack> bag(Stack... all) {
+        return new ArrayList<>(List.of(all));
+    }
+
+    private static List<Item> shedAllOf(List<Stack> bag, int floor) {
+        List<Item> thrown = new ArrayList<>();
+        for (int i = DropRoom.shed(-1, bag, floor); i >= 0; i = DropRoom.shed(-1, bag, floor)) {
+            thrown.add(bag.get(i).stack().getItem());
+            bag.set(i, new Stack(ItemStack.EMPTY, ItemValue.REST, false, false));
+        }
+        return thrown;
+    }
+
+    @Test
+    public void theBiggestBuildStackGoesFirstAndTheGateKeepsItsBlocks() {
+        // keepers() holds a diamond and the late list would take it, a lone shield is all the company this one needs
+        List<Stack> bag = bag(kit(Items.SHIELD, 1), build(Items.COBBLESTONE, 51), leaves(1), rest(Items.OAK_LOG, 1), build(Items.COBBLESTONE, 64),
+                build(Items.NETHERRACK, 64));
+        // 179 for the gate: two whole stacks go, the 51 would leave 0 under 48, then the leaf
+        assertEquals(List.of(Items.COBBLESTONE, Items.NETHERRACK, Items.OAK_LEAVES), shedAllOf(bag, FLOOR));
+        assertEquals(51, bag.get(1).stack().getCount());
+        assertEquals(Items.OAK_LOG, bag.get(3).stack().getItem());
+    }
+
+    @Test
+    public void aBigStackGoesBeforeTheGarbagePick() {
+        List<Stack> bag = bag(kit(Items.SHIELD, 1), leaves(1), build(Items.COBBLESTONE, 64), build(Items.NETHERRACK, 64));
+        assertEquals(2, DropRoom.shed(1, bag, FLOOR));
+    }
+
+    @Test
+    public void theGateFloorHoldsAgainstEveryPick() {
+        List<Stack> bag = bag(kit(Items.SHIELD, 1), build(Items.NETHERRACK, 41));
+        int rack = 1;
+        // not the build pick, not the garbage pick
+        assertEquals(-1, DropRoom.shed(rack, bag, FLOOR));
+        // two stacks under the floor: victim's one build stack of two doesn't get it either
+        bag.add(build(Items.COBBLESTONE, 5));
+        assertEquals(-1, DropRoom.shed(-1, bag, FLOOR));
+        // a gate stack only goes while what's left still holds the floor
+        assertEquals(rack, DropRoom.shed(-1, bag, 5));
+        assertEquals(bag.size() - 1, DropRoom.shed(-1, bag, 41));
+        // leaves and sand aren't the gate's, they go whatever the count
+        bag.add(leaves(3));
+        assertEquals(bag.size() - 1, DropRoom.shed(-1, bag, FLOOR));
+    }
+
+    @Test
+    public void theErrandsStuffNeverGoes() {
+        List<Stack> bag = bag(rest(Items.OAK_LOG, 1), rest(Items.OAK_LOG, 3), rest(Items.OAK_PLANKS, 2), rest(Items.BIRCH_PLANKS, 5),
+                rest(Items.WOOL.white(), 43), rest(Items.WOOL.black(), 1), rest(Items.BED.white(), 1), rest(Items.BED.white(), 1));
+        int log = 0;
+        // the garbage pick calls a single log junk, the shed says no
+        assertEquals(-1, DropRoom.shed(log, bag, FLOOR));
+        assertEquals(-1, DropRoom.shed(-1, bag, FLOOR));
+        // and something else does go
+        bag.add(rest(Items.STRING, 2));
+        assertEquals(bag.size() - 1, DropRoom.shed(log, bag, FLOOR));
+    }
+
+    @Test
+    public void thePearlsVictimStillTakesASpareLogStack() {
+        // victim() is the pearl's, the errand's holds are only the shed's
+        List<Stack> bag = bag(rest(Items.OAK_LOG, 3), rest(Items.OAK_LOG, 1));
+        assertEquals(1, DropRoom.victim(bag));
+        assertEquals(-1, DropRoom.shed(-1, bag, FLOOR));
     }
 }

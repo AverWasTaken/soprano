@@ -154,6 +154,11 @@ public class ToolSet {
             chainable.set(i, itemStack);
             // forced tools beat everything, but only for picking the slot. the time it takes still comes from what the tool really does
             boolean forced = forceUseTool != null && shouldForceUseTool(blockState, itemStack);
+            // the bed errand's leaves (ToolPick.holdShearsOffLeaves). a task that forces shears on leaves wants the leaf, it gets them
+            if (!forced && ToolPick.leafShearsOff(itemStack, blockState)) {
+                chainable.set(i, ItemStack.EMPTY);
+                continue;
+            }
             double speed = forced ? Double.POSITIVE_INFINITY : calculateSpeedVsBlock(itemStack, blockState);
             // skip it so a tie goes to a slot that isn't a pickaxe instead of the first one on the bar
             if (!forced && ToolPick.noBetterThanHand(itemStack.isDamageableItem(), speed, handSpeed)) {
@@ -172,6 +177,14 @@ public class ToolSet {
             for (int i = 0; i < 9; i++) {
                 if (!player.getInventory().getItem(i).isDamageableItem()) {
                     return i;
+                }
+            }
+            // a bar of nothing but tools and the shears in hand: anything but the shears, the leaf stays air
+            if (ToolPick.leafShearsOff(player.getInventory().getItem(best), blockState)) {
+                for (int i = 0; i < 9; i++) {
+                    if (!ToolPick.leafShearsOff(player.getInventory().getItem(i), blockState)) {
+                        return i;
+                    }
                 }
             }
             return best;
