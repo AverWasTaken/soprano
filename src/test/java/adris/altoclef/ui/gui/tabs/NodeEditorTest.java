@@ -615,7 +615,8 @@ public class NodeEditorTest {
         float sx = pal.x() + 40f;
         float sy = pal.rowY("Eat");
         float ex = ed().canvas().x() + 700f;
-        float ey = ed().canvas().y() + 500f;
+        // 500 down, or as near the bottom as that used to be once the command bar has taken its 40 px
+        float ey = ed().canvas().y() + Math.min(500f, ed().canvas().h() - 14f);
         int before = ed().draft().nodes().size();
         p.press(sx, sy);
         p.drag(ex, ey);
