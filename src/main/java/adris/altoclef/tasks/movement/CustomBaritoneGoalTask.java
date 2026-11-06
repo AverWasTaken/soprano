@@ -9,7 +9,10 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.PortalExit;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.util.helpers.RunZones;
+import adris.altoclef.util.helpers.ZoneWall;
 import baritone.api.pathing.goals.Goal;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
@@ -29,6 +32,11 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     protected MovementProgressChecker _checker = new MovementProgressChecker();
     protected Goal _cachedGoal = null;
     private Task _unstuckTask = null;
+    // the pack zones as a wall, for the tasks that ask (keepsOffPacks). lives in a behaviour level of its own
+    private final ZoneWall _zoneWall = new ZoneWall();
+    private boolean _zoneLevel;
+    // the wall gave up on this run (see zoneWallPatience), it stays down until the task starts again
+    private boolean _zoneDropped;
 
     // This happens all the time in mineshafts and swamps/jungles
 
@@ -85,10 +93,50 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         cancelPath(mod);
         _checker.reset();
         stuckCheck.reset();
+        if (keepsOffPacks()) {
+            // our own level: the walk task under us had these walls in its level, but a chain cutting in popped that one, and
+            // that's exactly when a run starts. no goal to exempt, see ZoneWall
+            mod.getBehaviour().push();
+            _zoneLevel = true;
+            _zoneDropped = false;
+            _zoneWall.resetClock();
+            noteZoneWall(mod);
+            mod.getBehaviour().avoidWalkingThrough(_zoneWall);
+            // and solid, see RunZones.blocksAt
+            mod.getBehaviour().avoidBlockBreaking(_zoneWall);
+        }
+    }
+
+    // runs say yes: a run is the one walk that has no idea where it's going, so it goes wherever is open, packs included
+    protected boolean keepsOffPacks() {
+        return false;
+    }
+
+    // how long a run may sit walled in before the wall goes, see ZoneWall.gaveUp. forever by default
+    protected long zoneWallPatience() {
+        return Long.MAX_VALUE;
+    }
+
+    private void noteZoneWall(AltoClef mod) {
+        if (_zoneDropped) return;
+        // the block we stand in, same as the walk tasks note it. the exact spot puts the edge of the circle somewhere else than
+        // theirs, and then our own head cell can be a wall nobody may dig out of
+        BlockPos at = mod.getPlayer().blockPosition();
+        long now = mod.getWorld().getGameTime();
+        boolean nether = WorldHelper.getCurrentDimension() == Dimension.NETHER;
+        // (no zones, no wall to blame. a run stuck on a lava rim isn't news for this line)
+        if (nether && _zoneWall.gaveUp(now, at.getX(), at.getZ(), zoneWallPatience()) && RunZones.INSTANCE.active(now) > 0) {
+            _zoneDropped = true;
+            _zoneWall.off();
+            Debug.logInternal("run: walled in by a pack zone at " + at.toShortString() + ", dropping the wall for this run");
+            return;
+        }
+        _zoneWall.note(nether, now, at.getX(), at.getY(), at.getZ());
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        if (_zoneLevel) noteZoneWall(mod);
         // goals that snapshot entities get their once-a-tick refresh here, on the main thread
         if (_cachedGoal instanceof SnapshotGoal snapshot) {
             snapshot.refresh();
@@ -173,6 +221,11 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         cancelPath(mod);
+        if (_zoneLevel) {
+            _zoneWall.off();
+            mod.getBehaviour().pop();
+            _zoneLevel = false;
+        }
     }
 
     // how the path gets dropped when this task starts and stops. another chain taking over (a fight, a fall, food) is a real

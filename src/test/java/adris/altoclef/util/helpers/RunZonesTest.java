@@ -210,7 +210,7 @@ public class RunZonesTest {
 
     // nothing noted yet
     private static RunZones.Pack pack(List<double[]> hoglins, double x, double y, double z) {
-        return new RunZones().newHoglinPack(hoglins, x, y, z, 1000);
+        return new RunZones().newPack(hoglins, x, y, z, 1000);
     }
 
     private static List<double[]> threeAt(double x, double y, double z) {
@@ -254,15 +254,15 @@ public class RunZonesTest {
         two.addAll(threeAt(30, 64, 0));
         two.add(hoglin(31, 64, 1));
         RunZones z = new RunZones();
-        RunZones.Pack big = z.newHoglinPack(two, 0, 64, 0, 1000);
+        RunZones.Pack big = z.newPack(two, 0, 64, 0, 1000);
         assertNotNull(big);
         assertTrue(big.x() > 29);
-        z.add(big.x(), big.z(), 1000, RunZones.HOGLIN_RADIUS);
-        RunZones.Pack small = z.newHoglinPack(two, 0, 64, 0, 1020);
+        z.addFloor(big.x(), big.y(), big.z(), 1000);
+        RunZones.Pack small = z.newPack(two, 0, 64, 0, 1020);
         assertNotNull(small);
         assertTrue(small.x() < -29);
-        z.add(small.x(), small.z(), 1020, RunZones.HOGLIN_RADIUS);
-        assertNull(z.newHoglinPack(two, 0, 64, 0, 1040));
+        z.addFloor(small.x(), small.y(), small.z(), 1020);
+        assertNull(z.newPack(two, 0, 64, 0, 1040));
         assertEquals(2, z.active(1040));
     }
 
@@ -272,9 +272,10 @@ public class RunZonesTest {
         // flat
         assertNull(pack(threeAt(41, 64, 0), 0, 64, 0));
         // and up or down
-        assertNotNull(pack(threeAt(10, 88, 0), 0, 64, 0));
-        assertNull(pack(threeAt(10, 89, 0), 0, 64, 0));
-        assertNull(pack(threeAt(10, 39, 0), 0, 64, 0));
+        assertNotNull(pack(threeAt(10, 96, 0), 0, 64, 0));
+        assertNotNull(pack(threeAt(10, 32, 0), 0, 64, 0));
+        assertNull(pack(threeAt(10, 97, 0), 0, 64, 0));
+        assertNull(pack(threeAt(10, 31, 0), 0, 64, 0));
     }
 
     // the middle of all six would be an empty field between them
@@ -292,7 +293,7 @@ public class RunZonesTest {
     @Test
     public void aHoglinZoneIsAWallForWalksAndNothingElse() {
         RunZones z = new RunZones();
-        z.add(100, 100, 1000, RunZones.HOGLIN_RADIUS);
+        z.addFloor(100, 64, 100, 1000);
         assertTrue(z.blocks(110, 100, 1000, 500, 500, NO_GOAL, NO_GOAL));
         assertFalse(z.blocks(117, 100, 1000, 500, 500, NO_GOAL, NO_GOAL));
         // the blaze picking and the spawner picking don't hear about it
@@ -307,23 +308,235 @@ public class RunZonesTest {
     @Test
     public void otherZonesStillCoverNextToAHoglinOne() {
         RunZones z = new RunZones();
-        z.add(100, 100, 1000, RunZones.HOGLIN_RADIUS);
+        z.addFloor(100, 64, 100, 1000);
         z.add(100, 100, 1000, RunZones.PACK_RADIUS);
         assertTrue(z.covers(100, 100, 1000));
         assertTrue(z.coversPack(100, 100, 1000));
     }
 
     @Test
-    public void aLiveHoglinZoneNearbyMeansNoSecondOne() {
+    public void aLiveFloorZoneNearbyMeansNoSecondOne() {
         RunZones z = new RunZones();
-        assertFalse(z.hoglinZoneNear(0, 0, 1000));
-        z.add(0, 0, 1000, RunZones.HOGLIN_RADIUS);
-        assertTrue(z.hoglinZoneNear(16, 0, 1000));
-        assertFalse(z.hoglinZoneNear(17, 0, 1000));
-        assertFalse(z.hoglinZoneNear(0, 0, 1000 + RunZones.EXPIRY_TICKS));
+        assertFalse(z.floorZoneNear(0, 64, 0, 1000));
+        z.addFloor(0, 64, 0, 1000);
+        assertTrue(z.floorZoneNear(16, 64, 0, 1000));
+        assertFalse(z.floorZoneNear(17, 64, 0, 1000));
+        assertFalse(z.floorZoneNear(0, 64, 0, 1000 + RunZones.EXPIRY_TICKS));
         // somebody else's zone on the spot doesn't count
         RunZones other = new RunZones();
         other.add(0, 0, 1000, RunZones.PACK_RADIUS);
-        assertFalse(other.hoglinZoneNear(0, 0, 1000));
+        assertFalse(other.floorZoneNear(0, 64, 0, 1000));
+    }
+
+    // ---- floor zones
+
+    // nowhere near, so nothing about the player is exempting anything
+    private static boolean walled(RunZones z, int x, int y, int zz) {
+        return z.blocksAt(x, y, zz, 1000, 500, 77, 500, NO_GOAL, NO_GOAL);
+    }
+
+    @Test
+    public void aFloorZoneOnlyHasItsBand() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertTrue(walled(z, 0, 77, 0));
+        // above
+        assertTrue(walled(z, 0, 77 + RunZones.FLOOR_ABOVE, 0));
+        assertFalse(walled(z, 0, 77 + RunZones.FLOOR_ABOVE + 1, 0));
+        // and below
+        assertTrue(walled(z, 0, 77 - RunZones.FLOOR_BELOW, 0));
+        assertFalse(walled(z, 0, 77 - RunZones.FLOOR_BELOW - 1, 0));
+        // and flat, the same as any zone
+        assertTrue(walled(z, 15, 77, 0));
+        assertFalse(walled(z, 16, 77, 0));
+        assertFalse(z.blocksAt(0, 77, 0, 1000 + RunZones.EXPIRY_TICKS, 500, 77, 500, NO_GOAL, NO_GOAL));
+    }
+
+    // the whole point. stood on the ledge right over the pack, flat inside the zone, the landing column is still refused
+    @Test
+    public void standingHighAboveTheFloorExemptsNothing() {
+        RunZones z = new RunZones();
+        z.addFloor(-65, 77, -90, 1000);
+        // the top of the band is the first cell of the column the fall asks about that says no
+        assertTrue(z.blocksAt(-65, 81, -91, 1000, -63, 102, -84, NO_GOAL, NO_GOAL));
+        assertTrue(z.blocksAt(-65, 78, -91, 1000, -63, 102, -84, NO_GOAL, NO_GOAL));
+        // the bridge we stand on and the air down to the band are open
+        assertFalse(z.blocksAt(-65, 102, -91, 1000, -63, 102, -84, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocksAt(-65, 82, -91, 1000, -63, 102, -84, NO_GOAL, NO_GOAL));
+    }
+
+    @Test
+    public void aPackUnderAZoneIsNotThatZone() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertTrue(z.floorZoneNear(0, 77 + RunZones.FLOOR_BELOW, 0, 1000));
+        assertTrue(z.floorZoneNear(0, 77 - RunZones.FLOOR_BELOW, 0, 1000));
+        assertFalse(z.floorZoneNear(0, 77 + RunZones.FLOOR_BELOW + 1, 0, 1000));
+        assertFalse(z.floorZoneNear(0, 77 - RunZones.FLOOR_BELOW - 1, 0, 1000));
+        // their feet, 4 down, are below the band. this pack would have no wall if the zone above spoke for it
+        assertNotNull(z.newPack(threeAt(0, 73, 0), 0, 80, 0, 1000));
+    }
+
+    @Test
+    public void standingOnTheFloorOpensIt() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertFalse(z.blocksAt(3, 77, 0, 1000, 5, 77, 5, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocksAt(3, 77, 0, 1000, 5, 77 + RunZones.FLOOR_ABOVE, 5, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocksAt(3, 77, 0, 1000, 5, 77 - RunZones.FLOOR_BELOW, 5, NO_GOAL, NO_GOAL));
+        // one step above the band is above it
+        assertTrue(z.blocksAt(3, 77, 0, 1000, 5, 77 + RunZones.FLOOR_ABOVE + 1, 5, NO_GOAL, NO_GOAL));
+    }
+
+    // under the band a step up asks about the band with its head cell, and a no there walls us into our own spot
+    @Test
+    public void underTheFloorIsNotOverIt() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        int under = 77 - RunZones.FLOOR_BELOW - 1;
+        assertFalse(z.blocksAt(3, under + 1, 0, 1000, 5, under, 5, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocksAt(3, under + 1, 0, 1000, 5, under - 1, 5, NO_GOAL, NO_GOAL));
+        assertFalse(z.blocksAt(3, 77, 0, 1000, 5, 40, 5, NO_GOAL, NO_GOAL));
+        // that's only for inside the circle
+        assertTrue(z.blocksAt(3, 77, 0, 1000, 20, 40, 0, NO_GOAL, NO_GOAL));
+    }
+
+    @Test
+    public void onTheFloorButOutsideTheCircleExemptsNothing() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertTrue(z.blocksAt(3, 77, 0, 1000, 20, 77, 0, NO_GOAL, NO_GOAL));
+    }
+
+    @Test
+    public void aGoalInsideOpensAFloorZoneFromAnyHeight() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertFalse(z.blocksAt(3, 77, 0, 1000, 500, 102, 500, 5, 5));
+        assertTrue(z.blocksAt(3, 77, 0, 1000, 500, 102, 500, 50, 50));
+    }
+
+    @Test
+    public void flatZonesDoNotCareAboutY() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.RADIUS);
+        for (int y : new int[]{0, 77, 300}) {
+            assertEquals(z.blocks(5, 5, 1000, 500, 500, NO_GOAL, NO_GOAL), z.blocksAt(5, y, 5, 1000, 500, 77, 500, NO_GOAL, NO_GOAL));
+            assertTrue(z.blocksAt(5, y, 5, 1000, 500, 77, 500, NO_GOAL, NO_GOAL));
+            // stood in from any height, same as ever
+            assertFalse(z.blocksAt(5, y, 5, 1000, 1, 300, 1, NO_GOAL, NO_GOAL));
+            assertFalse(z.blocksAt(5, y, 5, 1000, 500, 77, 500, 2, 2));
+        }
+    }
+
+    @Test
+    public void aFloorZoneCoversNothing() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 77, 0, 1000);
+        assertFalse(z.covers(0, 0, 1000));
+        assertFalse(z.coversPack(0, 0, 1000));
+        assertNull(z.packZoneAt(0, 0, 1000));
+    }
+
+    @Test
+    public void aPackKnowsItsFloor() {
+        RunZones.Pack pack = pack(List.of(hoglin(10, 77, 0), hoglin(12, 77, 0), hoglin(10, 78.5, 2)), 0, 100, 0);
+        assertNotNull(pack);
+        assertEquals(77, pack.y(), 1e-9);
+    }
+
+    // one of them hopping does not lift the floor
+    @Test
+    public void thePackYIsTheMedian() {
+        RunZones.Pack pack = pack(List.of(hoglin(10, 77, 0), hoglin(12, 77, 0), hoglin(10, 77, 2), hoglin(12, 81, 2), hoglin(11, 77, 1)), 0, 77, 0);
+        assertNotNull(pack);
+        assertEquals(5, pack.count());
+        assertEquals(77, pack.y(), 1e-9);
+    }
+
+    // two here and one straight overhead on the next floor is two skeletons and one skeleton
+    @Test
+    public void aPackIsOnOneFloor() {
+        assertNull(pack(List.of(hoglin(10, 77, 0), hoglin(12, 77, 0), hoglin(10, 90, 0)), 0, 80, 0));
+        // just inside what we call one floor it still is one
+        assertNotNull(pack(List.of(hoglin(10, 77, 0), hoglin(12, 77, 0), hoglin(10, 77 + RunZones.FLOOR_ABOVE, 0)), 0, 80, 0));
+    }
+
+    // floors stack, each one gets its own zone
+    @Test
+    public void thePackOnTheFloorBelowIsAnotherPack() {
+        RunZones z = new RunZones();
+        List<double[]> both = new java.util.ArrayList<>(threeAt(10, 90, 0));
+        both.addAll(threeAt(10, 70, 0));
+        RunZones.Pack first = z.newPack(both, 0, 80, 0, 1000);
+        assertNotNull(first);
+        z.addFloor(first.x(), first.y(), first.z(), 1000);
+        RunZones.Pack second = z.newPack(both, 0, 80, 0, 1020);
+        assertNotNull(second);
+        assertTrue(Math.abs(first.y() - second.y()) >= 20);
+        z.addFloor(second.x(), second.y(), second.z(), 1020);
+        assertNull(z.newPack(both, 0, 80, 0, 1040));
+        assertEquals(2, z.active(1040));
+    }
+
+    // three in a loose pen a long way down, the shape a fortress floor gives us
+    @Test
+    public void witherSkeletonsUnderALedgeAreAPack() {
+        RunZones.Pack pack = pack(threeAt(-66, 77, -92), -63, 102, -84);
+        assertNotNull(pack);
+        assertEquals(3, pack.count());
+        assertEquals(77, pack.y(), 1e-9);
+    }
+
+    @Test
+    public void floorZonesGoFirstOverTheCap() {
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.RADIUS);
+        z.addFloor(1000, 64, 1000, 1000);
+        for (int i = 1; i <= 14; i++) {
+            z.add(i * 100, 0, 1000, RunZones.RADIUS);
+        }
+        assertEquals(16, z.active(1000));
+        assertTrue(z.floorZoneNear(1000, 64, 1000, 1000));
+        z.add(9000, 0, 1000, RunZones.RADIUS);
+        assertEquals(16, z.active(1000));
+        // the oldest run off is still there, the pack we can see again in a second is not
+        assertFalse(z.floorZoneNear(1000, 64, 1000, 1000));
+        assertTrue(z.covers(0, 0, 1000));
+        assertTrue(z.covers(9000, 0, 1000));
+    }
+
+    @Test
+    public void aBlazeByAFloorZoneIsThePacks() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 64, 0, 1000);
+        // past the zone's own 16 and inside the ring past it, on the floor and hovering over it
+        assertNotNull(z.floorZoneByBlaze(20, 64, 0, 1000));
+        assertNotNull(z.floorZoneByBlaze(RunZones.FLOOR_RADIUS + RunZones.BLAZE_MARGIN - 0.5, 70, 0, 1000));
+        assertNotNull(z.floorZoneByBlaze(0, 64 + RunZones.FLOOR_ABOVE + RunZones.BLAZE_HOVER, 0, 1000));
+        double[] middle = z.floorZoneByBlaze(20, 64, 0, 1000);
+        assertEquals(0, middle[0], 1e-9);
+        assertEquals(64, middle[1], 1e-9);
+        assertEquals(0, middle[2], 1e-9);
+    }
+
+    @Test
+    public void aBlazeAwayFromAFloorZoneIsFairGame() {
+        RunZones z = new RunZones();
+        z.addFloor(0, 64, 0, 1000);
+        assertNull(z.floorZoneByBlaze(RunZones.FLOOR_RADIUS + RunZones.BLAZE_MARGIN + 0.5, 64, 0, 1000));
+        // two floors up, and a corridor under the pack's floor
+        assertNull(z.floorZoneByBlaze(0, 64 + RunZones.FLOOR_ABOVE + RunZones.BLAZE_HOVER + 1, 0, 1000));
+        assertNull(z.floorZoneByBlaze(0, 64 - RunZones.FLOOR_BELOW - 1, 0, 1000));
+        // gone after three minutes
+        assertNull(z.floorZoneByBlaze(5, 64, 0, 1000 + RunZones.EXPIRY_TICKS));
+    }
+
+    @Test
+    public void aFlatZoneSaysNothingAboutBlazesHere() {
+        // covers already has those, this is the floor zones' ring
+        RunZones z = new RunZones();
+        z.add(0, 0, 1000, RunZones.PACK_RADIUS);
+        assertNull(z.floorZoneByBlaze(0, 64, 0, 1000));
     }
 }
