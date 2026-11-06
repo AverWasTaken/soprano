@@ -18,6 +18,7 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
@@ -204,7 +205,10 @@ public class PlayerInteractionFixChain extends TaskChain {
             _mouseMovingButScreenOpenTimeout.reset();
         }
         // We're in the player screen/a screen we DON'T want to cancel out of
-        if (openScreen == null || openScreen instanceof ChatScreen || openScreen instanceof PauseScreen || openScreen instanceof DeathScreen) {
+        // (the credits too: closing them our way skips the respawn, and the player is left standing in the end with no world
+        // under them. vanilla's own close sends it, so let them roll or let the player skip them)
+        if (openScreen == null || openScreen instanceof ChatScreen || openScreen instanceof PauseScreen || openScreen instanceof DeathScreen
+                || openScreen instanceof WinScreen) {
             _mouseMovingButScreenOpenTimeout.reset();
             return false;
         }
