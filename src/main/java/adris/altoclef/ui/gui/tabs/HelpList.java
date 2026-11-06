@@ -9,6 +9,7 @@ import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.TextMeasurer;
 import adris.altoclef.ui.gui.kit.TextStyle;
+import adris.altoclef.ui.gui.kit.TextWrap;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualView;
 import adris.altoclef.ui.gui.model.HelpIndex;
@@ -180,39 +181,9 @@ final class HelpList extends VirtualView<CommandInfo> {
         return new Detail(tw, pieces, yy - (pieces.isEmpty() ? 0 : gap) + cardPad());
     }
 
-    // greedy word wrap. a word wider than the line is cut by characters, there is no hyphenation here
+    // lives in the kit now (TextWrap.words), this stays until the help tab itself goes
     static List<String> wrap(TextMeasurer m, String s, TextStyle style, float maxW) {
-        List<String> out = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : s.split("\\s+")) {
-            if (word.isEmpty()) {
-                continue;
-            }
-            String tryLine = line.length() == 0 ? word : line + " " + word;
-            if (m.measure(tryLine, style) <= maxW) {
-                line.setLength(0);
-                line.append(tryLine);
-                continue;
-            }
-            if (line.length() > 0) {
-                out.add(line.toString());
-                line.setLength(0);
-            }
-            String rest = word;
-            while (m.measure(rest, style) > maxW && rest.length() > 1) {
-                int cut = rest.length() - 1;
-                while (cut > 1 && m.measure(rest.substring(0, cut), style) > maxW) {
-                    cut--;
-                }
-                out.add(rest.substring(0, cut));
-                rest = rest.substring(cut);
-            }
-            line.append(rest);
-        }
-        if (line.length() > 0 || out.isEmpty()) {
-            out.add(line.toString());
-        }
-        return out;
+        return TextWrap.words(m, s, style, maxW);
     }
 
     // ----- geometry

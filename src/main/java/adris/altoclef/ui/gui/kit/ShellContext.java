@@ -21,6 +21,13 @@ public interface ShellContext {
     // a dropdown or popover drawn above everything; the Shell closes it on an outside click or Esc
     void openOverlay(Widget overlay);
 
+    // same, and onClose runs once when the shell takes it down for any reason: an outside click, an Esc it did not
+    // take, a tab switch, another overlay, the gui going away. a Popover commits its draft from there. contexts that
+    // never close anything on their own (test fakes) can ignore it
+    default void openOverlay(Widget overlay, Runnable onClose) {
+        openOverlay(overlay);
+    }
+
     void closeOverlay();
 
     void requestClose();

@@ -47,6 +47,8 @@ public class Shell extends Widget implements ShellContext {
     private int hoverTab = -1;
     private Widget focused;
     private Widget overlay;
+    private Runnable overlayOnClose;
+    private final TooltipLayer tips = new TooltipLayer(theme);
     private boolean closing;
     private boolean closeFired;
     private long lastNow;
@@ -213,6 +215,10 @@ public class Shell extends Widget implements ShellContext {
         return overlay;
     }
 
+    public TooltipLayer tooltips() {
+        return tips;
+    }
+
     public boolean closing() {
         return closing;
     }
@@ -304,6 +310,9 @@ public class Shell extends Widget implements ShellContext {
     public void keyUp(int key) {
         if (key == suppressedKey) {
             suppressedKey = -2;
+        }
+        if (overlay instanceof Popover p) {
+            p.keyUp(key);
         }
     }
 
@@ -477,6 +486,8 @@ public class Shell extends Widget implements ShellContext {
 
     // for the screen being removed: tells the visible tab it is going away
     public void dispose() {
+        // an open popover's good draft is still a change the player made
+        closeOverlay();
         disposed = true;
         if (active >= 0 && active < tabs.size()) {
             Tab t = tabs.get(active);
@@ -604,9 +615,16 @@ public class Shell extends Widget implements ShellContext {
 
     @Override
     public void openOverlay(Widget w) {
+        openOverlay(w, null);
+    }
+
+    @Override
+    public void openOverlay(Widget w, Runnable onClose) {
         closeOverlay();
         overlay = w;
+        overlayOnClose = onClose;
         w.setVisible(true);
+        tips.dismiss();
     }
 
     @Override
@@ -614,6 +632,12 @@ public class Shell extends Widget implements ShellContext {
         if (overlay != null) {
             overlay.setVisible(false);
             overlay = null;
+            // cleared before it runs: a callback that opens something new must not have that closed under it
+            Runnable r = overlayOnClose;
+            overlayOnClose = null;
+            if (r != null) {
+                Safe.run("overlay closed", r);
+            }
         }
     }
 
@@ -674,6 +698,10 @@ public class Shell extends Widget implements ShellContext {
         Widget o = overlay;
         if (o != null && o.visible()) {
             Safe.run("overlay draw", () -> o.draw(drawTarget(c, a), f));
+        }
+        // last, over everything, and draw only: it never sees input, so it cannot close a popover
+        if (!closing) {
+            Safe.run("tooltip draw", () -> tips.draw(drawTarget(c, a), now, x, y, w, h));
         }
     }
 
@@ -884,7 +912,11 @@ public class Shell extends Widget implements ShellContext {
                 o.mouseMove(mx, my);
             }
             hoverTab = tabAt(mx, my);
-            return super.mouseMove(mx, my);
+            Widget deepest = super.mouseMove(mx, my);
+            // with an overlay up only its own controls can have tips, the page under it is not what you are pointing at
+            Widget tip = o != null && o.visible() ? TooltipLayer.find(o, mx, my) : TooltipLayer.find(kids.get(0), mx, my);
+            tips.track(tip, lastNow);
+            return deepest;
         } catch (Throwable t) {
             Safe.report("shell mouseMove", t);
             return null;
@@ -907,6 +939,7 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean mouseDown(float mx, float my, int button, int mods) {
         try {
+            tips.dismiss();
             Widget o = overlay;
             if (o != null && o.visible()) {
                 if (o.contains(mx, my)) {
@@ -1017,6 +1050,7 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean scroll(float mx, float my, float dy) {
         try {
+            tips.dismiss();
             Widget o = overlay;
             if (o != null && o.visible()) {
                 o.scroll(mx, my, dy);
@@ -1070,10 +1104,18 @@ public class Shell extends Widget implements ShellContext {
     }
 
     private boolean route(int key, int mods) {
+        tips.dismiss();
         Widget o = overlay;
         if (o != null && o.visible()) {
+            // a popover was opened or is being closed by a key that is still down: its repeats belong to nobody
+            if (o instanceof Popover && key == suppressedKey) {
+                return true;
+            }
             if (!o.keyDown(key, mods) && key == Keys.ESCAPE) {
                 closeOverlay();
+            }
+            if (o instanceof Popover && overlay != o) {
+                suppressedKey = key;
             }
             return true;
         }
@@ -1122,8 +1164,8 @@ public class Shell extends Widget implements ShellContext {
         if (focused != null) {
             Widget f = focused;
             if (Safe.test("key", () -> f.keyDown(key, mods))) {
-                if (f instanceof KeyCapture) {
-                    // enter or space just started a capture, the repeat must not bind itself
+                if (f instanceof KeyCapture || overlay instanceof Popover) {
+                    // enter or space just started a capture, or opened a popover: the repeat must not land in it
                     suppressedKey = key;
                 }
                 return true;
@@ -1142,7 +1184,10 @@ public class Shell extends Widget implements ShellContext {
         try {
             Widget o = overlay;
             if (o != null && o.visible()) {
-                o.charTyped(c);
+                // the space that opened a popover comes with a char, it is not text for the field inside
+                if (!(o instanceof Popover && suppressedKey != -2)) {
+                    o.charTyped(c);
+                }
                 return true;
             }
             validateFocus();

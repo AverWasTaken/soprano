@@ -66,6 +66,13 @@ public final class DeferredContext implements ShellContext {
     }
 
     @Override
+    public void openOverlay(Widget overlay, Runnable onClose) {
+        if (real != null) {
+            real.openOverlay(overlay, onClose);
+        }
+    }
+
+    @Override
     public void closeOverlay() {
         if (real != null) {
             real.closeOverlay();

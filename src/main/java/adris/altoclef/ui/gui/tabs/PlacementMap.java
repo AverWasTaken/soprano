@@ -10,6 +10,7 @@ import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.kit.TextWrap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -419,10 +420,10 @@ final class PlacementMap extends Widget {
 
     private void centred(Canvas c, String lead, String rest) {
         float room = Math.max(theme.px(80), w - 2 * theme.px(32));
-        List<String> lines = new ArrayList<>(HelpList.wrap(c, lead, theme.small, room));
+        List<String> lines = new ArrayList<>(TextWrap.words(c, lead, theme.small, room));
         int leadLines = lines.size();
         if (!rest.isEmpty()) {
-            lines.addAll(HelpList.wrap(c, rest, theme.small, room));
+            lines.addAll(TextWrap.words(c, rest, theme.small, room));
         }
         float lh = c.lineHeight(theme.small) + theme.px(2);
         float top = y + (h - lines.size() * lh) / 2f;
