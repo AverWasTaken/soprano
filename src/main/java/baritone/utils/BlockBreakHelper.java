@@ -79,8 +79,12 @@ public final class BlockBreakHelper {
     public void stopBreakingBlock() {
         // The player controller will never be null, but the player can be
         if (ctx.player() != null && wasHitting) {
-            ctx.playerController().setHittingBlock(false);
+            // same trick as refuse: we cleared the client's "mid break" at the end of last tick, so stopDestroyBlock
+            // thinks there's nothing to stop and never sends the abort. the server keeps digging (and sending the hit
+            // sound every 4 ticks) until it hears one or the block is gone
+            ctx.playerController().setHittingBlock(true);
             ctx.playerController().resetBlockRemoving();
+            ctx.playerController().setHittingBlock(false);
             wasHitting = false;
         }
     }
@@ -154,6 +158,8 @@ public final class BlockBreakHelper {
             // we store and restore this value on the next tick to determine if we're breaking a block
             ctx.playerController().setHittingBlock(false);
         } else {
+            // let go mid break (or the aim slid off the block). vanilla aborts here too, see stopBreakingBlock
+            stopBreakingBlock();
             wasHitting = false;
         }
     }

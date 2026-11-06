@@ -54,7 +54,7 @@ public class TripGatherTask extends Task {
             return new SatisfyMiningRequirementTask(MiningRequirement.STONE);
         }
         if (!haveBlocks(mod)) {
-            _wide = wide(_wide, StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD), _hand.length > 0, handGone(mod));
+            _wide = wide(_wide, _hand.length > 0, handGone(mod));
             if (!_wide) {
                 // the target still counts every item, dirt included. we just don't go make a pickaxe to get them
                 return new MineAndCollectTask(new ItemTarget(_items, _target), _hand, MiningRequirement.HAND).noReserve();
@@ -65,10 +65,11 @@ public class TripGatherTask extends Task {
         return null;
     }
 
-    // with a pickaxe nearest of anything is fine. without one, dirt by hand until there's none left to dig, and only
-    // then the tree and the pickaxe (the nether, mostly: netherrack wants a pickaxe and there's no dirt)
-    static boolean wide(boolean wasWide, boolean hasPickaxe, boolean anyHandSources, boolean handGone) {
-        return wasWide || hasPickaxe || !anyHandSources || handGone;
+    // dirt by hand until there's none left to dig, pickaxe or not, and only then the tree and the stone (the nether,
+    // mostly: netherrack wants a pickaxe and there's no dirt). a pickaxe used to mean wide on the spot, which on the
+    // first tick is before the dirt scan lands, so "nearest" was whatever stone the tracker knew of, grass underfoot or not
+    static boolean wide(boolean wasWide, boolean anyHandSources, boolean handGone) {
+        return wasWide || !anyHandSources || handGone;
     }
 
     // scanned and nothing reachable. before the first scan lands an empty tracker means "haven't looked", not "none"
