@@ -8,12 +8,13 @@ import adris.altoclef.ui.gui.model.KeyBind;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 
-// the chrome around the tabs: panel, sidebar, header with search, status strip, toast layer and the overlay layer for
-// dropdowns. it also owns focus and routes every key and click, so a tab never has to care who is focused. the scrim
-// behind the panel is the screen's job. everything a tab, the status facade or a callback throws is caught and logged
-// once, the panel stays up
+// the chrome around the tabs: panel, sidebar, header with search, command bar, status strip, toast layer and the
+// overlay layer for dropdowns. it also owns focus and routes every key and click, so a tab never has to care who is
+// focused. the scrim behind the panel is the screen's job. everything a tab, the status facade or a callback throws
+// is caught and logged once, the panel stays up
 public class Shell extends Widget implements ShellContext {
 
     // design px, about the height of the word it replaced plus its descender room
@@ -31,6 +32,7 @@ public class Shell extends Widget implements ShellContext {
     private final KeyCapture keyCapture;
     private final Segmented appearance;
     private final Button stop;
+    private final CommandBar commandBar;
     private final Toast toast;
     private final List<Widget> kids = new ArrayList<>();
     private final FadeCanvas fade = new FadeCanvas();
@@ -71,6 +73,7 @@ public class Shell extends Widget implements ShellContext {
     private int logoPx;
     private boolean logoBroken;
     private int statusH;
+    private int cmdH;
     private int contentX;
     private int contentY;
     private int contentW;
@@ -147,12 +150,14 @@ public class Shell extends Widget implements ShellContext {
         });
         stop = new Button(theme, "Stop", Button.Kind.GHOST, Icon.STOP, this::stopClicked);
         toast = new Toast(theme);
+        commandBar = new CommandBar(theme, r -> toast.show(r));
 
         kids.add(contents.length > 0 ? contents[0] : new Blank(theme));
         kids.add(search);
         kids.add(keyCapture);
         kids.add(appearance);
         kids.add(stop);
+        kids.add(commandBar);
 
         if (!this.tabs.isEmpty()) {
             Tab first = this.tabs.get(0);
@@ -211,6 +216,15 @@ public class Shell extends Widget implements ShellContext {
         return toast;
     }
 
+    public CommandBar commandBar() {
+        return commandBar;
+    }
+
+    // what the command bar runs a line with, the screen points it at the facade
+    public void setCommandRunner(Function<String, Result> runner) {
+        commandBar.setRunner(runner);
+    }
+
     public Widget overlay() {
         return overlay;
     }
@@ -267,15 +281,15 @@ public class Shell extends Widget implements ShellContext {
                 groups++;
             }
         }
-        int room = h - statusH - headerH - theme.px(120 + tabs.size() * 2) - groups * groupH();
+        int room = h - bottomH() - headerH - theme.px(120 + tabs.size() * 2) - groups * groupH();
         return Math.max(theme.px(18), Math.min(theme.px(Theme.ROW_H), room / Math.max(1, tabs.size())));
     }
 
     private String group(int i) {
         return switch (tabs.get(i).id()) {
             case "get", "goto", "follow" -> "Actions";
-            case "waypoints", "schematics", "stats" -> "Library";
-            case "help", "settings" -> "Preferences";
+            case "waypoints", "schematics" -> "Library";
+            case "settings" -> "Preferences";
             default -> "";
         };
     }
@@ -288,6 +302,11 @@ public class Shell extends Widget implements ShellContext {
 
     public int sidebarW() {
         return sideW;
+    }
+
+    // the command bar and the status strip, the two full width rows the sidebar and the content stop above
+    private int bottomH() {
+        return statusH + cmdH;
     }
 
     // the other capture control (settings tab) changed the bind, keep the close key honest
@@ -335,7 +354,9 @@ public class Shell extends Widget implements ShellContext {
         winW = windowW;
         winH = windowH;
         int pw = manualW > 0 ? manualW : Math.round(windowW * 0.58f);
-        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.66f);
+        // the command bar's row comes on top of the old height, so a small window keeps the room its tabs had (the
+        // schematics map needs every px of it at 540p). the cap stays, a big window looks like the mock
+        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.66f) + theme.px(Theme.CMD_H);
         pw = Math.max(theme.px(640), Math.min(theme.px(manualW > 0 ? 1500 : 1040), pw));
         ph = Math.max(theme.px(440), Math.min(theme.px(manualH > 0 ? 1000 : 680), ph));
         int margin = theme.px(8);
@@ -363,7 +384,8 @@ public class Shell extends Widget implements ShellContext {
 
     private void resizePanel(float mx, float my) {
         int minW = theme.px(560);
-        int minH = theme.px(360);
+        // 40 more than before the command bar took its row, so the smallest panel keeps the same room for tabs
+        int minH = theme.px(400);
         int nx = resizeStartX;
         int ny = resizeStartY;
         int nw = resizeStartW;
@@ -410,10 +432,12 @@ public class Shell extends Widget implements ShellContext {
         sideW = theme.px(Theme.SIDEBAR_W);
         headerH = theme.px(Theme.HEADER_H);
         statusH = theme.px(Theme.STATUS_H);
+        cmdH = theme.px(Theme.CMD_H);
         contentX = x + sideW + 1;
         contentY = y + headerH + 1;
         contentW = Math.max(0, w - sideW - 1);
-        contentH = Math.max(0, y + h - statusH - contentY);
+        contentH = Math.max(0, y + h - bottomH() - contentY);
+        commandBar.setBounds(x, y + h - bottomH(), w, cmdH);
 
         placeContent(active);
         toast.setBounds(contentX, contentY, contentW, contentH);
@@ -430,7 +454,7 @@ public class Shell extends Widget implements ShellContext {
         if (!keyCaption) {
             capW = sideW - 2 * theme.px(Theme.PAD);
         }
-        keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - statusH - theme.px(Theme.PAD) - ch, capW, ch);
+        keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - bottomH() - theme.px(Theme.PAD) - ch, capW, ch);
         appearance.setBounds(x + theme.px(Theme.PAD), keyCapture.y() - theme.px(Theme.GAP) - ch,
                 sideW - 2 * theme.px(Theme.PAD), ch);
 
@@ -690,6 +714,7 @@ public class Shell extends Widget implements ShellContext {
         Safe.run("tab draw", () -> content.draw(target, f));
         g.popClip();
 
+        commandBar.draw(g, f);
         drawStatus(g, f, now);
         toast.draw(g, f);
         g.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.5f));
@@ -735,10 +760,11 @@ public class Shell extends Widget implements ShellContext {
 
     private void drawSidebar(Canvas g, Frame f, long now, float r) {
         // only the top left corner is round: the panel's own corners cover the rest, so square off the others
-        g.fillRoundRect(x, y, sideW, h - statusH, r, theme.color(Theme.SIDEBAR));
-        g.fillRect(x + sideW / 2f, y, sideW / 2f, h - statusH, theme.color(Theme.SIDEBAR));
-        g.fillRect(x, y + (h - statusH) / 2f, sideW / 2f, (h - statusH) / 2f, theme.color(Theme.SIDEBAR));
-        g.fillRect(x + sideW, y, 1, h - statusH, theme.color(Theme.HAIRLINE));
+        int sh = h - bottomH();
+        g.fillRoundRect(x, y, sideW, sh, r, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW / 2f, y, sideW / 2f, sh, theme.color(Theme.SIDEBAR));
+        g.fillRect(x, y + sh / 2f, sideW / 2f, sh / 2f, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW, y, 1, sh, theme.color(Theme.HAIRLINE));
 
         // one left edge for everything in here: the wordmark, the group labels, the row icons and the footer all
         // start at pad. rows are inset by half of it so the selection pill has a margin
@@ -1063,13 +1089,14 @@ public class Shell extends Widget implements ShellContext {
         }
     }
 
-    // search, the tab's content, then stop. the footer key capture is click only
+    // search, the tab's content, the command bar, then stop. the footer key capture is click only
     @Override
     public void collectFocusable(List<Widget> out) {
         if (search.visible()) {
             search.collectFocusable(out);
         }
         kids.get(0).collectFocusable(out);
+        commandBar.collectFocusable(out);
         appearance.collectFocusable(out);
         stop.collectFocusable(out);
     }

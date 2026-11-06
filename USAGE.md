@@ -75,7 +75,7 @@ Once it's placed you can also type `#build <file>` in chat and it builds at the 
 - `eta` to get the estimated time until the next segment and the goal. Be aware that the ETA to your goal is really imprecise
 - `proc` to view miscellaneous information about the process currently controlling Soprano
 - `version` to get the version of Soprano you're running
-- `gui` (or `clickgui`) to open the click gui, same as pressing right shift in a world
+- `gui` (or `clickgui`) to open the click gui, same as pressing right shift in a world. The bar along its bottom runs any command you type (no `#` needed), up arrow brings back the last ones
 
 ## Maintenance
 

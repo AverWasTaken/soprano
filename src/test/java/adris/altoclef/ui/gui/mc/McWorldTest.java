@@ -32,11 +32,6 @@ public class McWorldTest {
         boolean fail;
 
         @Override
-        public List<CommandInfo> commands() {
-            return List.of();
-        }
-
-        @Override
         public Result run(String line) {
             lines.add(line);
             return fail ? Result.fail("no valid entities in range!", line) : Result.ok("Ran " + line, line);

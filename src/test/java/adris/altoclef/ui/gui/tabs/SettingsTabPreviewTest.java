@@ -141,7 +141,7 @@ public class SettingsTabPreviewTest {
     public void smallWindowGoesToTwoColumns() throws Exception {
         Preview p = open(960, 540, true);
         p.savePanel("settings_page_960x540");
-        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(400));
         rest(p);
         p.savePanel("settings_page_minimum");
     }

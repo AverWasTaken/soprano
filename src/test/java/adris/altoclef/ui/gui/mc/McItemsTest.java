@@ -31,11 +31,6 @@ public class McItemsTest {
         Function<String, Result> answer = l -> Result.ok("Ran " + l, l);
 
         @Override
-        public List<CommandInfo> commands() {
-            return List.of();
-        }
-
-        @Override
         public Result run(String line) {
             lines.add(line);
             return answer.apply(line);

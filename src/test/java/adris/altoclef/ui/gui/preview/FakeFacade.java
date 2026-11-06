@@ -7,7 +7,6 @@ import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
-import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
 
@@ -27,7 +26,6 @@ public final class FakeFacade implements BotFacade {
     public final FakeItems items = new FakeItems();
     public final FakeWorld world = new FakeWorld();
     public final FakeStatus status = new FakeStatus();
-    public StatsAccess stats = StatsAccess.NONE;
     public final FakeSchematics schematics = new FakeSchematics(actions);
     public final Clipboard clipboard = Clipboard.inMemory();
 
@@ -54,11 +52,6 @@ public final class FakeFacade implements BotFacade {
     @Override
     public StatusAccess status() {
         return status;
-    }
-
-    @Override
-    public StatsAccess stats() {
-        return stats;
     }
 
     @Override
@@ -299,41 +292,8 @@ public final class FakeFacade implements BotFacade {
     // ----- commands
 
     public final class FakeCommands implements CommandsAccess {
-        public final List<CommandInfo> list = new ArrayList<>();
         public String lastRun;
         public boolean failNext;
-
-        FakeCommands() {
-            list.add(new CommandInfo(List.of("goto", "go", "path"), "Go to a coordinate or block",
-                    List.of("Tell Baritone to path to a position or a block.", "", "Usage:", "> goto <y>", "> goto <x> <z>", "> goto <x> <y> <z>", "> goto <block>")));
-            list.add(new CommandInfo(List.of("mine", "m"), "Mine some blocks",
-                    List.of("The mine command allows you to tell Baritone to search for and mine individual blocks.", "", "Usage:", "> mine diamond_ore", "> mine 64 oak_log", "> mine iron_ore coal_ore")));
-            list.add(new CommandInfo(List.of("follow", "f"), "Follow entity things",
-                    List.of("Follow players, entities, or entity types.", "", "Usage:", "> follow entities", "> follow entity zombie", "> follow players", "> follow player <name>")));
-            list.add(new CommandInfo(List.of("get"), "Get items the long way round",
-                    List.of("Crafts, smelts, mines or collects its way to the items.", "", "Usage:", "> get oak_log 64", "> get iron_ingot 3 stick 4")));
-            list.add(new CommandInfo(List.of("stop", "cancel", "s"), "Stop everything",
-                    List.of("Cancels the current task and path.", "", "Usage:", "> stop")));
-            list.add(new CommandInfo(List.of("set", "setting", "settings"), "View or change settings",
-                    List.of("Using the set command, you can manage all of Baritone's settings.", "", "Usage:", "> set list", "> set <setting> <value>", "> set reset <setting>")));
-            list.add(new CommandInfo(List.of("wp", "waypoint", "waypoints"), "Manage waypoints",
-                    List.of("Save, list and go to waypoints.", "", "Usage:", "> wp save <tag> <name>", "> wp list", "> wp goto <name>")));
-            list.add(new CommandInfo(List.of("gamer"), "Beat the game",
-                    List.of("Starts the speedrun brain.", "", "Usage:", "> gamer", "> gamer status", "> gamer reset")));
-            list.add(new CommandInfo(List.of("gui", "clickgui"), "Open the click gui",
-                    List.of("Opens this panel. Right shift by default, rebind in Settings or with set guiKey.", "", "Usage:", "> gui")));
-            list.add(new CommandInfo(List.of("help", "?"), "View all commands or help on specific ones",
-                    List.of("Lists commands.", "", "Usage:", "> help", "> help <command>")));
-            list.add(new CommandInfo(List.of("farm"), "Farm nearby crops",
-                    List.of("Harvests and replants crops.", "", "Usage:", "> farm", "> farm <range>")));
-            list.add(new CommandInfo(List.of("explore"), "Explore things",
-                    List.of("Explores outward from a point.", "", "Usage:", "> explore", "> explore <x> <z>")));
-        }
-
-        @Override
-        public List<CommandInfo> commands() {
-            return list;
-        }
 
         @Override
         public Result run(String line) {

@@ -6,11 +6,11 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-public class HelpHistoryTest {
+public class CommandHistoryTest {
 
     @Test
     public void upWalksBackAndStopsAtTheOldest() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         h.add("one");
         h.add("two");
         h.add("three");
@@ -22,7 +22,7 @@ public class HelpHistoryTest {
 
     @Test
     public void downComesBackToTheDraft() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         h.add("one");
         h.add("two");
         assertEquals("two", h.back("half typed"));
@@ -35,25 +35,25 @@ public class HelpHistoryTest {
 
     @Test
     public void emptyHistoryChangesNothing() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         assertEquals("abc", h.back("abc"));
         assertEquals("abc", h.forward("abc"));
     }
 
     @Test
     public void keepsTheLastTwenty() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         for (int i = 0; i < 25; i++) {
             h.add("c" + i);
         }
-        assertEquals(HelpHistory.MAX, h.size());
+        assertEquals(CommandHistory.MAX, h.size());
         assertEquals("c5", h.lines().get(0));
         assertEquals("c24", h.lines().get(19));
     }
 
     @Test
     public void repeatsAndBlanksAreNotStored() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         h.add("stop");
         h.add("stop");
         h.add("  ");
@@ -66,7 +66,7 @@ public class HelpHistoryTest {
 
     @Test
     public void addingResetsTheCursor() {
-        HelpHistory h = new HelpHistory();
+        CommandHistory h = new CommandHistory();
         h.add("a");
         h.add("b");
         h.back("");

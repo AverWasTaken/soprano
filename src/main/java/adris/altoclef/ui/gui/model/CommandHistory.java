@@ -5,7 +5,7 @@ import java.util.List;
 
 // up arrow in the command line walks back through what you ran, down walks forward and ends on whatever you had half
 // typed. same as a terminal, minus the part where it saves to a file
-public final class HelpHistory {
+public final class CommandHistory {
 
     public static final int MAX = 20;
 

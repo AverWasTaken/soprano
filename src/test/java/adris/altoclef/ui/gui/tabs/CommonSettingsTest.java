@@ -134,7 +134,7 @@ public class CommonSettingsTest {
             p.advance(500);
             p.savePanel("settings_grid_" + (dark ? "dark" : "light"));
         }
-        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(400));
         p.settle();
         p.savePanel("settings_grid_minimum");
         // two columns when there is no room for four, and every tile stays inside the grid sideways

@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 // the kit's tile grid and popovers in the real shell, at the mock's 2x, so they can be held against the approved
 // mock v4 shots (gui-mock/tools/cmp.py). the tab here is a stand in with the mock's first three sections; the real
-// settings tab is built on this kit by the next piece of work. stats and help are left out like in the mock
+// settings tab is built on this kit by the next piece of work
 public class TileGridPreviewTest {
 
     private static final class GridTab implements Tab {
@@ -117,9 +117,6 @@ public class TileGridPreviewTest {
         List<Tab> tabs = new ArrayList<>();
         Preview p = new Preview(3840, 2160, 2f, f, pv -> {
             for (Tab t : Tabs.create(pv.facade, pv.theme, pv.ctx)) {
-                if (t.id().equals("stats") || t.id().equals("help")) {
-                    continue;
-                }
                 tabs.add(t.id().equals("settings") ? new GridTab(build(pv.theme, pv.ctx)) : t);
             }
             return tabs;

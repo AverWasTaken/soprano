@@ -1,6 +1,5 @@
 package adris.altoclef.ui.gui.tabs;
 
-import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Keys;
@@ -37,11 +36,6 @@ public class SitePreviewTest {
     private void shoot(boolean dark) throws Exception {
         FakeFacade f = new FakeFacade();
         f.status.activity = new StatusAccess.Activity(true, "Mining iron_ore", "goal 120 64 -30", null);
-        f.stats = () -> List.of(new StatsAccess.Stat("Distance travelled", "12.4 km"),
-                new StatsAccess.Stat("Blocks mined", "1 234"), new StatsAccess.Stat("Blocks placed", "680"),
-                new StatsAccess.Stat("Mobs killed", "42"), new StatsAccess.Stat("Jumps", "207"),
-                new StatsAccess.Stat("Time played", "3h 12m"), new StatsAccess.Stat("Deaths", "2"),
-                new StatsAccess.Stat("Items crafted", "360"), new StatsAccess.Stat("Damage dealt", "2 100"));
         f.world.following = "Steve";
         // three players so the players card closes above the entities instead of being cut off, and a position a
         // real walk away from the typed destination so the hint under it is not "1 block"
@@ -59,7 +53,7 @@ public class SitePreviewTest {
             tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
             return tabs;
         });
-        assertEquals(8, tabs.size());
+        assertEquals(6, tabs.size());
         p.shell.setDarkMode(dark);
         p.tick();
         p.settle();
@@ -98,6 +92,18 @@ public class SitePreviewTest {
         assertEquals("120", xBox.text());
         assertEquals("-30", zBox.text());
         p.savePanelCutout("site/goto_" + theme, pad);
+
+        // the command bar with a line typed in, over the same go to page
+        TextField cmd = p.shell.commandBar().field();
+        p.click(cmd.x() + p.theme.px(40), cmd.y() + cmd.h() / 2f);
+        p.type("mine diamond_ore");
+        p.hover(-100, -100);
+        p.settle();
+        p.advance(400);
+        assertEquals("mine diamond_ore", cmd.text());
+        p.savePanelCutout("site/cmdbar_" + theme, pad);
+        cmd.setText("");
+        p.shell.blur();
 
         for (int i = 2; i < tabs.size(); i++) {
             p.shell.switchTab(i);

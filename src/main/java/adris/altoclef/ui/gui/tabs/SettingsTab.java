@@ -359,7 +359,7 @@ public final class SettingsTab implements Tab {
     // a popover commits live (every -/+ and swatch), so it only speaks up when something went wrong. the tile already
     // shows the new value
     private void commit(String name, String text) {
-        apply(name, text, true);
+        apply(name, text);
     }
 
     // a key the player just pressed is still held down: the shell has to know it is the open key now and swallow its
@@ -368,19 +368,15 @@ public final class SettingsTab implements Tab {
     // the popover's own Back to default lands here too, by mouse, so the default skips it. a captured key that happens
     // to be the default is still fine: the shell swallows whatever key closed a popover
     private void keyCaptured(String name, int key, int def) {
-        Result r = apply(name, String.valueOf(key), true);
+        Result r = apply(name, String.valueOf(key));
         if (r.ok() && key >= 0 && key != def) {
             Safe.run("key rebound", () -> ctx.openKeyRebound(key));
         }
     }
 
-    Result apply(String name, String text) {
-        return apply(name, text, false);
-    }
-
     // typing the default back in (or Back to default) is a reset, so settings.txt does not keep a line that says the
     // same as nothing
-    private Result apply(String name, String text, boolean quiet) {
+    private Result apply(String name, String text) {
         SettingView v = byName.get(name);
         Result r;
         try {
@@ -393,8 +389,9 @@ public final class SettingsTab implements Tab {
         if (r == null) {
             r = Result.fail("Could not change " + name + ".");
         }
-        // a popover already checked the text with the real parser, so a failure here is rare and always gets its toast
-        if (!r.ok() || !quiet) {
+        // the tile already shows a change that worked, so only a failure speaks up. a popover checked the text with the
+        // real parser first, so that is rare and always gets its toast
+        if (!r.ok()) {
             ctx.toast(r);
         }
         if (r.ok()) {

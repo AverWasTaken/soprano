@@ -42,6 +42,8 @@ public final class Theme {
     public static final int SIDEBAR_W = 176;
     public static final int HEADER_H = 56;
     public static final int STATUS_H = 36;
+    // the command bar over the status strip, a 28 field with room around it like the stop button gets
+    public static final int CMD_H = 40;
     public static final int PANEL_RADIUS = 16;
     public static final int CARD_RADIUS = 12;
     public static final int ROW_RADIUS = 8;

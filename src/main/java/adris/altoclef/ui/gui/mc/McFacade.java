@@ -7,7 +7,6 @@ import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
-import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
@@ -33,11 +32,10 @@ public final class McFacade implements BotFacade {
     private final StatusAccess status;
     private final KeyNames keyNames;
     private final Clipboard clipboard;
-    private final StatsAccess stats;
     private final SchematicsAccess schematics;
 
     public McFacade(SettingsAccess settings, CommandsAccess commands, ItemsAccess items, WorldAccess world,
-                    StatusAccess status, KeyNames keyNames, Clipboard clipboard, StatsAccess stats,
+                    StatusAccess status, KeyNames keyNames, Clipboard clipboard,
                     SchematicsAccess schematics) {
         this.settings = settings;
         this.commands = commands;
@@ -46,13 +44,12 @@ public final class McFacade implements BotFacade {
         this.status = status;
         this.keyNames = keyNames;
         this.clipboard = clipboard;
-        this.stats = stats;
         this.schematics = schematics;
     }
 
     public static McFacade create() {
         return new McFacade(new McSettings(), new McCommands(), itemsFactory.get(), worldFactory.get(),
-                new McStatus(), new McKeyNames(), new McClipboard(), new McStats(), schematicsFactory.get());
+                new McStatus(), new McKeyNames(), new McClipboard(), schematicsFactory.get());
     }
 
     private static <T> T guarded(String name, Supplier<? extends T> make, Supplier<? extends T> fallback) {
@@ -97,11 +94,6 @@ public final class McFacade implements BotFacade {
     @Override
     public Clipboard clipboard() {
         return clipboard;
-    }
-
-    @Override
-    public StatsAccess stats() {
-        return stats;
     }
 
     @Override

@@ -19,12 +19,7 @@ public interface BotFacade {
 
     Clipboard clipboard();
 
-    // the stats tab's numbers. the default keeps older fakes compiling until they bother
-    default StatsAccess stats() {
-        return StatsAccess.NONE;
-    }
-
-    // the schematics tab's folder, costs and import buttons. same deal as stats: the default keeps older fakes compiling
+    // the schematics tab's folder, costs and import buttons. the default keeps older fakes compiling until they bother
     default SchematicsAccess schematics() {
         return SchematicsAccess.NONE;
     }
