@@ -5,6 +5,7 @@ import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.RoutineRunner;
 import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
@@ -18,13 +19,60 @@ import adris.altoclef.util.time.Stopwatch;
 public class UserTaskChain extends SingleTaskChain {
 
     private final Stopwatch _taskStopwatch = new Stopwatch();
-    private Runnable _currentOnFinish = null;
+    private Listener _currentOnFinish = null;
+    // true while cancel() runs, so the finish it calls knows the task did not get there on its own
+    private boolean _cancelling;
 
     private boolean _runningIdleTask;
     private boolean _nextTaskIdleFlag;
+    // a graph routine starts a user task per node, a loop of those would fill the chat with task set / finished lines
+    private boolean _runningQuiet;
+    private boolean _nextTaskQuietFlag;
+    // a parked graph held the idle command back, and if the run ends on a tick with no task nobody else starts it
+    private boolean _idleOwed;
 
     public UserTaskChain(TaskRunner runner) {
         super(runner);
+    }
+
+    // how a user task ended. the old callback could not tell these apart: a cancel, a crash and a real finish all
+    // looked the same, and a task that got replaced never called anything at all
+    public enum Outcome {
+        FINISHED,
+        CANCELLED,
+        REPLACED
+    }
+
+    public interface Listener {
+        void ended(Outcome outcome);
+    }
+
+    // the old Runnable callbacks keep their exact old meaning: run on a finish and on a cancel, never on a replace. the
+    // ";" lines lean on that (a stop bumps the generation and the line ends itself), and a replaced "a;b" must not go
+    // on to start b over whatever replaced it
+    public static Listener legacy(Runnable onFinish) {
+        if (onFinish == null) {
+            return null;
+        }
+        return outcome -> {
+            if (outcome != Outcome.REPLACED) {
+                onFinish.run();
+            }
+        };
+    }
+
+    // a task the chain dropped on its own is only finished when it was not stopped. the tick path gets here for
+    // isFinished || stopped, and a stopped root never got there by itself. pure so a test can ask
+    static Outcome outcomeOf(boolean cancelling, Task oldTask) {
+        if (cancelling || oldTask == null || oldTask.stopped()) {
+            return Outcome.CANCELLED;
+        }
+        return Outcome.FINISHED;
+    }
+
+    // the callback a new one pushes out, if it never got to run. that one gets told it was replaced
+    static Listener pushedOut(Listener current, Listener next) {
+        return current != null && current != next ? current : null;
     }
 
     private static String prettyPrintTimeDuration(double seconds) {
@@ -61,8 +109,14 @@ public class UserTaskChain extends SingleTaskChain {
     public void cancel(AltoClef mod) {
         // installed but not ticked yet is not active, and that one has to be cancellable too
         if (_mainTask != null) {
-            stop(mod);
-            onTaskFinish(mod);
+            boolean before = _cancelling;
+            _cancelling = true;
+            try {
+                stop(mod);
+                onTaskFinish(mod);
+            } finally {
+                _cancelling = before;
+            }
         }
     }
 
@@ -83,13 +137,29 @@ public class UserTaskChain extends SingleTaskChain {
     }
 
     public void runTask(AltoClef mod, Task task, Runnable onFinish) {
+        runTask(mod, task, legacy(onFinish));
+    }
+
+    public void runTask(AltoClef mod, Task task, Listener onFinish) {
         _runningIdleTask = _nextTaskIdleFlag;
         _nextTaskIdleFlag = false;
+        _runningQuiet = _nextTaskQuietFlag;
+        _nextTaskQuietFlag = false;
 
+        // whoever was waiting on the old task hears about it now, or it waits forever. told before the new task goes in,
+        // so it can't mistake the new one for its own
+        Listener replaced = pushedOut(_currentOnFinish, onFinish);
         _currentOnFinish = onFinish;
+        if (replaced != null) {
+            try {
+                replaced.ended(Outcome.REPLACED);
+            } catch (Throwable t) {
+                AltoClefBridge.onHookError(t);
+            }
+        }
 
         if (!_runningIdleTask) {
-            Debug.logMessage("User Task Set: " + task.toString());
+            logTask("User Task Set: " + task.toString());
         }
         mod.getTaskRunner().enable();
         _taskStopwatch.begin();
@@ -98,6 +168,9 @@ public class UserTaskChain extends SingleTaskChain {
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
+        // asked before anything below: the runner disable stops every chain, which stops and drops our task, and a
+        // finished task would read as cancelled afterwards
+        Outcome outcome = outcomeOf(_cancelling, _mainTask);
         boolean shouldIdle = AltoSettings.shouldRunIdleCommandWhenNotActive();
         if (!shouldIdle) {
             // Stop. (with the idle gate on the runner stays up so the survival chains keep going)
@@ -121,22 +194,71 @@ public class UserTaskChain extends SingleTaskChain {
             oldTask.letGoOfKeys(mod);
         }
         _mainTask = null;
-        if (_currentOnFinish != null) {
-            //noinspection unchecked
-            _currentOnFinish.run();
+        // let go of it before it runs: the callback may start the next task, and that one must not find this callback
+        // still waiting and tell it it was replaced
+        Listener onFinish = _currentOnFinish;
+        _currentOnFinish = null;
+        if (onFinish != null) {
+            onFinish.ended(outcome);
         }
         // our `onFinish` might have triggered more tasks.
         boolean actuallyDone = _mainTask == null;
         if (actuallyDone) {
             if (!_runningIdleTask) {
-                Debug.logMessage("User task FINISHED. Took %s seconds.", prettyPrintTimeDuration(seconds));
+                logTask("User task FINISHED. Took " + prettyPrintTimeDuration(seconds) + " seconds.");
                 EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
             }
-            if (shouldIdle) {
-                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
-                signalNextTaskToBeIdleTask();
-                _runningIdleTask = true;
+            // a graph routine parked between two nodes isn't idle, the next node is one tick away and the idle command
+            // would run on every lap
+            if (shouldIdle && RoutineRunner.get().isRunning()) {
+                _idleOwed = true;
+            } else if (shouldIdle) {
+                _idleOwed = false;
+                startIdleCommand();
             }
+        }
+    }
+
+    public void startIdleCommand() {
+        runMarkedIdle(() -> AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value));
+    }
+
+    // up before the command, down after it. up after, and whatever the user asks for next gets called idle: every "is the
+    // bot busy" check and the finish lines skip it. a command that starts no task would leave it up the same way
+    void runMarkedIdle(Runnable command) {
+        _nextTaskIdleFlag = true;
+        try {
+            command.run();
+        } finally {
+            _nextTaskIdleFlag = false;
+        }
+    }
+
+    boolean nextTaskIsIdle() {
+        return _nextTaskIdleFlag;
+    }
+
+    // right after the routine runner's tick, which is where a parked graph finds out it's over
+    public void runOwedIdle() {
+        if (!_idleOwed || RoutineRunner.get().isRunning()) {
+            return;
+        }
+        _idleOwed = false;
+        if (idleStillWanted(_mainTask != null, AltoSettings.shouldRunIdleCommandWhenNotActive())) {
+            startIdleCommand();
+        }
+    }
+
+    // a task that got in first has the bot, and its own finish starts the idle command when it's time
+    static boolean idleStillWanted(boolean hasTask, boolean shouldIdle) {
+        return !hasTask && shouldIdle;
+    }
+
+    private void logTask(String line) {
+        if (_runningQuiet) {
+            Debug.logInternal(line);
+        } else {
+            Debug.logMessage(line);
         }
     }
 
@@ -144,8 +266,12 @@ public class UserTaskChain extends SingleTaskChain {
         return isActive() && _runningIdleTask;
     }
 
-    // The next task will be an idle task.
-    public void signalNextTaskToBeIdleTask() {
-        _nextTaskIdleFlag = true;
+    // the next task logs to the log file only. clear it again if the command turned out not to start one
+    public void signalNextTaskQuiet() {
+        _nextTaskQuietFlag = true;
+    }
+
+    public void clearNextTaskQuiet() {
+        _nextTaskQuietFlag = false;
     }
 }

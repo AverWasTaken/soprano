@@ -47,5 +47,17 @@ public enum Icon {
     LANGUAGE,       // a small globe and an A
     ACCESSIBILITY,  // arms out in a ring
     SPEAKER,        // menu music on: a speaker and two waves
-    SPEAKER_OFF     // menu music off: the same speaker and an x
+    SPEAKER_OFF,    // menu music off: the same speaker and an x
+    ROUTINE,        // commands tab: three lines and a play triangle, a list that runs
+    // the node editor
+    PLAY,           // start node
+    IF,             // one line in, two out
+    REPEAT,         // a ring that almost closes, arrow on the open end
+    CLOCK,          // wait
+    EAT,            // an apple, the bite is the leaf
+    CRAFT,          // the 3x3 table grid
+    HASH,           // raw command
+    FIT,            // four corners, fit to view
+    EQUIP,          // a sword, point up right
+    NODES           // two boxes and a wire
 }

@@ -52,6 +52,11 @@ public final class DeferredContext implements ShellContext {
     }
 
     @Override
+    public Widget focusedWidget() {
+        return real == null ? null : real.focusedWidget();
+    }
+
+    @Override
     public void blur() {
         if (real != null) {
             real.blur();

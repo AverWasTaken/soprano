@@ -2116,6 +2116,14 @@ public final class Settings {
     public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
 
     /**
+     * Shows the node editor for routine graphs, routines with branches, loops and waits saved in {@code routines/} next
+     * to {@code CustomTasks.json}. Off by default while the editor is being built. This only hides the editor: a saved
+     * graph keeps running through {@code #custom <name>} with it off and its name stays taken for list routines, so a
+     * routine you upgraded to a graph never disappears. Takes effect right away.
+     */
+    public final Setting<Boolean> experimentalRoutineGraphs = new Setting<>(false);
+
+    /**
      * Whether the gui key opens the click gui. The {@code #gui} command always works.
      */
     public final Setting<Boolean> guiKeyEnabled = new Setting<>(true);

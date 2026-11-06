@@ -28,4 +28,9 @@ public interface BotFacade {
     default SchematicsAccess schematics() {
         return SchematicsAccess.NONE;
     }
+
+    // the commands tab's saved routines and the run. same deal again
+    default RoutinesAccess routines() {
+        return RoutinesAccess.NONE;
+    }
 }

@@ -5,6 +5,7 @@ import adris.altoclef.ui.gui.facade.CommandsAccess;
 import adris.altoclef.ui.gui.facade.ItemsAccess;
 import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
+import adris.altoclef.ui.gui.facade.RoutinesAccess;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
 import adris.altoclef.ui.gui.facade.StatsAccess;
@@ -25,6 +26,8 @@ public final class McFacade implements BotFacade {
     public static Supplier<WorldAccess> worldFactory = () -> guarded("McWorld", McWorld::new, EmptyWorld::new);
     // the one shared McSchematics, so the screen rebuilding itself doesn't throw the parsed folder away
     public static Supplier<SchematicsAccess> schematicsFactory = () -> guarded("McSchematics", McSchematics::shared, () -> SchematicsAccess.NONE);
+    // stateless, the file and the run live in CommandsStore and RoutineRunner
+    public static Supplier<RoutinesAccess> routinesFactory = () -> guarded("McRoutines", McRoutines::new, () -> RoutinesAccess.NONE);
 
     private final SettingsAccess settings;
     private final CommandsAccess commands;
@@ -35,10 +38,17 @@ public final class McFacade implements BotFacade {
     private final Clipboard clipboard;
     private final StatsAccess stats;
     private final SchematicsAccess schematics;
+    private final RoutinesAccess routines;
 
     public McFacade(SettingsAccess settings, CommandsAccess commands, ItemsAccess items, WorldAccess world,
                     StatusAccess status, KeyNames keyNames, Clipboard clipboard, StatsAccess stats,
                     SchematicsAccess schematics) {
+        this(settings, commands, items, world, status, keyNames, clipboard, stats, schematics, RoutinesAccess.NONE);
+    }
+
+    public McFacade(SettingsAccess settings, CommandsAccess commands, ItemsAccess items, WorldAccess world,
+                    StatusAccess status, KeyNames keyNames, Clipboard clipboard, StatsAccess stats,
+                    SchematicsAccess schematics, RoutinesAccess routines) {
         this.settings = settings;
         this.commands = commands;
         this.items = items;
@@ -48,11 +58,13 @@ public final class McFacade implements BotFacade {
         this.clipboard = clipboard;
         this.stats = stats;
         this.schematics = schematics;
+        this.routines = routines;
     }
 
     public static McFacade create() {
         return new McFacade(new McSettings(), new McCommands(), itemsFactory.get(), worldFactory.get(),
-                new McStatus(), new McKeyNames(), new McClipboard(), new McStats(), schematicsFactory.get());
+                new McStatus(), new McKeyNames(), new McClipboard(), new McStats(), schematicsFactory.get(),
+                routinesFactory.get());
     }
 
     private static <T> T guarded(String name, Supplier<? extends T> make, Supplier<? extends T> fallback) {
@@ -107,6 +119,11 @@ public final class McFacade implements BotFacade {
     @Override
     public SchematicsAccess schematics() {
         return schematics;
+    }
+
+    @Override
+    public RoutinesAccess routines() {
+        return routines;
     }
 
     private static final class EmptyItems implements ItemsAccess {
