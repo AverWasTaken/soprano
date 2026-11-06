@@ -108,11 +108,23 @@ public class BlockBreakHelperAbortTest {
     }
 
     @Test
-    public void aFinishedBreakHasNothingToAbort() {
-        // tick() clears wasHitting the tick the block goes, so the next release (or a stop) stays quiet
+    public void holdingTheClickWithTheAimOffTheBlockAbortsToo() throws Exception {
+        // vanilla's continueAttack stops the dig when the crosshair leaves the block, held button or not
+        FakeController controller = new FakeController();
+        BlockBreakHelper helper = helper(controller);
+        midBreak(helper);
+        helper.tick(true);
+        assertEquals(List.of("abort"), controller.sent);
+    }
+
+    @Test
+    public void noDigInFlightMeansNothingToAbort() {
+        // where a finished break leaves us: tick() clears wasHitting the tick the block goes (that path wants a real
+        // world and Minecraft to click with, so this starts from the state instead). a release or a stop stays quiet
         FakeController controller = new FakeController();
         BlockBreakHelper helper = helper(controller);
         helper.tick(false);
+        helper.tick(true);
         helper.stopBreakingBlock();
         assertEquals(List.of(), controller.sent);
     }
