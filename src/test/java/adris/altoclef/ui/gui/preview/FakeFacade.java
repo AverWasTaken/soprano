@@ -27,6 +27,7 @@ public final class FakeFacade implements BotFacade {
     public final FakeWorld world = new FakeWorld();
     public final FakeStatus status = new FakeStatus();
     public final FakeSchematics schematics = new FakeSchematics(actions);
+    public final FakeRoutines routines = new FakeRoutines(actions);
     public final Clipboard clipboard = Clipboard.inMemory();
 
     @Override
@@ -57,6 +58,11 @@ public final class FakeFacade implements BotFacade {
     @Override
     public adris.altoclef.ui.gui.facade.SchematicsAccess schematics() {
         return schematics;
+    }
+
+    @Override
+    public adris.altoclef.ui.gui.facade.RoutinesAccess routines() {
+        return routines;
     }
 
     @Override

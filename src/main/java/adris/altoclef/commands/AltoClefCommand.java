@@ -87,7 +87,7 @@ public abstract class AltoClefCommand extends Command {
     protected final void startTask(AltoClef mod, Task task) {
         // a task the owner types in takes the bot away from whoever whispered the last one
         AltoClefCommands.noteOwnerTask(mod);
-        mod.runUserTask(task, AltoClefCommands.takeFinish());
+        mod.runUserTask(task, AltoClefCommands.takeListener());
     }
 
     // for commands that are done by the time run() returns

@@ -18,6 +18,11 @@ public interface ShellContext {
 
     void blur();
 
+    // who has the keyboard right now, null when nobody does
+    default Widget focusedWidget() {
+        return null;
+    }
+
     // a dropdown or popover drawn above everything; the Shell closes it on an outside click or Esc
     void openOverlay(Widget overlay);
 

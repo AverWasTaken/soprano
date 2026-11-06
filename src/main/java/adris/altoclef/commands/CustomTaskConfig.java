@@ -1,34 +1,28 @@
 package adris.altoclef.commands;
 
-import adris.altoclef.util.helpers.ConfigHelper;
-
-// configs/CustomTasks.json. gson fills it in by field name, so the fields stay as they were
+// configs/CustomTasks.json. gson fills it in by field name, so the old fields stay as they were. CommandsStore is the
+// only thing that reads or writes it
 class CustomTaskConfig {
 
-    private static CustomTaskConfig _instance;
-
+    // null in every file from before the commands tab. those get read the old way and migrated on the first save
+    public Integer version;
     // the command is always called custom now, this only stays so old files still load
     public String prefix = "custom2";
     public CustomTaskEntry[] customTasks = new CustomTaskEntry[0];
 
-    // loaded on first use instead of at startup: the commands exist before altoclef does, and this would otherwise
-    // write the file into the game folder on every launch whether anyone wanted custom tasks or not
-    static synchronized CustomTaskConfig get() {
-        if (_instance == null) {
-            ConfigHelper.loadConfig("configs/CustomTasks.json", CustomTaskConfig::new, CustomTaskConfig.class, newConfig -> _instance = newConfig);
-        }
-        if (_instance == null) {
-            _instance = new CustomTaskConfig();
-        }
-        return _instance;
-    }
-
     static class CustomTaskEntry {
+        // the one word #custom takes
         public String name;
+        // what the tab shows, spaces and all. missing = same as name
+        public String displayName;
         public String description;
         public CustomSubTaskEntry[] tasks;
 
         static class CustomSubTaskEntry {
+            // get / equip / goto / wait / raw. missing = worked out from the line
+            public String type;
+            // the whole command line, the one that wins. older files only have command + parameters
+            public String line;
             public String command;
             public String[][] parameters;
         }

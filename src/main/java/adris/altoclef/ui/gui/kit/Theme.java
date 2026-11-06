@@ -30,6 +30,9 @@ public final class Theme {
     public static final int ACCENT_PRESSED = 0xFF0A64CC;
     public static final int ACCENT_SOFT = 0xFF22354D;
     public static final int ACCENT_TEXT = 0xFF5AA9FF;
+    // the node editor's flow cards. the one colour that isn't blue or red, so it only ever gets mixed in faint
+    public static final int FLOW = 0xFFBF5AF2;
+    public static final int FLOW_INK = 0xFFD49BF7;
     public static final int ON_ACCENT = 0xFFFFFFFF;
     public static final int DANGER = 0xFFFF8080;
     public static final int DANGER_FILL = 0xFF3A2A2C;
@@ -141,6 +144,8 @@ public final class Theme {
             case ACCENT_PRESSED -> 0xFF0053AD;
             case ACCENT_SOFT -> 0xFFDCEBFC;
             case ACCENT_TEXT -> 0xFF0066CC;
+            case FLOW -> 0xFFAF52DE;
+            case FLOW_INK -> 0xFF8E3DB8;
             case ON_ACCENT -> 0xFFFFFFFF;
             case DANGER -> 0xFFC20012;
             case DANGER_FILL -> 0xFFFBE5E7;
