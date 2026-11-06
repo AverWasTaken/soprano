@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.RunZones;
 
 import java.util.function.DoubleSupplier;
+import net.minecraft.core.BlockPos;
 
 // walks the sweep the planner lays out: one structure cell after another, waypoint by waypoint. it does not look at
 // blocks itself, whoever owns the planner scans for sightings (NetherPhase does it every few ticks, so the same scan
@@ -25,6 +26,7 @@ public class FindNetherStructureTask extends Task {
     // what the path predicate sees, from baritone's thread: where we stand, the game clock, and the waypoint we are walking to
     // (NaN = none yet). written every tick, so the zones from RunZones are judged against where we are now
     private volatile int zoneX;
+    private volatile int zoneY;
     private volatile int zoneZ;
     private volatile long zoneNow;
     private volatile double goalX = Double.NaN;
@@ -54,8 +56,11 @@ public class FindNetherStructureTask extends Task {
         mod.getBehaviour().push();
         noteZoneInputs(mod);
         // (and the spots a heavy hitter ran us off from lately, see RunZones for which zones never count as a wall)
-        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ())
-                || RunZones.INSTANCE.blocks(p.getX(), p.getZ(), zoneNow, zoneX, zoneZ, goalX, goalZ));
+        java.util.function.Predicate<BlockPos> packWall =
+                p -> RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, goalX, goalZ);
+        mod.getBehaviour().avoidWalkingThrough(p -> planner.blocksPath(p.getX(), p.getZ()) || packWall.test(p));
+        // the pack walls are solid, see RunZones.blocksAt. the planner's bastion walls stay soft
+        mod.getBehaviour().avoidBlockBreaking(packWall);
     }
 
     @Override
@@ -83,6 +88,7 @@ public class FindNetherStructureTask extends Task {
 
     private void noteZoneInputs(AltoClef mod) {
         zoneX = mod.getPlayer().blockPosition().getX();
+        zoneY = mod.getPlayer().blockPosition().getY();
         zoneZ = mod.getPlayer().blockPosition().getZ();
         zoneNow = mod.getWorld().getGameTime();
     }

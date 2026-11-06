@@ -23,6 +23,13 @@ public final class CombatRules {
     // at or below this (half hearts) in a fight we leave instead of trading blows. the one hp line: the commitment, the
     // chain's checks and the kill aura's shield gate all read this and nothing else
     public static final float FLEE_HEALTH = 8;
+    // which wither skeleton keeps a run from calling itself clear. healthy, only one coming for us: the one next floor up that
+    // never noticed is no reason to keep going. at the flee line a skeleton 10 blocks off is a skeleton 10 blocks off, noticed
+    // or not, and stopping to eat beside it is how the next swing gets its chance. RUN_CAP still ends the run either way
+    public static double runWither(float health, double nearestAngry, double nearestAny) {
+        return health <= FLEE_HEALTH ? nearestAny : nearestAngry;
+    }
+
     // the one exception, and it is a named one: a heavy hitter (hoglin, brute, vindicator...) lands 8 to 13
     // in one swing, so at 10 hp it is already "one hit from the respawn screen" and not a fight to start or to stay in.
     // nearly everything else hits for less than 8 (the wither skeleton is a plain fight with its own bail, see

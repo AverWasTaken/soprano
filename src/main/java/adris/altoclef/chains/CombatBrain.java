@@ -93,8 +93,8 @@ final class CombatBrain {
     private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
 
     // once a second is plenty, a pack doesn't go anywhere fast
-    private static final long HOGLIN_LOOK_TICKS = 20;
-    private long _hoglinLookAt = Long.MIN_VALUE / 2;
+    private static final long PACK_LOOK_TICKS = 20;
+    private long _packLookAt = Long.MIN_VALUE / 2;
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
@@ -270,7 +270,7 @@ final class CombatBrain {
     }
 
     void reset() {
-        _hoglinLookAt = Long.MIN_VALUE / 2;
+        _packLookAt = Long.MIN_VALUE / 2;
         _commit.reset();
         _lastRunEnd = Long.MIN_VALUE / 2;
         _ranSince = false;
@@ -377,22 +377,31 @@ final class CombatBrain {
     }
 
     // the walks keep off a pack they can see coming, nothing has to bite us first. by the time one is a foe we are in the pit with it
-    private void noteHoglinPack(AltoClef mod, LocalPlayer player, long now) {
-        if (now >= _hoglinLookAt && now - _hoglinLookAt < HOGLIN_LOOK_TICKS) return;
-        _hoglinLookAt = now;
-        List<double[]> spots = new ArrayList<>();
+    private void notePacks(AltoClef mod, LocalPlayer player, long now) {
+        if (now >= _packLookAt && now - _packLookAt < PACK_LOOK_TICKS) return;
+        _packLookAt = now;
+        List<double[]> hoglins = new ArrayList<>();
+        List<double[]> withers = new ArrayList<>();
         try {
             for (Hoglin hoglin : mod.getEntityTracker().getTrackedEntities(Hoglin.class)) {
                 // (a piglet of a hoglin runs from nothing and hits for nothing)
-                if (hoglin.isAlive() && !hoglin.isBaby()) spots.add(new double[]{hoglin.getX(), hoglin.getY(), hoglin.getZ()});
+                if (hoglin.isAlive() && !hoglin.isBaby()) hoglins.add(new double[]{hoglin.getX(), hoglin.getY(), hoglin.getZ()});
+            }
+            for (WitherSkeleton skeleton : mod.getEntityTracker().getTrackedEntities(WitherSkeleton.class)) {
+                if (skeleton.isAlive()) withers.add(new double[]{skeleton.getX(), skeleton.getY(), skeleton.getZ()});
             }
         } catch (ConcurrentModificationException ignored) {
             // the tracker rebuilds on another thread sometimes, there's another look in a second
         }
-        RunZones.Pack pack = RunZones.INSTANCE.newHoglinPack(spots, player.getX(), player.getY(), player.getZ(), now);
+        notePack("hoglin pack", hoglins, player, now);
+        notePack("wither pack ahead", withers, player, now);
+    }
+
+    private static void notePack(String what, List<double[]> spots, LocalPlayer player, long now) {
+        RunZones.Pack pack = RunZones.INSTANCE.newPack(spots, player.getX(), player.getY(), player.getZ(), now);
         if (pack == null) return;
-        RunZones.INSTANCE.add(pack.x(), pack.z(), now, RunZones.HOGLIN_RADIUS);
-        Debug.logInternal("zone: hoglin pack at " + Math.round(pack.x()) + "," + Math.round(pack.z()) + " n " + pack.count());
+        RunZones.INSTANCE.addFloor(pack.x(), pack.y(), pack.z(), now);
+        Debug.logInternal("zone: " + what + " at " + Math.round(pack.x()) + "," + Math.round(pack.y()) + "," + Math.round(pack.z()) + " n " + pack.count());
     }
 
     private static List<Mob> trackedBlazes(AltoClef mod) {
@@ -410,7 +419,7 @@ final class CombatBrain {
     }
 
     // same as below, only the ones actually coming for us (the same check that makes one a foe): a skeleton on the next floor
-    // that never noticed us is no reason to keep running
+    // that never noticed us is no reason to keep running. CombatRules.runWither says when that stops being good enough
     private double nearestAngryWither(AltoClef mod, LocalPlayer player) {
         double best = Double.POSITIVE_INFINITY;
         for (Mob mob : _crowdBlazes) {
@@ -453,7 +462,7 @@ final class CombatBrain {
             return;
         }
         countShots(player, now);
-        if (dimension == Dimension.NETHER) noteHoglinPack(mod, player, now);
+        if (dimension == Dimension.NETHER) notePacks(mod, player, now);
         EntityTracker tracker = mod.getEntityTracker();
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
@@ -507,7 +516,9 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             _commit.perchFacts(perchFacts(mod, player, mobs, foes, now));
-            _commit.angryWither(dimension == Dimension.NETHER ? nearestAngryWither(mod, player) : Double.POSITIVE_INFINITY);
+            _commit.angryWither(dimension == Dimension.NETHER
+                    ? CombatRules.runWither(player.getHealth(), nearestAngryWither(mod, player), nearestWither(player))
+                    : Double.POSITIVE_INFINITY);
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));

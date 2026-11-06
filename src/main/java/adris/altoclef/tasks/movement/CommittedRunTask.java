@@ -127,6 +127,13 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         return now < lastIssue || now - lastIssue >= REISSUE_GAP_TICKS;
     }
 
+    // a walled in run gets a partial path to the wall and goes nowhere: the commitment's corner rules make that a fight where we
+    // stand (or RUN_STUCK with nobody close). one pack at full hp is a fight, the run 24 blocks into a second pack is two
+    @Override
+    protected boolean keepsOffPacks() {
+        return true;
+    }
+
     @Override
     public boolean isFinished(AltoClef mod) {
         return false;

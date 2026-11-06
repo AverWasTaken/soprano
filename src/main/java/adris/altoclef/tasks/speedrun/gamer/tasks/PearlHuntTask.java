@@ -123,6 +123,7 @@ public class PearlHuntTask extends Task {
     // nether: the fights and the loot walks go where the endermen are, and a nether zone means nothing on overworld coordinates
     private volatile boolean zoneOn;
     private volatile int zoneX;
+    private volatile int zoneY;
     private volatile int zoneZ;
     private volatile long zoneNow;
     private volatile double zoneGoalX = Double.NaN;
@@ -343,8 +344,11 @@ public class PearlHuntTask extends Task {
         mod.getBehaviour().push();
         zoneOn = false;
         // (see RunZones for which zones never count as a wall: the one we stand in and the one the forest is in stay open)
-        mod.getBehaviour().avoidWalkingThrough(p -> zoneOn
-                && RunZones.INSTANCE.blocks(p.getX(), p.getZ(), zoneNow, zoneX, zoneZ, zoneGoalX, zoneGoalZ));
+        java.util.function.Predicate<BlockPos> packWall = p -> zoneOn
+                && RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, zoneGoalX, zoneGoalZ);
+        mod.getBehaviour().avoidWalkingThrough(packWall);
+        // and solid, see RunZones.blocksAt
+        mod.getBehaviour().avoidBlockBreaking(packWall);
     }
 
     @Override
@@ -1009,6 +1013,7 @@ public class PearlHuntTask extends Task {
             return null;
         }
         zoneX = mod.getPlayer().blockPosition().getX();
+        zoneY = mod.getPlayer().blockPosition().getY();
         zoneZ = mod.getPlayer().blockPosition().getZ();
         zoneNow = mod.getWorld().getGameTime();
         zoneGoalX = spot.x;
