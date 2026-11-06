@@ -43,6 +43,11 @@ final class StepRow extends Widget {
         List<String> waypoints();
 
         ShellContext ctx();
+
+        // the type-ahead's lists. fakes get nothing, so their boxes stay plain boxes
+        default IdLists ids() {
+            return IdLists.NONE;
+        }
     }
 
     enum Mark { NONE, NOW, DONE, FAIL }
@@ -94,6 +99,9 @@ final class StepRow extends Widget {
         }, ctx);
         item = new StepField(theme, "", StepField.Lead.ITEM, id -> host.item(id) != null, null);
         item.setOnChange(t -> put(row != null && row.kind == Kind.GOTO_BLOCK ? "block" : "item", t.trim()));
+        // the same box is equip's item and go to's block, so it asks which list at every key, not once
+        IdLists.attach(theme, item, ctx, (q, n) -> (row != null && row.kind == Kind.GOTO_BLOCK
+                ? host.ids().blocks() : host.ids().items()).find(q, n), null);
         secs = new StepField(theme, "5", StepField.Lead.NONE, null, null);
         secs.edit().setCharFilter(ch -> (ch >= '0' && ch <= '9') || ch == '.');
         secs.edit().setMaxLength(6);
@@ -134,10 +142,17 @@ final class StepRow extends Widget {
             // the rebuild kept this box (it is the same row widget), so it stays focused for the next item
             addField().setText("");
         });
+        // picking a row is the enter you would have pressed after typing it out
+        IdLists.attach(theme, add, ctx, (q, n) -> host.ids().items().find(q, n), id -> addField().commit());
     }
 
-    private StepField addField() {
+    StepField addField() {
         return add;
+    }
+
+    // equip's item and go to's block, for the tests
+    StepField itemField() {
+        return item;
     }
 
     private void put(String key, String value) {

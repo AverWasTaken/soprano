@@ -14,6 +14,8 @@ public class TextField extends Control implements FocusOnClick {
     private String placeholder;
     private final Consumer<String> onCommit;
     private Consumer<String> onChange;
+    private SuggestList suggest;
+    private boolean picking;
     private final Anim focusA = new Anim(0f);
     private float scrollX;
     private boolean dragging;
@@ -71,6 +73,29 @@ public class TextField extends Control implements FocusOnClick {
 
     public void setOnChange(Consumer<String> l) {
         onChange = l;
+    }
+
+    // the type-ahead under the box. SuggestList's constructor calls this, so a field only ever has the one
+    void setSuggest(SuggestList s) {
+        suggest = s;
+    }
+
+    public SuggestList suggest() {
+        return suggest;
+    }
+
+    // a row was picked: it replaces the whole text and goes through onChange like typing would, minus reopening
+    // the list that was just closed
+    void acceptSuggestion(String id) {
+        boolean wasPicking = picking;
+        picking = true;
+        try {
+            edit.setText(id == null ? "" : id);
+            scrollX = 0f;
+            edited(true);
+        } finally {
+            picking = wasPicking;
+        }
     }
 
     public void setInvalid(boolean v) {
@@ -132,6 +157,10 @@ public class TextField extends Control implements FocusOnClick {
         super.setFocused(f);
         if (!f) {
             dragging = false;
+            // focus going anywhere else (a click, tab, a pooled row rebound to another step) takes the list with it
+            if (suggest != null) {
+                suggest.close();
+            }
         }
         editFlag = true;
     }
@@ -156,6 +185,10 @@ public class TextField extends Control implements FocusOnClick {
         if (onChange != null) {
             String t = edit.text();
             Safe.run("text field change", () -> onChange.accept(t));
+        }
+        if (suggest != null && focused && !picking) {
+            String t = edit.text();
+            Safe.run("suggest update", () -> suggest.update(t));
         }
     }
 
@@ -266,6 +299,22 @@ public class TextField extends Control implements FocusOnClick {
         drawAdornments(c, f);
     }
 
+    // the list gets first say over the keys it moves on, the box keeps everything else. tab only arrives here while a
+    // list is open (the shell's hook), and with a modifier it's still focus cycling
+    private boolean suggestKey(int key, int mods) {
+        if (suggest.isOpen()) {
+            if (key == Keys.TAB && mods != 0) {
+                return false;
+            }
+            return Safe.test("suggest key", () -> suggest.key(key));
+        }
+        if (key == Keys.DOWN && !edit.text().isBlank()) {
+            String t = edit.text();
+            return Safe.test("suggest reopen", () -> suggest.reopen(t));
+        }
+        return false;
+    }
+
     // steady for half a second after you touch anything, then 530 on 530 off
     private boolean caretOn() {
         long since = now - lastEditNanos;
@@ -287,6 +336,9 @@ public class TextField extends Control implements FocusOnClick {
         // altgr arrives as ctrl+alt on windows, and ctrl+alt+a must type its accented letter, not select everything
         boolean ctrl = Keys.ctrl(mods) && !Keys.alt(mods);
         boolean shift = Keys.shift(mods);
+        if (suggest != null && suggestKey(key, mods)) {
+            return true;
+        }
         switch (key) {
             case Keys.ENTER, Keys.KP_ENTER -> {
                 editFlag = true;
@@ -302,7 +354,14 @@ public class TextField extends Control implements FocusOnClick {
                 edit.setText(revertText());
                 scrollX = 0f;
                 editFlag = true;
-                onTextChanged();
+                // going back to the old text is not typing, the list it just closed stays closed
+                boolean wasPicking = picking;
+                picking = true;
+                try {
+                    onTextChanged();
+                } finally {
+                    picking = wasPicking;
+                }
                 return true;
             }
             case Keys.BACKSPACE -> {

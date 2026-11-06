@@ -50,6 +50,8 @@ public class Shell extends Widget implements ShellContext {
     private Widget focused;
     private Widget overlay;
     private Runnable overlayOnClose;
+    // the floating layer, see ShellContext.showFloating. never in kids, so tab order and the tooltips don't see it
+    private Widget floating;
     private final TooltipLayer tips = new TooltipLayer(theme);
     private boolean closing;
     private boolean closeFired;
@@ -227,6 +229,10 @@ public class Shell extends Widget implements ShellContext {
 
     public Widget overlay() {
         return overlay;
+    }
+
+    public Widget floating() {
+        return floating;
     }
 
     public TooltipLayer tooltips() {
@@ -438,6 +444,8 @@ public class Shell extends Widget implements ShellContext {
         contentW = Math.max(0, w - sideW - 1);
         contentH = Math.max(0, y + h - bottomH() - contentY);
         commandBar.setBounds(x, y + h - bottomH(), w, cmdH);
+        // the panel moved or changed size: a list hanging under a box would now hang under nothing
+        closeFloating();
 
         placeContent(active);
         toast.setBounds(contentX, contentY, contentW, contentH);
@@ -512,6 +520,7 @@ public class Shell extends Widget implements ShellContext {
     public void dispose() {
         // an open popover's good draft is still a change the player made
         closeOverlay();
+        closeFloating();
         disposed = true;
         if (active >= 0 && active < tabs.size()) {
             Tab t = tabs.get(active);
@@ -527,6 +536,7 @@ public class Shell extends Widget implements ShellContext {
         }
         blur();
         closeOverlay();
+        closeFloating();
         Tab old = tabs.get(active);
         Safe.run("tab hidden", old::onHidden);
         active = i;
@@ -645,6 +655,7 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public void openOverlay(Widget w, Runnable onClose) {
         closeOverlay();
+        closeFloating();
         overlay = w;
         overlayOnClose = onClose;
         w.setVisible(true);
@@ -663,6 +674,39 @@ public class Shell extends Widget implements ShellContext {
                 Safe.run("overlay closed", r);
             }
         }
+    }
+
+    @Override
+    public void showFloating(Widget w) {
+        if (w == null) {
+            return;
+        }
+        if (floating != null && floating != w) {
+            closeFloating();
+        }
+        floating = w;
+        tips.dismiss();
+    }
+
+    @Override
+    public void hideFloating(Widget w) {
+        if (floating == w) {
+            floating = null;
+        }
+    }
+
+    // takes the floating thing down. a SuggestList gets told so its field stops thinking it's open
+    private void closeFloating() {
+        Widget fl = floating;
+        floating = null;
+        if (fl instanceof SuggestList sl) {
+            Safe.run("floating close", sl::close);
+        }
+    }
+
+    private boolean floatingUp() {
+        Widget fl = floating;
+        return fl != null && fl.visible();
     }
 
     @Override
@@ -723,6 +767,14 @@ public class Shell extends Widget implements ShellContext {
         Widget o = overlay;
         if (o != null && o.visible()) {
             Safe.run("overlay draw", () -> o.draw(drawTarget(c, a), f));
+        }
+        Widget fl = floating;
+        if (fl != null && fl.visible()) {
+            if (fl instanceof SuggestList sl) {
+                // the content area and the command bar under it, never the header with the search in it
+                sl.setRoom(x, contentY, x + w, y + h - statusH);
+            }
+            Safe.run("floating draw", () -> fl.draw(drawTarget(c, a), f));
         }
         // last, over everything, and draw only: it never sees input, so it cannot close a popover
         if (!closing) {
@@ -937,10 +989,22 @@ public class Shell extends Widget implements ShellContext {
             if (o != null && o.visible()) {
                 o.mouseMove(mx, my);
             }
-            hoverTab = tabAt(mx, my);
-            Widget deepest = super.mouseMove(mx, my);
+            Widget fl = floating;
+            boolean overFloating = false;
+            if (fl != null && fl.visible()) {
+                overFloating = fl.mouseMove(mx, my) != null;
+            }
+            // the page under the list still gets its move, just from nowhere, so nothing under the list lights up
+            float px = overFloating ? -1e6f : mx;
+            float py = overFloating ? -1e6f : my;
+            hoverTab = tabAt(px, py);
+            Widget deepest = super.mouseMove(px, py);
+            if (overFloating) {
+                deepest = fl;
+            }
             // with an overlay up only its own controls can have tips, the page under it is not what you are pointing at
-            Widget tip = o != null && o.visible() ? TooltipLayer.find(o, mx, my) : TooltipLayer.find(kids.get(0), mx, my);
+            Widget tip = o != null && o.visible() ? TooltipLayer.find(o, mx, my)
+                    : overFloating ? null : TooltipLayer.find(kids.get(0), mx, my);
             tips.track(tip, lastNow);
             return deepest;
         } catch (Throwable t) {
@@ -974,6 +1038,12 @@ public class Shell extends Widget implements ShellContext {
                     // the click that dismisses a popup does nothing else, or clicking the dropdown again would reopen it
                     closeOverlay();
                 }
+                return true;
+            }
+            // a click on the list picks and nothing else: no retarget, the box keeps its caret
+            Widget fl = floating;
+            if (fl != null && fl.visible() && fl.contains(mx, my)) {
+                fl.mouseDown(mx, my, button, mods);
                 return true;
             }
             if (!contains(mx, my)) {
@@ -1082,6 +1152,15 @@ public class Shell extends Widget implements ShellContext {
                 o.scroll(mx, my, dy);
                 return true;
             }
+            Widget fl = floating;
+            if (fl != null && fl.visible()) {
+                if (fl.contains(mx, my)) {
+                    fl.scroll(mx, my, dy);
+                    return true;
+                }
+                // the wheel anywhere else moves what the list is hanging off, so the list goes
+                closeFloating();
+            }
             return super.scroll(mx, my, dy);
         } catch (Throwable t) {
             Safe.report("shell scroll", t);
@@ -1159,6 +1238,11 @@ public class Shell extends Widget implements ShellContext {
         }
         suppressedKey = -2;
         if (key == Keys.TAB) {
+            // an open type-ahead gets tab first: it picks the lit row. nothing lit and it's focus cycling as ever
+            Widget f = focused;
+            if (floatingUp() && f != null && Safe.test("tab to floating", () -> f.keyDown(key, mods))) {
+                return true;
+            }
             cycleFocus(Keys.shift(mods));
             return true;
         }

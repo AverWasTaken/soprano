@@ -85,6 +85,20 @@ public final class DeferredContext implements ShellContext {
     }
 
     @Override
+    public void showFloating(Widget w) {
+        if (real != null) {
+            real.showFloating(w);
+        }
+    }
+
+    @Override
+    public void hideFloating(Widget w) {
+        if (real != null) {
+            real.hideFloating(w);
+        }
+    }
+
+    @Override
     public void requestClose() {
         if (real != null) {
             real.requestClose();

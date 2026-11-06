@@ -58,6 +58,10 @@ final class NodeEditor extends Widget implements NodeCanvas.Model, NodeCanvas.Li
 
         ItemEntry item(String id);
 
+        default IdLists ids() {
+            return IdLists.NONE;
+        }
+
         List<String> waypoints();
 
         // every routine and graph, for name clashes and the Run routine node's picker
@@ -650,6 +654,11 @@ final class NodeEditor extends Widget implements NodeCanvas.Model, NodeCanvas.Li
     @Override
     public ItemEntry item(String id) {
         return host.item(id);
+    }
+
+    @Override
+    public IdLists ids() {
+        return host.ids();
     }
 
     @Override

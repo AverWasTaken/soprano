@@ -26,6 +26,7 @@ import adris.altoclef.ui.gui.kit.NodeCard;
 import adris.altoclef.ui.gui.kit.Scroller;
 import adris.altoclef.ui.gui.kit.Segmented;
 import adris.altoclef.ui.gui.kit.ShellContext;
+import adris.altoclef.ui.gui.kit.SuggestList;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TextWrap;
 import adris.altoclef.ui.gui.kit.Theme;
@@ -56,6 +57,10 @@ final class NodeInspector extends Widget {
         ShellContext ctx();
 
         ItemEntry item(String id);
+
+        default IdLists ids() {
+            return IdLists.NONE;
+        }
 
         List<String> waypoints();
 
@@ -295,7 +300,7 @@ final class NodeInspector extends Widget {
             }
             case "ITEM", "BLOCK" -> {
                 label(labelOf(n, f));
-                parts.add(new RowPart(flex(itemBox(value, HINTS.getOrDefault(key, ""), v -> set(id, f.key(), v)))));
+                parts.add(new RowPart(flex(itemBox(f.kind(), value, HINTS.getOrDefault(key, ""), v -> set(id, f.key(), v)))));
             }
             case "ROUTINE" -> {
                 label(labelOf(n, f));
@@ -306,7 +311,7 @@ final class NodeInspector extends Widget {
             // COORD, MOB, PLAYER and anything nobody's heard of yet: a text box still edits it
             default -> {
                 label(labelOf(n, f));
-                parts.add(new RowPart(flex(text(value, HINTS.getOrDefault(key, ""), v -> set(id, f.key(), v)))));
+                parts.add(new RowPart(flex(suggest(text(value, HINTS.getOrDefault(key, ""), v -> set(id, f.key(), v)), f.kind()))));
             }
         }
     }
@@ -325,8 +330,18 @@ final class NodeInspector extends Widget {
         return box(value, hint, StepField.Lead.NONE, onChange);
     }
 
-    private StepField itemBox(String value, String hint, Consumer<String> onChange) {
-        return box(value, hint, StepField.Lead.ITEM, v -> onChange.accept(v.trim().toLowerCase(Locale.ROOT)));
+    private StepField itemBox(String kind, String value, String hint, Consumer<String> onChange) {
+        return suggest(box(value, hint, StepField.Lead.ITEM, v -> onChange.accept(v.trim().toLowerCase(Locale.ROOT))), kind);
+    }
+
+    // hangs the type-ahead off a box whose kind has a list (items, blocks, mobs, players). a read only box has
+    // nothing to type into, so it gets none
+    private StepField suggest(StepField f, String kind) {
+        SuggestList.Source s = host.ids().forKind(kind);
+        if (s != null && !host.readOnly()) {
+            IdLists.attach(theme, f, ctx(), s, null);
+        }
+        return f;
     }
 
     private StepField box(String value, String hint, StepField.Lead lead, Consumer<String> onChange) {
@@ -474,7 +489,7 @@ final class NodeInspector extends Widget {
             }
             case EQUIP -> {
                 label("Item to hold");
-                parts.add(new RowPart(flex(itemBox(row.get("item"), "Like diamond_sword", v -> {
+                parts.add(new RowPart(flex(itemBox("ITEM", row.get("item"), "Like diamond_sword", v -> {
                     row.f.put("item", v);
                     commitLine(id, row);
                 }))));
@@ -510,7 +525,7 @@ final class NodeInspector extends Widget {
         switch (row.kind) {
             case GOTO_BLOCK -> {
                 label("Block");
-                parts.add(new RowPart(flex(itemBox(row.get("block"), "Like crafting_table", v -> {
+                parts.add(new RowPart(flex(itemBox("BLOCK", row.get("block"), "Like crafting_table", v -> {
                     row.f.put("block", v);
                     commitLine(id, row);
                 }))));
@@ -740,7 +755,7 @@ final class NodeInspector extends Widget {
                 switch (f.kind() == null ? "" : f.kind()) {
                     case "ITEM", "BLOCK" -> {
                         String what = "BLOCK".equals(f.kind()) ? "Block" : "Item";
-                        cur.add(flex(itemBox(value, what + ", like oak_log", put)));
+                        cur.add(flex(itemBox(f.kind(), value, what + ", like oak_log", put)));
                         wide = true;
                     }
                     case "OP" -> cur.add(fixed(op(f, value, put), OP_W));
@@ -775,7 +790,7 @@ final class NodeInspector extends Widget {
                         wide = true;
                     }
                     default -> {
-                        cur.add(flex(text(value, title(f.label().toLowerCase(Locale.ROOT)), put)));
+                        cur.add(flex(suggest(text(value, title(f.label().toLowerCase(Locale.ROOT)), put), f.kind())));
                         wide = true;
                     }
                 }
@@ -1244,6 +1259,9 @@ final class NodeInspector extends Widget {
                 structure();
             });
             add.setEditable(!host.readOnly());
+            if (!host.readOnly()) {
+                IdLists.attach(theme, add, ctx(), host.ids().items(), picked -> addField().commit());
+            }
             sync();
         }
 

@@ -35,6 +35,11 @@ final class RoutineEditor extends Widget implements StepRow.Host {
 
         ItemEntry item(String id);
 
+        // what the id boxes suggest while you type
+        default IdLists ids() {
+            return IdLists.NONE;
+        }
+
         List<String> waypoints();
 
         List<Routine> all();
@@ -209,6 +214,11 @@ final class RoutineEditor extends Widget implements StepRow.Host {
     @Override
     public ItemEntry item(String id) {
         return listener.item(id);
+    }
+
+    @Override
+    public IdLists ids() {
+        return listener.ids();
     }
 
     @Override

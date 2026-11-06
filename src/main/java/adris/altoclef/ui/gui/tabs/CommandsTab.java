@@ -51,6 +51,7 @@ public final class CommandsTab implements Tab, RoutineListRow.Host, RoutineEdito
 
     private final Theme theme;
     private final BotFacade facade;
+    private final IdLists ids;
     private final ShellContext ctx;
     private final Button newBtn;
     private final RoutineList list;
@@ -91,6 +92,7 @@ public final class CommandsTab implements Tab, RoutineListRow.Host, RoutineEdito
         this.facade = facade;
         this.ctx = ctx;
         this.session = session;
+        ids = new IdLists(facade);
         newBtn = new Button(theme, "New", Button.Kind.SECONDARY, Icon.PLUS, this::newRoutine);
         list = new RoutineList();
         editor = new RoutineEditor(theme, ctx, this);
@@ -659,6 +661,12 @@ public final class CommandsTab implements Tab, RoutineListRow.Host, RoutineEdito
         }
         poll();
         open(all.isEmpty() ? null : all.get(0));
+    }
+
+    // one set of type-ahead lists for the list editor and the node inspector both
+    @Override
+    public IdLists ids() {
+        return ids;
     }
 
     @Override

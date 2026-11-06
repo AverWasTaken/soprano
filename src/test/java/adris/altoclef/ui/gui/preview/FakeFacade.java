@@ -318,6 +318,7 @@ public final class FakeFacade implements BotFacade {
     public final class FakeItems implements ItemsAccess {
         public final List<ItemEntry> gettable = new ArrayList<>();
         public final List<ItemEntry> mineable = new ArrayList<>();
+        public final List<ItemEntry> mobs = new ArrayList<>();
 
         FakeItems() {
             String[] g = {"oak_log", "oak_planks", "stick", "crafting_table", "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe",
@@ -341,6 +342,15 @@ public final class FakeFacade implements BotFacade {
             for (String s : m) {
                 mineable.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s, 64));
             }
+            for (String s : new String[]{"blaze", "cow", "creeper", "enderman", "pig", "sheep", "skeleton", "spider",
+                    "zombie", "zombie_villager", "zombified_piglin"}) {
+                mobs.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s + "_spawn_egg", 1, "Mobs"));
+            }
+        }
+
+        @Override
+        public List<ItemEntry> mobs() {
+            return mobs;
         }
 
         @Override

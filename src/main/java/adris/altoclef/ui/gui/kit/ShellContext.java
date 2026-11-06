@@ -35,6 +35,16 @@ public interface ShellContext {
 
     void closeOverlay();
 
+    // the floating layer: a thing drawn over everything that never takes the keyboard (the type-ahead under an id
+    // box). it gets clicks and the wheel while the pointer is on it, the keys stay with whoever has focus. one at a
+    // time, a new one replaces the old. fakes that draw nothing can ignore both
+    default void showFloating(Widget w) {
+    }
+
+    // only takes w down if w is still the one up, so a list closing late can't knock out its replacement
+    default void hideFloating(Widget w) {
+    }
+
     void requestClose();
 
     // a tab's own key capture changed the open key: the shell must treat it as the close key from now on and
