@@ -43,4 +43,12 @@ public class ShedTallyTest {
         t.thrown();
         assertTrue(t.sayStuck());
     }
+
+    @Test
+    public void oneFreeSlotStillWantsAThrow() {
+        assertTrue(ShedTally.wanted(0));
+        assertTrue(ShedTally.wanted(1));
+        assertFalse(ShedTally.wanted(2));
+        assertEquals(2, ShedTally.FREE);
+    }
 }

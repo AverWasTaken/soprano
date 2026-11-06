@@ -976,8 +976,11 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             if (_handSaid && !handIsATool && !held.isEmpty()) {
                 setDebugState("Block in range, mining... (swinging " + ToolPick.nameOf(held) + ")");
             }
+            // shears on a leaf during the bed errand (ToolPick.holdShearsOffLeaves) go even though the leaf goes in one swing,
+            // that swing is what drops the leaf into the bag
+            boolean shearsOff = ToolPick.leafShearsOff(held, state);
             // a block that goes in one swing doesn't care what is in the hand
-            if (bestToolSlot.isPresent() && !crackedAlready && !breaksInstantly(mod, swingAt)) {
+            if (bestToolSlot.isPresent() && !crackedAlready && (shearsOff || !breaksInstantly(mod, swingAt))) {
                 ItemStack best = StorageHelper.getItemStackInSlot(bestToolSlot.get());
                 double heldSpeed = ToolSet.calculateSpeedVsBlock(held, state);
                 double bestSpeed = ToolSet.calculateSpeedVsBlock(best, state);
@@ -986,7 +989,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // obsidian) has to be strictly faster than the hand, "the hand is wrong too" is not a reason to swap
                 // (or the other way round, the wear chain wants a slower tool that is next to die. decided once per block, the
                 // crackedAlready guard above keeps it from swapping out from under a half broken one)
-                boolean faster = ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
+                boolean faster = shearsOff || ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
                         && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed);
                 boolean chained = !faster && Baritone.settings().toolWearChain.value
                         && ToolSwap.worthSwappingDown(held.getItem(), ToolPick.optionOf(held, state), best.getItem(), ToolPick.optionOf(best, state));
@@ -1018,7 +1021,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     _toolSwap.landed();
                 }
             }
-            if (bestToolSlot.isEmpty() && !combatHolds && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && !breaksInstantly(mod, swingAt)) {
+            if (bestToolSlot.isEmpty() && !combatHolds && net.minecraft.client.Minecraft.getInstance().gui.screen() == null && !crackedAlready && held.isDamageableItem() && (shearsOff || !breaksInstantly(mod, swingAt))) {
                 // no tool in the bag beats the hand here, so the pick in it is only taking wear
                 var inv = mod.getPlayer().getInventory().getNonEquipmentItems();
                 boolean[] empty = new boolean[9];
@@ -1030,6 +1033,20 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 int calm = MineStick.calmSlot(empty, damageable, mod.getPlayer().getInventory().getSelectedSlot());
                 if (calm >= 0) {
                     mod.getClientBaritone().getInventoryBehavior().selectHotbar(calm, "destroy");
+                }
+            }
+            // still the shears on a leaf: the swap gave up, or a bar of nothing but tools left calmSlot with no answer. any other
+            // slot on the bar does, the leaf stays air either way
+            if (shearsOff && !combatHolds) {
+                var bar = mod.getPlayer().getInventory().getNonEquipmentItems();
+                int selected = mod.getPlayer().getInventory().getSelectedSlot();
+                boolean[] shearsAt = new boolean[9];
+                for (int i = 0; i < 9; i++) {
+                    shearsAt[i] = ToolPick.leafShearsOff(bar.get(i), state);
+                }
+                int other = ToolPick.slotWithoutShears(shearsAt, selected);
+                if (other >= 0 && other != selected) {
+                    mod.getClientBaritone().getInventoryBehavior().selectHotbar(other, "destroy");
                 }
             }
             // holding on an old look: the crosshair might be on the dirt in front now, and cracking that is the exact thing

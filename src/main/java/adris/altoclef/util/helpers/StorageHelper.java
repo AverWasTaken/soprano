@@ -397,9 +397,10 @@ public class StorageHelper {
             return new Room(d, slot, getItemStackInSlot(slot.get()).copy());
         }
 
-        // a full bag the bed errand wants a slot in, no drop in sight (DropRoom.shed). same throw as a room() EVICT, or NO
-        public Room shed() {
-            int i = DropRoom.shed(_pick, victims());
+        // a full bag the bed errand wants a slot in, no drop in sight (DropRoom.shed). same throw as a room() EVICT, or NO.
+        // blockFloor = the End gate's minBuildBlocks
+        public Room shed(int blockFloor) {
+            int i = DropRoom.shed(_pick, victims(), blockFloor);
             if (i < 0) {
                 return new Room(DropRoom.Decision.NO, Optional.empty(), null);
             }
@@ -420,7 +421,9 @@ public class StorageHelper {
                         || (stack.has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)
                         || (units > 0 && GarbageRules.keepsFood(_foodUnits, units, _floor));
                 boolean build = item instanceof BlockItem && (isThrowaway(item) || ItemHelper.isCoreBuildBlock(item));
-                out.add(new DropRoom.Stack(stack, stack.isEmpty() ? ItemValue.REST : ItemValue.tierOf(_mod, stack, false), keep, build));
+                // the gate's count, MinecraftFacts.buildBlocks asks the same two
+                boolean gate = AltoSettings.isBuildBlock(item) && AltoSettings.isThrowaway(item);
+                out.add(new DropRoom.Stack(stack, stack.isEmpty() ? ItemValue.REST : ItemValue.tierOf(_mod, stack, false), keep, build, gate));
             }
             return out;
         }

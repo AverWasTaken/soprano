@@ -39,6 +39,7 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.DropRoom;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.ToolPick;
 import adris.altoclef.util.helpers.WaterUpkeep;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -460,7 +461,9 @@ public class EndPrepPhase implements PhaseHandler {
     // the one search and it always has a next step: wool in the bag gets crafted, a known bed gets broken however far off it is, and
     // with neither CollectWoolTask finds sheep (its wander does the exploring). a village or a sheep is out there, we just keep walking
     private Task bedErrand(AltoClef mod, GamerContext ctx, int lacking) {
-        Task shed = shedForBeds(mod);
+        // the logs for the craft are up a tree and every sheared leaf is a slot gone
+        ToolPick.holdShearsOffLeaves();
+        Task shed = shedForBeds(mod, ctx.cfg().end);
         if (shed != null) {
             return shed;
         }
@@ -506,10 +509,11 @@ public class EndPrepPhase implements PhaseHandler {
         }
     }
 
-    // beds don't stack, so every one the errand finds needs a slot of its own and a full bag means it never lands. one stack out, then
-    // back to the errand. no clock on any of this, the tally bounds the throws and only the throws
-    private Task shedForBeds(AltoClef mod) {
-        if (StorageHelper.freeBagSlots(mod) > 0) {
+    // beds don't stack, so every one the errand finds needs a slot of its own and a full bag means it never lands. stacks out until
+    // ShedTally.FREE slots are, then back to the errand. no clock on any of this, the tally bounds the throws and only the throws
+    private Task shedForBeds(AltoClef mod, EndConfig cfg) {
+        int free = StorageHelper.freeBagSlots(mod);
+        if (!ShedTally.wanted(free)) {
             return null;
         }
         // stopping the craft task clicks whatever's on the cursor out of the window, kept or not. the craft puts it down by itself
@@ -523,9 +527,10 @@ public class EndPrepPhase implements PhaseHandler {
             return null;
         }
         StorageHelper.GarbageView view = StorageHelper.garbageView(mod);
-        StorageHelper.Room room = view.shed();
+        StorageHelper.Room room = view.shed(cfg.minBuildBlocks);
         if (room.kind() != DropRoom.Kind.EVICT) {
-            if (_shed.sayStuck()) {
+            // one slot still takes a bed, that's only worth a line when the bag is really full
+            if (free == 0 && _shed.sayStuck()) {
                 Debug.logInternal("endprep: full bag and nothing may go for beds: " + view.dump());
             }
             return null;

@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +28,14 @@ public final class DropRoom {
     }
 
     // one bag stack for the victim pick. keep is the world's never (worn or wearable armor, enchanted or named, the
-    // important list, food under the floor). build = a block we bridge with
-    public record Stack(ItemStack stack, int tier, boolean keep, boolean build) {
+    // important list, food under the floor). build = a block we bridge with. gate = END_PREP's block count sees it
+    // (AltoSettings.isBuildBlock and a throwaway, same as the facts), the shed won't throw below that gate
+    public record Stack(ItemStack stack, int tier, boolean keep, boolean build, boolean gate) {
+        // no word on the gate means a build stack counts. the safe guess, a shed that thinks it may throw the gate's blocks
+        // sends END_PREP back to dig them up
+        public Stack(ItemStack stack, int tier, boolean keep, boolean build) {
+            this(stack, tier, keep, build, build);
+        }
     }
 
     private DropRoom() {
@@ -97,13 +104,54 @@ public final class DropRoom {
         return build >= 0 ? build : plain;
     }
 
-    // the bed errand's full bag and nobody else's: a bed in the bag is worth more than a pearl's victim list will give up. the garbage
-    // pick, then whatever a core drop could push out, then the late list. -1 = nothing may go. a pick that's somebody's keep doesn't
-    // count, the throw would refuse a reserved bed and we'd sit there asking again
-    public static int shed(int garbagePick, List<Stack> bag) {
-        if (garbagePick >= 0 && !bag.get(garbagePick).keep()) return garbagePick;
-        int v = victim(bag);
-        return v >= 0 ? v : late(bag);
+    // the bed errand's full bag and nobody else's: a bed in the bag is worth more than a pearl's victim list will give up. the
+    // biggest build stack the gate can spare, then the garbage pick, then whatever a core drop could push out, then the late list.
+    // -1 = nothing may go. the errand's own stuff (logs, planks, wool, beds) never goes: the garbage pick happily calls a single
+    // log junk, and that log is exactly what the bed craft is short of. blockFloor = the gate's minBuildBlocks. a pick that's
+    // somebody's keep doesn't count, the throw would refuse a reserved bed and we'd sit there asking again
+    public static int shed(int garbagePick, List<Stack> bag, int blockFloor) {
+        List<Stack> held = errandHolds(bag, blockFloor);
+        int big = biggestBuild(held);
+        if (big >= 0) return big;
+        if (garbagePick >= 0 && !held.get(garbagePick).keep()) return garbagePick;
+        int v = victim(held);
+        return v >= 0 ? v : late(held);
+    }
+
+    // the bag with the errand's stuff and the gate's last blocks marked keep, so victim and late don't need to know about beds
+    static List<Stack> errandHolds(List<Stack> bag, int blockFloor) {
+        int gateBlocks = 0;
+        for (Stack s : bag) {
+            if (s.gate() && !s.stack().isEmpty()) gateBlocks += s.stack().getCount();
+        }
+        List<Stack> out = new ArrayList<>(bag.size());
+        for (Stack s : bag) {
+            ItemStack st = s.stack();
+            boolean hold = !st.isEmpty() && (forTheBeds(st.getItem()) || s.gate() && gateBlocks - st.getCount() < blockFloor);
+            out.add(hold && !s.keep() ? new Stack(st, s.tier(), true, s.build(), s.gate()) : s);
+        }
+        return out;
+    }
+
+    // a whole stack of cobble frees the same slot a lone leaf does and we'd rather keep the leaf's worth. biggest first, the bag
+    // order breaks ties
+    private static int biggestBuild(List<Stack> bag) {
+        Map<Item, Integer> stacks = new HashMap<>();
+        for (Stack s : bag) {
+            if (!s.stack().isEmpty()) stacks.merge(s.stack().getItem(), 1, Integer::sum);
+        }
+        int best = -1;
+        for (int i = 0; i < bag.size(); i++) {
+            Stack s = bag.get(i);
+            if (s.stack().isEmpty() || !s.build() || never(s, stacks)) continue;
+            if (best < 0 || s.stack().getCount() > bag.get(best).stack().getCount()) best = i;
+        }
+        return best;
+    }
+
+    // what the bed errand turns into beds, or is
+    public static boolean forTheBeds(Item item) {
+        return isBed(item) || isWool(item) || in(ItemHelper.LOG, item) || in(ItemHelper.PLANKS, item);
     }
 
     // kit nothing else lets go of, cheapest to lose first. the bucket isn't here, the gate counts it. a furnace only goes when
@@ -190,15 +238,16 @@ public final class DropRoom {
     }
 
     public static boolean isBed(Item item) {
-        for (Item b : ItemHelper.BED) {
-            if (b == item) return true;
-        }
-        return false;
+        return in(ItemHelper.BED, item);
     }
 
     private static boolean isWool(Item item) {
-        for (Item w : ItemHelper.WOOL) {
-            if (w == item) return true;
+        return in(ItemHelper.WOOL, item);
+    }
+
+    private static boolean in(Item[] items, Item item) {
+        for (Item i : items) {
+            if (i == item) return true;
         }
         return false;
     }
