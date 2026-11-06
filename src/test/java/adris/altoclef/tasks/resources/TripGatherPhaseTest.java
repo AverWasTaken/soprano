@@ -10,24 +10,26 @@ public class TripGatherPhaseTest {
 
     @Test
     public void noPickaxeAndDirtAroundMeansDirtByHand() {
-        assertFalse(TripGatherTask.wide(false, false, true, false));
+        assertFalse(TripGatherTask.wide(false, true, false));
     }
 
     @Test
     public void noPickaxeAndNoDirtLeftMeansTheTreeAndTheStone() {
-        assertTrue(TripGatherTask.wide(false, false, true, true));
+        assertTrue(TripGatherTask.wide(false, true, true));
         // netherrack only, nothing comes out by hand
-        assertTrue(TripGatherTask.wide(false, false, false, false));
+        assertTrue(TripGatherTask.wide(false, false, false));
     }
 
     @Test
-    public void aPickaxeMeansWhateverIsNearest() {
-        assertTrue(TripGatherTask.wide(false, true, true, false));
+    public void aPickaxeStillDigsTheGrassFirst() {
+        // holding a pickaxe doesn't make far off cobble quicker than the dirt we're standing on.
+        // wide() doesn't even ask about the pickaxe anymore, same answer as the no pickaxe case
+        assertFalse(TripGatherTask.wide(false, true, false));
     }
 
     @Test
     public void onceWideItStaysWide() {
         // the pickaxe broke and dirt showed up again, still not going back
-        assertTrue(TripGatherTask.wide(true, false, true, false));
+        assertTrue(TripGatherTask.wide(true, true, false));
     }
 }
