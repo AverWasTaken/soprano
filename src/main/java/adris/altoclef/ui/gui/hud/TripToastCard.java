@@ -305,16 +305,9 @@ public final class TripToastCard {
         }
     }
 
-    // hud.css .glass: the panel colour at 80% (84% light), the kit hairline at half, a one px light line along the top
-    // edge and the soft shadow. no blur, the world behind is moving and a blur pass every frame is not worth it
+    // the status panel wears the same glass, so it lives in HudGlass now
     private void glass(Canvas g, float gx, float gy, float gw, float gh) {
-        boolean dark = theme.dark();
-        float r = theme.pxf(Theme.CARD_RADIUS);
-        g.shadow(gx, gy, gw, gh, r, Theme.fade(theme.color(Theme.SHADOW), 0.5f));
-        g.fillRoundRect(gx, gy, gw, gh, r, Theme.fade(theme.color(Theme.PANEL), dark ? 0.80f : 0.84f));
-        g.strokeRoundRect(gx, gy, gw, gh, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.5f));
-        int line = dark ? 0x1AFFFFFF : 0xA6FFFFFF;
-        g.fillRect(gx + r, gy, gw - 2 * r, 1, line);
+        HudGlass.draw(g, theme, gx, gy, gw, gh, theme.pxf(Theme.CARD_RADIUS));
     }
 
     private void drawTile(Canvas g, TripToast.View v, float tx, float ty) {

@@ -24,6 +24,8 @@
     "MixinAltoClefScreen",
     "MixinBlockItem",
     "MixinBlockStateBase",
+    "MixinBossHealthOverlay",
+    "MixinChatComponent",
     "MixinChatScreenToast",
     "MixinChunkArray",
     "MixinClientChunkProvider",

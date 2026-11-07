@@ -7,7 +7,6 @@ import adris.altoclef.ui.gui.hud.TripToastCard;
 import adris.altoclef.ui.gui.kit.Anim;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Safe;
-import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import baritone.Baritone;
 import baritone.api.BaritoneAPI;
@@ -35,11 +34,8 @@ public final class TripToastHud {
     private static int errors;
     private static boolean broken;
 
-    // the atlases get built once on a scheduled task, never inside the hud extract (rasterising inter is the slow part),
-    // and a failure is kept: McAtlases.get() would try again every call
-    private static boolean built;
+    // the atlases come from HudAtlases (shared with the status panel), built on a scheduled task, never in the hud extract
     private static boolean building;
-    private static McAtlases atlases;
     private static KitSurface surface;
     private static TripToastCard card;
     private static float surfaceScale;
@@ -196,42 +192,16 @@ public final class TripToastHud {
     }
 
     private static void build(float scale) {
-        if (!built) {
-            built = true;
-            McAtlases at = null;
-            try {
-                at = McAtlases.get();
-            } catch (Throwable t) {
-                Safe.report("trip toast atlases", t);
-            }
-            // not ok is kept as is: KitSurface draws with vanilla's font and plain fills, and nobody asks again
-            atlases = at;
-        }
-        KitSurface s = new KitSurface(scale, atlases);
+        KitSurface s = new KitSurface(scale, HudAtlases.get());
         TripToastCard c = new TripToastCard(s.theme);
         if (card != null) {
             // a resize or a new hud size mid question is the same toast, not a new one sliding in with a second whoosh
             c.adopt(card);
         }
-        prewarm(c);
+        HudAtlases.prewarm(c.styles());
         surface = s;
         card = c;
         surfaceScale = scale;
-    }
-
-    // the card's own sizes are not the theme's, put their glyphs in the atlas now and not on the first frame
-    private static void prewarm(TripToastCard c) {
-        if (atlases == null || !atlases.ok) {
-            return;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (char ch = 32; ch < 127; ch++) {
-            sb.append(ch);
-        }
-        String ascii = sb.toString();
-        for (TextStyle st : c.styles()) {
-            atlases.glyphs.shape(ascii, st);
-        }
     }
 
     private static void playIn(Minecraft mc) {

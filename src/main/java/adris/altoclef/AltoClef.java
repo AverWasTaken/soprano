@@ -13,6 +13,7 @@ import adris.altoclef.trackers.*;
 import adris.altoclef.trackers.storage.ContainerSubTracker;
 import adris.altoclef.trackers.storage.ItemStorageTracker;
 import adris.altoclef.ui.CommandStatusOverlay;
+import adris.altoclef.ui.gui.mc.StatusPanelHud;
 import adris.altoclef.ui.GamerHudOverlay;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
@@ -255,13 +256,12 @@ public class AltoClef {
 
     // Called from Soprano's hud extract mixin at the end of every frame
     public void onClientRenderOverlay(GuiGraphicsExtractor graphics) {
-        // nothing of ours on screen unless we are the ones driving
-        if (_taskRunner.isActive()) {
-            _commandStatusOverlay.render(this, graphics);
-        }
         // not behind the check: after a win the runner is idle and the card is still up for a while. it works out for itself when
-        // there is nothing to draw
+        // there is nothing to draw. first, so the status panel knows where it went (HudObstacles)
         _gamerHudOverlay.render(this, graphics);
+        // the tree only has lines while we are the ones driving, but it gets called either way so it can show its idle
+        // pill for a moment after the last task. its own guard: a throw in there turns the panel off, not this whole hud
+        StatusPanelHud.guard("status panel", () -> _commandStatusOverlay.render(this, graphics, _taskRunner.isActive()));
     }
 
     public GamerHudOverlay getGamerHudOverlay() {
