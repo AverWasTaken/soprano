@@ -823,6 +823,39 @@ public final class WorkbenchRules {
 
     // ---- rule 6: a phase may end
 
+    // what a respawn leaves behind: everything in the dimension we woke up in that is past the forget line. decide() keeps a bench
+    // with our stuff in it however far (the job is what brings us back), which is right on a long walk and wrong after a death: a
+    // respawn can be a thousand blocks from the last life's smoker, and a phase budget spent walking to five porkchop is a phase
+    // lost. respawn only on purpose, a per tick cap would drop iron jobs a long walk is meant to come back for. other dimensions are
+    // left alone, the nether furnaces are still on the way back in. `pile` (null = none) is a death spot in this dimension we are
+    // walking back to: a station near it is on that walk, so it stays, the recovery can grab the iron while it is there
+    public record LeftBehind(List<Bench> benches, List<RunState.FurnaceJob> jobs) {
+    }
+
+    public static LeftBehind farAfterRespawn(Collection<Bench> benches, Collection<RunState.FurnaceJob> jobs, String dimension,
+                                             double x, double y, double z, RunState.Pos pile) {
+        List<Bench> farBenches = new java.util.ArrayList<>();
+        for (Bench b : benches) {
+            if (b.dimension.equals(dimension) && leftBehind(b.pos, x, y, z, pile)) {
+                farBenches.add(b);
+            }
+        }
+        List<RunState.FurnaceJob> farJobs = new java.util.ArrayList<>();
+        for (RunState.FurnaceJob job : jobs) {
+            if (job.dimension.equals(dimension) && leftBehind(job.pos, x, y, z, pile)) {
+                farJobs.add(job);
+            }
+        }
+        return new LeftBehind(farBenches, farJobs);
+    }
+
+    private static boolean leftBehind(RunState.Pos at, double x, double y, double z, RunState.Pos pile) {
+        if (WalkCost.stationDistance(at.x, at.y, at.z, x, y, z) <= WalkCost.STATION_FORGET) {
+            return false;
+        }
+        return pile == null || WalkCost.stationDistance(at.x, at.y, at.z, pile.x + 0.5, pile.y + 0.5, pile.z + 0.5) > WalkCost.STATION_FORGET;
+    }
+
     // nothing of ours is standing or coming down in this dimension. called with an empty plan (a phase that is out of needs):
     // an idle station left standing at that point is exactly the one that gets left behind. a busy one with a job is the job's
     // business (the phase waits for those on its own), a busy one with no job is an interrupted load that has not been adopted yet

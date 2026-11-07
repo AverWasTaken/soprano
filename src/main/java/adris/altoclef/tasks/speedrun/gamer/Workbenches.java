@@ -217,6 +217,21 @@ public final class Workbenches {
         log("forgot " + b + ": " + why);
     }
 
+    // a respawn far from home: the stations and jobs past the forget line in this dimension go off the books for good, so nothing
+    // adopts them back and no phase end waits on them (WorkbenchRules.farAfterRespawn has the why)
+    public static void respawned(RunState state, String dimension, double x, double y, double z, RunState.Pos pile, long now) {
+        sync(state, now);
+        WorkbenchRules.LeftBehind far = WorkbenchRules.farAfterRespawn(state.benches, state.furnaceJobs, dimension, x, y, z, pile);
+        for (Bench b : far.benches()) {
+            forget(state, b, "respawned " + Math.round(WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z)) + " blocks from it");
+        }
+        for (RunState.FurnaceJob job : far.jobs()) {
+            state.furnaceJobs.remove(job);
+            log("dropped the " + job.kind + " job at " + job.pos + " (" + job.count + " " + job.input + "): respawned "
+                    + Math.round(WalkCost.stationDistance(job.pos.x, job.pos.y, job.pos.z, x, y, z)) + " blocks from it");
+        }
+    }
+
     // it is in the bag again, the entry's last state
     private static void retire(RunState state, Bench b) {
         log(b + " -> " + Bench.State.IN_BAG + " (picked up, " + (b.tries > 0 ? b.tries + " failed tries before" : "first try") + ")");

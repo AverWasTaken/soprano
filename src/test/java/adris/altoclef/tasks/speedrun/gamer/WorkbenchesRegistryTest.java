@@ -502,6 +502,84 @@ public class WorkbenchesRegistryTest {
         assertEquals(1, state.benches.size());
     }
 
+    // ---- respawned
+
+    // the old life's smoker a world away with our meat in it: off the books (lists, entries, the job), so nothing adopts it back,
+    // and the phase end that waited on it can go
+    @Test
+    public void aFarRespawnTakesTheOldStationsOffTheBooks() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.SMOKER, pos(1000, 64, 0), OVERWORLD, 100);
+        Workbenches.record(state, Kind.TABLE, pos(1002, 64, 0), OVERWORLD, 100);
+        Workbenches.record(state, Kind.FURNACE, pos(4, 64, 4), OVERWORLD, 100);
+        Workbenches.record(state, Kind.FURNACE, pos(1000, 64, 0), NETHER, 100);
+        Workbenches.find(state, Kind.SMOKER, pos(1000, 64, 0)).state = Bench.State.BUSY;
+        Workbenches.find(state, Kind.FURNACE, pos(4, 64, 4)).state = Bench.State.BUSY;
+        state.furnaceJobs.add(FurnaceJobs.adopted(pos(1000, 64, 0), OVERWORLD, "smoker", "porkchop", 5, 120));
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(4, 64, 4), OVERWORLD, "furnace", "raw_iron", 8, "iron_ingot", 0, 1600));
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(1000, 64, 0), NETHER, "furnace", "raw_gold", 3, "gold_ingot", 0, 1600));
+        // the far table stands with no job: that alone holds the phase
+        assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 130));
+
+        Workbenches.respawned(state, OVERWORLD, 0, 64, 0, null, 140);
+
+        assertNull(Workbenches.find(state, Kind.SMOKER, pos(1000, 64, 0)));
+        assertNull(Workbenches.find(state, Kind.TABLE, pos(1002, 64, 0)));
+        assertNotNull(Workbenches.find(state, Kind.FURNACE, pos(4, 64, 4)));
+        assertFalse(FurnaceJobs.isBusy(state, pos(1000, 64, 0), OVERWORLD));
+        assertTrue(FurnaceJobs.isBusy(state, pos(4, 64, 4), OVERWORLD));
+        // the nether one at the same x y z is untouched, entry and job
+        assertNotNull(Workbenches.find(state, Kind.FURNACE, pos(1000, 64, 0)));
+        assertTrue(FurnaceJobs.isBusy(state, pos(1000, 64, 0), NETHER));
+        assertEquals(2, state.furnaceJobs.size());
+        // a sync (what every later look starts with) does not bring them back from the saved lists
+        Workbenches.sync(state, 150);
+        assertNull(Workbenches.find(state, Kind.SMOKER, pos(1000, 64, 0)));
+        assertNull(Workbenches.find(state, Kind.TABLE, pos(1002, 64, 0)));
+        assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 150));
+    }
+
+    // GatherPhase.done wants no jobs at all and phaseMayEnd: a far busy smoker and its job were the only thing left
+    @Test
+    public void aFarRespawnLetsTheGatherEndGo() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.SMOKER, pos(-900, 70, 600), OVERWORLD, 100);
+        Workbenches.find(state, Kind.SMOKER, pos(-900, 70, 600)).state = Bench.State.BUSY;
+        assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 110));
+        state.furnaceJobs.add(FurnaceJobs.adopted(pos(-900, 70, 600), OVERWORLD, "smoker", "mutton", 4, 120));
+
+        Workbenches.respawned(state, OVERWORLD, 0, 64, 0, null, 130);
+
+        assertTrue(state.furnaceJobs.isEmpty());
+        assertTrue(state.benches.isEmpty());
+        assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 140));
+    }
+
+    // first sweep keeps the pile's neighbourhood for the recovery, the second (nobody going back) takes it too
+    @Test
+    public void thePilesStationsGoOnlyOnceNobodyIsGoingBack() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(610, 64, 0), OVERWORLD, 100);
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(610, 64, 0), OVERWORLD, "furnace", "raw_iron", 8, "iron_ingot", 0, 1600));
+        Workbenches.respawned(state, OVERWORLD, 0, 64, 0, pos(600, 64, 0), 130);
+        assertNotNull(Workbenches.find(state, Kind.FURNACE, pos(610, 64, 0)));
+        assertEquals(1, state.furnaceJobs.size());
+        Workbenches.respawned(state, OVERWORLD, 0, 64, 0, null, 131);
+        assertNull(Workbenches.find(state, Kind.FURNACE, pos(610, 64, 0)));
+        assertTrue(state.furnaceJobs.isEmpty());
+    }
+
+    // a respawn next to home is a no-op
+    @Test
+    public void aNearRespawnKeepsEverything() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.SMOKER, pos(20, 64, 20), OVERWORLD, 100);
+        state.furnaceJobs.add(FurnaceJobs.adopted(pos(20, 64, 20), OVERWORLD, "smoker", "beef", 6, 120));
+        Workbenches.respawned(state, OVERWORLD, 0, 64, 0, null, 130);
+        assertNotNull(Workbenches.find(state, Kind.SMOKER, pos(20, 64, 20)));
+        assertEquals(1, state.furnaceJobs.size());
+    }
+
     // ---- source (what the container tasks see)
 
     private static FakeFacts facts(Dimension dimension, long now) {
