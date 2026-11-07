@@ -86,7 +86,9 @@ public final class TripBehavior extends Behavior {
         Trip ended = book.end();
         stuck = null;
         pathOut = false;
-        toast.clear();
+        // the question and the gather go with the trip. "got them" times out on its own, arriving 2 s later is no
+        // reason to snatch it away
+        toast.sync(null);
         if (ended != null && ended.gathering) {
             TripGatherer gatherer = AltoClefBridge.tripGatherer();
             if (gatherer != null) {

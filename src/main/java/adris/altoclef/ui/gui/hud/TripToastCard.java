@@ -121,6 +121,16 @@ public final class TripToastCard {
         return fresh;
     }
 
+    // a rebuilt card (new scale) carries on where the old one was: same toast, no second slide in
+    public void adopt(TripToastCard old) {
+        view = old.view;
+        leaving = old.leaving;
+        shownAt = old.shownAt;
+        leftAt = old.leftAt;
+        yesKey = old.yesKey;
+        noKey = old.noKey;
+    }
+
     public boolean visible() {
         return view != null || leaving != null;
     }

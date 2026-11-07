@@ -47,6 +47,7 @@ public final class TripToastHud {
     private static final Anim right = new Anim(0f);
     private static final Anim bottom = new Anim(0f);
     private static long lastNanos;
+    private static long labelsAt;
     // answered on this toast already, a second press before the next tick moves the view along would answer twice
     private static int answeredId = -1;
 
@@ -112,7 +113,12 @@ public final class TripToastHud {
         long now = System.nanoTime();
         float dt = lastNanos == 0 ? 0f : Math.min(0.1f, (now - lastNanos) / 1_000_000_000f);
         lastNanos = now;
-        card.setKeys(SopranoKeys.label(true), SopranoKeys.label(false));
+        // a rebind only happens in the controls screen, twice a second is plenty to notice it and saves two
+        // translated strings a frame
+        if (now - labelsAt > 500_000_000L) {
+            labelsAt = now;
+            card.setKeys(SopranoKeys.label(true), SopranoKeys.label(false));
+        }
         boolean fresh = card.show(view, now);
         if (!card.visible()) {
             return;
@@ -181,7 +187,8 @@ public final class TripToastHud {
             try {
                 build(scale);
             } catch (Throwable t) {
-                Safe.report("trip toast build", t);
+                // counts like a draw throw: a build that always fails would otherwise reschedule every frame forever
+                fail("trip toast build", t);
             } finally {
                 building = false;
             }
@@ -202,6 +209,10 @@ public final class TripToastHud {
         }
         KitSurface s = new KitSurface(scale, atlases);
         TripToastCard c = new TripToastCard(s.theme);
+        if (card != null) {
+            // a resize or a new hud size mid question is the same toast, not a new one sliding in with a second whoosh
+            c.adopt(card);
+        }
         prewarm(c);
         surface = s;
         card = c;
@@ -245,7 +256,9 @@ public final class TripToastHud {
         try {
             Minecraft mc = Minecraft.getInstance();
             TripToast.View view = currentView();
-            boolean ready = mc.gui.screen() == null && mc.player != null && !mc.gui.hud.isHidden() && card != null && card.visible();
+            // on screen means this very toast got drawn, not the last one still fading out
+            boolean ready = mc.gui.screen() == null && mc.player != null && !mc.gui.hud.isHidden() && card != null
+                    && view != null && card.view() != null && card.view().id() == view.id();
             TripToastCard.Hit hit = keyHit(view, ready, action, SopranoKeys.isYes(event), SopranoKeys.isNo(event));
             if (hit == null) {
                 return false;

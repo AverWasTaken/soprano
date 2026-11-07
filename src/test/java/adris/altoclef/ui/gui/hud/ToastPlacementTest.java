@@ -52,6 +52,15 @@ public class ToastPlacementTest {
     }
 
     @Test
+    public void liftingOverTheHotbarLooksAtTheCardAgain() {
+        // 900 wide at gui scale 2: the corner clears the card, the hotbar lift brings the toast up into it
+        float[] card = {900 - 8 - 304, 250, 304, 190};
+        float[] at = ToastPlacement.place(900, 600, 2, W, H, M, 0, false, card);
+        assertEquals(60 * 2 + 8, at[1], 0f);
+        assertFalse(ToastPlacement.overlaps(900 - at[0] - W, 600 - at[1] - H, W, H, card));
+    }
+
+    @Test
     public void aCardUpTopIsLeftAlone() {
         float[] card = {2560 - 8 - 304, 400, 304, 400};
         float[] at = ToastPlacement.place(2560, 1369, 2, W, H, M, 0, false, card);

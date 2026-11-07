@@ -128,6 +128,17 @@ public class TripToastCardTest {
     }
 
     @Test
+    public void aRebuiltCardIsTheSameToast() throws Exception {
+        TripToastCard old = card(1f);
+        TripToast.View a = ask(Trip.Ask.STUCK, 24, false, 0);
+        assertTrue(old.show(a, 0));
+        TripToastCard bigger = card(1.5f);
+        bigger.adopt(old);
+        assertFalse("no second slide in and no second sound", bigger.show(a, 100));
+        assertSame(a, bigger.view());
+    }
+
+    @Test
     public void goneMeansNoHits() throws Exception {
         TripToastCard card = card(1f);
         TripToast.View a = ask(Trip.Ask.STUCK, 24, false, 0);

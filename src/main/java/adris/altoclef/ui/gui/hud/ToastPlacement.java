@@ -38,6 +38,10 @@ public final class ToastPlacement {
         float hotbarRight = winW / 2f + HOTBAR_HALF * guiScale;
         if (left < hotbarRight) {
             bottom = Math.max(bottom, HOTBAR_TALL * guiScale + margin / 2f);
+            // going up for the hotbar can go up into the card, so look again
+            if (card != null && overlaps(winW - right - toastW, winH - bottom - toastH, toastW, toastH, card)) {
+                right = Math.max(right, winW - card[0] + margin / 2f);
+            }
         }
         return new float[]{right, bottom};
     }
