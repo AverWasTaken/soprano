@@ -1,6 +1,7 @@
 package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.util.helpers.LavaShore;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -24,12 +25,14 @@ final class LavaKnockGuard {
     private static final Input[] KEYS = {Input.MOVE_FORWARD, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT};
     // a hit that never got us off the ground is not coming back down
     private static final int ARM_TICKS = 30;
+    private static final long LOG_GAP_MS = 2000;
 
     private final boolean[] _held = new boolean[4];
     private int _lastHurt;
     private boolean _armed;
     private boolean _wasAirborne;
     private int _armedFor;
+    private long _lastLog;
 
     // forget everything, the world is gone
     void reset(AltoClef mod) {
@@ -100,22 +103,19 @@ final class LavaKnockGuard {
         double step = Math.min(1.0, len);
         boolean ahead = len >= 0.05 && LavaShore.spotUnsafe(cells, ux + dx / len * step, uy, uz + dz / len * step);
         if (!LavaShore.hold(true, onGround, freshHit, pathLive, back, ahead)) {
-            release(mod);
+            decline(mod, back, pathLive ? "path live" : ahead ? "ahead unsafe" : !onGround && !freshHit ? "airborne, no fresh hit" : null);
             return;
         }
         LavaShore.Keys keys = LavaShore.keysToward(player.getYRot(), dx, dz);
         if (!keys.any()) {
-            release(mod);
+            decline(mod, back, "foe straight above");
             return;
         }
         // a task that presses its own movement keys (no path, but not idle either) keeps them, we only lean when nobody else is
         // driving
-        for (int i = 0; i < KEYS.length; i++) {
-            if (!_held[i] && (mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(KEYS[i])
-                    || mod.getInputControls().isHeldDown(KEYS[i]))) {
-                release(mod);
-                return;
-            }
+        if (someoneElseDriving(mod)) {
+            decline(mod, back, "another key held");
+            return;
         }
         boolean[] want = {keys.forward(), keys.back(), keys.left(), keys.right()};
         for (int i = 0; i < KEYS.length; i++) {
@@ -123,6 +123,62 @@ final class LavaKnockGuard {
                 mod.getClientBaritone().getInputOverrideHandler().setInputForceState(KEYS[i], want[i]);
             }
             _held[i] = want[i];
+        }
+    }
+
+    // the lean again, after the chains ran. a kill task swinging through a stall calls cancelEverything every tick and a
+    // process's onLostControl (GetToBlockProcess) wipes every forced key with it, path or no path. tick() runs before the
+    // chains do, so the lean was gone before the input tick ever read it. only puts back a wipe: any move key still forced
+    // is ours that survived or a task that pressed its own after us, and either way it's not ours to touch here (clearing a
+    // task's key every tick is how a step off a pillar never steps)
+    void reassert(AltoClef mod) {
+        if (!leaning() || mod.getPlayer() == null) {
+            return;
+        }
+        for (Input key : KEYS) {
+            if (mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(key)) {
+                return;
+            }
+            if (mod.getInputControls().isHeldDown(key)) {
+                // a real key press is driving, and our forced ones are all gone already
+                Arrays.fill(_held, false);
+                return;
+            }
+        }
+        for (int i = 0; i < KEYS.length; i++) {
+            if (_held[i]) {
+                mod.getClientBaritone().getInputOverrideHandler().setInputForceState(KEYS[i], true);
+            }
+        }
+    }
+
+    boolean leaning() {
+        for (boolean h : _held) {
+            if (h) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean someoneElseDriving(AltoClef mod) {
+        for (int i = 0; i < KEYS.length; i++) {
+            if (!_held[i] && (mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(KEYS[i])
+                    || mod.getInputControls().isHeldDown(KEYS[i]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a lava foe is in contact and we're not leaning. only worth a line with the knock line unsafe, a foe in contact on flat
+    // ground is every fight there is
+    private void decline(AltoClef mod, boolean back, String why) {
+        release(mod);
+        long now = System.currentTimeMillis();
+        if (back && why != null && now - _lastLog >= LOG_GAP_MS) {
+            _lastLog = now;
+            Debug.logInternal("lava guard: drop behind, no lean (" + why + ")");
         }
     }
 

@@ -179,6 +179,16 @@ public final class LavaShore {
         return false;
     }
 
+    // a foe this much higher than us is a climb, not a walk
+    public static final double CLIMB_RISE = 2.0;
+
+    // the climb guard, nether only (same as the cliff cost): a foe two or more up with a lethal drop by our spot or by its own.
+    // the way up is a pillar or a cliff staircase and the top of either is a one block rim right where it hits us. it comes down
+    // instead (an angry enderman does, the rest walk), and the lava hold's wait and ban cap a foe that never does
+    public static boolean climbBlocked(boolean nether, Cells cells, double ux, double uy, double uz, double tx, double ty, double tz) {
+        return nether && ty - uy >= CLIMB_RISE && (edgeNear(cells, ux, uy, uz) || edgeNear(cells, tx, ty, tz));
+    }
+
     // the stepping check: the knock line behind us, or a drop anywhere close
     public static boolean rimUnsafe(Cells cells, double ux, double uy, double uz, double fx, double fz) {
         return backUnsafe(cells, ux, uy, uz, fx, fz) || edgeNear(cells, ux, uy, uz);

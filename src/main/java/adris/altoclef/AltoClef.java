@@ -220,6 +220,8 @@ public class AltoClef {
             } finally {
                 _blockTracker.postTickTask();
             }
+            // the chains can wipe baritone's forced keys (a cancel mid fight), the lava lean goes back on before the input tick
+            _mobDefenseChain.afterChains(this);
             _monitors.onActiveTick(this);
         }
 

@@ -124,8 +124,6 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _rimStandTicks = 0;
         _rimLive = false;
         _groundCell = null;
-        _groundTicks = 0;
-        _rimFailed.clear();
         _standCap.reset();
         _waitCap.reset();
         _waitCapEntity = null;
@@ -330,7 +328,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                         if (stareDown(mod, entity)) {
                             return null;
                         }
-                        setDebugState("Lava by the foe, letting it come");
+                        setDebugState("Lava or a drop by the foe, letting it come");
                         return null;
                     }
                     // a kill task walks in to hop range, not to the edge of reach: the swing plan kicks in at the kill
@@ -492,8 +490,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private boolean _rimLive;
     private static final int RIM_STAND_TICKS = 60;
     private int _rimStandTicks;
-    // cells a step already went nowhere to this fight, so the same doomed one is not picked again the next tick
-    private final java.util.Set<BlockPos> _rimFailed = new java.util.HashSet<>();
+    // cells a step already went nowhere to this fight (so the same doomed one is not picked again the next tick) and the shore
+    // walk's clock. per mob id, outlives this task, see RimMemory
+    private static final RimMemory.Store RIM_MEMORY = new RimMemory.Store();
     private double _rimBestDist;
     private int _rimIdleTicks;
     // the cell a walk off a shore is headed for, see LavaShore.groundCell
@@ -501,7 +500,10 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     // walking for the whole fight, not per walk: a foe that never follows us (a calm enderman) would otherwise be a walk
     // up to it and a walk back forever. a six cell walk is about 30 ticks
     private static final int GROUND_WALK_TICKS = 100;
-    private int _groundTicks;
+
+    private static RimMemory rim(AltoClef mod, Entity entity) {
+        return RIM_MEMORY.get(entity.getId(), mod.getPlayer().tickCount);
+    }
 
     // a blaze in melee contact knocks us off an edge as well as a zombie does, so it counts here (a blaze that close is not
     // shooting, it is hitting). ghasts and the real ranged kinds still do not
@@ -522,7 +524,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private boolean onShore(AltoClef mod, Entity entity) {
         var us = mod.getPlayer();
         // arrived, or out of walk: a swing tick never reaches groundWalk, and a cell left over here reads as a walk still on
-        if (_groundTicks >= GROUND_WALK_TICKS || !LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
+        if (rim(mod, entity).groundTicks >= GROUND_WALK_TICKS || !LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
             _groundCell = null;
             return false;
         }
@@ -535,7 +537,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private Task groundWalk(AltoClef mod, Entity entity) {
         var us = mod.getPlayer();
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
-        if (_groundTicks >= GROUND_WALK_TICKS || !rimFoe(mod, entity, Double.MAX_VALUE)
+        RimMemory rim = rim(mod, entity);
+        if (rim.groundTicks >= GROUND_WALK_TICKS || !rimFoe(mod, entity, Double.MAX_VALUE)
                 || !LavaShore.lavaDeepNear(cells, us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
             _groundCell = null;
             return null;
@@ -544,7 +547,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (_groundCell == null || !LavaShore.groundFit(cells, _groundCell.getX(), _groundCell.getY(), _groundCell.getZ(), entity.getX(), entity.getZ())) {
             // a cell that went nowhere is skipped, not the end of it: the next one along may have a way there
             int[] cell = LavaShore.groundCell(cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getZ(),
-                    (x, y, z) -> _rimFailed.contains(new BlockPos(x, y, z)));
+                    (x, y, z) -> rim.failed.contains(new BlockPos(x, y, z)));
             if (cell == null) {
                 _groundCell = null;
                 return null;
@@ -558,12 +561,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             _rimIdleTicks = best < _rimBestDist ? 0 : _rimIdleTicks + 1;
             _rimBestDist = best;
             if (LavaShore.walkStalled(_rimIdleTicks)) {
-                _rimFailed.add(_groundCell);
+                rim.failed.add(_groundCell);
                 _groundCell = null;
                 return null;
             }
         }
-        _groundTicks++;
+        rim.groundTicks++;
         _rimLive = true;
         setDebugState("Walking off the shore");
         return new GetToBlockTask(_groundCell);
@@ -614,7 +617,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (_rimCell == null || _rimCell.equals(here) || _rimCell.distSqr(here) > 2
                 || !LavaShore.stepFit(cells, _rimCell.getX(), _rimCell.getY(), _rimCell.getZ(), entity.getX(), entity.getZ())) {
             // a cell that already went nowhere is not picked again this fight, the plan (the swing) gets the tick instead
-            if (_rimFailed.contains(pick)) {
+            if (rim(mod, entity).failed.contains(pick)) {
                 _rimCell = null;
                 _rimStepTicks = 0;
                 return null;
@@ -631,7 +634,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             _rimIdleTicks = best < _rimBestDist ? 0 : _rimIdleTicks + 1;
             _rimBestDist = best;
             if (LavaShore.stepStalled(_rimIdleTicks)) {
-                _rimFailed.add(_rimCell);
+                rim(mod, entity).failed.add(_rimCell);
                 _rimCell = null;
                 _rimStepTicks = 0;
                 return null;
@@ -662,7 +665,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (entity instanceof Blaze || entity instanceof Ghast || (entity instanceof Mob mob && MobReachability.isRanged(mob))) return false;
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         var us = mod.getPlayer();
-        return LavaShore.blockedFor(isAnimal(mod, entity), cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
+        boolean animal = isAnimal(mod, entity);
+        if (LavaShore.blockedFor(animal, cells, us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ())) return true;
+        // a foe up on a ledge by a drop: the follow path pillars or climbs to a rim to reach it, see LavaShore.climbBlocked
+        return !animal && LavaShore.climbBlocked(WorldHelper.getCurrentDimension() == Dimension.NETHER, cells,
+                us.getX(), us.getY(), us.getZ(), entity.getX(), entity.getY(), entity.getZ());
     }
 
     // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks go by the eye to box

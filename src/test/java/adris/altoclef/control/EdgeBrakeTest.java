@@ -55,4 +55,31 @@ public class EdgeBrakeTest {
         assertFalse(hold(false, true, false, false, false, 0.1, false));
         assertFalse(hold(true, true, true, false, false, 0.1, false));
     }
+
+    // args: userTask, blocked, realMoveKey, onGround, rising, groundUnder, speed, knocked, dropNear
+    @Test
+    public void knockHoldsSneakInTheAirNextToADrop() {
+        // coming down still over the pillar top: sneak has to be down already when the ground comes back
+        assertTrue(EdgeBrake.knockHold(true, false, false, false, false, true, 0.0, true, true));
+        assertTrue(EdgeBrake.knockHold(true, false, false, false, false, true, 0.36, true, true));
+        // the one grounded tick of the slide still holds
+        assertTrue(EdgeBrake.knockHold(true, false, false, true, false, false, 0.27, true, true));
+    }
+
+    @Test
+    public void knockHoldLetsGo() {
+        // still going up: the back-off can't act yet and the crouch would only slow the lean
+        assertFalse(EdgeBrake.knockHold(true, false, false, false, true, true, 0.36, true, true));
+        // already past the edge, nothing under the box to back off onto
+        assertFalse(EdgeBrake.knockHold(true, false, false, false, false, false, 0.36, true, true));
+        // down and stopped
+        assertFalse(EdgeBrake.knockHold(true, false, false, true, false, false, 0.002, true, true));
+        // no drop near, or nobody hit us
+        assertFalse(EdgeBrake.knockHold(true, false, false, false, false, true, 0.3, true, false));
+        assertFalse(EdgeBrake.knockHold(true, false, false, false, false, true, 0.3, false, true));
+        // the usual gates
+        assertFalse(EdgeBrake.knockHold(false, false, false, false, false, true, 0.3, true, true));
+        assertFalse(EdgeBrake.knockHold(true, true, false, false, false, true, 0.3, true, true));
+        assertFalse(EdgeBrake.knockHold(true, false, true, false, false, true, 0.3, true, true));
+    }
 }
