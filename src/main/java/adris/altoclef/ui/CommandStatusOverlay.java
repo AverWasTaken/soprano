@@ -36,8 +36,10 @@ public class CommandStatusOverlay {
     // panel shows its idle pill for a moment if it had some
     public void render(AltoClef mod, GuiGraphicsExtractor graphics, boolean active) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) {
+        // off is off: no task strings get built for a panel nobody sees
+        if (mc.level == null || !Baritone.settings().altoShowTaskChains.value) {
             StatusPanelHud.render(graphics, null, 1, null, true);
+            _layoutTick = -1;
             return;
         }
         long now = System.currentTimeMillis();

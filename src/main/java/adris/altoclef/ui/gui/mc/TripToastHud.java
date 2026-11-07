@@ -72,6 +72,8 @@ public final class TripToastHud {
     }
 
     public static void render(GuiGraphicsExtractor g, int subtitleRows) {
+        // cleared first, so a toast that's gone (or a draw that threw) isn't dodged by the status panel forever
+        HudObstacles.toast(null);
         guard("trip toast render", () -> draw(g, subtitleRows));
     }
 
@@ -143,6 +145,8 @@ public final class TripToastHud {
         } else {
             card.clearHover();
         }
+        // the status panel keeps out of this next frame
+        HudObstacles.toast(new float[]{card.x(), card.y(), card.w(), card.h()});
         float inv = 1f / guiScale;
         g.pose().pushMatrix();
         g.pose().scale(inv, inv);

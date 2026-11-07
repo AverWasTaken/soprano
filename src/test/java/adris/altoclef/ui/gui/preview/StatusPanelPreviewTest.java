@@ -126,6 +126,7 @@ public class StatusPanelPreviewTest {
             StatusPanel p = panel(2f, dark);
             p.update(rows(chain(2, false)), 1, null, T0);
             p.update(List.of(), 1, null, T0 + 50);
+            p.update(List.of(), 1, null, T0 + 50 + StatusPanel.GRACE_MS);
             shoot("status_idle_" + t, p, dark, -1, StatusPanel.Mode.IDLE, T0 + 1000);
         }
     }
@@ -184,7 +185,7 @@ public class StatusPanelPreviewTest {
         float chatTop = winH - (40 + chatTall) * gs;
         c.fillRect(0, chatTop, Math.min(winW, 324 * gs), chatTall * gs, 0x40000000);
         float m = p.theme().pxf(StatusPanel.MARGIN);
-        PanelPlacement.Room room = PanelPlacement.room(winW, winH, gs, m, bosses, chatTall, card, p.theme().pxf(StatusPanel.NARROW));
+        PanelPlacement.Room room = PanelPlacement.room(winW, winH, gs, m, bosses, chatTall, card, null, p.theme().pxf(StatusPanel.NARROW));
         StatusPanel.Mode mode = p.layout(room);
         if (mode != StatusPanel.Mode.NONE) {
             draw(p, c, T0 + 1000);

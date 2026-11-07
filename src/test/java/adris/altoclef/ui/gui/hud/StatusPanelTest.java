@@ -147,17 +147,36 @@ public class StatusPanelTest {
         p.update(chain(1, ""), 1, null, 1000);
         assertTrue(p.wantsTree());
         p.update(List.of(), 1, null, 2000);
+        assertTrue("the old rows hang on through the grace", p.wantsTree());
+        long end = 2000 + StatusPanel.GRACE_MS;
+        p.update(List.of(), 1, null, end);
         assertTrue(p.wantsIdle());
         assertEquals(StatusPanel.Mode.IDLE, p.layout(BIG));
-        assertEquals(1f, p.alpha(2000 + StatusPanel.IDLE_MS - 1), 1e-6);
-        p.update(List.of(), 1, null, 2000 + StatusPanel.IDLE_MS - 1);
+        assertEquals(1f, p.alpha(end + StatusPanel.IDLE_MS - 1), 1e-6);
+        p.update(List.of(), 1, null, end + StatusPanel.IDLE_MS - 1);
         assertTrue("still up just before 3 s", p.wantsIdle());
         long fade = Theme.ANIM_FAST;
-        p.update(List.of(), 1, null, 2000 + StatusPanel.IDLE_MS + fade);
+        p.update(List.of(), 1, null, end + StatusPanel.IDLE_MS + fade);
         assertFalse("gone after 3 s and the fade", p.wantsAnything());
         // and it stays gone
-        p.update(List.of(), 1, null, 2000 + StatusPanel.IDLE_MS + fade + 5000);
+        p.update(List.of(), 1, null, end + StatusPanel.IDLE_MS + fade + 5000);
         assertFalse(p.wantsAnything());
+    }
+
+    // one empty tick between two tasks: no pill, no fresh fade in, the rows just carry on
+    @Test
+    public void aOneTickGapIsNotTheEnd() {
+        StatusPanel p = panel(1f);
+        p.update(chain(1, ""), 1, null, 0);
+        p.layout(BIG);
+        assertEquals(1f, p.alpha(1000), 1e-6);
+        p.update(List.of(), 1, null, 1000);
+        assertTrue(p.wantsTree());
+        assertFalse(p.wantsIdle());
+        p.update(chain(2, ""), 1, null, 1050);
+        assertTrue(p.wantsTree());
+        p.layout(BIG);
+        assertEquals("no second fade in", 1f, p.alpha(1060), 1e-6);
     }
 
     @Test
@@ -165,13 +184,15 @@ public class StatusPanelTest {
         StatusPanel p = panel(1f);
         p.update(chain(1, ""), 1, null, 0);
         p.update(List.of(), 1, null, 100);
+        p.update(List.of(), 1, null, 100 + StatusPanel.GRACE_MS);
         assertTrue(p.wantsIdle());
         p.update(chain(1, ""), 1, null, 500);
         assertTrue(p.wantsTree());
         assertFalse(p.wantsIdle());
         // and the next end gets its own full 3 s
         p.update(List.of(), 1, null, 10_000);
-        p.update(List.of(), 1, null, 10_000 + StatusPanel.IDLE_MS - 1);
+        p.update(List.of(), 1, null, 10_000 + StatusPanel.GRACE_MS);
+        p.update(List.of(), 1, null, 10_000 + StatusPanel.GRACE_MS + StatusPanel.IDLE_MS - 1);
         assertTrue(p.wantsIdle());
     }
 
@@ -182,6 +203,7 @@ public class StatusPanelTest {
         p.update(null, 1, null, 100);
         assertFalse(p.wantsAnything());
         p.update(List.of(), 1, null, 200);
+        p.update(List.of(), 1, null, 200 + StatusPanel.GRACE_MS);
         assertFalse("no pill for a task that ended while it was off", p.wantsIdle());
     }
 
@@ -190,11 +212,13 @@ public class StatusPanelTest {
         Anim.enabled = false;
         StatusPanel p = panel(1f);
         p.update(chain(1, ""), 1, null, 0);
+        long start = 100 + StatusPanel.GRACE_MS;
         p.update(List.of(), 1, null, 100);
+        p.update(List.of(), 1, null, start);
         p.layout(BIG);
-        assertEquals(1f, p.alpha(100 + StatusPanel.IDLE_MS - 1), 1e-6);
-        assertEquals(0f, p.alpha(100 + StatusPanel.IDLE_MS), 1e-6);
-        p.update(List.of(), 1, null, 100 + StatusPanel.IDLE_MS);
+        assertEquals(1f, p.alpha(start + StatusPanel.IDLE_MS - 1), 1e-6);
+        assertEquals(0f, p.alpha(start + StatusPanel.IDLE_MS), 1e-6);
+        p.update(List.of(), 1, null, start + StatusPanel.IDLE_MS);
         assertFalse(p.wantsAnything());
     }
 

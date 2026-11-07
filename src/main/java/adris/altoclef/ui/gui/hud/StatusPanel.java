@@ -93,6 +93,9 @@ public final class StatusPanel {
     // get nothing, so it folds sooner: the top, "n more tasks", and the last few, which are the ones that mean anything
     static final int MAX_ROWS = 6;
     static final long IDLE_MS = 3000;
+    // a chain can be empty for a tick between one task and the next while the runner carries on. that is not the end,
+    // so the last rows hang on this long before the pill gets a look in, and coming back inside it is no fresh fade
+    public static final long GRACE_MS = 250;
     static final String IDLE = "Idle";
     private static final Pattern FRACTION = Pattern.compile("(\\d{1,9})\\s*/\\s*(\\d{1,9})");
 
@@ -110,6 +113,7 @@ public final class StatusPanel {
     private String timer;
     private boolean had;
     private long idleSince = -1;
+    private long emptySince = -1;
     private long shownAt = -1;
 
     // the last layout
@@ -158,24 +162,38 @@ public final class StatusPanel {
             reset();
             return;
         }
+        keepTop = Math.max(1, top);
+        timer = time;
         if (!next.isEmpty()) {
             if (!had || idleSince >= 0 || shownAt < 0) {
                 shownAt = nowMs;
             }
             had = true;
             idleSince = -1;
-        } else if (had) {
-            if (idleSince < 0) {
-                idleSince = nowMs;
-            } else if (nowMs - idleSince >= IDLE_MS + fadeMs()) {
-                had = false;
-                idleSince = -1;
-                shownAt = -1;
-            }
+            emptySince = -1;
+            rows = next;
+            return;
         }
-        rows = next;
-        keepTop = Math.max(1, top);
-        timer = time;
+        if (!had) {
+            rows = next;
+            return;
+        }
+        if (idleSince < 0) {
+            if (emptySince < 0) {
+                emptySince = nowMs;
+            }
+            if (nowMs - emptySince < GRACE_MS) {
+                // keep the old rows up through the gap
+                return;
+            }
+            idleSince = nowMs;
+            rows = next;
+        } else if (nowMs - idleSince >= IDLE_MS + fadeMs()) {
+            had = false;
+            idleSince = -1;
+            emptySince = -1;
+            shownAt = -1;
+        }
     }
 
     // a rebuilt panel (new scale) carries on where the old one was: no second fade in, the pill keeps its clock
@@ -185,6 +203,7 @@ public final class StatusPanel {
         timer = old.timer;
         had = old.had;
         idleSince = old.idleSince;
+        emptySince = old.emptySince;
         shownAt = old.shownAt;
     }
 
@@ -192,6 +211,7 @@ public final class StatusPanel {
         rows = List.of();
         had = false;
         idleSince = -1;
+        emptySince = -1;
         shownAt = -1;
         mode = Mode.NONE;
         layoutKey = null;
@@ -257,7 +277,7 @@ public final class StatusPanel {
         for (int i = 0; i < shown.size(); i++) {
             Row r = shown.get(i);
             String meta = meta(r);
-            float nw = indent(i) + lead + m.measure(r.name(), style(r.role()));
+            float nw = indent(i) + (r.role() == Role.MORE ? 0 : lead) + m.measure(r.name(), style(r.role()));
             if (!meta.isEmpty()) {
                 nw += px(META_GAP) + m.measure(meta, metaStyle);
             }
@@ -267,7 +287,7 @@ public final class StatusPanel {
         int inner = w - px(PAD_L) - px(PAD_R);
         for (int i = 0; i < shown.size(); i++) {
             Row r = shown.get(i);
-            String[] fitted = fit(r.name(), style(r.role()), meta(r), inner - indent(i) - lead);
+            String[] fitted = fit(r.name(), style(r.role()), meta(r), inner - indent(i) - (r.role() == Role.MORE ? 0 : lead));
             laid.add(new Laid(i, fitted[0], fitted[1], r.role(), r.icon()));
         }
         progress = p;
@@ -404,7 +424,9 @@ public final class StatusPanel {
                 g.icon(l.icon(), ix, iy, iconS, iconColor(l.role()));
             }
             TextStyle st = style(l.role());
-            g.text(l.name(), ix + lead, middle(rowTop, rowH, st), st, labelColor(l.role()));
+            // the fold has no icon, its words sit in the icon's spot so the line still stops 4 px short of something
+            int tx = l.role() == Role.MORE ? ix : ix + lead;
+            g.text(l.name(), tx, middle(rowTop, rowH, st), st, labelColor(l.role()));
             if (!l.meta().isEmpty()) {
                 g.text(l.meta(), right - m.measure(l.meta(), metaStyle), middle(rowTop, rowH, metaStyle), metaStyle, theme.color(Theme.TEXT_3));
             }
