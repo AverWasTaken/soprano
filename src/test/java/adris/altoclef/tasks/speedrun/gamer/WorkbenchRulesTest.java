@@ -2291,4 +2291,77 @@ public class WorkbenchRulesTest {
         assertEquals("drop gave up (no room)", WorkbenchRules.dropGone("no room", 0));
         assertNull(WorkbenchRules.dropGone(null, 0));
     }
+
+    // ---- farAfterRespawn
+
+    private static Bench benchAt(Kind kind, int x, int y, int z, String dimension) {
+        return new Bench(kind, new RunState.Pos(x, y, z), dimension, 0);
+    }
+
+    private static RunState.FurnaceJob jobAt(int x, int y, int z, String dimension) {
+        return new RunState.FurnaceJob(new RunState.Pos(x, y, z), dimension, "smoker", "porkchop", 5, "cooked_porkchop", 0, 1600);
+    }
+
+    // a respawn next to home keeps everything, one a world away drops the lot in this dimension
+    @Test
+    public void aRespawnKeepsTheNearOnesAndDropsTheFarOnes() {
+        Bench near = benchAt(Kind.FURNACE, 10, 64, 10, "OVERWORLD");
+        Bench far = benchAt(Kind.SMOKER, 1000, 64, 0, "OVERWORLD");
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(near, far), List.of(), "OVERWORLD", 0, 64, 0, null);
+        assertEquals(List.of(far), out.benches());
+        assertTrue(out.jobs().isEmpty());
+    }
+
+    // the nether's x y z mean nothing from the overworld spawn, and its furnaces are still on the way back in
+    @Test
+    public void aRespawnLeavesTheOtherDimensionAlone() {
+        Bench nether = benchAt(Kind.FURNACE, 5000, 64, 0, "NETHER");
+        RunState.FurnaceJob netherJob = jobAt(5000, 64, 0, "NETHER");
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(nether), List.of(netherJob), "OVERWORLD", 0, 64, 0, null);
+        assertTrue(out.benches().isEmpty());
+        assertTrue(out.jobs().isEmpty());
+    }
+
+    // decide() keeps a busy one however far (the job brings us back). a respawn does not
+    @Test
+    public void aRespawnDropsAFarBusyOneAndItsJob() {
+        Bench busy = benchAt(Kind.SMOKER, 0, 64, 1000, "OVERWORLD");
+        busy.state = Bench.State.BUSY;
+        RunState.FurnaceJob job = jobAt(0, 64, 1000, "OVERWORLD");
+        RunState.FurnaceJob nearJob = jobAt(3, 64, 3, "OVERWORLD");
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(busy), List.of(job, nearJob), "OVERWORLD", 0, 64, 0, null);
+        assertEquals(List.of(busy), out.benches());
+        assertEquals(List.of(job), out.jobs());
+    }
+
+    // a job with no bench of ours (a village furnace we loaded) goes by the same line
+    @Test
+    public void aRespawnDropsAFarJobWithNoBench() {
+        RunState.FurnaceJob job = jobAt(-700, 30, 400, "OVERWORLD");
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(), List.of(job), "OVERWORLD", 0, 64, 0, null);
+        assertEquals(List.of(job), out.jobs());
+    }
+
+    // straight line with height, the same distance look() forgets by, so a deep mine under the spawn is still near
+    @Test
+    public void aRespawnMeasuresLikeTheForgetLine() {
+        Bench inside = benchAt(Kind.FURNACE, 100, -10, 0, "OVERWORLD");
+        Bench outside = benchAt(Kind.FURNACE, 100, -60, 50, "OVERWORLD");
+        assertTrue(WalkCost.stationDistance(100, -10, 0, 0, 64, 0) <= WalkCost.STATION_FORGET);
+        assertTrue(WalkCost.stationDistance(100, -60, 50, 0, 64, 0) > WalkCost.STATION_FORGET);
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(inside, outside), List.of(), "OVERWORLD", 0, 64, 0, null);
+        assertEquals(List.of(outside), out.benches());
+    }
+
+    // the recovery walks back to the pile, so a station near it is on the way and stays. one near neither still goes
+    @Test
+    public void aRespawnKeepsWhatIsByThePileWeAreWalkingBackTo() {
+        Bench byThePile = benchAt(Kind.FURNACE, 620, 64, 10, "OVERWORLD");
+        Bench lost = benchAt(Kind.SMOKER, -900, 64, 0, "OVERWORLD");
+        RunState.FurnaceJob iron = jobAt(620, 64, 10, "OVERWORLD");
+        RunState.Pos pile = new RunState.Pos(600, 64, 0);
+        WorkbenchRules.LeftBehind out = WorkbenchRules.farAfterRespawn(List.of(byThePile, lost), List.of(iron), "OVERWORLD", 0, 64, 0, pile);
+        assertEquals(List.of(lost), out.benches());
+        assertTrue(out.jobs().isEmpty());
+    }
 }

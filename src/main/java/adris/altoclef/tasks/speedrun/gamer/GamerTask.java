@@ -1180,6 +1180,9 @@ public class GamerTask extends Task {
             state.netherTrip = null;
             netherTrip = null;
         }
+        // the old life's stations a world away are not worth this one's walk, before anything adopts them as a job to go collect.
+        // the ones by the pile wait for the recovery call below, it may be walking right back to them
+        forgetFarStations(deathDimension == facts.dimension() ? deathPos : null);
         host.save();
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
@@ -1217,6 +1220,16 @@ public class GamerTask extends Task {
         } else {
             host.say(DeathRules.leaving(why));
         }
+        if (recover == null && waitingPile == null) {
+            // nobody is going back to the pile, so its neighbourhood is just as far as the rest
+            forgetFarStations(null);
+            host.save();
+        }
+    }
+
+    private void forgetFarStations(BlockPos pile) {
+        RunState.Pos at = pile == null ? null : new RunState.Pos(pile.getX(), pile.getY(), pile.getZ());
+        Workbenches.respawned(state, facts.dimension().name(), facts.x(), facts.y(), facts.z(), at, facts.gameTime());
     }
 
     private void startRecovery(BlockPos pile, double blocks, long sinceTicks) {
