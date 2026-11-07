@@ -71,12 +71,15 @@ public class MixinEntity {
         }
     }
 
+    // neoforge swaps isUnderWater here for its own fluid type check, so there's nothing to grab and the whole game
+    // refused to start. there it just latches the slow vanilla way
     @Redirect(
             method = "updateSwimming",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/world/entity/Entity;isUnderWater()Z"
-            )
+            ),
+            require = 0
     )
     private boolean allowSwimStart(Entity self) {
         // vanilla only latches the swim state once the eye is underwater, which at the surface means

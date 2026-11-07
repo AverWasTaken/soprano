@@ -30,7 +30,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Arrays;
 
-// our keys go on the end of vanilla's list right before load(), so options.txt has them to read a rebind into and the
+// our keys go on the end of vanilla's list as load() starts, so options.txt has them to read a rebind into and the
 // controls screen shows them. fabric api would do this with its keybinding helper, we don't need fabric api
 @Mixin(Options.class)
 public class MixinSopranoOptions {
@@ -40,13 +40,22 @@ public class MixinSopranoOptions {
     @Mutable
     public KeyMapping[] keyMappings;
 
-    @Inject(
-            method = "<init>",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Options;load()V")
-    )
+    // head of load(), not the load() call in the constructor. forge ships stock mixin, which won't put an @Inject at an
+    // INVOKE inside a constructor and takes the whole game down over it. fabric's mixin fork allows it, that's why
+    // only forge noticed
+    @Inject(method = "load()V", at = @At("HEAD"))
     private void soprano$addKeys(final CallbackInfo ci) {
         try {
             KeyMapping[] ours = SopranoKeys.all();
+            if (ours.length == 0) {
+                return;
+            }
+            // load() can run again, the list only needs us once
+            for (KeyMapping k : keyMappings) {
+                if (k == ours[0]) {
+                    return;
+                }
+            }
             KeyMapping[] all = Arrays.copyOf(keyMappings, keyMappings.length + ours.length);
             System.arraycopy(ours, 0, all, keyMappings.length, ours.length);
             keyMappings = all;
