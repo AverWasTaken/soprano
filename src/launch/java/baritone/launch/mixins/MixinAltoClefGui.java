@@ -17,13 +17,17 @@
 
 package baritone.launch.mixins;
 
-import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
+import adris.altoclef.ui.gui.mc.TripToastHud;
+import baritone.altoclef.AltoClefBridge;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Hud;
+import net.minecraft.client.gui.components.SubtitleOverlay;
 import net.minecraft.network.chat.Component;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -32,13 +36,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Hud.class)
 public class MixinAltoClefGui {
 
+    @Shadow
+    @Final
+    private SubtitleOverlay subtitleOverlay;
+
     // RETURN so the hud lands on top of everything vanilla drew
     @Inject(
             method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V",
             at = @At("RETURN")
     )
     private void altoclef$onRenderHud(final GuiGraphicsExtractor graphics, final DeltaTracker deltaTracker, final CallbackInfo ci) {
+        TripToastHud.beginFrame();
         AltoClefBridge.renderHud(graphics);
+        // its own call and its own guard, after altoclef's so it lands on top: a trip question comes up when altoclef's
+        // hud isn't drawing at all, and altoclef's hud giving up must not take the question with it
+        TripToastHud.render(graphics, TripToastHud.subtitleRows(subtitleOverlay));
     }
 
     @Inject(

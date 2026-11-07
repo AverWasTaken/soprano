@@ -24,6 +24,7 @@
     "MixinAltoClefScreen",
     "MixinBlockItem",
     "MixinBlockStateBase",
+    "MixinChatScreenToast",
     "MixinChunkArray",
     "MixinClientChunkProvider",
     "MixinClientPlayerEntity",
@@ -51,7 +52,10 @@
     "MixinRenderPipelines",
     "MixinRenderType",
     "MixinScreen",
+    "MixinSopranoLanguage",
+    "MixinSopranoOptions",
     "MixinSoundBufferLibrary",
+    "MixinSubtitleOverlay",
     "MixinTitleScreen",
     "MixinWorldRenderer",
     "MixinVec3i"

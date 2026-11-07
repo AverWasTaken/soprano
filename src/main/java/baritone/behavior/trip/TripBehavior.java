@@ -53,6 +53,7 @@ public final class TripBehavior extends Behavior {
     private static final int MIN_GATHER_TICKS = 1200;
 
     private final TripBook book = new TripBook();
+    private final TripToast toast = new TripToast();
     private final AtomicBoolean searching = new AtomicBoolean();
     private final AtomicReference<Found> found = new AtomicReference<>();
 
@@ -85,6 +86,7 @@ public final class TripBehavior extends Behavior {
         Trip ended = book.end();
         stuck = null;
         pathOut = false;
+        toast.clear();
         if (ended != null && ended.gathering) {
             TripGatherer gatherer = AltoClefBridge.tripGatherer();
             if (gatherer != null) {
@@ -111,6 +113,11 @@ public final class TripBehavior extends Behavior {
         return book.current();
     }
 
+    // the corner toast's state. the hud reads it every frame, same thread as us
+    public TripToast toast() {
+        return toast;
+    }
+
     @Override
     public void onPathEvent(PathEvent event) {
         if (event == PathEvent.CALC_FINISHED_NOW_EXECUTING && book.current() != null) {
@@ -125,6 +132,11 @@ public final class TripBehavior extends Behavior {
 
     @Override
     public void onTick(TickEvent event) {
+        tickTrip(event);
+        syncToast();
+    }
+
+    private void tickTrip(TickEvent event) {
         ticks++;
         if (event.getType() == TickEvent.Type.OUT) {
             if (book.current() != null) {
@@ -150,6 +162,37 @@ public final class TripBehavior extends Behavior {
         handleFound();
         tickStuck();
         tickFaster();
+    }
+
+    // after the tick: whatever the trip turned into, the toast follows. answered in chat means the question goes away,
+    // a running gather updates its count, a failed one just goes (the chat line says why)
+    private void syncToast() {
+        Trip trip = book.current();
+        toast.sync(trip);
+        if (trip == null || !trip.gathering || trip.plan == null) {
+            return;
+        }
+        TripGatherer gatherer = AltoClefBridge.tripGatherer();
+        TripGatherer.Progress p = gatherer == null ? null : gatherer.progress(trip.id);
+        if (p != null) {
+            toast.collecting(trip.id, trip.plan.pickaxe(), p.have(), p.need(), p.phase());
+        } else {
+            toast.collecting(trip.id, trip.plan.pickaxe(), 0, trip.plan.blocks(), trip.plan.pickaxe() ? TripToast.Phase.PICKAXE : TripToast.Phase.BY_HAND);
+        }
+    }
+
+    // the toast's Stop, or #gather stop. the gather goes, the trip treats it like any other gather that didn't work out
+    public String stopGather(Long id) {
+        Trip trip = book.current();
+        if (trip == null || (id != null && id != trip.id) || !trip.gathering) {
+            return "Not collecting anything right now.";
+        }
+        TripGatherer gatherer = AltoClefBridge.tripGatherer();
+        if (gatherer != null) {
+            gatherer.cancel(trip.id);
+        }
+        failGather(trip, "Ok, stopped collecting.");
+        return null;
     }
 
     // #gather yes/no, typed or clicked. null id means whatever is being asked right now. returns what to tell the user
@@ -330,6 +373,7 @@ public final class TripBehavior extends Behavior {
             Trip asked = book.ask(trip.id, Trip.Ask.STUCK, plan);
             if (asked != null) {
                 TripPrompt.ask(asked.id, plan, 0);
+                toast.ask(asked.id, plan, 0);
             }
         }
     }
@@ -358,7 +402,9 @@ public final class TripBehavior extends Behavior {
         }
         Trip asked = book.ask(trip.id, Trip.Ask.FASTER, plan);
         if (asked != null) {
-            TripPrompt.ask(asked.id, plan, r.estTicks() - w.estTicks() - gather);
+            double saved = r.estTicks() - w.estTicks() - gather;
+            TripPrompt.ask(asked.id, plan, saved);
+            toast.ask(asked.id, plan, saved);
         }
     }
 
@@ -416,6 +462,7 @@ public final class TripBehavior extends Behavior {
             case DONE -> {
                 if (book.gatherDone(trip.id) != null) {
                     TripPrompt.say("Got them, carrying on.");
+                    toast.done(trip.id, trip.plan != null && trip.plan.pickaxe(), trip.plan == null ? 0 : trip.plan.blocks(), System.currentTimeMillis());
                     // straight to the custom goal process, not userTrip: this is the same trip carrying on
                     baritone.getCustomGoalProcess().setGoalAndPath(trip.goal);
                 }

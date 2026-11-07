@@ -60,11 +60,9 @@ final class TripPrompt {
         msg.append(button("[Yes]", ChatFormatting.GREEN, "gather yes " + tripId, "Go and get " + plan.describe()));
         msg.append(Component.literal(" "));
         msg.append(button("[No]", ChatFormatting.RED, "gather no " + tripId, "Don't, for this whole trip"));
-        // always chat, never just a toast: a toast can't be clicked. the toast is the "hey, look at chat"
+        // chat as well as the corner toast (TripToast, drawn by TripToastHud): the toast goes when the hud is hidden or
+        // broke, the chat line is still there to click. the toast replaced vanilla's "answer in chat" one
         Helper.HELPER.logDirect(false, msg);
-        Helper.HELPER.logToast(Helper.getPrefix(), Component.literal(plan.kind() == Trip.Ask.STUCK
-                ? "Can't finish the path without blocks. Answer in chat"
-                : "Found a faster path that needs blocks. Answer in chat"));
     }
 
     private static MutableComponent button(String text, ChatFormatting color, String command, String hover) {

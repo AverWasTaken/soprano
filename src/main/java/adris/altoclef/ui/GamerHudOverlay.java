@@ -10,6 +10,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerHudState.KitRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasks.speedrun.gamer.HudRules;
+import adris.altoclef.ui.gui.hud.HudObstacles;
 import adris.altoclef.util.helpers.CombatCommit;
 import baritone.Baritone;
 import net.minecraft.client.Minecraft;
@@ -185,6 +186,9 @@ public class GamerHudOverlay {
         // gui there is room for both, at a tiny window they overlap and that is the window's problem
         int x0 = (int) (graphics.guiWidth() / scale) - MARGIN - WIDTH;
         int y0 = ((int) (graphics.guiHeight() / scale) - height) / 2;
+        // the corner toast steps around this, in framebuffer px like it draws
+        float px = scale * mc.getWindow().getGuiScale();
+        HudObstacles.card(x0 * px, y0 * px, WIDTH * px, height * px);
         graphics.pose().pushMatrix();
         graphics.pose().scale(scale, scale);
         graphics.pose().translate(x0, y0);
