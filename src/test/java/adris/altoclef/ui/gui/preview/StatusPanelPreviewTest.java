@@ -185,7 +185,7 @@ public class StatusPanelPreviewTest {
         float chatTop = winH - (40 + chatTall) * gs;
         c.fillRect(0, chatTop, Math.min(winW, 324 * gs), chatTall * gs, 0x40000000);
         float m = p.theme().pxf(StatusPanel.MARGIN);
-        PanelPlacement.Room room = PanelPlacement.room(winW, winH, gs, m, bosses, chatTall, card, null, p.theme().pxf(StatusPanel.NARROW));
+        PanelPlacement.Room room = PanelPlacement.room(winW, winH, gs, m, bosses, chatTall, card, null, p.theme().pxf(StatusPanel.BESIDE_BOSS));
         StatusPanel.Mode mode = p.layout(room);
         if (mode != StatusPanel.Mode.NONE) {
             draw(p, c, T0 + 1000);

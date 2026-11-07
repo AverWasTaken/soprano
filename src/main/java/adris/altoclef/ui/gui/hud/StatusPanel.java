@@ -72,8 +72,11 @@ public final class StatusPanel {
     static final int LINE_GAP = 4;
     static final int ELBOW = 5;
     static final int MIN_GAP_PX = 3;
-    // how thin the panel may get beside the boss bars before it goes under them instead
+    // the narrowest tree worth drawing, under this it goes compact
     public static final int NARROW = 160;
+    // beside the boss bars only with the whole max width to spare, else under them. squeezed to 220 next to the
+    // dragon's bar on a small window it read "Beating the …", one bar's height lower it reads fine
+    public static final int BESIDE_BOSS = MAX_W;
     // narrower than this and even the compact one is just a smear of dots
     static final int TINY = 120;
     static final int BAR_TOP = 4;
@@ -162,8 +165,6 @@ public final class StatusPanel {
             reset();
             return;
         }
-        keepTop = Math.max(1, top);
-        timer = time;
         if (!next.isEmpty()) {
             if (!had || idleSince >= 0 || shownAt < 0) {
                 shownAt = nowMs;
@@ -171,11 +172,11 @@ public final class StatusPanel {
             had = true;
             idleSince = -1;
             emptySince = -1;
-            rows = next;
+            take(next, top, time);
             return;
         }
         if (!had) {
-            rows = next;
+            take(next, top, time);
             return;
         }
         if (idleSince < 0) {
@@ -183,17 +184,23 @@ public final class StatusPanel {
                 emptySince = nowMs;
             }
             if (nowMs - emptySince < GRACE_MS) {
-                // keep the old rows up through the gap
+                // keep the old rows up through the gap, timer and all (an empty chain has no timer)
                 return;
             }
             idleSince = nowMs;
-            rows = next;
+            take(next, top, time);
         } else if (nowMs - idleSince >= IDLE_MS + fadeMs()) {
             had = false;
             idleSince = -1;
             emptySince = -1;
             shownAt = -1;
         }
+    }
+
+    private void take(List<Row> next, int top, String time) {
+        rows = next;
+        keepTop = Math.max(1, top);
+        timer = time;
     }
 
     // a rebuilt panel (new scale) carries on where the old one was: no second fade in, the pill keeps its clock

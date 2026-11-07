@@ -80,7 +80,7 @@ public final class StatusPanelHud {
         int winH = win.getHeight();
         StatusPanel p = panel;
         PanelPlacement.Room room = PanelPlacement.room(winW, winH, guiScale, p.theme().pxf(StatusPanel.MARGIN), bosses(mc),
-                chatTall(mc), HudObstacles.card(), HudObstacles.toast(), p.theme().pxf(StatusPanel.NARROW));
+                chatTall(mc), HudObstacles.card(), HudObstacles.toast(), p.theme().pxf(StatusPanel.BESIDE_BOSS));
         if (p.layout(room) == StatusPanel.Mode.NONE) {
             return;
         }

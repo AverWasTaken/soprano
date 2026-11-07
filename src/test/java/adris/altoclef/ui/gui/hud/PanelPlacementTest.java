@@ -33,18 +33,22 @@ public class PanelPlacementTest {
     // the dragon's bar on a big window: 182 wide in the middle, nowhere near the corner, nothing changes
     @Test
     public void endOnABigWindowLeavesItAlone() {
-        PanelPlacement.Room none = PanelPlacement.room(2560, 1369, 2, 16, 0, CHAT, null, null, 160);
-        PanelPlacement.Room boss = PanelPlacement.room(2560, 1369, 2, 16, 1, CHAT, null, null, 160);
+        PanelPlacement.Room none = PanelPlacement.room(2560, 1369, 2, 16, 0, CHAT, null, null, 340);
+        PanelPlacement.Room boss = PanelPlacement.room(2560, 1369, 2, 16, 1, CHAT, null, null, 340);
         assertEquals(none.y(), boss.y(), 0);
         assertTrue(boss.x() + Math.min(boss.w(), 340) < (1280 - 91) * 2);
     }
 
-    // 854x480 at gui 2: the bar starts at (213.5 - 91) x 2 = 245, so the panel gets narrower and stays up top
+    // 854x480 at gui 2: the bar starts at (213.5 - 91) x 2 = 245. with only 160 asked for it narrows and stays up top,
+    // with the panel's real ask (its max width, 340) it goes under the bar: 17 x 2 + 8
     @Test
-    public void smallWindowNarrowsBesideTheBar() {
+    public void smallWindowNarrowsOrGoesUnder() {
         PanelPlacement.Room r = PanelPlacement.room(854, 480, 2, 16, 1, CHAT, null, null, 160);
         assertEquals(16, r.y(), 0);
         assertEquals(245 - 8 - 16, r.w(), 0.01);
+        PanelPlacement.Room u = PanelPlacement.room(854, 480, 2, 16, 1, CHAT, null, null, 340);
+        assertEquals(17 * 2 + 8, u.y(), 0.01);
+        assertEquals(854 - 32, u.w(), 0.01);
     }
 
     // same window at gui 3: barely 130 px beside it, so under it instead. last bar bottom 12 + 5 = 17 gui

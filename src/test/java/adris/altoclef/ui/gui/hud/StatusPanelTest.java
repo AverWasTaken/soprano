@@ -167,12 +167,16 @@ public class StatusPanelTest {
     @Test
     public void aOneTickGapIsNotTheEnd() {
         StatusPanel p = panel(1f);
-        p.update(chain(1, ""), 1, null, 0);
+        p.update(chain(1, ""), 1, "00:42", 0);
         p.layout(BIG);
         assertEquals(1f, p.alpha(1000), 1e-6);
+        int w = p.w();
         p.update(List.of(), 1, null, 1000);
         assertTrue(p.wantsTree());
         assertFalse(p.wantsIdle());
+        p.layout(BIG);
+        assertEquals("the timer stays up through the gap", "00:42", p.laid().get(0).meta());
+        assertEquals("and the width with it", w, p.w());
         p.update(chain(2, ""), 1, null, 1050);
         assertTrue(p.wantsTree());
         p.layout(BIG);
