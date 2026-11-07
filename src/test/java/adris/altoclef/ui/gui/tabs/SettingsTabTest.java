@@ -1,11 +1,12 @@
 package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.facade.SettingsAccess.SettingView;
-import adris.altoclef.ui.gui.kit.Icon;
+import adris.altoclef.ui.gui.kit.Button;
 import adris.altoclef.ui.gui.kit.Keys;
-import adris.altoclef.ui.gui.kit.Label;
-import adris.altoclef.ui.gui.kit.Tab;
-import adris.altoclef.ui.gui.kit.Theme;
+import adris.altoclef.ui.gui.kit.Popover;
+import adris.altoclef.ui.gui.kit.Tile;
+import adris.altoclef.ui.gui.kit.TileGrid;
+import adris.altoclef.ui.gui.kit.Tooltip;
 import adris.altoclef.ui.gui.kit.Widget;
 import adris.altoclef.ui.gui.model.SettingCategories;
 import adris.altoclef.ui.gui.preview.FakeFacade;
@@ -14,14 +15,19 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+// the settings tab through a real shell and the fake facade: what a click, a popover or a search actually sends down
+// the #set road. facade.actions is the record of every set and reset that would have run
 public class SettingsTabTest {
 
     private FakeFacade f;
@@ -36,411 +42,404 @@ public class SettingsTabTest {
             return List.of(tab);
         });
         p.settle();
-        // these tests poke settings of every kind, so keep the advanced ones in sight
-        tab.setAdvanced(true);
-        p.settle();
     }
 
-    private SettingRow row(String name) {
-        for (SettingRow r : tab.rows()) {
-            if (name.equals(r.name()) && r.visible()) {
-                return r;
-            }
-        }
-        return null;
-    }
-
-    // narrows the list to one setting so its row is on screen, then returns it
-    private SettingRow show(String name) {
-        tab.onSearch(name);
-        p.settle();
-        p.settle();
-        SettingRow r = row(name);
-        assertNotNull(name + " is not on screen", r);
-        return r;
-    }
-
-    private void clickCentre(Widget w) {
+    private void click(Widget w) {
         p.click(w.x() + w.w() / 2f, w.y() + w.h() / 2f);
         p.settle();
+    }
+
+    // narrows the grid to one setting and returns its tile, on screen
+    private Tile show(String query, String name) {
+        tab.onSearch(query);
+        p.settle();
+        p.settle();
+        Tile t = tab.tileOf(name);
+        assertNotNull(name, t);
+        assertTrue(name + " is not in the results", tab.grid().tiles().contains(t));
+        return t;
+    }
+
+    private Popover open(Tile t) {
+        // the lower sections are below the fold at this size
+        tab.grid().scrollToTile(t);
+        p.advance(400);
+        p.settle();
+        p.settle();
+        click(t);
+        Popover pop = tab.openPopover();
+        assertNotNull("no popover for " + t.name(), pop);
+        assertSame(pop, p.shell.overlay());
+        return pop;
+    }
+
+    // the wheel all the way down, then the Show all button under the last section
+    private void showAll() {
+        TileGrid g = tab.grid();
+        for (int i = 0; i < 60; i++) {
+            p.shell.scroll(g.x() + 40, g.y() + 40, -1);
+        }
+        p.advance(600);
+        p.settle();
+        click(tab.showAll().button());
+    }
+
+    private void selectAllAndType(String text) {
+        p.shell.keyDown(Keys.A, Keys.MOD_CTRL);
+        p.shell.keyUp(Keys.A);
+        p.type(text);
     }
 
     private SettingView view(String name) {
         return f.settings.get(name);
     }
 
-    private void category(String label) {
-        clickCentre(tab.toolbar().categories());
-        p.type(label);
-        p.key(Keys.ENTER);
-        p.settle();
-    }
-
-    @Test
-    public void listsEverySettingButOnlyBuildsAFewRows() {
-        assertEquals(f.settings.all().size(), tab.list().items().size() + tab.common().size());
-        assertTrue("rows are pooled, got " + tab.rows().size(), tab.rows().size() <= 20);
-        tab.settingsContent().browser().scroller().snapTo(tab.common().heightFor(tab.common().w()) + p.theme.px(30));
-        p.settle();
-        assertTrue(tab.list().liveRows() > 3);
-    }
-
-    @Test
-    public void rowsAreBuiltOnceNoMatterHowFarYouScroll() {
-        tab.settingsContent().browser().scroller().snapTo(tab.common().heightFor(tab.common().w()) + p.theme.px(30));
-        p.settle();
-        int before = tab.rows().size();
-        for (int i = 0; i < 30; i++) {
-            p.scroll(p.shell.contentX() + p.shell.contentW() / 2f, p.shell.contentY() + p.shell.contentH() / 2f, -3);
-            p.settle();
+    private List<String> titles() {
+        List<String> out = new ArrayList<>();
+        for (TileGrid.Section s : tab.grid().sections()) {
+            out.add(s.title());
         }
-        // a row half on screen at each end can need one more widget, never one per scroll step
-        assertTrue(tab.rows().size() <= before + 2);
+        return out;
     }
 
-    @Test
-    public void countLineOnlyShowsUpWhenSomethingNarrowedTheList() {
-        SettingsContent content = tab.settingsContent();
-        assertEquals("", content.countLine());
-        int listTop = content.browser().y();
-        tab.onSearch("parkour");
-        p.settle();
-        assertEquals(tab.list().items().size() + " matching", content.countLine());
-        assertTrue("the list gives way to the line", content.browser().y() > listTop);
-        tab.onSearch("");
-        p.settle();
-        assertEquals("", content.countLine());
-        assertEquals(listTop, content.browser().y());
-        tab.onSearch("zzzzzz");
-        p.settle();
-        assertEquals("", content.countLine());
-    }
+    // ----- the first page
 
     @Test
-    public void toggleCallsSetAndShowsTheModifiedDot() {
-        SettingRow r = show("allowParkour");
-        assertFalse(view("allowParkour").modified());
-        clickCentre(r.toggle());
-        assertTrue(f.actions.contains("set allowParkour true"));
-        assertTrue(view("allowParkour").modified());
-        assertTrue(r.toggle().on());
-    }
-
-    @Test
-    public void numberRejectsGarbageAndKeepsTheOldValue() {
-        SettingRow r = show("followRadius");
-        clickCentre(r.number().field());
-        // select all, then a lone minus: the box parses nothing
-        p.shell.keyDown(Keys.A, 2);
-        p.type("-");
-        p.key(Keys.ENTER);
-        p.settle();
-        assertNotNull(r.errorText());
-        assertTrue(r.errorText(), r.errorText().startsWith("Not a number"));
-        assertEquals("3", view("followRadius").value());
-        assertFalse(f.actions.stream().anyMatch(a -> a.startsWith("set followRadius")));
-    }
-
-    @Test
-    public void numberCommitsOnEnter() {
-        SettingRow r = show("followRadius");
-        clickCentre(r.number().field());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("12");
-        p.key(Keys.ENTER);
-        p.settle();
-        assertNull(r.errorText());
-        assertEquals("12", view("followRadius").value());
-        assertTrue(f.actions.contains("set followRadius 12"));
-    }
-
-    @Test
-    public void numberCommitsWhenYouClickAway() {
-        SettingRow r = show("followRadius");
-        clickCentre(r.number().field());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("9");
-        p.settle();
-        // the hover on the search field of the header is as good as any other empty spot
-        p.click(p.shell.contentX() + 4, p.shell.contentY() + p.shell.contentH() - 4);
-        p.settle();
-        p.settle();
-        assertEquals("9", view("followRadius").value());
-    }
-
-    @Test
-    public void pendingEditIsCommittedBeforeACategoryClickReshufflesTheList() {
-        SettingRow r = show("followRadius");
-        clickCentre(r.number().field());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("7");
-        var col = tab.toolbar();
-        category("Tasks");
-        p.settle();
-        assertEquals("7", view("followRadius").value());
-    }
-
-    @Test
-    public void pendingEditIsCommittedWhenTheTabIsHidden() {
-        SettingRow r = show("prefix");
-        clickCentre(r.text());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("%");
-        tab.onHidden();
-        assertEquals("%", view("prefix").value());
-    }
-
-    @Test
-    public void realTabSwitchCommitsEvenThoughTheShellBlursFirst() throws Exception {
-        FakeFacade ff = new FakeFacade();
-        Preview two = new Preview(ff, pv -> {
-            tab = new SettingsTab(pv.theme, pv.facade, pv.ctx);
-            Tab other = new Tab() {
-                final Widget w = new Label(pv.theme, "other", pv.theme.body, Theme.TEXT);
-
-                @Override
-                public String id() {
-                    return "other";
-                }
-
-                @Override
-                public String title() {
-                    return "Other";
-                }
-
-                @Override
-                public Icon icon() {
-                    return Icon.GET;
-                }
-
-                @Override
-                public Widget content() {
-                    return w;
-                }
-            };
-            return List.of(tab, other);
-        });
-        two.settle();
-        tab.onSearch("prefix");
-        two.settle();
-        two.advance(300);
-        two.settle();
-        SettingRow r = null;
-        for (SettingRow x : tab.rows()) {
-            if ("prefix".equals(x.name()) && x.visible()) {
-                r = x;
+    public void firstPageIsTheFortyTilesInTheMocksSixSections() {
+        assertEquals(SettingsTab.Page.HOME, tab.page());
+        assertEquals(List.of("Travel", "Movement", "Mining and building", "Combat and safety", "Rendering", "Chat and HUD"), titles());
+        List<String> names = new ArrayList<>();
+        for (SettingsHome.Section s : SettingsHome.SECTIONS) {
+            for (SettingsHome.Entry e : s.entries()) {
+                names.add(e.name());
             }
         }
-        assertNotNull(r);
-        two.click(r.text().x() + 10, r.text().y() + r.text().h() / 2f);
-        two.shell.keyDown(Keys.A, 2);
-        two.type("%");
-        two.settle();
-        two.shell.switchTab(1);
-        assertEquals("%", ff.settings.get("prefix").value());
+        assertEquals(40, names.size());
+        assertEquals(40, new HashSet<>(names).size());
+        assertEquals(40, tab.grid().tiles().size());
+        for (int i = 0; i < names.size(); i++) {
+            assertSame(tab.tileOf(names.get(i)), tab.grid().tiles().get(i));
+        }
+        // fast mode and boats show what they really are, the mock lit them for show
+        assertEquals("Off", tab.tileOf("fastMode").valueText());
+        assertEquals("Off", tab.tileOf("allowBoats").valueText());
+        assertEquals("12", tab.tileOf("fastModeMinHealth").valueText());
+        assertEquals("Smart", tab.tileOf("altoForceFieldStrategy").valueText());
+        assertEquals("Red", tab.tileOf("colorCurrentPath").valueText());
+        assertEquals("#", tab.tileOf("prefix").valueText());
+        assertEquals("1", tab.tileOf("altoHudScale").valueText());
+        assertNotNull(tab.showAll().button());
+        assertTrue(tab.grid().children().contains(tab.showAll()));
     }
 
     @Test
-    public void clickingInsideTheBoxBeingTypedInIsNotLeavingIt() {
-        SettingRow r = show("followRadius");
-        clickCentre(r.number().field());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("1");
-        p.settle();
-        // a click to move the caret (past the end of the text), inside the same box
-        p.click(r.number().field().x() + p.theme.px(40), r.number().field().y() + r.number().field().h() / 2f);
-        p.settle();
-        assertEquals("3", view("followRadius").value());
-        p.type("00");
-        p.key(Keys.ENTER);
-        assertEquals("100", view("followRadius").value());
+    public void namesAreTheFieldNameSplitWithoutAlto() {
+        assertEquals("Fast Mode", tab.tileOf("fastMode").name());
+        assertEquals("Mob Defense", tab.tileOf("altoMobDefense").name());
+        assertEquals("Max Fall Height No Water", tab.tileOf("maxFallHeightNoWater").name());
+        assertEquals("Primary Timeout MS", tab.tileOf("primaryTimeoutMS").name());
     }
 
     @Test
-    public void colourChannelsCommitOnceWhenYouLeaveTheGroup() {
-        SettingRow r = show("colorCurrentPath");
-        clickCentre(r.channel(0));
-        p.shell.keyDown(Keys.A, 2);
-        p.type("10");
-        p.settle();
-        clickCentre(r.channel(1));
-        p.shell.keyDown(Keys.A, 2);
-        p.type("20");
-        p.settle();
-        assertEquals("255,0,0", view("colorCurrentPath").value());
-        // leave the group
-        p.click(p.shell.contentX() + 4, p.shell.contentY() + p.shell.contentH() - 4);
-        p.settle();
-        p.settle();
-        assertEquals("10,20,0", view("colorCurrentPath").value());
-        assertEquals(1, f.actions.stream().filter(a -> a.startsWith("set colorCurrentPath")).count());
+    public void tooltipsAreTheSentenceThenSetNameAndDefault() {
+        Tooltip t = tab.tileOf("fastMode").tooltip();
+        assertEquals("Fast Mode", t.title());
+        assertEquals(SettingsHome.entry("fastMode").sentence(), t.body());
+        assertEquals(List.of("#set fastMode", "Default: Off"), t.footer());
+        // off the first page it is the generated description
+        Tooltip d = tab.tileOf("chatDebug").tooltip();
+        assertEquals("Print debug chat.", d.body());
+        assertEquals(List.of("#set chatDebug", "Default: Off"), d.footer());
+        assertEquals(List.of("#set altoMobDefense", "Default: On"), tab.tileOf("altoMobDefense").tooltip().footer());
+        assertEquals("Default: Purple", tab.tileOf("colorNextPath").tooltip().footer().get(1));
+    }
+
+    // ----- switches
+
+    @Test
+    public void clickingASwitchTileSavesItAndClickingAgainResetsIt() {
+        Tile t = tab.tileOf("fastMode");
+        click(t);
+        assertEquals("set fastMode true", f.actions.get(f.actions.size() - 1));
+        assertTrue(t.on());
+        assertEquals("true", view("fastMode").value());
+        // back to its default is a reset, so settings.txt does not keep a line for it
+        click(t);
+        assertEquals("set reset fastMode", f.actions.get(f.actions.size() - 1));
+        assertFalse(t.on());
     }
 
     @Test
-    public void detailStripFollowsTheMouseNotTheFocusedRow() {
-        SettingRow typing = show("followRadius");
-        clickCentre(typing.number().field());
-        tab.onSearch("");
+    public void spaceOnAFocusedSwitchTileSavesItToo() {
+        Tile t = tab.tileOf("allowBoats");
+        p.shell.focus(t);
+        p.key(Keys.SPACE);
         p.settle();
-        p.advance(300);
-        p.settle();
-        Widget other = tab.common().children().get(3);
-        p.hover(other.x() + other.w() / 2f, other.y() + other.h() / 2f);
-        p.settle();
-        assertEquals("allowSprint", tab.settingsContent().detail().name());
+        assertEquals("set allowBoats true", f.actions.get(f.actions.size() - 1));
+        assertTrue(t.on());
+        // the same tile in a search shows the same state, it is the same tile
+        assertSame(t, show("boats", "allowBoats"));
+        assertTrue(t.on());
     }
 
-    @Test
-    public void nudgeButtonsStepByOne() {
-        SettingRow r = show("followRadius");
-        var plus = r.number().children().get(2);
-        clickCentre(plus);
-        assertEquals("4", view("followRadius").value());
-    }
+    // ----- popovers, one per kind, every commit through set
 
     @Test
-    public void resetPutsTheDefaultBack() {
-        SettingRow r = show("altoFoodMinimum");
-        assertTrue(view("altoFoodMinimum").modified());
-        p.hover(r.x() + 20, r.y() + r.h() / 2f);
-        p.settle();
-        clickCentre(r.resetButton());
-        // the first click only arms the reset, the second one commits it
-        assertEquals("70", view("altoFoodMinimum").value());
-        clickCentre(r.resetButton());
-        assertEquals("24", view("altoFoodMinimum").value());
-        assertTrue(f.actions.contains("set reset altoFoodMinimum"));
-        assertFalse(view("altoFoodMinimum").modified());
-    }
-
-    @Test
-    public void colourBoxesCommitAsRgb() {
-        SettingRow r = show("colorCurrentPath");
-        clickCentre(r.channel(0));
-        p.shell.keyDown(Keys.A, 2);
-        p.type("10");
+    public void numberPopoverCommitsThroughSetAndTheTileFollows() {
+        Tile t = tab.tileOf("fastModeMinHealth");
+        open(t);
+        selectAllAndType("8");
         p.key(Keys.ENTER);
         p.settle();
-        assertEquals("10,0,0", view("colorCurrentPath").value());
+        assertNull(p.shell.overlay());
+        assertEquals("set fastModeMinHealth 8", f.actions.get(f.actions.size() - 1));
+        assertEquals("8", t.valueText());
     }
 
     @Test
-    public void colourChannelOverTwoFiftyFiveIsRefused() {
-        SettingRow r = show("colorCurrentPath");
-        clickCentre(r.channel(1));
-        p.shell.keyDown(Keys.A, 2);
-        p.type("300");
+    public void numberPopoverRefusesSomethingThatIsNotANumber() {
+        Tile t = tab.tileOf("mobAvoidanceRadius");
+        int before = f.actions.size();
+        open(t);
+        // a whole number box never lets the point in, a lone minus is what gets through and does not parse
+        selectAllAndType("-");
         p.key(Keys.ENTER);
         p.settle();
-        assertEquals("Colours go from 0 to 255.", r.errorText());
-        assertEquals("255,0,0", view("colorCurrentPath").value());
+        // stays open saying why, nothing saved, the tile keeps its value
+        assertNotNull(tab.openPopover());
+        assertEquals(before, f.actions.size());
+        assertEquals("8", t.valueText());
+        p.key(Keys.ESCAPE);
+        p.settle();
+        assertNull(p.shell.overlay());
+        assertEquals(before, f.actions.size());
     }
 
     @Test
-    public void colourChannelNudgesWithArrowKeys() {
-        SettingRow r = show("colorNextPath");
-        clickCentre(r.channel(0));
+    public void numberPopoverCommitsOnAnOutsideClick() {
+        Tile t = tab.tileOf("maxFallHeightNoWater");
+        open(t);
+        selectAllAndType("6");
+        // somewhere in the header, not a tile
+        p.click(p.shell.contentX() + 40, p.shell.y() + 20);
+        p.settle();
+        assertNull(p.shell.overlay());
+        assertEquals("set maxFallHeightNoWater 6", f.actions.get(f.actions.size() - 1));
+        assertEquals("6", t.valueText());
+    }
+
+    @Test
+    public void choicePopoverCommitsTheConstantName() {
+        Tile t = tab.tileOf("altoForceFieldStrategy");
+        open(t);
+        // Smart is the last one, up is Delay
         p.key(Keys.UP);
-        p.settle();
-        assertEquals("1,255,0", view("colorNextPath").value());
-    }
-
-    @Test
-    public void otherKindShowsTheParseErrorInline() {
-        SettingRow r = show("blocksToAvoid");
-        clickCentre(r.other());
-        p.type("!nope");
         p.key(Keys.ENTER);
         p.settle();
-        assertNotNull(r.errorText());
-        assertTrue(r.errorText(), r.errorText().contains("Unknown block"));
-        assertTrue(r.other().invalid());
-        // typing again clears it
-        p.type("x");
-        assertNull(r.errorText());
+        assertEquals("set altoForceFieldStrategy DELAY", f.actions.get(f.actions.size() - 1));
+        assertEquals("Delay", t.valueText());
     }
 
     @Test
-    public void stringCommitsOnEnter() {
-        SettingRow r = show("prefix");
-        clickCentre(r.text());
-        p.shell.keyDown(Keys.A, 2);
-        p.type("!");
+    public void colourPopoverBackToDefaultIsAReset() {
+        Tile t = tab.tileOf("colorNextPath");
+        assertEquals("Green", t.valueText());
+        Popover pop = open(t);
+        Button reset = (Button) pop.children().get(1);
+        click(reset);
+        assertEquals("set reset colorNextPath", f.actions.get(f.actions.size() - 1));
+        assertEquals("Purple", t.valueText());
+        // live: the card stays open on the new value
+        assertSame(pop, p.shell.overlay());
+    }
+
+    @Test
+    public void colourSwatchCommitsAsRgb() {
+        Tile t = tab.tileOf("colorCurrentPath");
+        Popover pop = open(t);
+        // the fourth dot of the first row is green, same spot PopoverTest clicks, at this scale
+        float dx = pop.x() + p.theme.px(12) + p.theme.px(6) + p.theme.px(232 - 24 - 12 - 32) + p.theme.px(16);
+        float dy = pop.y() + p.theme.px(12) + p.theme.px(16) + p.theme.px(10) + p.theme.px(2) + p.theme.px(16);
+        p.click(dx, dy);
+        p.settle();
+        assertEquals("set colorCurrentPath 48,209,88", f.actions.get(f.actions.size() - 1));
+        assertEquals("Green", t.valueText());
+    }
+
+    @Test
+    public void textPopoverCommitsAString() {
+        Tile t = tab.tileOf("prefix");
+        open(t);
+        selectAllAndType("!");
         p.key(Keys.ENTER);
         p.settle();
-        assertEquals("!", view("prefix").value());
+        assertEquals("set prefix !", f.actions.get(f.actions.size() - 1));
+        assertEquals("!", t.valueText());
     }
 
     @Test
-    public void enumPicksFromTheDropdown() {
-        SettingRow r = show("mirror");
-        clickCentre(r.dropdown());
-        p.settle();
-        p.key(Keys.DOWN);
+    public void listPopoverRunsTheRealParserFirst() {
+        Tile t = show("blocks to avoid", "blocksToAvoid");
+        assertEquals("None", t.valueText());
+        int before = f.actions.size();
+        open(t);
+        selectAllAndType("!nope");
         p.key(Keys.ENTER);
         p.settle();
-        assertEquals("LEFT_RIGHT", view("mirror").value());
-    }
-
-    @Test
-    public void pinnedKeyRebindsAndTellsTheShell() {
-        clickCentre(tab.keyCard().capture());
-        assertTrue(tab.keyCard().capture().capturing());
-        p.key(Keys.RIGHT_CONTROL);
+        // the fake parser does not know that block: open, nothing saved
+        assertNotNull(tab.openPopover());
+        assertEquals(before, f.actions.size());
+        selectAllAndType("minecraft:stone,minecraft:dirt");
+        p.key(Keys.ENTER);
         p.settle();
-        assertEquals("345", view("guiKey").value());
-        assertTrue(f.actions.contains("set guiKey 345"));
-        // the shell's own copy of the key moved too
-        assertEquals(345, p.shell.keyCapture().bind().key);
+        assertNull(p.shell.overlay());
+        assertEquals("set blocksToAvoid minecraft:stone,minecraft:dirt", f.actions.get(f.actions.size() - 1));
+        assertEquals("2 blocks", t.valueText());
     }
 
     @Test
-    public void pinnedKeyBackspaceUnbinds() {
-        clickCentre(tab.keyCard().capture());
-        p.key(Keys.BACKSPACE);
+    public void keyPopoverRebindsAndTellsTheShell() {
+        Tile t = show("gui key", "guiKey");
+        assertEquals("Right Shift", t.valueText());
+        open(t);
+        // the key cap has focus: enter starts the capture, the next key is the bind
+        p.shell.keyDown(Keys.ENTER, 0);
+        p.shell.keyUp(Keys.ENTER);
+        p.shell.keyDown(Keys.A, 0);
+        p.shell.keyUp(Keys.A);
         p.settle();
-        assertEquals("-1", view("guiKey").value());
-        assertEquals(-1, p.shell.keyCapture().bind().key);
+        assertTrue(f.actions.contains("set guiKey " + Keys.A));
+        assertEquals(Keys.A, p.shell.openKey());
+        assertEquals(f.keyNames().name(Keys.A), t.valueText());
     }
 
     @Test
-    public void keyRowAndPinnedCardStayInSync() {
-        SettingRow r = show("guiKey");
-        clickCentre(r.key());
-        p.key(Keys.RIGHT_CONTROL);
+    public void closingAPopoverDoesNotSaveAnything() {
+        int before = f.actions.size();
+        open(tab.tileOf("altoHudScale"));
+        p.key(Keys.ESCAPE);
         p.settle();
-        assertEquals(345, tab.keyCard().capture().bind().key);
-        assertEquals(345, p.shell.keyCapture().bind().key);
+        assertNull(p.shell.overlay());
+        assertEquals(before, f.actions.size());
+    }
+
+    // ----- show all and reset all
+
+    @Test
+    public void showAllListsEverySettingByCategoryAndBackReturns() {
+        showAll();
+        assertEquals(SettingsTab.Page.ALL, tab.page());
+        assertEquals(f.settings.map.size(), tab.grid().tiles().size());
+        assertEquals(f.settings.map.size(), new HashSet<>(tab.grid().tiles()).size());
+        assertTrue(tab.grid().children().contains(tab.bar()));
+        assertFalse(tab.grid().children().contains(tab.showAll()));
+        for (String title : titles()) {
+            assertTrue(title, SettingCategories.names().contains(title));
+        }
+        // the alto block reads by what the tile says: Auto Eat before Mob Defense
+        List<Tile> tasks = null;
+        for (TileGrid.Section s : tab.grid().sections()) {
+            if (s.title().equals(SettingCategories.ALTO)) {
+                tasks = s.tiles();
+            }
+        }
+        assertNotNull(tasks);
+        assertTrue(tasks.indexOf(tab.tileOf("altoAutoEat")) < tasks.indexOf(tab.tileOf("altoMobDefense")));
+        click(tab.bar().back());
+        assertEquals(SettingsTab.Page.HOME, tab.page());
+        assertEquals(40, tab.grid().tiles().size());
     }
 
     @Test
-    public void enabledToggleSetsGuiKeyEnabled() {
-        clickCentre(tab.keyCard().enabledToggle());
-        assertEquals("false", view("guiKeyEnabled").value());
-        assertTrue(f.actions.contains("set guiKeyEnabled false"));
-    }
-
-    @Test
-    public void searchNarrowsAndEmptyStateAppears() {
+    public void searchingOnShowAllDropsTheBarUntilTheSearchIsCleared() {
+        showAll();
+        assertTrue(tab.grid().children().contains(tab.bar()));
         tab.onSearch("parkour");
         p.settle();
-        assertTrue(tab.list().items().stream().allMatch(v -> v.name().toLowerCase().contains("parkour")
-                || f.settings.description(v.name()).toLowerCase().contains("parkour")));
-        tab.onSearch("zzzzzz");
-        p.settle();
-        assertTrue(tab.list().items().isEmpty());
+        assertFalse(tab.grid().children().contains(tab.bar()));
         tab.onSearch("");
-        assertEquals(f.settings.all().size(), tab.list().items().size() + tab.common().size());
+        p.settle();
+        assertTrue(tab.grid().children().contains(tab.bar()));
+        assertEquals(SettingsTab.Page.ALL, tab.page());
     }
 
     @Test
-    public void categoryAndModifiedOnlyNarrow() {
-        int all = tab.list().items().size();
-        var col = tab.toolbar();
-        // the first category in the toolbar, Tasks
-        category(SettingCategories.ALTO);
+    public void resetAllAsksFirstThenResetsEveryChangedSetting() {
+        click(tab.tileOf("fastMode"));
+        showAll();
+        assertTrue(tab.bar().resetAll().enabled());
+        click(tab.bar().resetAll());
+        assertTrue(tab.bar().armed());
+        assertFalse(f.actions.contains("set reset all"));
+        // cancel backs out
+        click(tab.bar().cancel());
+        assertFalse(tab.bar().armed());
+        assertFalse(f.actions.contains("set reset all"));
+        click(tab.bar().resetAll());
+        click(tab.bar().confirm());
+        assertTrue(f.actions.contains("set reset all"));
+        for (SettingView v : f.settings.all()) {
+            assertFalse(v.name(), v.modified());
+        }
+        assertFalse(tab.tileOf("fastMode").on());
+        assertEquals("3", tab.tileOf("maxFallHeightNoWater").valueText());
+        // nothing left to reset
+        assertFalse(tab.bar().resetAll().enabled());
+    }
+
+    // ----- search
+
+    @Test
+    public void searchFindsByLabelRawNameAndTooltip() {
+        // the name on the tile
+        show("mob defense", "altoMobDefense");
+        // the real one
+        show("altomobdefense", "altoMobDefense");
+        // a word only the tooltip sentence has
+        show("creepers", "altoMobDefense");
+        // a word only the javadoc description has, for a setting off the first page
+        show("debug chat", "chatDebug");
+        // results come grouped like Show all, from both pages
+        tab.onSearch("allow");
         p.settle();
-        assertTrue(tab.list().items().size() < all);
-        assertTrue(tab.list().items().stream().allMatch(v -> v.name().startsWith("alto")));
+        Set<Tile> hits = new HashSet<>(tab.grid().tiles());
+        assertTrue(hits.contains(tab.tileOf("allowBreak")));
+        assertTrue(hits.contains(tab.tileOf("allowParkourPlace")));
+        assertFalse(hits.contains(tab.tileOf("renderPath")));
+        assertFalse(tab.grid().children().contains(tab.showAll()));
+    }
+
+    @Test
+    public void aRenamedSettingIsFoundByItsOldName() {
+        show("experimentalmovement", "fastMode");
+        show("experimental min health", "fastModeMinHealth");
+    }
+
+    @Test
+    public void searchThroughTheHeaderBoxAndNoResults() {
+        p.shell.search().clearAndNotify();
+        Widget box = p.shell.search();
+        p.click(box.x() + box.w() / 2f, box.y() + box.h() / 2f);
+        p.type("parkour");
+        p.settle();
+        assertTrue(tab.grid().tiles().contains(tab.tileOf("allowParkour")));
+        p.type("zzzz");
+        p.settle();
+        assertTrue(tab.grid().tiles().isEmpty());
+        // clearing it brings the first page back
+        p.shell.search().clearAndNotify();
+        p.settle();
+        assertEquals(40, tab.grid().tiles().size());
+    }
+
+    @Test
+    public void tilesAreKeptAcrossRebuilds() {
+        Tile t = tab.tileOf("allowBreak");
+        showAll();
+        assertSame(t, tab.tileOf("allowBreak"));
+        assertTrue(tab.grid().tiles().contains(t));
+        tab.onShown();
+        p.settle();
+        assertSame(t, tab.tileOf("allowBreak"));
     }
 }

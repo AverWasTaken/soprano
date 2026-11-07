@@ -50,6 +50,16 @@ public final class FadeCanvas implements Canvas {
     }
 
     @Override
+    public void cornerLine(int left, int top, int r, int quadrant, int argb) {
+        base.cornerLine(left, Math.round(top + dy), r, quadrant, f(argb));
+    }
+
+    @Override
+    public void cornerFill(int left, int top, int r, int quadrant, int argb) {
+        base.cornerFill(left, Math.round(top + dy), r, quadrant, f(argb));
+    }
+
+    @Override
     public void shadow(float x, float y, float w, float h, float radius, int argb) {
         base.shadow(x, y + dy, w, h, radius, f(argb));
     }

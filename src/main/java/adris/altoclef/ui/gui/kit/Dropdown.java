@@ -18,6 +18,10 @@ public class Dropdown extends Control implements FocusOnClick {
     private Menu menu;
     private int viewH = Integer.MAX_VALUE;
     private int viewW = Integer.MAX_VALUE;
+    // one per option, null = none. the commands picker tells a list from a graph from a broken one this way
+    private List<Icon> icons;
+    private int dangerIcon = -1;
+    private int minMenuW;
 
     public Dropdown(Theme theme, List<String> options, int selected, IntConsumer onChange, ShellContext ctx) {
         super(theme);
@@ -46,6 +50,16 @@ public class Dropdown extends Control implements FocusOnClick {
             ctx.closeOverlay();
         }
         options = List.copyOf(next);
+    }
+
+    public void setIcons(List<Icon> icons, int dangerIndex) {
+        this.icons = icons;
+        dangerIcon = dangerIndex;
+    }
+
+    // a 52 wide picker still needs a menu you can read a name in
+    public void setMinMenuWidth(int px) {
+        minMenuW = px;
     }
 
     public boolean isOpen() {
@@ -81,6 +95,12 @@ public class Dropdown extends Control implements FocusOnClick {
         String shown = theme.measurer.ellipsize(t, theme.body, Math.max(0f, room));
         c.text(shown, x + pad, baseline(c, theme.body, y, h), theme.body, theme.color(Theme.TEXT));
         c.icon(Icon.CHEVRON_DOWN, x + w - pad - is + theme.px(2), y + (h - is) / 2f, is, theme.color(Theme.TEXT_2));
+    }
+
+    // a subclass that draws itself still has to say how big the window is, the menu flips by it
+    protected final void noteView(Canvas c) {
+        viewH = c.height();
+        viewW = c.width();
     }
 
     private void toggle() {
@@ -147,7 +167,7 @@ public class Dropdown extends Control implements FocusOnClick {
             int room = (down ? below : above) - 2 * pad;
             rows = Math.max(1, Math.min(want, room == Integer.MAX_VALUE ? want : room / rowH));
             int mh = rows * rowH + 2 * pad;
-            int mw = Math.max(Dropdown.this.w, theme.px(160));
+            int mw = Math.max(Math.max(Dropdown.this.w, theme.px(160)), minMenuW);
             int my = down ? Dropdown.this.y + Dropdown.this.h + theme.px(4) : Dropdown.this.y - theme.px(4) - mh;
             int mx = viewW == Integer.MAX_VALUE ? Dropdown.this.x : Math.max(0, Math.min(Dropdown.this.x, viewW - mw - theme.px(8)));
             setBounds(mx, my, mw, mh);
@@ -185,9 +205,14 @@ public class Dropdown extends Control implements FocusOnClick {
                 if (idx == hot) {
                     c.fillRoundRect(x + pad, ry, w - 2 * pad, rowH, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
                 }
-                float tw = w - 2 * pad - theme.px(20) - is;
+                Icon lead = icons != null && idx < icons.size() ? icons.get(idx) : null;
+                int leadW = lead == null ? 0 : is + theme.px(8);
+                if (lead != null) {
+                    c.icon(lead, x + pad + theme.px(10), ry + (rowH - is) / 2f, is, theme.color(idx == dangerIcon ? Theme.DANGER : Theme.TEXT_2));
+                }
+                float tw = w - 2 * pad - theme.px(20) - is - leadW;
                 String s = theme.measurer.ellipsize(options.get(idx), theme.body, Math.max(0f, tw));
-                c.text(s, x + pad + theme.px(10), baseline(c, theme.body, ry, rowH), theme.body, theme.color(Theme.TEXT));
+                c.text(s, x + pad + theme.px(10) + leadW, baseline(c, theme.body, ry, rowH), theme.body, theme.color(Theme.TEXT));
                 if (idx == selected) {
                     c.icon(Icon.CHECK, x + w - pad - theme.px(10) - is, ry + (rowH - is) / 2f, is, theme.color(Theme.TEXT_2));
                 }

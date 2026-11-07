@@ -112,12 +112,20 @@ public class NumberField extends Widget {
     // null when fine, otherwise a sentence a player can act on
     public String check(String text) {
         String t = text.trim();
+        String problem = checkText(kind, allowRelative, t);
+        return problem != null ? problem : runValidator(t);
+    }
+
+    // the parse half of check() without a validator, for things that want the rules without the box (the popover)
+    public static String checkText(NumberFormat kind, boolean allowRelative, String text) {
+        String t = text.trim();
         boolean rel = allowRelative && t.startsWith("~");
         String num = rel ? t.substring(1) : t;
         if (rel && num.isEmpty()) {
-            return runValidator(t);
+            return null;
         }
-        String example = allowRelative ? "64 or ~10" : (isFloat() ? "1.5" : "64");
+        boolean isFloat = kind == NumberFormat.FLOAT || kind == NumberFormat.DOUBLE;
+        String example = allowRelative ? "64 or ~10" : (isFloat ? "1.5" : "64");
         if (num.isEmpty() || num.equals("-") || num.equals(".") || num.equals("-.")) {
             return "Not a number. Try " + example + ".";
         }
@@ -127,7 +135,7 @@ public class NumberField extends Widget {
         } catch (NumberFormatException e) {
             return "Not a number. Try " + example + ".";
         }
-        if (!isFloat() && v.stripTrailingZeros().scale() > 0) {
+        if (!isFloat && v.stripTrailingZeros().scale() > 0) {
             return "Whole numbers only. Try " + (allowRelative ? "64 or ~10" : "64") + ".";
         }
         switch (kind) {
@@ -154,7 +162,7 @@ public class NumberField extends Widget {
                 }
             }
         }
-        return runValidator(t);
+        return null;
     }
 
     private String runValidator(String t) {
@@ -167,10 +175,6 @@ public class NumberField extends Widget {
             Safe.report("number validate", e);
             return null;
         }
-    }
-
-    private boolean isFloat() {
-        return kind == NumberFormat.FLOAT || kind == NumberFormat.DOUBLE;
     }
 
     public void commit() {
@@ -196,11 +200,19 @@ public class NumberField extends Widget {
 
     // package private so the test can nudge with chosen modifiers
     void nudge(int dir, int mods) {
+        field.setText(nudged(kind, allowRelative, field.text(), committed, dir, mods));
+        commit();
+    }
+
+    // text one notch up or down from what is typed, or from the last good value when the box holds garbage. shared
+    // with the popover's -/+ so both step the same way
+    public static String nudged(NumberFormat kind, boolean allowRelative, String text, String committed, int dir, int mods) {
         int mag = Keys.ctrl(mods) ? 2 : (Keys.shift(mods) ? 1 : 0);
-        BigDecimal step = isFloat()
+        boolean isFloat = kind == NumberFormat.FLOAT || kind == NumberFormat.DOUBLE;
+        BigDecimal step = isFloat
                 ? new BigDecimal("0.1").movePointRight(mag)
                 : BigDecimal.ONE.movePointRight(mag);
-        String t = field.text().trim();
+        String t = text.trim();
         boolean rel = allowRelative && t.startsWith("~");
         BigDecimal cur = parseOrNull(rel ? t.substring(1) : t);
         if (cur == null) {
@@ -216,8 +228,7 @@ public class NumberField extends Widget {
         if (rel) {
             out = next.signum() == 0 ? "~" : "~" + out;
         }
-        field.setText(out);
-        commit();
+        return out;
     }
 
     private static BigDecimal parseOrNull(String s) {

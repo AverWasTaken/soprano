@@ -21,8 +21,7 @@ public final class Tabs {
                 new FollowTab(theme, facade, ctx),
                 new WaypointsTab(theme, facade, ctx),
                 new SchematicsTab(theme, facade, ctx),
-                new StatsTab(theme, facade, ctx),
-                new HelpTab(theme, facade, ctx),
+                new CommandsTab(theme, facade, ctx, NodeSession.SHARED),
                 new SettingsTab(theme, facade, ctx));
     }
 }

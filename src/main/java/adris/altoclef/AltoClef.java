@@ -171,6 +171,9 @@ public class AltoClef {
     // same spot the old Minecraft.tick HEAD mixin ran from.
     public void onClientTick() {
         runEnqueuedPostInits();
+        // its watchdog and the death cancel, before anything else gets to start or drop a task this tick
+        RoutineRunner.get().tick();
+        _userTaskChain.runOwedIdle();
 
         // The idle gate (altoRunsWhenIdle, read every tick so a #set takes effect at once): with it on we always run,
         // with it off we only run while a user task is going. Turning it off while idle disables the runner here, and
@@ -180,8 +183,7 @@ public class AltoClef {
             _taskRunner.enable();
             // the idle command used to be started when the settings loaded, now that is whenever the gate comes up
             if ((!_userTaskChain.isActive() || _userTaskChain.isRunningIdleTask()) && AltoSettings.shouldRunIdleCommandWhenNotActive()) {
-                _userTaskChain.signalNextTaskToBeIdleTask();
-                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
+                _userTaskChain.startIdleCommand();
             }
         } else if (!runsWhenIdle && _taskRunner.isActive() && !_userTaskChain.isActive()) {
             _taskRunner.disable();
@@ -522,6 +524,11 @@ public class AltoClef {
      */
     public void runUserTask(Task task, Runnable onFinish) {
         _userTaskChain.runTask(this, task, onFinish);
+    }
+
+    // same, for whoever has to tell a finish from a cancel or a replace (the routine runner)
+    public void runUserTask(Task task, UserTaskChain.Listener onEnd) {
+        _userTaskChain.runTask(this, task, onEnd);
     }
 
     /**

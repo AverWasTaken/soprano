@@ -7,7 +7,6 @@ import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
-import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
 
@@ -27,8 +26,8 @@ public final class FakeFacade implements BotFacade {
     public final FakeItems items = new FakeItems();
     public final FakeWorld world = new FakeWorld();
     public final FakeStatus status = new FakeStatus();
-    public StatsAccess stats = StatsAccess.NONE;
     public final FakeSchematics schematics = new FakeSchematics(actions);
+    public final FakeRoutines routines = new FakeRoutines(actions);
     public final Clipboard clipboard = Clipboard.inMemory();
 
     @Override
@@ -57,13 +56,13 @@ public final class FakeFacade implements BotFacade {
     }
 
     @Override
-    public StatsAccess stats() {
-        return stats;
+    public adris.altoclef.ui.gui.facade.SchematicsAccess schematics() {
+        return schematics;
     }
 
     @Override
-    public adris.altoclef.ui.gui.facade.SchematicsAccess schematics() {
-        return schematics;
+    public adris.altoclef.ui.gui.facade.RoutinesAccess routines() {
+        return routines;
     }
 
     @Override
@@ -106,13 +105,13 @@ public final class FakeFacade implements BotFacade {
             num("blockBreakAdditionalPenalty", Kind.DOUBLE, "Double", "2.0", "2.0", "Extra cost for breaking a block.");
             num("primaryTimeoutMS", Kind.LONG, "Long", "500", "500", "Pathing time budget before a path is used as is.");
             num("costHeuristic", Kind.DOUBLE, "Double", "3.563", "3.563", "The A* heuristic weight. Higher is faster and worse.");
-            num("maxFallHeightNoWater", Kind.INTEGER, "Integer", "3", "3", "Fall height Baritone will take without water.");
+            num("maxFallHeightNoWater", Kind.INTEGER, "Integer", "4", "3", "Fall height Baritone will take without water.");
             num("pathingMaxChunkBorderFetch", Kind.INTEGER, "Integer", "50", "50", "How many chunks past the border it will fetch.");
             text("prefix", "#", "#", "The command prefix.");
             text("altoIdleCommand", "", "follow Jacob", "Command run when the bot goes idle.");
-            color("colorCurrentPath", "255,0,0", "255,0,0", "Colour of the path being executed.");
-            color("colorNextPath", "0,255,0", "0,255,0", "Colour of the next planned path segment.");
-            enumv("mirror", "NONE", "NONE", List.of("NONE", "LEFT_RIGHT", "FRONT_BACK"), "Mirror schematics.");
+            color("colorCurrentPath", "217,24,43", "217,24,43", "Colour of the path being executed.");
+            color("colorNextPath", "48,209,88", "199,125,255", "Colour of the next planned path segment.");
+            enumv("mirror", "Mirror", "NONE", "NONE", List.of("NONE", "LEFT_RIGHT", "FRONT_BACK"), "Mirror schematics.");
             key("guiKey", "344", "344", "GLFW key code that opens the click gui. -1 unbinds it.");
             bool("guiKeyEnabled", true, true, "Whether the gui key opens the click gui.");
             other("blocksToAvoid", "List<Block>", "", "", "Blocks the pathfinder avoids walking through.");
@@ -131,6 +130,27 @@ public final class FakeFacade implements BotFacade {
             num("followRadius", Kind.INTEGER, "Integer", "3", "3", "Distance to keep from the followed entity.");
             bool("cachedChunksOpacity", false, false, "Opacity for cached chunks rendering.");
             bool("mineScanDroppedItems", true, true, "Scan for dropped items while mining.");
+            // the rest of the first page, at their real defaults
+            num("fastModeMinHealth", Kind.DOUBLE, "Double", "12.0", "12.0", "The least health a fast mode fall may leave you with.");
+            bool("boatPickup", true, true, "Break the boat and pick it back up when leaving the water.");
+            bool("elytraConserveFireworks", false, false, "Avoid fireworks when descending along the flight path.");
+            bool("elytraAutoSwap", true, true, "Swap the elytra for a new one when the durability gets too low.");
+            bool("allowSwimming", false, false, "Actually swim through water instead of bobbing along the bottom of it.");
+            bool("freeLook", true, true, "Move the camera freely while the bot walks.");
+            bool("allowDiagonalDescend", false, false, "Allow descending diagonally.");
+            bool("allowDownward", true, true, "Allow mining the block under your feet.");
+            bool("buildInLayers", false, false, "Build in layers.");
+            bool("altoMobDefense", true, true, "Run from dangerous mobs and push away the ones that hurt you.");
+            bool("altoAutoEat", true, true, "Eat when hungry or in danger.");
+            enumv("altoForceFieldStrategy", "ForceFieldStrategy", "SMART", "SMART", List.of("OFF", "FASTEST", "DELAY", "SMART"),
+                    "How the force field picks its swings.");
+            bool("altoDodgeProjectiles", true, true, "Dodge incoming projectiles. Needs altoMobDefense.");
+            bool("avoidance", false, false, "Avoid mobs while pathing.");
+            num("altoMinimumFoodAllowed", Kind.INTEGER, "Integer", "0", "0", "Minimum amount of food to keep in the inventory.");
+            num("mobAvoidanceRadius", Kind.INTEGER, "Integer", "8", "8", "Distance to keep from mobs when avoidance is on.");
+            bool("chatControl", true, true, "Allow chat based control of Baritone.");
+            bool("altoShowTaskChains", true, true, "Show the task list in the top left corner.");
+            num("altoHudScale", Kind.FLOAT, "Float", "1.0", "1.0", "Size of the task list.");
         }
 
         private void put(String name, Kind kind, String type, String value, String def, List<String> options, String desc) {
@@ -154,8 +174,8 @@ public final class FakeFacade implements BotFacade {
             put(name, Kind.COLOR, "Color", value, def, List.of(), desc);
         }
 
-        private void enumv(String name, String value, String def, List<String> options, String desc) {
-            put(name, Kind.ENUM, "Mirror", value, def, options, desc);
+        private void enumv(String name, String type, String value, String def, List<String> options, String desc) {
+            put(name, Kind.ENUM, type, value, def, options, desc);
         }
 
         private void key(String name, String value, String def, String desc) {
@@ -178,31 +198,44 @@ public final class FakeFacade implements BotFacade {
             return map.get(name);
         }
 
-        @Override
-        public Result set(String name, String text) {
+        // what the real parser would say about the text, null when it takes it. set and check share it
+        public String problem(String name, String text) {
             SettingView v = map.get(name);
             if (v == null) {
-                return Result.fail("No setting called " + name);
+                return "No setting called " + name;
             }
             if (v.kind() == Kind.INTEGER || v.kind() == Kind.LONG) {
                 try {
                     Long.parseLong(text.trim());
                 } catch (NumberFormatException e) {
-                    return Result.fail("Not a whole number: " + text, "set " + name + " " + text);
+                    return "Not a whole number: " + text;
                 }
             }
             if (v.kind() == Kind.DOUBLE || v.kind() == Kind.FLOAT) {
                 try {
                     Double.parseDouble(text.trim());
                 } catch (NumberFormatException e) {
-                    return Result.fail("Not a number: " + text, "set " + name + " " + text);
+                    return "Not a number: " + text;
                 }
             }
             if (v.kind() == Kind.COLOR && !text.matches("\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*")) {
-                return Result.fail("A colour is r,g,b like 255,0,0", "set " + name + " " + text);
+                return "A colour is r,g,b like 255,0,0";
             }
             if (v.kind() == Kind.OTHER && text.contains("!")) {
-                return Result.fail("Unknown block \"" + text + "\"", "set " + name + " " + text);
+                return "Unknown block \"" + text + "\"";
+            }
+            return null;
+        }
+
+        @Override
+        public Result set(String name, String text) {
+            SettingView v = map.get(name);
+            if (v == null) {
+                return Result.fail("No setting called " + name);
+            }
+            String p = problem(name, text);
+            if (p != null) {
+                return Result.fail(p, "set " + name + " " + text);
             }
             map.put(name, new SettingView(name, v.kind(), v.typeName(), text, v.defaultValue(), !text.equals(v.defaultValue()), v.options()));
             actions.add("set " + name + " " + text);
@@ -230,6 +263,33 @@ public final class FakeFacade implements BotFacade {
         }
 
         @Override
+        public Result resetAll() {
+            int n = 0;
+            for (SettingView v : new ArrayList<>(map.values())) {
+                if (v.modified()) {
+                    map.put(v.name(), new SettingView(v.name(), v.kind(), v.typeName(), v.defaultValue(), v.defaultValue(), false, v.options()));
+                    n++;
+                }
+            }
+            actions.add("set reset all");
+            return Result.ok("Reset " + n + " settings to default", "set reset all");
+        }
+
+        @Override
+        public String check(String name, String text) {
+            return problem(name, text);
+        }
+
+        @Override
+        public List<String> oldNames(String name) {
+            return switch (name) {
+                case "fastMode" -> List.of("experimentalmovement");
+                case "fastModeMinHealth" -> List.of("experimentalminhealth");
+                default -> List.of();
+            };
+        }
+
+        @Override
         public String description(String name) {
             return descriptions.getOrDefault(name, "");
         }
@@ -238,41 +298,8 @@ public final class FakeFacade implements BotFacade {
     // ----- commands
 
     public final class FakeCommands implements CommandsAccess {
-        public final List<CommandInfo> list = new ArrayList<>();
         public String lastRun;
         public boolean failNext;
-
-        FakeCommands() {
-            list.add(new CommandInfo(List.of("goto", "go", "path"), "Go to a coordinate or block",
-                    List.of("Tell Baritone to path to a position or a block.", "", "Usage:", "> goto <y>", "> goto <x> <z>", "> goto <x> <y> <z>", "> goto <block>")));
-            list.add(new CommandInfo(List.of("mine", "m"), "Mine some blocks",
-                    List.of("The mine command allows you to tell Baritone to search for and mine individual blocks.", "", "Usage:", "> mine diamond_ore", "> mine 64 oak_log", "> mine iron_ore coal_ore")));
-            list.add(new CommandInfo(List.of("follow", "f"), "Follow entity things",
-                    List.of("Follow players, entities, or entity types.", "", "Usage:", "> follow entities", "> follow entity zombie", "> follow players", "> follow player <name>")));
-            list.add(new CommandInfo(List.of("get"), "Get items the long way round",
-                    List.of("Crafts, smelts, mines or collects its way to the items.", "", "Usage:", "> get oak_log 64", "> get iron_ingot 3 stick 4")));
-            list.add(new CommandInfo(List.of("stop", "cancel", "s"), "Stop everything",
-                    List.of("Cancels the current task and path.", "", "Usage:", "> stop")));
-            list.add(new CommandInfo(List.of("set", "setting", "settings"), "View or change settings",
-                    List.of("Using the set command, you can manage all of Baritone's settings.", "", "Usage:", "> set list", "> set <setting> <value>", "> set reset <setting>")));
-            list.add(new CommandInfo(List.of("wp", "waypoint", "waypoints"), "Manage waypoints",
-                    List.of("Save, list and go to waypoints.", "", "Usage:", "> wp save <tag> <name>", "> wp list", "> wp goto <name>")));
-            list.add(new CommandInfo(List.of("gamer"), "Beat the game",
-                    List.of("Starts the speedrun brain.", "", "Usage:", "> gamer", "> gamer status", "> gamer reset")));
-            list.add(new CommandInfo(List.of("gui", "clickgui"), "Open the click gui",
-                    List.of("Opens this panel. Right shift by default, rebind in Settings or with set guiKey.", "", "Usage:", "> gui")));
-            list.add(new CommandInfo(List.of("help", "?"), "View all commands or help on specific ones",
-                    List.of("Lists commands.", "", "Usage:", "> help", "> help <command>")));
-            list.add(new CommandInfo(List.of("farm"), "Farm nearby crops",
-                    List.of("Harvests and replants crops.", "", "Usage:", "> farm", "> farm <range>")));
-            list.add(new CommandInfo(List.of("explore"), "Explore things",
-                    List.of("Explores outward from a point.", "", "Usage:", "> explore", "> explore <x> <z>")));
-        }
-
-        @Override
-        public List<CommandInfo> commands() {
-            return list;
-        }
 
         @Override
         public Result run(String line) {
@@ -291,6 +318,7 @@ public final class FakeFacade implements BotFacade {
     public final class FakeItems implements ItemsAccess {
         public final List<ItemEntry> gettable = new ArrayList<>();
         public final List<ItemEntry> mineable = new ArrayList<>();
+        public final List<ItemEntry> mobs = new ArrayList<>();
 
         FakeItems() {
             String[] g = {"oak_log", "oak_planks", "stick", "crafting_table", "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe",
@@ -314,6 +342,15 @@ public final class FakeFacade implements BotFacade {
             for (String s : m) {
                 mineable.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s, 64));
             }
+            for (String s : new String[]{"blaze", "cow", "creeper", "enderman", "pig", "sheep", "skeleton", "spider",
+                    "zombie", "zombie_villager", "zombified_piglin"}) {
+                mobs.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s + "_spawn_egg", 1, "Mobs"));
+            }
+        }
+
+        @Override
+        public List<ItemEntry> mobs() {
+            return mobs;
         }
 
         @Override

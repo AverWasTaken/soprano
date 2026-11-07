@@ -1,6 +1,7 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.RoutineRunner;
 import adris.altoclef.chains.UserTaskChain;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState;
 import adris.altoclef.tasks.speedrun.gamer.GamerTask;
@@ -32,6 +33,15 @@ final class McStatus implements StatusAccess {
             IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
             AltoClef mod = AltoClef.getInstance();
             String phase = gamerPhase(mod);
+            // a routine run says which step it's on, the step's own task is one level too deep for the strip. the
+            // strip's Stop is #stop, which ends the run too
+            RoutineRunner.Status run = RoutineRunner.get().status();
+            if (run.state() == RoutineRunner.State.RUNNING) {
+                // a graph of nothing but ifs and repeats has no steps to count
+                String count = run.total() == 0 ? "Running" : "Step " + run.step() + "/" + run.total();
+                String step = count + (run.line() == null || run.line().isBlank() ? "" : ": " + run.line());
+                return new Activity(true, step, run.name() == null ? "" : run.name(), phase);
+            }
             String line = null;
 
             if (mod != null && mod.getTaskRunner().isActive()) {

@@ -18,10 +18,32 @@ public interface ShellContext {
 
     void blur();
 
+    // who has the keyboard right now, null when nobody does
+    default Widget focusedWidget() {
+        return null;
+    }
+
     // a dropdown or popover drawn above everything; the Shell closes it on an outside click or Esc
     void openOverlay(Widget overlay);
 
+    // same, and onClose runs once when the shell takes it down for any reason: an outside click, an Esc it did not
+    // take, a tab switch, another overlay, the gui going away. a Popover commits its draft from there. contexts that
+    // never close anything on their own (test fakes) can ignore it
+    default void openOverlay(Widget overlay, Runnable onClose) {
+        openOverlay(overlay);
+    }
+
     void closeOverlay();
+
+    // the floating layer: a thing drawn over everything that never takes the keyboard (the type-ahead under an id
+    // box). it gets clicks and the wheel while the pointer is on it, the keys stay with whoever has focus. one at a
+    // time, a new one replaces the old. fakes that draw nothing can ignore both
+    default void showFloating(Widget w) {
+    }
+
+    // only takes w down if w is still the one up, so a list closing late can't knock out its replacement
+    default void hideFloating(Widget w) {
+    }
 
     void requestClose();
 

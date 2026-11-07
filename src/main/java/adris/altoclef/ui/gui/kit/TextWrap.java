@@ -55,6 +55,43 @@ public final class TextWrap {
         }
     }
 
+    // the plain greedy wrap the help list grew up with (moved here so the schematics code can keep it when help goes).
+    // newlines are just spaces, a word wider than the line is cut by characters, and nothing in still gives one empty
+    // line so a caller can count on lines.get(0)
+    public static List<String> words(TextMeasurer m, String s, TextStyle style, float maxW) {
+        List<String> out = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : (s == null ? "" : s).split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            String tryLine = line.length() == 0 ? word : line + " " + word;
+            if (m.measure(tryLine, style) <= maxW) {
+                line.setLength(0);
+                line.append(tryLine);
+                continue;
+            }
+            if (line.length() > 0) {
+                out.add(line.toString());
+                line.setLength(0);
+            }
+            String rest = word;
+            while (m.measure(rest, style) > maxW && rest.length() > 1) {
+                int cut = rest.length() - 1;
+                while (cut > 1 && m.measure(rest.substring(0, cut), style) > maxW) {
+                    cut--;
+                }
+                out.add(rest.substring(0, cut));
+                rest = rest.substring(cut);
+            }
+            line.append(rest);
+        }
+        if (line.length() > 0 || out.isEmpty()) {
+            out.add(line.toString());
+        }
+        return out;
+    }
+
     // the tail piece lands in line so the next word can follow it
     private static void chop(TextMeasurer m, String word, TextStyle style, float maxWidth, List<String> out, StringBuilder line) {
         int start = 0;

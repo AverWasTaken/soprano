@@ -9,11 +9,14 @@ import adris.altoclef.ui.gui.model.Wording;
 import adris.altoclef.ui.gui.model.CreativeCategories;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
@@ -43,6 +46,7 @@ public final class McItems implements ItemsAccess {
     // built once, the registries do not change under a running game
     private volatile List<ItemEntry> gettable;
     private volatile List<ItemEntry> mineable;
+    private volatile List<ItemEntry> mobs;
 
     // registry keys stay the same when the player changes their language
     private static volatile Map<String, String> categories;
@@ -173,6 +177,35 @@ public final class McItems implements ItemsAccess {
             return mineable;
         } catch (Throwable t) {
             Safe.report("gui mineable", t);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<ItemEntry> mobs() {
+        List<ItemEntry> out = mobs;
+        if (out != null) {
+            return out;
+        }
+        try {
+            List<ItemEntry> built = new ArrayList<>();
+            for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
+                // a spawn egg is the cheapest honest "this is a mob": no world needed to ask, and boats, arrows,
+                // armor stands and the player don't have one. the dragon and the wither do, these days
+                if (SpawnEggItem.byId(type).isEmpty()) {
+                    continue;
+                }
+                Identifier key = BuiltInRegistries.ENTITY_TYPE.getKey(type);
+                String name = "minecraft".equals(key.getNamespace()) ? key.getPath() : key.toString();
+                String shown = type.getDescription().getString();
+                built.add(new ItemEntry(name, Wording.soprano(shown.isEmpty() ? ItemEntry.titleCase(name) : shown),
+                        iconOrUnknown(IconResolver.forEntityType(type), name), 1, "Mobs"));
+            }
+            built.sort(Comparator.comparing(ItemEntry::name));
+            mobs = List.copyOf(built);
+            return mobs;
+        } catch (Throwable t) {
+            Safe.report("gui mobs", t);
             return List.of();
         }
     }

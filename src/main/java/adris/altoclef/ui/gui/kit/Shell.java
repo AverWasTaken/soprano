@@ -8,12 +8,13 @@ import adris.altoclef.ui.gui.model.KeyBind;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 
-// the chrome around the tabs: panel, sidebar, header with search, status strip, toast layer and the overlay layer for
-// dropdowns. it also owns focus and routes every key and click, so a tab never has to care who is focused. the scrim
-// behind the panel is the screen's job. everything a tab, the status facade or a callback throws is caught and logged
-// once, the panel stays up
+// the chrome around the tabs: panel, sidebar, header with search, command bar, status strip, toast layer and the
+// overlay layer for dropdowns. it also owns focus and routes every key and click, so a tab never has to care who is
+// focused. the scrim behind the panel is the screen's job. everything a tab, the status facade or a callback throws
+// is caught and logged once, the panel stays up
 public class Shell extends Widget implements ShellContext {
 
     // design px, about the height of the word it replaced plus its descender room
@@ -31,6 +32,7 @@ public class Shell extends Widget implements ShellContext {
     private final KeyCapture keyCapture;
     private final Segmented appearance;
     private final Button stop;
+    private final CommandBar commandBar;
     private final Toast toast;
     private final List<Widget> kids = new ArrayList<>();
     private final FadeCanvas fade = new FadeCanvas();
@@ -47,6 +49,10 @@ public class Shell extends Widget implements ShellContext {
     private int hoverTab = -1;
     private Widget focused;
     private Widget overlay;
+    private Runnable overlayOnClose;
+    // the floating layer, see ShellContext.showFloating. never in kids, so tab order and the tooltips don't see it
+    private Widget floating;
+    private final TooltipLayer tips = new TooltipLayer(theme);
     private boolean closing;
     private boolean closeFired;
     private long lastNow;
@@ -69,6 +75,7 @@ public class Shell extends Widget implements ShellContext {
     private int logoPx;
     private boolean logoBroken;
     private int statusH;
+    private int cmdH;
     private int contentX;
     private int contentY;
     private int contentW;
@@ -145,12 +152,14 @@ public class Shell extends Widget implements ShellContext {
         });
         stop = new Button(theme, "Stop", Button.Kind.GHOST, Icon.STOP, this::stopClicked);
         toast = new Toast(theme);
+        commandBar = new CommandBar(theme, r -> toast.show(r));
 
         kids.add(contents.length > 0 ? contents[0] : new Blank(theme));
         kids.add(search);
         kids.add(keyCapture);
         kids.add(appearance);
         kids.add(stop);
+        kids.add(commandBar);
 
         if (!this.tabs.isEmpty()) {
             Tab first = this.tabs.get(0);
@@ -209,8 +218,25 @@ public class Shell extends Widget implements ShellContext {
         return toast;
     }
 
+    public CommandBar commandBar() {
+        return commandBar;
+    }
+
+    // what the command bar runs a line with, the screen points it at the facade
+    public void setCommandRunner(Function<String, Result> runner) {
+        commandBar.setRunner(runner);
+    }
+
     public Widget overlay() {
         return overlay;
+    }
+
+    public Widget floating() {
+        return floating;
+    }
+
+    public TooltipLayer tooltips() {
+        return tips;
     }
 
     public boolean closing() {
@@ -261,15 +287,15 @@ public class Shell extends Widget implements ShellContext {
                 groups++;
             }
         }
-        int room = h - statusH - headerH - theme.px(120 + tabs.size() * 2) - groups * groupH();
+        int room = h - bottomH() - headerH - theme.px(120 + tabs.size() * 2) - groups * groupH();
         return Math.max(theme.px(18), Math.min(theme.px(Theme.ROW_H), room / Math.max(1, tabs.size())));
     }
 
     private String group(int i) {
         return switch (tabs.get(i).id()) {
             case "get", "goto", "follow" -> "Actions";
-            case "waypoints", "schematics", "stats" -> "Library";
-            case "help", "settings" -> "Preferences";
+            case "waypoints", "schematics" -> "Library";
+            case "settings" -> "Preferences";
             default -> "";
         };
     }
@@ -282,6 +308,11 @@ public class Shell extends Widget implements ShellContext {
 
     public int sidebarW() {
         return sideW;
+    }
+
+    // the command bar and the status strip, the two full width rows the sidebar and the content stop above
+    private int bottomH() {
+        return statusH + cmdH;
     }
 
     // the other capture control (settings tab) changed the bind, keep the close key honest
@@ -305,6 +336,9 @@ public class Shell extends Widget implements ShellContext {
         if (key == suppressedKey) {
             suppressedKey = -2;
         }
+        if (overlay instanceof Popover p) {
+            p.keyUp(key);
+        }
     }
 
     private int suppressedKey = -2;
@@ -326,7 +360,9 @@ public class Shell extends Widget implements ShellContext {
         winW = windowW;
         winH = windowH;
         int pw = manualW > 0 ? manualW : Math.round(windowW * 0.58f);
-        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.66f);
+        // the command bar's row comes on top of the old height, so a small window keeps the room its tabs had (the
+        // schematics map needs every px of it at 540p). the cap stays, a big window looks like the mock
+        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.66f) + theme.px(Theme.CMD_H);
         pw = Math.max(theme.px(640), Math.min(theme.px(manualW > 0 ? 1500 : 1040), pw));
         ph = Math.max(theme.px(440), Math.min(theme.px(manualH > 0 ? 1000 : 680), ph));
         int margin = theme.px(8);
@@ -354,7 +390,8 @@ public class Shell extends Widget implements ShellContext {
 
     private void resizePanel(float mx, float my) {
         int minW = theme.px(560);
-        int minH = theme.px(360);
+        // 40 more than before the command bar took its row, so the smallest panel keeps the same room for tabs
+        int minH = theme.px(400);
         int nx = resizeStartX;
         int ny = resizeStartY;
         int nw = resizeStartW;
@@ -401,10 +438,14 @@ public class Shell extends Widget implements ShellContext {
         sideW = theme.px(Theme.SIDEBAR_W);
         headerH = theme.px(Theme.HEADER_H);
         statusH = theme.px(Theme.STATUS_H);
+        cmdH = theme.px(Theme.CMD_H);
         contentX = x + sideW + 1;
         contentY = y + headerH + 1;
         contentW = Math.max(0, w - sideW - 1);
-        contentH = Math.max(0, y + h - statusH - contentY);
+        contentH = Math.max(0, y + h - bottomH() - contentY);
+        commandBar.setBounds(x, y + h - bottomH(), w, cmdH);
+        // the panel moved or changed size: a list hanging under a box would now hang under nothing
+        closeFloating();
 
         placeContent(active);
         toast.setBounds(contentX, contentY, contentW, contentH);
@@ -421,7 +462,7 @@ public class Shell extends Widget implements ShellContext {
         if (!keyCaption) {
             capW = sideW - 2 * theme.px(Theme.PAD);
         }
-        keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - statusH - theme.px(Theme.PAD) - ch, capW, ch);
+        keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - bottomH() - theme.px(Theme.PAD) - ch, capW, ch);
         appearance.setBounds(x + theme.px(Theme.PAD), keyCapture.y() - theme.px(Theme.GAP) - ch,
                 sideW - 2 * theme.px(Theme.PAD), ch);
 
@@ -477,6 +518,9 @@ public class Shell extends Widget implements ShellContext {
 
     // for the screen being removed: tells the visible tab it is going away
     public void dispose() {
+        // an open popover's good draft is still a change the player made
+        closeOverlay();
+        closeFloating();
         disposed = true;
         if (active >= 0 && active < tabs.size()) {
             Tab t = tabs.get(active);
@@ -492,6 +536,7 @@ public class Shell extends Widget implements ShellContext {
         }
         blur();
         closeOverlay();
+        closeFloating();
         Tab old = tabs.get(active);
         Safe.run("tab hidden", old::onHidden);
         active = i;
@@ -604,9 +649,17 @@ public class Shell extends Widget implements ShellContext {
 
     @Override
     public void openOverlay(Widget w) {
+        openOverlay(w, null);
+    }
+
+    @Override
+    public void openOverlay(Widget w, Runnable onClose) {
         closeOverlay();
+        closeFloating();
         overlay = w;
+        overlayOnClose = onClose;
         w.setVisible(true);
+        tips.dismiss();
     }
 
     @Override
@@ -614,7 +667,46 @@ public class Shell extends Widget implements ShellContext {
         if (overlay != null) {
             overlay.setVisible(false);
             overlay = null;
+            // cleared before it runs: a callback that opens something new must not have that closed under it
+            Runnable r = overlayOnClose;
+            overlayOnClose = null;
+            if (r != null) {
+                Safe.run("overlay closed", r);
+            }
         }
+    }
+
+    @Override
+    public void showFloating(Widget w) {
+        if (w == null) {
+            return;
+        }
+        if (floating != null && floating != w) {
+            closeFloating();
+        }
+        floating = w;
+        tips.dismiss();
+    }
+
+    @Override
+    public void hideFloating(Widget w) {
+        if (floating == w) {
+            floating = null;
+        }
+    }
+
+    // takes the floating thing down. a SuggestList gets told so its field stops thinking it's open
+    private void closeFloating() {
+        Widget fl = floating;
+        floating = null;
+        if (fl instanceof SuggestList sl) {
+            Safe.run("floating close", sl::close);
+        }
+    }
+
+    private boolean floatingUp() {
+        Widget fl = floating;
+        return fl != null && fl.visible();
     }
 
     @Override
@@ -666,6 +758,7 @@ public class Shell extends Widget implements ShellContext {
         Safe.run("tab draw", () -> content.draw(target, f));
         g.popClip();
 
+        commandBar.draw(g, f);
         drawStatus(g, f, now);
         toast.draw(g, f);
         g.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.5f));
@@ -674,6 +767,18 @@ public class Shell extends Widget implements ShellContext {
         Widget o = overlay;
         if (o != null && o.visible()) {
             Safe.run("overlay draw", () -> o.draw(drawTarget(c, a), f));
+        }
+        Widget fl = floating;
+        if (fl != null && fl.visible()) {
+            if (fl instanceof SuggestList sl) {
+                // the content area and the command bar under it, never the header with the search in it
+                sl.setRoom(x, contentY, x + w, y + h - statusH);
+            }
+            Safe.run("floating draw", () -> fl.draw(drawTarget(c, a), f));
+        }
+        // last, over everything, and draw only: it never sees input, so it cannot close a popover
+        if (!closing) {
+            Safe.run("tooltip draw", () -> tips.draw(drawTarget(c, a), now, x, y, w, h));
         }
     }
 
@@ -707,10 +812,11 @@ public class Shell extends Widget implements ShellContext {
 
     private void drawSidebar(Canvas g, Frame f, long now, float r) {
         // only the top left corner is round: the panel's own corners cover the rest, so square off the others
-        g.fillRoundRect(x, y, sideW, h - statusH, r, theme.color(Theme.SIDEBAR));
-        g.fillRect(x + sideW / 2f, y, sideW / 2f, h - statusH, theme.color(Theme.SIDEBAR));
-        g.fillRect(x, y + (h - statusH) / 2f, sideW / 2f, (h - statusH) / 2f, theme.color(Theme.SIDEBAR));
-        g.fillRect(x + sideW, y, 1, h - statusH, theme.color(Theme.HAIRLINE));
+        int sh = h - bottomH();
+        g.fillRoundRect(x, y, sideW, sh, r, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW / 2f, y, sideW / 2f, sh, theme.color(Theme.SIDEBAR));
+        g.fillRect(x, y + sh / 2f, sideW / 2f, sh / 2f, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW, y, 1, sh, theme.color(Theme.HAIRLINE));
 
         // one left edge for everything in here: the wordmark, the group labels, the row icons and the footer all
         // start at pad. rows are inset by half of it so the selection pill has a margin
@@ -883,8 +989,24 @@ public class Shell extends Widget implements ShellContext {
             if (o != null && o.visible()) {
                 o.mouseMove(mx, my);
             }
-            hoverTab = tabAt(mx, my);
-            return super.mouseMove(mx, my);
+            Widget fl = floating;
+            boolean overFloating = false;
+            if (fl != null && fl.visible()) {
+                overFloating = fl.mouseMove(mx, my) != null;
+            }
+            // the page under the list still gets its move, just from nowhere, so nothing under the list lights up
+            float px = overFloating ? -1e6f : mx;
+            float py = overFloating ? -1e6f : my;
+            hoverTab = tabAt(px, py);
+            Widget deepest = super.mouseMove(px, py);
+            if (overFloating) {
+                deepest = fl;
+            }
+            // with an overlay up only its own controls can have tips, the page under it is not what you are pointing at
+            Widget tip = o != null && o.visible() ? TooltipLayer.find(o, mx, my)
+                    : overFloating ? null : TooltipLayer.find(kids.get(0), mx, my);
+            tips.track(tip, lastNow);
+            return deepest;
         } catch (Throwable t) {
             Safe.report("shell mouseMove", t);
             return null;
@@ -907,6 +1029,7 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean mouseDown(float mx, float my, int button, int mods) {
         try {
+            tips.dismiss();
             Widget o = overlay;
             if (o != null && o.visible()) {
                 if (o.contains(mx, my)) {
@@ -915,6 +1038,12 @@ public class Shell extends Widget implements ShellContext {
                     // the click that dismisses a popup does nothing else, or clicking the dropdown again would reopen it
                     closeOverlay();
                 }
+                return true;
+            }
+            // a click on the list picks and nothing else: no retarget, the box keeps its caret
+            Widget fl = floating;
+            if (fl != null && fl.visible() && fl.contains(mx, my)) {
+                fl.mouseDown(mx, my, button, mods);
                 return true;
             }
             if (!contains(mx, my)) {
@@ -1017,10 +1146,20 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean scroll(float mx, float my, float dy) {
         try {
+            tips.dismiss();
             Widget o = overlay;
             if (o != null && o.visible()) {
                 o.scroll(mx, my, dy);
                 return true;
+            }
+            Widget fl = floating;
+            if (fl != null && fl.visible()) {
+                if (fl.contains(mx, my)) {
+                    fl.scroll(mx, my, dy);
+                    return true;
+                }
+                // the wheel anywhere else moves what the list is hanging off, so the list goes
+                closeFloating();
             }
             return super.scroll(mx, my, dy);
         } catch (Throwable t) {
@@ -1029,13 +1168,14 @@ public class Shell extends Widget implements ShellContext {
         }
     }
 
-    // search, the tab's content, then stop. the footer key capture is click only
+    // search, the tab's content, the command bar, then stop. the footer key capture is click only
     @Override
     public void collectFocusable(List<Widget> out) {
         if (search.visible()) {
             search.collectFocusable(out);
         }
         kids.get(0).collectFocusable(out);
+        commandBar.collectFocusable(out);
         appearance.collectFocusable(out);
         stop.collectFocusable(out);
     }
@@ -1070,10 +1210,18 @@ public class Shell extends Widget implements ShellContext {
     }
 
     private boolean route(int key, int mods) {
+        tips.dismiss();
         Widget o = overlay;
         if (o != null && o.visible()) {
+            // a popover was opened or is being closed by a key that is still down: its repeats belong to nobody
+            if (o instanceof Popover && key == suppressedKey) {
+                return true;
+            }
             if (!o.keyDown(key, mods) && key == Keys.ESCAPE) {
                 closeOverlay();
+            }
+            if (o instanceof Popover && overlay != o) {
+                suppressedKey = key;
             }
             return true;
         }
@@ -1090,6 +1238,11 @@ public class Shell extends Widget implements ShellContext {
         }
         suppressedKey = -2;
         if (key == Keys.TAB) {
+            // an open type-ahead gets tab first: it picks the lit row. nothing lit and it's focus cycling as ever
+            Widget f = focused;
+            if (floatingUp() && f != null && Safe.test("tab to floating", () -> f.keyDown(key, mods))) {
+                return true;
+            }
             cycleFocus(Keys.shift(mods));
             return true;
         }
@@ -1122,8 +1275,8 @@ public class Shell extends Widget implements ShellContext {
         if (focused != null) {
             Widget f = focused;
             if (Safe.test("key", () -> f.keyDown(key, mods))) {
-                if (f instanceof KeyCapture) {
-                    // enter or space just started a capture, the repeat must not bind itself
+                if (f instanceof KeyCapture || overlay instanceof Popover) {
+                    // enter or space just started a capture, or opened a popover: the repeat must not land in it
                     suppressedKey = key;
                 }
                 return true;
@@ -1142,7 +1295,10 @@ public class Shell extends Widget implements ShellContext {
         try {
             Widget o = overlay;
             if (o != null && o.visible()) {
-                o.charTyped(c);
+                // the space that opened a popover comes with a char, it is not text for the field inside
+                if (!(o instanceof Popover && suppressedKey != -2)) {
+                    o.charTyped(c);
+                }
                 return true;
             }
             validateFocus();
