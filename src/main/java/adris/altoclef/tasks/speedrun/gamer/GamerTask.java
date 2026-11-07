@@ -337,8 +337,10 @@ public class GamerTask extends Task {
             if (state.netherTrip != null) {
                 // the trip's own child threw, not the phase. the phase machine is not ticking while the trip has the wheel,
                 // so a trip left standing would throw again every tick until its six minutes ran out
-                host.say("gave up: the trip hit an error (" + e.getClass().getSimpleName() + ")"
-                        + (NetherRegress.kitShort(facts, cfg) ? ", rebuilding" : ", carrying on"));
+                // the class name is for the log, chat gets plain words
+                Debug.logInternal("gamer: the nether trip threw " + e);
+                host.say(NetherRegress.kitShort(facts, cfg) ? "Something went wrong on the Nether trip, getting the kit again."
+                        : "Something went wrong on the Nether trip, carrying on.");
                 state.netherTrip = null;
                 netherTrip = null;
                 host.save();

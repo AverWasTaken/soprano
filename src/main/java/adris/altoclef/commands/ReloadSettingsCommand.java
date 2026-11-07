@@ -19,7 +19,7 @@ public class ReloadSettingsCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireMax(0);
         ConfigHelper.reloadAllConfigs();
-        mod.log("Reload successful!");
+        mod.log("Settings reloaded.");
         done();
     }
 

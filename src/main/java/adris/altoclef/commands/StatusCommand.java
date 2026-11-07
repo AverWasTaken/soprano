@@ -19,22 +19,22 @@ public class StatusCommand extends AltoClefCommand {
         args.requireMax(0);
         List<Task> tasks = mod.getUserTaskChain().getTasks();
         if (tasks.isEmpty()) {
-            mod.log("No tasks currently running.");
+            mod.log("Nothing running.");
         } else {
-            mod.log("CURRENT TASK: " + tasks.get(0).toString());
+            mod.log("Current task: " + tasks.get(0).getHudName());
         }
         done();
     }
 
     @Override
     public String getShortDesc() {
-        return "Get the status of the running altoclef task";
+        return "Show what Soprano is working on";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The status command tells you what altoclef is working on right now.",
+                "The status command tells you what Soprano is working on right now.",
                 "",
                 "Usage:",
                 "> status"

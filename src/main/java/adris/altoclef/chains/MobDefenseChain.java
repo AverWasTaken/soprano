@@ -495,7 +495,7 @@ public class MobDefenseChain extends SingleTaskChain {
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // IDK why but these exceptions happen sometimes. It's extremely bizarre and I have no idea why.
-            Debug.logWarning("Weird Exception caught and ignored while scanning for creepers: " + e.getMessage());
+            Debug.logInternal("WARNING: exception caught and ignored while scanning for creepers: " + e);
             return target;
         }
         return target;

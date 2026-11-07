@@ -99,7 +99,7 @@ public class SlotHandler {
         try {
             _mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
-            Debug.logWarning("Slot Click Error (ignored)");
+            Debug.logInternal("WARNING: slot click error (ignored)");
             e.printStackTrace();
             return false;
         }

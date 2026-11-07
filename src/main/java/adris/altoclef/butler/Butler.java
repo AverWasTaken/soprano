@@ -221,7 +221,8 @@ public class Butler {
         if (_currentUser != null) {
             sendWhisper(_currentUser, message, priority);
         } else {
-            Debug.logWarning("Failed to send butler message as there are no users present: " + message);
+            // nobody to whisper to is not the player's problem, the log keeps it
+            Debug.logInternal("WARNING: no butler user to send this to: " + message);
         }
     }
 

@@ -1,5 +1,6 @@
 package adris.altoclef.chains;
 
+import adris.altoclef.ui.HudText;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
@@ -157,7 +158,7 @@ public class PlayerInteractionFixChain extends TaskChain {
             // but a screen that never closes freezes the bot, so after 10s vanilla gets to drop it
             if (_keptStackWatch.tick()) {
                 ItemStack kept = StorageHelper.getItemStackInCursorSlot();
-                Debug.logMessage("Bag is full and nothing to swap, dropping the held " + kept.getCount() + "x " + kept.getItem().getDescriptionId());
+                Debug.logMessage("Inventory is full and nothing can be swapped, dropping the held " + HudText.count(kept.getCount(), HudText.item(kept)));
                 if (Minecraft.getInstance().gui.screen() != null) {
                     StorageHelper.closeScreen();
                 } else {
