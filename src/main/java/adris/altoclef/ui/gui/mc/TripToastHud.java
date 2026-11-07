@@ -17,13 +17,19 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
 
 // the corner toast in the game: drawn at the end of the hud extract (MixinAltoClefGui) with its own guard, answered with
-// Y / N (the keyboard mixin, through GuiHotkey) or a click while chat is open (MixinChatScreenToast). it is not part of
+// Y / N (the keyboard mixin through GuiHotkey with nothing open, MixinScreenTripKeys under the inventory or the pause
+// menu) or a click while chat is open (MixinChatScreenToast). it is not part of
 // altoclef's hud on purpose: that one only draws while the task runner is active and switches itself off for good after
 // a throw, and a trip question comes up when neither is true. client thread only
 public final class TripToastHud {
@@ -46,6 +52,22 @@ public final class TripToastHud {
     private static long labelsAt;
     // answered on this toast already, a second press before the next tick moves the view along would answer twice
     private static int answeredId = -1;
+    // what the head of keyPress last saw: a screen's keyPressed gets repeats too and doesn't say which it is
+    private static int lastAction = -1;
+    // the hud pass's count, for when the pause menu has us draw on top of it instead
+    private static int lastSubtitleRows;
+    // overScreen ran since the last hud pass, so the hud pass can leave the drawing to it
+    private static boolean overSeen;
+
+    // what's over the game. the inventory family and the pause menu let a key they didn't use go by, chat and every
+    // other screen (signs, books, our own gui, other mods') keep their keys, somebody might be typing a y in there
+    enum Cover {
+        NONE,
+        CHAT,
+        CONTAINER,
+        PAUSE,
+        OTHER
+    }
 
     private TripToastHud() {
     }
@@ -74,7 +96,25 @@ public final class TripToastHud {
     public static void render(GuiGraphicsExtractor g, int subtitleRows) {
         // cleared first, so a toast that's gone (or a draw that threw) isn't dodged by the status panel forever
         HudObstacles.toast(null);
+        lastSubtitleRows = subtitleRows;
+        boolean over = overSeen;
+        overSeen = false;
+        // the screen draws it on top of itself in a moment (overScreen), but only once it has been seen doing that. a
+        // loader that draws screens some other way would otherwise lose the toast under pause, and its Y / N with it
+        if (over && drawsOverScreen(cover(Minecraft.getInstance().gui.screen()))) {
+            return;
+        }
         guard("trip toast render", () -> draw(g, subtitleRows));
+    }
+
+    // MixinScreenTripKeys, at the end of a screen's extract. the pause menu blurs and tints everything the hud drew, the
+    // toast under it was a smudge with a question in it. vanilla's own toasts draw over screens too
+    public static void overScreen(Screen screen, GuiGraphicsExtractor g) {
+        if (screen != Minecraft.getInstance().gui.screen() || !drawsOverScreen(cover(screen))) {
+            return;
+        }
+        overSeen = true;
+        guard("trip toast render", () -> draw(g, lastSubtitleRows));
     }
 
     // nothing gets out of here into the hud extract, and nothing in here touches AltoClefBridge's hudBroken
@@ -117,12 +157,14 @@ public final class TripToastHud {
             labelsAt = now;
             card.setKeys(SopranoKeys.label(true), SopranoKeys.label(false));
         }
+        card.setButtonsLive(buttonsLive(cover(mc.gui.screen()), typing(mc.gui.screen())));
         boolean fresh = card.show(view, now);
         if (!card.visible()) {
             return;
         }
-        if (fresh && view.kind() != TripToast.Kind.COLLECTING) {
-            // collecting comes straight after the click that said yes, a whoosh on top of the click is one sound too many
+        if (fresh && view.kind() == TripToast.Kind.ASK) {
+            // only a question gets the whoosh. collecting comes straight after the click that said yes, and done lands a
+            // few seconds after that, a sound for either is the game congratulating itself
             playIn(mc);
         }
         int winW = win.getWidth();
@@ -210,43 +252,122 @@ public final class TripToastHud {
 
     private static void playIn(Minecraft mc) {
         try {
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_TOAST_IN, 1f, 1f));
+            // vanilla's whoosh at full volume is a lot louder than our own clicks (MenuSounds, 0.22 to 0.32)
+            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_TOAST_IN, 1f, 0.4f));
         } catch (Throwable t) {
             Safe.report("trip toast sound", t);
         }
     }
 
     private static boolean chatOpen(Minecraft mc) {
-        return mc.gui.screen() instanceof net.minecraft.client.gui.screens.ChatScreen;
+        return mc.gui.screen() instanceof ChatScreen;
+    }
+
+    static Cover cover(Screen screen) {
+        if (screen == null) {
+            return Cover.NONE;
+        }
+        if (screen instanceof ChatScreen) {
+            return Cover.CHAT;
+        }
+        if (screen instanceof AbstractContainerScreen<?>) {
+            return Cover.CONTAINER;
+        }
+        if (screen instanceof PauseScreen) {
+            return Cover.PAUSE;
+        }
+        return Cover.OTHER;
+    }
+
+    // where a press may answer from. with nothing open the head of keyPress takes it (MixinKeyboardHandler, before
+    // KeyMapping ever hears it). under the inventory or the pause menu only from the screen's own keyPressed, which the
+    // anvil, the creative search and the recipe book only reach once their text box said no. a text box focused some
+    // other way (a modded container) still wins, and chat or any other screen never answers: cancelling a press
+    // doesn't cancel the character it types
+    static boolean keysAnswer(Cover cover, boolean fromScreen, boolean typing) {
+        return switch (cover) {
+            case NONE -> !fromScreen;
+            case CONTAINER, PAUSE -> fromScreen && !typing;
+            case CHAT, OTHER -> false;
+        };
+    }
+
+    // the buttons look pressable wherever something answers them: the keys with nothing open, under the inventory or
+    // the pause menu (unless a search box has the keys), a click with chat open. clicks under the inventory still go
+    // to the item grid, the keys are enough
+    static boolean buttonsLive(Cover cover, boolean typing) {
+        return switch (cover) {
+            case NONE, CHAT -> true;
+            case CONTAINER, PAUSE -> !typing;
+            case OTHER -> false;
+        };
+    }
+
+    private static boolean typing(Screen screen) {
+        return screen != null && screen.getFocused() instanceof EditBox box && box.canConsumeInput();
+    }
+
+    // the pause menu blurs what's under it, so the toast goes on top. the inventory only tints, and on top it could sit
+    // on the item grid on a small window, so it stays underneath
+    static boolean drawsOverScreen(Cover cover) {
+        return cover == Cover.PAUSE;
     }
 
     // ----- input
 
     // GuiHotkey.onKey asks this first. true means it was ours: answered, and nobody else sees the press
     public static boolean onKey(KeyEvent event, int action) {
+        lastAction = action;
         if (broken) {
             return false;
         }
         try {
             Minecraft mc = Minecraft.getInstance();
-            TripToast.View view = currentView();
-            // on screen means this very toast got drawn, not the last one still fading out
-            boolean ready = mc.gui.screen() == null && mc.player != null && !mc.gui.hud.isHidden() && card != null
-                    && view != null && card.view() != null && card.view().id() == view.id();
-            TripToastCard.Hit hit = keyHit(view, ready, action, SopranoKeys.isYes(event), SopranoKeys.isNo(event));
-            if (hit == null) {
+            if (!keysAnswer(cover(mc.gui.screen()), false, false)) {
                 return false;
             }
-            answer(view, hit);
-            return true;
+            return press(mc, event, action);
         } catch (Throwable t) {
             fail("trip toast key", t);
             return false;
         }
     }
 
-    // only a press, only while it's asking (or collecting, for Stop), only with nothing open over the game, and only
-    // once the toast is actually on screen. anything else is the key doing whatever it does normally
+    // MixinScreenTripKeys, at the head of Screen.keyPressed. true means answered and the screen leaves it be
+    public static boolean onScreenKey(Screen screen, KeyEvent event) {
+        if (broken) {
+            return false;
+        }
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (screen != mc.gui.screen()) {
+                return false;
+            }
+            if (!keysAnswer(cover(screen), true, typing(screen))) {
+                return false;
+            }
+            return press(mc, event, lastAction);
+        } catch (Throwable t) {
+            fail("trip toast screen key", t);
+            return false;
+        }
+    }
+
+    private static boolean press(Minecraft mc, KeyEvent event, int action) {
+        TripToast.View view = currentView();
+        // on screen means this very toast got drawn, not the last one still fading out
+        boolean ready = mc.player != null && !mc.gui.hud.isHidden() && card != null
+                && view != null && card.view() != null && card.view().id() == view.id();
+        TripToastCard.Hit hit = keyHit(view, ready, action, SopranoKeys.isYes(event), SopranoKeys.isNo(event));
+        if (hit == null) {
+            return false;
+        }
+        answer(view, hit);
+        return true;
+    }
+
+    // only a press, only while it's asking (or collecting, for Stop), and only once the toast is actually on screen.
+    // which screens may be open is keysAnswer's call. anything else is the key doing whatever it does normally
     static TripToastCard.Hit keyHit(TripToast.View view, boolean ready, int action, boolean yes, boolean no) {
         if (view == null || !ready || action != InputConstants.PRESS || view.id() == answeredId) {
             return null;
@@ -323,6 +444,7 @@ public final class TripToastHud {
         if (++errors >= MAX_ERRORS) {
             broken = true;
             System.err.println("trip toast threw " + errors + " times, turning it off. the chat line still asks");
+            StatusPanelHud.sayOff("Corner prompt turned off after an error. Questions still show in chat.");
         }
     }
 }

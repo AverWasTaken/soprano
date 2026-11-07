@@ -10,7 +10,7 @@ public class TaskIconsTest {
     @Test
     public void theMockChainGetsTheMockIcons() {
         assertEquals(Icon.GOTO, TaskIcons.forName("Getting blocks for the path"));
-        assertEquals(Icon.GOTO, TaskIcons.forName("Getting a pickaxe for the path"));
+        assertEquals(Icon.GOTO, TaskIcons.forName("Getting a stone pickaxe for the path"));
         assertEquals(Icon.GET, TaskIcons.forName("Mine and collect"));
         assertEquals(Icon.PICKAXE, TaskIcons.forName("Mining dirt"));
         assertEquals(Icon.PICKAXE, TaskIcons.forName("Breaking dirt"));

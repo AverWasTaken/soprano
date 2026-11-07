@@ -42,6 +42,8 @@ public final class TripToastCard {
     public static final int MARGIN = 16;
     // the one bit of motion: 24 px in from the right while it fades up
     private static final int SLIDE = 24;
+    // buttons nothing can press right now (a screen over the game that keeps its keys) wear this much of their ink
+    private static final float DIM = 0.4f;
 
     private final Theme theme;
     private final TextStyle titleStyle;
@@ -50,6 +52,7 @@ public final class TripToastCard {
     private final TextStyle btnStyle;
     private final TextStyle keyStyle;
     private final FadeCanvas fade = new FadeCanvas();
+    private final FadeCanvas dim = new FadeCanvas();
 
     // what is on screen. a view going away keeps drawing for a short fade so it doesn't just blink out
     private TripToast.View view;
@@ -58,6 +61,7 @@ public final class TripToastCard {
     private long leftAt = -1;
     private String yesKey = "Y";
     private String noKey = "N";
+    private boolean buttonsLive = true;
 
     // the last layout, in device px, so clicks and hover hit what was drawn
     private float x;
@@ -98,6 +102,16 @@ public final class TripToastCard {
         noKey = no;
     }
 
+    // false while a screen is up that neither the keys nor a click get through to. the buttons stay so the card doesn't
+    // jump about, they just stop looking pressable
+    public void setButtonsLive(boolean live) {
+        buttonsLive = live;
+    }
+
+    public boolean buttonsLive() {
+        return buttonsLive;
+    }
+
     // a new id is a new toast (slides in), the same id is the same toast with new numbers. true when a new one showed,
     // that's when the hud plays its sound
     public boolean show(TripToast.View next, long nowNanos) {
@@ -129,6 +143,7 @@ public final class TripToastCard {
         leftAt = old.leftAt;
         yesKey = old.yesKey;
         noKey = old.noKey;
+        buttonsLive = old.buttonsLive;
         // a toast fading out never gets placed again, without its old box it would fade out in the top left corner
         x = old.x;
         y = old.y;
@@ -169,9 +184,16 @@ public final class TripToastCard {
         return theme.pxf(WIDTH) - 2 * theme.pxf(PAD) - theme.pxf(TILE) - theme.pxf(GAP);
     }
 
-    private List<String> bodyLines(TripToast.View v) {
+    // three lines and no more. whatever didn't fit gets glued onto the third and ellipsised like the title, so a cut
+    // sentence says it was cut instead of just stopping
+    List<String> bodyLines(TripToast.View v) {
         List<String> lines = TextWrap.wrap(theme.measurer, body(v), bodyStyle, textWidth());
-        return lines.size() > 3 ? lines.subList(0, 3) : lines;
+        if (lines.size() <= 3) {
+            return lines;
+        }
+        List<String> out = new ArrayList<>(lines.subList(0, 2));
+        out.add(theme.measurer.ellipsize(String.join(" ", lines.subList(2, lines.size())), bodyStyle, textWidth()));
+        return out;
     }
 
     // bottom right, `right` and `bottom` px in from the window's edges (the hud glue lifts it over the hotbar or the
@@ -279,8 +301,9 @@ public final class TripToastCard {
         float a;
         float dx = 0f;
         if (view != null) {
-            long slow = Anim.enabled ? Anim.ms(Theme.ANIM_SLOW) : 0L;
-            float p = slow == 0 ? 1f : Math.min(1f, (now - shownAt) / (float) slow);
+            // in at the same pace as the gui's own toasts, out quicker than in
+            long in = Anim.enabled ? Anim.ms(Theme.ANIM) : 0L;
+            float p = in == 0 ? 1f : Math.min(1f, (now - shownAt) / (float) in);
             p = Easing.outCubic(Math.max(0f, p));
             a = p;
             dx = (1f - p) * theme.pxf(SLIDE);
@@ -299,8 +322,9 @@ public final class TripToastCard {
         drawTile(g, v, ox + theme.pxf(PAD), y + theme.pxf(PAD));
         drawText(g, v, ox + theme.pxf(PAD) + theme.pxf(TILE) + theme.pxf(GAP), y + theme.pxf(PAD));
         if (view != null) {
+            Canvas bg = buttonsLive ? g : dim.reset(g, DIM, 0f);
             for (Btn b : buttons) {
-                drawButton(g, b, Math.round(dx));
+                drawButton(bg, b, Math.round(dx));
             }
         }
     }
@@ -347,7 +371,7 @@ public final class TripToastCard {
             float py = ly + theme.pxf(10);
             float ph = theme.pxf(4);
             float pr = theme.pxf(2);
-            g.fillRoundRect(tx, py, tw, ph, pr, theme.dark() ? 0x1FFFFFFF : 0x14000000);
+            g.fillRoundRect(tx, py, tw, ph, pr, theme.color(Theme.TRACK));
             float fill = tw * Math.min(1f, v.have() / (float) v.need());
             if (fill >= 1f) {
                 g.fillRoundRect(tx, py, Math.max(fill, ph), ph, pr, theme.color(Theme.ACCENT));
@@ -364,7 +388,7 @@ public final class TripToastCard {
     private void drawButton(Canvas g, Btn b, float dx) {
         float bx = b.x + dx;
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        boolean hot = hover == b.hit;
+        boolean hot = buttonsLive && hover == b.hit;
         int ink;
         if (b.primary) {
             g.fillRoundRect(bx, b.y, b.w, b.h, r, theme.color(hot ? Theme.ACCENT_HOVER : Theme.ACCENT));
@@ -385,7 +409,7 @@ public final class TripToastCard {
         float kh = theme.pxf(KEY);
         float kx = bx + b.w - theme.pxf(6) - kw;
         float ky = b.y + (b.h - kh) / 2f;
-        int chip = b.primary ? 0x38FFFFFF : theme.dark() ? 0x1AFFFFFF : 0x12000000;
+        int chip = b.primary ? Theme.KEY_CHIP_ON_ACCENT : theme.color(Theme.KEY_CHIP);
         g.fillRoundRect(kx, ky, kw, kh, theme.pxf(5), chip);
         float kt = m.measure(b.key, keyStyle);
         float kb = ky + (kh - (m.ascent(keyStyle) + m.descent(keyStyle))) / 2f + m.ascent(keyStyle);
@@ -408,7 +432,7 @@ public final class TripToastCard {
         return switch (v.kind()) {
             case ASK -> v.ask() == Trip.Ask.FASTER ? "Faster path found" : "Path needs blocks";
             case COLLECTING -> v.need() > 0 ? "Collecting blocks" : "Making a stone pickaxe";
-            case DONE -> v.need() > 0 ? "Got " + blocks(v.need()) + (v.pickaxe() ? " and a pickaxe" : "") : "Got a stone pickaxe";
+            case DONE -> v.need() > 0 ? "Got " + blocks(v.need()) + (v.pickaxe() ? " and a stone pickaxe" : "") : "Got a stone pickaxe";
             default -> "";
         };
     }
@@ -418,14 +442,16 @@ public final class TripToastCard {
             return "saves " + TripToast.duration(v.savedTicks());
         }
         if (v.kind() == TripToast.Kind.COLLECTING && v.need() > 0) {
-            return v.have() + " / " + v.need();
+            // no spaces, the status panel's "12/24" and this one are the same number
+            return v.have() + "/" + v.need();
         }
         return null;
     }
 
     static String body(TripToast.View v) {
         return switch (v.kind()) {
-            case ASK -> v.ask() == Trip.Ask.FASTER ? fasterBody(v) : "I need " + v.blocks() + (v.blocks() == 1 ? " more block" : " more blocks") + " for this path.\nCollect some?";
+            // "24 blocks", the same words as the chat line next to it
+            case ASK -> v.ask() == Trip.Ask.FASTER ? fasterBody(v) : "I need " + blocks(v.blocks()) + " for this path.\nCollect them?";
             case COLLECTING -> collectingBody(v);
             case DONE -> "Carrying on with the path.";
             default -> "";
@@ -446,7 +472,8 @@ public final class TripToastCard {
         TripToast.Phase phase = v.phase() == null ? TripToast.Phase.BY_HAND : v.phase();
         return switch (phase) {
             case PICKAXE -> v.need() > 0 ? "Making a stone pickaxe first, then blocks." : "Then back on the path.";
-            case BY_HAND -> "Mining dirt nearby, then back on the path.";
+            // by hand is anything that comes out without a pickaxe, not only dirt
+            case BY_HAND -> "Digging nearby, then back on the path.";
             case MINING -> "Mining nearby, then back on the path.";
         };
     }

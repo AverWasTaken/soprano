@@ -38,6 +38,11 @@ public final class Theme {
     public static final int DANGER_FILL = 0xFF3A2A2C;
     public static final int DANGER_PRESSED = 0xFF4A3134;
     public static final int SHADOW = 0x80000000;
+    // the hud's see-through bits: a progress track and a key chip sit on glass, not on a surface, so they're tints of
+    // whatever is behind. white in the dark, black in the light. the chip on a blue button is white either way
+    public static final int TRACK = 0x1FFFFFFF;
+    public static final int KEY_CHIP = 0x1AFFFFFF;
+    public static final int KEY_CHIP_ON_ACCENT = 0x38FFFFFF;
     public static final int PATH_START = 0xFF30D158;
     public static final int PATH_END = 0xFFFF453A;
 
@@ -151,6 +156,8 @@ public final class Theme {
             case DANGER_FILL -> 0xFFFBE5E7;
             case DANGER_PRESSED -> 0xFFF5CDD1;
             case SHADOW -> 0x2E000000;
+            case TRACK -> 0x14000000;
+            case KEY_CHIP -> 0x12000000;
             case PATH_START -> 0xFF248A3D;
             case PATH_END -> 0xFFD70015;
             default -> token;

@@ -2,6 +2,8 @@ package adris.altoclef.ui.gui.hud;
 
 import adris.altoclef.ui.gui.kit.AwtFonts;
 import adris.altoclef.ui.gui.kit.GlyphAtlas;
+import adris.altoclef.ui.gui.kit.TextMeasurer;
+import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import baritone.behavior.trip.GatherPlan;
 import baritone.behavior.trip.Trip;
@@ -40,7 +42,7 @@ public class TripToastCardTest {
     public void wordsMatchTheMock() {
         TripToast.View stuck = ask(Trip.Ask.STUCK, 24, false, 0);
         assertEquals("Path needs blocks", TripToastCard.title(stuck));
-        assertEquals("I need 24 more blocks for this path.\nCollect some?", TripToastCard.body(stuck));
+        assertEquals("I need 24 blocks for this path.\nCollect them?", TripToastCard.body(stuck));
         assertNull(TripToastCard.meta(stuck));
         assertEquals("minecraft:dirt", TripToastCard.itemFor(stuck));
 
@@ -50,15 +52,15 @@ public class TripToastCardTest {
         assertEquals("It needs 24 blocks and a stone pickaxe.\nGet them first?", TripToastCard.body(faster));
         assertEquals("minecraft:stone_pickaxe", TripToastCard.itemFor(faster));
         assertEquals("It needs a stone pickaxe.\nMake one first?", TripToastCard.body(ask(Trip.Ask.FASTER, 0, true, 1600)));
-        assertEquals("I need 1 more block for this path.\nCollect some?", TripToastCard.body(ask(Trip.Ask.STUCK, 1, false, 0)));
+        assertEquals("I need 1 block for this path.\nCollect them?", TripToastCard.body(ask(Trip.Ask.STUCK, 1, false, 0)));
     }
 
     @Test
     public void followUpStates() {
         TripToast.View c = collecting(12, 24, false, TripToast.Phase.BY_HAND);
         assertEquals("Collecting blocks", TripToastCard.title(c));
-        assertEquals("12 / 24", TripToastCard.meta(c));
-        assertEquals("Mining dirt nearby, then back on the path.", TripToastCard.body(c));
+        assertEquals("12/24", TripToastCard.meta(c));
+        assertEquals("Digging nearby, then back on the path.", TripToastCard.body(c));
         assertEquals("Mining nearby, then back on the path.", TripToastCard.body(collecting(12, 24, false, TripToast.Phase.MINING)));
         TripToast.View pick = collecting(0, 0, true, TripToast.Phase.PICKAXE);
         assertEquals("Making a stone pickaxe", TripToastCard.title(pick));
@@ -66,7 +68,7 @@ public class TripToastCardTest {
         assertEquals("minecraft:stone_pickaxe", TripToastCard.itemFor(pick));
 
         assertEquals("Got 24 blocks", TripToastCard.title(done(24, false)));
-        assertEquals("Got 24 blocks and a pickaxe", TripToastCard.title(done(24, true)));
+        assertEquals("Got 24 blocks and a stone pickaxe", TripToastCard.title(done(24, true)));
         assertEquals("Got a stone pickaxe", TripToastCard.title(done(0, true)));
         assertEquals("Carrying on with the path.", TripToastCard.body(done(24, false)));
     }
@@ -158,6 +160,48 @@ public class TripToastCardTest {
         card.show(null, 10);
         assertTrue("fading out", card.visible());
         assertNull(card.hit(yes[0] + 2, yes[1] + 2));
+    }
+
+    @Test
+    public void aBodyPastThreeLinesSaysItWasCut() throws Exception {
+        // every character 40 px wide, so the plain ask body wraps to a column of short lines
+        TextMeasurer wide = new TextMeasurer() {
+            public float measure(String s, TextStyle style) {
+                return s.length() * 40f;
+            }
+
+            public float ascent(TextStyle style) {
+                return 10f;
+            }
+
+            public float descent(TextStyle style) {
+                return 3f;
+            }
+        };
+        TripToastCard card = new TripToastCard(new Theme(1f, wide));
+        TripToast.View a = ask(Trip.Ask.STUCK, 24, false, 0);
+        java.util.List<String> lines = card.bodyLines(a);
+        assertEquals(3, lines.size());
+        assertTrue(lines.get(2), lines.get(2).endsWith("…"));
+        // the two-line body that fits is left alone
+        TripToastCard real = card(1f);
+        java.util.List<String> fits = real.bodyLines(a);
+        assertEquals(java.util.List.of("I need 24 blocks for this path.", "Collect them?"), fits);
+    }
+
+    @Test
+    public void dimmedButtonsKeepTheirPlace() throws Exception {
+        TripToastCard card = card(1f);
+        TripToast.View a = ask(Trip.Ask.STUCK, 24, false, 0);
+        card.show(a, 0);
+        card.place(a, 1920, 1080, 16, 16);
+        card.setButtonsLive(false);
+        assertFalse(card.buttonsLive());
+        // the layout doesn't move when they dim, and a rebuilt card keeps them dimmed
+        assertNotNull(card.bounds(TripToastCard.Hit.YES));
+        TripToastCard bigger = card(1.5f);
+        bigger.adopt(card);
+        assertFalse(bigger.buttonsLive());
     }
 
     @Test

@@ -338,8 +338,22 @@ public final class HudText {
         return best;
     }
 
+    // a pick of several is a group, and groups are lowercase after the verb like "Mining logs". Title Case is for one
+    // named thing. only in english, a german noun keeps its capital
     private static String others(Item[] matches) {
-        return item(matches[0]) + " or " + (matches.length - 1) + " other" + (matches.length == 2 ? "" : "s");
+        String first = item(matches[0]);
+        return (english() ? lowerWords(first) : first) + " or " + (matches.length - 1) + " other" + (matches.length == 2 ? "" : "s");
+    }
+
+    // "Flint and Steel" to "flint and steel", but TNT stays TNT
+    static String lowerWords(String name) {
+        String[] words = name.split(" ", -1);
+        for (int i = 0; i < words.length; i++) {
+            String w = words[i];
+            if (w.length() > 1 && w.equals(w.toUpperCase(Locale.ROOT))) continue;
+            words[i] = w.toLowerCase(Locale.ROOT);
+        }
+        return String.join(" ", words);
     }
 
     // a plain name for a set of alternatives: the group that is exactly this set, else the smallest group that holds

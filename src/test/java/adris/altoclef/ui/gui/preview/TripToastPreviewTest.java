@@ -51,16 +51,25 @@ public class TripToastPreviewTest {
     }
 
     private static TripToast.View done(int got) {
+        return done(got, false);
+    }
+
+    private static TripToast.View done(int got, boolean pickaxe) {
         TripToast t = new TripToast();
-        t.done(9, false, got, 0);
+        t.done(9, pickaxe, got, 0);
         return t.view(0);
     }
 
     // a close up: the card bottom right of a small canvas, like the mock's toast crops
     private Path closeUp(String name, TripToast.View v, boolean dark, TripToastCard.Hit hover) throws Exception {
+        return closeUp(name, v, dark, hover, true);
+    }
+
+    private Path closeUp(String name, TripToast.View v, boolean dark, TripToastCard.Hit hover, boolean live) throws Exception {
         Theme theme = new Theme(2f, glyphs);
         theme.setDark(dark);
         TripToastCard card = new TripToastCard(theme);
+        card.setButtonsLive(live);
         int winW = 1160;
         int winH = 578;
         card.show(v, T0);
@@ -142,6 +151,8 @@ public class TripToastPreviewTest {
             assertTrue(Files.size(closeUp("toast_ask_" + t, ask(Trip.Ask.STUCK, 24, false, 0), dark, null)) > 0);
             closeUp("toast_ask_hover_yes_" + t, ask(Trip.Ask.STUCK, 24, false, 0), dark, TripToastCard.Hit.YES);
             closeUp("toast_faster_" + t, ask(Trip.Ask.FASTER, 24, true, 1600), dark, null);
+            // under a screen that keeps its keys (a sign, our own gui): same card, buttons that don't look pressable
+            assertTrue(Files.size(closeUp("toast_ask_dimmed_" + t, ask(Trip.Ask.STUCK, 24, false, 0), dark, null, false)) > 0);
         }
     }
 
@@ -153,6 +164,8 @@ public class TripToastPreviewTest {
             closeUp("toast_done_" + t, done(24), dark, null);
         }
         closeUp("toast_collecting_hover_stop_dark", collecting(12, 24), true, TripToastCard.Hit.STOP);
+        // the longest title it says, "Got 24 blocks and a stone pickaxe"
+        closeUp("toast_done_pickaxe_dark", done(24, true), true, null);
     }
 
     @Test

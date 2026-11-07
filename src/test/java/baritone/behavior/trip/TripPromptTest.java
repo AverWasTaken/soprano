@@ -13,12 +13,12 @@ public class TripPromptTest {
                 TripPrompt.question(new GatherPlan(Trip.Ask.STUCK, 6, 8, false)));
         assertEquals("I found a faster path, but it needs placing blocks. May I collect blocks so I can take it?",
                 TripPrompt.question(new GatherPlan(Trip.Ask.FASTER, 6, 8, false)));
-        assertEquals("I found a faster path, but it needs mining. May I make a pickaxe so I can take it?",
+        assertEquals("I found a faster path, but it needs mining. May I make a stone pickaxe so I can take it?",
                 TripPrompt.question(new GatherPlan(Trip.Ask.FASTER, 0, 0, true)));
-        assertEquals("I found a faster path, but it needs mining and placing blocks. May I collect blocks and make a pickaxe so I can take it?",
+        assertEquals("I found a faster path, but it needs mining and placing blocks. May I collect blocks and make a stone pickaxe so I can take it?",
                 TripPrompt.question(new GatherPlan(Trip.Ask.FASTER, 6, 8, true)));
-        assertEquals("(about 8 blocks, saves about 1m 20s)", TripPrompt.detail(new GatherPlan(Trip.Ask.FASTER, 6, 8, false), 1600));
-        assertEquals("(about 8 blocks)", TripPrompt.detail(new GatherPlan(Trip.Ask.STUCK, 6, 8, false), 1600));
+        assertEquals("(8 blocks, saves about 1m 20s)", TripPrompt.detail(new GatherPlan(Trip.Ask.FASTER, 6, 8, false), 1600));
+        assertEquals("(8 blocks)", TripPrompt.detail(new GatherPlan(Trip.Ask.STUCK, 6, 8, false), 1600));
         assertEquals("45s", TripPrompt.duration(900));
     }
 }

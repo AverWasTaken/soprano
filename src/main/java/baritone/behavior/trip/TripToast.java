@@ -49,8 +49,9 @@ public final class TripToast {
         }
     }
 
-    // long enough to read "Got 24 blocks" while walking, short enough to be gone before the next thing happens
-    public static final long DONE_HOLD_MS = 4000;
+    // long enough to read "Got 24 blocks" while walking, short enough to be gone before the next thing happens. same
+    // three seconds the status panel's idle pill hangs about (StatusPanel.IDLE_MS), the corner shouldn't run two clocks
+    public static final long DONE_HOLD_MS = 3000;
 
     private static final View NONE = new View(Kind.NONE, -1, 0, null, 0, false, 0, 0, 0, null);
 

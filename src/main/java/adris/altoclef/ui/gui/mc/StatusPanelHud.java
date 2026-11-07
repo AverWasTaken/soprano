@@ -6,6 +6,7 @@ import adris.altoclef.ui.gui.hud.PanelPlacement;
 import adris.altoclef.ui.gui.hud.StatusPanel;
 import adris.altoclef.ui.gui.hud.ToastPlacement;
 import adris.altoclef.ui.gui.kit.Safe;
+import baritone.api.utils.Helper;
 import baritone.utils.accessor.IBossHealthOverlay;
 import baritone.utils.accessor.IChatComponent;
 import com.mojang.blaze3d.platform.Window;
@@ -14,6 +15,7 @@ import net.minecraft.client.Options;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.ChatVisiblity;
 
 import java.util.List;
@@ -196,6 +198,22 @@ public final class StatusPanelHud {
         if (++errors >= MAX_ERRORS) {
             broken = true;
             System.err.println("status panel threw " + errors + " times, turning it off");
+            sayOff("Task panel turned off after an error. See the game log.");
+        }
+    }
+
+    // one chat line when a hud piece gives up, so it doesn't just vanish with the reason in stderr. straight into the
+    // chat box on this thread: we're on the client thread already, and the logger setting could send it anywhere
+    static void sayOff(String line) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null) {
+                return;
+            }
+            mc.gui.hud.getChat().addClientSystemMessage(Component.empty().append(Helper.getPrefix()).append(" " + line));
+        } catch (Throwable t) {
+            // telling them it broke broke. stderr has it twice now, that's plenty
+            Safe.report("hud off line", t);
         }
     }
 }
