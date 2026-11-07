@@ -68,7 +68,7 @@ public class PickupCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Pickup items";
+        return "Pick up items";
     }
 
     @Override

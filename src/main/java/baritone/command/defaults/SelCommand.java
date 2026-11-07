@@ -314,13 +314,13 @@ public class SelCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "WorldEdit-like commands";
+        return "Select and edit areas, like WorldEdit";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The sel command allows you to manipulate Baritone's selections, similarly to WorldEdit.",
+                "The sel command allows you to edit Soprano's selections, similarly to WorldEdit.",
                 "",
                 "Using these selections, you can clear areas, fill them with blocks, or something else.",
                 "",

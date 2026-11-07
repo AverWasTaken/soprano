@@ -350,7 +350,7 @@ public class WaypointsCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The waypoint command allows you to manage Baritone's waypoints.",
+                "The waypoint command allows you to manage Soprano's waypoints.",
                 "",
                 "Waypoints can be used to mark positions for later. Waypoints are each given a tag and an optional name.",
                 "",

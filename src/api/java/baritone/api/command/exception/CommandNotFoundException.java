@@ -29,12 +29,12 @@ public class CommandNotFoundException extends CommandException {
     public final String command;
 
     public CommandNotFoundException(String command) {
-        super(String.format("Command not found: %s", command));
+        super(String.format("Unknown command: %s.", command));
         this.command = command;
     }
 
     @Override
     public void handle(ICommand command, List<ICommandArgument> args) {
-        HELPER.logDirect(getMessage());
+        HELPER.logDirect(getMessage() + " Type " + HelpHint.prefix() + "help for the list.");
     }
 }

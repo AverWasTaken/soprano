@@ -77,7 +77,7 @@ public class GatherCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Answer the question about collecting blocks for a path";
+        return "Answer the collect-blocks prompt";
     }
 
     @Override
@@ -89,9 +89,9 @@ public class GatherCommand extends Command {
                 "The answer holds for the whole trip.",
                 "",
                 "Usage:",
-                "> gather yes - go and collect what the path needs, then carry on",
-                "> gather no - don't, for the rest of this trip",
-                "> gather stop - stop collecting and give up on the blocks for this trip"
+                "> gather yes - Go and collect what the path needs, then carry on",
+                "> gather no - Don't, for the rest of this trip",
+                "> gather stop - Stop collecting and give up on the blocks for this trip"
         );
     }
 }

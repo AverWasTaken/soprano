@@ -42,7 +42,7 @@ public class ThisWayCommand extends Command {
                 args.getAs(Double.class)
         );
         baritone.getCustomGoalProcess().setGoal(goal);
-        logDirect(String.format("Goal: %s", goal));
+        logDirect(String.format("Goal set to %d %d.", goal.getX(), goal.getZ()));
     }
 
     @Override
@@ -58,10 +58,10 @@ public class ThisWayCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Creates a GoalXZ some amount of blocks in the direction you're currently looking",
+                "Sets a goal some amount of blocks in the direction you're looking",
                 "",
                 "Usage:",
-                "> thisway <distance> - makes a GoalXZ distance blocks in front of you"
+                "> thisway <distance> - Set a goal that many blocks in front of you"
         );
     }
 }

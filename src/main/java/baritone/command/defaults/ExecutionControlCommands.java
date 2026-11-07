@@ -87,10 +87,10 @@ public class ExecutionControlCommands {
             public void execute(String label, IArgConsumer args) throws CommandException {
                 args.requireMax(0);
                 if (paused[0]) {
-                    throw new CommandInvalidStateException("Already paused");
+                    throw new CommandInvalidStateException("Already paused.");
                 }
                 paused[0] = true;
-                logDirect("Paused");
+                logDirect("Paused. Use " + Baritone.settings().prefix.value + "resume to carry on.");
             }
 
             @Override
@@ -100,13 +100,13 @@ public class ExecutionControlCommands {
 
             @Override
             public String getShortDesc() {
-                return "Pauses Baritone until you use resume";
+                return "Pause what Soprano is doing until you resume";
             }
 
             @Override
             public List<String> getLongDesc() {
                 return Arrays.asList(
-                        "The pause command tells Baritone to temporarily stop whatever it's doing.",
+                        "The pause command tells Soprano to stop whatever it's doing for now.",
                         "",
                         "This can be used to pause pathing, building, following, whatever. A single use of the resume command will start it right back up again!",
                         "",
@@ -120,11 +120,11 @@ public class ExecutionControlCommands {
             public void execute(String label, IArgConsumer args) throws CommandException {
                 args.requireMax(0);
                 if (!paused[0] && !baritone.getBuilderProcess().isPaused()) {
-                    throw new CommandInvalidStateException("Not paused");
+                    throw new CommandInvalidStateException("Nothing is paused.");
                 }
                 baritone.getBuilderProcess().resume();
                 paused[0] = false;
-                logDirect("Resumed");
+                logDirect("Resumed.");
             }
 
             @Override
@@ -134,13 +134,13 @@ public class ExecutionControlCommands {
 
             @Override
             public String getShortDesc() {
-                return "Resumes Baritone after a pause";
+                return "Carry on after a pause";
             }
 
             @Override
             public List<String> getLongDesc() {
                 return Arrays.asList(
-                        "The resume command tells Baritone to resume whatever it was doing when you last used pause.",
+                        "The resume command tells Soprano to carry on with whatever it was doing when you last used pause.",
                         "",
                         "Usage:",
                         "> resume"
@@ -151,7 +151,7 @@ public class ExecutionControlCommands {
             @Override
             public void execute(String label, IArgConsumer args) throws CommandException {
                 args.requireMax(0);
-                logDirect(String.format("Baritone is %spaused", paused[0] ? "" : "not "));
+                logDirect(String.format("Soprano is %spaused.", paused[0] ? "" : "not "));
             }
 
             @Override
@@ -161,13 +161,13 @@ public class ExecutionControlCommands {
 
             @Override
             public String getShortDesc() {
-                return "Tells you if Baritone is paused";
+                return "Check if Soprano is paused";
             }
 
             @Override
             public List<String> getLongDesc() {
                 return Arrays.asList(
-                        "The paused command tells you if Baritone is currently paused by use of the pause command.",
+                        "The paused command tells you if Soprano is paused by the pause command right now.",
                         "",
                         "Usage:",
                         "> paused"
@@ -186,7 +186,7 @@ public class ExecutionControlCommands {
                 AltoClefBridge.cancelUserTask();
                 ((Baritone) baritone).getTripBehavior().endTrip();
                 baritone.getPathingBehavior().cancelEverything();
-                logDirect("ok canceled");
+                logDirect("Canceled.");
             }
 
             @Override
@@ -196,15 +196,15 @@ public class ExecutionControlCommands {
 
             @Override
             public String getShortDesc() {
-                return "Cancel what Baritone is currently doing";
+                return "Stop what Soprano is doing";
             }
 
             @Override
             public List<String> getLongDesc() {
                 return Arrays.asList(
-                        "The cancel command tells Baritone to stop whatever it's currently doing.",
+                        "The cancel command tells Soprano to stop whatever it's doing.",
                         "",
-                        "That includes a running AltoClef task (get, gamer, goto with a dimension and so on), and the settings it changed come back with it.",
+                        "That includes a running task (get, gamer, goto with a dimension and so on), and the settings it changed come back with it.",
                         "",
                         "Usage:",
                         "> cancel"

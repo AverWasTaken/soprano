@@ -17,9 +17,23 @@
 
 package baritone.api.command.exception;
 
+import baritone.api.command.ICommand;
+import baritone.api.command.argument.ICommandArgument;
+import net.minecraft.ChatFormatting;
+
+import java.util.List;
+
+import static baritone.api.utils.Helper.HELPER;
+
 public class CommandTooManyArgumentsException extends CommandErrorMessageException {
 
     public CommandTooManyArgumentsException(int maxArgs) {
-        super(String.format("Too many arguments (expected at most %d)", maxArgs));
+        super(String.format("Too many arguments, this takes at most %d.", maxArgs));
+    }
+
+    @Override
+    public void handle(ICommand command, List<ICommandArgument> args) {
+        String name = command == null || command.getNames().isEmpty() ? null : command.getNames().get(0);
+        HELPER.logDirect(getMessage() + (name == null ? "" : HelpHint.forCommand(name)), ChatFormatting.RED);
     }
 }

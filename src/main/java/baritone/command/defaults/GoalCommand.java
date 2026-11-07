@@ -87,7 +87,7 @@ public class GoalCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The goal command allows you to set or clear Baritone's goal.",
+                "The goal command allows you to set or clear Soprano's goal.",
                 "",
                 "Wherever a coordinate is expected, you can use ~ just like in regular Minecraft commands. Or, you can just use regular numbers.",
                 "",

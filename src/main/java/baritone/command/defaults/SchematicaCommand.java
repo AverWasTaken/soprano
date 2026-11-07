@@ -45,7 +45,7 @@ public class SchematicaCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Builds the loaded schematic";
+        return "Build the loaded Schematica schematic";
     }
 
     @Override

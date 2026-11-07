@@ -111,11 +111,11 @@ public class GotoCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The goto command tells Baritone to head towards a given goal or block.",
+                "The goto command tells Soprano to head towards a given goal or block.",
                 "",
                 "Wherever a coordinate is expected, you can use ~ just like in regular Minecraft commands. Or, you can just use regular numbers.",
                 "",
-                "End it with a dimension (overworld, nether or the_end) and AltoClef takes over: it finds a portal and goes there, even from another dimension. Coordinates have to be plain numbers then. A dimension on its own just takes you to that dimension.",
+                "End it with a dimension (overworld, nether or the_end) and it finds a portal and goes there, even from another dimension. Coordinates have to be plain numbers then. A dimension on its own just takes you to that dimension.",
                 "",
                 "Usage:",
                 "> goto <block> - Go to a block, wherever it is in the world",

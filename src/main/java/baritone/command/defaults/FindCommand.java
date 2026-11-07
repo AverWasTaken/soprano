@@ -108,7 +108,7 @@ public class FindCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The find command searches through Baritone's cache and attempts to find the location of the block.",
+                "The find command searches through Soprano's cache and attempts to find the location of the block.",
                 "Tab completion will suggest only cached blocks and uncached blocks can not be found.",
                 "",
                 "Usage:",

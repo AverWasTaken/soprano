@@ -32,6 +32,7 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -50,11 +51,14 @@ public class HelpCommand extends Command {
         if (!args.hasAny() || args.is(Integer.class)) {
             Paginator.paginate(
                     args, new Paginator<>(
+                            // the registry is newest first, which put every alto command ahead of the stock ones.
+                            // nobody looks for "goto" by when it was registered
                             this.baritone.getCommandManager().getRegistry().descendingStream()
                                     .filter(command -> !command.hiddenFromHelp())
+                                    .sorted(Comparator.comparing(command -> command.getNames().get(0)))
                                     .collect(Collectors.toList())
                     ),
-                    () -> logDirect("All Baritone commands (clickable):"),
+                    () -> logDirect("All commands (click one for details):"),
                     command -> {
                         String names = String.join("/", command.getNames());
                         String name = command.getNames().get(0);
@@ -115,7 +119,7 @@ public class HelpCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Using this command, you can view detailed help information on how to use certain commands of Baritone.",
+                "Using this command, you can view detailed help information on how to use each command.",
                 "",
                 "Usage:",
                 "> help - Lists all commands and their short descriptions.",

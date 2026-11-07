@@ -142,13 +142,13 @@ public class GamerCommand extends AltoClefCommand {
 
     @Override
     public String getShortDesc() {
-        return "Beats the game";
+        return "Play the whole game through to the dragon";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Starts altoclef's full speedrun: gear up, enter the nether, find the stronghold and kill the dragon.",
+                "Starts Soprano's full speedrun: gear up, enter the nether, find the stronghold and kill the dragon.",
                 "It takes a long while and it will eat, fight and respawn on its own. Use stop to call it off.",
                 "",
                 "Progress is saved per world. After a relog, a stop or a crash, gamer carries on from the phase it was in.",

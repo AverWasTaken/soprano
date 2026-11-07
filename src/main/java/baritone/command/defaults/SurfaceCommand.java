@@ -70,19 +70,19 @@ public class SurfaceCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Used to get out of caves, mines, ...";
+        return "Get out of a cave to the surface";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The surface/top command tells Baritone to head towards the closest surface-like area.",
+                "The surface/top command tells Soprano to head towards the closest surface-like area.",
                 "",
                 "This can be the surface or the highest available air space, depending on circumstances.",
                 "",
                 "Usage:",
-                "> surface - Used to get out of caves, mines, ...",
-                "> top - Used to get out of caves, mines, ..."
+                "> surface - Head for the surface",
+                "> top - Same as surface"
         );
     }
 }

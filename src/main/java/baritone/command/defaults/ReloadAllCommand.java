@@ -46,13 +46,13 @@ public class ReloadAllCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Reloads Baritone's cache for this world";
+        return "Reload the world cache";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The reloadall command reloads Baritone's world cache.",
+                "The reloadall command reloads Soprano's world cache.",
                 "",
                 "Usage:",
                 "> reloadall"

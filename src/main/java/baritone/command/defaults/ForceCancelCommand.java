@@ -43,7 +43,7 @@ public class ForceCancelCommand extends Command {
         ((Baritone) baritone).getTripBehavior().endTrip();
         pathingBehavior.cancelEverything();
         pathingBehavior.forceCancel();
-        logDirect("ok force canceled");
+        logDirect("Force canceled.");
     }
 
     @Override
@@ -53,13 +53,13 @@ public class ForceCancelCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Force cancel";
+        return "Cancel everything, even a stuck task";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Like cancel, but more forceful.",
+                "Like cancel, but it stops right away instead of waiting for a safe moment, and drops any path search in progress.",
                 "",
                 "Usage:",
                 "> forcecancel"

@@ -66,7 +66,7 @@ public class MineCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The mine command allows you to tell Baritone to search for and mine individual blocks.",
+                "The mine command allows you to tell Soprano to search for and mine individual blocks.",
                 "",
                 "The specified blocks can be ores, or any other block.",
                 "",
@@ -78,7 +78,7 @@ public class MineCommand extends Command {
                 "",
                 "Examples:",
                 "> mine diamond_ore deepslate_diamond_ore - Mines all diamonds it can find.",
-                "> mine 64 diamond_ore - Mines diamond ore until you have 5 diamonds."
+                "> mine 64 diamond_ore - Mines diamond ore until you have 64 diamonds."
         );
     }
 }

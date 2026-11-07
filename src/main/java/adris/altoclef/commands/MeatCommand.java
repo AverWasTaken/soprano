@@ -33,7 +33,7 @@ public class MeatCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The meat command has altoclef hunt animals and cook the meat until it is carrying that much.",
+                "The meat command has Soprano hunt animals and cook the meat until it is carrying that much.",
                 "",
                 "The amount counts hunger points the meat restores, not items.",
                 "",

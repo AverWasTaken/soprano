@@ -63,7 +63,7 @@ public class InventoryCommand extends AltoClefCommand {
         return Arrays.asList(
                 "The inventory command lists everything you are carrying, or tells you how many of one item you have.",
                 "",
-                "Counting takes altoclef's catalogue names (see get), so a group like log adds up every kind of log. A butler gets the answer in a whisper.",
+                "Counting takes Soprano's catalogue names (see get), so a group like log adds up every kind of log. A butler gets the answer in a whisper.",
                 "",
                 "Usage:",
                 "> inventory - List your inventory.",

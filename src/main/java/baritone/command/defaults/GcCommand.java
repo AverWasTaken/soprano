@@ -36,7 +36,7 @@ public class GcCommand extends Command {
     public void execute(String label, IArgConsumer args) throws CommandException {
         args.requireMax(0);
         System.gc();
-        logDirect("ok called System.gc()");
+        logDirect("Asked Java to free up memory.");
     }
 
     @Override
@@ -46,13 +46,13 @@ public class GcCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Call System.gc()";
+        return "Free up memory";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Calls System.gc().",
+                "Asks Java to free up memory it isn't using (System.gc()).",
                 "",
                 "Usage:",
                 "> gc"

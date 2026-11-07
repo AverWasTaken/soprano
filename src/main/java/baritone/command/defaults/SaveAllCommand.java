@@ -46,13 +46,13 @@ public class SaveAllCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Saves Baritone's cache for this world";
+        return "Save the world cache";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The saveall command saves Baritone's world cache.",
+                "The saveall command saves Soprano's world cache.",
                 "",
                 "Usage:",
                 "> saveall"

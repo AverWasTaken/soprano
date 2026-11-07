@@ -46,7 +46,7 @@ public class LocateStructureCommand extends AltoClefCommand {
         String word = args.getString();
         Structure structure = Structure.parse(word);
         if (structure == null) {
-            throw new CommandInvalidStateException("\"" + word + "\" is not a structure altoclef can locate, try one of: "
+            throw new CommandInvalidStateException("\"" + word + "\" is not a structure Soprano can locate. Try one of: "
                     + String.join(", ", Arrays.stream(Structure.values()).map(Structure::commandName).toList()));
         }
         switch (structure) {
@@ -75,7 +75,7 @@ public class LocateStructureCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The locate_structure command has altoclef go and find a world generated structure.",
+                "The locate_structure command has Soprano go and find a world generated structure.",
                 "",
                 "For the stronghold it heads for the portal room, for the desert temple it goes looking for the nearest one.",
                 "",
