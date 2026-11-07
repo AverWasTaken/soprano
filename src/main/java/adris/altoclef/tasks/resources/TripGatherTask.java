@@ -26,16 +26,45 @@ public class TripGatherTask extends Task {
     // the sources that come out by hand (dirt, grass). no pickaxe means these first
     private final Block[] _hand;
     private final int _target;
+    // the deficit the question asked about. _target is held + this, so held at the start is _target - _need
+    private final int _need;
     private final boolean _pickaxe;
     // once wide, always wide. otherwise a pickaxe snapping mid gather flips us back to dirt and restarts the mining
     private boolean _wide;
 
     public TripGatherTask(Item[] items, Block[] sources, Block[] hand, int target, boolean pickaxe) {
+        this(items, sources, hand, target, target, pickaxe);
+    }
+
+    public TripGatherTask(Item[] items, Block[] sources, Block[] hand, int target, int need, boolean pickaxe) {
         _items = items;
         _sources = sources;
         _hand = hand;
         _target = target;
+        _need = Math.max(0, Math.min(need, target));
         _pickaxe = pickaxe;
+    }
+
+    // for the corner toast's "12 / 24". blocks placed or thrown since the start count against it, same as haveBlocks does
+    public int need() {
+        return _need;
+    }
+
+    public int have(AltoClef mod) {
+        return collected(mod.getItemStorage().getItemCount(_items), _target, _need);
+    }
+
+    static int collected(int held, int target, int need) {
+        return Math.max(0, Math.min(need, held - (target - need)));
+    }
+
+    public boolean makingPickaxe(AltoClef mod) {
+        return _pickaxe && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE);
+    }
+
+    // still on the dirt by hand, or off to the trees and stone
+    public boolean mining() {
+        return _wide;
     }
 
     @Override
@@ -99,7 +128,7 @@ public class TripGatherTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof TripGatherTask task && task._target == _target && task._pickaxe == _pickaxe
+        return other instanceof TripGatherTask task && task._target == _target && task._need == _need && task._pickaxe == _pickaxe
                 && Arrays.equals(task._items, _items) && Arrays.equals(task._sources, _sources) && Arrays.equals(task._hand, _hand);
     }
 

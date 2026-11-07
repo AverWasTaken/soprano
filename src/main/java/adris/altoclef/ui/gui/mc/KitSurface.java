@@ -22,7 +22,12 @@ final class KitSurface {
     final Theme theme;
 
     KitSurface(float scale) {
-        McAtlases at = McAtlases.get();
+        this(scale, McAtlases.get());
+    }
+
+    // with atlases somebody already built (or failed to). the corner toast builds them once off the hud path and keeps
+    // the answer, McAtlases.get() would try again on every call after a failure
+    KitSurface(float scale, McAtlases at) {
         if (at != null && at.ok) {
             atlasCanvas = new McCanvas(at, draw);
             canvas = atlasCanvas;

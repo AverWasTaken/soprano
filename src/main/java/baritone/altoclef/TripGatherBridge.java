@@ -23,6 +23,7 @@ import adris.altoclef.tasksystem.Task;
 import baritone.api.command.exception.CommandException;
 import baritone.behavior.trip.GatherSources;
 import baritone.behavior.trip.TripGatherer;
+import baritone.behavior.trip.TripToast;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 
@@ -57,7 +58,7 @@ final class TripGatherBridge implements TripGatherer {
         Block[] hand = GatherSources.byHand(all).toArray(new Block[0]);
         // the deficit is on top of what's held, GetBuildingMaterialsTask style "hold this many" from here on
         int target = blocks > 0 ? mod.getItemStorage().getItemCount(wanted) + blocks : 0;
-        TripGatherTask t = new TripGatherTask(wanted, sources, hand, target, pickaxe);
+        TripGatherTask t = new TripGatherTask(wanted, sources, hand, target, blocks > 0 ? blocks : 0, pickaxe);
         this.tripId = tripId;
         this.task = t;
         this.status = Status.RUNNING;
@@ -84,6 +85,16 @@ final class TripGatherBridge implements TripGatherer {
             status = Status.FAILED;
         }
         return status;
+    }
+
+    @Override
+    public Progress progress(long tripId) {
+        AltoClef mod = AltoClefBridge.instanceOrNull();
+        if (tripId != this.tripId || status != Status.RUNNING || !(task instanceof TripGatherTask t) || mod == null) {
+            return null;
+        }
+        TripToast.Phase phase = t.makingPickaxe(mod) ? TripToast.Phase.PICKAXE : t.mining() ? TripToast.Phase.MINING : TripToast.Phase.BY_HAND;
+        return new Progress(t.have(mod), t.need(), phase);
     }
 
     @Override

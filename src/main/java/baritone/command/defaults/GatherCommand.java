@@ -43,13 +43,14 @@ public class GatherCommand extends Command {
         args.requireMin(1);
         args.requireMax(2);
         String word = args.getString().toLowerCase(Locale.ROOT);
+        boolean stop = word.equals("stop");
         boolean yes;
         if (word.equals("yes") || word.equals("y")) {
             yes = true;
-        } else if (word.equals("no") || word.equals("n")) {
+        } else if (word.equals("no") || word.equals("n") || stop) {
             yes = false;
         } else {
-            throw new CommandInvalidStateException("yes or no");
+            throw new CommandInvalidStateException("yes, no or stop");
         }
         Long id = null;
         if (args.hasAny()) {
@@ -59,7 +60,8 @@ public class GatherCommand extends Command {
                 throw new CommandInvalidStateException("that's not a trip id");
             }
         }
-        String reply = ((Baritone) baritone).getTripBehavior().answer(id, yes);
+        // stop is the corner toast's Stop: the question is long answered, it's the gather that goes
+        String reply = stop ? ((Baritone) baritone).getTripBehavior().stopGather(id) : ((Baritone) baritone).getTripBehavior().answer(id, yes);
         if (reply != null) {
             logDirect(reply);
         }
@@ -68,7 +70,7 @@ public class GatherCommand extends Command {
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
-            return new TabCompleteHelper().append("yes", "no").filterPrefix(args.getString()).stream();
+            return new TabCompleteHelper().append("yes", "no", "stop").filterPrefix(args.getString()).stream();
         }
         return Stream.empty();
     }
@@ -83,11 +85,13 @@ public class GatherCommand extends Command {
         return Arrays.asList(
                 "When a trip you started can't be finished without blocks, or a much faster route needs blocks or a pickaxe,",
                 "Soprano asks in chat if it may go and collect them (see the askToGatherForPath setting).",
-                "Click [Yes] or [No] there, or answer with this command. The answer holds for the whole trip.",
+                "Click [Yes] or [No] there, press Y or N while the corner toast asks, or answer with this command.",
+                "The answer holds for the whole trip.",
                 "",
                 "Usage:",
                 "> gather yes - go and collect what the path needs, then carry on",
-                "> gather no - don't, for the rest of this trip"
+                "> gather no - don't, for the rest of this trip",
+                "> gather stop - stop collecting and give up on the blocks for this trip"
         );
     }
 }

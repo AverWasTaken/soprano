@@ -2190,7 +2190,8 @@ public final class Settings {
     public final Setting<Boolean> altoButler = new Setting<>(true);
 
     /**
-     * Show the task list of AltoClef in the top left corner while it is running.
+     * Show the task list of AltoClef in the top left corner while it is running, and a small Idle sign for a few
+     * seconds after the last task ends.
      */
     public final Setting<Boolean> altoShowTaskChains = new Setting<>(true);
 

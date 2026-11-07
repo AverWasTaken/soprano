@@ -40,4 +40,12 @@ public interface TripGatherer {
 
     // the trip is over, so is its gather. a gather for some other trip id is left alone
     void cancel(long tripId);
+
+    // how far along it is, for the corner toast. null when this trip has no gather running
+    default Progress progress(long tripId) {
+        return null;
+    }
+
+    record Progress(int have, int need, TripToast.Phase phase) {
+    }
 }
