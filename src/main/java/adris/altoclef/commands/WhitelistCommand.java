@@ -36,17 +36,19 @@ public class WhitelistCommand extends AltoClefCommand {
                 list(mod);
             } else if (sub.equals("add") || sub.equals("remove")) {
                 if (!args.hasAny()) {
-                    throw new CommandInvalidStateException(sub + " needs a player name: whitelist " + sub + " <player>");
+                    throw new CommandInvalidStateException("Say which player: whitelist " + sub + " <player>");
                 }
                 edit(mod, args.getString(), sub.equals("add"));
             } else if (args.hasAny()) {
                 // "whitelist bob smith" is not "whitelist add bob", so don't quietly pick one
-                throw new CommandInvalidStateException("try: whitelist <player>, whitelist remove <player> or whitelist list");
+                throw new CommandInvalidStateException("Try whitelist <player>, whitelist remove <player> or whitelist list");
             } else {
                 edit(mod, first, true);
             }
         } catch (IOException e) {
-            throw new CommandInvalidStateException("couldn't update the whitelist file: " + e.getMessage());
+            // the player gets the short line, the log gets what the disk actually said
+            Debug.logInternal("whitelist: couldn't update the whitelist file: " + e);
+            throw new CommandInvalidStateException("Could not update the whitelist file. See the game log.");
         }
         done();
     }
@@ -54,7 +56,7 @@ public class WhitelistCommand extends AltoClefCommand {
     private static void edit(AltoClef mod, String name, boolean adding) throws IOException, CommandInvalidStateException {
         // only adding is checked: an odd entry typed into the file by hand has to be removable by name
         if (adding && !WhitelistEditor.isValidName(name)) {
-            throw new CommandInvalidStateException("\"" + name + "\" doesn't look like a minecraft name (letters, digits, _ and ., 16 at most)");
+            throw new CommandInvalidStateException("\"" + name + "\" isn't a Minecraft name. Names use letters, digits, _ or . and 16 characters at most");
         }
         // Debug and not mod.log: mod.log is copied to whoever has the bot on a whisper, and this is not theirs to read
         switch (mod.getButler().editWhitelist(name, adding)) {

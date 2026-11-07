@@ -174,8 +174,10 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
                 return new PathCalculationResult(PathCalculationResult.Type.SUCCESS_SEGMENT, path);
             }
         } catch (Exception e) {
-            Helper.HELPER.logDirect("Pathing exception: " + e);
+            // the stack trace is for the log, the player gets the short version
+            System.out.println("Pathing exception: " + e);
             e.printStackTrace();
+            Helper.HELPER.logDirect("Path search failed. See the game log.");
             return new PathCalculationResult(PathCalculationResult.Type.EXCEPTION);
         } finally {
             // this is run regardless of what exception may or may not be raised by calculate0

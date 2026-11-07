@@ -14,10 +14,21 @@ import adris.altoclef.ui.gui.model.Wording;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.Goal;
-import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalComposite;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.pathing.goals.GoalYLevel;
 import baritone.api.process.IBaritoneProcess;
+import baritone.api.process.IBuilderProcess;
+import baritone.api.process.ICustomGoalProcess;
+import baritone.api.process.IElytraProcess;
+import baritone.api.process.IExploreProcess;
+import baritone.api.process.IFarmProcess;
+import baritone.api.process.IFollowProcess;
+import baritone.api.process.IGetToBlockProcess;
+import baritone.api.process.IMineProcess;
+import baritone.api.utils.interfaces.IGoalRenderPos;
+import net.minecraft.core.BlockPos;
 
 import java.util.List;
 import java.util.Optional;
@@ -65,7 +76,7 @@ final class McStatus implements StatusAccess {
             boolean pathing = baritone.getPathingBehavior().isPathing();
             Optional<IBaritoneProcess> process = baritone.getPathingControlManager().mostRecentInControl();
             if (line == null && process.isPresent()) {
-                line = process.get().displayName();
+                line = processLabel(process.get());
             }
             if (line == null && pathing) {
                 line = "Walking";
@@ -92,21 +103,76 @@ final class McStatus implements StatusAccess {
         return null;
     }
 
-    private static String goalText(Goal goal) {
+    // displayName is for logs and #proc, it says "Custom Goal GoalBlock{x=1,y=2,z=3}". the strip gets the plain
+    // version, the goal itself already sits next to it in goalText
+    static String processLabel(IBaritoneProcess process) {
+        if (process instanceof ICustomGoalProcess) {
+            return "Walking to the goal";
+        }
+        if (process instanceof IMineProcess) {
+            return "Mining";
+        }
+        if (process instanceof IFollowProcess) {
+            return "Following";
+        }
+        if (process instanceof IExploreProcess) {
+            return "Exploring";
+        }
+        if (process instanceof IElytraProcess) {
+            return "Flying";
+        }
+        if (process instanceof IGetToBlockProcess) {
+            return "Looking for a block";
+        }
+        if (process instanceof IFarmProcess) {
+            return "Farming";
+        }
+        if (process instanceof IBuilderProcess b) {
+            return b.isPaused() ? "Building, paused" : "Building";
+        }
+        return cleanName(process.displayName());
+    }
+
+    // the long tail (torches, backfill, self defense, whatever a mod adds) keeps its own words minus the java bits
+    static String cleanName(String name) {
+        if (name == null) {
+            return null;
+        }
+        if (name.equals("inventory pauser")) {
+            return "Waiting on the inventory";
+        }
+        // the \w* takes the type glued to the braces too, "BlockPos{...}" goes as one piece
+        String s = name.replaceAll("\\w*\\{[^}]*}", "").replace("minecraft:", "").replaceAll("\\s+", " ").trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    static String goalText(Goal goal) {
         if (goal == null) {
             return "";
         }
-        if (goal instanceof GoalBlock b) {
-            return "goal " + b.x + " " + b.y + " " + b.z;
-        }
         if (goal instanceof GoalXZ xz) {
-            return "goal " + xz.getX() + " " + xz.getZ();
+            return "Goal " + xz.getX() + " " + xz.getZ();
         }
         if (goal instanceof GoalYLevel y) {
-            return "goal y " + y.level;
+            return "Goal y " + y.level;
         }
-        String s = String.valueOf(goal);
-        return s.length() > 40 ? s.substring(0, 39) + "…" : s;
+        if (goal instanceof GoalNear near) {
+            BlockPos p = near.getGoalPos();
+            return "Near " + p.getX() + " " + p.getY() + " " + p.getZ();
+        }
+        // GoalBlock, GoalGetToBlock and GoalTwoBlocks all know their spot
+        if (goal instanceof IGoalRenderPos pos) {
+            BlockPos p = pos.getGoalPos();
+            return "Goal " + p.getX() + " " + p.getY() + " " + p.getZ();
+        }
+        if (goal instanceof GoalComposite) {
+            return "Nearest of several goals";
+        }
+        // GoalRunAway{...} and friends mean nothing to a player, the activity line already says what's going on
+        return "";
     }
 
     @Override

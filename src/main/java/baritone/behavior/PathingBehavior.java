@@ -893,7 +893,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 } else {
                     //throw new IllegalStateException("I have no idea what to do with this path");
                     // no point in throwing an exception here, and it gets it stuck with inProgress being not null
-                    logDirect("Warning: PathingBehavior illegal state! Discarding invalid path!");
+                    // nothing the player can do about it, so the log hears it and chat only with chatDebug
+                    System.out.println("Warning: PathingBehavior illegal state! Discarding invalid path!");
+                    logDebug("Warning: PathingBehavior illegal state! Discarding invalid path!");
                 }
             }
             if (talkAboutIt && current != null && current.getPath() != null) {

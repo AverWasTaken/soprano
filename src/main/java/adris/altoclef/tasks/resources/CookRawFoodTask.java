@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import adris.altoclef.ui.HudText;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.AsyncSmelting;
@@ -121,7 +122,7 @@ public class CookRawFoodTask extends Task {
             lastChange = now;
         }
         if (FurnacePlan.cookGaveUp(lastChange, now) || smelt instanceof SmeltInSmokerTask task && task.outOfFuel()) {
-            Debug.logMessage("Cooking the " + smelting.getDescriptionId() + " is going nowhere, leaving it raw for a while.");
+            Debug.logMessage("Cooking the " + HudText.item(smelting) + " is going nowhere, leaving it raw for a while.");
             CookTrip.suspend(now);
             gaveUp = true;
             // a long coal trip with the meat already in the station: it is not in the bag and not a job, so without this it sits

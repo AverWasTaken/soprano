@@ -159,7 +159,11 @@ public class UserTaskChain extends SingleTaskChain {
         }
 
         if (!_runningIdleTask) {
-            logTask("User Task Set: " + task.toString());
+            // the exact debug line always lands in the log (the play-test harness reads it), chat gets the hud words
+            Debug.logInternal("User Task Set: " + task.toString());
+            if (!_runningQuiet) {
+                Debug.logMessage("Task: " + task.getHudName());
+            }
         }
         mod.getTaskRunner().enable();
         _taskStopwatch.begin();
@@ -205,7 +209,10 @@ public class UserTaskChain extends SingleTaskChain {
         boolean actuallyDone = _mainTask == null;
         if (actuallyDone) {
             if (!_runningIdleTask) {
-                logTask("User task FINISHED. Took " + prettyPrintTimeDuration(seconds) + " seconds.");
+                Debug.logInternal("User task FINISHED. Took " + prettyPrintTimeDuration(seconds) + " seconds.");
+                if (!_runningQuiet) {
+                    Debug.logMessage("Done in " + shortDuration(seconds) + ".");
+                }
                 EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
             }
             // a graph routine parked between two nodes isn't idle, the next node is one tick away and the idle command
@@ -254,12 +261,16 @@ public class UserTaskChain extends SingleTaskChain {
         return !hasTask && shouldIdle;
     }
 
-    private void logTask(String line) {
-        if (_runningQuiet) {
-            Debug.logInternal(line);
-        } else {
-            Debug.logMessage(line);
+    // "1 minutes and 12.345 seconds" is for the log. chat gets 12s, 1m 12s, 2h 5m
+    static String shortDuration(double seconds) {
+        long s = Math.max(0, Math.round(seconds));
+        if (s < 60) {
+            return s + "s";
         }
+        if (s < 3600) {
+            return (s / 60) + "m " + (s % 60) + "s";
+        }
+        return (s / 3600) + "h " + (s % 3600 / 60) + "m";
     }
 
     public boolean isRunningIdleTask() {

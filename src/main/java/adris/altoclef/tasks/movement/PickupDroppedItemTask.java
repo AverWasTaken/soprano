@@ -326,11 +326,13 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                     return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim());
                 }
                 if (room.kind() == DropRoom.Kind.NONE) {
-                    Debug.logMessage("no room for " + itemEntity.getItem().getItem().getDescriptionId() + ", nothing in the bag may go");
-                    // this line can fire a few times a second for as long as it likes, the bag only needs saying now and then
+                    Debug.logInternal("no room for " + itemEntity.getItem().getItem().getDescriptionId() + ", nothing in the bag may go");
+                    // this line can fire a few times a second for as long as it likes, so chat hears it now and then and the
+                    // bag dump is for the log only
                     if (NO_ROOM_DUMP.elapsed()) {
                         NO_ROOM_DUMP.reset();
-                        Debug.logMessage("no room: bag is " + view.dump());
+                        Debug.logMessage("No room for " + HudText.item(itemEntity.getItem()) + ", and nothing in the inventory can go.");
+                        Debug.logInternal("no room: bag is " + view.dump());
                     }
                     _gaveUpReason = "no room";
                     BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));

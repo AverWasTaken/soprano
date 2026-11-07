@@ -131,7 +131,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         if (mod.getPlayer().closerThan(_entity, _closeEnoughDistance)) {
             _chase.reset();
         } else if (!(_entity instanceof Player) && _chase.stalled(WorldHelper.getTicks(), mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ())) {
-            Debug.logMessage("Not getting anywhere chasing " + _entity.getType().getDescriptionId() + ", dropping it.");
+            Debug.logMessage("Not getting anywhere chasing the " + HudText.entityType(_entity.getType()) + ", dropping it.");
             _chase.reset();
             if (_onNoPath != null) {
                 _onNoPath.run();
@@ -171,7 +171,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         // another. players are never banned, a follower has to stay on someone who walks back across the river
         if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures()) && !(_entity instanceof Player)) {
             if (++_misses >= 2) {
-                Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
+                Debug.logMessage("No path to the " + HudText.entityType(_entity.getType()) + ", not chasing it.");
                 if (_onNoPath != null) {
                     _onNoPath.run();
                     // the ban would have stopped us at the reachable check below, a callback has to do it itself

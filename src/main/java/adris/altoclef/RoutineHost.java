@@ -184,8 +184,15 @@ final class RoutineHost implements RoutineRunner.Host {
         if (state == RoutineRunner.State.DONE) {
             Debug.logMessage(name + " is done");
         } else if (state == RoutineRunner.State.FAILED) {
-            Debug.logMessage(name + " failed: " + message);
+            // the log gets the whole reason. chat gets it too unless it's a java exception talking, nobody can act on
+            // "NullPointerException: Cannot invoke..."
+            Debug.logInternal("routine " + name + " failed: " + message);
+            Debug.logMessage(looksLikeException(message) ? name + " failed. See the game log." : name + " failed: " + message);
         }
+    }
+
+    static boolean looksLikeException(String message) {
+        return message != null && (message.contains("Exception") || message.contains("java.") || message.contains("Error:"));
     }
 
     @Override

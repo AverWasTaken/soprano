@@ -120,7 +120,7 @@ public class RecoverItemsTask extends Task {
                 ? threatsAtPile(mod) : List.of();
         switch (_gate.update(mod.getWorld().getGameTime() / 20.0, threats.size())) {
             case GIVE_UP -> {
-                Debug.logMessage("Still " + threats.size() + " hostile(s) on our stuff after " + (int) RecoverRules.WAIT_SECONDS
+                Debug.logMessage("Still " + HudText.count(threats.size(), "hostile mob") + " on our stuff after " + (int) RecoverRules.WAIT_SECONDS
                         + " s, giving it up.");
                 setDebugState("Crowded.", "Giving up on our stuff");
                 _finished = true;
@@ -200,7 +200,7 @@ public class RecoverItemsTask extends Task {
         if (_chase.update(drop.getId(), mod.getWorld().getGameTime() / 20.0)) {
             // visible, "reachable" and still not ours after all that: the pickup task's own retries reset every time we get a
             // block closer, so this is the only count that ever ends
-            Debug.logMessage("Can't get at " + drop.getItem().getItem().getDescriptionId() + " after "
+            Debug.logMessage("Can't get at the " + HudText.item(drop.getItem()) + " after "
                     + (int) RecoverRules.CHASE_SECONDS + " s, leaving it.");
             BanPolicy.recoverGaveUp(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
             _pickup = null;

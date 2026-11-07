@@ -1,5 +1,6 @@
 package adris.altoclef.commands;
 
+import adris.altoclef.ui.HudText;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.ui.MessagePriority;
@@ -33,14 +34,13 @@ public class InventoryCommand extends AltoClefCommand {
                     counts.merge(ItemHelper.stripItemName(stack.getItem()), stack.getCount(), Integer::sum);
                 }
             }
-            mod.log("INVENTORY: ", MessagePriority.OPTIONAL);
-            counts.forEach((name, count) -> mod.log(name + " : " + count, MessagePriority.OPTIONAL));
-            mod.log("(inventory list sent) ", MessagePriority.OPTIONAL);
+            mod.log(counts.isEmpty() ? "Inventory is empty." : "Inventory:", MessagePriority.OPTIONAL);
+            counts.forEach((name, count) -> mod.log(HudText.count(count, name.replace('_', ' ')), MessagePriority.OPTIONAL));
         } else {
             String item = args.getDatatypeFor(AltoItem.CATALOGUE);
             Item[] matches = TaskCatalogue.getItemMatches(item);
             int count = mod.getItemStorage().getItemCount(matches);
-            mod.log(item + " COUNT: " + (count == 0 ? "(none)" : count));
+            mod.log((count == 0 ? "No" : String.valueOf(count)) + " " + item.replace('_', ' ') + " in the inventory.");
         }
         done();
     }

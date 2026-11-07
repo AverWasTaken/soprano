@@ -1,5 +1,6 @@
 package adris.altoclef.commands;
 
+import adris.altoclef.ui.HudText;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -67,7 +68,7 @@ public class GiveCommand extends AltoClefCommand {
         } catch (NumberFormatException ignored) {
             // same complaint as a zero
         }
-        throw new CommandInvalidStateException("\"" + word + "\" is not a count of at least 1");
+        throw new CommandInvalidStateException("\"" + word + "\" is not a count. Use a number of 1 or more");
     }
 
     @Override
@@ -97,7 +98,7 @@ public class GiveCommand extends AltoClefCommand {
                 count = parseCount(words.get(1));
             }
             if (username == null) {
-                throw new CommandInvalidStateException("there is no butler user to give to, so say who: give <player> <item> [count]");
+                throw new CommandInvalidStateException("No butler user to give to. Say who: give <player> <item> [count]");
             }
         }
         item = ItemArgs.normalize(item);
@@ -115,9 +116,9 @@ public class GiveCommand extends AltoClefCommand {
             }
         }
         if (target == null) {
-            throw new CommandInvalidStateException("item not found, and altoclef has no task for it: " + item);
+            throw new CommandInvalidStateException("Soprano has none of that and doesn't know how to get it: " + item);
         }
-        Debug.logMessage("USER: " + username + " : ITEM: " + item + " x " + count);
+        Debug.logMessage("Giving " + username + " " + HudText.count(count, item.replace('_', ' ')) + ".");
         startTask(mod, new GiveItemToPlayerTask(username, target));
     }
 

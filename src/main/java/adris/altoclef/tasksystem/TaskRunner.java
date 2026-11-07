@@ -137,7 +137,8 @@ public class TaskRunner {
             }
         }
 
-        Debug.logMessage("Stopped");
+        // every runner disable said this in chat, after every task. the log still wants it
+        Debug.logInternal("Stopped");
         // everything is restored by now, the caller still gets to hear about it (the bridge counts these)
         if (failure instanceof RuntimeException re) {
             throw re;

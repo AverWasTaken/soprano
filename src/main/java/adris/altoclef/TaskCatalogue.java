@@ -722,7 +722,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     public static ResourceTask getItemTask(String name, int count) {
 
         if (!taskExists(name)) {
-            Debug.logWarning("Task " + name + " does not exist. Error possibly.");
+            Debug.logInternal("WARNING: task " + name + " does not exist. error possibly.");
             Debug.logStack();
             return null;
         }
@@ -732,7 +732,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
 
     public static ResourceTask getItemTask(Item item, int count) {
         if (!taskExists(item)) {
-            Debug.logWarning("Task " + item + " does not exist. Error possibly.");
+            Debug.logInternal("WARNING: task " + item + " does not exist. error possibly.");
             Debug.logStack();
             return null;
         }
@@ -1201,7 +1201,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
 
     private static void alias(String newName, String original) {
         if (!_nameToResourceTask.containsKey(original) || !_nameToItemMatches.containsKey(original)) {
-            Debug.logWarning("Invalid resource: " + original + ". Will not create alias.");
+            Debug.logInternal("WARNING: invalid resource: " + original + ". will not create alias.");
         } else {
             _nameToResourceTask.put(newName, _nameToResourceTask.get(original));
             _nameToItemMatches.put(newName, _nameToItemMatches.get(original));
