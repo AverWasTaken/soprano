@@ -115,7 +115,7 @@ public final class TripToastHud {
         lastNanos = now;
         // a rebind only happens in the controls screen, twice a second is plenty to notice it and saves two
         // translated strings a frame
-        if (now - labelsAt > 500_000_000L) {
+        if (labelsAt == 0 || now - labelsAt > 500_000_000L) {
             labelsAt = now;
             card.setKeys(SopranoKeys.label(true), SopranoKeys.label(false));
         }

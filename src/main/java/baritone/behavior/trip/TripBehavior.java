@@ -141,6 +141,8 @@ public final class TripBehavior extends Behavior {
     private void tickTrip(TickEvent event) {
         ticks++;
         if (event.getType() == TickEvent.Type.OUT) {
+            // out of the world "got them" goes too, or a quick rejoin would slide it in again on the way back
+            toast.clear();
             if (book.current() != null) {
                 endTrip();
             }

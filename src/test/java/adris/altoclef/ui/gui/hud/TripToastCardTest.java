@@ -136,6 +136,16 @@ public class TripToastCardTest {
         bigger.adopt(old);
         assertFalse("no second slide in and no second sound", bigger.show(a, 100));
         assertSame(a, bigger.view());
+
+        // and one fading out keeps fading out where it was
+        old.place(a, 1920, 1080, 16, 16);
+        old.show(null, 200);
+        TripToastCard again = card(1.5f);
+        again.adopt(old);
+        assertTrue(again.visible());
+        assertEquals(old.x(), again.x(), 0f);
+        assertEquals(old.y(), again.y(), 0f);
+        assertEquals(old.w(), again.w(), 0f);
     }
 
     @Test

@@ -129,6 +129,11 @@ public final class TripToastCard {
         leftAt = old.leftAt;
         yesKey = old.yesKey;
         noKey = old.noKey;
+        // a toast fading out never gets placed again, without its old box it would fade out in the top left corner
+        x = old.x;
+        y = old.y;
+        w = old.w;
+        h = old.h;
     }
 
     public boolean visible() {
