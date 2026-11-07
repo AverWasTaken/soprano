@@ -32,13 +32,13 @@ public class PunkCommand extends AltoClefCommand {
 
     @Override
     public String getShortDesc() {
-        return "Punk 'em";
+        return "Hunt a player down and kill them";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The punk command has altoclef hunt down a player and kill them. Use it on people who agreed to it.",
+                "The punk command has Soprano hunt down a player and kill them. Use it on people who agreed to it.",
                 "",
                 "The names come from the tab list.",
                 "",

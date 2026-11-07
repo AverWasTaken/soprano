@@ -56,7 +56,7 @@ public class ComeCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The come command tells Baritone to head towards your camera.",
+                "The come command tells Soprano to head towards your camera.",
                 "",
                 "This can be useful in hacked clients where freecam doesn't move your player position.",
                 "",

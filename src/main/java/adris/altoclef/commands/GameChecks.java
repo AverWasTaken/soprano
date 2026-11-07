@@ -41,8 +41,8 @@ public final class GameChecks implements GraphValidator.Checks {
             return null;
         }
         return as == AltoItem.ARMOR
-                ? "\"" + name + "\" is not armor altoclef knows about"
-                : "\"" + name + "\" is not something altoclef can get, " + AltoClefCommands.prefix() + "list shows what there is";
+                ? "\"" + name + "\" is not armor Soprano knows about"
+                : "\"" + name + "\" is not something Soprano can get, " + AltoClefCommands.prefix() + "list shows what there is";
     }
 
     @Override

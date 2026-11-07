@@ -60,7 +60,7 @@ public class EquipCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The equip command has altoclef put on armor, getting any pieces it does not have yet.",
+                "The equip command has Soprano put on armor, getting any pieces it does not have yet.",
                 "",
                 "A single set name (leather, iron, gold, diamond, netherite) means all four pieces of that set. Otherwise give it the pieces, with an optional count each. Only armor is accepted.",
                 "",

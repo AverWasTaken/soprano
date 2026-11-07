@@ -58,7 +58,7 @@ public class SchemCommand extends AltoClefCommand {
 
     @Override
     public String getShortDesc() {
-        return "Answer a survival schematic build's questions";
+        return "Answer survival build prompts";
     }
 
     @Override
@@ -69,8 +69,8 @@ public class SchemCommand extends AltoClefCommand {
                 "unchecked in the tab, check them again to build them next time).",
                 "",
                 "Usage:",
-                "> schem nether yes - go to the nether for the build's nether items",
-                "> schem nether no - build without them"
+                "> schem nether yes - Go to the nether for the build's nether items",
+                "> schem nether no - Build without them"
         );
     }
 }

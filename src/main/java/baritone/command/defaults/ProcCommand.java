@@ -74,9 +74,9 @@ public class ProcCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The proc command provides miscellaneous information about the process currently controlling Baritone.",
+                "The proc command provides miscellaneous information about the process currently controlling Soprano.",
                 "",
-                "You are not expected to understand this if you aren't familiar with how Baritone works.",
+                "You are not expected to understand this if you aren't familiar with how Soprano's pathing works.",
                 "",
                 "Usage:",
                 "> proc - View process information, if present"

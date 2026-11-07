@@ -46,7 +46,7 @@ public class ClickCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Open click";
+        return "Pick a spot to go to by clicking";
     }
 
     @Override

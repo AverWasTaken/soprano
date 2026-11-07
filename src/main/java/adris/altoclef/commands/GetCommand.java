@@ -26,7 +26,7 @@ public class GetCommand extends AltoClefCommand {
         // the plain catalogue task is still what GatherBillTask ends on, and the cheapest way to ask "do we know this at all"
         Task plain = items.length == 1 ? TaskCatalogue.getItemTask(items[0]) : TaskCatalogue.getSquashedItemTask(items);
         if (plain == null) {
-            throw new CommandInvalidStateException("no task for that, " + AltoClefCommands.prefix() + "list shows what altoclef can get");
+            throw new CommandInvalidStateException("No task for that. " + AltoClefCommands.prefix() + "list shows what Soprano can get");
         }
         // the whole shopping list first, tools, fetch it all, then craft
         startTask(mod, new GatherBillTask(items));
@@ -45,9 +45,9 @@ public class GetCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The get command has altoclef collect, mine, craft or smelt whatever it takes to end up holding the items.",
+                "The get command has Soprano collect, mine, craft or smelt whatever it takes to end up holding the items.",
                 "",
-                "Items are altoclef's catalogue names. Most are plain item ids, some are groups like log, planks or food. Use list to see them all, or just tab complete.",
+                "Items are Soprano's catalogue names. Most are plain item ids, some are groups like log, planks or food. Use list to see them all, or just tab complete.",
                 "",
                 "You can ask for several at once, each with an optional count (it is 1 if you leave it out). The old [a 1, b 2] spelling works too.",
                 "",

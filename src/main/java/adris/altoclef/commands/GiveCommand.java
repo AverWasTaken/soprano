@@ -158,7 +158,7 @@ public class GiveCommand extends AltoClefCommand {
         return Arrays.asList(
                 "The give command gets an item (see get) and then brings it to a player and drops it at their feet.",
                 "",
-                "The player does not have to be close, altoclef tracks where they were last seen. Without a player name it gives to whoever is using you as a butler, which only works over a whisper.",
+                "The player does not have to be close, Soprano tracks where they were last seen. Without a player name it gives to whoever is using you as a butler, which only works over a whisper.",
                 "",
                 "Usage:",
                 "> give <player> <item> [count] - Give an item to a player.",

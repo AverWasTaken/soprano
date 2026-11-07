@@ -46,7 +46,7 @@ public class LitematicaCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Builds the loaded schematic";
+        return "Build the loaded Litematica schematic";
     }
 
     @Override

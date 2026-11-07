@@ -58,13 +58,13 @@ public class ExploreCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Explore things";
+        return "Explore chunks you haven't seen";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Tell Baritone to explore chunks it does not have cached yet by distance.",
+                "Tell Soprano to explore chunks it does not have cached yet by distance.",
                 "If you used explorefilter before this, it will be applied.",
                 "",
                 "Usage:",

@@ -75,7 +75,7 @@ public abstract class AltoClefCommand extends Command {
                 throw new CommandInvalidStateException("\"" + e.name() + "\" is not " + switch (kind) {
                     case CATALOGUE -> "a catalogued resource, " + AltoClefCommands.prefix() + "list shows what there is";
                     case ANY_ITEM -> "an item or a catalogued resource";
-                    case ARMOR -> "armor altoclef knows about";
+                    case ARMOR -> "armor Soprano knows about";
                 });
             }
             out[i] = kind.target(e.name(), e.count());

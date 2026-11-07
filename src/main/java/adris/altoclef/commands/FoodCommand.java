@@ -33,7 +33,7 @@ public class FoodCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The food command has altoclef hunt, farm and cook until it is carrying that much food.",
+                "The food command has Soprano hunt, farm and cook until it is carrying that much food.",
                 "",
                 "The amount counts hunger points the food restores, not items. Use meat if you only want meat.",
                 "",

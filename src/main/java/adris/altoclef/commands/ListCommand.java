@@ -48,7 +48,7 @@ public class ListCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The list command prints every item and group altoclef knows how to get, which is what get, give and friends accept.",
+                "The list command prints every item and group Soprano knows how to get, which is what get, give and friends accept.",
                 "",
                 "Give it a filter to only see the names that contain it.",
                 "",

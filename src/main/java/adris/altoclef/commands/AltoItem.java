@@ -51,7 +51,7 @@ public enum AltoItem implements IDatatypeFor<String> {
     public String get(IDatatypeContext ctx) throws CommandException {
         String name = ItemArgs.normalize(ctx.getConsumer().getString());
         if (!accepts(name)) {
-            throw new IllegalArgumentException("not something altoclef can work with: " + name);
+            throw new IllegalArgumentException("not something Soprano can work with: " + name);
         }
         return name;
     }

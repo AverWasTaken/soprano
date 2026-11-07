@@ -120,17 +120,17 @@ public class FollowCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Follow entity things";
+        return "Follow players or mobs";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The follow command tells Baritone to follow certain kinds of entities.",
+                "The follow command tells Soprano to follow certain kinds of entities.",
                 "",
                 "Usage:",
-                "> follow entities - Follows all entities.",
-                "> follow entity <entity1> <entity2> <...> - Follow certain entities (for example 'skeleton', 'horse' etc.)",
+                "> follow entities - Follow every mob and player nearby",
+                "> follow entity <entity1> <entity2> <...> - Follow certain kinds of mob, like skeleton or horse",
                 "> follow players - Follow players",
                 "> follow player <username1> <username2> <...> - Follow certain players"
         );
@@ -164,7 +164,7 @@ public class FollowCommand extends Command {
     public static class NoEntitiesException extends CommandErrorMessageException {
 
         protected NoEntitiesException() {
-            super("No valid entities in range!");
+            super("Nothing to follow in range.");
         }
 
     }

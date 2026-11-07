@@ -25,14 +25,14 @@ public class ReloadSettingsCommand extends AltoClefCommand {
 
     @Override
     public String getShortDesc() {
-        return "Reload AltoClef's json configs";
+        return "Reload the json config files";
     }
 
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The altoreload command reloads AltoClef's json config files from disk: the beat minecraft, food chain, block tracker and mlg configs, the butler config and its whitelist and blacklist, and the custom tasks.",
-                "AltoClef's plain settings are not in there anymore, they are normal settings: use `set alto<tab>` to see and change them.",
+                "The altoreload command reloads the json config files from disk: the beat minecraft, food chain, block tracker and mlg configs, the butler config and its whitelist and blacklist, and the custom tasks.",
+                "Plain settings are not in there anymore, they are normal settings: use `set alto<tab>` to see and change them.",
                 "",
                 "Usage:",
                 "> altoreload"
