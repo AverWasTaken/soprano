@@ -96,8 +96,11 @@ public class HudTextTest {
         // a subset of a group still reads as the group
         assertEquals("logs", HudText.some(new Item[]{Items.OAK_LOG, Items.BIRCH_LOG, Items.SPRUCE_LOG}));
         // not a group: name the first and count the rest
-        assertEquals("Flint and Steel or 1 other", HudText.some(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}));
-        assertEquals("Diamond or 2 others", HudText.some(new Item[]{Items.DIAMOND, Items.EMERALD, Items.COAL}));
+        assertEquals("flint and steel or 1 other", HudText.some(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}));
+        assertEquals("diamond or 2 others", HudText.some(new Item[]{Items.DIAMOND, Items.EMERALD, Items.COAL}));
+        // a group is lowercase after the verb, an acronym stays one
+        assertEquals("TNT minecart", HudText.lowerWords("TNT Minecart"));
+        assertEquals("a", HudText.lowerWords("A"));
     }
 
     @Test

@@ -21,8 +21,9 @@ public final class SopranoKeys {
     // forge and neoforge would read a lang file, fabric without api never does. one place for both
     private static final Map<String, String> NAMES = Map.of(
             CATEGORY, "Soprano",
-            YES, "Yes to the corner question",
-            NO, "No to the corner question, or stop collecting"
+            // the category header already says Soprano, so the rows just say what the key does
+            YES, "Answer Yes",
+            NO, "Answer No, or stop collecting"
     );
 
     private static KeyMapping yes;

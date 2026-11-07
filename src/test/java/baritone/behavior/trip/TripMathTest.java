@@ -75,9 +75,9 @@ public class TripMathTest {
 
     @Test
     public void planText() {
-        assertEquals("about 8 blocks", new GatherPlan(Trip.Ask.STUCK, 6, 8, false).describe());
-        assertEquals("about 1 block", new GatherPlan(Trip.Ask.STUCK, 1, 1, false).describe());
-        assertEquals("about 8 blocks and a stone pickaxe", new GatherPlan(Trip.Ask.FASTER, 6, 8, true).describe());
+        assertEquals("8 blocks", new GatherPlan(Trip.Ask.STUCK, 6, 8, false).describe());
+        assertEquals("1 block", new GatherPlan(Trip.Ask.STUCK, 1, 1, false).describe());
+        assertEquals("8 blocks and a stone pickaxe", new GatherPlan(Trip.Ask.FASTER, 6, 8, true).describe());
         assertEquals("a stone pickaxe", new GatherPlan(Trip.Ask.FASTER, 0, 0, true).describe());
         assertTrue(new GatherPlan(Trip.Ask.STUCK, 6, 0, false).isEmpty());
         assertFalse(new GatherPlan(Trip.Ask.FASTER, 0, 0, true).isEmpty());

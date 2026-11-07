@@ -50,11 +50,46 @@ public class TripToastHudTest {
     }
 
     @Test
-    public void notWithAScreenOpenNorOnRepeatOrRelease() {
-        // ready is false with a screen open (chat, inventory...), so typing a y in chat is a y
+    public void notWhenNotReadyNorOnRepeatOrRelease() {
+        // ready is false until this toast got drawn (and with the hud hidden), so a press then is just a press
         assertNull(TripToastHud.keyHit(asking(), false, InputConstants.PRESS, true, false));
         assertNull(TripToastHud.keyHit(asking(), true, InputConstants.REPEAT, true, false));
         assertNull(TripToastHud.keyHit(asking(), true, 0, true, false));
+    }
+
+    @Test
+    public void whichScreensLetTheKeysAnswer() {
+        // nothing open: the head of keyPress answers, the screen hook never runs
+        assertTrue(TripToastHud.keysAnswer(TripToastHud.Cover.NONE, false, false));
+        assertFalse(TripToastHud.keysAnswer(TripToastHud.Cover.NONE, true, false));
+        // the inventory and the pause menu: only once the screen let the key go by, never at the head of keyPress
+        for (TripToastHud.Cover c : new TripToastHud.Cover[]{TripToastHud.Cover.CONTAINER, TripToastHud.Cover.PAUSE}) {
+            assertTrue(c.name(), TripToastHud.keysAnswer(c, true, false));
+            assertFalse(c + " at the head, before the screen saw it", TripToastHud.keysAnswer(c, false, false));
+            assertFalse(c + " with a text box focused", TripToastHud.keysAnswer(c, true, true));
+        }
+        // chat, signs, books, our own gui, anybody's screen: the y is a letter there
+        for (TripToastHud.Cover c : new TripToastHud.Cover[]{TripToastHud.Cover.CHAT, TripToastHud.Cover.OTHER}) {
+            assertFalse(c.name(), TripToastHud.keysAnswer(c, true, false));
+            assertFalse(c.name(), TripToastHud.keysAnswer(c, false, false));
+        }
+        assertEquals(TripToastHud.Cover.NONE, TripToastHud.cover(null));
+    }
+
+    @Test
+    public void buttonsDimOnlyWhereNothingAnswers() {
+        assertTrue(TripToastHud.buttonsLive(TripToastHud.Cover.NONE, false));
+        assertTrue("clicks work with chat open", TripToastHud.buttonsLive(TripToastHud.Cover.CHAT, false));
+        assertTrue("the keys work under the inventory", TripToastHud.buttonsLive(TripToastHud.Cover.CONTAINER, false));
+        assertFalse("not while the creative search has them", TripToastHud.buttonsLive(TripToastHud.Cover.CONTAINER, true));
+        assertTrue(TripToastHud.buttonsLive(TripToastHud.Cover.PAUSE, false));
+        assertFalse(TripToastHud.buttonsLive(TripToastHud.Cover.OTHER, false));
+        // only the pause menu blurs, so only it gets the toast drawn over it
+        assertTrue(TripToastHud.drawsOverScreen(TripToastHud.Cover.PAUSE));
+        for (TripToastHud.Cover c : new TripToastHud.Cover[]{TripToastHud.Cover.NONE, TripToastHud.Cover.CHAT,
+                TripToastHud.Cover.CONTAINER, TripToastHud.Cover.OTHER}) {
+            assertFalse(c.name(), TripToastHud.drawsOverScreen(c));
+        }
     }
 
     @Test

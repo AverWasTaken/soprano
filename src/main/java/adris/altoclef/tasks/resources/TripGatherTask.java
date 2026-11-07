@@ -45,7 +45,7 @@ public class TripGatherTask extends Task {
         _pickaxe = pickaxe;
     }
 
-    // for the corner toast's "12 / 24". blocks placed or thrown since the start count against it, same as haveBlocks does
+    // for the corner toast's "12/24". blocks placed or thrown since the start count against it, same as haveBlocks does
     public int need() {
         return _need;
     }
@@ -139,7 +139,7 @@ public class TripGatherTask extends Task {
 
     @Override
     protected String toHudString() {
-        return _pickaxe && _target > 0 ? "Getting blocks and a pickaxe for the path" : _pickaxe ? "Getting a pickaxe for the path" : "Getting blocks for the path";
+        return _pickaxe && _target > 0 ? "Getting blocks and a stone pickaxe for the path" : _pickaxe ? "Getting a stone pickaxe for the path" : "Getting blocks for the path";
     }
 
     @Override

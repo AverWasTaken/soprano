@@ -37,7 +37,7 @@ final class TripPrompt {
             return "I can't finish this path without blocks, may I collect some so I can continue?";
         }
         String needs = plan.pickaxe() && plan.blocks() > 0 ? "mining and placing blocks" : plan.pickaxe() ? "mining" : "placing blocks";
-        String get = plan.pickaxe() && plan.blocks() > 0 ? "collect blocks and make a pickaxe" : plan.pickaxe() ? "make a pickaxe" : "collect blocks";
+        String get = plan.pickaxe() && plan.blocks() > 0 ? "collect blocks and make a stone pickaxe" : plan.pickaxe() ? "make a stone pickaxe" : "collect blocks";
         return "I found a faster path, but it needs " + needs + ". May I " + get + " so I can take it?";
     }
 
@@ -59,7 +59,8 @@ final class TripPrompt {
         MutableComponent msg = Component.literal(question(plan) + " " + detail(plan, savedTicks) + " ");
         msg.append(button("[Yes]", ChatFormatting.GREEN, "gather yes " + tripId, "Go and get " + plan.describe()));
         msg.append(Component.literal(" "));
-        msg.append(button("[No]", ChatFormatting.RED, "gather no " + tripId, "Don't, for this whole trip"));
+        // grey, not red: saying no isn't dangerous, the toast's No is a plain button too
+        msg.append(button("[No]", ChatFormatting.GRAY, "gather no " + tripId, "Skip it for this whole trip"));
         // chat as well as the corner toast (TripToast, drawn by TripToastHud): the toast goes when the hud is hidden or
         // broke, the chat line is still there to click. the toast replaced vanilla's "answer in chat" one
         Helper.HELPER.logDirect(false, msg);

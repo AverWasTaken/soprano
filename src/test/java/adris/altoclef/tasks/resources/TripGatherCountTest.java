@@ -4,7 +4,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 
-// the "12 / 24" on the collecting toast. the task's target is held + the deficit, so what it started with doesn't count
+// the "12/24" on the collecting toast. the task's target is held + the deficit, so what it started with doesn't count
 public class TripGatherCountTest {
 
     @Test

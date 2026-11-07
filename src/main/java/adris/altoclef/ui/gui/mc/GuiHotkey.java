@@ -17,7 +17,8 @@ public final class GuiHotkey {
     // true means the press was ours and the game should not see it. the event is the game's (sdl scancode, repeat is -1),
     // the bind is the setting's (glfw number), McKeys is the bridge
     public static boolean onKey(KeyEvent event, int action) {
-        // the corner toast's Y / N first: only while it's asking with nothing open, so it never fights the gui key
+        // the corner toast's Y / N first: only while it's asking with nothing open, so it never fights the gui key.
+        // under the inventory or the pause menu the screen gets the key first (MixinScreenTripKeys)
         if (TripToastHud.onKey(event, action)) {
             return true;
         }

@@ -68,7 +68,7 @@ public class TripToastTest {
         assertEquals("same toast, new numbers", first.id(), second.id());
         assertEquals(12, second.have());
         assertEquals(TripToast.Phase.MINING, second.phase());
-        // more than asked for (a stack of dirt came along) still reads 24 / 24
+        // more than asked for (a stack of dirt came along) still reads 24/24
         toast.collecting(5, false, 40, 24, TripToast.Phase.MINING);
         assertEquals(24, toast.view(0).have());
         toast.collecting(5, false, -3, 24, TripToast.Phase.MINING);

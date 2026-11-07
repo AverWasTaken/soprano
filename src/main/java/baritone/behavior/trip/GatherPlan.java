@@ -24,9 +24,10 @@ public record GatherPlan(Trip.Ask kind, int placements, int blocks, boolean pick
         return blocks <= 0 && !pickaxe;
     }
 
-    // "about 23 blocks and a stone pickaxe". what the question and the progress lines say we're going for
+    // "23 blocks and a stone pickaxe". what the question and the progress lines say we're going for. no "about", the
+    // toast says the plain number and two numbers for one trip read like two different trips
     public String describe() {
-        String b = blocks > 0 ? "about " + blocks + (blocks == 1 ? " block" : " blocks") : null;
+        String b = blocks > 0 ? blocks + (blocks == 1 ? " block" : " blocks") : null;
         String p = pickaxe ? "a stone pickaxe" : null;
         if (b != null && p != null) {
             return b + " and " + p;

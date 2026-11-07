@@ -91,7 +91,6 @@ public final class StatusPanel {
     static final int PILL_PAD_R = 12;
     static final int PILL_ROW = 18;
     static final int PILL_GAP = 7;
-    static final int PILL_RADIUS = 15;
     // the old overlay folded at 10 lines with 8 px steps. at 22 px a step, 10 deep is 200 px of staircase and the words
     // get nothing, so it folds sooner: the top, "n more tasks", and the last few, which are the ones that mean anything
     static final int MAX_ROWS = 6;
@@ -445,7 +444,7 @@ public final class StatusPanel {
             int bw = right - bx;
             int bh = Math.max(1, px(BAR_H));
             float br = Math.max(1f, theme.pxf(2));
-            g.fillRoundRect(bx, by, bw, bh, br, theme.dark() ? 0x1FFFFFFF : 0x14000000);
+            g.fillRoundRect(bx, by, bw, bh, br, theme.color(Theme.TRACK));
             float fill = Math.round(bw * progress);
             if (fill >= 1f) {
                 g.fillRoundRect(bx, by, Math.max(fill, bh), bh, br, theme.color(Theme.ACCENT));
@@ -478,7 +477,8 @@ public final class StatusPanel {
     }
 
     private void drawPill(Canvas g) {
-        HudGlass.draw(g, theme, x, y, w, h, Math.min(h / 2f, theme.pxf(PILL_RADIUS)));
+        // round ends, always. the old 15 px cap came out as h / 2 anyway, it was one more number to keep in step with the row
+        HudGlass.draw(g, theme, x, y, w, h, h / 2f);
         int rowTop = y + px(PILL_PAD_Y);
         int rowH = px(PILL_ROW);
         int lx = x + px(PILL_PAD_L);

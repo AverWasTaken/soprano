@@ -55,6 +55,7 @@
     "MixinRenderPipelines",
     "MixinRenderType",
     "MixinScreen",
+    "MixinScreenTripKeys",
     "MixinSopranoLanguage",
     "MixinSopranoOptions",
     "MixinSoundBufferLibrary",
