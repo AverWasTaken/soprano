@@ -18,6 +18,8 @@ public final class BiteRules {
     public static final int BACKOFF_TICKS = 40;
     // something with a name hit us this recently and a standing meal is off (the game forgets the damage source after 40)
     public static final int HIT_TICKS = 40;
+    // a knock is about this long in the air (hurtTime is ten too)
+    public static final int KNOCK_TICKS = 10;
     public static final int NO_HIT = Integer.MAX_VALUE;
     // starving and stuck behind a stop that does not come: ticks of wanting one, and the hunger that makes it an emergency
     public static final int ESCAPE_TICKS = 200;
@@ -97,6 +99,9 @@ public final class BiteRules {
     }
 
     public static Verdict verdict(Scene s) {
+        // flying from a hit is the one time even the fight waits for a new bite: chewing cuts the move input to a fifth, and the
+        // lean that keeps a knock off a rim is move input. a bite already going is left alone
+        if (s.combat() && !s.meal() && airborne(s) && knocked(s.hitAge())) return Verdict.WAIT;
         // the fight code decides how it eats, we are not in that business
         if (s.combat()) return Verdict.CHEW_ON_THE_MOVE;
         // somebody just hit us. standing still to chew is the last thing to do, and the fight code gets to decide what
@@ -126,6 +131,10 @@ public final class BiteRules {
     // falling. with nothing steering us they are a perfectly good place to chew, with a path they are waits of their own
     private static boolean airborne(Scene s) {
         return !s.onGround() && !s.inWater() && !s.onLadder() && !s.riding();
+    }
+
+    static boolean knocked(int ticksSinceHit) {
+        return ticksSinceHit >= 0 && ticksSinceHit <= KNOCK_TICKS;
     }
 
     // the damage source's own age is only known to the game for 40 ticks, the chain keeps its own count

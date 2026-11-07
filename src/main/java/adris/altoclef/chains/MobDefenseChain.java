@@ -216,6 +216,16 @@ public class MobDefenseChain extends SingleTaskChain {
         return getPriorityInner(mod);
     }
 
+    // after every chain ticked, see LavaKnockGuard.reassert
+    public void afterChains(AltoClef mod) {
+        _lavaGuard.reassert(mod);
+    }
+
+    // the lava guard is pressing keys toward a foe and nobody else is steering, see EdgeBrake.mirror
+    public boolean lavaLeaning(AltoClef mod) {
+        return _lavaGuard.leaning() && !_lavaGuard.someoneElseDriving(mod);
+    }
+
     @Override
     protected void onStop(AltoClef mod) {
         _lavaGuard.release(mod);

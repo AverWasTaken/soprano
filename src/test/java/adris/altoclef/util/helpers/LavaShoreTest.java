@@ -620,4 +620,52 @@ public class LavaShoreTest {
         assertNotNull(spot);
         assertTrue(spot[0] > 0);
     }
+
+    // a one block pillar top, an open column into the lava sea on one side (z -1), a wall on another (x -1), the inland
+    // neighbours three and four down. the foe is up on the cliff two and a half above, a bit off to +x +z
+    private static World pillarTop() {
+        return new World().pit(0, -1).pit(-1, -1).pit(1, -1).solid(-1, 0, 0).solid(-1, 1, 0)
+                .ledge(0, 1, -3).ledge(1, 1, -4).ledge(1, 0, -4);
+    }
+
+    @Test
+    public void thePillarTopGatesSayLean() {
+        // every pure gate says lean here. a lean that never shows up on a spot like this is the keys getting wiped after the
+        // guard pressed them (a cancel in the kill task clears baritone's forced keys), see LavaKnockGuard.reassert
+        World w = pillarTop();
+        double ux = 0.44, uy = 0.25, uz = 0.49;
+        double fx = 1.02, fz = 1.62;
+        boolean back = LavaShore.backUnsafe(w, ux, uy, uz, fx, fz);
+        double dx = fx - ux, dz = fz - uz, len = Math.hypot(dx, dz);
+        boolean ahead = LavaShore.spotUnsafe(w, ux + dx / len, uy, uz + dz / len);
+        assertTrue(back);
+        assertFalse(ahead);
+        // airborne with the hit fresh, no path
+        assertTrue(LavaShore.hold(true, false, true, false, back, ahead));
+        assertTrue(LavaShore.keysToward(0, dx, dz).any());
+    }
+
+    @Test
+    public void aFoeUpOnALedgeByADropIsAClimb() {
+        World w = pillarTop();
+        // standing on the rim, the foe 2.5 up: no pillar up to it
+        assertTrue(LavaShore.climbBlocked(true, w, 0.44, 0.0, 0.49, 1.02, 2.5, 1.62));
+        // the overworld keeps its climbs (no cliff cost there either)
+        assertFalse(LavaShore.climbBlocked(false, w, 0.44, 0.0, 0.49, 1.02, 2.5, 1.62));
+        // one up is a step, not a climb
+        assertFalse(LavaShore.climbBlocked(true, w, 0.44, 0.0, 0.49, 1.02, 1.5, 1.62));
+    }
+
+    @Test
+    public void aFoeUpOnFlatGroundIsNoClimb() {
+        // nothing open anywhere near either of us
+        assertFalse(LavaShore.climbBlocked(true, new World(), 0.5, 0.0, 0.5, 2.5, 3.0, 0.5));
+    }
+
+    @Test
+    public void aDropByTheFoeAloneIsEnough() {
+        // our side is solid ground, the ledge it stands on is the rim
+        World w = new World().pit(6, 0);
+        assertTrue(LavaShore.climbBlocked(true, w, 0.5, 0.0, 0.5, 5.5, 3.0, 0.5));
+    }
 }

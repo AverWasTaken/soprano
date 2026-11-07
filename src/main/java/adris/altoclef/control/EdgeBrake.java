@@ -2,10 +2,14 @@ package adris.altoclef.control;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.util.helpers.LavaShore;
 import baritone.api.utils.input.Input;
+import baritone.pathing.movement.CliffAvoidance;
+import baritone.utils.InputOverrideHandler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Blocks;
@@ -29,6 +33,8 @@ public final class EdgeBrake {
     private static final long LOG_GAP_MS = 2000;
 
     private boolean _engaged;
+    // whose sneak we forced, so a world leave can take it back (baritone's forced keys outlive the world)
+    private InputOverrideHandler _sneakHandler;
     private long _lastLog;
 
     // pure half. the gates have to all hold either way, the hysteresis is only in the speed and the ground ahead
@@ -41,6 +47,20 @@ public final class EdgeBrake {
             return speed >= STOP_SPEED && !supportedAhead;
         }
         return speed > START_SPEED && !supportedAhead && dropAhead;
+    }
+
+    // a mob just hit us with a lethal drop close: sneak goes down in the air, not on the landing. vanilla's edge back-off
+    // (Player.maybeBackOffFromEdge) still trims the slide while we're a hair off the ground (coming down, ground right under
+    // the box), and the one grounded tick a knock gives us is too late to press it. in the air only while that back-off can
+    // act: going up it does nothing, and once the box is past the edge there's nothing under it to back off onto, while the
+    // crouch still costs the lava guard's lean 70%. lets go once we're down and stopped, the plain brake has the slide from
+    // there. (no help under a live path: baritone's input ignores our pin and mirror stays out of a path's keys)
+    public static boolean knockHold(boolean userTask, boolean blocked, boolean realMoveKey, boolean onGround, boolean rising,
+                                    boolean groundUnder, double speed, boolean knocked, boolean dropNear) {
+        if (!userTask || blocked || realMoveKey || !knocked || !dropNear) {
+            return false;
+        }
+        return onGround ? speed >= STOP_SPEED : !rising && groundUnder;
     }
 
     // every tick, outside the task runner block, so a gate going false always lets go
@@ -68,14 +88,24 @@ public final class EdgeBrake {
             supported = supportedUnder(level, ahead, y);
             drop = !supported && dropUnder(level, ahead.getCenter(), y);
         }
-        boolean engage = decide(_engaged, userTask, player.onGround(), blocked, pathing, realMoveKey, speed,
+        // same hit test as LavaKnockGuard: hurtTime counts ten down from the hit, fire and falls tick it too
+        boolean knocked = player.hurtTime > 0 && player.getLastDamageSource() != null
+                && player.getLastDamageSource().getEntity() instanceof Mob;
+        boolean dropNear = knocked && userTask && !blocked
+                && LavaShore.edgeNear(CliffAvoidance.of(mod.getClientBaritone().bsi), player.getX(), player.getY(), player.getZ());
+        // vanilla's own test for "the back-off has ground to keep us on": something solid within a step under the box
+        boolean groundUnder = dropNear && !player.onGround()
+                && !mod.getWorld().noCollision(player, player.getBoundingBox().move(0, -player.maxUpStep(), 0));
+        boolean knock = knockHold(userTask, blocked, realMoveKey, player.onGround(), vel.y > 0, groundUnder, speed, knocked, dropNear);
+        boolean engage = knock || decide(_engaged, userTask, player.onGround(), blocked, pathing, realMoveKey, speed,
                 supported, drop);
+        mirror(mod, knock && mod.getMobDefenseChain().lavaLeaning(mod), pathing);
         if (engage) {
             keys.pin(Input.SNEAK, OWNER);
             long now = System.currentTimeMillis();
             if (!_engaged && now - _lastLog >= LOG_GAP_MS) {
                 _lastLog = now;
-                Debug.logInternal("edge brake: no path, drifting toward a drop");
+                Debug.logInternal(knock ? "edge brake: knocked next to a drop" : "edge brake: no path, drifting toward a drop");
             }
         } else {
             letGo(keys);
@@ -83,11 +113,32 @@ public final class EdgeBrake {
         _engaged = engage;
     }
 
+    // once the lava guard leans, baritone's input owns the player and it only reads baritone's own sneak, our pin on the key
+    // is ignored. so the knock's sneak goes there too, only for the guard's lean: a task that forces its own walk (the step
+    // off a pillar out of dragon breath) means to go over that edge. a running path wipes its keys every tick and does its
+    // own sneaking, so we only ever take back a sneak we set with no path live
+    private void mirror(AltoClef mod, boolean knockLean, boolean pathing) {
+        InputOverrideHandler handler = mod.getClientBaritone().getInputOverrideHandler();
+        if (knockLean && !pathing) {
+            handler.setInputForceState(Input.SNEAK, true);
+            _sneakHandler = handler;
+        } else if (_sneakHandler != null) {
+            if (!pathing) {
+                _sneakHandler.setInputForceState(Input.SNEAK, false);
+            }
+            _sneakHandler = null;
+        }
+    }
+
     // also called on world leave and shutdown: no tick runs out of game, so the null player branch never gets to
     public void letGo(InputControls keys) {
         // never touches a sneak we didn't pin
         if (keys != null && keys.isPinnedBy(Input.SNEAK, OWNER)) {
             keys.unpin(Input.SNEAK, OWNER);
+        }
+        if (_sneakHandler != null) {
+            _sneakHandler.setInputForceState(Input.SNEAK, false);
+            _sneakHandler = null;
         }
         _engaged = false;
     }

@@ -436,4 +436,17 @@ public class BiteRulesTest {
         assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(5)));
         assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(BiteRules.NO_HIT)));
     }
+
+    @Test
+    public void noNewBiteWhileFlyingFromAHit() {
+        Scene flying = Scene.standing().withCombat(true).withOnGround(false).withHitAge(3);
+        assertEquals(WAIT, BiteRules.verdict(flying));
+        // a bite already going is finished
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(flying.withMeal(true)));
+        // landed, or the hit is old
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(flying.withOnGround(true)));
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(flying.withHitAge(BiteRules.KNOCK_TICKS + 1)));
+        // floating in water is not flying
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(flying.withInWater(true)));
+    }
 }
