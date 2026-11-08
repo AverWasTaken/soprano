@@ -173,6 +173,17 @@ public final class CombatRules {
         return !fighting;
     }
 
+    public enum LiquidShield { NONE, NO_STANDSTILL, NORMAL }
+
+    // one rule for both shields (KillAura's and MobDefenseChain's). in lava the shield is a fifth of the swim and the sneak
+    // that stands us still sinks us, so the escape gets both hands. swimming in water the shield may go up but never stands
+    // still: sneak sinks there too and a paused path is a drowned path. on the ground in water it's just a puddle
+    public static LiquidShield shieldInLiquid(boolean inLava, boolean inWater, boolean onGround) {
+        if (inLava) return LiquidShield.NONE;
+        if (inWater && !onGround) return LiquidShield.NO_STANDSTILL;
+        return LiquidShield.NORMAL;
+    }
+
     // a fully blocked hit skips the knockback (not for a hoglin or zoglin, they still throw us), so on a ledge above a drop the shield is up whenever a melee foe is close. a
     // creeper is not a melee foe to the rules and the aura keeps the shield off it anyway. shooters are the blazeInContact
     // flag's business (a blaze that came to bite), a skeleton at point blank is not a knockback problem
@@ -221,8 +232,10 @@ public final class CombatRules {
 
     // on a rim in a run: the closest foe within RIM_RUN_RANGE that is a knocker or has hit us (plain melee only), or null.
     // the run walks on with it biting and the next hit is the knock into the lava, so the shield goes up for it
-    public static CombatCommit.Foe rimRunFoe(boolean edgeNear, List<CombatCommit.Foe> foes) {
-        if (!edgeNear) return null;
+    // inLava: we're already in it, the knock it guards against happened. edgeNear is still true from in there (the shore is
+    // the edge), and the guard's sneak and shield are exactly what keeps us from swimming out
+    public static CombatCommit.Foe rimRunFoe(boolean edgeNear, boolean inLava, List<CombatCommit.Foe> foes) {
+        if (!edgeNear || inLava) return null;
         CombatCommit.Foe best = null;
         for (CombatCommit.Foe foe : foes) {
             if (!foe.melee() || foe.kind() != CombatCommit.Kind.NORMAL || foe.distance() > RIM_RUN_RANGE) continue;

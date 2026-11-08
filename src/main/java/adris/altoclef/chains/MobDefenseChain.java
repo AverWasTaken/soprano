@@ -184,6 +184,20 @@ public class MobDefenseChain extends SingleTaskChain {
     // the keys carry our name, same as KillAura's: the two shields come and go in the same tick, and a plain release from
     // one used to lift the other's (5 ticks before a raised shield blocks, all over again)
     private void startShielding(AltoClef mod, boolean standStill) {
+        // same liquid rule as KillAura.startShielding
+        LocalPlayer player = mod.getPlayer();
+        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(player.isInLava(), player.isInWater(), player.onGround());
+        if (liquid == CombatRules.LiquidShield.NONE) {
+            stopShielding(mod);
+            return;
+        }
+        if (liquid == CombatRules.LiquidShield.NO_STANDSTILL) standStill = false;
+        // holds stick until let go, so a shield that stood still and now swims has to lift its own sneak (KillAura's _stoodStill
+        // idea, the key's claim is the memory here)
+        if (!standStill && mod.getInputControls().isHeldBy(Input.SNEAK, this)) {
+            mod.getInputControls().releaseOwnedBy(this);
+            mod.getExtraBaritoneSettings().setInteractionPaused(false);
+        }
         _shielding = true;
         if (standStill) {
             mod.getInputControls().hold(Input.SNEAK, this);
@@ -219,6 +233,25 @@ public class MobDefenseChain extends SingleTaskChain {
     // after every chain ticked, see LavaKnockGuard.reassert
     public void afterChains(AltoClef mod) {
         _lavaGuard.reassert(mod);
+        lavaSneakCheck(mod);
+    }
+
+    // sneak in lava sinks us and the escape never holds it, so whoever does is a bug. the rim guard was one, this is for the
+    // next one. after every chain so the line names everybody who held it this tick
+    private long _lavaSneakSaid = -40;
+
+    private void lavaSneakCheck(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null || !player.isInLava()) return;
+        // (baritone's forced keys are a second set of books: EdgeBrake and the movements sneak through those)
+        boolean held = mod.getInputControls().isHeldDown(Input.SNEAK);
+        boolean forced = mod.getClientBaritone().getInputOverrideHandler().isInputForcedDown(Input.SNEAK);
+        if (!held && !forced) return;
+        long now = mod.getWorld().getGameTime();
+        if (now - _lavaSneakSaid < 40 && now >= _lavaSneakSaid) return;
+        _lavaSneakSaid = now;
+        Debug.logInternal("lava: sneak held in lava by " + (held ? mod.getInputControls().holdersOf(Input.SNEAK) : "")
+                + (held && forced ? ", " : "") + (forced ? "baritone" : ""));
     }
 
     // the lava guard is pressing keys toward a foe and nobody else is steering, see EdgeBrake.mirror
@@ -350,7 +383,8 @@ public class MobDefenseChain extends SingleTaskChain {
             // a block over our head first, when the creeper is up the shaft with us. it takes the wheel (nothing else may swap
             // the pickaxe back in under the click), and gives up to the shield once its share of the fuse is gone or a click
             // is refused
-            if ((_capAbove || _capBeside != null) && !_capDone
+            // (not from in lava: the cap sneaks a tick before the click and sneak sinks us)
+            if ((_capAbove || _capBeside != null) && !_capDone && !player.isInLava()
                     && CreeperCap.inWindow(GameClock.since(_capSince, mod.getWorld().getGameTime())) && placeCap(mod)) {
                 setTask(new IdleTask());
                 _killAura.stopShielding(mod);
@@ -363,7 +397,8 @@ public class MobDefenseChain extends SingleTaskChain {
             // (a wall beside us is no door in the way: with a way out open the step runs, it does not sit behind a block)
             boolean capped = _capPlaced && (_capBeside == null || _creeperNoHeading);
             if (_creeperStep.cornered()) {
-                if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
+                // (in lava the look is the escape's, see KillAura.tickEnd)
+                if (creeper != null && !player.isInLava()) LookHelper.lookAt(mod, creeper.getEyePosition());
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
                 } else {
@@ -571,7 +606,8 @@ public class MobDefenseChain extends SingleTaskChain {
                             if (close) continue;
                             close = true;
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
-                            if (!committed
+                            // (not in lava either: the pause stops the escape's path and the look is the escape's)
+                            if (!committed && !mod.getPlayer().isInLava()
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 LookHelper.lookAt(mod, projectile.position);

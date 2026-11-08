@@ -161,4 +161,23 @@ public class InputControlsTest {
         controls.unpin(Input.SNEAK, magma);
         assertFalse(controls.isHeldDown(Input.SNEAK));
     }
+
+    private static final class Aura {
+    }
+
+    private static final class Magma {
+    }
+
+    // the lava sneak log line names its holders, so the next thing that sinks us has a name
+    @Test
+    public void holdersOfNamesEveryClaimAndThePin() {
+        assertEquals("nobody", controls.holdersOf(Input.SNEAK));
+        controls.hold(Input.SNEAK, new Aura());
+        assertEquals("Aura", controls.holdersOf(Input.SNEAK));
+        controls.pin(Input.SNEAK, new Magma());
+        String both = controls.holdersOf(Input.SNEAK);
+        assertTrue(both, both.contains("Aura") && both.contains("Magma") && both.endsWith("(pinned)"));
+        controls.hold(Input.JUMP);
+        assertEquals("nobody", controls.holdersOf(Input.JUMP));
+    }
 }

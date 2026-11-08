@@ -452,19 +452,28 @@ public class CombatCommitRimTest {
     @Test
     public void aRunOnARimWantsTheCubeAtTwo() {
         List<Foe> foes = List.of(cube(1, 2));
-        Foe pick = CombatRules.rimRunFoe(true, foes);
+        Foe pick = CombatRules.rimRunFoe(true, false, foes);
         assertNotNull(pick);
         assertEquals(1, pick.id());
-        assertNull(CombatRules.rimRunFoe(false, foes));
-        assertNull(CombatRules.rimRunFoe(true, List.of(cube(1, 3.5))));
+        assertNull(CombatRules.rimRunFoe(false, false, foes));
+        assertNull(CombatRules.rimRunFoe(true, false, List.of(cube(1, 3.5))));
+    }
+
+    // in the lava the rim guard is the one holding us under: sneak sinks, the shield crawls, the pause stops the swim out
+    @Test
+    public void aRunFromInsideTheLavaGetsNoRimGuard() {
+        List<Foe> foes = List.of(cube(1, 2), new Foe(2, 1.5, false, false, 5));
+        assertNotNull(CombatRules.rimRunFoe(true, false, foes));
+        assertNull(CombatRules.rimRunFoe(true, true, foes));
+        assertNull(CombatRules.rimRunFoe(false, true, foes));
     }
 
     @Test
     public void aRunOnARimAlsoWantsAnythingPlainThatHitUs() {
         Foe zombie = new Foe(1, 2, false, false, 5);
-        assertNotNull(CombatRules.rimRunFoe(true, List.of(zombie)));
-        assertNull(CombatRules.rimRunFoe(true, List.of(new Foe(1, 2, false, false, NEVER))));
-        assertNull(CombatRules.rimRunFoe(true, List.of(new Foe(1, 2, false, false, 5, Kind.HEAVY))));
+        assertNotNull(CombatRules.rimRunFoe(true, false, List.of(zombie)));
+        assertNull(CombatRules.rimRunFoe(true, false, List.of(new Foe(1, 2, false, false, NEVER))));
+        assertNull(CombatRules.rimRunFoe(true, false, List.of(new Foe(1, 2, false, false, 5, Kind.HEAVY))));
     }
 
     // the brain calls pauseCorner every tick the run shield is up: standing still behind it is not being cornered, and the window
