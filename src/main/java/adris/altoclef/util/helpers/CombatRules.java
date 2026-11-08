@@ -221,6 +221,34 @@ public final class CombatRules {
         return foe.knocker() && foe.melee() && foe.kind() == CombatCommit.Kind.NORMAL;
     }
 
+    // a walk along a rim (no fight, the path has the wheel) with a cube hopping up. the idle rim shield waits for the walk to end
+    // and skips a cube out of reach by lava, so a walk past one took the first hop with the shield down, and that hop is the knock
+    // into the lava. so it goes up from RIM_ENGAGE_RANGE (a big cube covers three blocks a hop and a raise takes 5 ticks to block),
+    // standing us still for it. leashed by a RimHold in the brain: a cube that keeps pace can't pin the walk there
+    // leash: the cube part, the one the leash counts. safeToCancel stays out of it, a mid jump tick would hand out a fresh leash
+    public static boolean rimWalkLeash(boolean edgeNear, boolean inLava, double cubeDistance) {
+        return edgeNear && !inLava && cubeDistance <= RIM_ENGAGE_RANGE;
+    }
+
+    // the shield itself: the leash still has ticks, or the cube is in arm's reach, and the path is safe to cancel. a blocked hit
+    // never reaches us as a hit, so the HIT fight never comes for a cube we're blocking, and the leash running out with it touching
+    // us is the knock all over again. in reach the stand has a swing in it (same as rimShield's in reach rule), so it isn't a pin,
+    // and the brain doesn't count those ticks toward the leash. mid jump it waits: a sneak and a pause there lands us short of the
+    // next block next to the lava (same as the aura's own gate)
+    public static boolean rimShieldWhileWalking(boolean leashUp, boolean inReach, boolean safeToCancel) {
+        return (leashUp || inReach) && safeToCancel;
+    }
+
+    // the nearest slime or magma cube among them, null for none. any size: a size 1 slime is filtered out of the foes already
+    public static CombatCommit.Foe nearestCube(List<CombatCommit.Foe> foes) {
+        CombatCommit.Foe best = null;
+        for (CombatCommit.Foe foe : foes) {
+            if (foe.splitType() == null) continue;
+            if (best == null || foe.distance() < best.distance()) best = foe;
+        }
+        return best;
+    }
+
     // a slime or magma cube among them. target may be null
     public static boolean cubeAbout(List<CombatCommit.Foe> foes, CombatCommit.Foe target) {
         if (target != null && target.splitType() != null) return true;

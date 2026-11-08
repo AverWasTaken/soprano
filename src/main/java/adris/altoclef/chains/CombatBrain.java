@@ -115,6 +115,12 @@ final class CombatBrain {
     // a run on a rim with a knocker on us: the shield goes up and nothing swings (KillAura.rimGuard), capped by _rimHold
     private int _rimGuardId = -1;
     private final RimHold _rimHold = new RimHold();
+    // a walk on a rim with a cube hopping up (CombatRules.rimShieldWhileWalking): the cube the shield is up for, -1 for none. the
+    // aura gets it as a target even past its 4 block close list, or there is nothing for the shield to face
+    private int _rimCubeId = -1;
+    private final RimHold _walkHold = new RimHold();
+    private boolean _walkLeashUp;
+    private long _walkLeashLogAt = Long.MIN_VALUE / 2;
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
     private long _stanceLogAt = Long.MIN_VALUE / 2;
@@ -252,6 +258,11 @@ final class CombatBrain {
         return _rimGuardId;
     }
 
+    // the cube the walking rim shield is up for, -1 for none
+    int auraRimCube() {
+        return _rimCubeId;
+    }
+
     float holdPriority() {
         return switch (_commit.mode()) {
             case FIGHT -> FIGHT_PRIORITY;
@@ -286,6 +297,9 @@ final class CombatBrain {
         _rim = false;
         _rimGuardId = -1;
         _rimHold.reset();
+        _rimCubeId = -1;
+        _walkHold.reset();
+        _walkLeashUp = false;
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
@@ -630,6 +644,7 @@ final class CombatBrain {
         // (in lava there's no rim left to guard, the escape has the wheel and a standing shield would sink it)
         boolean inLava = player.isInLava();
         _rim = rim && !inLava && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes, lavaClose) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
+        walkingRimShield(mod, now, rim, inLava, foes);
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
         // for it, for a leash's worth of ticks (RimHold)
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, inLava, foes) : null;
@@ -643,6 +658,7 @@ final class CombatBrain {
         if (_commit.perching()) {
             _swingAt.clear();
             _rimGuardId = -1;
+            _rimCubeId = -1;
         }
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
@@ -663,6 +679,27 @@ final class CombatBrain {
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
+    }
+
+    // the walk's own rim shield, outside any fight: a run has its rim guard and a fight its fight shield. the cube goes on the
+    // swing list like the run's guard foe (the aura only shields what it has as a target), and the shield stands us still, which
+    // pauses the path until the leash runs out
+    private void walkingRimShield(AltoClef mod, long now, boolean rim, boolean inLava, List<Foe> foes) {
+        Foe cube = _commit.mode() == Mode.NONE ? CombatRules.nearestCube(foes) : null;
+        boolean wanted = cube != null && CombatRules.rimWalkLeash(rim, inLava, cube.distance());
+        // (in reach the leash is left where it was, see rimShieldWhileWalking)
+        boolean reach = wanted && cube.inReach();
+        boolean leashUp = reach || _walkHold.step(wanted ? cube.id() : -1);
+        if (wanted && !leashUp && _walkLeashUp && now - _walkLeashLogAt >= 40) {
+            _walkLeashLogAt = now;
+            Debug.logInternal(String.format(java.util.Locale.ROOT, "rim shield: walk leash ran out, cube #%d at %.1f, walking on", cube.id(), cube.distance()));
+        }
+        _walkLeashUp = leashUp;
+        _rimCubeId = -1;
+        if (!wanted || !CombatRules.rimShieldWhileWalking(leashUp, reach, mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) return;
+        _rimCubeId = cube.id();
+        _rim = true;
+        _swingAt.add(cube.id());
     }
 
     // the cheap foe check first, the cell scan only when one is close enough to matter (rimScan). same edge the kill task steps back from.

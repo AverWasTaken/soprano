@@ -1477,6 +1477,9 @@ public final class CombatCommit {
         // (and not hurt: a path fight is one we pick, and at this hp we do not pick them)
         // (and not with a shooter that has a line on us: the walk to the thing in the way is a walk in its sights)
         if (way == null || !t.armed() || !t.way().weapon() || t.low() || seenByShooter(t)) return Event.NONE;
+        // (and not a cube with lava this close, same as rimEngage: the fight parks us beside the lava for it. the walk's own rim shield
+        // has it, and one that hits us anyway is the plain HIT fight)
+        if (way.splitType() != null && t.way().lavaClose()) return Event.NONE;
         if (t.lingering() && t.health() < LINGER_PICK_HP) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }

@@ -472,6 +472,7 @@ public class MobDefenseChain extends SingleTaskChain {
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
         int fightId = _brain.fightTarget();
         boolean fightApplied = false;
+        boolean rimCubeApplied = false;
         try {
             if (!entities.isEmpty()) {
                 for (Entity entity : entities) {
@@ -501,6 +502,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (shouldForce) {
                         applyForceField(entity);
                         if (entity.getId() == fightId) fightApplied = true;
+                        if (entity.getId() == _brain.auraRimCube()) rimCubeApplied = true;
                     }
                 }
             }
@@ -511,6 +513,13 @@ public class MobDefenseChain extends SingleTaskChain {
             if (fightId != -1 && !fightApplied && mod.getWorld().getEntity(fightId) instanceof Mob target && target.isAlive()
                     && !mod.getBehaviour().shouldExcludeFromForcefield(target) && LookHelper.seesPlayer(target, mod.getPlayer(), 10)) {
                 applyForceField(target);
+            }
+            // same deal for the cube the walking rim shield is up for: from 5 out it isn't on the close list yet, and the shield
+            // only goes up with something to face
+            int rimCube = _brain.auraRimCube();
+            if (rimCube != -1 && rimCube != fightId && !rimCubeApplied && mod.getWorld().getEntity(rimCube) instanceof Mob cube && cube.isAlive()
+                    && !mod.getBehaviour().shouldExcludeFromForcefield(cube) && LookHelper.seesPlayer(cube, mod.getPlayer(), 10)) {
+                applyForceField(cube);
             }
         } catch (Exception e) {
             e.printStackTrace();

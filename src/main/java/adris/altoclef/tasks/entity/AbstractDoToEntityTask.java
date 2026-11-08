@@ -538,8 +538,13 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         var us = mod.getPlayer();
         Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         RimMemory rim = rim(mod, entity);
-        if (rim.groundTicks >= GROUND_WALK_TICKS || !rimFoe(mod, entity, Double.MAX_VALUE)
-                || !LavaShore.lavaDeepNear(cells, us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
+        if (rim.groundTicks >= GROUND_WALK_TICKS) {
+            _groundCell = null;
+            groundNone(mod, "walk ticks spent");
+            return null;
+        }
+        // (no line for these two: every wait of every kill task asks, lava or not)
+        if (!rimFoe(mod, entity, Double.MAX_VALUE) || !LavaShore.lavaDeepNear(cells, us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
             _groundCell = null;
             return null;
         }
@@ -550,6 +555,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     (x, y, z) -> rim.failed.contains(new BlockPos(x, y, z)));
             if (cell == null) {
                 _groundCell = null;
+                groundNone(mod, "no ground cell");
                 return null;
             }
             _groundCell = new BlockPos(cell[0], cell[1], cell[2]);
@@ -563,6 +569,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             if (LavaShore.walkStalled(_rimIdleTicks)) {
                 rim.failed.add(_groundCell);
                 _groundCell = null;
+                groundNone(mod, "ground walk stalled");
                 return null;
             }
         }
@@ -605,9 +612,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (step == null) {
             _rimCell = null;
             _rimStepTicks = 0;
+            stepNone(mod, "no safe step");
             return null;
         }
         if (++_rimStepTicks > RIM_STEP_TICKS) {
+            stepNone(mod, "step ticks spent");
             return null;
         }
         // the cell we picked stays picked while it is still a step away: the foe shuffling about would otherwise flip it every tick
@@ -620,6 +629,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             if (rim(mod, entity).failed.contains(pick)) {
                 _rimCell = null;
                 _rimStepTicks = 0;
+                stepNone(mod, "safe step failed before");
                 return null;
             }
             _rimCell = pick;
@@ -637,6 +647,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 rim(mod, entity).failed.add(_rimCell);
                 _rimCell = null;
                 _rimStepTicks = 0;
+                stepNone(mod, "safe step stalled");
                 return null;
             }
         }
@@ -644,6 +655,26 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         setDebugState("Stepping off the rim");
         return new GetToBlockTask(_rimCell);
     }
+
+    // which gate sent the shore walk or the rim step home empty. the holds ask every tick, so each one says so every 2 s at most
+    private long _groundNoneAt = Long.MIN_VALUE / 2;
+    private long _stepNoneAt = Long.MIN_VALUE / 2;
+
+    private void groundNone(AltoClef mod, String gate) {
+        long now = mod.getWorld().getGameTime();
+        if (now - _groundNoneAt < RIM_NONE_LOG_GAP) return;
+        _groundNoneAt = now;
+        Debug.logInternal("rim: no walk off the shore (" + gate + ")");
+    }
+
+    private void stepNone(AltoClef mod, String gate) {
+        long now = mod.getWorld().getGameTime();
+        if (now - _stepNoneAt < RIM_NONE_LOG_GAP) return;
+        _stepNoneAt = now;
+        Debug.logInternal("rim: no step off the rim (" + gate + ")");
+    }
+
+    private static final long RIM_NONE_LOG_GAP = 40;
 
     // by type, not by mood: an enderman nobody has angered yet or a day spider reads as not hostile until the first hit, and
     // that hit is what throws us into the pool
