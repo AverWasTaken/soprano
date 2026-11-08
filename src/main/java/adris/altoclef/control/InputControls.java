@@ -203,6 +203,25 @@ public class InputControls {
         return holders != null && holders.contains(owner);
     }
 
+    // who has a claim on the key, for log lines. "nobody" = a plain hold from a chain or the key held with no books at all
+    public String holdersOf(Input input) {
+        StringBuilder out = new StringBuilder();
+        Set<Object> holders = _owners.get(input);
+        if (holders != null) {
+            for (Object owner : holders) {
+                if (out.length() > 0) out.append(", ");
+                out.append(owner.getClass().getSimpleName());
+            }
+        }
+        if (_unowned.contains(input) || out.length() == 0) {
+            if (out.length() > 0) out.append(", ");
+            out.append("nobody");
+        }
+        Set<Object> pinned = _pins.get(input);
+        if (pinned != null && !pinned.isEmpty()) out.append(" (pinned)");
+        return out.toString();
+    }
+
     public boolean isHeldDown(Input input) {
         return _keys.isDown(input);
     }

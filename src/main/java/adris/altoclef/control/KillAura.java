@@ -146,6 +146,13 @@ public class KillAura {
     }
 
     public void tickEnd(AltoClef mod) {
+        // in lava the aura keeps its hands off: its aim lands after EscapeFromLavaTask's look every tick there's no path (the
+        // combat ask resolves in LookBehavior after the task's forceLook) and the escape swims wherever we face. no swing either,
+        // a swing that can't aim is a swing at the lava
+        if (mod.getPlayer().isInLava()) {
+            stopShielding(mod);
+            return;
+        }
         if (_kiting && _rimGuardId >= 0) {
             rimGuard(mod);
             return;
@@ -337,9 +344,15 @@ public class KillAura {
     }
 
     public void startShielding(AltoClef mod) {
+        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(mod.getPlayer().isInLava(), mod.getPlayer().isInWater(), mod.getPlayer().onGround());
+        if (liquid == CombatRules.LiquidShield.NONE) {
+            stopShielding(mod);
+            return;
+        }
         _shielding = true;
-        boolean standStill = CombatRules.auraShieldStandsStill(_fighting);
-        // the rim guard handed over to a fight with its sneak still down. the magma pin has its own owner, so this only lifts ours
+        boolean standStill = CombatRules.auraShieldStandsStill(_fighting) && liquid == CombatRules.LiquidShield.NORMAL;
+        // the rim guard handed over to a fight (or we started swimming) with its sneak still down. the magma pin has its own
+        // owner, so this only lifts ours
         if (_stoodStill && !standStill) {
             mod.getInputControls().releaseOwnedBy(_owner);
             mod.getExtraBaritoneSettings().setInteractionPaused(false);

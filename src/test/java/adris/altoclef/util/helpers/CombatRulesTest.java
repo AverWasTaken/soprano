@@ -360,6 +360,19 @@ public class CombatRulesTest {
     }
 
     @Test
+    public void noShieldInLavaAndNoStandingStillWhileSwimming() {
+        assertEquals(CombatRules.LiquidShield.NONE, CombatRules.shieldInLiquid(true, false, false));
+        // lava wins even on the bottom of a pool or with water about
+        assertEquals(CombatRules.LiquidShield.NONE, CombatRules.shieldInLiquid(true, false, true));
+        assertEquals(CombatRules.LiquidShield.NONE, CombatRules.shieldInLiquid(true, true, false));
+        assertEquals(CombatRules.LiquidShield.NO_STANDSTILL, CombatRules.shieldInLiquid(false, true, false));
+        // feet on the bottom of a puddle, the old shield
+        assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, true, true));
+        assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, false, true));
+        assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, false, false));
+    }
+
+    @Test
     public void aPatrolTargetGetsTheFightShieldAPlainShooterDoesNot() {
         CombatCommit.Foe skeleton = new CombatCommit.Foe(1, 4, true, false, NEVER);
         assertFalse(shield(false, skeleton));
