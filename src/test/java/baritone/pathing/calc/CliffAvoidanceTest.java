@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -39,6 +40,8 @@ public class CliffAvoidanceTest {
     private static final class MapWorld extends BlockStateInterface {
         final Map<Long, BlockState> blocks = new HashMap<>();
         final Set<Long> unloaded = new HashSet<>();
+        // a layer at y 32 that goes on forever, for when a search could otherwise walk off the edge of the fake world
+        BlockState endless;
 
         MapWorld() {
             super(new BetterWorldBorder(new WorldBorder()), -64, 384);
@@ -51,7 +54,11 @@ public class CliffAvoidanceTest {
         @Override
         protected BlockState getUncached(int x, int y, int z) {
             // y comes in shifted by -minY
-            return blocks.getOrDefault(BlockPos.asLong(x, y - 64, z), Blocks.AIR.defaultBlockState());
+            BlockState set = blocks.get(BlockPos.asLong(x, y - 64, z));
+            if (set != null) {
+                return set;
+            }
+            return endless != null && y - 64 == 32 ? endless : Blocks.AIR.defaultBlockState();
         }
 
         @Override
@@ -67,13 +74,17 @@ public class CliffAvoidanceTest {
 
     private static final class Ctx extends CalculationContext {
         Ctx(BlockStateInterface bsi, boolean nether) {
+            this(bsi, nether, false);
+        }
+
+        Ctx(BlockStateInterface bsi, boolean nether, boolean throwaway) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, 1.0f, 20.0, false);
+            }, throwaway, false, true, 0, 1.0f, 20.0, false);
             // no world to ask which dimension this is, so the test says
             this.cliffEdges = nether;
         }
@@ -303,5 +314,121 @@ public class CliffAvoidanceTest {
         List<BetterBlockPos> path = search(deck(2), true);
         assertNotNull(path);
         assertEquals(10, path.get(path.size() - 1).x);
+    }
+    // the pillar guard. a sea at y 32 under everything, or a floor there instead, and some ground to start on
+    private static MapWorld sea(BlockState bottom) {
+        MapWorld w = new MapWorld();
+        for (int x = -8; x <= 8; x++) {
+            for (int z = -8; z <= 8; z++) {
+                w.set(x, 32, z, bottom);
+            }
+        }
+        return w;
+    }
+
+    private static void fill(MapWorld w, int x0, int x1, int y0, int y1, int z0, int z1) {
+        for (int x = x0; x <= x1; x++) {
+            for (int y = y0; y <= y1; y++) {
+                for (int z = z0; z <= z1; z++) {
+                    w.set(x, y, z, Blocks.NETHERRACK.defaultBlockState());
+                }
+            }
+        }
+    }
+
+    // a 5x5 island with its top at 56 standing up out of the sea, like the start of a tower
+    private static MapWorld island(BlockState bottom) {
+        MapWorld w = sea(bottom);
+        fill(w, -2, 2, 33, 56, -2, 2);
+        return w;
+    }
+
+    // feet at (0, y, 0) after a pillar step
+    private static boolean banned(MapWorld w, boolean nether, int y) {
+        return CliffAvoidance.pillarIntoLava(new Ctx(w, nether), new CliffAvoidance.Memo(), 0, y, 0);
+    }
+
+    @Test
+    public void aTowerBesideTheLavaSeaStopsWhereAKnockWouldReachIt() {
+        MapWorld w = island(Blocks.LAVA.defaultBlockState());
+        // up to 64 the island catches us, 8 down is the last floor nearADrop counts
+        for (int y = 58; y <= 64; y++) {
+            assertFalse("y " + y, banned(w, true, y));
+        }
+        // from 65 a knock is a fall, and one column past the island it's a fall into the sea
+        assertTrue(banned(w, true, 65));
+        assertTrue(banned(w, true, 78));
+    }
+
+    @Test
+    public void aTowerOverSolidGroundIsJustATower() {
+        // fortress bridge supports and netherrack hills: twenty blocks down is a bad fall, not a dead kit
+        MapWorld w = island(Blocks.NETHERRACK.defaultBlockState());
+        for (int y = 58; y <= 80; y++) {
+            assertFalse("y " + y, banned(w, true, y));
+        }
+    }
+
+    @Test
+    public void aHoleIsNotATower() {
+        // a 1x1 shaft through the island over the lava. the walls are all a knock can find until we're out the top
+        MapWorld w = island(Blocks.LAVA.defaultBlockState());
+        for (int y = 34; y <= 56; y++) {
+            w.set(0, y, 0, Blocks.AIR.defaultBlockState());
+        }
+        for (int y = 35; y <= 57; y++) {
+            assertFalse("y " + y, banned(w, true, y));
+        }
+    }
+
+    @Test
+    public void theFirstStepOffACliffOverLavaIsBannedToo() {
+        // a shelf edge with the sea below: even one block up, a knock goes over the side. that's on purpose, a block of
+        // height buys nothing a walk wouldn't and the sea is right there
+        MapWorld w = sea(Blocks.LAVA.defaultBlockState());
+        fill(w, -8, 0, 33, 56, -8, 8);
+        assertTrue(banned(w, true, 58));
+    }
+
+    @Test
+    public void theGuardIsNetherOnly() {
+        MapWorld w = island(Blocks.LAVA.defaultBlockState());
+        for (int y = 58; y <= 80; y++) {
+            assertFalse("y " + y, banned(w, false, y));
+        }
+    }
+
+    // standing on top of a 1x1 column at 56, asked to get to y 62 straight above it. pillaring is the only way up
+    private static List<BetterBlockPos> climb(BlockState bottom) {
+        MapWorld w = new MapWorld();
+        // a sea with an edge gets bridged past, and over the void beyond it a tower is allowed
+        w.endless = bottom;
+        fill(w, 0, 0, 33, 56, 0, 0);
+        Ctx ctx = new Ctx(w, true, true);
+        BetterBlockPos start = new BetterBlockPos(0, 57, 0);
+        AStarPathFinder pf = new AStarPathFinder(start, start.x, start.y, start.z, new GoalBlock(0, 62, 0), new Favoring(null, ctx), ctx);
+        Optional<IPath> p;
+        try {
+            ctx.claimSearchCaches();
+            // over the sea there's no way up and bridging out over it never runs dry, so this one times out on purpose and
+            // we look at whatever partial path it hands back
+            p = pf.calculate0(1000, 3000);
+        } finally {
+            ctx.releaseSearchCaches();
+        }
+        return p.map(IPath::positions).orElse(null);
+    }
+
+    @Test
+    public void theSearchNeverPillarsOverTheLavaSea() {
+        List<BetterBlockPos> path = climb(Blocks.LAVA.defaultBlockState());
+        if (path != null) {
+            for (BetterBlockPos pos : path) {
+                assertTrue("climbed: " + path, pos.y <= 57);
+            }
+        }
+        List<BetterBlockPos> overFloor = climb(Blocks.NETHERRACK.defaultBlockState());
+        assertNotNull(overFloor);
+        assertEquals(62, overFloor.get(overFloor.size() - 1).y);
     }
 }

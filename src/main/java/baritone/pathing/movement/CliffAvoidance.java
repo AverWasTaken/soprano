@@ -47,10 +47,14 @@ public final class CliffAvoidance {
     public static final class Memo {
         private final Long2ByteOpenHashMap columns = new Long2ByteOpenHashMap(4096);
         private final Long2ByteOpenHashMap nodes = new Long2ByteOpenHashMap(4096);
+        private final Long2ByteOpenHashMap knocks = new Long2ByteOpenHashMap(256);
+        private final Long2ByteOpenHashMap landings = new Long2ByteOpenHashMap(1024);
 
         public Memo() {
             columns.defaultReturnValue((byte) -1);
             nodes.defaultReturnValue((byte) -1);
+            knocks.defaultReturnValue((byte) -1);
+            landings.defaultReturnValue((byte) -1);
         }
     }
 
@@ -60,6 +64,72 @@ public final class CliffAvoidance {
             return 0;
         }
         return onFortressBricks(context.get(x, y - 1, z)) ? FORTRESS_NODE_COST : NODE_COST;
+    }
+
+    // a fall off a tower drifts, and the clutch steers on the way down too, so a knock off the top lands a block further out
+    // than the ones REACH worries about on the ground
+    static final int KNOCK_REACH = REACH + 1;
+
+    // a pillar step whose top a knock could throw us off into lava. the search skips these outright instead of pricing them:
+    // a timed out search hands back its coefficient 10 best, which is nearly greedy and climbs right past any flat penalty.
+    // the nearADrop gate means a floor within DEPTH all around catches us first, so only a real drop gets followed down. a
+    // tower over solid ground (fortress bridge supports, netherrack) stays allowed, it's only the lava sea that kills the kit
+    public static boolean pillarIntoLava(CalculationContext context, Memo memo, int x, int y, int z) {
+        if (!context.cliffEdges || !nearADrop(context.bsi, memo, x, y, z)) {
+            return false;
+        }
+        long key = BlockPos.asLong(x, y, z);
+        byte known = memo.knocks.get(key);
+        if (known >= 0) {
+            return known == 1;
+        }
+        boolean lava = false;
+        search:
+        for (int dx = -KNOCK_REACH; dx <= KNOCK_REACH; dx++) {
+            for (int dz = -KNOCK_REACH; dz <= KNOCK_REACH; dz++) {
+                if ((dx != 0 || dz != 0) && landsInLava(context.bsi, memo, x + dx, y, z + dz)) {
+                    lava = true;
+                    break search;
+                }
+            }
+        }
+        memo.knocks.put(key, (byte) (lava ? 1 : 0));
+        return lava;
+    }
+
+    // thrown into (x, y, z), where do we stop. down through open cells to the first thing that isn't one. every cell on the
+    // way gets the same answer, so the next node's look down the same column stops at the first cell we already know and a
+    // column is walked once per search however many pillar steps ask about it. no depth cap needed with that, the nether is
+    // only so tall and a void under us has the bedrock floor at the end of it anyway
+    private static boolean landsInLava(BlockStateInterface bsi, Memo memo, int x, int y, int z) {
+        // unloaded reads as air, which would be the longest fall ever, same as scanColumn
+        if (!bsi.isLoaded(x, z)) {
+            return false;
+        }
+        int cy = y;
+        boolean lava = false;
+        while (cy >= bsi.minY) {
+            byte known = memo.landings.get(BlockPos.asLong(x, cy, z));
+            if (known >= 0) {
+                lava = known == 1;
+                break;
+            }
+            BlockState state = bsi.get0(x, cy, z);
+            if (MovementHelper.isLava(state)) {
+                lava = true;
+                break;
+            }
+            if (MovementHelper.isWater(state) || !MovementHelper.canWalkThrough(bsi, x, cy, z, state)) {
+                // our feet at y is a wall, nothing is getting thrown through that. further down it's the floor we land on
+                break;
+            }
+            cy--;
+        }
+        byte answer = (byte) (lava ? 1 : 0);
+        for (int fill = y; fill > cy; fill--) {
+            memo.landings.put(BlockPos.asLong(x, fill, z), answer);
+        }
+        return lava;
     }
 
     static boolean onFortressBricks(BlockState floor) {

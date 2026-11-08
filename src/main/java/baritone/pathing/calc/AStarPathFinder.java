@@ -152,6 +152,11 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                 if (actionCost >= ActionCosts.COST_INF) {
                     continue;
                 }
+                // a nether tower that a knock off the top drops into the lava sea is never a neighbour, so it can't be the
+                // partial path a timeout hands back either, see CliffAvoidance.pillarIntoLava
+                if (moves == Moves.PILLAR && CliffAvoidance.pillarIntoLava(calcContext, cliffs, res.x, res.y, res.z)) {
+                    continue;
+                }
                 if (actionCost <= 0 || Double.isNaN(actionCost)) {
                     throw new IllegalStateException(String.format(
                             "%s from %s %s %s calculated implausible cost %s",
