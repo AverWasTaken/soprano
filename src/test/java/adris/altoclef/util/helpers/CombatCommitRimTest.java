@@ -520,4 +520,132 @@ public class CombatCommitRimTest {
         }
         assertEquals(CombatRules.RIM_HOLD_TICKS, up);
     }
+
+    // ---- a walk along a rim with a cube hopping up: the walk's own shield, leashed, and no fight picked by lava
+
+    // the same leash the brain runs: the cube part counts the ticks, the safe to cancel part only gates the shield
+    private static boolean walkShield(RimHold hold, boolean edgeNear, boolean inLava, boolean safe, Foe cube) {
+        boolean wanted = cube != null && CombatRules.rimWalkLeash(edgeNear, inLava, cube.distance());
+        boolean reach = wanted && cube.inReach();
+        boolean leashUp = reach || hold.step(wanted ? cube.id() : -1);
+        return wanted && CombatRules.rimShieldWhileWalking(leashUp, reach, safe);
+    }
+
+    @Test
+    public void aCubeWithinFiveOnARimGetsTheWalkShield() {
+        assertTrue(CombatRules.rimWalkLeash(true, false, CombatRules.RIM_ENGAGE_RANGE));
+        assertTrue(CombatRules.rimWalkLeash(true, false, 1));
+        assertFalse(CombatRules.rimWalkLeash(true, false, CombatRules.RIM_ENGAGE_RANGE + 0.1));
+        // off the rim, or already in the lava (the escape has the wheel, r178)
+        assertFalse(CombatRules.rimWalkLeash(false, false, 2));
+        assertFalse(CombatRules.rimWalkLeash(true, true, 2));
+        assertFalse(CombatRules.rimWalkLeash(true, false, Double.POSITIVE_INFINITY));
+        // mid jump it waits, a spent leash still shields a cube in reach
+        assertTrue(CombatRules.rimShieldWhileWalking(true, false, true));
+        assertFalse(CombatRules.rimShieldWhileWalking(true, false, false));
+        assertFalse(CombatRules.rimShieldWhileWalking(false, false, true));
+        assertTrue(CombatRules.rimShieldWhileWalking(false, true, true));
+        assertFalse(CombatRules.rimShieldWhileWalking(false, true, false));
+    }
+
+    @Test
+    public void theNearestCubeIsAnySizeAndOnlyCubes() {
+        Foe big = realCube(1, 4.5, 3.5, NEVER);
+        Foe small = new Foe(2, 3, false, false, NEVER, Kind.NORMAL, 2.5).withSplit("magma_cube", false, 0, 64, 0).withKnocker(true);
+        Foe piglin = new Foe(3, 1, false, false, NEVER, Kind.NORMAL, 0.5).withKnocker(true);
+        assertEquals(2, CombatRules.nearestCube(List.of(big, small, piglin)).id());
+        assertNull(CombatRules.nearestCube(List.of(piglin)));
+        assertNull(CombatRules.nearestCube(List.of()));
+    }
+
+    @Test
+    public void theWalkShieldIsUpForALeashAndThenTheWalkGoesOn() {
+        RimHold hold = new RimHold();
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        int up = 0;
+        for (int t = 0; t < 200; t++) {
+            if (walkShield(hold, true, false, true, cube)) up++;
+        }
+        assertEquals(CombatRules.RIM_HOLD_TICKS, up);
+        // the cube going past five gives the next one a fresh leash
+        assertFalse(walkShield(hold, true, false, true, realCube(1, 6, 5.5, NEVER)));
+        assertTrue(walkShield(hold, true, false, true, cube));
+    }
+
+    // a blocked hit is no hit, so a cube touching us never starts the HIT fight: the shield stays while it's in reach (the aura
+    // swings from the stand), and those ticks don't eat the leash it needs once it's knocked back out
+    @Test
+    public void aCubeInReachKeepsTheShieldAndTheLeash() {
+        RimHold hold = new RimHold();
+        Foe close = realCube(1, 2, 1.5, NEVER);
+        assertTrue(close.inReach());
+        for (int t = 0; t < 200; t++) {
+            assertTrue(walkShield(hold, true, false, true, close));
+        }
+        Foe out = realCube(1, 4, 3.5, NEVER);
+        int up = 0;
+        for (int t = 0; t < 200; t++) {
+            if (walkShield(hold, true, false, true, out)) up++;
+        }
+        assertEquals(CombatRules.RIM_HOLD_TICKS, up);
+        // spent, and back in reach: up again
+        assertTrue(walkShield(hold, true, false, true, close));
+        // in the lava none of it
+        assertFalse(walkShield(hold, true, true, true, close));
+    }
+
+    // a mid jump tick is not "nobody wants it": the leash keeps counting, so the walk's own steps can't hand out fresh leashes
+    @Test
+    public void aMidJumpTickDoesNotResetTheLeash() {
+        RimHold hold = new RimHold();
+        // out of reach, in reach the leash isn't counting at all
+        Foe cube = realCube(1, 4, 3.5, NEVER);
+        int up = 0;
+        for (int t = 0; t < 300; t++) {
+            if (walkShield(hold, true, false, t % 7 != 0, cube)) up++;
+        }
+        assertTrue(up < CombatRules.RIM_HOLD_TICKS);
+        assertTrue(up > CombatRules.RIM_HOLD_TICKS / 2);
+    }
+
+    @Test
+    public void aCubeInTheWayByLavaIsNoFight() {
+        CombatCommit c = new CombatCommit();
+        Way way = new Way(Set.of(1), true, 64).withLavaClose(true);
+        for (long t = 0; t < 300; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(realCube(1, 2, 1.5, NEVER)), null, way)));
+            assertEquals(Mode.NONE, c.mode());
+        }
+    }
+
+    @Test
+    public void aCubeInTheWayWithNoLavaCloseIsStillTheWayFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(realCube(1, 2, 1.5, NEVER)), null, new Way(Set.of(1), true, 64))));
+        assertEquals(Why.IN_WAY, c.why());
+    }
+
+    @Test
+    public void aPiglinInTheWayByLavaIsStillTheWayFight() {
+        CombatCommit c = new CombatCommit();
+        Foe piglin = new Foe(1, 2, false, false, NEVER, Kind.NORMAL, 1.5).withKnocker(true);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(piglin), null, new Way(Set.of(1), true, 64).withLavaClose(true))));
+        assertEquals(Why.IN_WAY, c.why());
+    }
+
+    // a cube that hits us by lava is still fought, and once it's let go it doesn't come back as a fight or a run while it sits in
+    // the path not hitting us (the let go's ignore covers it before the way rule looks, this one guards the loop)
+    @Test
+    public void aHitCubeByLavaIsFoughtAndThenNeverLoopsThroughTheWay() {
+        CombatCommit c = new CombatCommit();
+        Way way = new Way(Set.of(1), true, 64).withLavaClose(true);
+        assertEquals(Event.FIGHT_START, c.step(tick(0, 20, List.of(realCube(1, 2.5, 2, 0)), null, way)));
+        assertEquals(Why.HIT, c.why());
+        Foe knocked = realCube(1, 4.5, 3.5, 1);
+        assertEquals(Event.FIGHT_CLEARED, c.step(tick(1, 20, List.of(knocked), knocked, way)));
+        for (long t = 2; t < 300; t++) {
+            assertEquals(Event.NONE, c.step(tick(t, 20, List.of(realCube(1, 2, 1.5, t)), null, way)));
+            assertEquals(Mode.NONE, c.mode());
+        }
+    }
 }
