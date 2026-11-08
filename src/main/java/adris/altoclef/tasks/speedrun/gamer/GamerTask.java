@@ -1365,8 +1365,7 @@ public class GamerTask extends Task {
     private boolean recoverHeals() {
         long t = facts.gameTime();
         boolean hold = recoverWalking() && RecoverRules.walkHold(mod.getPlayer().getHealth(), NetherRecoverTask.shooterSees(mod),
-                mod.getFoodChain().ticksSinceBodyHit(mod), CombatRules.canRegen(mod.getPlayer().getFoodData().getFoodLevel(),
-                        mod.getFoodChain().hasHealFood()), recoverHolding, recoverHeldTicks);
+                mod.getFoodChain().ticksSinceBodyHit(mod), recoverCanRegen(), recoverHolding, recoverHeldTicks);
         if (hold) {
             long gap = recoverHolding ? Math.max(0, Math.min(t - recoverHoldTick, 2)) : 0;
             recoverHeldTicks += gap;
@@ -1374,6 +1373,10 @@ public class GamerTask extends Task {
         }
         recoverHolding = hold;
         return hold;
+    }
+
+    private boolean recoverCanRegen() {
+        return CombatRules.canRegen(mod.getPlayer().getFoodData().getFoodLevel(), mod.getFoodChain().hasHealFood());
     }
 
     private boolean recoverStillWanted(double now) {
@@ -1392,6 +1395,8 @@ public class GamerTask extends Task {
             over = "we left the dimension";
         } else if (recoverWalking() && RecoverRules.walkAbort(mod.getPlayer().getHealth(), mod.getFoodChain().ticksSinceBodyHit(mod))) {
             over = "hurt and under fire on the way";
+        } else if (recoverWalking() && RecoverRules.noRegenAbort(mod.getPlayer().getHealth(), recoverCanRegen())) {
+            over = "too hurt to go on with nothing to heal on";
         } else if (allowance == null || allowance.expired(now, flatBlocksTo(recoverPos))) {
             over = "it has been lying there too long";
         }

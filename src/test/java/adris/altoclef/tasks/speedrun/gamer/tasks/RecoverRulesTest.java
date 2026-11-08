@@ -392,6 +392,19 @@ public class RecoverRulesTest {
     }
 
     @Test
+    public void theWalkGivesUpLowWithNothingToHealOnHitOrNot() {
+        // no hit timer: the last arrow can be long gone and the walk still ends
+        assertTrue(RecoverRules.noRegenAbort(4.5f, false));
+        assertTrue(RecoverRules.noRegenAbort(NetherTripRules.ABORT_HP, false));
+        assertFalse(RecoverRules.noRegenAbort(NetherTripRules.ABORT_HP + 0.5f, false));
+        // something to heal on: walkHold stands for it instead
+        assertFalse(RecoverRules.noRegenAbort(4.5f, true));
+        assertTrue(RecoverRules.walkHold(4.5f, false, NO_HIT, true, false, 0));
+        // and with nothing to heal on walkHold refuses, which is the hole this closes
+        assertFalse(RecoverRules.walkHold(4.5f, false, NO_HIT, false, false, 0));
+    }
+
+    @Test
     public void heldArmorGetsAFewSecondsPastTheBudgetNotForever() {
         assertTrue(RecoverRules.wearPastBudget(true, 91, 90));
         assertTrue(RecoverRules.wearPastBudget(true, 90 + RecoverRules.WEAR_GRACE_SECONDS - 0.1, 90));

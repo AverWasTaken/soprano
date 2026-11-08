@@ -328,20 +328,22 @@ public class KitPlannerTest {
 
     @Test
     public void anEmptyBagEatsBeforeItBuildsAnything() {
-        // no food, no pick, no wood: the starter chain (logs, the stone pick) has a lot to ask for, and food still leads, but only
-        // up to the floor. the rest of the refill waits behind the tools
+        // no food, no pick, no wood: the starter chain (logs, the stone pick) has a lot to ask for, and food still leads it, but only
+        // up to the floor. the rest of the refill waits behind the tools. the one thing ahead of the food is a wooden sword
         FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
-        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(0));
+        assertEquals(new KitNeed("wooden_sword", 1), plan.get(0));
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(1));
         assertTrue(names(plan).contains("stone_pickaxe"));
         assertTrue(names(plan).contains("log"));
-        assertTrue(names(plan).indexOf("log") > 0);
-        // the head the gate cares about is that one
-        assertEquals(0, FoodGate.index(plan, food));
-        // one under the floor is the same: the floor bite, the tools, the whole refill, and the target closing the plan
+        assertTrue(names(plan).indexOf("log") > 1);
+        // the need the gate cares about is that one, behind the sword
+        assertEquals(1, FoodGate.index(plan, food));
+        // one under the floor is the same: the sword, the floor bite, the tools, the whole refill, and the target closing the plan
         f.foodUnits = 23;
         plan = KitPlanner.plan(f, cfg, 8);
-        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(0));
+        assertEquals(new KitNeed("wooden_sword", 1), plan.get(0));
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(1));
         assertEquals(3, plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
     }
 
@@ -349,7 +351,7 @@ public class KitPlannerTest {
     public void anEmptyBagEatsThenArmsItselfThenFinishesStockingFood() {
         FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
-        int bite = 0;
+        int bite = 1;
         int tools = names(plan).indexOf("stone_pickaxe");
         int rest = plan.indexOf(new KitNeed(KitNeed.FOOD, food.refillStop()));
         assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(bite));
@@ -359,10 +361,51 @@ public class KitPlannerTest {
         assertTrue(names(plan).indexOf("stone_sword") < rest);
         // and the ore only after all of it
         assertTrue(names(plan).indexOf("iron_ingot") > rest);
-        // once the bite is eaten the plan is the fed one, tools first and the refill behind them
+        // once the bite is eaten the plan is the fed one, tools first and the refill behind them. the wooden sword goes with the
+        // bite: fed, the stone sword in the starter is the weapon like it always was
         f.foodUnits = food.floor();
         List<KitNeed> fed = KitPlanner.plan(f, cfg, 8);
-        assertEquals(plan.subList(1, plan.size()), fed.subList(0, plan.size() - 1));
+        assertFalse(names(fed).contains("wooden_sword"));
+        assertEquals(plan.subList(2, plan.size()), fed.subList(0, plan.size() - 2));
+    }
+
+    @Test
+    public void anUnarmedHungryBagMakesAWoodenSwordBeforeTheFoodHunt() {
+        FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
+        assertEquals(new KitNeed("wooden_sword", 1), plan.get(0));
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(1));
+        // the stone sword stays where it was, behind the bite
+        assertTrue(names(plan).indexOf("stone_sword") > 1);
+        assertEquals(1, names(plan).stream().filter("wooden_sword"::equals).count());
+        // a pickaxe swings, but it is no weapon: still unarmed, still the sword first
+        FakeFacts pick = new FakeFacts().give(Items.STONE_PICKAXE, 1);
+        assertEquals(new KitNeed("wooden_sword", 1), KitPlanner.plan(pick, cfg, 8).get(0));
+        // a worn out pick does not change that either
+        FakeFacts worn = new FakeFacts();
+        worn.spent.put(Items.STONE_PICKAXE, 1);
+        assertEquals(new KitNeed("wooden_sword", 1), KitPlanner.plan(worn, cfg, 8).get(0));
+    }
+
+    @Test
+    public void anyArmedBagKeepsTheOldOrder() {
+        // any sword or axe at all, golden and worn ones included: no wooden sword, the floor bite leads like it always did
+        FakeFacts spentSword = new FakeFacts();
+        spentSword.spent.put(Items.STONE_SWORD, 1);
+        for (FakeFacts armed : List.of(new FakeFacts().give(Items.WOODEN_SWORD, 1), new FakeFacts().give(Items.STONE_SWORD, 1),
+                new FakeFacts().give(Items.GOLDEN_SWORD, 1), new FakeFacts().give(Items.WOODEN_AXE, 1),
+                new FakeFacts().give(Items.IRON_AXE, 1), spentSword)) {
+            assertFalse(KitPlanner.unarmed(armed));
+            FoodPlan food = FoodPlan.ofBeds(armed, cfg, 8);
+            List<KitNeed> plan = KitPlanner.plan(armed, cfg, 8, food);
+            assertFalse(plan.toString(), names(plan).contains("wooden_sword"));
+            assertEquals(plan.toString(), KitNeed.FOOD, plan.get(0).catalogueName());
+        }
+        assertTrue(KitPlanner.unarmed(new FakeFacts()));
+        // fed and unarmed: no split, so no wooden sword either, the starter's stone sword is the weapon
+        FakeFacts fed = new FakeFacts();
+        fed.foodUnits = 100;
+        assertFalse(names(KitPlanner.plan(fed, cfg, 8)).contains("wooden_sword"));
     }
 
     @Test

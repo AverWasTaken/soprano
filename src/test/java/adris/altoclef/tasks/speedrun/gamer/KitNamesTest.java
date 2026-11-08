@@ -46,6 +46,8 @@ public class KitNamesTest {
         Set<String> names = everyNameTheOverworldCanAskFor(new OverworldConfig());
         assertTrue(names.contains("iron_ingot"));
         assertTrue(names.contains("wool"));
+        // the hungry empty bag's first craft (KitPlanner.unarmed)
+        assertTrue(names.contains("wooden_sword"));
         for (String name : names) {
             assertTrue("TaskCatalogue has no '" + name + "'", TaskCatalogue.taskExists(name));
         }

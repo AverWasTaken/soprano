@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.ItemFixture;
+import net.minecraft.world.item.Items;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -56,15 +57,21 @@ public class FoodGateTest {
 
     @Test
     public void theFloorBiteThatLeadsTheToolsIsTheGatedHeadToo() {
-        // an empty bag: the floor bite, the tools, then the whole refill. the gate has to see the bite or the IRON phase
-        // would think nothing food-ish leads and drop the furnace-trip and detour manners that keep a starving bot eating
+        // an empty bag but a wooden sword: the floor bite, the tools, then the whole refill. the gate has to see the bite or the
+        // IRON phase would think nothing food-ish leads and drop the furnace-trip and detour manners that keep a starving bot eating
         cfg.cookFuelLogs = 0;
-        FakeFacts empty = new FakeFacts();
+        FakeFacts empty = new FakeFacts().give(Items.WOODEN_SWORD, 1);
         FoodPlan food = plan(empty);
         List<KitNeed> needs = KitPlanner.plan(empty, cfg, 8, food);
         assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), needs.get(0));
         assertEquals(0, FoodGate.index(needs, food));
         assertTrue(FoodGate.refillHead(needs, food));
+        // with nothing at all to swing the sword goes first (KitPlanner.unarmed), and the gate still finds the bite right behind it
+        FakeFacts bare = new FakeFacts();
+        List<KitNeed> bareNeeds = KitPlanner.plan(bare, cfg, 8, plan(bare));
+        assertEquals(new KitNeed("wooden_sword", 1), bareNeeds.get(0));
+        assertEquals(1, FoodGate.index(bareNeeds, plan(bare)));
+        assertFalse(FoodGate.refillHead(bareNeeds, plan(bare)));
         // starving stays the bag's word, not the list's, and the gate keeps the head in under the floor
         assertTrue(food.starving(null));
         assertTrue(food.leads(false, false, false));
@@ -147,12 +154,18 @@ public class FoodGateTest {
 
     @Test
     public void anEmptyBagWithNoPickHasTheFoodAtTheHeadAfterTheGate() {
-        // the whole IRON list for a bag with nothing in it: food leads (the gate says so under the floor, mine or no mine) and
-        // stays the head, so the furnace's call about the head need is a food call
+        // the whole IRON list for a bag with nothing in it: the gate says food leads under the floor, mine or no mine. the
+        // wooden sword is ahead of it (KitPlanner.unarmed), and once that is in hand food is the head, so the furnace's call
+        // about the head need is a food call
         FakeFacts f = new FakeFacts();
         FoodPlan food = plan(f);
         assertTrue(food.leads(false, false, false));
         List<KitNeed> needs = KitPlanner.plan(f, cfg, 8, food);
+        assertEquals("wooden_sword", needs.get(0).catalogueName());
+        assertEquals(KitNeed.FOOD, needs.get(1).catalogueName());
+        f.give(Items.WOODEN_SWORD, 1);
+        food = plan(f);
+        needs = KitPlanner.plan(f, cfg, 8, food);
         assertTrue(FoodGate.refillHead(needs, food));
         assertEquals(KitNeed.FOOD, needs.get(0).catalogueName());
     }
