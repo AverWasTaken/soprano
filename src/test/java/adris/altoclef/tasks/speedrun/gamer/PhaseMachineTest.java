@@ -26,6 +26,7 @@ public class PhaseMachineTest {
         final GamerConfig cfg = new GamerConfig();
         final FakeFacts facts = new FakeFacts();
         final List<String> said = new ArrayList<>();
+        final List<String> noted = new ArrayList<>();
         int saves;
         int resets;
         boolean walkOnPortal;
@@ -53,6 +54,11 @@ public class PhaseMachineTest {
         @Override
         public void say(String line) {
             said.add(line);
+        }
+
+        @Override
+        public void note(String line) {
+            noted.add(line);
         }
 
         @Override
@@ -623,8 +629,11 @@ public class PhaseMachineTest {
         assertEquals(42, machine.secondsInPhase(), 1e-6);
         machine.walkOnEndPortal(true);
         assertTrue(host.walkOnPortal);
+        int saidBefore = host.said.size();
         machine.log("hello");
-        assertEquals(List.of("hello"), host.said);
+        // the play by play goes to the log, chat is for phase moves and give ups
+        assertEquals(List.of("hello"), host.noted);
+        assertEquals(saidBefore, host.said.size());
         int before = host.saves;
         machine.save();
         assertEquals(before + 1, host.saves);

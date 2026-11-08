@@ -58,7 +58,7 @@ public interface GamerContext {
         fail(reason);
     }
 
-    // one line in chat, soprano prefix, for things the user should know ("giving up on casting, mining obsidian")
+    // the client log, not chat. chat hears about phase moves, retries and give ups from the machine itself
     void log(String line);
 
     // lets baritone path over end portal blocks (volatile toggle in AltoClefSettings), reset by the engine on stop

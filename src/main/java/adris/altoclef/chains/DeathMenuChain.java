@@ -107,7 +107,7 @@ public class DeathMenuChain extends TaskChain {
         // This might fix Weird fail to respawn that happened only once
         if (_prevScreen == DeathScreen.class) {
             if (_deathRetryTimer.elapsed()) {
-                Debug.logMessage("(RESPAWN RETRY WEIRD FIX...)");
+                Debug.logInternal("(RESPAWN RETRY WEIRD FIX...)");
                 _deathRetryTimer.reset();
                 _prevScreen = null;
             }
@@ -124,7 +124,7 @@ public class DeathMenuChain extends TaskChain {
                 _waitOnDeathScreenBeforeRespawnTimer.reset();
                 if (shouldAutoRespawn(mod)) {
                     _deathCount++;
-                    Debug.logMessage("RESPAWNING... (this is death #" + _deathCount + ")");
+                    Debug.logMessage("Respawning (death " + _deathCount + ").");
                     assert Minecraft.getInstance().player != null;
                     Component screenMessage = ((IDeathScreen) screen).getMessage();
                     String deathMessage = screenMessage != null ? screenMessage.getString() : "Unknown"; //"(not implemented yet)"; //screen.children().toString();
@@ -153,7 +153,7 @@ public class DeathMenuChain extends TaskChain {
             }
             if (screen instanceof DisconnectedScreen) {
                 if (shouldAutoReconnect(mod)) {
-                    Debug.logMessage("RECONNECTING: Going to Multiplayer Screen");
+                    Debug.logMessage("Reconnecting...");
                     _reconnecting = true;
                     Minecraft.getInstance().gui.setScreen(new JoinMultiplayerScreen(new TitleScreen()));
                 } else {
@@ -162,7 +162,7 @@ public class DeathMenuChain extends TaskChain {
                 }
             } else if (screen instanceof JoinMultiplayerScreen && _reconnecting && _reconnectTimer.elapsed()) {
                 _reconnectTimer.reset();
-                Debug.logMessage("RECONNECTING: Going ");
+                Debug.logInternal("RECONNECTING: Going ");
                 _reconnecting = false;
 
                 if (_prevServerEntry == null) {

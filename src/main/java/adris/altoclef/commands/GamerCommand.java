@@ -106,6 +106,7 @@ public class GamerCommand extends AltoClefCommand {
             throw new CommandInvalidStateException("The gamer is running right now, stop it first.");
         }
         Path file = RunStateStore.resolvePath(mod);
+        GamerTask.forgetFinishedLine();
         Debug.logMessage(RunStateStore.delete(file) ? "Forgot the saved run, #gamer starts from the beginning." : "There was no saved run to forget.");
     }
 

@@ -250,7 +250,7 @@ public class KillEnderDragonTask extends Task {
         boolean canHeal = mod.getPlayer().getFoodData().getFoodLevel() >= CombatRules.REGEN_HUNGER || mod.getFoodChain().hasFood();
         boolean next = _exitPortalTop != null && mod.getEntityTracker().entityFound(EnderDragon.class) && DragonWaitRules.stayAway(_stayingAway, hp, canHeal);
         if (next != _stayingAway) {
-            Debug.logMessage(String.format("dragon: %s at hp %.1f", next ? "keeping clear" : "back to the fight", hp));
+            Debug.logInternal(String.format("dragon: %s at hp %.1f", next ? "keeping clear" : "back to the fight", hp));
             _stayingAway = next;
         }
         return next;
@@ -357,7 +357,7 @@ public class KillEnderDragonTask extends Task {
                 switch (_mode) {
                     case RAILING -> {
                         if (!perchingOrGettingReady) {
-                            Debug.logMessage("Dragon no longer perching.");
+                            Debug.logInternal("Dragon no longer perching.");
                             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
                             _mode = Mode.WAITING_FOR_PERCH;
                             break;
@@ -411,7 +411,7 @@ public class KillEnderDragonTask extends Task {
                         if (perchingOrGettingReady) {
                             // We're perching!!
                             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
-                            Debug.logMessage("Dragon perching detected. Dabar duosiu į snuki.");
+                            Debug.logInternal("Dragon perching detected. Dabar duosiu į snuki.");
                             _mode = Mode.RAILING;
                             break;
                         }
@@ -421,7 +421,7 @@ public class KillEnderDragonTask extends Task {
                         }
                         if (_randomWanderPos != null && _randomWanderChangeTimeout.elapsed()) {
                             _randomWanderPos = null;
-                            Debug.logMessage("Reset wander pos after timeout, oof");
+                            Debug.logInternal("Reset wander pos after timeout, oof");
                         }
                         if (_randomWanderPos == null) {
                             _randomWanderPos = getRandomWanderPos(mod);

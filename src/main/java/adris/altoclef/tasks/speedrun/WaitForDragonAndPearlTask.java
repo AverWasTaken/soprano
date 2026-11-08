@@ -143,7 +143,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
         // Our trigger to throw is that the dragon starts perching. We can be an arbitrary distance and we'll still do it lol
         if (_dragonIsPerching && LookHelper.cleanLineOfSight(mod.getPlayer(), _targetToPearl.above(), 300)) {
-            Debug.logMessage("THROWING PEARL!!");
+            Debug.logInternal("THROWING PEARL!!");
             return _throwPearlTask;
         }
         if (mod.getPlayer().blockPosition().getY() < minHeight) {
@@ -184,7 +184,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             Optional<Entity> dragonFireball = mod.getEntityTracker().getClosestEntity(DragonFireball.class);
             if (dragonFireball.isPresent() && dragonFireball.get().closerThan(mod.getPlayer(), DRAGON_FIREBALL_TOO_CLOSE_RANGE) && LookHelper.cleanLineOfSight(mod.getPlayer(), dragonFireball.get().position(), DRAGON_FIREBALL_TOO_CLOSE_RANGE)) {
                 _pillarUpFurther = new GetToYTask(mod.getPlayer().getBlockY() + 5);
-                Debug.logMessage("HOLDUP");
+                Debug.logInternal("HOLDUP");
                 return _pillarUpFurther;
             }
             if (mod.getEntityTracker().entityFound(EndCrystal.class)) {

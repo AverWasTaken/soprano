@@ -172,7 +172,7 @@ public final class MinecraftFacts implements GamerFacts {
         if (state != null) {
             String line = FoodDry.tick(state, CollectFoodTask.searching(), preyNear, gameTime);
             if (line != null) {
-                Debug.logMessage(line);
+                Debug.logInternal(line);
             }
         }
     }

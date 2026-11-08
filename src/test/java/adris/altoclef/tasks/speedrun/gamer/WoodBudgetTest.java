@@ -64,6 +64,10 @@ public class WoodBudgetTest {
         }
 
         @Override
+        public void note(String line) {
+        }
+
+        @Override
         public void save() {
         }
 

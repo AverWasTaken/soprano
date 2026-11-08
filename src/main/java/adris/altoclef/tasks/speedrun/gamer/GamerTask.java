@@ -108,6 +108,8 @@ public class GamerTask extends Task {
     private GamerConfig cfg;
     private RunState state;
     private Path statePath;
+    // static so it outlives the task: the idle runner keeps starting #gamer over, see sayFinishedOnce
+    private static String finishedSaidFor;
     // false until the first tick with a player loaded the run state. onStart runs again after every interrupt (eating, mob
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
@@ -690,6 +692,23 @@ public class GamerTask extends Task {
         }
     }
 
+    // the idle runner starts a finished run again and again, chat hears about it once per world per session
+    private void sayFinishedOnce() {
+        String line = "This world's run is already finished. #gamer reset starts a new one.";
+        String world = state.fingerprint + "@" + statePath;
+        if (world.equals(finishedSaidFor)) {
+            Debug.logInternal(line);
+            return;
+        }
+        finishedSaidFor = world;
+        host.say(line);
+    }
+
+    // a reset run that finishes again gets its line again
+    public static void forgetFinishedLine() {
+        finishedSaidFor = null;
+    }
+
     private void jumpTo(GamerPhase phase) {
         state.phase = phase;
         // a jump starts a new run as far as the win card's total goes, or a jump to the dragon would show the hours since GATHER
@@ -712,7 +731,7 @@ public class GamerTask extends Task {
             startedOver = true;
             state.phase = GamerPhase.DONE;
             state.finished = true;
-            host.say("This world's run is already finished. #gamer reset starts a new one.");
+            sayFinishedOnce();
             return;
         }
         if (state.stuck) {
@@ -1178,7 +1197,7 @@ public class GamerTask extends Task {
         // dying on the way to a pile is the end of that trip: the second pile is not worth a third life
         boolean wasOnTrip = state.netherTrip != null;
         if (wasOnTrip) {
-            host.say("gave up: died on the way, rebuilding");
+            deathLine("Died on the way back to the items, letting them go.", "gave up: died on the way, rebuilding");
             state.netherTrip = null;
             netherTrip = null;
         }
@@ -1188,18 +1207,20 @@ public class GamerTask extends Task {
         host.save();
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
-            host.say(DeathRules.leaving("died " + state.deathsThisPhase + " times in this phase, the run is stuck"));
+            // the give up line right after says it in chat
+            Debug.logInternal(DeathRules.leaving("died " + state.deathsThisPhase + " times in this phase, the run is stuck"));
             machine.stuck("died " + state.deathsThisPhase + " times in this phase");
             return;
         }
         if (state.deaths.size() - deathsAtStart >= cfg.death.maxTotal) {
-            host.say(DeathRules.leaving("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started, the run is stuck"));
+            Debug.logInternal(DeathRules.leaving("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started, the run is stuck"));
             machine.stuck("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started");
             return;
         }
         if (wasRecovering) {
             // the older pile is not worth another life either, and the new one is judged below on its own
-            host.say("death: died on the way to the last pile, giving that one up");
+            // the new pile's line below is the one chat needs
+            Debug.logInternal("death: died on the way to the last pile, giving that one up");
         }
         // same night the shelter uses, with a minute of walking ahead of it counted (the shelter is blocked while we recover)
         boolean darkAndBare = darkAndBare(mod);
@@ -1209,7 +1230,7 @@ public class GamerTask extends Task {
         waitingPile = null;
         if (why == null && DeathRules.waitsForDay(darkAndBare, worth, cfg.overworld.refillStartFoodUnits,
                 DeathRules.pileUnloaded(facts.x() - deathPos.getX(), facts.z() - deathPos.getZ(), cfg.death.tickingBlocks))) {
-            host.say(DeathRules.waiting(blocks, worth));
+            deathLine("Died. It's night and we have no armor, so the items wait for morning.", DeathRules.waiting(blocks, worth));
             waitingPile = deathPos;
             waitingPileDimension = deathDimension;
         } else if (why == null) {
@@ -1220,7 +1241,7 @@ public class GamerTask extends Task {
                 maybeGoBackToTheNether();
             }
         } else {
-            host.say(DeathRules.leaving(why));
+            deathLine("Died, leaving the items behind: " + why + ".", DeathRules.leaving(why));
         }
         if (recover == null && waitingPile == null) {
             // nobody is going back to the pile, so its neighbourhood is just as far as the rest
@@ -1229,13 +1250,19 @@ public class GamerTask extends Task {
         }
     }
 
+    // death calls: one plain line for chat, the full why for the log
+    private void deathLine(String chat, String detail) {
+        Debug.logInternal(detail);
+        host.say(chat);
+    }
+
     private void forgetFarStations(BlockPos pile) {
         RunState.Pos at = pile == null ? null : new RunState.Pos(pile.getX(), pile.getY(), pile.getZ());
         Workbenches.respawned(state, facts.dimension().name(), facts.x(), facts.y(), facts.z(), at, facts.gameTime());
     }
 
     private void startRecovery(BlockPos pile, double blocks, long sinceTicks) {
-        host.say(DeathRules.going(blocks, worth));
+        deathLine("Died, going back for the items (" + Math.round(blocks) + " blocks away).", DeathRules.going(blocks, worth));
         recoverHolding = false;
         recoverHeldTicks = 0;
         recover = new RecoverItemsTask(pile, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks),
@@ -1282,7 +1309,8 @@ public class GamerTask extends Task {
                 NetherTripRules.tried(state.lastTripPile, deathPos.getX(), deathPos.getZ()),
                 !NetherRegress.kitShort(facts, cfg));
         if (why != null) {
-            host.say("nether death at " + where + ", not going back: " + why + ", rebuilding");
+            deathLine("Died in the Nether at " + where + ", making a new kit instead of going back.",
+                    "nether death at " + where + ", not going back: " + why + ", rebuilding");
             return;
         }
         RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
@@ -1290,7 +1318,8 @@ public class GamerTask extends Task {
         if (NetherTripRules.defers(far) && !NetherTripRules.defersFor(worth)) {
             // a pile with no eye parts in it is a stick and a bucket the rebuild makes anyway, and the second walk to it goes
             // through whatever killed us the first time
-            host.say("nether death at " + where + ", " + (int) far + " blocks from the portal with no rods, powder, pearls or eyes in it, "
+            deathLine("Died in the Nether at " + where + ", nothing in the pile is worth the walk, making a new kit.",
+                    "nether death at " + where + ", " + (int) far + " blocks from the portal with no rods, powder, pearls or eyes in it, "
                     + "letting the pile go, rebuilding");
             return;
         }
@@ -1298,14 +1327,15 @@ public class GamerTask extends Task {
             // naked and that far out is how the last few trips died, so the pile waits for a kit and the rebuild runs
             state.deferredPile = pile;
             host.save();
-            host.say("nether death at " + where + ", " + (int) far + " blocks from the portal, too far to walk naked: "
+            deathLine("Died in the Nether at " + where + ", too far to walk back without gear. Going back once the kit is ready.",
+                    "nether death at " + where + ", " + (int) far + " blocks from the portal, too far to walk naked: "
                     + "deferring the pile until the kit is back, rebuilding");
             return;
         }
         state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.BLOCKS.name(), facts.gameTime());
         state.lastTripPile = pile;
         host.save();
-        host.say("nether death at " + where + ", going back for it");
+        deathLine("Died in the Nether at " + where + ", going back for the items.", "nether death at " + where + ", going back for it");
     }
 
     // how far a nether pile is from the nether side of the home portal, flat. the overworld portal over eight when the nether
@@ -1336,13 +1366,15 @@ public class GamerTask extends Task {
         if (NetherTripRules.dropsDeferred(facts.dimension(), kitShort, far)) {
             state.deferredPile = null;
             host.save();
-            host.say("deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far + " blocks away, letting it go");
+            deathLine("Letting the Nether items at " + pile.x + " " + pile.y + " " + pile.z + " go, they're too far away now.",
+                    "deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far + " blocks away, letting it go");
         } else if (NetherTripRules.startsDeferred(facts.dimension(), kitShort, far)) {
             state.deferredPile = null;
             state.lastTripPile = pile;
             state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.WALK.name(), facts.gameTime());
             host.save();
-            host.say("kit is on and the deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far
+            deathLine("Kit's ready, going back for the Nether items at " + pile.x + " " + pile.y + " " + pile.z + ".",
+                    "kit is on and the deferred pile at " + pile.x + " " + pile.y + " " + pile.z + " is " + (int) far
                     + " blocks away, going for it");
         }
     }
@@ -1401,7 +1433,7 @@ public class GamerTask extends Task {
             over = "it has been lying there too long";
         }
         if (over != null) {
-            host.say("death: no longer going for the pile, " + over);
+            deathLine("Stopped going back for the items (" + over + ").", "death: no longer going for the pile, " + over);
             recover = null;
             return false;
         }
@@ -1760,6 +1792,11 @@ public class GamerTask extends Task {
         @Override
         public void say(String line) {
             Debug.logMessage(line);
+        }
+
+        @Override
+        public void note(String line) {
+            Debug.logInternal(line);
         }
 
         // identical json is not written twice, the saves come from phase moves, deaths, stops and a timer

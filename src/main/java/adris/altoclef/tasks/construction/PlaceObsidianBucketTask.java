@@ -469,7 +469,7 @@ public class PlaceObsidianBucketTask extends Task {
             }
             if (!_ruinSaid) {
                 _ruinSaid = true;
-                Debug.logMessage("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(cells[i]).getBlock()).getPath()
+                Debug.logInternal("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(cells[i]).getBlock()).getPath()
                         + " at " + cells[i].toShortString() + " where the " + roles[i] + " cell goes, moving the frame");
                 mod.getClientBaritone().getPathingBehavior().forceCancel();
                 // the parent drops its origin when the frame cell is unreachable, and the pool task gives up on it the same way

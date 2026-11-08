@@ -319,7 +319,7 @@ public class LocateStrongholdTask extends Task {
             return legDone(mod);
         }
         if (leg.expired(now)) {
-            Debug.logMessage("walk leg gave up: " + leg.why(now) + ", throwing from here");
+            Debug.logInternal("walk leg gave up: " + leg.why(now) + ", throwing from here");
             stalledLegs++;
             if (stalledLegs > MAX_STALLED_LEGS) {
                 ctx.fail("cannot make progress walking toward the stronghold");
@@ -438,7 +438,7 @@ public class LocateStrongholdTask extends Task {
             }
             case EMPTY -> {
                 ledger.empty();
-                Debug.logMessage("empty eye throw: " + r.why());
+                Debug.logInternal("empty eye throw: " + r.why());
                 if (ledger.tooManyEmpty()) {
                     ctx.fail("threw an Eye of Ender " + ledger.counted() + " times and no eye ever appeared");
                     return null;
@@ -466,7 +466,7 @@ public class LocateStrongholdTask extends Task {
         lastThrowX = observer.originX();
         lastThrowZ = observer.originZ();
         if (!estimator.addRay(r.ray())) {
-            Debug.logMessage("estimator rejected the ray (parallel, behind us or an outlier)");
+            Debug.logInternal("estimator rejected the ray (parallel, behind us or an outlier)");
         }
         persist();
         ctx.progress("eye thrown");

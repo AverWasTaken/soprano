@@ -296,7 +296,7 @@ public class DragonPhase implements PhaseHandler {
         for (Map.Entry<Integer, BlockPos> old : _crystalSpots.entrySet()) {
             if (!seen.containsKey(old.getKey())) {
                 BlockPos p = old.getValue();
-                Debug.logMessage(String.format("crystal gone at %d %d %d, %d left", p.getX(), p.getY(), p.getZ(), seen.size()));
+                Debug.logInternal(String.format("crystal gone at %d %d %d, %d left", p.getX(), p.getY(), p.getZ(), seen.size()));
             }
         }
         _crystalSpots.clear();
