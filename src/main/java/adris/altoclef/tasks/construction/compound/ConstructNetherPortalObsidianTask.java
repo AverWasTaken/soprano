@@ -176,7 +176,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
         if (_origin == null) {
             if (_areaSearchTimer.elapsed()) {
                 _areaSearchTimer.reset();
-                Debug.logMessage("(Searching for area to build portal nearby...)");
+                Debug.logInternal("(Searching for area to build portal nearby...)");
                 _origin = getBuildableAreaNearby(mod);
             }
             setDebugState("Looking for portalable area...");

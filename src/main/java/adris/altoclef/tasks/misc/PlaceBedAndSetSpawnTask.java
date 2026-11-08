@@ -109,6 +109,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private Subscription<GameOverlayEvent> _respawnFailureMessageCheck;
     private boolean _sleepAttemptMade;
     private boolean _wasSleeping;
+    // the timeout branch below runs every tick until the in-bed timer lets go, one line per start is plenty
+    private boolean _bedTimeoutLogged;
     private BlockPos _bedForSpawnPoint;
     // the search for a spot ended because the wander looking for one was stuck, not because a spawn got set. sticky
     // until resetSleep: onStart runs again after every interrupt and the wander (same instance) is still the stuck one
@@ -202,6 +204,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
             // Reset progress checker
             _progressChecker.reset();
+            _bedTimeoutLogged = false;
 
             // Reset current bed region
             _currentBedRegion = null;
@@ -275,6 +278,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         _spawnSet = false;
         _sleepAttemptMade = false;
         _wasSleeping = false;
+        _bedTimeoutLogged = false;
     }
 
     @Override
@@ -288,7 +292,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         //      Place on the middle block, reliably placing the bed.
         if (!_progressChecker.check(mod) && _currentBedRegion != null) {
             _progressChecker.reset();
-            Debug.logMessage("Searching new bed region.");
+            Debug.logInternal("Searching new bed region.");
             _currentBedRegion = null;
         }
         if (mod.getPlayer().isInWater() && mod.getItemStorage().hasItem(ItemHelper.BED)) {
@@ -318,7 +322,10 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
         if (_sleepAttemptMade) {
             if (_bedInteractTimeout.elapsed()) {
-                Debug.logMessage("Failed to get \"Respawn point set\" message or sleeping, assuming that this bed already contains our spawn.");
+                if (!_bedTimeoutLogged) {
+                    _bedTimeoutLogged = true;
+                    Debug.logInternal("Failed to get \"Respawn point set\" message or sleeping, assuming that this bed already contains our spawn.");
+                }
                 _spawnSet = true;
                 return null;
             }
@@ -409,7 +416,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
         if (_currentBedRegion == null) {
             if (_regionScanTimer.elapsed()) {
-                Debug.logMessage("Rescanning for nearby bed place position...");
+                Debug.logInternal("Rescanning for nearby bed place position...");
                 _regionScanTimer.reset();
                 _currentBedRegion = this.locateBedRegion(mod, mod.getPlayer().blockPosition());
             }

@@ -106,7 +106,7 @@ public class RecoverItemsTask extends Task {
                 return lateWear;
             }
             setDebugState("Out of time.", "Giving up on our stuff");
-            Debug.logMessage("death: out of time on our stuff, leaving it.");
+            Debug.logMessage("Ran out of time getting our stuff back, leaving it.");
             _finished = true;
             return null;
         }
@@ -191,7 +191,7 @@ public class RecoverItemsTask extends Task {
             setDebugState("Nothing left here.", "Looking for our stuff");
             if (_empty.elapsed()) {
                 // two ways to get here: we picked it all up, or there was never anything (despawned, burned, taken)
-                Debug.logMessage(_wentForADrop ? "death: picked up what was at the pile." : "death: nothing at the pile, moving on.");
+                Debug.logMessage(_wentForADrop ? "Got our stuff back." : "Nothing left where we died, moving on.");
                 _finished = true;
             }
             return null;

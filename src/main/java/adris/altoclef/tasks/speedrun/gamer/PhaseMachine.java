@@ -23,6 +23,9 @@ public final class PhaseMachine implements GamerContext {
 
         void say(String line);
 
+        // the handlers' play by play (ctx.log): the client log, not chat. phase moves and give ups still say()
+        void note(String line);
+
         // write RunState now
         void save();
 
@@ -405,7 +408,7 @@ public final class PhaseMachine implements GamerContext {
             stuck(reason);
             return;
         }
-        host.say("Skipping " + s.phase.hud().toLowerCase() + " (" + reason + ")");
+        host.say("Skipping: " + s.phase.hud() + " (" + reason + ")");
         moveTo(GamerPhase.values()[s.phase.ordinal() + 1]);
     }
 
@@ -423,7 +426,7 @@ public final class PhaseMachine implements GamerContext {
                 if (d.to() == GamerPhase.DONE) {
                     finish(false);
                 } else {
-                    host.say(d.to().hud());
+                    host.say("Next: " + d.to().hud());
                     moveTo(d.to());
                 }
             }
@@ -663,7 +666,7 @@ public final class PhaseMachine implements GamerContext {
 
     @Override
     public void log(String line) {
-        host.say(line);
+        host.note(line);
     }
 
     @Override

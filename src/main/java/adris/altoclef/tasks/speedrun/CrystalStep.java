@@ -87,12 +87,12 @@ public class CrystalStep {
         String skip = CrystalStand.skipReason(stand, gap, _targetTicks);
         if (skip != null) {
             _skipped.add(crystal.getId());
-            Debug.logMessage("crystal: leaving the one at " + at.toShortString() + " alone, " + skip);
+            Debug.logInternal("crystal: leaving the one at " + at.toShortString() + " alone, " + skip);
             return null;
         }
         BlockPos goal = new BlockPos(stand[0], stand[1], stand[2]);
         if (fresh) {
-            Debug.logMessage(String.format("crystal: going for %s from %s, %.1f from its box", at.toShortString(), goal.toShortString(), gap));
+            Debug.logInternal(String.format("crystal: going for %s from %s, %.1f from its box", at.toShortString(), goal.toShortString(), gap));
         }
         trySwing(mod, player, crystal);
         return new GetToBlockTask(goal, false);
@@ -112,7 +112,7 @@ public class CrystalStep {
         if (CrystalBlast.safeToSwing(damage)) {
             mod.getControllerExtras().attack(crystal, ReachRules.CRYSTAL_REACH);
         } else if (_heldLogged.add(crystal.getId())) {
-            Debug.logMessage(String.format("crystal: not swinging at %s, it would do %.1f to us (seen %.2f, %.1f out)",
+            Debug.logInternal(String.format("crystal: not swinging at %s, it would do %.1f to us (seen %.2f, %.1f out)",
                     crystal.blockPosition().toShortString(), damage, seen, distance));
         }
     }

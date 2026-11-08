@@ -167,19 +167,19 @@ public class ConstructNetherPortalSpeedrunTask extends adris.altoclef.tasksystem
             if (_firstSearch || _lavaSearchTimer.elapsed()) {
                 _firstSearch = false;
                 _lavaSearchTimer.reset();
-                Debug.logMessage("(Searching for lava lake with portalable spot nearby...)");
+                Debug.logInternal("(Searching for lava lake with portalable spot nearby...)");
                 BlockPos lavaPos = findLavaLake(mod);
                 if (lavaPos != null) {
                     // We have a lava lake, set our portal origin!
                     BlockPos foundPortalRegion = getPortalableRegion(lavaPos, mod.getPlayer().blockPosition(), new Vec3i(-1, 0, 0), PORTALABLE_REGION_SIZE, 20);
                     if (foundPortalRegion == null) {
-                        Debug.logWarning("Failed to find portalable region nearby. Consider increasing the search timeout range");
+                        Debug.logInternal("Failed to find portalable region nearby. Consider increasing the search timeout range");
                     } else {
                         _portalOrigin = foundPortalRegion.offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
                         foundSpot = true;
                     }
                 } else {
-                    Debug.logMessage("(lava lake not found)");
+                    Debug.logInternal("(lava lake not found)");
                 }
             }
 
@@ -347,7 +347,7 @@ public class ConstructNetherPortalSpeedrunTask extends adris.altoclef.tasksystem
             if (lavas.isPresent()) {
                 int depth = getNumberOfBlocksAdjacent(lavas.get());
                 if (depth != 0) {
-                    Debug.logMessage("Found with depth " + depth);
+                    Debug.logInternal("Found with depth " + depth);
                     if (depth >= 12) {
                         nearestLake = lavas.get();
                     }

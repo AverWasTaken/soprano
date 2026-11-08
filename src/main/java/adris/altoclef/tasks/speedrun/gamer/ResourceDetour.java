@@ -213,10 +213,11 @@ public final class ResourceDetour {
         heldLast = held;
         tally.reset();
         hud = spec.hud;
-        // a restart on the cluster a bed or a chest just interrupted is the same trip as far as chat goes (DetourRules.announce)
+        // a restart on the cluster a bed or a chest just interrupted is the same trip as far as chat goes (DetourRules.announce).
+        // straight to chat, not ctx.log: that one is the log now, and a bot wandering off the plan is worth one plain line
         boolean said = rules.announce(ctx.facts().gameTime(), me.getX(), me.getY(), me.getZ());
         if (said) {
-            ctx.log(spec.chat);
+            Debug.logMessage(spec.chat);
         }
         BlockPos first = nearest(mod, me, spec.budget(cfg));
         String tool = spec.resource == Resource.GRAVEL ? ", with " + DetourSpec.gravelTool(hasShovel(ctx.facts())) : "";

@@ -227,7 +227,7 @@ public class ConstructNetherPortalBucketTask extends Task {
             }
         }
         if (_refreshTimer.elapsed()) {
-            Debug.logMessage("Duct tape: Refreshing inventory again just in case");
+            Debug.logInternal("Duct tape: Refreshing inventory again just in case");
             _refreshTimer.reset();
             mod.getSlotHandler().refreshInventory();
         }
@@ -291,7 +291,7 @@ public class ConstructNetherPortalBucketTask extends Task {
             if (_firstSearch || _lavaSearchTimer.elapsed()) {
                 _firstSearch = false;
                 _lavaSearchTimer.reset();
-                Debug.logMessage("(Searching for lava lake with portalable spot nearby...)");
+                Debug.logInternal("(Searching for lava lake with portalable spot nearby...)");
                 List<BlockPos> lakes = findLavaLakes(mod, mod.getPlayer().blockPosition());
                 _noLake = lakes.isEmpty();
                 if (!lakes.isEmpty()) {
@@ -306,10 +306,10 @@ public class ConstructNetherPortalBucketTask extends Task {
                         }
                     }
                     if (!foundSpot) {
-                        Debug.logWarning("Failed to find portalable region nearby. Consider increasing the search timeout range");
+                        Debug.logInternal("Failed to find portalable region nearby. Consider increasing the search timeout range");
                     }
                 } else {
-                    Debug.logMessage("(lava lake not found)");
+                    Debug.logInternal("(lava lake not found)");
                 }
             }
 
@@ -533,7 +533,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
     // the frame moves: nothing here is worth another look
     private void moveFrame(AltoClef mod, BlockPos stray, String role) {
-        Debug.logMessage("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(stray).getBlock()).getPath()
+        Debug.logInternal("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(stray).getBlock()).getPath()
                 + " at " + stray.toShortString() + " where the " + role + " cell goes, moving the frame");
         mod.getClientBaritone().getPathingBehavior().forceCancel();
         _portalOrigin = null;
@@ -560,9 +560,9 @@ public class ConstructNetherPortalBucketTask extends Task {
             // a lake 60 blocks down is a lake we would dig to, not one we cast at
             if (!inYBand(pos.getY(), playerPos.getY())) continue;
             int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
-            // every lone source gets flooded now, only the real lakes are worth a chat line
+            // every lone source gets flooded now, only the real lakes are worth a log line
             if (depth >= LAKE_MIN_SOURCES) {
-                Debug.logMessage("Found with depth " + depth);
+                Debug.logInternal("Found with depth " + depth);
                 lakes.add(pos);
             }
         }

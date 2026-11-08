@@ -206,7 +206,7 @@ public class KillEnderDragonWithBedsTask extends Task {
         }
         boolean walking = _standWalk != null && _standWalk.isActive() && !_standWalk.isFinished(mod);
         if (fightHere && walking) {
-            Debug.logMessage("pillar bed: covered at " + player.blockPosition().toShortString() + ", dropping the walk to the stand");
+            Debug.logInternal("pillar bed: covered at " + player.blockPosition().toShortString() + ", dropping the walk to the stand");
             _standWalk = null;
             walking = false;
         }
@@ -219,7 +219,7 @@ public class KillEnderDragonWithBedsTask extends Task {
             case STAND -> {
                 if (!walking) {
                     _standWalk = new GetToBlockTask(stand);
-                    Debug.logMessage("pillar bed: going to the stand " + stand.toShortString() + ", phase " + now.getPhase());
+                    Debug.logInternal("pillar bed: going to the stand " + stand.toShortString() + ", phase " + now.getPhase());
                 }
                 setDebugState("Going to the pillar");
                 return _standWalk;
@@ -271,7 +271,7 @@ public class KillEnderDragonWithBedsTask extends Task {
     private void logPlace(String line) {
         if (!line.equals(_placeLog)) {
             _placeLog = line;
-            Debug.logMessage(line);
+            Debug.logInternal(line);
         }
     }
 
@@ -288,7 +288,7 @@ public class KillEnderDragonWithBedsTask extends Task {
         if (PillarBed.clickNow(covered, dist, finishing, tick, _lastClick)) {
             _lastClick = tick;
             _landing.clicked();
-            Debug.logMessage(String.format("pillar bed: click, facing %s, head %.1f, body %.1f, finishing %b, dragon hp %.0f, us hp %.1f", facing.name(), dist, body, finishing, dragon.getHealth(), mod.getPlayer().getHealth()));
+            Debug.logInternal(String.format("pillar bed: click, facing %s, head %.1f, body %.1f, finishing %b, dragon hp %.0f, us hp %.1f", facing.name(), dist, body, finishing, dragon.getHealth(), mod.getPlayer().getHealth()));
             useOn(mod, new Vec3(bed.getX() + 0.5, bed.getY() + 0.5, bed.getZ() + 0.5), bed);
         }
     }
@@ -334,7 +334,7 @@ public class KillEnderDragonWithBedsTask extends Task {
 
     private static void logLanding(String line) {
         if (line != null) {
-            Debug.logMessage(line);
+            Debug.logInternal(line);
         }
     }
 

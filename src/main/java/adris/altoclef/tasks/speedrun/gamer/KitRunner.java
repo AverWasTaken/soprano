@@ -156,7 +156,7 @@ public final class KitRunner {
         }
         if (!planLogged) {
             planLogged = true;
-            Debug.logMessage("Kit plan: " + describe(needs));
+            Debug.logInternal("Kit plan: " + describe(needs));
         }
         GamerFacts f = ctx.facts();
         watchGone(f, needs);

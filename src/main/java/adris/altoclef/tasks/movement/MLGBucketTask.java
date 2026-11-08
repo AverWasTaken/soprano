@@ -142,12 +142,12 @@ public class MLGBucketTask extends Task {
             _movingTorwards = bestClutchPos.get().mutable();
             if (!_movingTorwards.equals(oldMovingTorwards)) {
                 if (oldMovingTorwards == null)
-                    Debug.logMessage("(NEW clutch target: " + _movingTorwards + ")");
+                    Debug.logInternal("(NEW clutch target: " + _movingTorwards + ")");
                 else
-                    Debug.logMessage("(changed clutch target: " + _movingTorwards + ")");
+                    Debug.logInternal("(changed clutch target: " + _movingTorwards + ")");
             }
         } else if (oldMovingTorwards != null) {
-            Debug.logMessage("(LOST clutch position!)");
+            Debug.logInternal("(LOST clutch position!)");
         }
         if (willLandOn.isPresent()) {
             handleJumpForLand(mod, willLandOn.get());
@@ -199,7 +199,7 @@ public class MLGBucketTask extends Task {
                 }
             }
             if (hasClutch) {
-                Debug.logMessage("HIT: " + willLandIn);
+                Debug.logInternal("HIT: " + willLandIn);
                 if (water) {
                     recordPour(mod);
                 }
@@ -546,7 +546,7 @@ public class MLGBucketTask extends Task {
             if (Objects.equals(bestBlock, check))
                 return;
             if (WorldHelper.isAir(mod, check)) {
-                Debug.logMessage("(MLG Air block checked for landing, the block broke. We'll try another): " + check);
+                Debug.logInternal("(MLG Air block checked for landing, the block broke. We'll try another): " + check);
                 return;
             }
             boolean lava = isLava(check);

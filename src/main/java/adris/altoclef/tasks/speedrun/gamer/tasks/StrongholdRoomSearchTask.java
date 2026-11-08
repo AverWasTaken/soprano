@@ -630,7 +630,7 @@ public class StrongholdRoomSearchTask extends Task {
                 // the budget ran out deep on the column: search at the depth it reached, not in the cave we may be standing in
                 workY = watch.columnLowestY();
             }
-            Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
+            Debug.logInternal("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
             enterSpiral(mod);
             return null;
         }
@@ -768,7 +768,7 @@ public class StrongholdRoomSearchTask extends Task {
                     new StrongholdRoomPlan.Chunk(here.x(), here.z()));
         }
         if (next.isEmpty()) {
-            Debug.logMessage("stronghold spiral exhausted after " + ctx.state().roomChunksVisited.size() + " chunks");
+            Debug.logInternal("stronghold spiral exhausted after " + ctx.state().roomChunksVisited.size() + " chunks");
             ctx.save();
             exhausted = true;
             return false;
@@ -907,7 +907,7 @@ public class StrongholdRoomSearchTask extends Task {
             return null;
         }
         if (RoomRetarget.approachOver(seconds(mod) - stageSince, seconds(mod) - approachBestAt, cfg.approachSeconds, mod.getPlayer().getX(), mod.getPlayer().getZ(), c[0], c[2])) {
-            Debug.logMessage("taking the frames we have not seen as given, the ring is rigid");
+            Debug.logInternal("taking the frames we have not seen as given, the ring is rigid");
             finish();
             return null;
         }

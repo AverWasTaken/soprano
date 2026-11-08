@@ -515,7 +515,7 @@ public class LavaPoolPortalTask extends Task {
         }
         stepSince = tick;
         strikes++;
-        Debug.logMessage("portal: " + step + " is not going anywhere (" + strikes + ")");
+        Debug.logInternal("portal: " + step + " is not going anywhere (" + strikes + ")");
         if (step.cast() != null && step.kind() != Kind.GUIDE_PLACE) {
             startFallback(mod, step.cast(), "stuck on " + step.kind());
         } else if (strikes >= STRIKES) {

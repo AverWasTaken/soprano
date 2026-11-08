@@ -366,7 +366,7 @@ public class PearlHuntTask extends Task {
         }
         if (awayLong(lastTickAt, gameTime)) {
             reopenWalk();
-            Debug.logMessage("Pearl hunt back after time away, walking to the forest again");
+            Debug.logInternal("Pearl hunt back after time away, walking to the forest again");
         }
         trackHp(mod, gameTime);
         lastTickAt = gameTime;

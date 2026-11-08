@@ -383,7 +383,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             move = BreathDodge.Move.DROP;
         }
         if (move != _breathMove) {
-            Debug.logMessage(move == BreathDodge.Move.NONE ? "dragon breath: out of the cloud at " + feet.toShortString()
+            Debug.logInternal(move == BreathDodge.Move.NONE ? "dragon breath: out of the cloud at " + feet.toShortString()
                     : "dragon breath: " + move + " at " + feet.toShortString());
             _breathTask = null;
             _breathMove = move;
