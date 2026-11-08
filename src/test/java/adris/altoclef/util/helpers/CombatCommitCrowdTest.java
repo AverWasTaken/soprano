@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -100,6 +101,26 @@ public class CombatCommitCrowdTest {
         assertTrue(low == null || low.why() != Why.LOW_HP);
         Foe big = new Foe(1, 2, false, false, 3).withSplit("magma_cube", true, 0, 64, 0);
         assertEquals(Why.LOW_HP, CombatCommit.trigger(7f, List.of(big), false).why());
+    }
+
+    // and a fight on one doesn't bail into a LOW_HP run the tick after it started, low as we are
+    @Test
+    public void aLowHpFightOnATinyCubeStaysAFight() {
+        Foe tiny = new Foe(7, 1.5, false, false, 0).withSplit("magma_cube", false, 0, 64, 0);
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, tiny, tiny)));
+        for (long now = NOW + 1; now < NOW + 40; now++) {
+            assertNotEquals(Event.FIGHT_TO_RUN, c.step(tick(now, 7, tiny, tiny)));
+            assertEquals(Mode.FIGHT, c.mode());
+        }
+        // a cube that still splits is the old low hp run
+        Foe big = new Foe(8, 1.5, false, false, 0).withSplit("magma_cube", true, 0, 64, 0);
+        CombatCommit d = new CombatCommit();
+        assertEquals(Event.FIGHT_START, d.step(tick(NOW, 20, big, big)));
+        Event bail = Event.NONE;
+        for (long now = NOW + 1; now < NOW + 40 && bail != Event.FIGHT_TO_RUN; now++) bail = d.step(tick(now, 7, big, big));
+        assertEquals(Event.FIGHT_TO_RUN, bail);
+        assertEquals(Why.LOW_HP, d.why());
     }
 
     @Test

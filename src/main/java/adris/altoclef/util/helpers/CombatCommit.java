@@ -1772,7 +1772,8 @@ public final class CombatCommit {
         // hitters (the danger rules) still get us out of there
         if (endermanAbout(t) != null) return trigger != null && trigger.why() == Why.HEAVY ? Why.HEAVY : Why.NONE;
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
-        if (target != null && !target.standsAndFights() && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE
+        // (a tiny cube target is one swing, same as trigger's near: a HIT fight that turns into a LOW_HP run a tick later is dithering)
+        if (target != null && !target.standsAndFights() && !tinyCube(target) && t.health() - lowHit <= FLEE_HP && target.distance() <= LOW_HP_RANGE
                 && !shooterFight(foes, freshOnly, t.guardHealth(), onFight)) return Why.LOW_HP;
         // a crowd on us is not a fight to take, at any hp. only the ones actually on us count (engaged), never bystanders
         if (crowded(t.health(), foes, freshOnly, onFight)) return Why.CROWD;
