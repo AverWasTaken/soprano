@@ -250,6 +250,13 @@ public final class RecoverRules {
         return NetherTripRules.walkAbort(health, ticksSinceHit);
     }
 
+    // just as low with nothing to heal on is over too, hit or not: walkHold won't stand for it, so the walk would carry a bot at
+    // 4 hp that can't get better into the cave that killed it. no hit timer on purpose, the last arrow can be half a minute old.
+    // the walk only, the pickup near the pile is a few seconds of grabbing and stays
+    public static boolean noRegenAbort(float health, boolean canRegen) {
+        return !canRegen && health <= NetherTripRules.ABORT_HP;
+    }
+
     // the despawn timer only runs while the pile's chunk is ticking, and a pile we respawned far from is not: it keeps its age
     // until we are back in range. items tick out to the simulation distance (12 chunks by default), a bit generous on purpose:
     // starting the allowance early only costs a few seconds of the walk, starting it late is chasing a pile that is gone

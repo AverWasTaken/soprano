@@ -86,14 +86,19 @@ public final class KitPlanner {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
         // under the floor food leads whatever the starter is missing (a bag with no pick has it and its wood chain up front), but
-        // only up to the floor: enough to stop starving, then the tools (hunting a whole refill with bare hands is a lot of fist
-        // fights), then the rest of the refill where it always sat. at or over the floor the starter goes first and the refill
-        // behind it, like it always did. a bag that already has its pick and weapon and only owes logs keeps the one piece refill
+        // only up to the floor: enough to stop starving, then the tools, then the rest of the refill where it always sat. a bag
+        // with nothing to swing makes a wooden sword before even that: the food hunt is a long walk at night, and running from
+        // every skeleton with bare hands is how a respawn turns into the next death. a stone sword from an empty bag is minutes
+        // of chain, the wooden one is a couple of logs. at or over the floor the starter goes first and the refill behind it,
+        // like it always did. a bag that already has its pick and weapon and only owes logs keeps the one piece refill
         boolean hungry = food.held() < food.floor();
         List<KitNeed> out = new ArrayList<>();
         List<KitNeed> starter = starter(f, cfg, endBeds, false, late, food, wood);
         boolean split = hungry && starter.stream().anyMatch(n -> isTool(n.catalogueName()));
         if (split) {
+            if (unarmed(f)) {
+                out.add(new KitNeed("wooden_sword", held(f, "wooden_sword") + 1));
+            }
             out.add(new KitNeed(KitNeed.FOOD, food.floor()));
         } else if (hungry) {
             // nothing to arm, so the refill is the whole job and goes up front in one piece
@@ -180,6 +185,21 @@ public final class KitPlanner {
             }
         }
         return false;
+    }
+
+    // every sword and axe there is, golden ones too (GolemHunt.hasWeapon's list). a pickaxe swings but it is no weapon
+    private static final List<Item> WEAPONS = List.of(
+            Items.WOODEN_SWORD, Items.STONE_SWORD, Items.GOLDEN_SWORD, Items.IRON_SWORD, Items.DIAMOND_SWORD, Items.NETHERITE_SWORD,
+            Items.WOODEN_AXE, Items.STONE_AXE, Items.GOLDEN_AXE, Items.IRON_AXE, Items.DIAMOND_AXE, Items.NETHERITE_AXE);
+
+    // nothing to fight with at all. a worn one still counts, same as holdsAnyPick: it still hits, it just is not one we count on
+    static boolean unarmed(GamerFacts f) {
+        for (Item weapon : WEAPONS) {
+            if (f.count(weapon) + f.spent(weapon) > 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // the axe for the logs, not the weapon: the swords are in the kit and they are crafts like any other. only the wooden axe

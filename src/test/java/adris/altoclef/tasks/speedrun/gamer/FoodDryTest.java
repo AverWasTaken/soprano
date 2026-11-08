@@ -186,7 +186,8 @@ public class FoodDryTest {
     @Test
     public void planHungryLeadsWithFoodUnlessTheSpellIsOn() {
         OverworldConfig cfg = new OverworldConfig();
-        FakeFacts bag = new FakeFacts();
+        // a wooden sword in hand, or the plan opens with one (KitPlanner.unarmed) and there is no leading food to move
+        FakeFacts bag = new FakeFacts().give(Items.WOODEN_SWORD, 1);
         assertTrue(foodFirst(KitPlanner.plan(bag, cfg, 8)));
         bag.foodDryLatched = true;
         List<KitNeed> latched = KitPlanner.plan(bag, cfg, 8);
