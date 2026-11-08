@@ -78,6 +78,9 @@ public final class CombatRules {
     // the run's rim shield is up this many ticks in a row on one foe and then the run moves on, so it can never pin us there
     // (the commit's corner timer is held while it is up, see CombatCommit.pauseCorner)
     public static final int RIM_HOLD_TICKS = 60;
+    // and whatever is in reach, a guard is up at most this many ticks per episode (RimHold counts the exempt ticks too). ten
+    // seconds of a cube bouncing off our shield is plenty, after that standing still is the pin and walking on is the plan
+    public static final int RIM_GUARD_CAP_TICKS = 200;
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
@@ -230,16 +233,24 @@ public final class CombatRules {
         return edgeNear && !inLava && cubeDistance <= RIM_ENGAGE_RANGE;
     }
 
-    // the shield itself: the leash still has ticks, or the cube is in arm's reach, and the path is safe to cancel. a blocked hit
-    // never reaches us as a hit, so the HIT fight never comes for a cube we're blocking, and the leash running out with it touching
-    // us is the knock all over again. in reach the stand has a swing in it (same as rimShield's in reach rule), so it isn't a pin,
-    // and the brain doesn't count those ticks toward the leash. mid jump it waits: a sneak and a pause there lands us short of the
+    // the shield itself: the leash says yes and the path is safe to cancel. a blocked hit never reaches us as a hit, so the HIT
+    // fight never comes for a cube we're blocking, and the leash running out with it touching us is the knock all over again. so
+    // the brain's RimHold doesn't spend the leash on in reach ticks (the stand has a swing in it there, same as rimShield's in
+    // reach rule), only its per episode cap still counts them. mid jump it waits: a sneak and a pause there lands us short of the
     // next block next to the lava (same as the aura's own gate)
-    public static boolean rimShieldWhileWalking(boolean leashUp, boolean inReach, boolean safeToCancel) {
-        return (leashUp || inReach) && safeToCancel;
+    public static boolean rimShieldWhileWalking(boolean leashUp, boolean safeToCancel) {
+        return leashUp && safeToCancel;
     }
 
-    // the nearest slime or magma cube among them, null for none. any size: a size 1 slime is filtered out of the foes already
+    // does this tick spend the run guard's leash. a cube in arm's reach doesn't: we swing at it from the stand (KillAura.rimGuard)
+    // and a blocked hit is no hit, so nothing else would end it. anything else (a piglin, a zombified piglin) keeps the plain
+    // leash, a run stood still in front of a gold sword is the run not running
+    public static boolean rimGuardExempt(CombatCommit.Foe foe) {
+        return foe != null && foe.splitType() != null && foe.inReach();
+    }
+
+    // the nearest slime or magma cube among them, null for none. any size: a size 1 slime is filtered out of the foes already (a size
+    // 1 magma cube isn't, it still bites)
     public static CombatCommit.Foe nearestCube(List<CombatCommit.Foe> foes) {
         CombatCommit.Foe best = null;
         for (CombatCommit.Foe foe : foes) {

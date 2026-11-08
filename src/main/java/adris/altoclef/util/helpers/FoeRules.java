@@ -88,8 +88,9 @@ public final class FoeRules {
     // the foe this candidate makes in this dimension, null when it is not one
     public static Foe accept(Dimension dimension, Candidate c) {
         if (neverAFoe(dimension, c.type())) return null;
-        // a size 1 slime cannot hurt us, it is a bouncing pet
-        if (c.slimeSize() == 1) return null;
+        // a size 1 slime cannot hurt us, it is a bouncing pet. a size 1 magma cube is not: it still bites and still knocks, and
+        // next to lava that knock is the whole problem
+        if (c.slimeSize() == 1 && !"magma_cube".equals(c.type())) return null;
         if (c.excluded().getAsBoolean() || !c.angry().getAsBoolean()) return null;
         // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;

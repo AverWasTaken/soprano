@@ -78,6 +78,30 @@ public class CombatCommitCrowdTest {
         assertTrue(CombatCommit.crowded(20, List.of(skeleton(1, 6, 3), skeleton(2, 5, 3), skeleton(3, 4, 3)), false));
     }
 
+    // a won cube fight shatters into tiny ones. those are a swing each, not a reason to run from the fight we just won
+    @Test
+    public void tinyCubesAreNotPartOfACrowd() {
+        Foe tiny1 = new Foe(1, 1, false, false, 3).withSplit("magma_cube", false, 0, 64, 0);
+        Foe tiny2 = new Foe(2, 1.5, false, false, 3).withSplit("magma_cube", false, 0, 64, 0);
+        Foe tiny3 = new Foe(3, 2, false, false, 3).withSplit("slime", false, 0, 64, 0);
+        assertFalse(CombatCommit.crowded(20, List.of(tiny1, tiny2, tiny3), false));
+        assertFalse(CombatCommit.crowded(20, List.of(tiny1, tiny2, zombie(4, 1, 3)), false));
+        // cubes that still split count like anything else
+        Foe big = new Foe(5, 1, false, false, 3).withSplit("magma_cube", true, 0, 64, 0);
+        assertTrue(CombatCommit.crowded(20, List.of(big, zombie(4, 1, 3), zombie(6, 2, 3)), false));
+        assertTrue(CombatCommit.crowded(20, List.of(big, tiny1, zombie(4, 1, 3), zombie(6, 2, 3)), false));
+    }
+
+    // low on hp a size 1 cube is still one swing, not a run along the rim it would knock us off
+    @Test
+    public void aTinyCubeIsNoLowHpRun() {
+        Foe tiny = new Foe(1, 2, false, false, 3).withSplit("magma_cube", false, 0, 64, 0);
+        CombatCommit.Trigger low = CombatCommit.trigger(7f, List.of(tiny), false);
+        assertTrue(low == null || low.why() != Why.LOW_HP);
+        Foe big = new Foe(1, 2, false, false, 3).withSplit("magma_cube", true, 0, 64, 0);
+        assertEquals(Why.LOW_HP, CombatCommit.trigger(7f, List.of(big), false).why());
+    }
+
     @Test
     public void creepersAreNotPartOfACrowd() {
         assertFalse(CombatCommit.crowded(20, List.of(zombie(1, 1, NEVER), zombie(2, 2, NEVER), creeper(3, 1)), false));

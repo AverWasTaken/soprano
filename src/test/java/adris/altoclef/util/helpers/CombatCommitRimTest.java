@@ -521,14 +521,77 @@ public class CombatCommitRimTest {
         assertEquals(CombatRules.RIM_HOLD_TICKS, up);
     }
 
+    // the same step the brain runs for the run's guard
+    private static boolean runGuard(RimHold hold, Foe foe) {
+        return hold.step(foe == null ? -1 : foe.id(), CombatRules.rimGuardExempt(foe));
+    }
+
+    // a cube touching us is swung at from the stand and a blocked hit is no hit, so its ticks don't spend the leash. anything else
+    // in reach (a zombified piglin) gets the plain 60
+    @Test
+    public void theRunGuardKeepsItsLeashForACubeInReachOnly() {
+        Foe cube = realCube(1, 2, 1.5, NEVER);
+        assertTrue(CombatRules.rimGuardExempt(cube));
+        RimHold hold = new RimHold();
+        for (int t = 0; t < 100; t++) assertTrue(runGuard(hold, cube));
+        // knocked back out of reach: the whole leash is still there
+        Foe out = realCube(1, 3, 2.5 + ReachRules.MELEE_REACH, NEVER);
+        assertFalse(CombatRules.rimGuardExempt(out));
+        int up = 0;
+        for (int t = 0; t < 100; t++) if (runGuard(hold, out)) up++;
+        assertEquals(CombatRules.RIM_HOLD_TICKS, up);
+
+        Foe piglin = new Foe(3, 1, false, false, NEVER, Kind.NORMAL, 0.5).withKnocker(true);
+        assertTrue(piglin.inReach());
+        assertFalse(CombatRules.rimGuardExempt(piglin));
+        RimHold piglinHold = new RimHold();
+        int piglinUp = 0;
+        for (int t = 0; t < 200; t++) if (runGuard(piglinHold, piglin)) piglinUp++;
+        assertEquals(CombatRules.RIM_HOLD_TICKS, piglinUp);
+        assertFalse(CombatRules.rimGuardExempt(null));
+    }
+
+    // a cube that stays in our face forever doesn't get to stand us there forever: the cap counts the exempt ticks too, and
+    // nothing lifts it until nobody wants the shield
+    @Test
+    public void theRunGuardCapEndsAStandWithACubeThatStaysInReach() {
+        Foe cube = realCube(1, 2, 1.5, NEVER);
+        RimHold hold = new RimHold();
+        int up = 0;
+        for (int t = 0; t < 3 * CombatRules.RIM_GUARD_CAP_TICKS; t++) if (runGuard(hold, cube)) up++;
+        assertEquals(CombatRules.RIM_GUARD_CAP_TICKS, up);
+        assertTrue(hold.capped());
+        // the log line hears about it once
+        assertTrue(hold.capNews());
+        assertFalse(hold.capNews());
+        // another cube is the same episode
+        assertFalse(runGuard(hold, realCube(2, 2, 1.5, NEVER)));
+        assertFalse(runGuard(hold, null));
+        assertFalse(hold.capped());
+        assertTrue(runGuard(hold, cube));
+    }
+
+    // leash ticks and in reach ticks share one cap
+    @Test
+    public void theCapCountsLeashTicksAndInReachTicksTogether() {
+        Foe close = realCube(1, 2, 1.5, NEVER);
+        Foe out = realCube(1, 4, 3.5, NEVER);
+        RimHold hold = new RimHold();
+        int up = 0;
+        for (int t = 0; t < CombatRules.RIM_HOLD_TICKS; t++) if (runGuard(hold, out)) up++;
+        for (int t = 0; t < 2 * CombatRules.RIM_GUARD_CAP_TICKS; t++) if (runGuard(hold, close)) up++;
+        assertEquals(CombatRules.RIM_GUARD_CAP_TICKS, up);
+        assertTrue(hold.capped());
+    }
+
     // ---- a walk along a rim with a cube hopping up: the walk's own shield, leashed, and no fight picked by lava
 
     // the same leash the brain runs: the cube part counts the ticks, the safe to cancel part only gates the shield
     private static boolean walkShield(RimHold hold, boolean edgeNear, boolean inLava, boolean safe, Foe cube) {
         boolean wanted = cube != null && CombatRules.rimWalkLeash(edgeNear, inLava, cube.distance());
         boolean reach = wanted && cube.inReach();
-        boolean leashUp = reach || hold.step(wanted ? cube.id() : -1);
-        return wanted && CombatRules.rimShieldWhileWalking(leashUp, reach, safe);
+        boolean leashUp = hold.step(wanted ? cube.id() : -1, reach);
+        return wanted && CombatRules.rimShieldWhileWalking(leashUp, safe);
     }
 
     @Test
@@ -540,12 +603,11 @@ public class CombatCommitRimTest {
         assertFalse(CombatRules.rimWalkLeash(false, false, 2));
         assertFalse(CombatRules.rimWalkLeash(true, true, 2));
         assertFalse(CombatRules.rimWalkLeash(true, false, Double.POSITIVE_INFINITY));
-        // mid jump it waits, a spent leash still shields a cube in reach
-        assertTrue(CombatRules.rimShieldWhileWalking(true, false, true));
-        assertFalse(CombatRules.rimShieldWhileWalking(true, false, false));
-        assertFalse(CombatRules.rimShieldWhileWalking(false, false, true));
-        assertTrue(CombatRules.rimShieldWhileWalking(false, true, true));
-        assertFalse(CombatRules.rimShieldWhileWalking(false, true, false));
+        // mid jump it waits (the in reach part lives in the leash now, see aCubeInReachKeepsTheShieldAndTheLeash)
+        assertTrue(CombatRules.rimShieldWhileWalking(true, true));
+        assertFalse(CombatRules.rimShieldWhileWalking(true, false));
+        assertFalse(CombatRules.rimShieldWhileWalking(false, true));
+        assertFalse(CombatRules.rimShieldWhileWalking(false, false));
     }
 
     @Test
@@ -579,7 +641,7 @@ public class CombatCommitRimTest {
         RimHold hold = new RimHold();
         Foe close = realCube(1, 2, 1.5, NEVER);
         assertTrue(close.inReach());
-        for (int t = 0; t < 200; t++) {
+        for (int t = 0; t < 100; t++) {
             assertTrue(walkShield(hold, true, false, true, close));
         }
         Foe out = realCube(1, 4, 3.5, NEVER);
@@ -592,6 +654,22 @@ public class CombatCommitRimTest {
         assertTrue(walkShield(hold, true, false, true, close));
         // in the lava none of it
         assertFalse(walkShield(hold, true, true, true, close));
+    }
+
+    // the walk shield's in reach exemption has the same per episode cap as the run's guard
+    @Test
+    public void theWalkShieldInReachObeysTheCap() {
+        RimHold hold = new RimHold();
+        Foe close = realCube(1, 2, 1.5, NEVER);
+        int up = 0;
+        for (int t = 0; t < 3 * CombatRules.RIM_GUARD_CAP_TICKS; t++) {
+            if (walkShield(hold, true, false, true, close)) up++;
+        }
+        assertEquals(CombatRules.RIM_GUARD_CAP_TICKS, up);
+        assertFalse(walkShield(hold, true, false, true, close));
+        // the cube leaving the 5 block line ends the episode
+        assertFalse(walkShield(hold, true, false, true, realCube(1, 6, 5.5, NEVER)));
+        assertTrue(walkShield(hold, true, false, true, close));
     }
 
     // a mid jump tick is not "nobody wants it": the leash keeps counting, so the walk's own steps can't hand out fresh leashes
