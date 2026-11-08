@@ -553,8 +553,9 @@ public final class CombatCommit {
         for (Foe foe : foes) {
             if (foe.danger(guard) && (danger == null || foe.distance < danger.distance)) danger = foe;
             boolean counts = !freshOnly || foe.distance <= CONTACT || foe.fresh();
-            // a shooter with a line that hit us lately is near enough, however far it stands
-            if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
+            // a shooter with a line that hit us lately is near enough, however far it stands. a size 1 cube isn't a low hp run,
+            // it's one swing (the HIT fight below), and running from it along a rim is how it gets its knock in
+            if (counts && !tinyCube(foe) && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
         if (health - lowHit <= FLEE_HP && near != null && !shooterFight(foes, freshOnly, guard, onFight)) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
@@ -609,6 +610,11 @@ public final class CombatCommit {
         return snipers == 1 && landing && on <= 1;
     }
 
+    // a slime or magma cube that won't split again
+    static boolean tinyCube(Foe foe) {
+        return foe.splitType() != null && !foe.splits();
+    }
+
     // too many on us to trade blows with: CROWD_SIZE of them at any hp
     public static boolean crowded(float health, List<Foe> foes, boolean freshOnly) {
         return crowded(health, foes, freshOnly, false);
@@ -618,7 +624,9 @@ public final class CombatCommit {
         int on = 0;
         for (Foe foe : foes) {
             // (a patrol is the one crowd we stay for, see withPatrol. the hp line still ends it)
-            if (engaged(foe, freshOnly) && !foe.patrol()) on++;
+            // (a size 1 cube is one swing and leaves nothing: a won cube fight shatters into three of them, and calling that a crowd
+            // ran from the fight we just won)
+            if (engaged(foe, freshOnly) && !foe.patrol() && !tinyCube(foe)) on++;
         }
         return on >= CROWD_SIZE;
     }

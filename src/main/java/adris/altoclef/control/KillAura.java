@@ -57,7 +57,7 @@ public class KillAura {
     // the shield that is up came up holding us still, see startShielding
     private boolean _stoodStill = false;
     private int _committedId = -1;
-    // a run on a lava rim with a knocker on us: shield only, no swings, see tickEnd
+    // a run on a lava rim with a knocker on us: shield up, swings at that one foe only, see rimGuard
     private int _rimGuardId = -1;
     // whose name the shield keys go under. a task that brings its own aura passes itself, so the task's own key cleanup (a
     // finished root task is let go of without onStop) still lifts them
@@ -125,8 +125,10 @@ public class KillAura {
         _rimGuardId = foeId;
     }
 
-    // a blocked hit skips the knockback, and on a rim the knock is the lava. shield only: the swing stays off (a run is all feet and
-    // no hands), the shield pauses the path for as long as the brain holds the guard, and the brain caps that (RimHold)
+    // a blocked hit skips the knockback, and on a rim the knock is the lava. the shield pauses the path for as long as the brain
+    // holds the guard, and the brain caps that (RimHold). a cube we only block never dies, so the guard foe gets swung at from the
+    // stand, and only it: pick() would take the nearest of the swing list and turn our front only shield away from the cube.
+    // shielded swings are plain ones, CritTiming vetoes the hop (and its walk up) while we're blocking
     private void rimGuard(AltoClef mod) {
         Optional<Entity> nearest = _targets.stream().filter(entity -> entity.getId() == _rimGuardId).findFirst();
         Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
@@ -137,12 +139,19 @@ public class KillAura {
             stopShielding(mod);
             return;
         }
-        mod.getControllerExtras().aimAt(nearest.get(), CombatAim.Priority.AURA);
+        Entity guard = nearest.get();
+        mod.getControllerExtras().aimAt(guard, CombatAim.Priority.AURA);
         if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
             mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
-        } else {
-            startShielding(mod);
+            return;
         }
+        startShielding(mod);
+        // no swing on a tick the shield isn't held: without it CritTiming has no shielding veto and may hop or walk us up to the
+        // cube, on a rim. same gate as performDelayedAttack after that, the weapon goes in hand before the cooldown is judged
+        if (!_shielding) return;
+        readyTheWeapon(mod, guard);
+        if (!mod.getControllerExtras().attackReady() && !mod.getControllerExtras().wantsCritTick()) return;
+        attack(mod, guard, true, true);
     }
 
     public void tickEnd(AltoClef mod) {

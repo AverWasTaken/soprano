@@ -86,7 +86,8 @@ public class FoeRulesTest {
     public void aSizeOneSlimeIsABouncingPetAndABigOneIsAFoe() {
         for (Dimension d : Dimension.values()) {
             assertNull(d.name(), accept(d, slime("slime", 1, 2)));
-            assertNull(d.name(), accept(d, slime("magma_cube", 1, 2)));
+            // a size 1 magma cube still bites and knocks
+            assertNotNull(d.name(), accept(d, slime("magma_cube", 1, 2)));
             assertNotNull(d.name(), accept(d, slime("slime", 2, 2)));
             assertNotNull(d.name(), accept(d, slime("magma_cube", 4, 2)));
         }

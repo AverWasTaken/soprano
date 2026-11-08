@@ -112,9 +112,12 @@ final class CombatBrain {
     private boolean _fightShield;
     // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
     private boolean _rim;
-    // a run on a rim with a knocker on us: the shield goes up and nothing swings (KillAura.rimGuard), capped by _rimHold
+    // a run on a rim with a knocker on us: the shield goes up and only the guard foe gets swung at (KillAura.rimGuard), capped by _rimHold
     private int _rimGuardId = -1;
     private final RimHold _rimHold = new RimHold();
+    private long _capLogAt = Long.MIN_VALUE / 2;
+    private boolean _runGuardUp;
+    private long _runLeashLogAt = Long.MIN_VALUE / 2;
     // a walk on a rim with a cube hopping up (CombatRules.rimShieldWhileWalking): the cube the shield is up for, -1 for none. the
     // aura gets it as a target even past its 4 block close list, or there is nothing for the shield to face
     private int _rimCubeId = -1;
@@ -300,6 +303,9 @@ final class CombatBrain {
         _rimCubeId = -1;
         _walkHold.reset();
         _walkLeashUp = false;
+        _capLogAt = Long.MIN_VALUE / 2;
+        _runGuardUp = false;
+        _runLeashLogAt = Long.MIN_VALUE / 2;
         _loggedStance = CombatRules.Stance.CALM;
         _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
@@ -646,9 +652,16 @@ final class CombatBrain {
         _rim = rim && !inLava && !_commit.perching() && CombatRules.rimShield(true, blazeContact, foes, lavaClose) && mod.getClientBaritone().getPathingBehavior().getInProgress().isEmpty();
         walkingRimShield(mod, now, rim, inLava, foes);
         // a run on a rim with a cube on us has no walk to wait for: the next hit is the knock into the lava, so the shield is up
-        // for it, for a leash's worth of ticks (RimHold)
+        // for it, for a leash's worth of ticks (RimHold). a cube in reach doesn't spend the leash, we swing at it from the stand
         Foe rimRun = _commit.mode() == Mode.RUN ? CombatRules.rimRunFoe(rim, inLava, foes) : null;
-        _rimGuardId = _rimHold.step(rimRun == null ? -1 : rimRun.id()) ? rimRun.id() : -1;
+        _rimGuardId = _rimHold.step(rimRun == null ? -1 : rimRun.id(), CombatRules.rimGuardExempt(rimRun)) ? rimRun.id() : -1;
+        if (rimRun != null) logCap(now, "run guard", _rimHold, rimRun);
+        if (rimRun != null && _rimGuardId < 0 && _runGuardUp && !_rimHold.capped() && now - _runLeashLogAt >= 40) {
+            _runLeashLogAt = now;
+            Debug.logInternal(String.format(java.util.Locale.ROOT, "rim shield: run guard leash ran out, #%d at %.1f%s, running on",
+                    rimRun.id(), rimRun.distance(), rimRun.inReach() ? " in reach" : ""));
+        }
+        _runGuardUp = _rimGuardId >= 0;
         if (_rimGuardId >= 0) {
             _commit.pauseCorner();
             _rim = true;
@@ -687,19 +700,29 @@ final class CombatBrain {
     private void walkingRimShield(AltoClef mod, long now, boolean rim, boolean inLava, List<Foe> foes) {
         Foe cube = _commit.mode() == Mode.NONE ? CombatRules.nearestCube(foes) : null;
         boolean wanted = cube != null && CombatRules.rimWalkLeash(rim, inLava, cube.distance());
-        // (in reach the leash is left where it was, see rimShieldWhileWalking)
+        // (in reach the leash is left where it was, only the cap counts it, see rimShieldWhileWalking)
         boolean reach = wanted && cube.inReach();
-        boolean leashUp = reach || _walkHold.step(wanted ? cube.id() : -1);
-        if (wanted && !leashUp && _walkLeashUp && now - _walkLeashLogAt >= 40) {
+        boolean leashUp = _walkHold.step(wanted ? cube.id() : -1, reach);
+        if (wanted) logCap(now, "walk shield", _walkHold, cube);
+        if (wanted && !leashUp && _walkLeashUp && !_walkHold.capped() && now - _walkLeashLogAt >= 40) {
             _walkLeashLogAt = now;
             Debug.logInternal(String.format(java.util.Locale.ROOT, "rim shield: walk leash ran out, cube #%d at %.1f, walking on", cube.id(), cube.distance()));
         }
         _walkLeashUp = leashUp;
         _rimCubeId = -1;
-        if (!wanted || !CombatRules.rimShieldWhileWalking(leashUp, reach, mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) return;
+        if (!wanted || !CombatRules.rimShieldWhileWalking(leashUp, mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) return;
         _rimCubeId = cube.id();
         _rim = true;
         _swingAt.add(cube.id());
+    }
+
+    // the guard's hard cap ran out with the foe still wanting it. once per episode (capNews), and no more than one line per 40
+    // ticks across both guards for a cube bouncing on the 5 line that keeps starting new ones
+    private void logCap(long now, String who, RimHold hold, Foe foe) {
+        if (!hold.capNews() || now - _capLogAt < 40) return;
+        _capLogAt = now;
+        Debug.logInternal(String.format(java.util.Locale.ROOT, "rim shield: %s cap of %d ticks ran out, #%d at %.1f%s, moving on",
+                who, CombatRules.RIM_GUARD_CAP_TICKS, foe.id(), foe.distance(), foe.inReach() ? " in reach" : ""));
     }
 
     // the cheap foe check first, the cell scan only when one is close enough to matter (rimScan). same edge the kill task steps back from.
