@@ -125,20 +125,22 @@ public final class FoodTripRules {
     }
 
     // the clock does not cut a trip whose bag is still filling, same idea as the portal hold: a new high of food units inside the
-    // last RISING_SECONDS holds it. the cap is the hard stop for a trip that keeps nibbling forever
+    // last RISING_SECONDS holds it. the cap is the hard stop for a trip that keeps nibbling forever. bagEnough (holdCapUnits
+    // reached) turns the hold off, so a trip that already has a decent pile ends on the clock like it always did
     public static final double RISING_SECONDS = 120;
     public static final double HARD_SECONDS = 900;
 
-    public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit, double secondsSinceGain) {
-        return !stillShort || secondsOnTrip >= HARD_SECONDS || secondsOnTrip >= limit && secondsSinceGain >= RISING_SECONDS;
+    public static boolean tripOver(boolean stillShort, double secondsOnTrip, double limit, double secondsSinceGain, boolean bagEnough) {
+        return !stillShort || secondsOnTrip >= HARD_SECONDS
+                || secondsOnTrip >= limit && (bagEnough || secondsSinceGain >= RISING_SECONDS);
     }
 
-    // where a trip ends: twice the line that sent us home (so the bag is not back under it after one fight), never under the
-    // overworld minimum, never past the plan's own stop. the old stop (refillStop, 130) was out of reach inside the clock and
-    // the trips came back at 48 anyway. distance = nether side distance to the portal when the trip started
-    public static int tripEndUnits(double distToPortal, int overworldMinimum, int planEnd) {
-        int own = Math.max((int) Math.ceil(goHomeLine(distToPortal) * 2), overworldMinimum);
-        return Math.min(own, planEnd);
+    // a trip hunts to the plan's own stop now (refillStop 130, or the minimum on a full bag): stopping at twice the line came back
+    // with ~90 and the next trip was due a few minutes into the hunt. the clock still ends it, so 130 is a target, not a promise.
+    // this is the old stop, kept as the point where the rising hold lets go: twice the line that sent us home (so one fight does
+    // not put us back under it), never under the overworld minimum. distance = nether side distance to the portal at the start
+    public static int holdCapUnits(double distToPortal, int overworldMinimum) {
+        return Math.max((int) Math.ceil(goHomeLine(distToPortal) * 2), overworldMinimum);
     }
 
     // ---- the walk home (nether half of a trip)
