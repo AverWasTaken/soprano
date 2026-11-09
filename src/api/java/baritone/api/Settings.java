@@ -2387,6 +2387,13 @@ public final class Settings {
     public final Setting<Boolean> altoAutoCloseScreenWhenLookingOrMining = new Setting<>(true);
 
     /**
+     * Open the inventory screen while the bot crafts in the 2x2 grid of your inventory, so you can watch it move the
+     * items. It closes again half a second after the craft, and right away when the bot has to eat, fight, block or
+     * save itself from a fall or lava. Off, the 2x2 crafts happen without a screen.
+     */
+    public final Setting<Boolean> altoShowInventoryWhenCrafting = new Setting<>(true);
+
+    /**
      * Put ourselves out with water when we are on fire (and not immune to it).
      */
     public final Setting<Boolean> altoExtinguishSelfWithWater = new Setting<>(true);
