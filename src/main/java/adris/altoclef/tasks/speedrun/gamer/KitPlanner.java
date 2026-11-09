@@ -89,16 +89,18 @@ public final class KitPlanner {
         // only up to the floor: enough to stop starving, then the tools, then the rest of the refill where it always sat. a bag
         // with nothing to swing makes a wooden sword before even that: the food hunt is a long walk at night, and running from
         // every skeleton with bare hands is how a respawn turns into the next death. a stone sword from an empty bag is minutes
-        // of chain, the wooden one is a couple of logs. at or over the floor the starter goes first and the refill behind it,
+        // of chain, the wooden one is a couple of logs. fed or not: the food count takes furnace food that's still cooking, so a
+        // respawn can read as fed with nothing in its hands. at or over the floor the starter goes first and the refill behind it,
         // like it always did. a bag that already has its pick and weapon and only owes logs keeps the one piece refill
         boolean hungry = food.held() < food.floor();
         List<KitNeed> out = new ArrayList<>();
         List<KitNeed> starter = starter(f, cfg, endBeds, false, late, food, wood);
-        boolean split = hungry && starter.stream().anyMatch(n -> isTool(n.catalogueName()));
+        boolean owesTools = starter.stream().anyMatch(n -> isTool(n.catalogueName()));
+        boolean split = hungry && owesTools;
+        if (owesTools && unarmed(f)) {
+            out.add(new KitNeed("wooden_sword", held(f, "wooden_sword") + 1));
+        }
         if (split) {
-            if (unarmed(f)) {
-                out.add(new KitNeed("wooden_sword", held(f, "wooden_sword") + 1));
-            }
             out.add(new KitNeed(KitNeed.FOOD, food.floor()));
         } else if (hungry) {
             // nothing to arm, so the refill is the whole job and goes up front in one piece
