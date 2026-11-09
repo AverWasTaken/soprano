@@ -75,6 +75,9 @@ final class BlazeFight {
     // blazes we already said we're skipping for a pack zone, one line each and not one a tick
     private final java.util.Set<Integer> packSkipLogged = new java.util.HashSet<>();
     private long outOfReachSince = Long.MIN_VALUE;
+    // the nearest blaze we could actually swing at (a candidate) as of the last scan. one behind a wall or hovering out of reach
+    // is no reason to stay, there is nothing to hit back
+    private double closestCandidate = Double.POSITIVE_INFINITY;
     private double range = BlazeFightRules.PICK_RANGE;
     // read off the pathfinder thread. fighting and running never place blocks at our feet or above: pillaring up at a hovering
     // blaze is how we ended up building next to one
@@ -150,7 +153,8 @@ final class BlazeFight {
         boolean burning = player.isOnFire() && !player.hasEffect(MobEffects.FIRE_RESISTANCE);
         boolean withered = player.hasEffect(MobEffects.WITHER);
         Mode next = BlazeFightRules.decide(health, running, runGaveUp, !threats.isEmpty(), target != null,
-                BlazeFightRules.stillHurting(burning, withered));
+                BlazeFightRules.stillHurting(burning, withered),
+                target != null && closestCandidate <= BlazeFightRules.LATCH_SKIP_BLAZE_RANGE);
         running = next == Mode.RUN;
         mode = next;
         noPlacing = mode != Mode.CAMP;
@@ -338,6 +342,7 @@ final class BlazeFight {
         // (once the back off starts it runs until the pack is out of PACK_PLAYER_RADIUS too, else it stops at 8.1 blocks with them still on top of us)
         packClose = packHere && (packClose || BlazeFightRules.packNear(witherSkeletonsNear(mod, player.position(), BlazeFightRules.PACK_BACKOFF_RADIUS)));
         around = 0;
+        closestCandidate = Double.POSITIVE_INFINITY;
         targetTracked = false;
         targetInReach = false;
         for (Blaze blaze : blazes) {
@@ -363,7 +368,10 @@ final class BlazeFight {
                 Floor floor = floorUnder(mod.getWorld(), blaze);
                 inReach = BlazeFightRules.isReachable(floor.height(), floor.lava(), distance, range, blaze == target)
                         && mod.getEntityTracker().isEntityReachable(blaze);
-                if (inReach) candidates.add(blaze);
+                if (inReach) {
+                    candidates.add(blaze);
+                    closestCandidate = Math.min(closestCandidate, distance);
+                }
             }
             if (blaze == target) {
                 targetTracked = true;
@@ -385,7 +393,8 @@ final class BlazeFight {
                 + Math.round(zone[0]) + "," + Math.round(zone[1]) + "," + Math.round(zone[2]));
     }
 
-    // keep the blaze we have until it is dead, gone or has been out of reach a while, then take the nearest one in reach
+    // keep the blaze we have until it is dead, gone or has been out of reach a while, then take the next (BlazeFightRules.pick).
+    // the one exception is a clearly more hurt one biting us, see switchTo
     private void updateTarget(LocalPlayer player, long now) {
         if (target != null) {
             // a clock that went backwards (new world) starts the out of reach count over
@@ -397,20 +406,37 @@ final class BlazeFight {
             long outFor = outOfReachSince == Long.MIN_VALUE ? 0 : now - outOfReachSince;
             if (packDrop || !BlazeFightRules.keepTarget(target.isAlive(), targetTracked, outFor)) target = null;
         }
-        if (target != null) return;
-        outOfReachSince = Long.MIN_VALUE;
-        Blaze nearest = null;
-        double best = Double.POSITIVE_INFINITY;
-        for (Blaze blaze : candidates) {
-            double d = player.distanceToSqr(blaze);
-            if (d < best) {
-                best = d;
-                nearest = blaze;
-            }
+        if (target != null) {
+            switchToHurt(player);
+            return;
         }
-        target = nearest;
-        targetTracked = nearest != null;
-        targetInReach = nearest != null;
+        outOfReachSince = Long.MIN_VALUE;
+        double[][] seen = new double[candidates.size()][];
+        for (int i = 0; i < seen.length; i++) {
+            Blaze blaze = candidates.get(i);
+            seen[i] = new double[]{player.distanceTo(blaze), blaze.getHealth()};
+        }
+        int pick = BlazeFightRules.pick(seen);
+        target = pick < 0 ? null : candidates.get(pick);
+        targetTracked = target != null;
+        targetInReach = target != null;
+    }
+
+    // a hurt blaze in swinging range beats the fresh one we are on: finishing it is one less thing hitting us
+    private void switchToHurt(LocalPlayer player) {
+        Blaze hurt = null;
+        for (Blaze blaze : candidates) {
+            if (blaze == target || !BlazeFightRules.switchTo(target.getHealth(), player.distanceTo(blaze), blaze.getHealth())) continue;
+            if (hurt == null || blaze.getHealth() < hurt.getHealth()) hurt = blaze;
+        }
+        if (hurt == null) return;
+        Debug.logInternal("rods: switching to the hurt blaze #" + hurt.getId() + " (" + Math.round(hurt.getHealth()) + " hp, "
+                + String.format(java.util.Locale.ROOT, "%.1f", player.distanceTo(hurt)) + " away) from #" + target.getId()
+                + " (" + Math.round(target.getHealth()) + " hp)");
+        target = hurt;
+        targetTracked = true;
+        targetInReach = true;
+        outOfReachSince = Long.MIN_VALUE;
     }
 
     private List<Entity> threatEntities() {
