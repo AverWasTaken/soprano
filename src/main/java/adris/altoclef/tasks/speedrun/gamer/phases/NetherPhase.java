@@ -184,8 +184,9 @@ public class NetherPhase implements PhaseHandler {
     private long tripStartTick;
     private long tripGainTick;
     private int tripBestUnits;
-    // where this trip ends (FoodTripRules.tripEndUnits), 0 = the plan's stop
-    private int tripEndUnits;
+    // past this many units the rising hold lets go of the trip clock (FoodTripRules.holdCapUnits). the trip itself hunts to the
+    // plan's stop
+    private int tripHoldCap;
     // some part of a food trip is going on right now (the nether walk home, the overworld half, the walk back down)
     private boolean tripAway;
     // when the trip left the nether (foodTripStart is re-stamped once we are up top): the whole trip is paused out of the rods budget
@@ -384,7 +385,7 @@ public class NetherPhase implements PhaseHandler {
         lastUnsafeTick = -1;
         foodTripUp = false;
         lastTripUnits = -1;
-        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.tripFoodShort(ctx, tripEndUnits) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.tripFoodShort(ctx) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
             // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
             // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
             tripResumed = true;
@@ -498,7 +499,7 @@ public class NetherPhase implements PhaseHandler {
                     tripStartUnits = FoodTripRules.units(ctx.food());
                     foodPickup.reset();
                 }
-                // over when nothing is short any more: food in the bag at the overworld minimum (what is still cooking is not in
+                // over when nothing is short any more: food in the bag at the plan's trip stop (what is still cooking is not in
                 // it) and, on a blocks trip, the entry stack held. a kill or a pickup raises the count, and the hunt is the one
                 // thing up here that should keep the watchdog quiet
                 int units = FoodTripRules.units(ctx.food());
@@ -518,10 +519,10 @@ public class NetherPhase implements PhaseHandler {
                     hudState = foodPickup.hud() == null ? "Collecting the food we cooked" : foodPickup.hud();
                     return cooked;
                 }
-                Task hunt = foodFloor.tickTrip(ctx, tripBlocks, tripEndUnits);
+                Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 long gameNow = ctx.facts().gameTime();
                 if (!FoodTripRules.tripOver(hunt != null, GameClock.since(tripStartTick, gameNow) / 20.0, tripSeconds,
-                        GameClock.since(tripGainTick, gameNow) / 20.0)) {
+                        GameClock.since(tripGainTick, gameNow) / 20.0, units >= tripHoldCap)) {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
@@ -728,7 +729,7 @@ public class NetherPhase implements PhaseHandler {
             tripResumed = false;
             foodTripStart = now;
             tripStartTick = tick;
-            tripEndUnits = FoodTripRules.tripEndUnits(portalDistance, ctx.food().overworldMinimum(), ctx.food().tripEnd());
+            tripHoldCap = FoodTripRules.holdCapUnits(portalDistance, ctx.food().overworldMinimum());
             tripLeftAt = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
             homeMark = null;
