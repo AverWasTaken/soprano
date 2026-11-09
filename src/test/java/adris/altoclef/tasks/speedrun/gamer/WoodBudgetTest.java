@@ -79,7 +79,7 @@ public class WoodBudgetTest {
     @Test
     public void aBareBagOwesTheWholeKit() {
         WoodBudget w = WoodBudget.of(new FakeFacts(), cfg, BEDS);
-        assertEquals(15, w.gatherLogsOwed());
+        assertEquals(16, w.gatherLogsOwed());
         assertEquals(KitPlanner.woodNeed(new FakeFacts(), cfg, BEDS), w.gatherLogsOwed());
         assertEquals(KitPlanner.woodNeed(new FakeFacts(), cfg, BEDS, false), w.ironLogsOwed());
         assertEquals(3 * BEDS, w.bedPlanksOwed());
@@ -102,10 +102,10 @@ public class WoodBudgetTest {
 
     @Test
     public void spareWoodIsWhatIsHeldBeyondTheKeep() {
-        // 14 logs is exactly the budget with the two planks in hand, 6 more are fuel: a log and a plank are 1.5 smelts apiece
-        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 2);
+        // 14 logs is exactly the budget with the seven planks in hand, 6 more are fuel: a log and a plank are 1.5 smelts apiece
+        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 7);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS);
-        assertEquals(new WoodReserve.Keep(14, 2), w.keep());
+        assertEquals(new WoodReserve.Keep(14, 7), w.keep());
         assertEquals(6, w.spareLogs());
         assertEquals(0, w.sparePlanks());
         assertEquals(9, w.burnableWoodSmelts(0));
@@ -130,28 +130,28 @@ public class WoodBudgetTest {
 
     @Test
     public void theFuelReserveIsEverythingOutsideTheOverworld() {
-        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 6);
-        // the planks count towards the budget too: 13 logs and 6 planks are what the kit still wants
-        assertEquals(new WoodReserve.Keep(13, 6), WoodBudget.of(f, cfg, BEDS).fuelKeep());
+        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 11);
+        // the planks count towards the budget too: 13 logs and 11 planks are what the kit still wants
+        assertEquals(new WoodReserve.Keep(13, 11), WoodBudget.of(f, cfg, BEDS).fuelKeep());
         f.dimension = Dimension.NETHER;
         WoodBudget nether = WoodBudget.of(f, cfg, BEDS);
-        assertEquals(new WoodReserve.Keep(20, 6), nether.fuelKeep());
+        assertEquals(new WoodReserve.Keep(20, 11), nether.fuelKeep());
         // the planner's own keep does not care where we are
-        assertEquals(new WoodReserve.Keep(13, 6), nether.keep());
+        assertEquals(new WoodReserve.Keep(13, 11), nether.keep());
     }
 
     @Test
     public void applyingTheBudgetTellsTheFurnacesItsFuelKeep() {
-        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 6);
+        FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 11);
         WoodReserve.apply(WoodBudget.of(f, cfg, BEDS));
         int[] viaApply = burnable();
-        // 13 logs and 6 planks kept
+        // 13 logs and 11 planks kept
         assertEquals(7, viaApply[0]);
         assertEquals(0, viaApply[1]);
     }
 
     private static int[] burnable() {
-        return FuelPolicy.usable(List.of(new ItemStack(Items.OAK_LOG, 20), new ItemStack(Items.OAK_PLANKS, 6)));
+        return FuelPolicy.usable(List.of(new ItemStack(Items.OAK_LOG, 20), new ItemStack(Items.OAK_PLANKS, 11)));
     }
 
     @Test
@@ -242,7 +242,7 @@ public class WoodBudgetTest {
                 Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS}) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.tablePlaced = true;
         return f;
     }

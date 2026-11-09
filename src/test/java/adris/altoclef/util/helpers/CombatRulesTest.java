@@ -370,6 +370,11 @@ public class CombatRulesTest {
         assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, true, true));
         assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, false, true));
         assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, false, false));
+        // in a boat: up, but never the sneak, that's the dismount key. lava still wins
+        assertEquals(CombatRules.LiquidShield.NO_STANDSTILL, CombatRules.shieldInLiquid(false, false, false, true));
+        assertEquals(CombatRules.LiquidShield.NO_STANDSTILL, CombatRules.shieldInLiquid(false, false, true, true));
+        assertEquals(CombatRules.LiquidShield.NONE, CombatRules.shieldInLiquid(true, false, false, true));
+        assertEquals(CombatRules.LiquidShield.NORMAL, CombatRules.shieldInLiquid(false, false, true, false));
     }
 
     @Test

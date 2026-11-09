@@ -706,6 +706,8 @@ public final class KitPlanner {
             case "bed" -> ItemHelper.BED;
             case "log" -> ItemHelper.LOG;
             case "planks" -> ItemHelper.PLANKS;
+            // there's no item called "boat", lookup would hand back nothing and the kit would craft one forever
+            case "boat" -> ItemHelper.WOOD_BOAT;
             default -> lookup(n);
         });
     }

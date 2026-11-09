@@ -876,4 +876,16 @@ public class StrongholdEstimatorTest {
             }
         }
     }
+
+    // the water hand-off takes a snapped fit at the start chunk middle (the DIG advice's + 4), nothing from one ray or a blurry two
+    @Test
+    public void aSettledSpotIsOnlyGivenForAFitWorthDiggingFrom() {
+        StrongholdEstimator one = est();
+        assertTrue(one.addRay(toTarget(0, 0)));
+        assertFalse(one.settledSpot(16).isPresent());
+        assertFalse(twoBlurry().settledSpot(16).isPresent());
+        double[] spot = tight().settledSpot(16).orElseThrow();
+        assertEquals(TX + 4, spot[0], 0);
+        assertEquals(TZ + 4, spot[1], 0);
+    }
 }

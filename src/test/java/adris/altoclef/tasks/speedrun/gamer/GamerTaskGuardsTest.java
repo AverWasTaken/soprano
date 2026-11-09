@@ -21,4 +21,11 @@ public class GamerTaskGuardsTest {
         assertTrue(GamerTask.guards(Items.FURNACE));
         assertTrue(GamerTask.guards(Items.SMOKER));
     }
+
+    // the ocean boat is one plank-made slot, the junk drop's favourite kind
+    @Test
+    public void theBoatIsGuarded() {
+        assertTrue(GamerTask.guards(Items.OAK_BOAT));
+        assertTrue(GamerTask.guards(Items.BIRCH_BOAT));
+    }
 }

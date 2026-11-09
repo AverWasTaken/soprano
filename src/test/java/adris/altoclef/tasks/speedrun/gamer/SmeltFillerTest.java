@@ -43,7 +43,7 @@ public class SmeltFillerTest {
     // the starter kit, enough food to leave, and nothing iron yet: where the bot is when the first batch goes in
     private FakeFacts atTheFurnace() {
         FakeFacts f = new FakeFacts();
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.foodUnits = 70;
         return f;
     }

@@ -89,6 +89,45 @@ final class RoomRetarget {
         return probe.loaded(x, z) && noFluid(probe, x, z, top) && !probe.fluid(x, probe.topY(x, z), z);
     }
 
+    // loaded and fluid on top. unloaded is not water, it's nothing yet
+    static boolean underWater(Probe probe, int x, int z) {
+        return probe.loaded(x, z) && probe.fluid(x, probe.topY(x, z), z);
+    }
+
+    // feet above the sea floor: the way in is the shore, a shaft and a tunnel
+    static boolean shoreWalk(Probe probe, int x, int z, double playerY) {
+        return underWater(probe, x, z) && playerY > seaFloorY(probe, x, z);
+    }
+
+    // already under it (a relog mid tunnel, a stall retry, a hint walk that gave up): the start is a tunnel away. the shore walk would
+    // redo the whole thing, and a plain walk to the start's x/z ends on the water and digs from the surface
+    static boolean underSeaFloor(Probe probe, int x, int z, double playerY) {
+        return underWater(probe, x, z) && playerY <= seaFloorY(probe, x, z);
+    }
+
+    // a start estimate out on the water: the dry column to dig down from instead of the surface over it. empty = it isn't
+    // water we can see, or there's no shore inside SEARCH_RADIUS
+    static Optional<int[]> shoreFor(Probe probe, int x, int z) {
+        return underWater(probe, x, z) ? pickColumn(probe, x, z, x, z) : Optional.empty();
+    }
+
+    // the sea floor under a water start, minus this much rock so the tunnel over to it doesn't open the sea into itself
+    static final int TUNNEL_UNDER_SEABED = 6;
+    static final int WORLD_BOTTOM = -64;
+
+    static int tunnelY(Probe probe, int x, int z) {
+        return seaFloorY(probe, x, z) - TUNNEL_UNDER_SEABED;
+    }
+
+    // the first block under the water
+    static int seaFloorY(Probe probe, int x, int z) {
+        int y = probe.topY(x, z);
+        while (y > WORLD_BOTTOM && probe.fluid(x, y, z)) {
+            y--;
+        }
+        return y;
+    }
+
     // the nearest dry column to the frame's x/z (square rings out, nearest of the first ring that has one), at least
     // KEEP_OFF_RING from the ring centre. empty = nothing in range, the caller keeps the old straight walk
     static Optional<int[]> pickColumn(Probe probe, int fx, int fz, int cx, int cz) {

@@ -182,8 +182,9 @@ public class RoomPhase implements PhaseHandler {
         return roomBed;
     }
 
-    private static boolean atStart(AltoClef mod, GamerContext ctx) {
-        RunState.Pos start = ctx.state().strongholdStart;
+    // the shore column when the start is out on the water (StrongholdRoomSearchTask.digFrom), that's where we stand before going down
+    private boolean atStart(AltoClef mod, GamerContext ctx) {
+        RunState.Pos start = digFrom(ctx);
         var player = mod.getPlayer();
         return start != null && player != null
                 && Math.hypot(start.x - player.getX(), start.z - player.getZ()) <= ctx.cfg().stronghold.startReachBlocks;
@@ -200,7 +201,7 @@ public class RoomPhase implements PhaseHandler {
             if (player == null || !prepStarts(ctx.facts().dimension() == Dimension.OVERWORLD, player.getY(), atStart(mod, ctx))) {
                 return null;
             }
-            RunState.Pos start = ctx.state().strongholdStart;
+            RunState.Pos start = digFrom(ctx);
             startPrep(new BlockPos(start.x, start.y, start.z), now);
         }
         // the cap only ends the gear shopping. capping the beds as well would just send us back up the shaft for them after OPEN
@@ -229,6 +230,10 @@ public class RoomPhase implements PhaseHandler {
             task.backToStart(mod);
         }
         return null;
+    }
+
+    private RunState.Pos digFrom(GamerContext ctx) {
+        return task != null ? task.digFrom() : ctx.state().strongholdStart;
     }
 
     // any attempt: a retry that finds us on the surface short of something is better off shopping now than climbing back for it

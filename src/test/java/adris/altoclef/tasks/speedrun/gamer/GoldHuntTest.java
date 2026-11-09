@@ -41,7 +41,7 @@ public class GoldHuntTest {
             full.give(i, 1);
         }
         full.give(Items.WOODEN_AXE, 1).give(Items.OAK_LOG, 20);
-        full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WOOL.white(), 24);
+        full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1).give(Items.WOOL.white(), 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         full.foodUnits = 100;
         full.diamondHuntGaveUp = true;

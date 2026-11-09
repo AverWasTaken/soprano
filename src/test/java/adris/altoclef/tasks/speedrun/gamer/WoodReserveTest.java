@@ -31,22 +31,22 @@ public class WoodReserveTest {
 
     @Test
     public void onlyWhatIsAboveTheBudgetBurns() {
-        // 15 logs is exactly the budget (see KitPlannerTest), 5 more are fuel
+        // 16 logs is exactly the budget (see KitPlannerTest), 4 more are fuel
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20);
-        assertEquals(new Keep(15, 0), WoodBudget.of(f, cfg, BEDS).keep());
+        assertEquals(new Keep(16, 0), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
     public void speciesShareOnePool() {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 9).give(Items.BIRCH_LOG, 9);
-        assertEquals(new Keep(15, 0), WoodBudget.of(f, cfg, BEDS).keep());
+        assertEquals(new Keep(16, 0), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
     public void planksCountTowardsTheBudgetToo() {
-        // the planner asks in whole logs, so 58 planks is where it stops asking and the other 10 are spare
+        // the planner asks in whole logs, so 63 planks is where it stops asking and the other 5 are spare
         FakeFacts f = new FakeFacts().give(Items.OAK_PLANKS, 68);
-        assertEquals(new Keep(0, 58), WoodBudget.of(f, cfg, BEDS).keep());
+        assertEquals(new Keep(0, 63), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
@@ -54,7 +54,7 @@ public class WoodReserveTest {
         // everything the kit crafts from wood is made already
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 3)
                 .give(Items.WOODEN_PICKAXE, 1).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1)
-                .give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1).give(Items.LADDER, 3)
+                .give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1)
                 .give(Items.IRON_PICKAXE, 1).give(Items.IRON_SWORD, 1).give(Items.BUCKET, 2).give(Items.SHEARS, 1)
                 .give(Items.FLINT_AND_STEEL, 1);
         Keep keep = WoodBudget.of(f, cfg, 0).keep();

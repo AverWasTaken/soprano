@@ -88,7 +88,7 @@ public class OverworldPhasesTest {
             f.give(i, 1);
         }
         f.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
-        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
         f.give(Items.WOOL.green(), 3 * cfg.end.beds);
@@ -112,7 +112,7 @@ public class OverworldPhasesTest {
                 Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.foodUnits = 100;
         assertTrue("the kit is whole", iron.isDone(f, state, cfg));
         // a job nobody collected (more ingots than the kit needed): leaving now would leave them in the furnace
@@ -136,7 +136,7 @@ public class OverworldPhasesTest {
                 Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.foodUnits = 100;
         return f;
     }
@@ -214,7 +214,7 @@ public class OverworldPhasesTest {
                 Items.SHIELD, Items.SHEARS, Items.DIAMOND_PICKAXE)) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_BOAT, 1);
         f.foodUnits = 100;
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
         assertTrue(iron.isDone(f, state, cfg));
@@ -313,7 +313,7 @@ public class OverworldPhasesTest {
         assertTrue(o.golemAbortHealth < o.golemMinHealth);
         assertTrue(o.noLavaSeconds < o.castGiveUpMinutes * 60);
         assertEquals(OverworldConfig.ArmorPlan.FULL_IRON, o.armorPlan);
-        assertEquals(7, o.ironKit.size());
+        assertEquals(8, o.ironKit.size());
         // axe, two stone picks (one spare), sword, furnace
         assertEquals(4, o.starterKit.size());
     }

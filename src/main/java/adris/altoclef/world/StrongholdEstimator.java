@@ -212,6 +212,20 @@ public final class StrongholdEstimator {
         return new Advice(Step.WALK, fit.x, fit.z, "estimate is tight, almost there");
     }
 
+    // a spot good enough to take without the dive throw: snapped onto a start chunk with 2+ rays and as tight as advise wants before
+    // it goes for the dive, or settled. only asked for a spot out on the water, where the dive throw would be from a boat and the dig
+    // from the surface. a wrong spot costs ROOM its one relocate, so a snap that's still blurry doesn't count. empty = the usual way
+    public Optional<double[]> settledSpot(int heldEyes) {
+        if (fit == null || fit.used < 2 || rays.get(rays.size() - 1).dived()) {
+            return Optional.empty();
+        }
+        if (fit.est.snapped() && fit.est.radius() <= NEAR_RADIUS) {
+            // + 4 like the DIG advice
+            return Optional.of(new double[]{fit.snapX + 4, fit.snapZ + 4});
+        }
+        return settled(heldEyes) ? Optional.of(new double[]{fit.x, fit.z}) : Optional.empty();
+    }
+
     private boolean settled(int heldEyes) {
         // a rejected ray means the world disagreed with the fit at least once, so it is not settled whatever its radius says
         if (fit.used < SETTLED_MIN_RAYS || throwsUsed + restoredRejects > fit.used) {

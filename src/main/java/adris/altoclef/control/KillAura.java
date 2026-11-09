@@ -353,7 +353,8 @@ public class KillAura {
     }
 
     public void startShielding(AltoClef mod) {
-        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(mod.getPlayer().isInLava(), mod.getPlayer().isInWater(), mod.getPlayer().onGround());
+        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(mod.getPlayer().isInLava(), mod.getPlayer().isInWater(), mod.getPlayer().onGround(),
+                mod.getPlayer().isPassenger());
         if (liquid == CombatRules.LiquidShield.NONE) {
             stopShielding(mod);
             return;

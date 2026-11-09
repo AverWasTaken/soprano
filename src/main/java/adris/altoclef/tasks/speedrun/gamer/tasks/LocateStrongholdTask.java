@@ -42,6 +42,9 @@ public class LocateStrongholdTask extends Task {
     private static final int FRAME_CHECK_EVERY_TICKS = 5;
     // two walk legs in a row that went nowhere = this place is not walkable the way the estimator wants
     private static final int MAX_STALLED_LEGS = 2;
+    // a water spot with no shore in reach is asked again this much later. pickColumn on open ocean is ~30k probes, same pace as
+    // the room search's no dry land retry
+    private static final double NO_SHORE_RETRY_SECONDS = 30;
 
     private final GamerContext ctx;
     private final Task _overworldTask = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
@@ -72,6 +75,7 @@ public class LocateStrongholdTask extends Task {
     private int tickCounter;
     private boolean done;
     private double stageSince;
+    private double noShoreUntil;
     // when the eye entity was first seen gone while collecting. NaN = not yet
     private double _eyeGoneAt = Double.NaN;
     private final TimerGame _pickupTimer = new TimerGame(PICKUP_SECONDS);
@@ -219,6 +223,9 @@ public class LocateStrongholdTask extends Task {
             enter(mod, Stage.COLLECT);
             return null;
         }
+        if (waterHandOff(mod)) {
+            return null;
+        }
         if (estimator.rays().isEmpty() && state.relocateFrom != null && !legIsRelocate) {
             double[] to = LocateLegPlanner.relocateTarget(state.relocateFrom.x, state.relocateFrom.z, LocateLegPlanner.RELOCATE_BLOCKS);
             legIsRelocate = true;
@@ -295,6 +302,36 @@ public class LocateStrongholdTask extends Task {
         done = true;
     }
 
+    // a settled estimate out over the water: the last legs would be rowed past drowned to throw the dive eye from a boat, and the dig
+    // after it would start from the surface. ROOM digs down from the nearest shore instead (StrongholdRoomSearchTask.toStart), so
+    // it gets the spot as soon as the column is loaded. no shore in reach = the usual way, the boat gets us there
+    private boolean waterHandOff(AltoClef mod) {
+        if (seconds(mod) < noShoreUntil) {
+            return false;
+        }
+        Optional<double[]> spot = estimator.settledSpot(mod.getItemStorage().getItemCount(Items.ENDER_EYE));
+        if (spot.isEmpty()) {
+            return false;
+        }
+        int x = (int) Math.floor(spot.get()[0]);
+        int z = (int) Math.floor(spot.get()[1]);
+        RoomRetarget.Probe probe = StrongholdRoomSearchTask.probe(mod);
+        // the cheap half first, the shore pick only for water we can see
+        if (!RoomRetarget.underWater(probe, x, z)) {
+            return false;
+        }
+        if (RoomRetarget.shoreFor(probe, x, z).isEmpty()) {
+            noShoreUntil = seconds(mod) + NO_SHORE_RETRY_SECONDS;
+            return false;
+        }
+        ctx.state().strongholdStart = new RunState.Pos(x, 0, z);
+        persist();
+        ctx.progress("stronghold start found");
+        ctx.log("the estimate at " + x + ", " + z + " is under water, the room search digs in from the shore");
+        done = true;
+        return true;
+    }
+
     private void startLeg(AltoClef mod, double x, double z, boolean arrive) {
         legX = x;
         legZ = z;
@@ -329,6 +366,9 @@ public class LocateStrongholdTask extends Task {
             clearRelocate();
             forceThrow = true;
             enter(mod, Stage.DECIDE);
+            return null;
+        }
+        if (tickCounter % ADVISE_EVERY_TICKS == 0 && !legIsRelocate && waterHandOff(mod)) {
             return null;
         }
         if (tickCounter % ADVISE_EVERY_TICKS == 0 && adviceChanged(mod, px, pz)) {
