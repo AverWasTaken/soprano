@@ -172,6 +172,13 @@ public final class CombatCommit {
     // a shot this fresh (two seconds) breaks the run latch for the low hp rule: the latch is for fights that ended, not for arrows
     public static final long SHOT_FRESH = 40;
 
+    // in the water with a ranged hit on us inside SHOT_MEMORY: a run never calls that clear. a trident drowned swims faster than we
+    // do, so "nothing within 12" out there only means it is between throws. the hit is the clock, not the sight: under water the
+    // thrower is out of the foe list half the time anyway. RUN_CAP still ends it
+    public static boolean wetShot(boolean inWater, long now, long rangedHitAt) {
+        return inWater && now >= rangedHitAt && now - rangedHitAt <= SHOT_MEMORY;
+    }
+
     // the bail line moves with how hard we are being hit: leave when a hit like the last big one would put us at or under
     // FLEE_HP, not when we are already there. the biggest single drop in the last NEXT_HIT_WINDOW ticks (capped, a fall or a
     // creeper is not a model for the next swing) is the guess. at armor 0 with hits of 3 to 5 the line sits at 11 to 13, in full
@@ -834,6 +841,8 @@ public final class CombatCommit {
     // that fast corner is the lone wither skeleton one (loneWither): a crowd still bails it
     private boolean witherCorner;
     private double angryWither = Double.POSITIVE_INFINITY;
+    // the last tick a ranged mob or a projectile hit us, handed in each tick like angryWither (see wetShot)
+    private long rangedHitAt = Long.MIN_VALUE / 2;
     // since when nothing fast has been on us in a fast corner, -1 while something is
     private long fastClearSince = -1;
     // since when the melee target has been out of reach (takeover)
@@ -935,6 +944,10 @@ public final class CombatCommit {
     // answer this, it stops at FOE_RANGE and a skeleton gives up further out than that
     public void angryWither(double nearest) {
         this.angryWither = nearest;
+    }
+
+    public void rangedHit(long at) {
+        this.rangedHitAt = at;
     }
 
     public boolean perching() {
@@ -2322,6 +2335,7 @@ public final class CombatCommit {
             clearSince = t.now();
         }
         if (t.now() - startTick >= RUN_CAP) return capped(t);
+        boolean wetShot = wetShot(t.body().inWater(), t.now(), rangedHitAt);
         if (losRun) {
             // the line is the whole point: out of sight is out of range, however few blocks that took
             boolean seen = t.foes().stream().anyMatch(foe -> foe.ranged() && !foe.creeper() && foe.sight());
@@ -2329,10 +2343,10 @@ public final class CombatCommit {
                 noSightSince = -1;
             } else if (noSightSince < 0) {
                 noSightSince = t.now();
-            } else if (t.now() - noSightSince >= LOS_CLEAR_TICKS) {
+            } else if (t.now() - noSightSince >= LOS_CLEAR_TICKS && !wetShot) {
                 return end(t, Event.RUN_CLEAR);
             }
-        } else if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS) return end(t, Event.RUN_CLEAR);
+        } else if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS && !wetShot) return end(t, Event.RUN_CLEAR);
 
         // running is not shaking it: it keeps landing hits, in contact or not. armed, that is a fight (the same boxed in fight
         // as the cap's, so it finishes this target and cannot flip back to a run on the next tick). unarmed, a punch is still

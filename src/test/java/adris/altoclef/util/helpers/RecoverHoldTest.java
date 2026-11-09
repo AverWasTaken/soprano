@@ -23,6 +23,8 @@ public class RecoverHoldTest {
     private static final Body FED = new Body(20, false, false, false);
     private static final Body EATING = new Body(15, true, false, true);
     private static final Body BARRED = new Body(20, true, true, false);
+    // fed and free to hold, but in the water
+    private static final Body WET = new Body(20, true, false, false, false, true);
 
     private static Foe zombie(int id, double distance) {
         return new Foe(id, distance, false, false, NEVER);
@@ -300,8 +302,8 @@ public class RecoverHoldTest {
     }
 
     @Test
-    public void onlyBlazesAndSkeletonTypesAreAHoldRerunSource() {
-        for (String type : new String[]{"blaze", "skeleton", "stray", "bogged", "parched"}) {
+    public void onlyBlazesSkeletonTypesAndDrownedAreAHoldRerunSource() {
+        for (String type : new String[]{"blaze", "skeleton", "stray", "bogged", "parched", "drowned"}) {
             assertTrue(type, RecoverHold.rerunSource(type));
         }
         // a ghast shoots from sixty blocks and the nether run would end in lava, the shield is its answer. a wither skeleton swings
@@ -341,5 +343,49 @@ public class RecoverHoldTest {
         assertTrue(0.23 + 0.05 >= CombatRules.FAST_MOB_SPEED);
         assertFalse(0.23 >= CombatRules.FAST_MOB_SPEED);
         assertFalse(0.25 >= CombatRules.FAST_MOB_SPEED);
+    }
+
+    // ---- the water
+
+    @Test
+    public void noHoldStartsInTheWater() {
+        assertTrue(RecoverHold.mayStart(FED));
+        assertFalse(RecoverHold.mayStart(WET));
+        // a run that ends hurt afloat hands the wheel back, the walk takes us to land
+        CombatCommit c = new CombatCommit();
+        runAndClear(c, 1000, 10, WET);
+        assertFalse(c.recovering());
+    }
+
+    @Test
+    public void aHoldLetsGoTheMomentWeAreInTheWater() {
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        assertEquals(Event.NONE, c.step(tick(end + 1, 10, 30, FED)));
+        assertTrue(c.recovering());
+        c.step(tick(end + 2, 10, 30, WET));
+        assertFalse(c.recovering());
+        // and stays off back on the bank, it was a run's hold and the run is long over
+        c.step(tick(end + 3, 10, 30, FED));
+        assertFalse(c.recovering());
+    }
+
+    @Test
+    public void aReRunAcrossAStreamIsStillTheSameHold() {
+        CombatCommit c = new CombatCommit();
+        long end = runAndClear(c, 1000, 10, FED);
+        assertEquals(Event.NONE, c.step(tick(end + 1, 11, 30, FED)));
+        assertEquals(end, c.recoverHold().startTick());
+        Tick shot = new Tick(end + 2, 11, 30, 0, List.of(), null, Way.NONE, true, false, false, FED, false, 0, true);
+        assertEquals(Event.RUN_START, c.step(shot));
+        // half the re-run in the water, the rest on the far bank, where it calls clear
+        Event last = Event.NONE;
+        for (int i = 1; i <= 80 && last != Event.RUN_CLEAR; i++) {
+            last = c.step(tick(end + 2 + i, 11, 30 + 0.5 * i, i <= 30 ? WET : FED));
+            if (i <= 30) assertTrue(c.recovering());
+        }
+        assertEquals(Event.RUN_CLEAR, last);
+        assertTrue(c.recovering());
+        assertEquals(end, c.recoverHold().startTick());
     }
 }

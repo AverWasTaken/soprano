@@ -28,10 +28,11 @@ public final class RecoverHold {
     public static final long SHOT_SOURCE_TICKS = 40;
 
     // who counts: not the ghast (it shoots from sixty blocks, "run 24" in the nether is lava, the shield is the answer to its
-    // balls), not the wither skeleton (it is a melee mob)
+    // balls), not the wither skeleton (it is a melee mob). the drowned is in: a trident flies further than RERUN_RANGE and the
+    // thrower is usually under water where the hostile list can't be bothered
     public static boolean rerunSource(String entityType) {
         return switch (entityType) {
-            case "blaze", "skeleton", "stray", "bogged", "parched" -> true;
+            case "blaze", "skeleton", "stray", "bogged", "parched", "drowned" -> true;
             default -> false;
         };
     }
@@ -41,10 +42,15 @@ public final class RecoverHold {
 
     // what the body and the bag say, for the hold. healFood: the food chain's pick passes the heal meal's filter (no chorus,
     // no raw chicken, no rotten flesh). barred: a task that fights on its own terms has mob defense excluded (golem, dragon,
-    // blaze rods), or we are in the end. eating: a bite is under way. lingering: wither, poison or fire is still ticking
-    public record Body(int hunger, boolean healFood, boolean barred, boolean eating, boolean lingering) {
+    // blaze rods), or we are in the end. eating: a bite is under way. lingering: wither, poison or fire is still ticking.
+    // inWater: wading or swimming, the same question Drowned.okTarget asks about us
+    public record Body(int hunger, boolean healFood, boolean barred, boolean eating, boolean lingering, boolean inWater) {
         // nobody said: no hold. the chain always says, the machine's own tests mostly do not care
-        public static final Body NONE = new Body(20, false, true, false, false);
+        public static final Body NONE = new Body(20, false, true, false, false, false);
+
+        public Body(int hunger, boolean healFood, boolean barred, boolean eating, boolean lingering) {
+            this(hunger, healFood, barred, eating, lingering, false);
+        }
 
         public Body(int hunger, boolean healFood, boolean barred, boolean eating) {
             this(hunger, healFood, barred, eating, false);
@@ -70,8 +76,11 @@ public final class RecoverHold {
         };
     }
 
+    // never in the water. standing still afloat is standing still next to the drowned that just shot us, and in the day a
+    // drowned only goes after a player who is in the water (Drowned.okTarget). the walk carries on to dry land instead, which
+    // ends the whole thing by itself
     public static boolean mayStart(Body body) {
-        return !body.barred() && body.canRegen();
+        return !body.barred() && !body.inWater() && body.canRegen();
     }
 
     private boolean on;
@@ -125,7 +134,9 @@ public final class RecoverHold {
         lastTick = now;
         boolean gained = health > lastHealth;
         lastHealth = health;
-        if (body.barred() || health >= DONE_AT) {
+        // (in the water mid hold: same reason mayStart says no, let the task walk us out. not mid re-run though: a re-run across a
+        // stream that ends on the bank is still the same hold, or its end would start a fresh one and dodge the cap)
+        if (body.barred() || (body.inWater() && !committed) || health >= DONE_AT) {
             on = false;
             return;
         }

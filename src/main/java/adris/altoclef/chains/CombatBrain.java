@@ -108,6 +108,8 @@ final class CombatBrain {
     private int _meleeAround;
     private boolean _shotAt;
     private long _shotUntil = Long.MIN_VALUE / 2;
+    // the last ranged hit itself, no sight latch on top (CombatCommit.wetShot)
+    private long _rangedHitAt = Long.MIN_VALUE / 2;
     // a melee fight with the target close, the shield is up for its swing (CombatRules.fightShield)
     private boolean _fightShield;
     // a ledge over a lethal drop with a melee foe close: the shield stops the knock that would send us over
@@ -130,7 +132,7 @@ final class CombatBrain {
     private float _lastHealth = -1;
     private DamageSource _lastSource;
     private long _lastHurtAt = Long.MIN_VALUE / 2;
-    // the blaze or skeleton whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
+    // the blaze, skeleton or drowned whose projectile last hit us, and when: the hold runs from it (RecoverHold.rerunSource)
     private DamageSource _shotSeen;
     private Mob _shooter;
     private long _shooterAt = Long.MIN_VALUE / 2;
@@ -296,6 +298,7 @@ final class CombatBrain {
         _meleeAround = 0;
         _shotAt = false;
         _shotUntil = Long.MIN_VALUE / 2;
+        _rangedHitAt = Long.MIN_VALUE / 2;
         _fightShield = false;
         _rim = false;
         _rimGuardId = -1;
@@ -497,7 +500,7 @@ final class CombatBrain {
         if (_commit.mode() == Mode.RUN && _commit.why() == CombatCommit.Why.REPEAT_CREEPER) addNearCreepers(mod, player, mobs, foes);
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
-        // the hold's re-run source: who threw the last projectile at us, when it is a blaze or a skeleton. the run steers around it
+        // the hold's re-run source: who threw the last projectile at us, when it is a blaze, a skeleton or a drowned. the run steers around it
         // like around any foe, the hostile list alone would leave it blind to a thrower it never carried
         Mob shooter = rangedSource(player, now);
         if (!recovering()) shooter = null;
@@ -539,6 +542,7 @@ final class CombatBrain {
             _commit.angryWither(dimension == Dimension.NETHER
                     ? CombatRules.runWither(player.getHealth(), nearestAngryWither(mod, player), nearestWither(player))
                     : Double.POSITIVE_INFINITY);
+            _commit.rangedHit(_rangedHitAt);
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes).withRim(rim).withLavaClose(lavaClose), armed(mod, foes), tryingToMove(mod, player), creeperRepeat, body(mod, dimension),
                     boxedIn(mod, player, mobs, foes), 0, _commit.recovering() && (freshShot || blazeWatching(mod, player)), lingering(player)));
@@ -1013,7 +1017,10 @@ final class CombatBrain {
         }
         // a shooter past FOE_RANGE is no foe, so shotAt never sees it and the 60 tick latch never starts: a trident from 18
         // blocks hit us mid meal after the run ended. the hit itself keeps the bite closed for a full SHOT_MEMORY
-        if (ranged || source.getDirectEntity() instanceof Projectile) _shotUntil = CombatCommit.hitLatch(_shotUntil, now);
+        if (ranged || source.getDirectEntity() instanceof Projectile) {
+            _shotUntil = CombatCommit.hitLatch(_shotUntil, now);
+            _rangedHitAt = now;
+        }
     }
 
     // the world's side of the perch for this tick, null when nothing is close enough to matter (and we are not on one already)
@@ -1073,16 +1080,17 @@ final class CombatBrain {
     }
 
     // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
-    // defense excluded, or this is the end, where standing still next to the dragon is not healing
+    // defense excluded, or this is the end, where standing still next to the dragon is not healing. isInWater and not "afloat":
+    // a drowned in the day goes after a player wading in the shallows just the same
     private static RecoverHold.Body body(AltoClef mod, Dimension dimension) {
         LocalPlayer player = mod.getPlayer();
         boolean barred = dimension == Dimension.END || mod.getBehaviour().hasMobDefenseExclusion();
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
-                food != null && food.isTryingToEat(), lingering(player));
+                food != null && food.isTryingToEat(), lingering(player), player.isInWater());
     }
 
-    // the blaze or skeleton whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it
+    // the blaze, skeleton or drowned whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it
     // is read every tick and the thrower remembered here. the window only gates starting the re-run (see tick): once it is running
     // the thrower stays in the run's crowd until the run is over, or the run would turn back toward it after two seconds
     private Mob rangedSource(LocalPlayer player, long now) {
