@@ -6,9 +6,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// the first page of the settings tab: the 41 settings people actually touch, in six sections laid out four to a row, most used
+// the first page of the settings tab: the 40 settings people actually touch, in six sections laid out four to a row, most used
 // first. travel leads because fast mode and boats are the two switches people go looking for. the sentences are the
-// tooltips for these 41, written so a kid can read them; everything else uses the generated javadoc description.
+// tooltips for these 40, written so a kid can read them; everything else uses the generated javadoc description.
 // all the hand written words live here and nowhere else
 public final class SettingsHome {
 
@@ -45,8 +45,6 @@ public final class SettingsHome {
                     e("legitMine", Icon.EYE, "Only mines ores it can actually see, like a normal player. Slower to find them."),
                     e("allowDownward", Icon.LEVEL_DOWN, "Digs the block under its feet. Off, it digs staircases instead of straight shafts."),
                     e("mineScanDroppedItems", Icon.GET, "While mining, it also walks over to pick up dropped items of what it is mining."),
-                    e("buildInLayers", Icon.SCHEMATICS, "Builds one layer of a schematic before starting the next one."),
-                    // the one odd tile out: the owner asked for this switch on the first page, and crafting sits closest to building
                     e("altoShowInventoryWhenCrafting", Icon.CRAFT, "Opens your inventory while it crafts in the little 2x2 grid, so you can watch. Turn it off to craft without the screen."))),
             new Section("Combat and safety", List.of(
                     e("altoMobDefense", Icon.ENTITY, "Runs from creepers and scary mobs, and pushes mobs away when it's hurt."),

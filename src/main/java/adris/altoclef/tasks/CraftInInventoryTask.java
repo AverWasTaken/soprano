@@ -1,5 +1,6 @@
 package adris.altoclef.tasks;
 
+import net.minecraft.client.Minecraft;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.resources.CollectRecipeCataloguedResourcesTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
@@ -70,7 +71,9 @@ public class CraftInInventoryTask extends ResourceTask {
             // Try throwing away cursor slot if it's garbage
             garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
             mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-        } else {
+        } else if (!mod.getCraftScreenShow().isOurs(Minecraft.getInstance().gui.screen())) {
+            // our own watch-the-craft inventory stays up between back to back crafts, the grid is empty here anyway.
+            // closing it just to open it again a tick later reads as a blink
             StorageHelper.closeScreen();
         } // Just to be safe I guess
     }
