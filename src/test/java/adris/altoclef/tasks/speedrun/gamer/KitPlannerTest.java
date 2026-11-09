@@ -103,8 +103,9 @@ public class KitPlannerTest {
         // fed enough to be over the floor: a bag under it leads with the refill (anEmptyBagEatsBeforeItBuildsAnything)
         f.foodUnits = 40;
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
-        // no axe and no bed planks past the gather, but a plan that starts bare still does its wood before any ore
-        assertEquals(List.of("log", "stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
+        // no axe and no bed planks past the gather, but a plan that starts bare still does its wood before any ore. nothing to
+        // swing yet, so a wooden sword ahead of it all (anUnarmedFedBagMakesTheWoodenSwordFirstToo)
+        assertEquals(List.of("wooden_sword", "log", "stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
                 "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
         // no dig yet: the essentials are not in hand (theDigWaitsForTheEssentials)
@@ -361,12 +362,12 @@ public class KitPlannerTest {
         assertTrue(names(plan).indexOf("stone_sword") < rest);
         // and the ore only after all of it
         assertTrue(names(plan).indexOf("iron_ingot") > rest);
-        // once the bite is eaten the plan is the fed one, tools first and the refill behind them. the wooden sword goes with the
-        // bite: fed, the stone sword in the starter is the weapon like it always was
+        // once the bite is eaten the plan is the fed one: still the wooden sword first (nothing in hand yet), then the tools and
+        // the refill behind them
         f.foodUnits = food.floor();
         List<KitNeed> fed = KitPlanner.plan(f, cfg, 8);
-        assertFalse(names(fed).contains("wooden_sword"));
-        assertEquals(plan.subList(2, plan.size()), fed.subList(0, plan.size() - 2));
+        assertEquals(new KitNeed("wooden_sword", 1), fed.get(0));
+        assertEquals(plan.subList(2, plan.size()), fed.subList(1, plan.size() - 1));
     }
 
     @Test
@@ -402,10 +403,29 @@ public class KitPlannerTest {
             assertEquals(plan.toString(), KitNeed.FOOD, plan.get(0).catalogueName());
         }
         assertTrue(KitPlanner.unarmed(new FakeFacts()));
-        // fed and unarmed: no split, so no wooden sword either, the starter's stone sword is the weapon
+        // fed and armed: the fed order, no wooden sword
+        FakeFacts fedArmed = new FakeFacts().give(Items.STONE_SWORD, 1);
+        fedArmed.foodUnits = 100;
+        assertFalse(names(KitPlanner.plan(fedArmed, cfg, 8)).contains("wooden_sword"));
+    }
+
+    @Test
+    public void anUnarmedFedBagMakesTheWoodenSwordFirstToo() {
+        // the food count takes furnace food still cooking at a base, so a respawn with empty hands can read as fed. the sword
+        // goes first anyway, and the rest is the fed order it always was (starter first, no floor bite)
         FakeFacts fed = new FakeFacts();
         fed.foodUnits = 100;
-        assertFalse(names(KitPlanner.plan(fed, cfg, 8)).contains("wooden_sword"));
+        FoodPlan food = FoodPlan.ofBeds(fed, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(fed, cfg, 8, food);
+        assertEquals(new KitNeed("wooden_sword", 1), plan.get(0));
+        assertEquals(1, names(plan).stream().filter("wooden_sword"::equals).count());
+        assertFalse(plan.contains(new KitNeed(KitNeed.FOOD, food.floor())));
+        assertTrue(names(plan).indexOf("stone_sword") > 0);
+        assertEquals(-1, FoodGate.index(plan, food));
+        // a bag that owes no tool at all (pick and sword in hand) has nothing to arm, so nothing changes there
+        FakeFacts kitted = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1);
+        kitted.foodUnits = 100;
+        assertFalse(names(KitPlanner.plan(kitted, cfg, 8)).contains("wooden_sword"));
     }
 
     @Test
@@ -743,7 +763,8 @@ public class KitPlannerTest {
         // the whole point: no cave to surface trip for one more log
         // (fed: an empty stomach puts the refill ahead of the wood, anEmptyBagEatsBeforeItBuildsAnything)
         f.foodUnits = 40;
-        assertEquals("log", names(KitPlanner.plan(f, cfg, 8)).get(0));
+        // (behind the wooden sword an empty bag makes first)
+        assertEquals("log", names(KitPlanner.plan(f, cfg, 8)).get(1));
         FakeFacts raw = new FakeFacts().give(Items.RAW_IRON, 1);
         assertFalse(names(KitPlanner.plan(raw, cfg, 8)).contains("log"));
         FakeFacts ingots = new FakeFacts().give(Items.IRON_INGOT, 3);
