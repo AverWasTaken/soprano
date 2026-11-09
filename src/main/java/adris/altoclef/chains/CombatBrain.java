@@ -1081,13 +1081,14 @@ final class CombatBrain {
 
     // what the heal-up hold wants to know. barred: a task that fights on its own terms (golem, dragon, blaze rods) has mob
     // defense excluded, or this is the end, where standing still next to the dragon is not healing. isInWater and not "afloat":
-    // a drowned in the day goes after a player wading in the shallows just the same
+    // a drowned in the day goes after a player wading in the shallows just the same. a boat counts as water too: a rider is never
+    // isInWater, can't eat (BiteRules waits while riding), and at night the drowned shoot at boats all the same
     private static RecoverHold.Body body(AltoClef mod, Dimension dimension) {
         LocalPlayer player = mod.getPlayer();
         boolean barred = dimension == Dimension.END || mod.getBehaviour().hasMobDefenseExclusion();
         FoodChain food = mod.getFoodChain();
         return new RecoverHold.Body(player.getFoodData().getFoodLevel(), food != null && food.hasHealFood(), barred,
-                food != null && food.isTryingToEat(), lingering(player), player.isInWater());
+                food != null && food.isTryingToEat(), lingering(player), player.isInWater() || player.isPassenger());
     }
 
     // the blaze, skeleton or drowned whose projectile hit us lately, or null. the damage source is only kept by the game for a moment, so it

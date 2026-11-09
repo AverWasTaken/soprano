@@ -398,6 +398,7 @@ public record WoodBudget(
         switch (item) {
             case "shield" -> wood[0] += 6 * count;
             case "bed" -> wood[0] += 3 * count;
+            case "boat" -> wood[0] += 5 * count;
             // 7 sticks make 3 ladders
             case "ladder" -> wood[1] += 7 * ((count + 2) / 3);
             default -> {

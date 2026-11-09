@@ -182,7 +182,14 @@ public final class CombatRules {
     // that stands us still sinks us, so the escape gets both hands. swimming in water the shield may go up but never stands
     // still: sneak sinks there too and a paused path is a drowned path. on the ground in water it's just a puddle
     public static LiquidShield shieldInLiquid(boolean inLava, boolean inWater, boolean onGround) {
+        return shieldInLiquid(inLava, inWater, onGround, false);
+    }
+
+    // riding: shift is the dismount key. a standing shield in a boat drops us in the middle of the ocean, and a rider is never
+    // isInWater so the swim rule above can't see it
+    public static LiquidShield shieldInLiquid(boolean inLava, boolean inWater, boolean onGround, boolean riding) {
         if (inLava) return LiquidShield.NONE;
+        if (riding) return LiquidShield.NO_STANDSTILL;
         if (inWater && !onGround) return LiquidShield.NO_STANDSTILL;
         return LiquidShield.NORMAL;
     }

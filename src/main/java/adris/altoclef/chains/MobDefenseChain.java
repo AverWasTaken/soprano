@@ -186,7 +186,8 @@ public class MobDefenseChain extends SingleTaskChain {
     private void startShielding(AltoClef mod, boolean standStill) {
         // same liquid rule as KillAura.startShielding
         LocalPlayer player = mod.getPlayer();
-        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(player.isInLava(), player.isInWater(), player.onGround());
+        CombatRules.LiquidShield liquid = CombatRules.shieldInLiquid(player.isInLava(), player.isInWater(), player.onGround(),
+                player.isPassenger());
         if (liquid == CombatRules.LiquidShield.NONE) {
             stopShielding(mod);
             return;

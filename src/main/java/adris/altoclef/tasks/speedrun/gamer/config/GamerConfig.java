@@ -22,7 +22,8 @@ public class GamerConfig {
     // (15 moved the deaths per phase 3 -> 8, a saved 3 is the old default and goes along)
     // (16 moved the night wool radius 40 -> 128, a saved 40 is the old default and goes along)
     // (17 moved the target eyes 14 -> 16, a saved 14 is the old default and goes along)
-    public static final int VERSION = 17;
+    // (18 put a boat in the iron kit for the ocean crossings in LOCATE and ROOM)
+    public static final int VERSION = 18;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;

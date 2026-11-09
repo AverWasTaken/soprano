@@ -46,7 +46,7 @@ public class WoodBudgetContradictionsTest {
     private static FakeFacts madeEverything() {
         return new FakeFacts().give(Items.WOODEN_PICKAXE, 1).give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2)
                 .give(Items.STONE_SWORD, 1).give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1)
-                .give(Items.LADDER, 3).give(Items.IRON_PICKAXE, 1).give(Items.IRON_SWORD, 1).give(Items.BUCKET, 2)
+                .give(Items.LADDER, 3).give(Items.OAK_BOAT, 1).give(Items.IRON_PICKAXE, 1).give(Items.IRON_SWORD, 1).give(Items.BUCKET, 2)
                 .give(Items.SHEARS, 1).give(Items.FLINT_AND_STEEL, 1);
     }
 

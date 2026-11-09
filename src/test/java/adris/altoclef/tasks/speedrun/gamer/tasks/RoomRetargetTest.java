@@ -329,4 +329,46 @@ public class RoomRetargetTest {
             }
         };
     }
+
+    // a start out on the water gets the same shore pick a frame does. dry, unseen or open ocean: nothing, the walk goes as it was
+    @Test
+    public void aWaterStartGetsTheNearestShore() {
+        World w = new World();
+        w.water = (x, z) -> x < 120;
+        assertTrue(RoomRetarget.underWater(w, 100, 100));
+        assertArrayEquals(RoomRetarget.pickColumn(w, 100, 100, 100, 100).orElseThrow(), RoomRetarget.shoreFor(w, 100, 100).orElseThrow());
+        assertFalse(RoomRetarget.shoreFor(new World(), 100, 100).isPresent());
+        w.unloaded = true;
+        assertFalse(RoomRetarget.underWater(w, 100, 100));
+        assertFalse(RoomRetarget.shoreFor(w, 100, 100).isPresent());
+        World ocean = new World();
+        ocean.water = (x, z) -> true;
+        assertFalse(RoomRetarget.shoreFor(ocean, 100, 100).isPresent());
+    }
+
+    // water 63 down to 60, rock from 59: six under that
+    @Test
+    public void theTunnelRunsUnderTheSeaFloor() {
+        World w = new World();
+        w.water = (x, z) -> true;
+        assertEquals(59 - RoomRetarget.TUNNEL_UNDER_SEABED, RoomRetarget.tunnelY(w, 0, 0));
+    }
+
+    // under the sea floor already (a relog mid tunnel): no walk back up to the shore, the start is just a tunnel away
+    @Test
+    public void noShoreWalkFromUnderTheSeaFloor() {
+        World w = new World();
+        w.water = (x, z) -> true;
+        assertEquals(59, RoomRetarget.seaFloorY(w, 0, 0));
+        assertTrue(RoomRetarget.shoreWalk(w, 0, 0, 64));
+        assertTrue(RoomRetarget.shoreWalk(w, 0, 0, 60));
+        assertFalse(RoomRetarget.shoreWalk(w, 0, 0, 59));
+        assertFalse(RoomRetarget.shoreWalk(w, 0, 0, 20));
+        assertTrue(RoomRetarget.underSeaFloor(w, 0, 0, 59));
+        assertTrue(RoomRetarget.underSeaFloor(w, 0, 0, 20));
+        assertFalse(RoomRetarget.underSeaFloor(w, 0, 0, 60));
+        // dry or unseen is neither
+        assertFalse(RoomRetarget.shoreWalk(new World(), 0, 0, 64));
+        assertFalse(RoomRetarget.underSeaFloor(new World(), 0, 0, 20));
+    }
 }

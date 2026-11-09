@@ -103,6 +103,15 @@ public class StrongholdRoomSearchTask extends Task {
     // times a far-off frame sent us to dry land to dig down instead of walking at it, and whether there was no such land to find
     private int retargets;
     private double noDryUntil;
+    // the start is out on the water: walk to this dry column and dig down there. the start itself stays what it was, the spiral
+    // and the loaded frame look are about the stronghold, not about where we got in. not saved, a relog just picks it again
+    private RunState.Pos shore;
+    private double noShoreUntil;
+    // how deep the shore shaft goes before it turns toward the start, under the sea floor (RoomRetarget.tunnelY)
+    private int shoreTunnelY;
+    // on the way from the bottom of the shore shaft to the start column. the stuck watch waits till we're on it
+    private boolean tunnelling;
+    private double tunnelBest;
     // closest we have been to the ring this approach, and when: the walk is stuck if it has not got closer in a while
     private double approachBest;
     private double approachBestAt;
@@ -259,9 +268,10 @@ public class StrongholdRoomSearchTask extends Task {
             startLeg = null;
         }
         if (next == Stage.DIG) {
+            tunnelling = false;
             digSince = timeOnTaskSeconds();
             digTask = null;
-            RunState.Pos start = ctx.state().strongholdStart;
+            RunState.Pos start = digFrom();
             digX = start.x;
             digZ = start.z;
             digEntryY = (int) Math.floor(mod.getPlayer().getY());
@@ -404,7 +414,79 @@ public class StrongholdRoomSearchTask extends Task {
         noPath.disarm();
         stall.reset();
         lastDigY = Integer.MAX_VALUE;
+        // a retarget start is dry land by construction
+        shore = null;
+        tunnelling = false;
         dropLeg();
+    }
+
+    // the shore shaft is only the way in. under the sea floor it turns and tunnels to the start column and digs that one, so the
+    // floor verdict and the staircase bricks mean what they always did. the shore column's own floor says nothing about the estimate,
+    // and a spiral from down there would be a search at the bottom of the world
+    private void shoreTunnel(AltoClef mod, int y, double now) {
+        if (shore != null && y <= shoreTunnelY) {
+            RunState.Pos start = ctx.state().strongholdStart;
+            ctx.log("room: under the sea floor at y " + y + ", tunnelling over to the start column at " + start.x + ", " + start.z);
+            shore = null;
+            tunnelling = true;
+            tunnelBest = Double.MAX_VALUE;
+            digX = start.x;
+            digZ = start.z;
+            segmentY = RoomCoverage.firstSegmentY(y, cfg.digFloorY);
+            digTask = null;
+        }
+        if (!tunnelling) {
+            return;
+        }
+        // the dig budget and the stuck depth are about the start column, the shaft and the tunnel were not that. so the dig starts
+        // for real where the tunnel meets the column
+        digSince = now;
+        digEntryY = y;
+        if (onDigColumn(mod)) {
+            tunnelling = false;
+            return;
+        }
+        // a minute of tunnel is not a minute stuck on the column, so the watch starts over until we get there. a tunnel that gets
+        // nowhere stops earning progress below and the phase's stall clock ends it
+        watch = new RoomCoverage.DigWatch(y, now);
+        double dist = Math.hypot(digX + 0.5 - mod.getPlayer().getX(), digZ + 0.5 - mod.getPlayer().getZ());
+        // the phase's stall clock is 180 s and a hundred blocks of rock can take longer than that
+        if (RoomRetarget.progressed(tunnelBest, dist)) {
+            tunnelBest = dist;
+            ctx.progress("tunnelled");
+        }
+    }
+
+    // where the surface walk and the dig go: the shore column for a start under water, else the start
+    public RunState.Pos digFrom() {
+        return shore != null ? shore : ctx.state().strongholdStart;
+    }
+
+    // asked every tick of the walk until it's settled. a start we can't see yet isn't water, so the check repeats until the
+    // column loads. a water start with no shore inside the radius is asked again later and walked at meanwhile (the boat)
+    private void lookForShore(AltoClef mod, RunState.Pos start) {
+        if (shore != null || seconds(mod) < noShoreUntil) {
+            return;
+        }
+        RoomRetarget.Probe probe = probe(mod);
+        if (!RoomRetarget.shoreWalk(probe, start.x, start.z, mod.getPlayer().getY())) {
+            return;
+        }
+        Optional<int[]> column = RoomRetarget.shoreFor(probe, start.x, start.z);
+        if (column.isEmpty()) {
+            noShoreUntil = seconds(mod) + NO_DRY_RETRY_SECONDS;
+            ctx.log("room: the start at " + start.x + ", " + start.z + " is under water and there's no dry land within "
+                    + RoomRetarget.SEARCH_RADIUS + ", going straight there");
+            return;
+        }
+        int[] xz = column.get();
+        shore = new RunState.Pos(xz[0], probe.topY(xz[0], xz[1]) + 1, xz[1]);
+        shoreTunnelY = RoomRetarget.tunnelY(probe, start.x, start.z);
+        tunnelling = false;
+        goStartTask = null;
+        startLeg = null;
+        ctx.log("room: the start at " + start.x + ", " + start.z + " is under water, digging down from the shore at " + xz[0] + ", "
+                + xz[1] + " (" + Math.round(Math.hypot(xz[0] - start.x, xz[1] - start.z)) + " off)");
     }
 
     int retargets() {
@@ -573,9 +655,19 @@ public class StrongholdRoomSearchTask extends Task {
             ctx.fail("no stronghold start to search from");
             return null;
         }
-        double dist = Math.hypot(start.x - mod.getPlayer().getX(), start.z - mod.getPlayer().getZ());
+        lookForShore(mod, start);
+        if (shore == null && RoomRetarget.underSeaFloor(probe(mod), start.x, start.z, mod.getPlayer().getY())) {
+            // the dig tunnels from here (shoreTunnel), GetDownColumnTask's goal is the column itself so the sea route isn't one
+            ctx.log("room: under the sea floor already, tunnelling over to the start column at " + start.x + ", " + start.z);
+            enter(mod, Stage.DIG);
+            tunnelling = true;
+            tunnelBest = Double.MAX_VALUE;
+            return null;
+        }
+        RunState.Pos to = digFrom();
+        double dist = Math.hypot(to.x - mod.getPlayer().getX(), to.z - mod.getPlayer().getZ());
         if (goStartTask == null) {
-            goStartTask = new GetToXZTask(start.x, start.z, Dimension.OVERWORLD);
+            goStartTask = new GetToXZTask(to.x, to.z, Dimension.OVERWORLD);
             startLeg = new LocateLegPlanner.Leg(seconds(mod), dist);
         }
         startLeg.update(seconds(mod), dist);
@@ -606,6 +698,7 @@ public class StrongholdRoomSearchTask extends Task {
             ctx.progress("dug down");
         }
         double now = timeOnTaskSeconds();
+        shoreTunnel(mod, y, now);
         watch.update(mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ(), digX, digZ, now);
         // the floor only counts on the original column (the footprint cells are inside its slack), so a shift does not
         // turn a staircase that was fine into a floor verdict
@@ -636,7 +729,7 @@ public class StrongholdRoomSearchTask extends Task {
         }
         if (watch.stuck(now)) {
             // a minute with no new low on this column: try the next cell around the original middle
-            RunState.Pos start = ctx.state().strongholdStart;
+            RunState.Pos start = digFrom();
             int[] cellXZ = watch.shift(start.x, start.z, now);
             if (cellXZ == null) {
                 failed = true;

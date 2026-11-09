@@ -203,6 +203,9 @@ public class GamerTask extends Task {
     private Boolean userLadderClutch;
     private List<Item> userThrowaway;
     private List<Item> userFuels;
+    private Boolean userBoats;
+    // what updateBoats put last, same deal as foodKeepPut
+    private Boolean boatsPut;
     private Boolean userReplant;
 
     // hud text is only rebuilt when something in it changed
@@ -247,7 +250,8 @@ public class GamerTask extends Task {
                 // the nether digs a lot of netherrack and the spares are all that stands between that and bare hands
                 Items.STONE_PICKAXE, Items.WOODEN_PICKAXE};
         Item[] all = own;
-        for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS, ItemHelper.GOLDEN_ARMORS}) {
+        // the boat is one slot of wood and the smallest stack in the bag, so the junk drop would pick it first
+        for (Item[] more : new Item[][]{ItemHelper.WOOD_BOAT, ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS, ItemHelper.GOLDEN_ARMORS}) {
             all = ArrayUtils.addAll(all, more);
         }
         return all;
@@ -479,6 +483,10 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.replantCrops)) {
             userReplant = s.replantCrops.value;
         }
+        if (!SettingsOverrides.isHeld(s.allowBoats)) {
+            userBoats = s.allowBoats.value;
+        }
+        boatsPut = null;
         // a replant is a carrot and a click for a field we never come back to
         SettingsOverrides.put(s.replantCrops, false);
         // the kit chops spare logs for the cook (cookFuelLogs) and WoodReserve decides which ones may burn, but the default list is
@@ -506,6 +514,29 @@ public class GamerTask extends Task {
             foodKeepPut = floor;
             SettingsOverrides.put(Baritone.settings().altoFoodKeepUnits, floor);
         }
+    }
+
+    // the eye walks go wherever the eyes point and that's often straight over an ocean. wading is 9 a block to A* and dry land 4.6, so it
+    // happily swims a thousand blocks with drowned throwing tridents. rowing is under 3. only these two phases: everywhere else a boat
+    // trip is a detour we didn't plan the kit around
+    static boolean rowsBoats(GamerPhase phase) {
+        return phase == GamerPhase.LOCATE || phase == GamerPhase.ROOM;
+    }
+
+    // per tick like the food floor, but only puts when the answer changes, so a #set allowBoats mid-phase sticks until the next phase.
+    // off means the user's own value back, not false
+    private void updateBoats() {
+        boatsPut = updateBoats(Baritone.settings().allowBoats, state.phase, boatsPut, userBoats);
+    }
+
+    // returns what it put (or had put already). user = the value from before the run, null = never read, take what's there
+    static Boolean updateBoats(Settings.Setting<Boolean> boats, GamerPhase phase, Boolean put, Boolean user) {
+        boolean want = rowsBoats(phase);
+        if (put != null && put == want) {
+            return put;
+        }
+        SettingsOverrides.put(boats, want ? Boolean.TRUE : (user != null ? user : boats.value));
+        return want;
     }
 
     private static List<Item> withBuildBlocks(List<Item> list) {
@@ -558,6 +589,10 @@ public class GamerTask extends Task {
         if (userFoodKeep != null) {
             SettingsOverrides.put(s.altoFoodKeepUnits, userFoodKeep);
         }
+        if (userBoats != null) {
+            SettingsOverrides.put(s.allowBoats, userBoats);
+        }
+        boatsPut = null;
     }
 
     // ---- state
@@ -855,6 +890,7 @@ public class GamerTask extends Task {
         machine.giveWood(wood);
         updateStoneFloor(mod);
         updateFoodKeep();
+        updateBoats();
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;

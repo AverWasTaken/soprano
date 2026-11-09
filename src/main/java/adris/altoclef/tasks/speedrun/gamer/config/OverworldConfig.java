@@ -40,7 +40,10 @@ public class OverworldConfig {
             new KitItem("iron_pickaxe", 1), new KitItem("iron_sword", 1), new KitItem("bucket", 2),
             new KitItem("flint_and_steel", 1), new KitItem("shield", 1), new KitItem("shears", 1),
             // sticks only, no iron. for ladder clutching on the long falls in the nether (one ladder gets picked back up)
-            new KitItem("ladder", 3)));
+            new KitItem("ladder", 3),
+            // LOCATE and ROOM row across oceans with it (allowBoats is on for those two phases only). on foot it's a 2 block a
+            // second swim with trident drowned for company
+            new KitItem("boat", 1)));
     public ArmorPlan armorPlan = ArmorPlan.FULL_IRON;
     // stone-or-better pickaxes the bag holds on top of the one we dig with when the portal is entered (PortalPlanner.gate). the
     // nether digs netherrack all day and a stone pick is 3 cobble and 2 sticks, nothing next to running out. a diamond pick in the
