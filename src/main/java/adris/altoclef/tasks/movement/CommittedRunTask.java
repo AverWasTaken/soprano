@@ -31,10 +31,17 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     // pathfinder thread burning until then
     static final long REISSUE_GAP_TICKS = 40;
 
+    // open ocean has no bank within the station's 32, so the swim out looks this far once that comes back empty. it is four
+    // times the columns (all water, so each one is a single block lookup and a no), hence once per WIDE_SHORE_GAP_TICKS and
+    // not every reissue
+    static final int WIDE_SHORE_RADIUS = 64;
+    static final long WIDE_SHORE_GAP_TICKS = 200;
+
     private final double _originX;
     private final double _originZ;
     private final Supplier<List<Entity>> _crowd;
     private long _lastIssue = Long.MIN_VALUE / 2;
+    private long _lastWideShore = Long.MIN_VALUE / 2;
     // the goal in hand is the swim to the bank, not the run (see pickGoal)
     private boolean _toShore;
 
@@ -109,6 +116,12 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
         LocalPlayer player = mod.getPlayer();
         if (afloat(player.isInWater(), player.onGround())) {
             java.util.Optional<BlockPos> shore = PlaceStationTask.shoreNear(mod);
+            long now = mod.getWorld().getGameTime();
+            // (nothing found keeps the goal in hand, which may be the far bank from the last wide look)
+            if (shore.isEmpty() && mayReissue(now, _lastWideShore, WIDE_SHORE_GAP_TICKS)) {
+                _lastWideShore = now;
+                shore = PlaceStationTask.shoreNear(mod, WIDE_SHORE_RADIUS);
+            }
             if (shore.isPresent()) {
                 _cachedGoal = new GoalBlock(shore.get());
                 _toShore = true;
@@ -124,7 +137,11 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     // the very first issue goes through (nothing was handed over yet), after that one per gap. a clock that went backwards
     // (a new world) counts as long enough ago
     static boolean mayReissue(long now, long lastIssue) {
-        return now < lastIssue || now - lastIssue >= REISSUE_GAP_TICKS;
+        return mayReissue(now, lastIssue, REISSUE_GAP_TICKS);
+    }
+
+    static boolean mayReissue(long now, long last, long gap) {
+        return now < last || now - last >= gap;
     }
 
     // a walled in run gets a partial path to the wall and goes nowhere: the commitment's corner rules make that a fight where we

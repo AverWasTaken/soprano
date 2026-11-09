@@ -444,7 +444,11 @@ public class PlaceStationTask extends Task {
     // the nearest dry stand when we are afloat, for anything else that has to get out of the water (the combat run). empty on
     // land or when the water goes on past the shore radius
     public static java.util.Optional<BlockPos> shoreNear(AltoClef mod) {
-        return StationSpots.nearestShore(new World(mod), stance(mod), StationSpots.SHORE_RADIUS)
+        return shoreNear(mod, StationSpots.SHORE_RADIUS);
+    }
+
+    public static java.util.Optional<BlockPos> shoreNear(AltoClef mod, int radius) {
+        return StationSpots.nearestShore(new World(mod), stance(mod), radius)
                 .map(stand -> new BlockPos(stand.x(), stand.y(), stand.z()));
     }
 

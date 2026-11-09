@@ -59,4 +59,15 @@ public class CommittedRunTaskTest {
         assertFalse(CommittedRunTask.afloat(false, false));
         assertFalse(CommittedRunTask.afloat(false, true));
     }
+
+    @Test
+    public void theWideShoreLookIsSpacedByItsOwnGap() {
+        long gap = CommittedRunTask.WIDE_SHORE_GAP_TICKS;
+        assertTrue(CommittedRunTask.mayReissue(1000, Long.MIN_VALUE / 2, gap));
+        assertFalse(CommittedRunTask.mayReissue(1000 + gap - 1, 1000, gap));
+        assertTrue(CommittedRunTask.mayReissue(1000 + gap, 1000, gap));
+        // a whole reissue gap later is still too soon for the wide one
+        assertFalse(CommittedRunTask.mayReissue(1000 + CommittedRunTask.REISSUE_GAP_TICKS, 1000, gap));
+        assertTrue(CommittedRunTask.WIDE_SHORE_RADIUS > 32);
+    }
 }
