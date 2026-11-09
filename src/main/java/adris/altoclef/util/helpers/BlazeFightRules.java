@@ -61,6 +61,12 @@ public final class BlazeFightRules {
     public static final double PACK_BACKOFF_DISTANCE = 16;
     // a blaze this close is swinging range: running from it is giving it free shots, it flies faster than we walk
     public static final double LATCH_SKIP_BLAZE_RANGE = 4.5;
+    // with one of those on us (and a target to swing at) a run only starts this low. a run with blazes in contact eats more hits
+    // than it saves, staying put and swinging at least takes one of them off us
+    public static final float CLOSE_RUN_HEALTH = 8;
+    // a blaze this much lower than the one we are hitting, and in swinging range, gets the sword instead. a bit under one iron
+    // sword hit, so two fresh ones never swap and a hurt one that is biting us gets finished first
+    public static final float SWITCH_HP_MARGIN = 5;
 
     private BlazeFightRules() {
     }
@@ -176,11 +182,44 @@ public final class BlazeFightRules {
     // burning only holds a run we are already in: 18 hp and still on fire is not recovered, walking back in alight just
     // burns the rest off. it never starts a run on its own, and the give up still ends it
     public static Mode decide(float health, boolean running, boolean runGaveUp, boolean threat, boolean haveTarget, boolean burning) {
+        return decide(health, running, runGaveUp, threat, haveTarget, burning, false);
+    }
+
+    // blazeClose: we have a target and a blaze we can hit is inside LATCH_SKIP_BLAZE_RANGE. it only moves where a run starts
+    // (CLOSE_RUN_HEALTH instead of RUN_HEALTH), a run we are already in is not cut short by one catching up. no target means
+    // nothing to swing at, and standing in the fire for nothing is the old 14 again
+    public static Mode decide(float health, boolean running, boolean runGaveUp, boolean threat, boolean haveTarget, boolean burning,
+                              boolean blazeClose) {
+        float runAt = blazeClose && haveTarget ? CLOSE_RUN_HEALTH : RUN_HEALTH;
         boolean leave = running && !runGaveUp
                 ? health < RECOVERED_HEALTH || burning
-                : (health <= RUN_HEALTH && threat) || health <= PANIC_HEALTH;
+                : (health <= runAt && threat) || health <= PANIC_HEALTH;
         if (leave) return Mode.RUN;
         return haveTarget ? Mode.KILL : Mode.CAMP;
+    }
+
+    // which blaze to go for out of what we can reach ({distance, hp} each): the most hurt one in swinging range, so every
+    // kill takes a mouth off us, else the nearest. -1 for none
+    public static int pick(double[][] blazes) {
+        int best = -1;
+        for (int i = 0; i < blazes.length; i++) {
+            if (best < 0 || better(blazes[i], blazes[best])) best = i;
+        }
+        return best;
+    }
+
+    private static boolean better(double[] a, double[] b) {
+        boolean aClose = a[0] <= LATCH_SKIP_BLAZE_RANGE;
+        boolean bClose = b[0] <= LATCH_SKIP_BLAZE_RANGE;
+        if (aClose != bClose) return aClose;
+        if (aClose && a[1] != b[1]) return a[1] < b[1];
+        return a[0] < b[0];
+    }
+
+    // drop the one we are hitting for another only when the other is in swinging range and clearly more hurt. the margin is
+    // what keeps us from flipping: the new one only gets lower from here, the old one would have to drop by a whole hit
+    public static boolean switchTo(double targetHp, double otherDistance, double otherHp) {
+        return otherDistance <= LATCH_SKIP_BLAZE_RANGE && otherHp <= targetHp - SWITCH_HP_MARGIN;
     }
 
     // what keeps a run going past the recovered line (decide's burning): fire, or the wither effect. walking back in with the
