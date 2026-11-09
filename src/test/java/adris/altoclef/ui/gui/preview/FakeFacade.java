@@ -140,6 +140,7 @@ public final class FakeFacade implements BotFacade {
             bool("allowDiagonalDescend", false, false, "Allow descending diagonally.");
             bool("allowDownward", true, true, "Allow mining the block under your feet.");
             bool("buildInLayers", false, false, "Build in layers.");
+            bool("altoShowInventoryWhenCrafting", true, true, "Open the inventory screen while crafting in the 2x2 grid.");
             bool("altoMobDefense", true, true, "Run from dangerous mobs and push away the ones that hurt you.");
             bool("altoAutoEat", true, true, "Eat when hungry or in danger.");
             enumv("altoForceFieldStrategy", "ForceFieldStrategy", "SMART", "SMART", List.of("OFF", "FASTEST", "DELAY", "SMART"),

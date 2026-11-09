@@ -105,7 +105,7 @@ public class SettingsTabTest {
     // ----- the first page
 
     @Test
-    public void firstPageIsTheFortyTilesInTheMocksSixSections() {
+    public void firstPageIsTheFortyOneTilesInTheMocksSixSections() {
         assertEquals(SettingsTab.Page.HOME, tab.page());
         assertEquals(List.of("Travel", "Movement", "Mining and building", "Combat and safety", "Rendering", "Chat and HUD"), titles());
         List<String> names = new ArrayList<>();
@@ -114,9 +114,9 @@ public class SettingsTabTest {
                 names.add(e.name());
             }
         }
-        assertEquals(40, names.size());
-        assertEquals(40, new HashSet<>(names).size());
-        assertEquals(40, tab.grid().tiles().size());
+        assertEquals(41, names.size());
+        assertEquals(41, new HashSet<>(names).size());
+        assertEquals(41, tab.grid().tiles().size());
         for (int i = 0; i < names.size(); i++) {
             assertSame(tab.tileOf(names.get(i)), tab.grid().tiles().get(i));
         }
@@ -347,7 +347,7 @@ public class SettingsTabTest {
         assertTrue(tasks.indexOf(tab.tileOf("altoAutoEat")) < tasks.indexOf(tab.tileOf("altoMobDefense")));
         click(tab.bar().back());
         assertEquals(SettingsTab.Page.HOME, tab.page());
-        assertEquals(40, tab.grid().tiles().size());
+        assertEquals(41, tab.grid().tiles().size());
     }
 
     @Test
@@ -429,7 +429,7 @@ public class SettingsTabTest {
         // clearing it brings the first page back
         p.shell.search().clearAndNotify();
         p.settle();
-        assertEquals(40, tab.grid().tiles().size());
+        assertEquals(41, tab.grid().tiles().size());
     }
 
     @Test

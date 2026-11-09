@@ -96,6 +96,7 @@ public class SlotHandler {
     // back to back clicks see each other and the server replays the same thing
     private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ContainerInput type) {
         noteBedDrop(player, windowSlot, type);
+        _mod.getCraftScreenShow().noteClick(player, syncId, windowSlot);
         try {
             _mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {

@@ -3,6 +3,7 @@ package adris.altoclef;
 import adris.altoclef.butler.Butler;
 import adris.altoclef.chains.*;
 import adris.altoclef.commands.AltoClefCommands;
+import adris.altoclef.control.CraftScreenShow;
 import adris.altoclef.control.EdgeBrake;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.control.PlayerExtraController;
@@ -89,6 +90,7 @@ public class AltoClef {
     private MessageSender _messageSender;
     private InputControls _inputControls;
     private final EdgeBrake _edgeBrake = new EdgeBrake();
+    private final CraftScreenShow _craftScreenShow = new CraftScreenShow();
     private SlotHandler _slotHandler;
     // Butler
     private Butler _butler;
@@ -232,6 +234,8 @@ public class AltoClef {
         // (an idle command counts: that can be a whole #gamer game and its ledges are just as tall. a human on the keys still
         // wins, realMoveKey reads the real key)
         _edgeBrake.tick(this, _userTaskChain.isActive());
+        // after the runner: the grid clicks it made this tick decide whether the inventory screen goes up
+        _craftScreenShow.tick(this);
 
         _inputControls.onTickPost();
     }
@@ -511,6 +515,10 @@ public class AltoClef {
      */
     public InputControls getInputControls() {
         return _inputControls;
+    }
+
+    public CraftScreenShow getCraftScreenShow() {
+        return _craftScreenShow;
     }
 
     /**

@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-// every setting as a tile. the first page is the 40 people touch (SettingsHome), Show all is everything grouped by
+// every setting as a tile. the first page is the 41 people touch (SettingsHome), Show all is everything grouped by
 // category, the header search looks through all of it. a switch tile flips on click, anything else opens a popover
 // that commits live. every change goes the #set road (McSettings.set: parse, userChanged, save) and then the one
 // setting is read back and pushed into its tile, the list is never rebuilt for a single edit
