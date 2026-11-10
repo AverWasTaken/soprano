@@ -1515,6 +1515,13 @@ public final class Settings {
     public final Setting<Boolean> effortlessThreeClickHeight = new Setting<>(true);
 
     /**
+     * Start an Effortless Soprano shape the moment its last corner is clicked. Off, it goes into the queue (the
+     * Effortless tab, or {@code #ef queue}) and waits for a start, so you can line up a house's floor, walls and roof
+     * first and reorder or merge them.
+     */
+    public final Setting<Boolean> effortlessStartRightAway = new Setting<>(false);
+
+    /**
      * The colour of the outline Effortless Soprano draws around the shape you are setting up.
      */
     public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));

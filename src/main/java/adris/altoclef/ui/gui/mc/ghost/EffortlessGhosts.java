@@ -61,9 +61,13 @@ public final class EffortlessGhosts implements SchematicGhostRenderer.Source, Gh
 
     @Override
     public SchematicGhostRenderer.Target target() {
+        // what you're setting up first, then what's being built, then the queued ones you asked to see
         JobSchematic s = manager.previewSchematic();
         if (s == null) {
             s = manager.runningSchematic();
+        }
+        if (s == null) {
+            s = manager.shownSchematic();
         }
         if (s == null) {
             return null;

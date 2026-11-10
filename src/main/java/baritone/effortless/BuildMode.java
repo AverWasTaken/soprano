@@ -384,7 +384,7 @@ public final class BuildMode {
         return b.toString();
     }
 
-    private static void say(String msg) {
+    static void say(String msg) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && msg != null) {
             mc.gui.hud.setOverlayMessage(Component.literal(msg.substring(0, 1).toUpperCase(Locale.ROOT) + msg.substring(1)), false);

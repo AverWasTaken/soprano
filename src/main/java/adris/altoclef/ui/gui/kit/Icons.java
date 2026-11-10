@@ -467,6 +467,17 @@ public final class Icons {
                 line(g, 12, 14.25f, 12, 19);
             }
             case SHAPE_CUBOID -> cube(g);
+            case MERGE -> {
+                line(g, 4, 6, 10, 12);
+                line(g, 4, 18, 10, 12);
+                line(g, 10, 12, 20, 12);
+                head(g, 20, 12, 1, 0, 3.5f, 3f);
+            }
+            case SPLIT -> {
+                line(g, 4, 12, 10, 12);
+                line(g, 10, 12, 19, 6);
+                line(g, 10, 12, 19, 18);
+            }
             case SHAPE_CIRCLE -> {
                 g.draw(new Ellipse2D.Float(3.5f, 3.5f, 17, 17));
                 dot(g, 12, 12, w * 1.4f);

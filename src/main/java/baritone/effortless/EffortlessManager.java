@@ -52,6 +52,15 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private AreaMask preview;
     private EffortlessJob running;
     private JobSchematic runningSchematic;
+    // the jobs waiting their turn, saved per world and dimension
+    private JobQueue queue = new JobQueue();
+    private java.nio.file.Path queueFile;
+    private Object queueWorld;
+    // the builder's serial for the entry it's on, 0 while it isn't on one of ours
+    private long entrySerial;
+    // the shown entries as one schematic for the preview, rebuilt when what's shown changes
+    private Object shownKey;
+    private JobSchematic shownSchematic;
     // what the next job will be, for the preview: place or break and the options it was set up with. null mode is
     // "no idea yet", the outline still shows but no cells do
     private EffortlessJob.Mode draftMode;
@@ -190,15 +199,144 @@ public final class EffortlessManager implements AbstractGameEventListener {
         return Optional.empty();
     }
 
-    // hands the job to the builder right away. the queue comes later, this is "start now"
+    // hands the job to the builder right away, through the queue so it shows there like the rest
     public void start(EffortlessJob job) {
-        running = job;
-        JobSchematic schematic = new JobSchematic(job);
+        JobQueue.Entry e = queue.add(job, System.currentTimeMillis());
+        // something of ours already going is put back in line, the new one goes first
+        JobQueue.Entry was = queue.runningEntry();
+        if (was != null) {
+            was.state(JobQueue.State.QUEUED, null);
+        }
+        startEntry(e);
+        save();
+    }
+
+    private void startEntry(JobQueue.Entry e) {
+        JobSchematic schematic = e.schematic();
+        running = e.jobs().get(e.jobs().size() - 1);
         runningSchematic = schematic;
-        baritone.getBuilderProcess().buildInPlace(job.name, schematic, schematic.origin(), Baritone.settings().effortlessJumpOff.value);
+        e.state(JobQueue.State.RUNNING, null);
+        baritone.getBuilderProcess().buildInPlace(e.name(), schematic, schematic.origin(), Baritone.settings().effortlessJumpOff.value);
         // what the job leaves alone inside its area stays standing: a path that digs through the dirt under "break only
         // stone" is the builder breaking the one thing you told it not to. kept blocks price like finished ones
         baritone.getBuilderProcess().setKeep(keepUntouched(schematic));
+        entrySerial = baritone.getBuilderProcess().buildSerial();
+    }
+
+    // ----- the queue
+
+    public JobQueue queue() {
+        return queue;
+    }
+
+    // after anything changes the queue: written straight away, it's a small file
+    public void save() {
+        JobStore.save(queueFile, queue);
+        shownKey = null;
+    }
+
+    // starts on the first waiting entry, and keeps going down the list until it's empty or stopped
+    public String startQueue() {
+        if (queue.next() == null && queue.runningEntry() == null) {
+            return "Nothing waiting in the queue";
+        }
+        queue.running(true);
+        return null;
+    }
+
+    // stops after taking the current entry off the builder. it goes back to waiting, first in line
+    public void stopQueue() {
+        queue.running(false);
+        JobQueue.Entry e = queue.runningEntry();
+        if (e != null) {
+            e.state(JobQueue.State.QUEUED, null);
+            if (baritone.getBuilderProcess().buildSerial() == entrySerial && entrySerial != 0) {
+                baritone.getPathingBehavior().cancelEverything();
+            }
+            entrySerial = 0;
+        }
+        save();
+    }
+
+    private void tickQueue() {
+        JobQueue.Entry e = queue.runningEntry();
+        if (e != null) {
+            var builder = baritone.getBuilderProcess();
+            if (builder.finished(entrySerial)) {
+                e.state(JobQueue.State.DONE, null);
+                entrySerial = 0;
+                save();
+            } else if (builder.buildSerial() != entrySerial) {
+                // knocked off: #stop, another build, the builder letting go. back in line, the queue waits for a start
+                e.state(JobQueue.State.QUEUED, null);
+                entrySerial = 0;
+                if (queue.running()) {
+                    queue.running(false);
+                    BuildMode.say("Effortless queue paused");
+                }
+                save();
+                return;
+            } else if (builder.isPaused()) {
+                // "unable to do it": this one's stuck, the rest may not be
+                e.state(JobQueue.State.FAILED, "the builder couldn't finish it");
+                entrySerial = 0;
+                baritone.getPathingBehavior().cancelEverything();
+                save();
+            } else {
+                return;
+            }
+        }
+        if (!queue.running()) {
+            return;
+        }
+        JobQueue.Entry next = queue.next();
+        if (next == null) {
+            queue.running(false);
+            BuildMode.say("Effortless queue done");
+            save();
+            return;
+        }
+        int[] at = queue.progress(next);
+        BuildMode.say("Effortless " + at[0] + "/" + at[1] + ": " + next.name());
+        startEntry(next);
+        save();
+    }
+
+    // the queued entries with show on, as one schematic for the preview. null when none are
+    public JobSchematic shownSchematic() {
+        List<EffortlessJob> jobs = new ArrayList<>();
+        List<Object> key = new ArrayList<>();
+        for (JobQueue.Entry e : queue.entries()) {
+            if (e.shown() && e.state() != JobQueue.State.RUNNING && e.state() != JobQueue.State.DONE) {
+                jobs.addAll(e.jobs());
+                key.add(e);
+            }
+        }
+        if (jobs.isEmpty()) {
+            return null;
+        }
+        if (key.equals(shownKey)) {
+            return shownSchematic;
+        }
+        shownKey = key;
+        shownSchematic = new JobSchematic(jobs);
+        return shownSchematic;
+    }
+
+    // the queue file belongs to the world and dimension you're in. a new one loads its own
+    private void followWorld() {
+        var world = baritone.getWorldProvider().getCurrentWorld();
+        if (world == queueWorld) {
+            return;
+        }
+        if (queue.runningEntry() != null) {
+            queue.runningEntry().state(JobQueue.State.QUEUED, null);
+        }
+        queueWorld = world;
+        queueFile = world == null ? null : world.directory.resolve(JobStore.FILE_NAME);
+        queue = JobStore.load(queueFile);
+        entrySerial = 0;
+        shownKey = null;
     }
 
     // what the preview should show for the next job, or null when there's nothing set up to show
@@ -242,7 +380,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     // the job the builder is on, while it is
     public JobSchematic runningSchematic() {
-        return running() != null ? runningSchematic : null;
+        return queue.runningEntry() != null ? runningSchematic : null;
     }
 
     // a block in the area the job won't change. pure: the builder asks from its path thread
@@ -256,13 +394,25 @@ public final class EffortlessManager implements AbstractGameEventListener {
         };
     }
 
-    // a finished shape from build mode. the queue comes later, for now every job starts right away
+    // a finished shape from build mode: started right away, or into the queue (the default)
     public void submit(EffortlessJob job) {
-        start(job);
+        if (Baritone.settings().effortlessStartRightAway.value) {
+            start(job);
+            return;
+        }
+        queue.add(job, System.currentTimeMillis());
+        save();
+        int waiting = 0;
+        for (JobQueue.Entry e : queue.entries()) {
+            if (e.state() == JobQueue.State.QUEUED) {
+                waiting++;
+            }
+        }
+        BuildMode.say("Queued " + job.name + " (" + waiting + " waiting, #ef queue start or the Effortless tab)");
     }
 
     public EffortlessJob running() {
-        return running != null && baritone.getBuilderProcess().isActive() ? running : null;
+        return queue.runningEntry() != null ? running : null;
     }
 
     // ----- the outline
@@ -270,7 +420,9 @@ public final class EffortlessManager implements AbstractGameEventListener {
     @Override
     public void onTick(TickEvent event) {
         if (event.getType() == TickEvent.Type.IN && event.getState() == EventState.PRE) {
+            followWorld();
             BuildMode.tick();
+            tickQueue();
         }
     }
 

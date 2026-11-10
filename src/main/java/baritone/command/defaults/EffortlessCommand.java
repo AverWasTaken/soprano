@@ -28,6 +28,7 @@ import baritone.api.command.helpers.TabCompleteHelper;
 import baritone.effortless.EffortlessJob;
 import baritone.effortless.EffortlessManager;
 import baritone.effortless.EffortlessOptions;
+import baritone.effortless.JobQueue;
 import baritone.effortless.ShapeKind;
 import baritone.effortless.ShapeSpec;
 import net.minecraft.core.BlockPos;
@@ -95,6 +96,7 @@ public class EffortlessCommand extends Command {
                 m.draft(what.equals("place") ? EffortlessJob.Mode.PLACE : EffortlessJob.Mode.BREAK, o);
                 logDirect("Previewing " + what + ", the shape follows your crosshair until its points are set");
             }
+            case "queue", "q" -> queue(args);
             case "clear" -> {
                 args.requireMax(0);
                 m.clearPoints();
@@ -118,6 +120,110 @@ public class EffortlessCommand extends Command {
             }
             default -> throw new CommandInvalidStateException("unknown subcommand, see #help effortless");
         }
+    }
+
+    // #ef queue [list|start|stop|move n m|merge n m..|unmerge n|remove n|show n|rename n name|clear]. numbers are 1 based,
+    // as the list prints them
+    private void queue(IArgConsumer args) throws CommandException {
+        EffortlessManager m = manager();
+        JobQueue q = m.queue();
+        String what = args.hasAny() ? args.getString().toLowerCase(Locale.ROOT) : "list";
+        switch (what) {
+            case "list" -> {
+                if (q.isEmpty()) {
+                    logDirect("The queue is empty. Finish a shape in build mode, or #ef place / break, to add one");
+                    return;
+                }
+                for (int i = 0; i < q.size(); i++) {
+                    JobQueue.Entry e = q.get(i);
+                    logDirect((i + 1) + ". " + e.name() + " - " + e.cells() + " blocks, " + describeEntry(e)
+                            + ", " + e.state().name().toLowerCase(Locale.ROOT) + (e.why() != null ? " (" + e.why() + ")" : "")
+                            + (e.shown() ? ", shown" : ""));
+                }
+                logDirect(q.running() ? "Running" : "Stopped, #ef queue start to run it");
+            }
+            case "start" -> {
+                String why = m.startQueue();
+                logDirect(why != null ? why : "Queue started");
+            }
+            case "stop", "pause" -> {
+                m.stopQueue();
+                logDirect("Queue stopped");
+            }
+            case "move" -> {
+                int from = index(args, q);
+                int to = index(args, q);
+                q.move(from, to);
+                m.save();
+                logDirect("Moved to " + (to + 1));
+            }
+            case "merge" -> {
+                List<Integer> picks = new java.util.ArrayList<>();
+                while (args.hasAny()) {
+                    picks.add(index(args, q));
+                }
+                try {
+                    JobQueue.Entry g = q.merge(picks);
+                    m.save();
+                    logDirect("Merged into one job: " + g.name() + ", " + g.cells() + " blocks");
+                } catch (IllegalArgumentException e) {
+                    throw new CommandInvalidStateException(e.getMessage());
+                }
+            }
+            case "unmerge", "split" -> {
+                try {
+                    q.unmerge(index(args, q));
+                    m.save();
+                    logDirect("Split back into its shapes");
+                } catch (IllegalArgumentException e) {
+                    throw new CommandInvalidStateException(e.getMessage());
+                }
+            }
+            case "remove", "rm" -> {
+                int i = index(args, q);
+                if (q.get(i).state() == JobQueue.State.RUNNING) {
+                    m.stopQueue();
+                }
+                q.remove(i);
+                m.save();
+                logDirect("Removed");
+            }
+            case "show", "hide" -> {
+                int i = index(args, q);
+                q.get(i).shown(what.equals("show"));
+                m.save();
+                logDirect(what.equals("show") ? "Showing it in the world" : "Hidden");
+            }
+            case "rename" -> {
+                int i = index(args, q);
+                String name = rest(args);
+                q.get(i).rename(name);
+                m.save();
+                logDirect("Renamed to " + q.get(i).name());
+            }
+            case "clear" -> {
+                q.clearDone();
+                m.save();
+                logDirect("Cleared the finished ones");
+            }
+            default -> throw new CommandInvalidStateException("queue list, start, stop, move, merge, unmerge, remove, show, hide, rename or clear");
+        }
+    }
+
+    private static int index(IArgConsumer args, JobQueue q) throws CommandException {
+        int n = args.getAs(Integer.class);
+        if (n < 1 || n > q.size()) {
+            throw new CommandInvalidStateException("there's no " + n + " in the queue (1 to " + q.size() + ")");
+        }
+        return n - 1;
+    }
+
+    static String describeEntry(JobQueue.Entry e) {
+        if (e.merged()) {
+            return e.jobs().size() + " shapes merged";
+        }
+        EffortlessJob j = e.jobs().get(0);
+        return j.mode == EffortlessJob.Mode.BREAK ? "break (" + j.filter + ")" : "place";
     }
 
     private static EffortlessOptions options(ShapeSpec base, String raw) throws CommandException {
@@ -184,13 +290,17 @@ public class EffortlessCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
-                    .append("p1", "p2", "p3", "shape", "place", "break", "preview", "info", "clear")
+                    .append("p1", "p2", "p3", "shape", "place", "break", "preview", "queue", "info", "clear")
                     .filterPrefix(args.getString()).sortAlphabetically().stream();
         }
         String sub = args.getString().toLowerCase(Locale.ROOT);
         if (sub.equals("shape") && args.hasExactlyOne()) {
             return new TabCompleteHelper().append(Arrays.stream(ShapeKind.values()).map(ShapeKind::id))
                     .filterPrefix(args.getString()).stream();
+        }
+        if ((sub.equals("queue") || sub.equals("q")) && args.hasExactlyOne()) {
+            return new TabCompleteHelper().append("list", "start", "stop", "move", "merge", "unmerge", "remove", "show",
+                    "hide", "rename", "clear").filterPrefix(args.getString()).stream();
         }
         if (sub.startsWith("p") && sub.length() == 2) {
             return args.tabCompleteDatatype(RelativeBlockPos.INSTANCE);
@@ -226,6 +336,8 @@ public class EffortlessCommand extends Command {
                 "> ef place [options] - Fill the shape. Uses the block in your hand unless you say block=",
                 "> ef break [options] - Break the blocks in the shape",
                 "> ef preview place|break [options] - Show what place or break would do, without starting. preview off hides it",
+                "> ef queue - The queue: list, start, stop, move <n> <to>, merge <n> <n>.., unmerge <n>, remove <n>,",
+                "  show/hide <n> (in the world), rename <n> <name>, clear (the finished ones)",
                 "> ef info - What's set up",
                 "> ef clear - Forget the points",
                 "",
