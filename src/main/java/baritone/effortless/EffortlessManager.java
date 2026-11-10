@@ -75,6 +75,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private boolean tripTimed;
     // we called the errand off ourselves (timeout). a stop that isn't ours is the player's #stop
     private boolean tripCalledOff;
+    // the entry an errand just came back for, started a few ticks later: the items it fetched or put away reach the
+    // inventory a moment after the task says it's done, and a builder started on the spot sees the old bag and pauses
+    private JobQueue.Entry resumeEntry;
+    private int resumeIn;
+    private static final int SETTLE_TICKS = 10;
     private long storageRetryAt;
     private static final int MAX_TRIPS = 5;
     // terrain the running entry's paths dug through outside its area, cell -> what was there, and whether the entry is
@@ -231,7 +236,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
         if (was != null) {
             was.state(JobQueue.State.QUEUED, null);
         }
-        startEntry(e);
+        begin(e);
         save();
     }
 
@@ -303,6 +308,18 @@ public final class EffortlessManager implements AbstractGameEventListener {
     }
 
     private void tickQueue() {
+        if (resumeEntry != null) {
+            if (--resumeIn > 0) {
+                return;
+            }
+            JobQueue.Entry e = resumeEntry;
+            resumeEntry = null;
+            if (e.state() == JobQueue.State.RUNNING && queue.entries().contains(e)) {
+                startEntry(e);
+                save();
+            }
+            return;
+        }
         if (tripOut) {
             // an errand has the bot, the entry waits for it to come back
             if (tripTimed && System.currentTimeMillis() - tripStarted > TRIP_TIMEOUT_MS && trips != null) {
@@ -365,20 +382,23 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
         int[] at = queue.progress(next);
         BuildMode.say("Effortless " + at[0] + "/" + at[1] + ": " + next.name());
-        next.trips(0);
-        // a storage or gather entry gets its bill in before the builder starts on it
-        if (next.places() && next.materials() != EffortlessMaterials.INVENTORY && !creative()) {
-            Map<Item, Integer> bill = billFor(next);
+        begin(next);
+        save();
+    }
+
+    // a storage or gather entry gets its bill in before the builder starts on it, the rest start straight away
+    private void begin(JobQueue.Entry e) {
+        e.trips(0);
+        if (e.places() && e.materials() != EffortlessMaterials.INVENTORY && !creative()) {
+            Map<Item, Integer> bill = billFor(e);
             if (!bill.isEmpty()) {
-                next.state(JobQueue.State.RUNNING, null);
-                if (fetchOrGather(next, bill)) {
-                    save();
+                e.state(JobQueue.State.RUNNING, null);
+                if (fetchOrGather(e, bill)) {
                     return;
                 }
             }
         }
-        startEntry(next);
-        save();
+        startEntry(e);
     }
 
     private void finishEntry(JobQueue.Entry e, String note) {
@@ -435,9 +455,8 @@ public final class EffortlessManager implements AbstractGameEventListener {
                     if (why != null) {
                         BuildMode.say("Gathering: " + why);
                     }
-                    if (!buildRestore(e)) {
-                        finishEntry(e, null);
-                    }
+                    // startEntry while restoring goes on with the terrain build
+                    settleThenResume(e);
                 });
                 return true;
             }
@@ -534,10 +553,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
             if (why != null) {
                 BuildMode.say(e.materials() == EffortlessMaterials.STORAGE ? "Storage: " + why : "Gathering: " + why);
             }
-            if (e.state() == JobQueue.State.RUNNING && queue.entries().contains(e)) {
-                startEntry(e);
-                save();
-            }
+            settleThenResume(e);
         };
         if (e.materials() == EffortlessMaterials.STORAGE) {
             BuildMode.say("Fetching " + total(bill) + " blocks from the storage");
@@ -585,10 +601,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
             } else if (why != null) {
                 BuildMode.say("Storage: " + why);
             }
-            if (e.state() == JobQueue.State.RUNNING && queue.entries().contains(e)) {
-                startEntry(e);
-                save();
-            }
+            settleThenResume(e);
         });
     }
 
@@ -604,6 +617,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
         BuildMode.say("Effortless queue paused");
         save();
         return true;
+    }
+
+    private void settleThenResume(JobQueue.Entry e) {
+        resumeEntry = e;
+        resumeIn = SETTLE_TICKS;
     }
 
     private void stopBuilderFor(JobQueue.Entry e) {

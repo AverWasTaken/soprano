@@ -87,7 +87,7 @@ final class EffortlessTripsBridge implements EffortlessTrips {
     // the bill is what's short, the targets are what the bag should hold once it's in
     private static ItemTarget[] targets(AltoClef mod, Map<Item, Integer> bill) {
         List<ItemTarget> out = new ArrayList<>();
-        bill.forEach((item, n) -> out.add(new ItemTarget(item, mod.getItemStorage().getItemCount(item) + n)));
+        bill.forEach((item, n) -> out.add(new ItemTarget(item, mod.getItemStorage().getItemCountInventoryOnly(item) + n)));
         return out.toArray(new ItemTarget[0]);
     }
 

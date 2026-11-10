@@ -68,7 +68,9 @@ public class FetchFromStashTask extends Task {
     private ItemTarget[] remaining(AltoClef mod) {
         List<ItemTarget> out = new ArrayList<>();
         for (ItemTarget t : wanted) {
-            if (mod.getItemStorage().getItemCount(t) < t.getTargetCount()) {
+            // the player's own slots only: getItemCount also counts an open chest, and with the chest open every item in
+            // it looked like ours already, so the task finished with nothing taken
+            if (mod.getItemStorage().getItemCountInventoryOnly(t.getMatches()) < t.getTargetCount()) {
                 out.add(t);
             }
         }
