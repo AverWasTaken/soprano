@@ -1512,6 +1512,13 @@ public final class Settings {
     public final Setting<Double> effortlessReach = new Setting<>(6D);
 
     /**
+     * Start a placement selection on the block under the crosshair (for replacing). Off, start against its face,
+     * as when placing a block by hand. The starting-cell preview uses the same rule. Breaking targets the block itself.
+     */
+    public final Setting<Boolean> effortlessStartOnTarget = new Setting<>(false);
+
+
+    /**
      * The Effortless Soprano radial shows while its key is held and picks what's under the mouse when you let go. Off,
      * a press opens it and it stays until you pick something or press the key again.
      */

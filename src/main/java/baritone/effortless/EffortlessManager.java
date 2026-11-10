@@ -140,7 +140,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 return out;
             }
         }
-        if (!out.isEmpty() && out.size() < spec.kind().clicks(spec) && look.isPresent()) {
+        if ((BuildMode.active() || !out.isEmpty()) && out.size() < spec.kind().clicks(spec) && look.isPresent()) {
             out.add(look.get());
         }
         return out;
@@ -771,7 +771,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
     // the job the current points (plus the crosshair for the missing ones) and the draft would make. null when there
     // are no points, no draft, or the draft can't make a job here (no block in hand, too big)
     public JobSchematic previewSchematic() {
-        if (points.isEmpty() || draftMode == null || draftOptions == null) {
+        if (BuildMode.active() && points.isEmpty()) {
+            draftMode = EffortlessJob.Mode.PLACE;
+            draftOptions = BuildMode.options(draftMode);
+        }
+        if ((!BuildMode.active() && points.isEmpty()) || draftMode == null || draftOptions == null) {
             return null;
         }
         AreaMask mask = currentMask(true);
@@ -860,55 +864,19 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
     }
 
+    private final SelectionOverlay selectionOverlay = new SelectionOverlay();
+
     @Override
     public void onRenderPass(RenderEvent event) {
         drawStorage(event);
-        if (points.isEmpty()) {
+        if (!BuildMode.active() && points.isEmpty()) {
             return;
         }
         AreaMask mask = currentMask(true);
-        PoseStack stack = event.getModelViewStack();
-        float width = Baritone.settings().selectionLineWidth.value;
-        // through blocks: digging down into a shape you still see how deep it goes
-        boolean through = Baritone.settings().effortlessOutlineThroughBlocks.value;
-        if (mask != null && !mask.isEmpty()) {
-            drawExtents(stack, mask, width, through);
+        if (mask == null || mask.isEmpty() || mask.count() > Baritone.settings().effortlessMaxBlocks.value) {
+            return;
         }
-        BufferBuilder buf = IRenderer.startLines(Baritone.settings().colorEffortlessOutline.value, 0.9f);
-        for (BlockPos p : points) {
-            if (p != null) {
-                IRenderer.emitAABB(buf, stack, new AABB(p), 0.01, width);
-            }
-        }
-        IRenderer.endLines(buf, through);
-    }
-
-    // the shape's box with its edges coloured by the axis they run along: X red, Y green, Z blue, the usual axis colours.
-    // wherever you look from, the width, the height and the depth each show as their own colour
-    private void drawExtents(PoseStack stack, AreaMask mask, float width, boolean through) {
-        double x0 = mask.minX - GROW, y0 = mask.minY - GROW, z0 = mask.minZ - GROW;
-        double x1 = mask.maxX() + 1 + GROW, y1 = mask.maxY() + 1 + GROW, z1 = mask.maxZ() + 1 + GROW;
-        float w = Math.max(2f, width * 1.5f);
-        BufferBuilder buf = IRenderer.startLines(new java.awt.Color(0xFF5555), 1f);
-        for (double y : new double[]{y0, y1}) {
-            for (double z : new double[]{z0, z1}) {
-                IRenderer.emitLine(buf, stack, x0, y, z, x1, y, z, w);
-            }
-        }
-        IRenderer.endLines(buf, through);
-        buf = IRenderer.startLines(new java.awt.Color(0x55E070), 1f);
-        for (double x : new double[]{x0, x1}) {
-            for (double z : new double[]{z0, z1}) {
-                IRenderer.emitLine(buf, stack, x, y0, z, x, y1, z, w);
-            }
-        }
-        IRenderer.endLines(buf, through);
-        buf = IRenderer.startLines(new java.awt.Color(0x5AA0FF), 1f);
-        for (double x : new double[]{x0, x1}) {
-            for (double y : new double[]{y0, y1}) {
-                IRenderer.emitLine(buf, stack, x, y, z0, x, y, z1, w);
-            }
-        }
-        IRenderer.endLines(buf, through);
+        selectionOverlay.draw(event.getModelViewStack(), mask, previewSchematic(),
+                BuildMode.pending() == EffortlessJob.Mode.BREAK, baritone.getPlayerContext().world());
     }
 }

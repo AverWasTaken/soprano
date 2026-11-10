@@ -381,12 +381,18 @@ public final class BuildMode {
         }
         HitResult hit = mc.hitResult;
         if (hit instanceof BlockHitResult b && hit.getType() == HitResult.Type.BLOCK) {
-            return Optional.of(mode == EffortlessJob.Mode.PLACE ? b.getBlockPos().relative(b.getDirection()) : b.getBlockPos());
+            return Optional.of(startCell(b.getBlockPos(), b.getDirection(), mode == EffortlessJob.Mode.PLACE,
+                    Baritone.settings().effortlessStartOnTarget.value));
         }
         double reach = Baritone.settings().effortlessReach.value;
         Vec3 eye = mc.player.getEyePosition();
         Vec3 out = eye.add(mc.player.getLookAngle().scale(reach));
         return Optional.of(BlockPos.containing(out));
+    }
+
+    // shared by the idle marker and the actual click, so they cannot disagree
+    static BlockPos startCell(BlockPos target, net.minecraft.core.Direction face, boolean place, boolean onTarget) {
+        return place && !onTarget ? target.relative(face) : target;
     }
 
     // what the preview uses for the corner not set yet

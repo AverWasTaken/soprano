@@ -174,6 +174,12 @@ public final class EffortlessRadialScreen extends Screen {
     // what goes down and where it comes from. the same for every shape, so it lives on its own side
     private void blocksPanel(List<RadialMenu.Item> out) {
         out.add(new RadialMenu.Title("Blocks", "Used for every shape"));
+        out.add(new RadialMenu.Choice("Selection starts", List.of("Against face", "On target"),
+                Baritone.settings().effortlessStartOnTarget.value ? 1 : 0, i -> {
+                    Baritone.settings().effortlessStartOnTarget.value = i == 1;
+                    baritone.api.utils.SettingsUtil.save(Baritone.settings());
+                    rebuildPanels();
+                }));
         BuildMode.PaletteSource[] sources = BuildMode.PaletteSource.values();
         out.add(new RadialMenu.Choice("Place with", List.of("Held block", "Hotbar mix"), BuildMode.palette().ordinal(), i -> {
             BuildMode.palette(sources[i]);
