@@ -23,18 +23,23 @@ import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.process.IBuilderProcess;
+import baritone.api.utils.Dimension;
+import baritone.api.utils.EffortlessMaterials;
+import baritone.api.utils.EffortlessStorageFull;
 import baritone.api.utils.IPlayerContext;
 import baritone.utils.IRenderer;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 // the state of the build mode for one baritone: the shape picked, the clicks so far, and the jobs it starts. the
@@ -58,6 +63,19 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private Object queueWorld;
     // the builder's serial for the entry it's on, 0 while it isn't on one of ours
     private long entrySerial;
+    // the errands (AltoClef's, handed in by its bridge), whether one is out, and when the full output storage is worth
+    // another look
+    private EffortlessTrips trips;
+    private boolean tripOut;
+    private long tripStarted;
+    // a deposit or a fetch that hasn't come back in this long is called off: a container task that can't make up its
+    // mind must not hold the job forever. a gather can take as long as it takes
+    private static final long TRIP_TIMEOUT_MS = 60_000;
+    private boolean tripTimed;
+    // we called the errand off ourselves (timeout). a stop that isn't ours is the player's #stop
+    private boolean tripCalledOff;
+    private long storageRetryAt;
+    private static final int MAX_TRIPS = 5;
     // the shown entries as one schematic for the preview, rebuilt when what's shown changes
     private Object shownKey;
     private JobSchematic shownSchematic;
@@ -202,6 +220,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     // hands the job to the builder right away, through the queue so it shows there like the rest
     public void start(EffortlessJob job) {
         JobQueue.Entry e = queue.add(job, System.currentTimeMillis());
+        e.materials(BuildMode.materials());
         // something of ours already going is put back in line, the new one goes first
         JobQueue.Entry was = queue.runningEntry();
         if (was != null) {
@@ -227,6 +246,19 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     public JobQueue queue() {
         return queue;
+    }
+
+    public void trips(EffortlessTrips t) {
+        this.trips = t;
+    }
+
+    public boolean tripOut() {
+        return tripOut;
+    }
+
+    public void addStorage(StorageArea area) {
+        queue.storage().add(area);
+        save();
     }
 
     // after anything changes the queue: written straight away, it's a small file
@@ -259,6 +291,15 @@ public final class EffortlessManager implements AbstractGameEventListener {
     }
 
     private void tickQueue() {
+        if (tripOut) {
+            // an errand has the bot, the entry waits for it to come back
+            if (tripTimed && System.currentTimeMillis() - tripStarted > TRIP_TIMEOUT_MS && trips != null) {
+                tripTimed = false;
+                tripCalledOff = true;
+                trips.cancel();
+            }
+            return;
+        }
         JobQueue.Entry e = queue.runningEntry();
         if (e != null) {
             var builder = baritone.getBuilderProcess();
@@ -277,12 +318,19 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 save();
                 return;
             } else if (builder.isPaused()) {
-                // "unable to do it": this one's stuck, the rest may not be
-                e.state(JobQueue.State.FAILED, "the builder couldn't finish it");
+                Map<BlockState, Integer> missing = builder.missingAtPause();
+                if (!missing.isEmpty() && fetchOrGather(e, bill(missing))) {
+                    return;
+                }
+                // "unable to do it", or out of blocks with nowhere to get more: this one's stuck, the rest may not be
+                e.state(JobQueue.State.FAILED, missing.isEmpty() ? "the builder couldn't finish it" : "ran out of " + names(missing.keySet()));
                 entrySerial = 0;
                 baritone.getPathingBehavior().cancelEverything();
                 save();
             } else {
+                if (e.breaks() && depositDue()) {
+                    deposit(e);
+                }
                 return;
             }
         }
@@ -298,8 +346,224 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
         int[] at = queue.progress(next);
         BuildMode.say("Effortless " + at[0] + "/" + at[1] + ": " + next.name());
+        next.trips(0);
+        // a storage or gather entry gets its bill in before the builder starts on it
+        if (next.places() && next.materials() != EffortlessMaterials.INVENTORY && !creative()) {
+            Map<Item, Integer> bill = billFor(next);
+            if (!bill.isEmpty()) {
+                next.state(JobQueue.State.RUNNING, null);
+                if (fetchOrGather(next, bill)) {
+                    save();
+                    return;
+                }
+            }
+        }
         startEntry(next);
         save();
+    }
+
+    private boolean creative() {
+        var p = baritone.getPlayerContext().player();
+        return p != null && p.hasInfiniteMaterials();
+    }
+
+    // sends the bot for the bill the entry's source says: the input storage or a gather. false when it can't (no
+    // AltoClef, no input storage, inventory source, too many trips already), the caller decides what that means
+    private boolean fetchOrGather(JobQueue.Entry e, Map<Item, Integer> bill) {
+        if (bill.isEmpty() || e.materials() == EffortlessMaterials.INVENTORY || trips == null || !trips.available()) {
+            return false;
+        }
+        if (e.trips() >= MAX_TRIPS) {
+            e.state(JobQueue.State.FAILED, "still short after " + MAX_TRIPS + " trips");
+            return false;
+        }
+        StorageArea input = queue.input();
+        if (e.materials() == EffortlessMaterials.STORAGE && input == null) {
+            BuildMode.say("No input storage marked (empty hand, right click two corners), building with what you carry");
+            return false;
+        }
+        e.trips(e.trips() + 1);
+        e.state(JobQueue.State.RUNNING, null);
+        tripOut = true;
+        tripStarted = System.currentTimeMillis();
+        tripTimed = e.materials() == EffortlessMaterials.STORAGE;
+        // the builder lets go for the errand, it starts fresh on the entry when the bot is back
+        stopBuilderFor(e);
+        java.util.function.Consumer<String> back = why -> {
+            tripOut = false;
+            if (playerStopped(why, e)) {
+                return;
+            }
+            if (why != null) {
+                BuildMode.say(e.materials() == EffortlessMaterials.STORAGE ? "Storage: " + why : "Gathering: " + why);
+            }
+            if (e.state() == JobQueue.State.RUNNING && queue.entries().contains(e)) {
+                startEntry(e);
+                save();
+            }
+        };
+        if (e.materials() == EffortlessMaterials.STORAGE) {
+            BuildMode.say("Fetching " + total(bill) + " blocks from the storage");
+            trips.fetch(input.range(dimension()), bill, back);
+        } else {
+            BuildMode.say("Gathering " + total(bill) + " blocks");
+            trips.gather(bill, back);
+        }
+        return true;
+    }
+
+    // the bag is nearly full, there's an output storage, and it isn't known to be full right now
+    private boolean depositDue() {
+        if (trips == null || !Baritone.settings().effortlessReturnToStorage.value || queue.output() == null
+                || System.currentTimeMillis() < storageRetryAt || creative()) {
+            return false;
+        }
+        return freeSlots() <= Baritone.settings().effortlessFreeSlotsLow.value && trips.available();
+    }
+
+    private void deposit(JobQueue.Entry e) {
+        tripOut = true;
+        tripStarted = System.currentTimeMillis();
+        tripTimed = true;
+        stopBuilderFor(e);
+        BuildMode.say("Inventory full, emptying it into the storage");
+        trips.deposit(queue.output().range(dimension()), why -> {
+            tripOut = false;
+            if (playerStopped(why, e)) {
+                return;
+            }
+            // a deposit we had to call off is treated like a full storage: carry on, look later
+            if (EffortlessTrips.FULL.equals(why) || "stopped".equals(why)) {
+                if (EffortlessTrips.FULL.equals(why) && Baritone.settings().effortlessStorageFull.value == EffortlessStorageFull.STOP) {
+                    // stay at the storage, the rest of the queue waits
+                    e.state(JobQueue.State.FAILED, "the output storage is full");
+                    queue.running(false);
+                    BuildMode.say("The storage is full, stopped there");
+                    save();
+                    return;
+                }
+                // a hopper may empty it, so try again later, and keep working meanwhile with the bag as it is
+                storageRetryAt = System.currentTimeMillis() + 1000L * Baritone.settings().effortlessStorageRetrySeconds.value;
+                BuildMode.say("The storage is full, carrying on and trying again later");
+            } else if (why != null) {
+                BuildMode.say("Storage: " + why);
+            }
+            if (e.state() == JobQueue.State.RUNNING && queue.entries().contains(e)) {
+                startEntry(e);
+                save();
+            }
+        });
+    }
+
+    // an errand came back "stopped" and it wasn't our timeout: the player said #stop. the entry waits, the queue stops
+    private boolean playerStopped(String why, JobQueue.Entry e) {
+        boolean ours = tripCalledOff;
+        tripCalledOff = false;
+        if (!"stopped".equals(why) || ours) {
+            return false;
+        }
+        e.state(JobQueue.State.QUEUED, null);
+        queue.running(false);
+        BuildMode.say("Effortless queue paused");
+        save();
+        return true;
+    }
+
+    private void stopBuilderFor(JobQueue.Entry e) {
+        if (entrySerial != 0 && baritone.getBuilderProcess().buildSerial() == entrySerial) {
+            baritone.getBuilderProcess().onLostControl();
+        }
+        entrySerial = 0;
+    }
+
+    private Dimension dimension() {
+        var level = baritone.getPlayerContext().world();
+        if (level == null || level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
+            return Dimension.OVERWORLD;
+        }
+        return level.dimension() == net.minecraft.world.level.Level.NETHER ? Dimension.NETHER : Dimension.END;
+    }
+
+    private int freeSlots() {
+        var p = baritone.getPlayerContext().player();
+        if (p == null) {
+            return 36;
+        }
+        int free = 0;
+        for (int i = 0; i < 36; i++) {
+            if (p.getInventory().getItem(i).isEmpty()) {
+                free++;
+            }
+        }
+        return free;
+    }
+
+    // what the entry still needs placed, as items, less what the inventory already holds
+    Map<Item, Integer> billFor(JobQueue.Entry e) {
+        var level = baritone.getPlayerContext().world();
+        Map<Item, Integer> need = new java.util.LinkedHashMap<>();
+        if (level == null) {
+            return need;
+        }
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (EffortlessJob j : e.jobs()) {
+            if (j.mode != EffortlessJob.Mode.PLACE) {
+                continue;
+            }
+            j.mask.forEach((x, y, z) -> {
+                EffortlessJob.Outcome o = j.outcome(x, y, z, level.getBlockState(at.set(x, y, z)));
+                if (o == EffortlessJob.Outcome.PLACE || o == EffortlessJob.Outcome.REPLACE) {
+                    Item item = j.desired(x, y, z).getBlock().asItem();
+                    if (item != net.minecraft.world.item.Items.AIR) {
+                        need.merge(item, 1, Integer::sum);
+                    }
+                }
+            });
+        }
+        return lessCarried(need);
+    }
+
+    private Map<Item, Integer> bill(Map<BlockState, Integer> missing) {
+        Map<Item, Integer> need = new java.util.LinkedHashMap<>();
+        missing.forEach((st, n) -> {
+            Item item = st.getBlock().asItem();
+            if (item != net.minecraft.world.item.Items.AIR) {
+                need.merge(item, n, Integer::sum);
+            }
+        });
+        return need;
+    }
+
+    private Map<Item, Integer> lessCarried(Map<Item, Integer> need) {
+        var p = baritone.getPlayerContext().player();
+        Map<Item, Integer> out = new java.util.LinkedHashMap<>();
+        need.forEach((item, n) -> {
+            int have = 0;
+            if (p != null) {
+                for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+                    var st = p.getInventory().getItem(i);
+                    if (st.getItem() == item) {
+                        have += st.getCount();
+                    }
+                }
+            }
+            if (n > have) {
+                out.put(item, n - have);
+            }
+        });
+        return out;
+    }
+
+    private static int total(Map<Item, Integer> bill) {
+        return bill.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    private static String names(java.util.Collection<BlockState> states) {
+        List<String> out = new ArrayList<>();
+        for (BlockState s : states) {
+            out.add(s.getBlock().getName().getString());
+        }
+        return String.join(", ", out);
     }
 
     // the queued entries with show on, as one schematic for the preview. null when none are
@@ -400,7 +664,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
             start(job);
             return;
         }
-        queue.add(job, System.currentTimeMillis());
+        queue.add(job, System.currentTimeMillis()).materials(BuildMode.materials());
         save();
         int waiting = 0;
         for (JobQueue.Entry e : queue.entries()) {
@@ -417,6 +681,21 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     // ----- the outline
 
+    // marked storage, a green box each, while build mode is on (that's when you're thinking about them)
+    private void drawStorage(RenderEvent event) {
+        if (!BuildMode.active() || queue.storage().isEmpty()) {
+            return;
+        }
+        PoseStack stack = event.getModelViewStack();
+        BufferBuilder buf = IRenderer.startLines(new java.awt.Color(0x5BD27A), 0.9f);
+        for (StorageArea a : queue.storage()) {
+            IRenderer.emitAABB(buf, stack, new AABB(Math.min(a.a().getX(), a.b().getX()), Math.min(a.a().getY(), a.b().getY()),
+                    Math.min(a.a().getZ(), a.b().getZ()), Math.max(a.a().getX(), a.b().getX()) + 1, Math.max(a.a().getY(), a.b().getY()) + 1,
+                    Math.max(a.a().getZ(), a.b().getZ()) + 1), 0.02, Baritone.settings().selectionLineWidth.value);
+        }
+        IRenderer.endLines(buf, false);
+    }
+
     @Override
     public void onTick(TickEvent event) {
         if (event.getType() == TickEvent.Type.IN && event.getState() == EventState.PRE) {
@@ -428,6 +707,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     @Override
     public void onRenderPass(RenderEvent event) {
+        drawStorage(event);
         if (points.isEmpty()) {
             return;
         }

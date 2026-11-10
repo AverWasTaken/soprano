@@ -29,6 +29,7 @@ import baritone.effortless.EffortlessJob;
 import baritone.effortless.EffortlessManager;
 import baritone.effortless.EffortlessOptions;
 import baritone.effortless.JobQueue;
+import baritone.effortless.StorageArea;
 import baritone.effortless.ShapeKind;
 import baritone.effortless.ShapeSpec;
 import net.minecraft.core.BlockPos;
@@ -97,6 +98,7 @@ public class EffortlessCommand extends Command {
                 logDirect("Previewing " + what + ", the shape follows your crosshair until its points are set");
             }
             case "queue", "q" -> queue(args);
+            case "storage", "s" -> storage(args);
             case "clear" -> {
                 args.requireMax(0);
                 m.clearPoints();
@@ -210,6 +212,63 @@ public class EffortlessCommand extends Command {
         }
     }
 
+    // #ef storage [list|add x y z x y z [role]|role n input|output|both|remove n|clear]
+    private void storage(IArgConsumer args) throws CommandException {
+        EffortlessManager m = manager();
+        List<StorageArea> areas = m.queue().storage();
+        String what = args.hasAny() ? args.getString().toLowerCase(Locale.ROOT) : "list";
+        switch (what) {
+            case "list" -> {
+                if (areas.isEmpty()) {
+                    logDirect("No storage marked. In build mode, right click two corners around the chests with an empty hand");
+                    return;
+                }
+                for (int i = 0; i < areas.size(); i++) {
+                    logDirect((i + 1) + ". " + areas.get(i).describe());
+                }
+            }
+            case "add" -> {
+                BlockPos a = args.getDatatypePost(RelativeBlockPos.INSTANCE, ctx.viewerPos());
+                BlockPos b = args.getDatatypePost(RelativeBlockPos.INSTANCE, ctx.viewerPos());
+                StorageArea.Role role = args.hasAny() ? StorageArea.Role.byId(args.getString()) : StorageArea.Role.BOTH;
+                if (role == null) {
+                    throw new CommandInvalidStateException("the role is input, output or both");
+                }
+                m.addStorage(new StorageArea(a, b, role));
+                logDirect("Storage " + areas.size() + " marked: " + areas.get(areas.size() - 1).describe());
+            }
+            case "role" -> {
+                int i = storageIndex(args, areas);
+                StorageArea.Role role = StorageArea.Role.byId(args.getString());
+                if (role == null) {
+                    throw new CommandInvalidStateException("the role is input, output or both");
+                }
+                areas.set(i, areas.get(i).withRole(role));
+                m.save();
+                logDirect("Storage " + (i + 1) + " is " + areas.get(i).describe());
+            }
+            case "remove", "rm" -> {
+                areas.remove(storageIndex(args, areas));
+                m.save();
+                logDirect("Removed");
+            }
+            case "clear" -> {
+                areas.clear();
+                m.save();
+                logDirect("No storage marked now");
+            }
+            default -> throw new CommandInvalidStateException("storage list, add, role, remove or clear");
+        }
+    }
+
+    private static int storageIndex(IArgConsumer args, List<StorageArea> areas) throws CommandException {
+        int n = args.getAs(Integer.class);
+        if (n < 1 || n > areas.size()) {
+            throw new CommandInvalidStateException("there's no storage " + n + " (1 to " + areas.size() + ")");
+        }
+        return n - 1;
+    }
+
     private static int index(IArgConsumer args, JobQueue q) throws CommandException {
         int n = args.getAs(Integer.class);
         if (n < 1 || n > q.size()) {
@@ -290,7 +349,7 @@ public class EffortlessCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
-                    .append("p1", "p2", "p3", "shape", "place", "break", "preview", "queue", "info", "clear")
+                    .append("p1", "p2", "p3", "shape", "place", "break", "preview", "queue", "storage", "info", "clear")
                     .filterPrefix(args.getString()).sortAlphabetically().stream();
         }
         String sub = args.getString().toLowerCase(Locale.ROOT);
@@ -338,6 +397,8 @@ public class EffortlessCommand extends Command {
                 "> ef preview place|break [options] - Show what place or break would do, without starting. preview off hides it",
                 "> ef queue - The queue: list, start, stop, move <n> <to>, merge <n> <n>.., unmerge <n>, remove <n>,",
                 "  show/hide <n> (in the world), rename <n> <name>, clear (the finished ones)",
+                "> ef storage - Marked storage: list, add <x y z> <x y z> [input|output|both], role <n> <role>, remove <n>, clear",
+                "  Break jobs empty a full inventory into output storage, place jobs set to Storage fetch from input storage",
                 "> ef info - What's set up",
                 "> ef clear - Forget the points",
                 "",

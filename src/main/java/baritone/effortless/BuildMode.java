@@ -60,6 +60,10 @@ public final class BuildMode {
     private static final int[] slotWeight = {1, 1, 1, 1, 1, 1, 1, 1, 1};
     private static final boolean[] slotTurn = new boolean[9];
     private static long mixSeed;
+    // where a place job's blocks come from, null until it's picked (then the setting's default)
+    private static baritone.api.utils.EffortlessMaterials materials;
+    // an empty hand's right clicks mark a storage box instead of placing
+    private static boolean storagePick;
     // the mode the shape being set up is for, null while no corner is down
     private static EffortlessJob.Mode pending;
     // the game tick of the last use click we took. a held right button calls startUseItem every few ticks, that's one
@@ -187,6 +191,18 @@ public final class BuildMode {
         return total == 0 ? 0 : Math.round(100f * slotWeight[slot] / total);
     }
 
+    public static baritone.api.utils.EffortlessMaterials materials() {
+        return materials != null ? materials : Baritone.settings().effortlessMaterials.value;
+    }
+
+    public static void materials(baritone.api.utils.EffortlessMaterials m) {
+        materials = m;
+    }
+
+    public static boolean storagePick() {
+        return storagePick;
+    }
+
     public static boolean skipContainers() {
         return skipContainers;
     }
@@ -201,6 +217,7 @@ public final class BuildMode {
         EffortlessManager m = manager();
         m.clearPoints();
         pending = null;
+        storagePick = false;
     }
 
     // ----- the clicks. true = it was ours and the game should do nothing with it
@@ -211,9 +228,16 @@ public final class BuildMode {
         }
         boolean repeat = ticks - lastUseTick <= 5;
         lastUseTick = ticks;
-        if (!repeat) {
-            click(EffortlessJob.Mode.PLACE);
+        if (repeat) {
+            return true;
         }
+        Minecraft mc = Minecraft.getInstance();
+        // an empty hand marks storage: two corners around the chests, whatever shape is picked
+        if (storagePick || (pending == null && mc.player.getMainHandItem().isEmpty())) {
+            storageClick();
+            return true;
+        }
+        click(EffortlessJob.Mode.PLACE);
         return true;
     }
 
@@ -263,6 +287,26 @@ public final class BuildMode {
         finish(m, mode);
     }
 
+    private static void storageClick() {
+        EffortlessManager m = manager();
+        Optional<BlockPos> at = aim(EffortlessJob.Mode.BREAK);
+        if (at.isEmpty()) {
+            return;
+        }
+        if (!storagePick) {
+            storagePick = true;
+            m.clearPoints();
+            m.point(0, at.get());
+            say("Storage: right click the other corner (with an empty hand)");
+            return;
+        }
+        BlockPos a = m.points().get(0);
+        m.addStorage(new StorageArea(a, at.get(), StorageArea.Role.BOTH));
+        int n = m.queue().storage().size();
+        say("Storage " + n + " marked: input and output. #ef storage to change that");
+        cancel();
+    }
+
     private static List<BlockPos> setPoints(EffortlessManager m) {
         List<BlockPos> out = new ArrayList<>();
         for (BlockPos p : m.points()) {
@@ -298,9 +342,10 @@ public final class BuildMode {
         if (mc.player == null) {
             return Optional.empty();
         }
-        // after the first corner the rest follow your look along the shape's plane, wherever you look
+        // after the first corner the rest follow your look along the shape's plane, wherever you look. a storage box
+        // just takes the block you look at
         List<BlockPos> set = setPoints(manager());
-        if (!set.isEmpty()) {
+        if (!set.isEmpty() && !storagePick) {
             Vec3 eye = mc.player.getEyePosition();
             Vec3 dir = mc.player.getLookAngle();
             Optional<BlockPos> next = ClickAim.next(manager().spec(), set, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z);
@@ -434,8 +479,11 @@ public final class BuildMode {
         EffortlessManager m = manager();
         ShapeSpec spec = m.spec();
         StringBuilder b = new StringBuilder("Effortless · ").append(spec.kind().title);
+        if (storagePick) {
+            return "Effortless · marking storage · right click the other corner";
+        }
         if (pending == null) {
-            b.append(" · right click to place, left click to break");
+            b.append(" · right click to place, left click to break, empty hand marks storage");
             return b.toString();
         }
         AreaMask mask = m.currentMask(true);

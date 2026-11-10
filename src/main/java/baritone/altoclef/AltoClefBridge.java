@@ -88,6 +88,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             SchematicGhostRenderer.attach(primary);
             // Effortless Soprano's preview: the same machinery, its own source. a broken preview shouldn't stop the rest
             try {
+                // and its errands (deposit, fetch, gather) run as altoclef tasks
+                primary.getEffortlessManager().trips(new EffortlessTripsBridge());
                 EffortlessGhosts.attach(primary);
             } catch (Throwable t) {
                 System.err.println("the effortless preview could not start");

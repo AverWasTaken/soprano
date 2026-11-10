@@ -157,4 +157,25 @@ public class JobQueueTest {
         assertTrue(JobStore.load(file).isEmpty());
         assertTrue(Files.exists(dir.resolve(JobStore.FILE_NAME + ".bad")));
     }
+
+    @Test
+    public void storageAndMaterialsComeBack() throws Exception {
+        JobQueue q = house();
+        q.get(0).materials(baritone.api.utils.EffortlessMaterials.STORAGE);
+        q.get(1).materials(baritone.api.utils.EffortlessMaterials.GATHER);
+        q.storage().add(new StorageArea(new BlockPos(0, 60, 0), new BlockPos(3, 62, 1), StorageArea.Role.INPUT));
+        q.storage().add(new StorageArea(new BlockPos(10, 60, 0), new BlockPos(12, 61, 0), StorageArea.Role.OUTPUT));
+        assertEquals(new BlockPos(0, 60, 0), q.input().a());
+        assertEquals(new BlockPos(10, 60, 0), q.output().a());
+        // merging keeps the first one's source
+        q.merge(List.of(0, 2));
+        assertEquals(baritone.api.utils.EffortlessMaterials.STORAGE, q.get(0).materials());
+
+        JobQueue back = JobStore.fromJson(JobStore.toJson(q));
+        assertEquals(2, back.storage().size());
+        assertEquals(StorageArea.Role.OUTPUT, back.storage().get(1).role());
+        assertEquals(new BlockPos(12, 61, 0), back.storage().get(1).b());
+        assertEquals(baritone.api.utils.EffortlessMaterials.STORAGE, back.get(0).materials());
+        assertEquals(baritone.api.utils.EffortlessMaterials.GATHER, back.get(1).materials());
+    }
 }

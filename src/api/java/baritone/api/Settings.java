@@ -18,6 +18,8 @@
 package baritone.api;
 
 import baritone.api.utils.BlockRange;
+import baritone.api.utils.EffortlessMaterials;
+import baritone.api.utils.EffortlessStorageFull;
 import baritone.api.utils.ForceFieldStrategy;
 import baritone.api.utils.Helper;
 import baritone.api.utils.NotificationHelper;
@@ -1520,6 +1522,35 @@ public final class Settings {
      * first and reorder or merge them.
      */
     public final Setting<Boolean> effortlessStartRightAway = new Setting<>(false);
+
+    /**
+     * Where an Effortless Soprano place job takes its blocks from: only your inventory (the default), the marked input
+     * storage, or gathered by AltoClef. The radial can pick it per job. Storage and gathering need AltoClef.
+     */
+    public final Setting<EffortlessMaterials> effortlessMaterials = new Setting<>(EffortlessMaterials.INVENTORY);
+
+    /**
+     * When a break job's inventory fills up and an output storage is marked, walk back to it, put everything that isn't
+     * gear away, and carry on. Off, it keeps breaking and the drops it can't pick up stay where they fall.
+     */
+    public final Setting<Boolean> effortlessReturnToStorage = new Setting<>(true);
+
+    /**
+     * What a break job does when the output storage is full: keep working and try again later
+     * ({@link #effortlessStorageRetrySeconds}), or stop there.
+     */
+    public final Setting<EffortlessStorageFull> effortlessStorageFull = new Setting<>(EffortlessStorageFull.KEEP_WORKING);
+
+    /**
+     * A break job goes to empty its inventory when this many inventory slots or fewer are still free.
+     */
+    public final Setting<Integer> effortlessFreeSlotsLow = new Setting<>(2);
+
+    /**
+     * After finding the output storage full, how long a break job keeps working before it tries the storage again. A
+     * hopper or a sorting system may have made room by then.
+     */
+    public final Setting<Integer> effortlessStorageRetrySeconds = new Setting<>(120);
 
     /**
      * The colour of the outline Effortless Soprano draws around the shape you are setting up.

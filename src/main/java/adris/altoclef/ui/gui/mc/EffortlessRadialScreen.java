@@ -210,6 +210,11 @@ public final class EffortlessRadialScreen extends Screen {
         if (BuildMode.palette() == BuildMode.PaletteSource.HOTBAR) {
             mixRows(rows);
         }
+        baritone.api.utils.EffortlessMaterials[] from = baritone.api.utils.EffortlessMaterials.values();
+        rows.add(new RadialMenu.Row("Blocks from", List.of("Inventory", "Storage", "Gather"), BuildMode.materials().ordinal(), i -> {
+            BuildMode.materials(from[i]);
+            rebuildRows();
+        }));
         BuildMode.BreakFilter[] filters = BuildMode.BreakFilter.values();
         rows.add(new RadialMenu.Row("Left click breaks", List.of("All", "Hand block", "Offhand block", "All but hand"),
                 BuildMode.breakFilter().ordinal(), i -> {

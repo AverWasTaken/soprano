@@ -66,6 +66,7 @@ public final class JobStore {
             if (e.why() != null) {
                 o.addProperty("why", e.why());
             }
+            o.addProperty("materials", e.materials().name());
             JsonArray jobs = new JsonArray();
             for (EffortlessJob j : e.jobs()) {
                 jobs.add(job(j));
@@ -74,6 +75,15 @@ public final class JobStore {
             list.add(o);
         }
         root.add("entries", list);
+        JsonArray areas = new JsonArray();
+        for (StorageArea a : queue.storage()) {
+            JsonObject o = new JsonObject();
+            o.add("a", pos(a.a()));
+            o.add("b", pos(a.b()));
+            o.addProperty("role", a.role().name());
+            areas.add(o);
+        }
+        root.add("storage", areas);
         return GSON.toJson(root);
     }
 
@@ -117,6 +127,18 @@ public final class JobStore {
             o.add("palette", p);
         }
         return o;
+    }
+
+    private static JsonArray pos(BlockPos p) {
+        JsonArray a = new JsonArray();
+        a.add(p.getX());
+        a.add(p.getY());
+        a.add(p.getZ());
+        return a;
+    }
+
+    private static BlockPos pos(JsonArray a) {
+        return new BlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt());
     }
 
     private static JsonArray strings(List<String> list) {
@@ -172,6 +194,17 @@ public final class JobStore {
         if (!root.isJsonObject() || !root.getAsJsonObject().has("entries")) {
             return q;
         }
+        if (root.getAsJsonObject().has("storage")) {
+            for (JsonElement el : root.getAsJsonObject().getAsJsonArray("storage")) {
+                try {
+                    JsonObject o = el.getAsJsonObject();
+                    StorageArea.Role role = StorageArea.Role.byId(o.get("role").getAsString());
+                    q.storage().add(new StorageArea(pos(o.getAsJsonArray("a")), pos(o.getAsJsonArray("b")),
+                            role == null ? StorageArea.Role.BOTH : role));
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
         for (JsonElement el : root.getAsJsonObject().getAsJsonArray("entries")) {
             try {
                 JsonObject o = el.getAsJsonObject();
@@ -189,6 +222,7 @@ public final class JobStore {
                         o.has("added") ? o.get("added").getAsLong() : 0);
                 JobQueue.State st = enumOr(JobQueue.State.class, o.has("state") ? o.get("state").getAsString() : null, JobQueue.State.QUEUED);
                 e.state(st == JobQueue.State.RUNNING ? JobQueue.State.QUEUED : st, o.has("why") ? o.get("why").getAsString() : null);
+                e.materials(enumOr(baritone.api.utils.EffortlessMaterials.class, str(o, "materials"), null));
                 q.add(e);
             } catch (RuntimeException ignored) {
                 // one broken entry doesn't cost the rest

@@ -37,6 +37,10 @@ public final class JobQueue {
         private String why;
         private final long added;
         private boolean shown;
+        // where a place entry's blocks come from, set when it was queued
+        private baritone.api.utils.EffortlessMaterials materials = baritone.api.utils.EffortlessMaterials.INVENTORY;
+        // errands this entry has sent the bot on, so a storage that never has enough can't loop forever
+        private int trips;
 
         public Entry(List<EffortlessJob> jobs, String name, long added) {
             if (jobs.isEmpty()) {
@@ -88,6 +92,22 @@ public final class JobQueue {
             return added;
         }
 
+        public baritone.api.utils.EffortlessMaterials materials() {
+            return materials;
+        }
+
+        public void materials(baritone.api.utils.EffortlessMaterials m) {
+            this.materials = m == null ? baritone.api.utils.EffortlessMaterials.INVENTORY : m;
+        }
+
+        public int trips() {
+            return trips;
+        }
+
+        public void trips(int n) {
+            this.trips = n;
+        }
+
         public boolean shown() {
             return shown;
         }
@@ -118,7 +138,22 @@ public final class JobQueue {
     }
 
     private final List<Entry> entries = new ArrayList<>();
+    // the storage areas marked in this world and dimension
+    private final List<StorageArea> storage = new ArrayList<>();
     private boolean running;
+
+    public List<StorageArea> storage() {
+        return storage;
+    }
+
+    // the first area that takes what break jobs collect, or gives what place jobs need
+    public StorageArea output() {
+        return storage.stream().filter(a -> a.role().output()).findFirst().orElse(null);
+    }
+
+    public StorageArea input() {
+        return storage.stream().filter(a -> a.role().input()).findFirst().orElse(null);
+    }
 
     public List<Entry> entries() {
         return Collections.unmodifiableList(entries);
@@ -178,6 +213,7 @@ public final class JobQueue {
             added = Math.min(added, e.added);
         }
         Entry group = new Entry(jobs, null, added);
+        group.materials(entries.get(sorted.get(0)).materials);
         for (int k = sorted.size() - 1; k >= 0; k--) {
             entries.remove((int) sorted.get(k));
         }
@@ -197,7 +233,9 @@ public final class JobQueue {
         entries.remove(i);
         List<Entry> parts = new ArrayList<>();
         for (EffortlessJob j : e.jobs) {
-            parts.add(new Entry(List.of(j), null, e.added));
+            Entry part = new Entry(List.of(j), null, e.added);
+            part.materials(e.materials);
+            parts.add(part);
         }
         entries.addAll(i, parts);
     }

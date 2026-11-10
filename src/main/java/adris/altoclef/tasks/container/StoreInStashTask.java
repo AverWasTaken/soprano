@@ -13,8 +13,6 @@ import baritone.api.utils.BlockRange;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -30,9 +28,9 @@ public class StoreInStashTask extends Task {
     private final boolean _getIfNotPresent;
     private final BlockRange _stashRange;
     private ContainerStoredTracker _storedItems;
-    // the containers we had open during this run. only these count as full: one the cache remembers full from an
+    // when this run started. only containers read since then count as full: one the cache remembers full from an
     // earlier visit may have been emptied since (a hopper under it, a sorter), so it gets another look first
-    private final Set<BlockPos> _lookedInto = new HashSet<>();
+    private long _runStart;
     // set once every container in the stash was looked into this run and none had room. null while there's hope
     private String _failure;
 
@@ -49,6 +47,9 @@ public class StoreInStashTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
+        if (_runStart == 0) {
+            _runStart = System.nanoTime();
+        }
         mod.getBlockTracker().trackBlock(TO_SCAN);
         if (_storedItems == null) {
             _storedItems = new ContainerStoredTracker(slot -> {
@@ -71,19 +72,13 @@ public class StoreInStashTask extends Task {
             }
         }
 
-        // the last interaction is only there while the screen is open, so it gets caught every tick
-        mod.getItemStorage().getLastBlockPosInteraction().ifPresent(pos -> {
-            if (_stashRange.contains(pos, WorldHelper.getCurrentDimension())) {
-                _lookedInto.add(pos.immutable());
-            }
-        });
-
         Predicate<BlockPos> inStash = blockPos -> _stashRange.contains(blockPos, WorldHelper.getCurrentDimension());
         Predicate<BlockPos> validContainer = blockPos -> {
             if (!inStash.test(blockPos))
                 return false;
             Optional<ContainerCache> container = mod.getItemStorage().getContainerAtPosition(blockPos);
-            return hasRoom(_lookedInto.contains(blockPos), container.map(ContainerCache::isFull).orElse(null));
+            boolean seenThisRun = container.isPresent() && container.get().seenAt() >= _runStart;
+            return hasRoom(seenThisRun, container.map(ContainerCache::isFull).orElse(null));
         };
 
         // Store in valid container
@@ -112,6 +107,13 @@ public class StoreInStashTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(TO_SCAN);
+        // the last chest we looked into can still be open (a full one is left open while we decide it's full). whoever
+        // runs next, the builder or a person, gets the game back without it in the way. only a container screen: the
+        // click gui or a chat the player opened meanwhile stay
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player != null && mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
+            mc.player.closeContainer();
+        }
         _storedItems.stopTracking();
     }
 
