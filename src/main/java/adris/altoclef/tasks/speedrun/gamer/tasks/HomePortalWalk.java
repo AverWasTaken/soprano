@@ -29,6 +29,9 @@ public class HomePortalWalk {
     private int homeArrivedTick;
     private boolean tracking;
     private String hud;
+    // every way back in passes the bed by the portal first: a night bed or a village bed took the spawn while we were home, and
+    // the morning pickup left none. same step as PortalPhase's first way in
+    private final PortalBedStep portalBed = new PortalBedStep();
 
     // a fresh start (a phase entered again): the old walk and the old verdict are not ours any more
     public void reset() {
@@ -38,6 +41,12 @@ public class HomePortalWalk {
         gone = false;
         homeArrivedTick = 0;
         hud = null;
+        portalBed.reset();
+    }
+
+    // the portal bed step has the wheel: standing by the portal and not walking in is that, not a walk that got nowhere
+    public boolean settingBed() {
+        return portalBed.running();
     }
 
     // true once we stood where the portal should be and it was not there. RunState.overworldPortal is forgotten by then
@@ -58,8 +67,14 @@ public class HomePortalWalk {
                 mod.getBlockTracker().trackBlock(Blocks.NETHER_PORTAL);
                 tracking = true;
             }
-            if (portalNear(mod)) {
+            // (a running try is not dropped when the walk to its spot takes us out of the portal's reach)
+            if (portalBed.running() || portalNear(mod)) {
                 homeArrivedTick = 0;
+                Task bed = portalBed.tick(mod, state, new BlockPos(home.x, home.y, home.z), save);
+                if (bed != null) {
+                    hud = "Setting the spawn by the portal";
+                    return bed;
+                }
             } else {
                 BlockPos at = new BlockPos(home.x, home.y, home.z);
                 if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {

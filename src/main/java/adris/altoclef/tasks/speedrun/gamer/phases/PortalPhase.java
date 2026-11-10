@@ -9,10 +9,10 @@ import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
-import adris.altoclef.tasks.misc.PlaceBedAndSetSpawnTask;
+import adris.altoclef.tasks.speedrun.gamer.PortalBedRules;
 import adris.altoclef.tasks.speedrun.gamer.Respawn;
-import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
-import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PortalBedStep;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -92,11 +92,15 @@ public class PortalPhase implements PhaseHandler {
     private ConstructNetherPortalObsidianTask obsidian;
     private EnterNetherPortalTask enter;
     private String hudState;
-    // the spawn bed by the overworld portal (see portalBedStep). the task once it starts, the latch so it is one try per entry
-    private PlaceBedAndSetSpawnTask portalBed;
-    private boolean portalBedDecided;
-    private double portalBedSince;
-    private static final double PORTAL_BED_SECONDS = 45;
+    // the spawn bed by the overworld portal (see portalBedStep), and the bed the gate crafts for it when the bag has none
+    private final PortalBedStep portalBed = new PortalBedStep();
+    private final BedCraft bedCraft = new BedCraft();
+    // game time the gate's bed craft started, -1 = not yet. it gets a minute, then the gate goes without (bedCraftStep)
+    private long bedCraftSince = -1;
+    private boolean bedCraftOver;
+    private static final long BED_CRAFT_TICKS = 20 * 60;
+    // not a catalogue item: only the bench plan sees it, so the table the craft stands at stays down (KitNeed.isCraftName)
+    private static final KitNeed BED_CRAFT_NEED = new KitNeed("portal_bed", 1);
     // close enough to the lake that the tracker's rescan has it in its nearest sources
     private static final int LAKE_ARRIVE = 8;
 
@@ -176,10 +180,11 @@ public class PortalPhase implements PhaseHandler {
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
-        portalBed = null;
-        // one try per run: a retry of the phase does not place a second bed
+        // a retry of the phase keeps the step's tries, a fresh entry (a rebuild after a death) gets its own
         if (ctx.attempt() <= 1) {
-            portalBedDecided = false;
+            portalBed.reset();
+            bedCraftSince = -1;
+            bedCraftOver = false;
         }
         gravel.reset();
         if (!tracking) {
@@ -265,8 +270,16 @@ public class PortalPhase implements PhaseHandler {
         }
         boolean fillUp = fillUpSince < 0 || f.gameTime() - fillUpSince < FILL_UP_TICKS;
         List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.buildBlocks(), fillUp);
+        // the bed craft is the gate's last step but not the runner's (the catalogue's bed walks to any bed it knows), so only the
+        // benches hear about it. asked once the rest of the gate is through, the standing bed check reads a few thousand blocks
+        boolean craftBed = !gateDone && gate.isEmpty() && wantsBedCraft(mod, ctx);
+        List<KitNeed> benchPlan = gate;
+        if (craftBed) {
+            benchPlan = new ArrayList<>(gate);
+            benchPlan.add(BED_CRAFT_NEED);
+        }
         if (f.dimension() == Dimension.OVERWORLD) {
-            Task pickup = benches.tick(mod, ctx, gate);
+            Task pickup = benches.tick(mod, ctx, benchPlan);
             if (pickup != null) {
                 hudState = benches.hud();
                 return pickup;
@@ -274,7 +287,7 @@ public class PortalPhase implements PhaseHandler {
             // (only once the gate has nothing left to craft: a table the gate still wants is standing on purpose)
             // (and not the cast's own station while the cast is at it, see portalHold)
             boolean mayEnd = Workbenches.phaseMayEnd(ctx.state(), f.dimension().name(), f.gameTime());
-            if (WorkbenchRules.portalHold(gate.isEmpty(), mayEnd, gateDone, gateDone && !mayEnd && benches.inUse(mod, ctx))) {
+            if (WorkbenchRules.portalHold(benchPlan.isEmpty(), mayEnd, gateDone, gateDone && !mayEnd && benches.inUse(mod, ctx))) {
                 hudState = "Waiting to take the crafting table back";
                 return null;
             }
@@ -288,6 +301,12 @@ public class PortalPhase implements PhaseHandler {
                 Task prep = runner.run(ctx, gate);
                 hudState = runner.hud();
                 return prep;
+            }
+            if (craftBed) {
+                Task bed = bedCraftStep(mod, ctx);
+                if (bed != null) {
+                    return bed;
+                }
             }
             // from here the cast juggles its own buckets, checking the gate again would fight it
             gateDone = true;
@@ -375,36 +394,85 @@ public class PortalPhase implements PhaseHandler {
         return new GoalNear(lake.above(), LAKE_ARRIVE).isInGoal(feet);
     }
 
-    // a bed from the bag goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the
-    // world spawn. the bed is not claimed as a night bed (NightSleepTask never hears of it), so the morning pickup leaves it, and
-    // RunState.respawnPos (RespawnWatch) is the only record of it. same shape as RoomPhase.roomBedStep
+    // a bed goes down by the overworld portal on the way in, so a death in the nether lands us here and not at the world spawn. the
+    // bed is not claimed as a night bed (NightSleepTask never hears of it), so the morning pickup leaves it, RunState.portalBed
+    // remembers it for the next way in. PortalBedStep has the tries and the "did it take" check
     private Task portalBedStep(AltoClef mod, GamerContext ctx, Optional<BlockPos> portal) {
-        if (portalBed != null) {
-            if (portalBed.isFinished(mod) || ctx.secondsInPhase() - portalBedSince > PORTAL_BED_SECONDS) {
-                ctx.progress("respawn bed");
-                portalBed = null;
+        var player = mod.getPlayer();
+        BlockPos at = portalBed.running() ? portalBed.portal() : null;
+        if (at == null) {
+            if (portal.isEmpty() || player == null || ctx.facts().dimension() != Dimension.OVERWORLD) {
                 return null;
             }
+            at = portal.get();
+            if (Math.hypot(at.getX() - player.getX(), at.getZ() - player.getZ()) > Respawn.PORTAL_BED_REACH) {
+                return null;
+            }
+        }
+        // (a running try keeps going when the walk to a spot takes us past the reach, the portal it started for is the one)
+        boolean wasRunning = portalBed.running();
+        Task task = portalBed.tick(mod, ctx.state(), at, ctx::save);
+        if (task != null) {
             hudState = "Setting the spawn by the portal";
-            return portalBed;
+        } else if (wasRunning) {
+            ctx.progress("respawn bed");
         }
-        var player = mod.getPlayer();
-        if (portalBedDecided || portal.isEmpty() || player == null || ctx.facts().dimension() != Dimension.OVERWORLD) {
+        return task;
+    }
+
+    // the gate wants a bed made when the portal bed will want one and the bag can make it: no respawn by the portal (or where the
+    // portal will be, which is about here), nothing standing there to click, no bed in the bag
+    private boolean wantsBedCraft(AltoClef mod, GamerContext ctx) {
+        if (bedCraftOver || ctx.facts().dimension() != Dimension.OVERWORLD || mod.getPlayer() == null) {
+            return false;
+        }
+        if (bedCraftSince >= 0) {
+            // started: it runs till the bag has one or the clock is out, the inputs flapping mid craft must not drop it
+            return true;
+        }
+        RunState.Pos known = ctx.state().overworldPortal;
+        BlockPos center = known != null ? new BlockPos(known.x, known.y, known.z) : mod.getPlayer().blockPosition();
+        if (!Respawn.wantPortalBed(ctx.state(), center.getX(), center.getZ())) {
+            return false;
+        }
+        if (ctx.facts().bedsInBag() > 0 || !PortalBedRules.canCraft(BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod))) {
+            return false;
+        }
+        boolean standing = PortalBedStep.standingNear(mod, ctx.state(), center) != null;
+        return PortalBedRules.source(standing, 0, true) == PortalBedRules.Source.CRAFT;
+    }
+
+    // one bed out of the bag's wool, a minute at most. null = done or given up, the gate carries on either way
+    private Task bedCraftStep(AltoClef mod, GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        if (f.bedsInBag() > 0) {
+            bedCraftOver = true;
+            if (bedCraftSince >= 0) {
+                ctx.log("portal bed: crafted one from the bag's wool");
+            }
             return null;
         }
-        BlockPos at = portal.get();
-        if (Math.hypot(at.getX() - player.getX(), at.getZ() - player.getZ()) > Respawn.PORTAL_BED_REACH) {
+        if (bedCraftSince < 0) {
+            bedCraftSince = f.gameTime();
+            ctx.log("portal bed: no bed in the bag, crafting one from the wool (best stack " + BedCraft.bestWoolStack(mod) + ", wood "
+                    + BedCraft.wood(mod) + ")");
+        }
+        Task task = bedCraft.planksFirst(mod);
+        if (task == null) {
+            task = bedCraft.next(mod);
+        }
+        if (task == null) {
+            // only now: stray shuts any screen that is up, and that would be the table the craft just opened. same order as
+            // NightSleepTask's craft stage
+            task = BedCraft.stray(mod);
+        }
+        if (task == null || f.gameTime() - bedCraftSince > BED_CRAFT_TICKS) {
+            bedCraftOver = true;
+            ctx.log("portal bed: could not craft one (" + (task == null ? "the bag can't make it" : "out of time") + "), the portal bed gets skipped");
             return null;
         }
-        portalBedDecided = true;
-        int reserve = EndGear.bedTarget(ctx.cfg().end, EndGear.wantSpawnBed(ctx.state(), ctx.cfg().end));
-        if (!Respawn.wantPortalBed(ctx.state(), EndGear.surplusBeds(ctx.facts().bedsInBag(), reserve), at.getX(), at.getZ())) {
-            return null;
-        }
-        portalBed = new PlaceBedAndSetSpawnTask().spawnOnly().awayFrom(at, 4);
-        portalBedSince = ctx.secondsInPhase();
-        hudState = "Setting the spawn by the portal";
-        return portalBed;
+        hudState = "Crafting a bed for the portal";
+        return task;
     }
 
     // the gravel detour, asked after the station pickup and before the gate's own task. anything earlier in tick that took the wheel

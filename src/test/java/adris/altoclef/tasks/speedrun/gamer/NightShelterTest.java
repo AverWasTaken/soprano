@@ -98,7 +98,9 @@ public class NightShelterTest {
     public void noBedTonightIsNoBedOrASpawnBedWeKeep() {
         GamerPhase n = GamerPhase.NETHER;
         assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.NONE, false));
-        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, true));
+        assertTrue(NightShelter.noBedTonight(n, NightSleep.BedSource.NONE, true));
+        // a nether food trip uses its bag bed with the portal bed standing, the way back in clicks the portal bed again
+        assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, true));
         assertTrue(NightShelter.noBedTonight(GamerPhase.EYES, NightSleep.BedSource.CRAFT, true));
         // the spawn bed is gone: sleep in the bag bed, no hole
         assertFalse(NightShelter.noBedTonight(n, NightSleep.BedSource.BAG, false));

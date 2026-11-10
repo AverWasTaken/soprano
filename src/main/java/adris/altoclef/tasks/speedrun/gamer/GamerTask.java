@@ -1598,7 +1598,7 @@ public class GamerTask extends Task {
         boolean dusk = NightShelter.dark(windowOpen, mod.getWorld().getOverworldClockTime(), 0);
         // only a fight that is really on counts, the heal-up hold after one is the very case for a hole
         boolean inFight = mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
-        // a nether or eyes leg home for food has no bed it may use: no armor or death needed, the hole is the answer
+        // a nether or eyes leg home for food with no bed it may use (noBedTonight): no armor or death needed, the hole is the answer
         boolean tripNight = state.phase == GamerPhase.NETHER || state.phase == GamerPhase.EYES;
         NightShelter.Trigger t = new NightShelter.Trigger(dusk, true, facts.armorPoints(), !leftover && (tripNight || facts.count(ItemHelper.BED) == 0),
                 SmeltSurface.depthBelowSky(mod), recover != null, inFight, busy != NightSleep.Busy.NONE || WorldHelper.isStandingInPortal(mod),

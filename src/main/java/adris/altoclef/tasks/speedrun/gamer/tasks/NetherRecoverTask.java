@@ -246,7 +246,11 @@ public class NetherRecoverTask extends Task {
     private long stuckTicks(AltoClef mod, Stage stage, long now) {
         RunState.Pos home = state.overworldPortal;
         double dist;
-        if (stage == Stage.PORTAL && home != null && facts.dimension() == Dimension.OVERWORLD) {
+        if (stage == Stage.PORTAL && home != null && facts.dimension() == Dimension.OVERWORLD && walk.settingBed()) {
+            // the bed by the portal is going down (two tries of 45 s at most), the walk in starts its clock after it
+            portalMarkTick = Long.MIN_VALUE;
+            return 0;
+        } else if (stage == Stage.PORTAL && home != null && facts.dimension() == Dimension.OVERWORLD) {
             dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(new BlockPos(home.x, home.y, home.z)));
         } else if (stage == Stage.WALK && facts.dimension() == Dimension.NETHER) {
             RunState.Pos pile = state.netherTrip.pile;

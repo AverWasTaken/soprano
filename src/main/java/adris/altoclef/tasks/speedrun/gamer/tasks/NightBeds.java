@@ -45,8 +45,8 @@ public final class NightBeds {
             if (dist > (double) bedRadius * bedRadius) {
                 continue;
             }
-            // sleeping anywhere else moves our respawn off the bed we already have, so the spawn bed beats a nearer one
-            if (Respawn.isSpawnBed(pos.getX(), pos.getY(), pos.getZ())) {
+            // sleeping anywhere else moves our respawn off the bed we already have, so the spawn bed (or the portal bed) beats a nearer one
+            if (Respawn.keepsBed(pos.getX(), pos.getY(), pos.getZ())) {
                 dist = -1;
             }
             if (dist >= bestDist) {

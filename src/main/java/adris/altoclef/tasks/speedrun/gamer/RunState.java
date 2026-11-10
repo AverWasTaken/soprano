@@ -82,6 +82,9 @@ public class RunState {
     public String respawnDim = "OVERWORLD";
     // the bed we put down for the night (NightSleep) and have not picked up yet. not the spawn bed, and never a village's
     public Pos nightBed;
+    // the bed by the overworld nether portal that once held our respawn (PortalBedStep). the night can move the spawn off it, the
+    // next way into the nether clicks it again, and the bed collectors leave it alone (Respawn.keepsBed)
+    public Pos portalBed;
 
     // gear we left lying in the End (item registry name -> count), replaces BM2's cache so a death there does not re-craft it
     public Map<String, Integer> endDrops = new HashMap<>();
