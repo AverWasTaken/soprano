@@ -137,6 +137,11 @@ public final class Palette {
         boolean test(int x, int y, int z);
     }
 
+    // whether random rotation would do anything for this block (stone has nothing to turn)
+    public static boolean canTurn(BlockState s) {
+        return turns(s).size() > 1;
+    }
+
     // every state of this block that differs from it only in the rotation properties it has
     static List<BlockState> turns(BlockState base) {
         List<BlockState> out = new ArrayList<>();

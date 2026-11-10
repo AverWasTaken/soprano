@@ -55,6 +55,11 @@ public final class BuildMode {
     private static PaletteSource palette = PaletteSource.HAND;
     private static BreakFilter breakFilter = BreakFilter.ALL;
     private static boolean skipContainers;
+    // the hotbar mix: a weight per slot (0 leaves the slot out), whether that slot's block gets turned at random, and
+    // the pattern's seed. weights are relative, 3 and 1 is 75% and 25%
+    private static final int[] slotWeight = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+    private static final boolean[] slotTurn = new boolean[9];
+    private static long mixSeed;
     // the mode the shape being set up is for, null while no corner is down
     private static EffortlessJob.Mode pending;
     // the game tick of the last use click we took. a held right button calls startUseItem every few ticks, that's one
@@ -128,6 +133,58 @@ public final class BuildMode {
     public static void breakFilter(BreakFilter f) {
         breakFilter = f;
         refreshDraft();
+    }
+
+    public static int slotWeight(int slot) {
+        return slotWeight[slot];
+    }
+
+    public static void slotWeight(int slot, int w) {
+        slotWeight[slot] = Math.max(0, w);
+        refreshDraft();
+    }
+
+    public static boolean slotTurn(int slot) {
+        return slotTurn[slot];
+    }
+
+    public static void slotTurn(int slot, boolean on) {
+        slotTurn[slot] = on;
+        refreshDraft();
+    }
+
+    // a new pattern for the same mix
+    public static void reroll() {
+        mixSeed = new java.util.Random().nextLong();
+        refreshDraft();
+    }
+
+    // the block in a hotbar slot, if it's one
+    public static Optional<BlockState> slotBlock(int slot) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return Optional.empty();
+        }
+        ItemStack s = mc.player.getInventory().getItem(slot);
+        if (s.getItem() instanceof BlockItem bi && !bi.getBlock().defaultBlockState().isAir()) {
+            return Optional.of(bi.getBlock().defaultBlockState());
+        }
+        return Optional.empty();
+    }
+
+    // the share of the mix this slot gets, 0 to 100, for the panel. slots with the same block add up
+    public static int share(int slot) {
+        Optional<BlockState> mine = slotBlock(slot);
+        if (mine.isEmpty() || slotWeight[slot] == 0) {
+            return 0;
+        }
+        int total = 0;
+        for (int i = 0; i < 9; i++) {
+            if (slotBlock(i).isPresent()) {
+                total += slotWeight[i];
+            }
+        }
+        return total == 0 ? 0 : Math.round(100f * slotWeight[slot] / total);
     }
 
     public static boolean skipContainers() {
@@ -281,6 +338,9 @@ public final class BuildMode {
                 if (blocks != null) {
                     b.append(" block=").append(blocks);
                 }
+                if (palette == PaletteSource.HOTBAR) {
+                    b.append(" seed=").append((int) mixSeed);
+                }
             }
         } else {
             switch (breakFilter) {
@@ -306,24 +366,27 @@ public final class BuildMode {
         };
     }
 
-    // every distinct block on the hotbar, equal weights. null when there's none (the job then says "hold a block")
+    // the hotbar's blocks as block= words: id*weight, @r where that slot turns at random. the same block in two slots
+    // adds up. null when there's none (the job then says "hold a block")
     static String hotbarBlocks() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) {
-            return null;
-        }
-        List<String> ids = new ArrayList<>();
+        java.util.Map<String, int[]> mix = new java.util.LinkedHashMap<>();
         for (int i = 0; i < 9; i++) {
-            ItemStack s = mc.player.getInventory().getItem(i);
-            if (s.getItem() instanceof BlockItem bi) {
-                BlockState st = bi.getBlock().defaultBlockState();
-                String id = BlockFilter.idOf(st.getBlock());
-                if (!ids.contains(id) && !st.isAir()) {
-                    ids.add(id);
-                }
+            Optional<BlockState> b = slotBlock(i);
+            if (b.isEmpty() || slotWeight[i] == 0) {
+                continue;
+            }
+            int[] e = mix.computeIfAbsent(BlockFilter.idOf(b.get().getBlock()), k -> new int[2]);
+            e[0] += slotWeight[i];
+            if (slotTurn[i]) {
+                e[1] = 1;
             }
         }
-        return ids.isEmpty() ? null : String.join(",", ids);
+        if (mix.isEmpty()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        mix.forEach((id, e) -> parts.add(id + "*" + e[0] + (e[1] == 1 ? "@r" : "")));
+        return String.join(",", parts);
     }
 
     private static void refreshDraft() {

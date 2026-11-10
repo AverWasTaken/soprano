@@ -29,8 +29,19 @@ public class RadialMenu extends Widget {
     public record Entry(Icon icon, String label) {
     }
 
-    // one line of the panel: a label and a row of chips, one of them picked
-    public record Row(String label, List<String> choices, int picked, IntConsumer onPick) {
+    // one line of the panel: a label, a row of chips with one picked, and maybe a chip of its own on the end that turns
+    // on and off by itself (the mix's "Turn"). no choices makes it a heading
+    public record Row(String label, List<String> choices, int picked, IntConsumer onPick, String toggle, boolean toggled,
+                      Runnable onToggle) {
+
+        public Row(String label, List<String> choices, int picked, IntConsumer onPick) {
+            this(label, choices, picked, onPick, null, false, null);
+        }
+
+        public static Row heading(String label) {
+            return new Row(label, List.of(), -1, i -> {
+            });
+        }
     }
 
     public interface Listener {
@@ -63,6 +74,7 @@ public class RadialMenu extends Widget {
     private float hoverChipY = Float.NaN;
     // the panel is as wide as its widest row of chips, measured on the last draw. the ring centres against it
     private float panelW = -1;
+    private float labelW;
 
     public RadialMenu(Theme theme, List<Entry> entries, Listener listener) {
         super(theme);
@@ -151,7 +163,11 @@ public class RadialMenu extends Widget {
         for (float[] c : chips) {
             if (mx >= c[2] && my >= c[3] && mx < c[2] + c[4] && my < c[3] + c[5]) {
                 Row r = rows.get((int) c[0]);
-                r.onPick().accept((int) c[1]);
+                if (c[1] < 0) {
+                    r.onToggle().run();
+                } else {
+                    r.onPick().accept((int) c[1]);
+                }
                 return true;
             }
         }
@@ -168,6 +184,8 @@ public class RadialMenu extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
+        // the panel's width moves the ring's centre, so it's measured before anything is drawn
+        measurePanel(c);
         float cx = centerX();
         float cy = centerY();
         float tile = theme.pxf(TILE);
@@ -215,43 +233,93 @@ public class RadialMenu extends Widget {
             return;
         }
         float pad = theme.pxf(PAD);
-        float widest = theme.pxf(PANEL_W) - 2 * pad;
-        for (Row row : rows) {
-            float rw = -theme.pxf(CHIP_GAP);
-            for (String s : row.choices()) {
-                rw += c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD) + theme.pxf(CHIP_GAP);
-            }
-            widest = Math.max(widest, Math.max(rw, c.measure(row.label(), theme.smallLabel)));
+        float chipH = theme.pxf(CHIP_H);
+        float gap = theme.pxf(CHIP_GAP);
+        float labelW = this.labelW;
+        float ph = pad * 2;
+        for (int r = 0; r < rows.size(); r++) {
+            ph += rowHeight(c, rows.get(r)) + (r > 0 ? theme.pxf(ROW_GAP) : 0);
         }
-        panelW = widest + 2 * pad;
         float px = panelX();
-        float pw = panelW;
-        float labelH = c.lineHeight(theme.smallLabel);
-        float rowH = labelH + theme.pxf(4) + theme.pxf(CHIP_H);
-        float ph = pad * 2 + rows.size() * rowH + (rows.size() - 1) * theme.pxf(ROW_GAP);
-        float py = centerY() - ph / 2f;
-        c.shadow(px, py, pw, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.SHADOW));
-        c.fillRoundRect(px, py, pw, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.PANEL) & 0xF0FFFFFF);
+        float py = Math.max(y + pad, centerY() - ph / 2f);
+        c.shadow(px, py, panelW, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.SHADOW));
+        c.fillRoundRect(px, py, panelW, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.PANEL) & 0xF0FFFFFF);
         float ry = py + pad;
         for (int r = 0; r < rows.size(); r++) {
             Row row = rows.get(r);
-            c.text(row.label(), px + pad, ry + c.ascent(theme.smallLabel), theme.smallLabel, c.color(Theme.TEXT_2));
-            float cy = ry + labelH + theme.pxf(4);
-            float cx = px + pad;
-            for (int i = 0; i < row.choices().size(); i++) {
-                String s = row.choices().get(i);
-                float cw = c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD);
-                float chipH = theme.pxf(CHIP_H);
-                boolean on = i == row.picked();
-                boolean hv = hoverChipX >= cx && hoverChipY >= cy && hoverChipX < cx + cw && hoverChipY < cy + chipH;
-                int fill = on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED);
-                c.fillRoundRect(cx, cy, cw, chipH, chipH / 2f, fill);
-                float base = cy + (chipH + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
-                c.text(s, cx + theme.pxf(CHIP_PAD), base, theme.small, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
-                chips.add(new float[]{r, i, cx, cy, cw, chipH});
-                cx += cw + theme.pxf(CHIP_GAP);
+            if (r > 0) {
+                ry += theme.pxf(ROW_GAP);
             }
-            ry += rowH + theme.pxf(ROW_GAP);
+            float rh = rowHeight(c, row);
+            if (row.choices().isEmpty()) {
+                // a heading, with a hairline above it when it isn't the first thing
+                if (r > 0) {
+                    c.fillRect(px + pad, ry - theme.pxf(ROW_GAP) / 2f, panelW - 2 * pad, 1, c.color(Theme.HAIRLINE));
+                }
+                c.text(row.label(), px + pad, ry + rh - c.descent(theme.label) - theme.pxf(2), theme.label, c.color(Theme.TEXT));
+                ry += rh;
+                continue;
+            }
+            float base = ry + (chipH + c.ascent(theme.smallLabel) - c.descent(theme.smallLabel)) / 2f;
+            c.text(row.label(), px + pad, base, theme.smallLabel, c.color(Theme.TEXT_2));
+            float cx = px + pad + labelW;
+            for (int i = 0; i < row.choices().size(); i++) {
+                float cw = chip(c, row.choices().get(i), cx, ry, i == row.picked());
+                chips.add(new float[]{r, i, cx, ry, cw, chipH});
+                cx += cw + gap;
+            }
+            if (row.toggle() != null) {
+                cx += gap;
+                float cw = chip(c, row.toggle(), cx, ry, row.toggled());
+                // chip -1 is the toggle
+                chips.add(new float[]{r, -1, cx, ry, cw, chipH});
+            }
+            ry += rh;
         }
+    }
+
+    // a label column as wide as the widest label, the chips start where it ends. the panel is as wide as the widest row
+    private void measurePanel(Canvas c) {
+        float pad = theme.pxf(PAD);
+        float lw = 0;
+        float chipsW = 0;
+        float headW = 0;
+        for (Row row : rows) {
+            if (row.choices().isEmpty()) {
+                headW = Math.max(headW, c.measure(row.label(), theme.label));
+                continue;
+            }
+            lw = Math.max(lw, c.measure(row.label(), theme.smallLabel));
+            chipsW = Math.max(chipsW, rowChipsWidth(c, row));
+        }
+        labelW = lw + theme.pxf(12);
+        panelW = Math.max(labelW + chipsW, headW) + 2 * pad;
+    }
+
+    private float rowHeight(Canvas c, Row row) {
+        return row.choices().isEmpty() ? c.lineHeight(theme.label) + theme.pxf(4) : theme.pxf(CHIP_H);
+    }
+
+    private float rowChipsWidth(Canvas c, Row row) {
+        float w = -theme.pxf(CHIP_GAP);
+        for (String s : row.choices()) {
+            w += c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD) + theme.pxf(CHIP_GAP);
+        }
+        if (row.toggle() != null) {
+            w += 2 * theme.pxf(CHIP_GAP) + c.measure(row.toggle(), theme.small) + 2 * theme.pxf(CHIP_PAD);
+        }
+        return w;
+    }
+
+    // one pill, picked or not, hover from the last pointer position. returns its width
+    private float chip(Canvas c, String s, float cx, float cy, boolean on) {
+        float cw = c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD);
+        float chipH = theme.pxf(CHIP_H);
+        boolean hv = hoverChipX >= cx && hoverChipY >= cy && hoverChipX < cx + cw && hoverChipY < cy + chipH;
+        int fill = on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED);
+        c.fillRoundRect(cx, cy, cw, chipH, chipH / 2f, fill);
+        float base = cy + (chipH + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
+        c.text(s, cx + theme.pxf(CHIP_PAD), base, theme.small, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
+        return cw;
     }
 }

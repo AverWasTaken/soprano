@@ -207,6 +207,9 @@ public final class EffortlessRadialScreen extends Screen {
             BuildMode.palette(sources[i]);
             rebuildRows();
         }));
+        if (BuildMode.palette() == BuildMode.PaletteSource.HOTBAR) {
+            mixRows(rows);
+        }
         BuildMode.BreakFilter[] filters = BuildMode.BreakFilter.values();
         rows.add(new RadialMenu.Row("Left click breaks", List.of("All", "Hand block", "Offhand block", "All but hand"),
                 BuildMode.breakFilter().ordinal(), i -> {
@@ -218,6 +221,44 @@ public final class EffortlessRadialScreen extends Screen {
             rebuildRows();
         }));
         menu.setRows(rows);
+    }
+
+    // one line per hotbar block: its share, a weight (off leaves it out) and whether it turns at random. the hologram
+    // shows the exact pick per cell, so changing a weight or rerolling shows straight away in the world
+    private void mixRows(List<RadialMenu.Row> rows) {
+        rows.add(RadialMenu.Row.heading("Hotbar mix"));
+        boolean any = false;
+        for (int slot = 0; slot < 9; slot++) {
+            var block = BuildMode.slotBlock(slot);
+            if (block.isEmpty()) {
+                continue;
+            }
+            any = true;
+            int at = slot;
+            String name = block.get().getBlock().getName().getString();
+            if (name.length() > 18) {
+                name = name.substring(0, 17) + "\u2026";
+            }
+            int share = BuildMode.share(slot);
+            String label = (slot + 1) + "  " + name + (share > 0 ? "  " + share + "%" : "");
+            boolean turns = baritone.effortless.Palette.canTurn(block.get());
+            rows.add(new RadialMenu.Row(label, List.of("Off", "1", "2", "3", "4", "5"), Math.min(5, BuildMode.slotWeight(slot)),
+                    i -> {
+                        BuildMode.slotWeight(at, i);
+                        rebuildRows();
+                    }, turns ? "Turn" : null, BuildMode.slotTurn(slot), () -> {
+                        BuildMode.slotTurn(at, !BuildMode.slotTurn(at));
+                        rebuildRows();
+                    }));
+        }
+        if (!any) {
+            rows.add(RadialMenu.Row.heading("Put some blocks on the hotbar"));
+            return;
+        }
+        rows.add(new RadialMenu.Row("Pattern", List.of("Reroll"), -1, i -> {
+            BuildMode.reroll();
+            rebuildRows();
+        }));
     }
 
     static List<ShapeSpec.Fill> fills(ShapeKind k) {

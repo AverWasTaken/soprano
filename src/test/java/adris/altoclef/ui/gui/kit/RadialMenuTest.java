@@ -98,16 +98,48 @@ public class RadialMenuTest {
         m.mouseMove(m.tileX(5), m.tileY(5));
         m.draw(c, new Frame(0, 0, m.tileX(5), m.tileY(5)));
         c.save(Paths.get("build", "gui-preview", "effortless_radial.png"));
-        // the first chip of the first row sits at the panel's left edge, past the padding
-        float x = m.panelX() + theme.pxf(RadialMenu.PAD) + 4;
-        float y = m.centerY();
+        // somewhere in the panel the first row's first chip takes a click
         boolean hit = false;
-        for (int dy = -200; dy <= 200 && !hit; dy += 2) {
-            if (m.mouseDown(x, y + dy, 0, 0) && !chip.isEmpty()) {
-                hit = true;
+        for (int dy = -300; dy <= 300 && !hit; dy += 3) {
+            for (int dx = 0; dx <= 400 && !hit; dx += 4) {
+                if (m.mouseDown(m.panelX() + dx, m.centerY() + dy, 0, 0) && !chip.isEmpty()) {
+                    hit = true;
+                }
             }
         }
         assertTrue("a chip in the first row took a click", hit);
         assertEquals(Integer.valueOf(0), chip.get(0));
+    }
+
+    @Test
+    public void mixRowsWithToggles() throws IOException {
+        RadialMenu m = menu(11);
+        List<String> toggled = new ArrayList<>();
+        m.setRows(List.of(new RadialMenu.Row("Shape", List.of("Filled", "Outline"), 0, i -> {
+                }),
+                new RadialMenu.Row("With", List.of("Hand", "Offhand", "Hotbar mix"), 2, i -> {
+                }),
+                RadialMenu.Row.heading("Hotbar mix"),
+                new RadialMenu.Row("1  Stone Bricks  60%", List.of("Off", "1", "2", "3", "4", "5"), 3, i -> {
+                }, null, false, null),
+                new RadialMenu.Row("2  Cracked Stone Bri\u2026  20%", List.of("Off", "1", "2", "3", "4", "5"), 1, i -> {
+                }, null, false, null),
+                new RadialMenu.Row("3  Oak Log  20%", List.of("Off", "1", "2", "3", "4", "5"), 1, i -> {
+                }, "Turn", true, () -> toggled.add("log")),
+                new RadialMenu.Row("Pattern", List.of("Reroll"), -1, i -> {
+                })));
+        m.setSelected(3);
+        Java2dCanvas c = new Java2dCanvas(1280, 720, glyphs, shapes);
+        c.clear(0xFF2B3A2E);
+        m.draw(c, new Frame(0, 0, -1, -1));
+        c.save(Paths.get("build", "gui-preview", "effortless_radial_mix.png"));
+        boolean hit = false;
+        for (int dy = -300; dy <= 300 && !hit; dy += 3) {
+            for (int dx = 0; dx <= 600 && !hit; dx += 4) {
+                m.mouseDown(m.panelX() + dx, m.centerY() + dy, 0, 0);
+                hit = !toggled.isEmpty();
+            }
+        }
+        assertTrue("the Turn toggle took a click", hit);
     }
 }
