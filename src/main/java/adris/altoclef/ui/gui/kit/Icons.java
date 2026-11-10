@@ -448,9 +448,21 @@ public final class Icons {
             case PLAY -> poly(g, true, 7, 4.5f, 19.5f, 12, 7, 19.5f);
             case SHAPE_SINGLE -> g.draw(new java.awt.geom.Rectangle2D.Float(6, 6, 12, 12));
             case SHAPE_LINE -> {
+                line(g, 6, 12, 18, 12);
+                g.fill(new Ellipse2D.Float(2.5f, 9.5f, 5, 5));
+                g.fill(new Ellipse2D.Float(16.5f, 9.5f, 5, 5));
+            }
+            case SHAPE_DIAG_LINE -> {
                 line(g, 6, 18, 18, 6);
                 g.fill(new Ellipse2D.Float(3.5f, 15.5f, 5, 5));
                 g.fill(new Ellipse2D.Float(15.5f, 3.5f, 5, 5));
+            }
+            case SHAPE_DIAG_WALL -> {
+                poly(g, true, 3.5f, 9, 20.5f, 3.5f, 20.5f, 15, 3.5f, 20.5f);
+                line(g, 3.5f, 14.75f, 20.5f, 9.25f);
+                line(g, 12, 6.25f, 12, 12);
+                line(g, 8, 13.25f, 8, 19);
+                line(g, 16, 10.5f, 16, 16.4f);
             }
             case SHAPE_FLOOR -> {
                 poly(g, true, 3, 13, 12, 8.5f, 21, 13, 12, 17.5f);

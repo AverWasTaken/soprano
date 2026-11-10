@@ -44,6 +44,18 @@ public class RadialMenuTest {
         theme = new Theme(1f, glyphs);
     }
 
+    // the radial as the game builds it: the real shapes, each with its 3D picture and group
+    private RadialMenu real() {
+        List<RadialMenu.Entry> entries = new ArrayList<>();
+        for (baritone.effortless.ShapeKind k : adris.altoclef.ui.gui.mc.EffortlessRadialScreen.SHAPES) {
+            entries.add(new RadialMenu.Entry(Icon.SHAPE_CUBOID, k.title, adris.altoclef.ui.gui.mc.EffortlessRadialScreen.picture(k, 46),
+                    adris.altoclef.ui.gui.mc.EffortlessRadialScreen.group(k)));
+        }
+        RadialMenu m = new RadialMenu(theme, entries, picked::add);
+        m.setBounds(0, 0, 1280, 720);
+        return m;
+    }
+
     private RadialMenu menu(int n) {
         List<RadialMenu.Entry> entries = new ArrayList<>();
         Icon[] icons = {Icon.SHAPE_SINGLE, Icon.SHAPE_LINE, Icon.SHAPE_WALL, Icon.SHAPE_FLOOR, Icon.SHAPE_CUBOID,
@@ -57,22 +69,23 @@ public class RadialMenuTest {
     }
 
     @Test
-    public void hubIsNone() {
-        RadialMenu m = menu(8);
-        assertEquals(RadialMenu.HUB, m.pick(m.centerX(), m.centerY()));
+    public void theMiddleIsNothingAndTheTopIsNone() {
+        RadialMenu m = menu(7);
+        assertEquals(RadialMenu.NOTHING, m.pick(m.centerX(), m.centerY()));
+        assertEquals(RadialMenu.HUB, m.pick(m.centerX(), m.centerY() - 100));
     }
 
     @Test
-    public void tilesGoClockwiseFromTheTop() {
-        RadialMenu m = menu(8);
+    public void wedgesGoClockwiseAfterNone() {
+        // 7 shapes and none: 8 wedges of 45 degrees, none at the top
+        RadialMenu m = menu(7);
         float cx = m.centerX();
         float cy = m.centerY();
-        assertEquals(0, m.pick(cx, cy - 90));
-        assertEquals(2, m.pick(cx + 90, cy));
-        assertEquals(4, m.pick(cx, cy + 90));
-        assertEquals(6, m.pick(cx - 90, cy));
-        // a flick towards a tile counts even well short of it
-        assertEquals(2, m.pick(cx + 45, cy + 3));
+        assertEquals(1, m.pick(cx + 100, cy));
+        assertEquals(3, m.pick(cx, cy + 100));
+        assertEquals(5, m.pick(cx - 100, cy));
+        // a short flick past the dead zone counts
+        assertEquals(1, m.pick(cx + 40, cy + 2));
         // far off the ring is nothing
         assertEquals(RadialMenu.NOTHING, m.pick(cx + 600, cy));
     }
@@ -87,7 +100,7 @@ public class RadialMenuTest {
 
     @Test
     public void chipsAnswerClicks() throws IOException {
-        RadialMenu m = menu(11);
+        RadialMenu m = real();
         List<Integer> chip = new ArrayList<>();
         m.setRows(List.of(new RadialMenu.Row("Shape", List.of("Filled", "Hollow", "Walls", "Edges"), 1, chip::add),
                 new RadialMenu.Row("Right click places", List.of("Into empty", "Over anything", "Replace hand"), 0, i -> {
@@ -113,7 +126,7 @@ public class RadialMenuTest {
 
     @Test
     public void mixRowsWithToggles() throws IOException {
-        RadialMenu m = menu(11);
+        RadialMenu m = real();
         List<String> toggled = new ArrayList<>();
         m.setRows(List.of(new RadialMenu.Row("Shape", List.of("Filled", "Outline"), 0, i -> {
                 }),

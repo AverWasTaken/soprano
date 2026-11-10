@@ -32,6 +32,12 @@ public final class ShapeThumb {
 
     // cells are x,y,z triples from 0, colors one rgb per cell
     public static PixelImage render(int[] cells, int[] colors, int sizeX, int sizeY, int sizeZ, int w, int h) {
+        return render(cells, colors, sizeX, sizeY, sizeZ, w, h, 0);
+    }
+
+    // minSpan keeps a small shape from blowing up to fill the picture: a single block is drawn as if the box were at
+    // least that many blocks across, centred, so a row of icons keeps one scale
+    public static PixelImage render(int[] cells, int[] colors, int sizeX, int sizeY, int sizeZ, int w, int h, float minSpan) {
         PixelImage img = new PixelImage(w, h);
         int n = cells.length / 3;
         if (n == 0) {
@@ -58,7 +64,7 @@ public final class ShapeThumb {
         // u = (x - z) * s, v = ((x + z) / 2 - y) * s, with a cube one s wide and one s tall
         float spanU = sizeX + sizeZ;
         float spanV = (sizeX + sizeZ) / 2f + sizeY;
-        float s = Math.max(1f, Math.min((w - 2) / Math.max(1f, spanU), (h - 2) / Math.max(1f, spanV)));
+        float s = Math.max(1f, Math.min((w - 2) / Math.max(Math.max(1f, minSpan), spanU), (h - 2) / Math.max(Math.max(1f, minSpan * 0.75f), spanV)));
         float ou = (w - spanU * s) / 2f + sizeZ * s;
         float ov = (h - spanV * s) / 2f + sizeY * s;
         int[] px = img.pixels();

@@ -49,9 +49,12 @@ public final class ShapeGeometry {
         BlockPos c = points.size() > 2 ? points.get(2) : null;
         return switch (spec.kind()) {
             case SINGLE -> box(a, a, spec, true);
-            case LINE -> line(a, b, spec);
+            case LINE -> line(a, b, spec.axis() == Axis.FREE ? spec.withAxis(dominant(a, b, true)) : spec);
+            case DIAGONAL_LINE -> line(a, b, spec.withAxis(Axis.FREE));
             case FLOOR -> floor(a, b, spec);
-            case WALL -> wall(a, b, spec);
+            // the third click is the height, the second only the base. with two clicks the second is both
+            case WALL -> wall(a, heightFrom(b, c), spec.axis() == Axis.FREE || spec.axis() == Axis.Y ? spec.withAxis(dominant(a, b, false)) : spec);
+            case DIAGONAL_WALL -> wall(a, heightFrom(b, c), spec.withAxis(Axis.FREE));
             case CUBOID -> box(a, c == null ? b : new BlockPos(b.getX(), c.getY(), b.getZ()), spec, false);
             case CIRCLE -> circle(a, b, spec);
             case CYLINDER -> cylinder(a, b, c, spec);
@@ -60,6 +63,21 @@ public final class ShapeGeometry {
             case PYRAMID -> layered(a, b, spec, false);
             case ROOF -> layered(a, b, spec, true);
         };
+    }
+
+    // the axis b is furthest from a along. with vertical off it's X or Z only, a wall stands on the ground
+    static Axis dominant(BlockPos a, BlockPos b, boolean vertical) {
+        int dx = Math.abs(b.getX() - a.getX());
+        int dy = vertical ? Math.abs(b.getY() - a.getY()) : -1;
+        int dz = Math.abs(b.getZ() - a.getZ());
+        if (dy > dx && dy > dz) {
+            return Axis.Y;
+        }
+        return dx >= dz ? Axis.X : Axis.Z;
+    }
+
+    private static BlockPos heightFrom(BlockPos b, BlockPos c) {
+        return c == null ? b : new BlockPos(b.getX(), c.getY(), b.getZ());
     }
 
     private static AreaMask.Builder builder(int x0, int y0, int z0, int x1, int y1, int z1) {

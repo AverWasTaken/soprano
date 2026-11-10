@@ -21,12 +21,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntConsumer;
 
-// a ring of round tiles around a hub, and a panel of option chips beside it. the effortless build mode's shape
-// picker. hovering goes by angle once the pointer is past the hub, so a flick towards a tile is enough, you don't
-// have to land on it. the hub is "none". no minecraft in here, the preview tests draw it
+// a ring of wedges round an empty middle, and a panel of option chips beside it: the effortless build mode's shape
+// picker. the first wedge, at the top, is "none". hovering goes by angle once the pointer is out of the middle, so a
+// short flick towards a wedge is enough. the wedges are drawn by hand into a picture (the canvas has no arcs), redrawn
+// only when the hover or the pick moves. no minecraft in here, the preview tests draw it
 public class RadialMenu extends Widget {
 
-    public record Entry(Icon icon, String label) {
+    // picture is the wedge's 3D drawing (null for the flat glyph), group the coloured arc it sits on (0 for none)
+    public record Entry(Icon icon, String label, PixelImage picture, int group) {
+        public Entry(Icon icon, String label) {
+            this(icon, label, null, 0);
+        }
     }
 
     // one line of the panel: a label, a row of chips with one picked, and maybe a chip of its own on the end that turns
@@ -45,16 +50,19 @@ public class RadialMenu extends Widget {
     }
 
     public interface Listener {
-        // index into the entries, -1 for the hub (none)
+        // index into the entries, -1 for none
         void select(int index);
     }
 
+    // the none wedge
     public static final int HUB = -1;
+    // the empty middle, or far off the ring
     public static final int NOTHING = -2;
 
-    static final int RING_R = 112;
-    static final int TILE = 54;
-    static final int HUB_R = 34;
+    static final int RING_OUT = 150;
+    static final int RING_IN = 66;
+    static final int ARC = 6;
+    static final int ICON = 46;
     static final int PANEL_W = 300;
     static final int GAP = 28;
     static final int PAD = 14;
@@ -62,6 +70,10 @@ public class RadialMenu extends Widget {
     static final int CHIP_H = 24;
     static final int CHIP_PAD = 10;
     static final int CHIP_GAP = 6;
+    // the gap between two wedges, in pixels at the outer edge
+    private static final float WEDGE_GAP = 3f;
+    // the coloured arcs under the wedges, one per group of shapes
+    static final int[] GROUP_RGB = {0, 0x5BD27A, 0x4F8DF7, 0x9B6BF2, 0xF2A93B};
 
     private final List<Entry> entries;
     private final Listener listener;
@@ -75,6 +87,8 @@ public class RadialMenu extends Widget {
     // the panel is as wide as its widest row of chips, measured on the last draw. the ring centres against it
     private float panelW = -1;
     private float labelW;
+    private PixelImage ring;
+    private long ringKey = Long.MIN_VALUE;
 
     public RadialMenu(Theme theme, List<Entry> entries, Listener listener) {
         super(theme);
@@ -98,53 +112,58 @@ public class RadialMenu extends Widget {
         this.rows = List.copyOf(rows);
     }
 
-    // ----- geometry
+    // ----- geometry. segment 0 is none at the top, entry i is segment i + 1, clockwise
+
+    private int segments() {
+        return entries.size() + 1;
+    }
 
     float centerX() {
-        // the ring sits left of middle so ring and panel together are centred
         float pw = rows.isEmpty() ? 0 : panelW > 0 ? panelW : theme.pxf(PANEL_W);
-        float total = 2 * (theme.pxf(RING_R) + theme.pxf(TILE) / 2f) + (rows.isEmpty() ? 0 : theme.pxf(GAP) + pw);
-        return x + (w - total) / 2f + theme.pxf(RING_R) + theme.pxf(TILE) / 2f;
+        float total = 2 * theme.pxf(RING_OUT) + (rows.isEmpty() ? 0 : theme.pxf(GAP) + pw);
+        return x + (w - total) / 2f + theme.pxf(RING_OUT);
     }
 
     float centerY() {
         return y + h / 2f;
     }
 
-    float tileX(int i) {
-        return centerX() + theme.pxf(RING_R) * (float) Math.sin(angle(i));
+    double angle(int segment) {
+        return 2 * Math.PI * segment / segments();
     }
 
-    float tileY(int i) {
-        return centerY() - theme.pxf(RING_R) * (float) Math.cos(angle(i));
+    private float iconRadius() {
+        return (theme.pxf(RING_OUT) + theme.pxf(RING_IN)) / 2f;
     }
 
-    // clockwise from the top
-    double angle(int i) {
-        return 2 * Math.PI * i / entries.size();
+    float tileX(int entry) {
+        return centerX() + iconRadius() * (float) Math.sin(angle(entry + 1));
+    }
+
+    float tileY(int entry) {
+        return centerY() - iconRadius() * (float) Math.cos(angle(entry + 1));
     }
 
     float panelX() {
-        return centerX() + theme.pxf(RING_R) + theme.pxf(TILE) / 2f + theme.pxf(GAP);
+        return centerX() + theme.pxf(RING_OUT) + theme.pxf(GAP);
     }
 
-    // which tile the pointer means: the hub inside it, a tile by angle outside it, nothing far off the ring
+    // which wedge the pointer means: by angle anywhere past a small dead zone in the middle, nothing in the middle (so
+    // letting go there changes nothing) or far off the ring
     public int pick(float px, float py) {
         float dx = px - centerX();
         float dy = py - centerY();
         double d = Math.sqrt(dx * dx + dy * dy);
-        if (d <= theme.pxf(HUB_R)) {
-            return HUB;
-        }
-        if (d > theme.pxf(RING_R) + theme.pxf(TILE)) {
+        if (d < theme.pxf(RING_IN) * 0.4f || d > theme.pxf(RING_OUT) * 1.35f) {
             return NOTHING;
         }
         double a = Math.atan2(dx, -dy);
         if (a < 0) {
             a += 2 * Math.PI;
         }
-        double step = 2 * Math.PI / entries.size();
-        return (int) Math.round(a / step) % entries.size();
+        double step = 2 * Math.PI / segments();
+        int seg = (int) Math.round(a / step) % segments();
+        return seg - 1;
     }
 
     // ----- input
@@ -188,43 +207,101 @@ public class RadialMenu extends Widget {
         measurePanel(c);
         float cx = centerX();
         float cy = centerY();
-        float tile = theme.pxf(TILE);
-        float back = theme.pxf(RING_R) + tile / 2f + theme.pxf(12);
-        c.shadow(cx - back, cy - back, 2 * back, 2 * back, back, c.color(Theme.SHADOW));
-        c.fillRoundRect(cx - back, cy - back, 2 * back, 2 * back, back, c.color(Theme.PANEL) & 0xE6FFFFFF);
-
-        for (int i = 0; i < entries.size(); i++) {
-            float tx = tileX(i) - tile / 2f;
-            float ty = tileY(i) - tile / 2f;
-            boolean on = i == selected;
-            boolean hv = i == hover;
-            int fill = on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED);
-            c.fillRoundRect(tx, ty, tile, tile, tile / 2f, fill);
-            if (hv && !on) {
-                c.strokeRoundRect(tx, ty, tile, tile, tile / 2f, c.color(Theme.HAIRLINE_STRONG));
-            }
-            float is = tile * 0.5f;
-            c.icon(entries.get(i).icon(), tx + (tile - is) / 2f, ty + (tile - is) / 2f, is,
-                    on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
+        float out = theme.pxf(RING_OUT);
+        int size = Math.max(8, Math.round(2 * out) + 2);
+        long key = ((long) size << 32) ^ ((long) (hover + 3) << 16) ^ (selected + 3) ^ ((long) c.color(Theme.ACCENT) << 40);
+        if (ring == null || ringKey != key || ring.width() != size) {
+            ring = drawRing(size, c.color(Theme.ACCENT));
+            ringKey = key;
         }
+        c.image(ring, cx - size / 2f, cy - size / 2f, size, size, 0xFFFFFFFF);
 
-        float hub = theme.pxf(HUB_R);
-        boolean hubOn = selected == HUB;
-        c.fillRoundRect(cx - hub, cy - hub, 2 * hub, 2 * hub, hub,
-                hubOn ? c.color(Theme.ACCENT) : hover == HUB ? c.color(Theme.HOVER) : c.color(Theme.SURFACE));
-        float is = hub * 0.7f;
-        c.icon(Icon.CLOSE, cx - is / 2f, cy - is / 2f - theme.pxf(5), is, hubOn ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT_2));
-        String none = "None";
-        float nw = c.measure(none, theme.small);
-        c.text(none, cx - nw / 2f, cy + hub * 0.62f, theme.small, hubOn ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT_2));
+        float is = theme.pxf(ICON);
+        for (int seg = 0; seg < segments(); seg++) {
+            float ix = cx + iconRadius() * (float) Math.sin(angle(seg));
+            float iy = cy - iconRadius() * (float) Math.cos(angle(seg));
+            boolean on = seg - 1 == selected;
+            if (seg == 0) {
+                float g = is * 0.55f;
+                c.icon(Icon.CLOSE, ix - g / 2f, iy - g / 2f, g, c.color(Theme.TEXT));
+                continue;
+            }
+            Entry e = entries.get(seg - 1);
+            if (e.picture() != null) {
+                c.image(e.picture(), ix - e.picture().width() / 2f, iy - e.picture().height() / 2f,
+                        e.picture().width(), e.picture().height(), 0xFFFFFFFF);
+            } else {
+                float g = is * 0.6f;
+                c.icon(e.icon(), ix - g / 2f, iy - g / 2f, g, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
+            }
+        }
 
         // what the pointer is on (or what's picked), under the ring
         int named = hover != NOTHING ? hover : selected;
         String title = named == HUB ? "None, build mode off" : named >= 0 ? entries.get(named).label() : "";
         float tw = c.measure(title, theme.label);
-        c.text(title, cx - tw / 2f, cy + back + theme.pxf(26), theme.label, c.color(Theme.TEXT));
+        c.text(title, cx - tw / 2f, cy + out + theme.pxf(26), theme.label, c.color(Theme.TEXT));
 
         drawPanel(c);
+    }
+
+    // the wedges, by hand: every pixel of the ring finds its segment from its angle, with a soft edge all round and a gap
+    // between neighbours. hovered is lighter, picked is the accent, and the inner edge carries its group's colour
+    private PixelImage drawRing(int size, int accent) {
+        PixelImage img = new PixelImage(size, size);
+        int[] px = img.pixels();
+        float half = size / 2f;
+        float out = theme.pxf(RING_OUT);
+        float in = theme.pxf(RING_IN);
+        float arc = theme.pxf(ARC);
+        int n = segments();
+        double step = 2 * Math.PI / n;
+        for (int yy = 0; yy < size; yy++) {
+            for (int xx = 0; xx < size; xx++) {
+                float dx = xx + 0.5f - half;
+                float dy = yy + 0.5f - half;
+                float r = (float) Math.sqrt(dx * dx + dy * dy);
+                float radial = Math.min(r - in, out - r) + 0.5f;
+                if (radial <= 0) {
+                    continue;
+                }
+                double a = Math.atan2(dx, -dy);
+                if (a < 0) {
+                    a += 2 * Math.PI;
+                }
+                int seg = (int) Math.round(a / step) % n;
+                double off = Math.abs(a - seg * step);
+                if (off > Math.PI) {
+                    off = 2 * Math.PI - off;
+                }
+                // the gap is a fixed width in pixels, so it's an angle that shrinks outwards
+                float side = (float) ((step / 2 - off) * r) - WEDGE_GAP / 2f + 0.5f;
+                if (side <= 0) {
+                    continue;
+                }
+                float edge = Math.min(1f, Math.min(radial, side));
+                int entry = seg - 1;
+                int rgb;
+                int alpha;
+                boolean inArc = r - in < arc && entry >= 0 && entries.get(entry).group() > 0;
+                if (inArc) {
+                    rgb = GROUP_RGB[Math.min(GROUP_RGB.length - 1, entries.get(entry).group())];
+                    alpha = 235;
+                } else if (entry == selected) {
+                    rgb = accent & 0xFFFFFF;
+                    alpha = 230;
+                } else if (entry == hover) {
+                    rgb = 0x4A4A50;
+                    alpha = 215;
+                } else {
+                    rgb = 0x202024;
+                    alpha = 185;
+                }
+                px[yy * size + xx] = (Math.round(alpha * edge) << 24) | rgb;
+            }
+        }
+        img.bump();
+        return img;
     }
 
     private void drawPanel(Canvas c) {

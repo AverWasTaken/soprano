@@ -53,9 +53,11 @@ public final class ClickAim {
             case FLOOR, CUBOID, PYRAMID, ROOF, SPHERE, STAIRS -> flat(a, ex, ey, ez, dx, dy, dz);
             case CIRCLE, CYLINDER -> spec.axis() == Axis.Y || spec.axis() == Axis.FREE ? flat(a, ex, ey, ez, dx, dy, dz)
                     : upright(a, spec.axis() == Axis.X ? Axis.Z : Axis.X, ex, ey, ez, dx, dy, dz);
-            case WALL -> wall(a, spec.axis(), ex, ey, ez, dx, dy, dz);
-            case LINE -> spec.axis() == Axis.FREE ? Optional.empty() : onAxis(a, spec.axis(), ex, ey, ez, dx, dy, dz);
-            case SINGLE -> Optional.empty();
+            // a wall's second corner is where it ends on the ground, the height is the third click
+            case WALL, DIAGONAL_WALL -> flat(a, ex, ey, ez, dx, dy, dz);
+            case LINE -> spec.axis() == Axis.FREE ? nearestAxis(a, ex, ey, ez, dx, dy, dz) : onAxis(a, spec.axis(), ex, ey, ez, dx, dy, dz);
+            // a diagonal goes wherever the crosshair is
+            case DIAGONAL_LINE, SINGLE -> Optional.empty();
         };
     }
 
@@ -71,14 +73,54 @@ public final class ClickAim {
         return at(t, ex, ey, ez, dx, dy, dz);
     }
 
-    // a wall locked to an axis lies in that plane. a free one takes whichever of the two planes you're looking at more
-    // squarely, a plane seen edge on would throw the corner miles off
-    static Optional<BlockPos> wall(BlockPos a, Axis axis, double ex, double ey, double ez, double dx, double dy, double dz) {
-        if (axis == Axis.X || axis == Axis.Z) {
-            return upright(a, axis, ex, ey, ez, dx, dy, dz);
+    // a straight line on auto: of the three axis lines through the first corner, the one your look passes closest to.
+    // look up the column and it's a Y line, along the ground and it's X or Z
+    static Optional<BlockPos> nearestAxis(BlockPos a, double ex, double ey, double ez, double dx, double dy, double dz) {
+        // standing on (or right beside) the first corner, every axis line runs through your eye and "closest" means
+        // nothing: then it's the way you look the most, as far out as you look along it
+        double ax = a.getX() + 0.5, ay = a.getY() + 0.5, az = a.getZ() + 0.5;
+        double ox = ax - ex, oy = ay - ey, oz = az - ez;
+        if (ox * ox + oy * oy + oz * oz < 2.5 * 2.5) {
+            return Optional.of(alongLook(a, dx, dy, dz));
         }
-        Axis along = Math.abs(dz) >= Math.abs(dx) ? Axis.X : Axis.Z;
-        return upright(a, along, ex, ey, ez, dx, dy, dz);
+        Optional<BlockPos> best = Optional.empty();
+        double bestGap = Double.MAX_VALUE;
+        for (Axis axis : new Axis[]{Axis.X, Axis.Y, Axis.Z}) {
+            Optional<BlockPos> p = onAxis(a, axis, ex, ey, ez, dx, dy, dz);
+            if (p.isEmpty()) {
+                continue;
+            }
+            double gap = rayGap(p.get(), ex, ey, ez, dx, dy, dz);
+            if (gap < bestGap) {
+                bestGap = gap;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    // how many blocks a line from your feet runs when you look along it: the reach, scaled by how squarely you look
+    static final double ALONG_REACH = 8;
+
+    static BlockPos alongLook(BlockPos a, double dx, double dy, double dz) {
+        double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        double nx = dx / len, ny = dy / len, nz = dz / len;
+        if (Math.abs(ny) >= Math.abs(nx) && Math.abs(ny) >= Math.abs(nz)) {
+            return a.offset(0, (int) Math.round(ny * ALONG_REACH), 0);
+        }
+        if (Math.abs(nx) >= Math.abs(nz)) {
+            return a.offset((int) Math.round(nx * ALONG_REACH), 0, 0);
+        }
+        return a.offset(0, 0, (int) Math.round(nz * ALONG_REACH));
+    }
+
+    // how far the cell's centre is from the look ray
+    static double rayGap(BlockPos p, double ex, double ey, double ez, double dx, double dy, double dz) {
+        double px = p.getX() + 0.5 - ex, py = p.getY() + 0.5 - ey, pz = p.getZ() + 0.5 - ez;
+        double dd = dx * dx + dy * dy + dz * dz;
+        double t = Math.max(0, (px * dx + py * dy + pz * dz) / dd);
+        double qx = px - t * dx, qy = py - t * dy, qz = pz - t * dz;
+        return Math.sqrt(qx * qx + qy * qy + qz * qz);
     }
 
     // a line locked to an axis: the point on the axis line nearest your look

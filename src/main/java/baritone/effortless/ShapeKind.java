@@ -24,9 +24,15 @@ import java.util.Locale;
 public enum ShapeKind {
 
     SINGLE("Single block", 1, false),
+    // straight: along X, Y or Z, whichever you look along (or the one locked in the radial)
     LINE("Line", 2, false),
+    // any direction at all, corner to corner in 3D
+    DIAGONAL_LINE("Diagonal line", 2, false),
     FLOOR("Floor", 2, false),
-    WALL("Wall", 2, false),
+    // start, where it ends on the ground (straight along X or Z), then how high
+    WALL("Wall", 2, true),
+    // the same with the base at any angle across the ground
+    DIAGONAL_WALL("Diagonal wall", 2, true),
     CUBOID("Cuboid", 2, true),
     CIRCLE("Circle", 2, false),
     CYLINDER("Cylinder", 2, true),
@@ -66,6 +72,14 @@ public enum ShapeKind {
             case "block":
             case "one":
                 return SINGLE;
+            case "diagonal_line":
+            case "diagline":
+            case "dline":
+                return DIAGONAL_LINE;
+            case "diagonal_wall":
+            case "diagwall":
+            case "dwall":
+                return DIAGONAL_WALL;
             case "box":
             case "cube":
                 return CUBOID;

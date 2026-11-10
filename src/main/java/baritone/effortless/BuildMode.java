@@ -487,12 +487,29 @@ public final class BuildMode {
             return b.toString();
         }
         AreaMask mask = m.currentMask(true);
+        int need = spec.kind().clicks(Baritone.settings().effortlessThreeClickHeight.value);
+        int at = setPoints(m).size() + 1;
         b.append(" · ").append(pending == EffortlessJob.Mode.PLACE ? "placing" : "breaking");
+        b.append(" · click ").append(at).append(" of ").append(need).append(": ").append(step(spec.kind(), at, need));
         if (mask != null) {
-            b.append(" · ").append(mask.sizeX).append('×').append(mask.sizeY).append('×').append(mask.sizeZ)
+            b.append(" · X ").append(mask.sizeX).append("  Y ").append(mask.sizeY).append("  Z ").append(mask.sizeZ)
                     .append(" · ").append(mask.count()).append(" blocks");
         }
         return b.toString();
+    }
+
+    // what the click you're about to make sets, in the shape's own words
+    static String step(ShapeKind kind, int at, int need) {
+        if (at >= 3) {
+            return "how high";
+        }
+        return switch (kind) {
+            case WALL, DIAGONAL_WALL -> need == 3 ? "where it ends" : "where it ends, and how high";
+            case CUBOID -> need == 3 ? "the far corner on the ground" : "the far corner";
+            case CIRCLE, SPHERE, CYLINDER -> "how wide";
+            case LINE, DIAGONAL_LINE -> "where it ends";
+            default -> "the other corner";
+        };
     }
 
     static void say(String msg) {

@@ -65,7 +65,7 @@ public class ShapeGeometryTest {
 
     @Test
     public void freeDiagonalLine() {
-        AreaMask m = build(spec(ShapeKind.LINE), p(0, 0, 0), p(3, 3, 3));
+        AreaMask m = build(spec(ShapeKind.DIAGONAL_LINE), p(0, 0, 0), p(3, 3, 3));
         assertEquals(4, m.count());
         assertTrue(m.contains(2, 2, 2));
     }
@@ -87,11 +87,46 @@ public class ShapeGeometryTest {
     }
 
     @Test
-    public void freeWallRunsDiagonally() {
-        AreaMask m = build(spec(ShapeKind.WALL), p(0, 0, 0), p(3, 1, 3));
+    public void diagonalWallRunsAtAnAngle() {
+        AreaMask m = build(spec(ShapeKind.DIAGONAL_WALL), p(0, 0, 0), p(3, 1, 3));
         assertEquals(8, m.count());
         assertTrue(m.contains(2, 1, 2));
         assertFalse(m.contains(3, 0, 0));
+    }
+
+    @Test
+    public void straightWallSnapsToTheLongerSide() {
+        // aimed a bit off the X axis: the wall still runs straight along X, at the first click's z
+        AreaMask m = build(spec(ShapeKind.WALL), p(0, 0, 0), p(6, 0, 2), p(6, 3, 2));
+        assertEquals(7 * 4, m.count());
+        assertEquals(1, m.sizeZ);
+        assertTrue(m.contains(6, 3, 0));
+    }
+
+    @Test
+    public void wallThirdClickIsTheHeight() {
+        AreaMask m = build(spec(ShapeKind.WALL), p(0, 0, 0), p(0, 0, 4), p(9, 2, 9));
+        assertEquals(5 * 3, m.count());
+        assertEquals(1, m.sizeX);
+        assertEquals(3, m.sizeY);
+    }
+
+    @Test
+    public void autoLineFollowsTheLongestDirection() {
+        AreaMask up = build(spec(ShapeKind.LINE), p(0, 0, 0), p(1, 6, 2));
+        assertEquals(7, up.count());
+        assertEquals(1, up.sizeX);
+        assertTrue(up.contains(0, 6, 0));
+        AreaMask along = build(spec(ShapeKind.LINE), p(0, 0, 0), p(2, 1, -5));
+        assertEquals(6, along.count());
+        assertTrue(along.contains(0, 0, -5));
+    }
+
+    @Test
+    public void diagonalLineGoesCornerToCorner() {
+        AreaMask m = build(spec(ShapeKind.DIAGONAL_LINE), p(0, 0, 0), p(3, 3, 3));
+        assertEquals(4, m.count());
+        assertTrue(m.contains(2, 2, 2));
     }
 
     @Test

@@ -869,15 +869,46 @@ public final class EffortlessManager implements AbstractGameEventListener {
         AreaMask mask = currentMask(true);
         PoseStack stack = event.getModelViewStack();
         float width = Baritone.settings().selectionLineWidth.value;
-        BufferBuilder buf = IRenderer.startLines(Baritone.settings().colorEffortlessOutline.value, 0.9f);
+        // through blocks: digging down into a shape you still see how deep it goes
+        boolean through = Baritone.settings().effortlessOutlineThroughBlocks.value;
         if (mask != null && !mask.isEmpty()) {
-            IRenderer.emitAABB(buf, stack, new AABB(mask.minX, mask.minY, mask.minZ, mask.maxX() + 1, mask.maxY() + 1, mask.maxZ() + 1), GROW, width);
+            drawExtents(stack, mask, width, through);
         }
+        BufferBuilder buf = IRenderer.startLines(Baritone.settings().colorEffortlessOutline.value, 0.9f);
         for (BlockPos p : points) {
             if (p != null) {
                 IRenderer.emitAABB(buf, stack, new AABB(p), 0.01, width);
             }
         }
-        IRenderer.endLines(buf, false);
+        IRenderer.endLines(buf, through);
+    }
+
+    // the shape's box with its edges coloured by the axis they run along: X red, Y green, Z blue, the usual axis colours.
+    // wherever you look from, the width, the height and the depth each show as their own colour
+    private void drawExtents(PoseStack stack, AreaMask mask, float width, boolean through) {
+        double x0 = mask.minX - GROW, y0 = mask.minY - GROW, z0 = mask.minZ - GROW;
+        double x1 = mask.maxX() + 1 + GROW, y1 = mask.maxY() + 1 + GROW, z1 = mask.maxZ() + 1 + GROW;
+        float w = Math.max(2f, width * 1.5f);
+        BufferBuilder buf = IRenderer.startLines(new java.awt.Color(0xFF5555), 1f);
+        for (double y : new double[]{y0, y1}) {
+            for (double z : new double[]{z0, z1}) {
+                IRenderer.emitLine(buf, stack, x0, y, z, x1, y, z, w);
+            }
+        }
+        IRenderer.endLines(buf, through);
+        buf = IRenderer.startLines(new java.awt.Color(0x55E070), 1f);
+        for (double x : new double[]{x0, x1}) {
+            for (double z : new double[]{z0, z1}) {
+                IRenderer.emitLine(buf, stack, x, y0, z, x, y1, z, w);
+            }
+        }
+        IRenderer.endLines(buf, through);
+        buf = IRenderer.startLines(new java.awt.Color(0x5AA0FF), 1f);
+        for (double x : new double[]{x0, x1}) {
+            for (double y : new double[]{y0, y1}) {
+                IRenderer.emitLine(buf, stack, x, y, z0, x, y, z1, w);
+            }
+        }
+        IRenderer.endLines(buf, through);
     }
 }

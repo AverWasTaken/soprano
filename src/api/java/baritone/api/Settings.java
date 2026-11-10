@@ -1573,6 +1573,13 @@ public final class Settings {
     public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));
 
     /**
+     * Draw the outline of the Effortless Soprano shape you're setting up, and the red, green and blue lines along its X, Y
+     * and Z, on top of everything, so a shape stays visible through the blocks in front of it (digging down into one,
+     * say).
+     */
+    public final Setting<Boolean> effortlessOutlineThroughBlocks = new Setting<>(true);
+
+    /**
      * How see-through Effortless Soprano's preview is, from 0 (hidden) to 1. Blocks that will be placed show as a
      * hologram of the exact block, blocks that will be broken in {@link #colorEffortlessBreak}, and blocks in the area
      * that won't be touched in {@link #colorEffortlessUntouched} at half this.

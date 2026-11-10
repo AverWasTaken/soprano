@@ -52,9 +52,10 @@ public final class EffortlessRadialScreen extends Screen {
     // let go sooner than this after opening and it was a tap: the menu stays up for clicking
     private static final long TAP_NANOS = 250_000_000L;
 
-    static final ShapeKind[] SHAPES = {
-            ShapeKind.SINGLE, ShapeKind.LINE, ShapeKind.WALL, ShapeKind.FLOOR, ShapeKind.CUBOID, ShapeKind.STAIRS,
-            ShapeKind.ROOF, ShapeKind.PYRAMID, ShapeKind.SPHERE, ShapeKind.CYLINDER, ShapeKind.CIRCLE
+    public static final ShapeKind[] SHAPES = {
+            ShapeKind.SINGLE, ShapeKind.LINE, ShapeKind.DIAGONAL_LINE, ShapeKind.WALL, ShapeKind.DIAGONAL_WALL,
+            ShapeKind.FLOOR, ShapeKind.CUBOID, ShapeKind.STAIRS, ShapeKind.ROOF, ShapeKind.PYRAMID, ShapeKind.SPHERE,
+            ShapeKind.CYLINDER, ShapeKind.CIRCLE
     };
 
     private final Minecraft mc = Minecraft.getInstance();
@@ -88,10 +89,63 @@ public final class EffortlessRadialScreen extends Screen {
         return ((Baritone) BaritoneAPI.getProvider().getPrimaryBaritone()).getEffortlessManager();
     }
 
+    // the wedge's drawing: the shape itself, built from a few sample corners and drawn as white isometric blocks, so the
+    // icon is exactly what the shape makes. null when it can't be drawn (the flat glyph stands in)
+    public static adris.altoclef.ui.gui.kit.PixelImage picture(ShapeKind k, int size) {
+        try {
+            List<net.minecraft.core.BlockPos> pts = samplePoints(k);
+            baritone.effortless.AreaMask m = baritone.effortless.ShapeGeometry.build(ShapeSpec.of(k), pts);
+            List<Integer> cells = new ArrayList<>();
+            m.forEach((x, y, z) -> {
+                cells.add(x - m.minX);
+                cells.add(y - m.minY);
+                cells.add(z - m.minZ);
+            });
+            int[] xyz = cells.stream().mapToInt(Integer::intValue).toArray();
+            int[] rgb = new int[xyz.length / 3];
+            java.util.Arrays.fill(rgb, 0xECECEC);
+            return adris.altoclef.ui.gui.kit.ShapeThumb.render(xyz, rgb, m.sizeX, m.sizeY, m.sizeZ, size, size, 4.5f);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static List<net.minecraft.core.BlockPos> samplePoints(ShapeKind k) {
+        net.minecraft.core.BlockPos zero = net.minecraft.core.BlockPos.ZERO;
+        return switch (k) {
+            case SINGLE -> List.of(zero);
+            case LINE -> List.of(zero, new net.minecraft.core.BlockPos(5, 0, 0));
+            // not along (1,1,1): the isometric camera looks straight down that diagonal and it would be one dot
+            case DIAGONAL_LINE -> List.of(zero, new net.minecraft.core.BlockPos(5, 4, 0));
+            case WALL -> List.of(zero, new net.minecraft.core.BlockPos(4, 0, 0), new net.minecraft.core.BlockPos(4, 3, 0));
+            case DIAGONAL_WALL -> List.of(zero, new net.minecraft.core.BlockPos(5, 0, 2), new net.minecraft.core.BlockPos(5, 3, 2));
+            case FLOOR -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 3));
+            case CUBOID -> List.of(zero, new net.minecraft.core.BlockPos(2, 0, 2), new net.minecraft.core.BlockPos(2, 2, 2));
+            case CIRCLE -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 0));
+            case CYLINDER -> List.of(zero, new net.minecraft.core.BlockPos(2, 0, 0), new net.minecraft.core.BlockPos(2, 4, 0));
+            case SPHERE -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 0));
+            case STAIRS -> List.of(zero, new net.minecraft.core.BlockPos(4, 4, 1));
+            case PYRAMID -> List.of(zero, new net.minecraft.core.BlockPos(6, 0, 6));
+            case ROOF -> List.of(zero, new net.minecraft.core.BlockPos(6, 0, 4));
+        };
+    }
+
+    // the coloured arc a wedge sits on: lines, walls and floors, solids, round things
+    public static int group(ShapeKind k) {
+        return switch (k) {
+            case SINGLE, LINE, DIAGONAL_LINE -> 1;
+            case WALL, DIAGONAL_WALL, FLOOR -> 2;
+            case CUBOID, STAIRS, ROOF, PYRAMID -> 3;
+            case CIRCLE, CYLINDER, SPHERE -> 4;
+        };
+    }
+
     static Icon icon(ShapeKind k) {
         return switch (k) {
             case SINGLE -> Icon.SHAPE_SINGLE;
             case LINE -> Icon.SHAPE_LINE;
+            case DIAGONAL_LINE -> Icon.SHAPE_DIAG_LINE;
+            case DIAGONAL_WALL -> Icon.SHAPE_DIAG_WALL;
             case FLOOR -> Icon.SHAPE_FLOOR;
             case WALL -> Icon.SHAPE_WALL;
             case CUBOID -> Icon.SHAPE_CUBOID;
@@ -125,8 +179,9 @@ public final class EffortlessRadialScreen extends Screen {
             atlases.prewarm(theme);
         }
         List<RadialMenu.Entry> entries = new ArrayList<>();
+        int picture = theme.px(46);
         for (ShapeKind k : SHAPES) {
-            entries.add(new RadialMenu.Entry(icon(k), k.title));
+            entries.add(new RadialMenu.Entry(icon(k), k.title, picture(k, picture), group(k)));
         }
         menu = new RadialMenu(theme, entries, i -> rebuildRows());
         menu.setSelected(BuildMode.active() ? indexOf(manager().spec().kind()) : RadialMenu.HUB);
@@ -181,7 +236,7 @@ public final class EffortlessRadialScreen extends Screen {
         if (!axes.isEmpty()) {
             List<String> names = new ArrayList<>();
             for (ShapeSpec.Axis a : axes) {
-                names.add(a == ShapeSpec.Axis.FREE ? "Free" : a.name());
+                names.add(a == ShapeSpec.Axis.FREE ? "Auto" : a.name());
             }
             int at = Math.max(0, axes.indexOf(spec.axis()));
             rows.add(new RadialMenu.Row(kind == ShapeKind.CIRCLE || kind == ShapeKind.CYLINDER ? "Facing" : "Direction",
@@ -271,7 +326,7 @@ public final class EffortlessRadialScreen extends Screen {
             case CUBOID -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW, ShapeSpec.Fill.WALLS, ShapeSpec.Fill.FRAME);
             case CYLINDER -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW, ShapeSpec.Fill.WALLS);
             case FLOOR, CIRCLE, SPHERE, PYRAMID, ROOF, STAIRS -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW);
-            case WALL -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.FRAME);
+            case WALL, DIAGONAL_WALL -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.FRAME);
             default -> List.of();
         };
     }
@@ -286,12 +341,13 @@ public final class EffortlessRadialScreen extends Screen {
                 default -> "Hollow";
             };
             case WALLS -> k == ShapeKind.CYLINDER ? "Tube" : "Walls";
-            case FRAME -> k == ShapeKind.WALL ? "Border" : "Edges";
+            case FRAME -> k == ShapeKind.WALL || k == ShapeKind.DIAGONAL_WALL ? "Border" : "Edges";
         };
     }
 
     static List<ShapeSpec.Axis> axes(ShapeKind k) {
         return switch (k) {
+            // FREE on a straight shape is "follow my look": whichever axis it's pointed along
             case LINE -> List.of(ShapeSpec.Axis.FREE, ShapeSpec.Axis.X, ShapeSpec.Axis.Y, ShapeSpec.Axis.Z);
             case WALL -> List.of(ShapeSpec.Axis.FREE, ShapeSpec.Axis.X, ShapeSpec.Axis.Z);
             case CIRCLE, CYLINDER -> List.of(ShapeSpec.Axis.Y, ShapeSpec.Axis.X, ShapeSpec.Axis.Z);
