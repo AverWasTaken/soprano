@@ -23,6 +23,7 @@ import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.process.IBuilderProcess;
+import baritone.api.utils.BlockOptionalMeta;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.EffortlessMaterials;
 import baritone.api.utils.EffortlessStorageFull;
@@ -76,6 +77,10 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private boolean tripCalledOff;
     private long storageRetryAt;
     private static final int MAX_TRIPS = 5;
+    // terrain the running entry's paths dug through outside its area, cell -> what was there, and whether the entry is
+    // in its put-it-back build now
+    private final Map<Long, BlockState> dug = new java.util.LinkedHashMap<>();
+    private boolean restoring;
     // the shown entries as one schematic for the preview, rebuilt when what's shown changes
     private Object shownKey;
     private JobSchematic shownSchematic;
@@ -231,6 +236,13 @@ public final class EffortlessManager implements AbstractGameEventListener {
     }
 
     private void startEntry(JobQueue.Entry e) {
+        if (restoring) {
+            // back from the exact restore's gather: it's the terrain build that goes on, not the job again
+            if (!buildRestore(e)) {
+                finishEntry(e, null);
+            }
+            return;
+        }
         JobSchematic schematic = e.schematic();
         running = e.jobs().get(e.jobs().size() - 1);
         runningSchematic = schematic;
@@ -304,9 +316,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
         if (e != null) {
             var builder = baritone.getBuilderProcess();
             if (builder.finished(entrySerial)) {
-                e.state(JobQueue.State.DONE, null);
                 entrySerial = 0;
-                save();
+                if (!restoring && startRestore(e)) {
+                    return;
+                }
+                finishEntry(e, null);
             } else if (builder.buildSerial() != entrySerial) {
                 // knocked off: #stop, another build, the builder letting go. back in line, the queue waits for a start
                 e.state(JobQueue.State.QUEUED, null);
@@ -317,6 +331,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 }
                 save();
                 return;
+            } else if (builder.isPaused() && restoring) {
+                // the job itself is done, only some of the terrain couldn't go back
+                baritone.getPathingBehavior().cancelEverything();
+                entrySerial = 0;
+                finishEntry(e, "couldn't put all the terrain back");
             } else if (builder.isPaused()) {
                 Map<BlockState, Integer> missing = builder.missingAtPause();
                 if (!missing.isEmpty() && fetchOrGather(e, bill(missing))) {
@@ -360,6 +379,124 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
         startEntry(next);
         save();
+    }
+
+    private void finishEntry(JobQueue.Entry e, String note) {
+        e.state(JobQueue.State.DONE, note);
+        restoring = false;
+        dug.clear();
+        save();
+    }
+
+    // every block one of our own breaks took out. while an entry is building (not on an errand, not putting terrain
+    // back) one outside its area is terrain a path dug through, and it's noted with what it was
+    public void broke(BlockPos pos, BlockState before, String who) {
+        if (before == null || before.isAir() || tripOut || restoring || !Baritone.settings().effortlessRestoreTerrain.value) {
+            return;
+        }
+        JobQueue.Entry e = queue.runningEntry();
+        if (e == null || runningSchematic == null || runningSchematic.owner(pos.getX(), pos.getY(), pos.getZ()) != null) {
+            return;
+        }
+        // a liquid isn't something to put back with a block, and the first state is the one that was there
+        if (before.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock) {
+            return;
+        }
+        dug.putIfAbsent(pos.asLong(), before);
+    }
+
+    // after the job: put back what its paths dug out, with the block it was if we have it, else with what it drops if we
+    // have that (stone comes back as cobblestone), else the hole stays. effortlessRestoreExact has AltoClef make the
+    // originals first. false when there's nothing to do
+    private boolean startRestore(JobQueue.Entry e) {
+        if (!Baritone.settings().effortlessRestoreTerrain.value || dug.isEmpty()) {
+            return false;
+        }
+        if (Baritone.settings().effortlessRestoreExact.value && !creative() && trips != null && trips.available() && e.trips() < MAX_TRIPS) {
+            Map<Item, Integer> want = new java.util.LinkedHashMap<>();
+            dug.values().forEach(st -> {
+                Item item = st.getBlock().asItem();
+                if (item != net.minecraft.world.item.Items.AIR) {
+                    want.merge(item, 1, Integer::sum);
+                }
+            });
+            Map<Item, Integer> bill = lessCarried(want);
+            if (!bill.isEmpty()) {
+                e.trips(e.trips() + 1);
+                tripOut = true;
+                restoring = true;
+                BuildMode.say("Making " + total(bill) + " blocks to put the terrain back exactly");
+                trips.gather(bill, why -> {
+                    tripOut = false;
+                    if (playerStopped(why, e)) {
+                        restoring = false;
+                        return;
+                    }
+                    if (why != null) {
+                        BuildMode.say("Gathering: " + why);
+                    }
+                    if (!buildRestore(e)) {
+                        finishEntry(e, null);
+                    }
+                });
+                return true;
+            }
+        }
+        return buildRestore(e);
+    }
+
+    private boolean buildRestore(JobQueue.Entry e) {
+        Map<BlockPos, BlockState> plan = new java.util.LinkedHashMap<>();
+        int skipped = 0;
+        for (Map.Entry<Long, BlockState> d : dug.entrySet()) {
+            BlockState with = restoreWith(d.getValue());
+            if (with == null) {
+                skipped++;
+            } else {
+                plan.put(BlockPos.of(d.getKey()), with);
+            }
+        }
+        if (plan.isEmpty()) {
+            if (skipped > 0) {
+                BuildMode.say("Left " + skipped + " dug blocks open, nothing to fill them with");
+            }
+            return false;
+        }
+        restoring = true;
+        e.state(JobQueue.State.RUNNING, null);
+        RestoreSchematic rs = new RestoreSchematic(plan);
+        BuildMode.say("Putting back " + rs.size() + " blocks of terrain" + (skipped > 0 ? " (" + skipped + " left open)" : ""));
+        baritone.getBuilderProcess().buildInPlace("Restoring terrain", rs, rs.origin(), Baritone.settings().effortlessJumpOff.value);
+        entrySerial = baritone.getBuilderProcess().buildSerial();
+        save();
+        return true;
+    }
+
+    // the block a dug cell gets back: the original if we carry it (or anything in creative), else the first thing it
+    // drops that's a block we carry, else null
+    private BlockState restoreWith(BlockState original) {
+        if (creative() || carried(original.getBlock().asItem())) {
+            return original;
+        }
+        for (Item drop : BlockOptionalMeta.plainDrops(original.getBlock())) {
+            if (drop instanceof BlockItem bi && carried(drop)) {
+                return bi.getBlock().defaultBlockState();
+            }
+        }
+        return null;
+    }
+
+    private boolean carried(Item item) {
+        var p = baritone.getPlayerContext().player();
+        if (p == null || item == net.minecraft.world.item.Items.AIR) {
+            return false;
+        }
+        for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+            if (p.getInventory().getItem(i).getItem() == item) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean creative() {

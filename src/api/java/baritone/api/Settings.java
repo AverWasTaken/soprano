@@ -1553,6 +1553,21 @@ public final class Settings {
     public final Setting<Integer> effortlessStorageRetrySeconds = new Setting<>(120);
 
     /**
+     * After an Effortless Soprano job, put back the terrain its paths dug through outside the job's area (a tunnel through
+     * a hill on the way to a roof). The original block goes back if you carry it, else what it drops if you carry that
+     * (stone comes back as cobblestone), else the hole stays. Pillars and scaffolding come down either way, that's the
+     * builder's own cleanup.
+     */
+    public final Setting<Boolean> effortlessRestoreTerrain = new Setting<>(false);
+
+    /**
+     * With {@link #effortlessRestoreTerrain}, have AltoClef make the exact blocks that were dug out before putting them back:
+     * smelt cobblestone back into stone, craft the bookshelf again. Blocks it has no recipe for fall back to the
+     * {@link #effortlessRestoreTerrain} rules.
+     */
+    public final Setting<Boolean> effortlessRestoreExact = new Setting<>(false);
+
+    /**
      * The colour of the outline Effortless Soprano draws around the shape you are setting up.
      */
     public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));
