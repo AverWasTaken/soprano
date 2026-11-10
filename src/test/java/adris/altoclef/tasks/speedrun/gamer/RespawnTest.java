@@ -203,17 +203,22 @@ public class RespawnTest {
     public void aBedGoesDownByThePortalWhenNothingHoldsTheRespawnThere() {
         RunState s = new RunState();
         // no spare bed asked for any more: the End's reserve lends one
-        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 64, 100));
         // a respawn right by the portal is already the answer, one a long way off is not
         Respawn.set(s, pos(130, 66, 90), "OVERWORLD");
-        assertFalse(Respawn.wantPortalBed(s, 100, 100));
-        assertEquals(pos(130, 66, 90), Respawn.portalBedNear(s, 100, 100));
+        assertFalse(Respawn.wantPortalBed(s, 100, 64, 100));
+        assertEquals(pos(130, 66, 90), Respawn.portalBedNear(s, 100, 64, 100));
         Respawn.set(s, pos(900, 66, 90), "OVERWORLD");
-        assertTrue(Respawn.wantPortalBed(s, 100, 100));
-        assertNull(Respawn.portalBedNear(s, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 64, 100));
+        assertNull(Respawn.portalBedNear(s, 100, 64, 100));
         // a respawn in another dimension holds nothing here
         Respawn.set(s, pos(130, 66, 90), "NETHER");
-        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 64, 100));
+
+        // right under a portal up on a cliff is a climb, not by it
+        Respawn.set(s, pos(104, 67, 100), "OVERWORLD");
+        assertTrue(Respawn.wantPortalBed(s, 100, 196, 100));
+        assertFalse(Respawn.wantPortalBed(s, 100, 64, 100));
     }
 
     @Test
@@ -221,12 +226,12 @@ public class RespawnTest {
         RunState s = new RunState();
         s.portalBed = pos(104, 64, 100);
         Respawn.set(s, pos(104, 64, 100), "OVERWORLD");
-        assertFalse(Respawn.wantPortalBed(s, 100, 100));
+        assertFalse(Respawn.wantPortalBed(s, 100, 64, 100));
         // the night bed 300 out took the spawn, then the morning pickup took the night bed
         Respawn.set(s, pos(400, 70, 100), "OVERWORLD");
-        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 64, 100));
         Respawn.lose(s);
-        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 64, 100));
         // and the portal bed still standing is enough, no bag bed needed
         assertEquals(PortalBedRules.Source.STANDING, PortalBedRules.source(true, 0, false));
     }

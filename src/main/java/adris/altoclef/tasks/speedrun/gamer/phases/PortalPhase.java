@@ -405,7 +405,8 @@ public class PortalPhase implements PhaseHandler {
                 return null;
             }
             at = portal.get();
-            if (Math.hypot(at.getX() - player.getX(), at.getZ() - player.getZ()) > Respawn.PORTAL_BED_REACH) {
+            // three axes: standing 130 blocks under a portal on a cliff top is not standing by it
+            if (!at.closerToCenterThan(player.position(), Respawn.PORTAL_BED_REACH)) {
                 return null;
             }
         }
@@ -432,7 +433,7 @@ public class PortalPhase implements PhaseHandler {
         }
         RunState.Pos known = ctx.state().overworldPortal;
         BlockPos center = known != null ? new BlockPos(known.x, known.y, known.z) : mod.getPlayer().blockPosition();
-        if (!Respawn.wantPortalBed(ctx.state(), center.getX(), center.getZ())) {
+        if (!Respawn.wantPortalBed(ctx.state(), center.getX(), center.getY(), center.getZ())) {
             return false;
         }
         if (ctx.facts().bedsInBag() > 0 || !PortalBedRules.canCraft(BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod))) {
