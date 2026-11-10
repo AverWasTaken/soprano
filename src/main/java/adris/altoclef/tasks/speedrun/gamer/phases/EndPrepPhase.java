@@ -30,6 +30,8 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.end.EndPortalWalk;
+import adris.altoclef.tasks.speedrun.gamer.end.LipSteer;
 import adris.altoclef.tasks.speedrun.gamer.end.ShedTally;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PortalDig;
 import adris.altoclef.tasksystem.Task;
@@ -67,6 +69,7 @@ public class EndPrepPhase implements PhaseHandler {
     // the spawn bed task finished and noteSpawnSet has read it, once per visit (the task stays finished)
     private boolean _spawnNoted;
     private Task _enterPortal;
+    private final LipSteer _lip = new LipSteer();
     private Task _buildBlocks;
     private Task _food;
     private boolean _topUpSaid;
@@ -236,7 +239,9 @@ public class EndPrepPhase implements PhaseHandler {
     private void ensureTasks() {
         if (_setSpawn == null) {
             _setSpawn = new PlaceBedAndSetSpawnTask();
-            _enterPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above()), Blocks.END_PORTAL);
+            // only the middle block, see EndPortalWalk.interior
+            _enterPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above()),
+                    blockPos -> EndPortalWalk.interiorIn(AltoClef.getInstance(), blockPos), Blocks.END_PORTAL);
         }
     }
 
@@ -793,7 +798,8 @@ public class EndPrepPhase implements PhaseHandler {
             return dig;
         }
         _hudState = "Walking into the End portal";
-        return _enterPortal;
+        Task steer = _lip.tick(mod, ctx);
+        return steer != null ? steer : _enterPortal;
     }
 
     private Task catalogueItem(Item item) {
