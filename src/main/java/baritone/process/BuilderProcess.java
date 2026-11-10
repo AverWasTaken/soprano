@@ -129,6 +129,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Map<BlockState, Integer> missingAtPause = Map.of();
     // set by buildInPlace for builds that may jump off themselves, see there
     private boolean jumpOff;
+    // the block the near-player break went for last, so it finishes that one before starting another
+    private BetterBlockPos nearBreak;
     // whoever started the build gets to say which wrong blocks are fine anyway (SchematicBuildTask's scaffolding, so the
     // builder stops mining the pillar it is standing on). volatile because the path thread reads it through the bcc
     private volatile Keep keep;
@@ -385,6 +387,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.buildSerial++;
         this.missingAtPause = Map.of();
         this.jumpOff = false;
+        this.nearBreak = null;
         // a #build from chat doesn't get to inherit somebody else's pillar
         this.keep = null;
         this.name = name;
@@ -661,42 +664,66 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         boolean hanging = hanging();
+        // the block we went for last time, while it's still worth it and in reach. the scan below takes the first one in
+        // its own order, and a step or a turn puts another one first: the pickaxe went back and forth between two
+        // blocks, breaking neither (270 swaps on a 108 block clear). finish the one that's started
+        if (nearBreak != null) {
+            Optional<Pair<BetterBlockPos, Rotation>> again = nearCandidate(bcc, nearBreak.x, nearBreak.y, nearBreak.z, center, pathStart, hanging);
+            if (again.isPresent()) {
+                return again;
+            }
+            nearBreak = null;
+        }
         for (int dx = -5; dx <= 5; dx++) {
             for (int dy = Baritone.settings().breakFromAbove.value ? -1 : 0; dy <= 5; dy++) {
                 for (int dz = -5; dz <= 5; dz++) {
-                    int x = center.x + dx;
-                    int y = center.y + dy;
-                    int z = center.z + dz;
-                    if (dy == -1 && x == pathStart.x && z == pathStart.z) {
-                        continue; // dont mine what we're supported by, but not directly standing on
-                    }
-                    if (hanging && dx == 0 && dy == 0 && dz == 0) {
-                        continue; // the ladder we're holding on to. from the ground it's just another block
-                    }
-                    if (givenUp(x, y, z)) {
-                        continue;
-                    }
-                    BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
-                    if (desired == null) {
-                        continue; // irrelevant
-                    }
-                    BlockState curr = bcc.bsi.get0(x, y, z);
-                    if (hanging && dx == 0 && dz == 0 && (dy == 1 || dy == -1) && curr.is(BlockTags.CLIMBABLE)) {
-                        // the rungs above our head and under our feet are the column we're on. mine one and we drop or
-                        // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
-                        continue;
-                    }
-                    // fine, not valid: a kept block is the caller's scaffolding and the ledger's is ours, the builder
-                    // never gets to mine either till the cleanup
-                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
-                            && !besideUs(center, x, y, z)) {
-                        BetterBlockPos pos = new BetterBlockPos(x, y, z);
-                        Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
-                        if (rot.isPresent()) {
-                            return Optional.of(new Pair<>(pos, rot.get()));
-                        }
+                    Optional<Pair<BetterBlockPos, Rotation>> hit = nearCandidate(bcc, center.x + dx, center.y + dy, center.z + dz, center, pathStart, hanging);
+                    if (hit.isPresent()) {
+                        nearBreak = hit.get().first();
+                        return hit;
                     }
                 }
+            }
+        }
+        return Optional.empty();
+    }
+
+    // a block near us the builder may break right now, with the rotation to hit it, or empty
+    private Optional<Pair<BetterBlockPos, Rotation>> nearCandidate(BuilderCalculationContext bcc, int x, int y, int z, BetterBlockPos center,
+                                                                   BetterBlockPos pathStart, boolean hanging) {
+        int dx = x - center.x;
+        int dy = y - center.y;
+        int dz = z - center.z;
+        if (Math.abs(dx) > 5 || Math.abs(dz) > 5 || dy > 5 || dy < (Baritone.settings().breakFromAbove.value ? -1 : 0)) {
+            return Optional.empty();
+        }
+        if (dy == -1 && x == pathStart.x && z == pathStart.z) {
+            return Optional.empty(); // dont mine what we're supported by, but not directly standing on
+        }
+        if (hanging && dx == 0 && dy == 0 && dz == 0) {
+            return Optional.empty(); // the ladder we're holding on to. from the ground it's just another block
+        }
+        if (givenUp(x, y, z)) {
+            return Optional.empty();
+        }
+        BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
+        if (desired == null) {
+            return Optional.empty(); // irrelevant
+        }
+        BlockState curr = bcc.bsi.get0(x, y, z);
+        if (hanging && dx == 0 && dz == 0 && (dy == 1 || dy == -1) && curr.is(BlockTags.CLIMBABLE)) {
+            // the rungs above our head and under our feet are the column we're on. mine one and we drop or
+            // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
+            return Optional.empty();
+        }
+        // fine, not valid: a kept block is the caller's scaffolding and the ledger's is ours, the builder
+        // never gets to mine either till the cleanup
+        if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
+                && !besideUs(center, x, y, z)) {
+            BetterBlockPos pos = new BetterBlockPos(x, y, z);
+            Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
+            if (rot.isPresent()) {
+                return Optional.of(new Pair<>(pos, rot.get()));
             }
         }
         return Optional.empty();
