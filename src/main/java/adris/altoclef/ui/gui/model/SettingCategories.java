@@ -12,6 +12,7 @@ import java.util.Set;
 public final class SettingCategories {
 
     public static final String ALTO = "Tasks";
+    public static final String EFFORTLESS = "Effortless";
     public static final String MOVEMENT = "Movement and safety";
     public static final String MINING = "Mining";
     public static final String BUILDING = "Building";
@@ -30,7 +31,7 @@ public final class SettingCategories {
         // a word matches a stem when it starts with it. "=ore" means the word must be exactly that
         RULES.put(MOVEMENT, new String[] {"allow", "assume", "avoid", "safe", "sprint", "parkour", "jump", "walk", "fall"});
         RULES.put(MINING, new String[] {"mine", "mining", "=ore", "=ores"});
-        RULES.put(BUILDING, new String[] {"build", "schematic", "=mapart", "effortless"});
+        RULES.put(BUILDING, new String[] {"build", "schematic", "=mapart"});
         RULES.put(RENDERING, new String[] {"render", "color", "colour", "fade", "opacity"});
         RULES.put(ELYTRA, new String[] {"elytra"});
         RULES.put(CHAT, new String[] {"chat", "prefix", "echo", "notification", "=log", "=logs", "toast"});
@@ -77,13 +78,23 @@ public final class SettingCategories {
     }
 
     public static boolean isAdvanced(String name) {
+        // the build mode's settings are all ones a player reaches for, there are few of them and they have a shelf of their own
+        if (isEffortless(name)) {
+            return false;
+        }
         return name == null || name.isEmpty() || !EVERYDAY.contains(name);
+    }
+
+    // effortlessReach, and the colours of its preview (colorEffortlessBreak). the build mode's own shelf, like alto's
+    public static boolean isEffortless(String name) {
+        return name != null && (name.startsWith("effortless") || name.startsWith("colorEffortless"));
     }
 
     // "All" is the tab's own idea, it is not in here
     public static List<String> names() {
         List<String> out = new ArrayList<>();
         out.add(ALTO);
+        out.add(EFFORTLESS);
         out.addAll(RULES.keySet());
         out.add(GENERAL);
         return out;
@@ -95,6 +106,9 @@ public final class SettingCategories {
         }
         if (name.regionMatches(true, 0, "alto", 0, 4)) {
             return ALTO;
+        }
+        if (isEffortless(name)) {
+            return EFFORTLESS;
         }
         List<String> words = words(name);
         // the first word is the subject (elytraRenderSimulation is an elytra thing that happens to render), so a

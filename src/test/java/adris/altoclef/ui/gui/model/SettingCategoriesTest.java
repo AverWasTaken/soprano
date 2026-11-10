@@ -104,7 +104,15 @@ public class SettingCategoriesTest {
         assertEquals(SettingCategories.ALTO, names.get(0));
         assertEquals(SettingCategories.GENERAL, names.get(names.size() - 1));
         assertEquals(names.size(), names.stream().distinct().count());
-        assertEquals(11, names.size());
+        assertEquals(12, names.size());
+    }
+
+    @Test
+    public void theBuildModeHasItsOwnShelf() {
+        is(SettingCategories.EFFORTLESS, "effortlessMaxBlocks", "effortlessReach", "colorEffortlessBreak", "effortlessStartRightAway");
+        org.junit.Assert.assertFalse(SettingCategories.isAdvanced("effortlessReach"));
+        assertEquals("Max Blocks", adris.altoclef.ui.gui.tabs.SettingWords.label("effortlessMaxBlocks"));
+        assertEquals("Color Break", adris.altoclef.ui.gui.tabs.SettingWords.label("colorEffortlessBreak"));
     }
 
     @Test
