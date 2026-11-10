@@ -480,7 +480,7 @@ public class EndGearTest {
         assertFalse(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds, cfg.beds)));
         assertTrue(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds + 1, cfg.beds)));
         // the portal bed borrows from the End's instead (round 187), END_PREP buys it back
-        assertTrue(Respawn.wantPortalBed(s, 0, 0));
+        assertTrue(Respawn.wantPortalBed(s, 0, 64, 0));
     }
 
     @Test

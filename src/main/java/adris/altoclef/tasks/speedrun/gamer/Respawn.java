@@ -177,13 +177,18 @@ public final class Respawn {
     // bed to spare beyond the End's, which never came before the nether (the End's beds are still wool then), so every nether death
     // went back to the world spawn. the bed gets borrowed from the End's and END_PREP buys it back. night is fine, the click sets
     // the spawn before the sleep check and we just sleep through it
-    public static boolean wantPortalBed(RunState state, double portalX, double portalZ) {
-        return portalBedNear(state, portalX, portalZ) == null;
+    public static boolean wantPortalBed(RunState state, double portalX, double portalY, double portalZ) {
+        return portalBedNear(state, portalX, portalY, portalZ) == null;
     }
 
-    // our respawn bed, when it is close enough to the portal to count as the portal bed. null = it is not (or there is none)
-    public static RunState.Pos portalBedNear(RunState state, double portalX, double portalZ) {
+    // our respawn bed, when it is close enough to the portal to count as the portal bed. null = it is not (or there is none).
+    // all three axes: a bed in the valley under a portal up on a cliff is a long climb back, not "by the portal"
+    public static RunState.Pos portalBedNear(RunState state, double portalX, double portalY, double portalZ) {
         RunState.Pos bed = bed(state);
-        return bed != null && Math.hypot(bed.x - portalX, bed.z - portalZ) <= NEAR_NETHER_PORTAL ? bed : null;
+        if (bed == null) {
+            return null;
+        }
+        double dx = bed.x - portalX, dy = bed.y - portalY, dz = bed.z - portalZ;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) <= NEAR_NETHER_PORTAL ? bed : null;
     }
 }

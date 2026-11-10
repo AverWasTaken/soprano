@@ -11,6 +11,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.phys.Vec3;
 
 // the spawn goes on a bed by the overworld nether portal before we step in, so a nether death comes back here and not to the world
 // spawn. PortalPhase runs it on the first way in and HomePortalWalk on every way back in: a night bed somewhere else takes the
@@ -56,7 +57,7 @@ public class PortalBedStep {
                 return task;
             }
             String why = task.gaveUp() ? task.gaveUpReason() : finished ? "the game never said the spawn moved" : "out of time";
-            RunState.Pos bed = Respawn.portalBedNear(state, portal.getX(), portal.getZ());
+            RunState.Pos bed = Respawn.portalBedNear(state, portal.getX(), portal.getY(), portal.getZ());
             if (bed == null && finished && !task.gaveUp()) {
                 bed = silentClick(mod, state, task, portal);
             }
@@ -89,7 +90,7 @@ public class PortalBedStep {
                 }
             }
         }
-        if (mod.getPlayer() == null || Respawn.portalBedNear(state, portal.getX(), portal.getZ()) != null) {
+        if (mod.getPlayer() == null || Respawn.portalBedNear(state, portal.getX(), portal.getY(), portal.getZ()) != null) {
             return null;
         }
         if (gaveUpTick >= 0) {
@@ -131,7 +132,7 @@ public class PortalBedStep {
             return null;
         }
         RunState.Pos at = new RunState.Pos(foot.getX(), foot.getY(), foot.getZ());
-        if (Math.hypot(at.x - portal.getX(), at.z - portal.getZ()) > Respawn.NEAR_NETHER_PORTAL) {
+        if (!foot.closerToCenterThan(Vec3.atCenterOf(portal), Respawn.NEAR_NETHER_PORTAL)) {
             return null;
         }
         Respawn.set(state, at, "OVERWORLD");
