@@ -446,6 +446,50 @@ public final class Icons {
                 poly(g, true, 15, 11, 21, 15.5f, 15, 20);
             }
             case PLAY -> poly(g, true, 7, 4.5f, 19.5f, 12, 7, 19.5f);
+            case SHAPE_SINGLE -> g.draw(new java.awt.geom.Rectangle2D.Float(6, 6, 12, 12));
+            case SHAPE_LINE -> {
+                line(g, 6, 18, 18, 6);
+                g.fill(new Ellipse2D.Float(3.5f, 15.5f, 5, 5));
+                g.fill(new Ellipse2D.Float(15.5f, 3.5f, 5, 5));
+            }
+            case SHAPE_FLOOR -> {
+                poly(g, true, 3, 13, 12, 8.5f, 21, 13, 12, 17.5f);
+                line(g, 7.5f, 10.75f, 16.5f, 15.25f);
+                line(g, 7.5f, 15.25f, 16.5f, 10.75f);
+            }
+            case SHAPE_WALL -> {
+                g.draw(new java.awt.geom.Rectangle2D.Float(4, 5, 16, 14));
+                line(g, 4, 9.75f, 20, 9.75f);
+                line(g, 4, 14.25f, 20, 14.25f);
+                line(g, 12, 5, 12, 9.75f);
+                line(g, 8, 9.75f, 8, 14.25f);
+                line(g, 16, 9.75f, 16, 14.25f);
+                line(g, 12, 14.25f, 12, 19);
+            }
+            case SHAPE_CUBOID -> cube(g);
+            case SHAPE_CIRCLE -> {
+                g.draw(new Ellipse2D.Float(3.5f, 3.5f, 17, 17));
+                dot(g, 12, 12, w * 1.4f);
+            }
+            case SHAPE_CYLINDER -> {
+                g.draw(new Ellipse2D.Float(4.5f, 3.5f, 15, 6));
+                line(g, 4.5f, 6.5f, 4.5f, 17.5f);
+                line(g, 19.5f, 6.5f, 19.5f, 17.5f);
+                g.draw(new Arc2D.Float(4.5f, 14.5f, 15, 6, 180, 180, Arc2D.OPEN));
+            }
+            case SHAPE_SPHERE -> {
+                g.draw(new Ellipse2D.Float(3.5f, 3.5f, 17, 17));
+                g.draw(new Arc2D.Float(3.5f, 9.5f, 17, 5, 180, 180, Arc2D.OPEN));
+            }
+            case SHAPE_STAIRS -> poly(g, true, 4, 20, 4, 15, 9, 15, 9, 10, 14, 10, 14, 5, 20, 5, 20, 20);
+            case SHAPE_PYRAMID -> {
+                poly(g, true, 12, 3.5f, 21, 19.5f, 3, 19.5f);
+                line(g, 12, 3.5f, 14.5f, 19.5f);
+            }
+            case SHAPE_ROOF -> {
+                poly(g, false, 2.5f, 13, 12, 4.5f, 21.5f, 13);
+                poly(g, false, 6, 10, 6, 20, 18, 20, 18, 10);
+            }
             case IF -> {
                 Path2D.Float up = new Path2D.Float();
                 up.moveTo(10, 12);

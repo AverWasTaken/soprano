@@ -1504,6 +1504,17 @@ public final class Settings {
     public final Setting<Boolean> effortlessJumpOff = new Setting<>(true);
 
     /**
+     * How far out, in blocks, an Effortless Soprano corner lands when you click with nothing in reach, so a shape can
+     * start in the air.
+     */
+    public final Setting<Double> effortlessReach = new Setting<>(6D);
+
+    /**
+     * Shapes with a height (cuboid, cylinder) take a third click for it. Off, the second corner sets the height too.
+     */
+    public final Setting<Boolean> effortlessThreeClickHeight = new Setting<>(true);
+
+    /**
      * The colour of the outline Effortless Soprano draws around the shape you are setting up.
      */
     public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));

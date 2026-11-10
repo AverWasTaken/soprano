@@ -19,6 +19,8 @@ package baritone.effortless;
 
 import baritone.Baritone;
 import baritone.api.event.events.RenderEvent;
+import baritone.api.event.events.TickEvent;
+import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.process.IBuilderProcess;
 import baritone.api.utils.IPlayerContext;
@@ -101,7 +103,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 return out;
             }
         }
-        if (!out.isEmpty() && out.size() < spec.kind().clicks && look.isPresent()) {
+        if (!out.isEmpty() && out.size() < spec.kind().clicks(Baritone.settings().effortlessThreeClickHeight.value) && look.isPresent()) {
             out.add(look.get());
         }
         return out;
@@ -111,6 +113,11 @@ public final class EffortlessManager implements AbstractGameEventListener {
         IPlayerContext ctx = baritone.getPlayerContext();
         if (ctx.player() == null) {
             return Optional.empty();
+        }
+        // in build mode the next corner is where a click would land: in front of the face for a place, in the air
+        // when there's nothing in reach
+        if (BuildMode.active()) {
+            return BuildMode.crosshair();
         }
         return ctx.getSelectedBlock();
     }
@@ -249,11 +256,23 @@ public final class EffortlessManager implements AbstractGameEventListener {
         };
     }
 
+    // a finished shape from build mode. the queue comes later, for now every job starts right away
+    public void submit(EffortlessJob job) {
+        start(job);
+    }
+
     public EffortlessJob running() {
         return running != null && baritone.getBuilderProcess().isActive() ? running : null;
     }
 
     // ----- the outline
+
+    @Override
+    public void onTick(TickEvent event) {
+        if (event.getType() == TickEvent.Type.IN && event.getState() == EventState.PRE) {
+            BuildMode.tick();
+        }
+    }
 
     @Override
     public void onRenderPass(RenderEvent event) {
