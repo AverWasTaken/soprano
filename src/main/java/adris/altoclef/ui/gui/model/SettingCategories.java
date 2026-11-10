@@ -30,7 +30,7 @@ public final class SettingCategories {
         // a word matches a stem when it starts with it. "=ore" means the word must be exactly that
         RULES.put(MOVEMENT, new String[] {"allow", "assume", "avoid", "safe", "sprint", "parkour", "jump", "walk", "fall"});
         RULES.put(MINING, new String[] {"mine", "mining", "=ore", "=ores"});
-        RULES.put(BUILDING, new String[] {"build", "schematic", "=mapart"});
+        RULES.put(BUILDING, new String[] {"build", "schematic", "=mapart", "effortless"});
         RULES.put(RENDERING, new String[] {"render", "color", "colour", "fade", "opacity"});
         RULES.put(ELYTRA, new String[] {"elytra"});
         RULES.put(CHAT, new String[] {"chat", "prefix", "echo", "notification", "=log", "=logs", "toast"});

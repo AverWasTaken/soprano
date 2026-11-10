@@ -1491,6 +1491,17 @@ public final class Settings {
     public final Setting<Boolean> buildRepeatSneaky = new Setting<>(true);
 
     /**
+     * The most cells one Effortless Soprano job may touch. A shape past this is refused when you click its last corner,
+     * so a stray click across a valley can't queue a million blocks.
+     */
+    public final Setting<Integer> effortlessMaxBlocks = new Setting<>(32768);
+
+    /**
+     * The colour of the outline Effortless Soprano draws around the shape you are setting up.
+     */
+    public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));
+
+    /**
      * Allow standing above a block while mining it, in BuilderProcess
      * <p>
      * Experimental
