@@ -34,9 +34,11 @@ public final class JobSchematic implements ISchematic {
 
     private final List<EffortlessJob> jobs;
     private final AreaMask bounds;
-    // a place cell's in or out is decided the first time the builder looks and then kept. replace has to: the builder
-    // breaks the old block before it places, and an air cell no longer passes "only dirt", so it would drop out half
-    // done (ReplaceSchematic caches for the same reason). byte per cell of the box, the builder asks from its own thread
+    // a cell's in or out is decided the first time the builder looks and then kept. replace has to: the builder breaks
+    // the old block before it places, and an air cell no longer passes "only dirt", so it would drop out half done
+    // (ReplaceSchematic caches for the same reason). a break has to as well: the builder only rechecks cells that are
+    // still in the schematic, so a stone that turned to air and dropped out stayed on its to do list forever and the
+    // build ended "unable to do it" with nothing left to do. byte per cell of the box, the builder asks from its own thread
     // too, and a byte write can't trample a neighbour the way a BitSet word can
     private final byte[] decided;
 
@@ -91,10 +93,6 @@ public final class JobSchematic implements ISchematic {
         EffortlessJob job = owner(wx, wy, wz);
         if (job == null) {
             return false;
-        }
-        if (job.mode == EffortlessJob.Mode.BREAK) {
-            // not kept: once it's air it's done, and something that grew back into it later is its own business
-            return job.filter.matches(current);
         }
         int i = x + bounds.sizeX * (z + bounds.sizeZ * y);
         byte d = decided[i];

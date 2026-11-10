@@ -79,6 +79,22 @@ public class EffortlessCommand extends Command {
                 logDirect("Shape: " + describe(o.spec()));
             }
             case "place", "break" -> run(sub.equals("place"), args);
+            case "preview" -> {
+                args.requireMin(1);
+                String what = args.getString().toLowerCase(Locale.ROOT);
+                if (what.equals("off")) {
+                    m.draft(null, null);
+                    logDirect("Preview off");
+                    return;
+                }
+                if (!what.equals("place") && !what.equals("break")) {
+                    throw new CommandInvalidStateException("preview place, preview break or preview off");
+                }
+                EffortlessOptions o = options(m.spec(), rest(args));
+                m.spec(o.spec());
+                m.draft(what.equals("place") ? EffortlessJob.Mode.PLACE : EffortlessJob.Mode.BREAK, o);
+                logDirect("Previewing " + what + ", the shape follows your crosshair until its points are set");
+            }
             case "clear" -> {
                 args.requireMax(0);
                 m.clearPoints();
@@ -139,7 +155,10 @@ public class EffortlessCommand extends Command {
         } catch (EffortlessOptions.Bad | EffortlessManager.NotReady e) {
             throw new CommandInvalidStateException(e.getMessage());
         }
+        m.draft(place ? EffortlessJob.Mode.PLACE : EffortlessJob.Mode.BREAK, o);
         m.start(job);
+        // the points are spent, the preview moves on to the running job
+        m.clearPoints();
         logDirect((place ? "Placing " : "Breaking ") + job.name + ", " + job.mask.count() + " blocks"
                 + (place ? "" : " (" + job.filter + ")"));
     }
@@ -165,7 +184,7 @@ public class EffortlessCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
-                    .append("p1", "p2", "p3", "shape", "place", "break", "info", "clear")
+                    .append("p1", "p2", "p3", "shape", "place", "break", "preview", "info", "clear")
                     .filterPrefix(args.getString()).sortAlphabetically().stream();
         }
         String sub = args.getString().toLowerCase(Locale.ROOT);
@@ -206,6 +225,7 @@ public class EffortlessCommand extends Command {
                 "> ef p1 / p2 / p3 [x y z] - Set a point",
                 "> ef place [options] - Fill the shape. Uses the block in your hand unless you say block=",
                 "> ef break [options] - Break the blocks in the shape",
+                "> ef preview place|break [options] - Show what place or break would do, without starting. preview off hides it",
                 "> ef info - What's set up",
                 "> ef clear - Forget the points",
                 "",

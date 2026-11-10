@@ -40,6 +40,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.InputOverrideHandler;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.accessor.IClientBlockBreak;
@@ -126,6 +127,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // what the logMissing pass found with no item for it, kept for whoever wants to go and get it (SchematicBuildTask).
     // no lock: the builder, the gui and altoclef all run on the game thread
     private Map<BlockState, Integer> missingAtPause = Map.of();
+    // set by buildInPlace for builds that may jump off themselves, see there
+    private boolean jumpOff;
     // whoever started the build gets to say which wrong blocks are fine anyway (SchematicBuildTask's scaffolding, so the
     // builder stops mining the pillar it is standing on). volatile because the path thread reads it through the bcc
     private volatile Keep keep;
@@ -364,6 +367,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 net.minecraft.world.level.block.Mirror.NONE, false);
     }
 
+    // a build laid out in world space by its starter (Effortless Soprano): never turned or mirrored by the global
+    // build settings, it goes exactly where it was clicked. jumpOff lets the path take a fall priced by health (the same
+    // rule fastMode uses) instead of digging down through blocks it already placed: a floating build has nothing but
+    // itself to climb down, and every finished block it mines on the way is one it comes back up to place again
+    public void buildInPlace(String name, ISchematic schematic, Vec3i origin, boolean jumpOff) {
+        start(name, schematic, origin, net.minecraft.world.level.block.Rotation.NONE,
+                net.minecraft.world.level.block.Mirror.NONE, false);
+        this.jumpOff = jumpOff;
+    }
+
     // the old entry point with the orientation pulled out. useOrientation = add the schematicOrientation offsets, which
     // only the global setting path wants: they use the unturned size and would push a placed origin off its corner.
     // no ctx in here, BuilderPlacedBuildTest makes the builder without a baritone
@@ -371,6 +384,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
         this.buildSerial++;
         this.missingAtPause = Map.of();
+        this.jumpOff = false;
         // a #build from chat doesn't get to inherit somebody else's pillar
         this.keep = null;
         this.name = name;
@@ -3720,6 +3734,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // the first context gets built before we're the one in control, so clutchAllowed can't see us yet
             this.hasClutchItem = false;
             this.clutchPicksUp = false;
+            if (jumpOff) {
+                // the nether stays out like it does for fastMode, a drop there is as likely to end in lava as on ground
+                this.hurtingFallsOk = !ExperimentalMovement.inNether(world);
+                if (ctx.player().getAbilities().invulnerable) {
+                    // creative takes no fall damage at all, so any fall the planner can reason about is free
+                    this.plainFallsAreFree = true;
+                    this.maxFallHeightNoWater = Math.max(maxFallHeightNoWater, ExperimentalMovement.MAX_HURT_FALL);
+                }
+            }
         }
 
         private BlockState getSchematic(int x, int y, int z, BlockState current) {

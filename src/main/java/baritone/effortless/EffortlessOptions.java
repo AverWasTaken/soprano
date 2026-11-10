@@ -65,6 +65,28 @@ public final class EffortlessOptions {
         return spec;
     }
 
+    // the same options for another shape. the draft keeps its words while the radial changes the shape under it
+    public EffortlessOptions withSpec(ShapeSpec newSpec) {
+        EffortlessOptions o = copy();
+        o.spec = newSpec;
+        return o;
+    }
+
+    private EffortlessOptions copy() {
+        EffortlessOptions o = new EffortlessOptions(spec);
+        o.blocks = blocks;
+        o.fill = fill;
+        o.only.addAll(only);
+        o.except.addAll(except);
+        o.hand = hand;
+        o.offhand = offhand;
+        o.notHand = notHand;
+        o.skipContainers = skipContainers;
+        o.fluids = fluids;
+        o.seed = seed;
+        return o;
+    }
+
     public static EffortlessOptions parse(ShapeSpec base, String raw) throws IllegalArgumentException {
         EffortlessOptions o = new EffortlessOptions(base);
         for (String word : raw.trim().split("\\s+")) {

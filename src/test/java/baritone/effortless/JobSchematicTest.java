@@ -72,9 +72,12 @@ public class JobSchematicTest {
         EffortlessJob job = EffortlessJob.breaking(cuboid(), BOX, BlockFilter.ALL.withOnly(List.of("minecraft:stone")));
         JobSchematic s = new JobSchematic(job);
         assertTrue(s.inSchematic(1, 1, 1, stone()));
-        assertFalse(s.inSchematic(1, 1, 1, dirt()));
-        assertFalse(s.inSchematic(1, 1, 1, air()));
+        assertFalse(s.inSchematic(0, 1, 1, dirt()));
+        // air in a break area is already what it should be: in, and done
+        assertTrue(s.inSchematic(2, 1, 1, air()));
         assertEquals(air(), s.desiredState(1, 1, 1, stone(), List.of()));
+        // broken: still in, and air is what it wants, so the builder sees it done instead of losing track of it
+        assertTrue(s.inSchematic(1, 1, 1, air()));
         assertEquals(EffortlessJob.Outcome.BREAK, job.outcome(0, 0, 0, stone()));
         assertEquals(EffortlessJob.Outcome.UNTOUCHED, job.outcome(0, 0, 0, dirt()));
         assertEquals(EffortlessJob.Outcome.UNTOUCHED, job.outcome(9, 9, 9, stone()));
@@ -158,5 +161,16 @@ public class JobSchematicTest {
         assertEquals(dirt(), s.desiredState(6, 0, 0, air(), List.of()));
         // between the two boxes is nobody's
         assertFalse(s.inSchematic(4, 0, 0, air()));
+    }
+
+    @Test
+    public void untouchedBlocksAreKept() {
+        EffortlessJob job = EffortlessJob.breaking(cuboid(), BOX, BlockFilter.ALL.withOnly(List.of("minecraft:stone")));
+        var keep = EffortlessManager.keepUntouched(new JobSchematic(job));
+        // the dirt under "break only stone" stays, the stone goes, air and cells outside the job aren't its business
+        assertTrue(keep.keep(0, 0, 0, dirt()));
+        assertFalse(keep.keep(0, 0, 0, stone()));
+        assertFalse(keep.keep(0, 0, 0, air()));
+        assertFalse(keep.keep(9, 9, 9, dirt()));
     }
 }

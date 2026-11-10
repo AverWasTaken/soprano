@@ -1497,9 +1497,44 @@ public final class Settings {
     public final Setting<Integer> effortlessMaxBlocks = new Setting<>(32768);
 
     /**
+     * Let an Effortless Soprano job jump off its own build when the fall leaves you with at least
+     * {@link #fastModeMinHealth} (the same rule {@link #fastMode} uses), instead of digging down through blocks it already
+     * placed and coming back to place them again. In creative every fall is free. Never in the nether.
+     */
+    public final Setting<Boolean> effortlessJumpOff = new Setting<>(true);
+
+    /**
      * The colour of the outline Effortless Soprano draws around the shape you are setting up.
      */
     public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));
+
+    /**
+     * How see-through Effortless Soprano's preview is, from 0 (hidden) to 1. Blocks that will be placed show as a
+     * hologram of the exact block, blocks that will be broken in {@link #colorEffortlessBreak}, and blocks in the area
+     * that won't be touched in {@link #colorEffortlessUntouched} at half this.
+     */
+    public final Setting<Float> effortlessPreviewOpacity = new Setting<>(0.45f);
+
+    /**
+     * How far from the camera, in blocks, Effortless Soprano's preview is drawn. Capped at 128.
+     */
+    public final Setting<Integer> effortlessPreviewDistance = new Setting<>(96);
+
+    /**
+     * The colour of a block an Effortless Soprano job is going to break.
+     */
+    public final Setting<Color> colorEffortlessBreak = new Setting<>(new Color(0xFF3B3B));
+
+    /**
+     * The colour over the hologram of a block an Effortless Soprano job is going to replace.
+     */
+    public final Setting<Color> colorEffortlessReplace = new Setting<>(new Color(0xFFB060));
+
+    /**
+     * The colour of a block inside an Effortless Soprano job's area that it won't touch: filtered out, protected, or
+     * not empty for a fill.
+     */
+    public final Setting<Color> colorEffortlessUntouched = new Setting<>(new Color(0x9A9A9A));
 
     /**
      * Allow standing above a block while mining it, in BuilderProcess

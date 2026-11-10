@@ -20,6 +20,7 @@ package baritone.effortless;
 import baritone.Baritone;
 import baritone.api.event.events.RenderEvent;
 import baritone.api.event.listener.AbstractGameEventListener;
+import baritone.api.process.IBuilderProcess;
 import baritone.api.utils.IPlayerContext;
 import baritone.utils.IRenderer;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -48,6 +49,14 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private ShapeSpec previewSpec;
     private AreaMask preview;
     private EffortlessJob running;
+    private JobSchematic runningSchematic;
+    // what the next job will be, for the preview: place or break and the options it was set up with. null mode is
+    // "no idea yet", the outline still shows but no cells do
+    private EffortlessJob.Mode draftMode;
+    private EffortlessOptions draftOptions;
+    // the preview job, rebuilt only when what it depends on changes
+    private Object previewJobKey;
+    private JobSchematic previewSchematic;
 
     public EffortlessManager(Baritone baritone) {
         this.baritone = baritone;
@@ -178,7 +187,66 @@ public final class EffortlessManager implements AbstractGameEventListener {
     public void start(EffortlessJob job) {
         running = job;
         JobSchematic schematic = new JobSchematic(job);
-        baritone.getBuilderProcess().build(job.name, schematic, schematic.origin());
+        runningSchematic = schematic;
+        baritone.getBuilderProcess().buildInPlace(job.name, schematic, schematic.origin(), Baritone.settings().effortlessJumpOff.value);
+        // what the job leaves alone inside its area stays standing: a path that digs through the dirt under "break only
+        // stone" is the builder breaking the one thing you told it not to. kept blocks price like finished ones
+        baritone.getBuilderProcess().setKeep(keepUntouched(schematic));
+    }
+
+    // what the preview should show for the next job, or null when there's nothing set up to show
+    public void draft(EffortlessJob.Mode mode, EffortlessOptions options) {
+        this.draftMode = mode;
+        this.draftOptions = options;
+    }
+
+    public EffortlessJob.Mode draftMode() {
+        return draftMode;
+    }
+
+    // the job the current points (plus the crosshair for the missing ones) and the draft would make. null when there
+    // are no points, no draft, or the draft can't make a job here (no block in hand, too big)
+    public JobSchematic previewSchematic() {
+        if (points.isEmpty() || draftMode == null || draftOptions == null) {
+            return null;
+        }
+        AreaMask mask = currentMask(true);
+        if (mask == null || mask.isEmpty() || mask.count() > Baritone.settings().effortlessMaxBlocks.value) {
+            return null;
+        }
+        List<BlockPos> pts = effectivePoints(true);
+        Optional<BlockState> hand = heldBlock(false);
+        Optional<BlockState> off = heldBlock(true);
+        List<Object> key = List.of(pts, spec, draftMode, draftOptions, hand, off);
+        if (key.equals(previewJobKey)) {
+            return previewSchematic;
+        }
+        previewJobKey = key;
+        try {
+            EffortlessJob job = draftMode == EffortlessJob.Mode.PLACE
+                    ? draftOptions.withSpec(spec).placeJob(pts, hand, off)
+                    : draftOptions.withSpec(spec).breakJob(pts, hand, off);
+            previewSchematic = new JobSchematic(job);
+        } catch (EffortlessOptions.Bad | RuntimeException e) {
+            previewSchematic = null;
+        }
+        return previewSchematic;
+    }
+
+    // the job the builder is on, while it is
+    public JobSchematic runningSchematic() {
+        return running() != null ? runningSchematic : null;
+    }
+
+    // a block in the area the job won't change. pure: the builder asks from its path thread
+    static IBuilderProcess.Keep keepUntouched(JobSchematic schematic) {
+        return (x, y, z, current) -> {
+            if (current.isAir()) {
+                return false;
+            }
+            EffortlessJob job = schematic.owner(x, y, z);
+            return job != null && job.outcome(x, y, z, current) == EffortlessJob.Outcome.UNTOUCHED;
+        };
     }
 
     public EffortlessJob running() {
