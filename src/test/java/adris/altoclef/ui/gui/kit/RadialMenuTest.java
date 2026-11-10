@@ -29,7 +29,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-// the effortless radial: picking by angle, the hub, the chips, and a picture of it in build/gui-preview
+// the effortless radial: the ring of tiles, the hub, the two panels' controls, and pictures in build/gui-preview
 public class RadialMenuTest {
 
     private GlyphAtlas glyphs;
@@ -44,48 +44,72 @@ public class RadialMenuTest {
         theme = new Theme(1f, glyphs);
     }
 
-    // the radial as the game builds it: the real shapes, each with its 3D picture and group
+    // the ring as the game builds it: the real shapes with their glyphs
     private RadialMenu real() {
         List<RadialMenu.Entry> entries = new ArrayList<>();
         for (baritone.effortless.ShapeKind k : adris.altoclef.ui.gui.mc.EffortlessRadialScreen.SHAPES) {
-            entries.add(new RadialMenu.Entry(Icon.SHAPE_CUBOID, k.title, adris.altoclef.ui.gui.mc.EffortlessRadialScreen.picture(k, 46),
-                    adris.altoclef.ui.gui.mc.EffortlessRadialScreen.group(k)));
+            entries.add(new RadialMenu.Entry(adris.altoclef.ui.gui.mc.EffortlessRadialScreen.icon(k), k.title));
         }
         RadialMenu m = new RadialMenu(theme, entries, picked::add);
-        m.setBounds(0, 0, 1280, 720);
+        m.setBounds(0, 0, 1600, 900);
         return m;
     }
 
     private RadialMenu menu(int n) {
         List<RadialMenu.Entry> entries = new ArrayList<>();
-        Icon[] icons = {Icon.SHAPE_SINGLE, Icon.SHAPE_LINE, Icon.SHAPE_WALL, Icon.SHAPE_FLOOR, Icon.SHAPE_CUBOID,
-                Icon.SHAPE_STAIRS, Icon.SHAPE_ROOF, Icon.SHAPE_PYRAMID, Icon.SHAPE_SPHERE, Icon.SHAPE_CYLINDER, Icon.SHAPE_CIRCLE};
         for (int i = 0; i < n; i++) {
-            entries.add(new RadialMenu.Entry(icons[i % icons.length], "Shape " + i));
+            entries.add(new RadialMenu.Entry(Icon.SHAPE_CUBOID, "Shape " + i));
         }
         RadialMenu m = new RadialMenu(theme, entries, picked::add);
         m.setBounds(0, 0, 1280, 720);
         return m;
     }
 
-    @Test
-    public void theMiddleIsNothingAndTheTopIsNone() {
-        RadialMenu m = menu(7);
-        assertEquals(RadialMenu.NOTHING, m.pick(m.centerX(), m.centerY()));
-        assertEquals(RadialMenu.HUB, m.pick(m.centerX(), m.centerY() - 100));
+    private static final java.util.function.IntConsumer NOOP = i -> {
+    };
+
+    // the panels the game shows for a cube with the hotbar mix on
+    private void cubePanels(RadialMenu m, List<Integer> fills, List<String> toggled) {
+        m.setPanels(List.of(
+                new RadialMenu.Title("Blocks", "Used for every shape"),
+                new RadialMenu.Choice("Place with", List.of("Held block", "Hotbar mix"), 1, NOOP),
+                new RadialMenu.Stepper("1  Stone Bricks", "60%", 3, 0, 9, NOOP, null, false, null),
+                new RadialMenu.Stepper("2  Cracked Stone Bricks", "20%", 1, 0, 9, NOOP, null, false, null),
+                new RadialMenu.Stepper("3  Oak Log", "20%", 1, 0, 9, NOOP, "Turn", true, () -> toggled.add("log")),
+                new RadialMenu.Stepper("4  Glass", null, 0, 0, 9, NOOP, null, false, null),
+                new RadialMenu.Action("Reroll the pattern", () -> {
+                }),
+                new RadialMenu.Choice("Take blocks from", List.of("Inventory", "Storage", "Gather"), 0, NOOP)
+        ), List.of(
+                new RadialMenu.Title("Cube", "3 clicks: a corner, the far corner, then how far out"),
+                new RadialMenu.Choice("Filling", List.of("Filled", "Hollow", "Skeleton"), 0, fills::add),
+                new RadialMenu.Choice("Facing", List.of("Both", "Vertical", "Horizontal"), 0, NOOP),
+                new RadialMenu.Choice("Plane length", List.of("Variable", "Equal"), 0, NOOP),
+                new RadialMenu.Title("Clicks", "Hold a block in your offhand to match it"),
+                new RadialMenu.Choice("Right click fills", List.of("Empty", "Existing", "Both"), 1, NOOP),
+                new RadialMenu.Choice("Existing blocks", List.of("Any", "Offhand's", "Not offhand's"), 2, NOOP),
+                new RadialMenu.Choice("Left click breaks", List.of("All", "Offhand's", "Not offhand's"), 0, NOOP),
+                new RadialMenu.Choice("Containers", List.of("Break", "Leave"), 0, NOOP)
+        ));
     }
 
     @Test
-    public void wedgesGoClockwiseAfterNone() {
-        // 7 shapes and none: 8 wedges of 45 degrees, none at the top
-        RadialMenu m = menu(7);
+    public void theHubIsNone() {
+        RadialMenu m = menu(8);
+        assertEquals(RadialMenu.HUB, m.pick(m.centerX(), m.centerY()));
+    }
+
+    @Test
+    public void tilesGoClockwiseFromTheTop() {
+        RadialMenu m = menu(8);
         float cx = m.centerX();
         float cy = m.centerY();
-        assertEquals(1, m.pick(cx + 100, cy));
-        assertEquals(3, m.pick(cx, cy + 100));
-        assertEquals(5, m.pick(cx - 100, cy));
-        // a short flick past the dead zone counts
-        assertEquals(1, m.pick(cx + 40, cy + 2));
+        assertEquals(0, m.pick(cx, cy - 110));
+        assertEquals(2, m.pick(cx + 110, cy));
+        assertEquals(4, m.pick(cx, cy + 110));
+        assertEquals(6, m.pick(cx - 110, cy));
+        // a short flick past the hub counts
+        assertEquals(2, m.pick(cx + 45, cy + 2));
         // far off the ring is nothing
         assertEquals(RadialMenu.NOTHING, m.pick(cx + 600, cy));
     }
@@ -99,60 +123,49 @@ public class RadialMenuTest {
     }
 
     @Test
-    public void chipsAnswerClicks() throws IOException {
+    public void panelsAnswerClicksAndArePictured() throws IOException {
         RadialMenu m = real();
-        List<Integer> chip = new ArrayList<>();
-        m.setRows(List.of(new RadialMenu.Row("Shape", List.of("Filled", "Hollow", "Walls", "Edges"), 1, chip::add),
-                new RadialMenu.Row("Right click places", List.of("Into empty", "Over anything", "Replace hand"), 0, i -> {
-                })));
+        List<Integer> fills = new ArrayList<>();
+        List<String> toggled = new ArrayList<>();
+        cubePanels(m, fills, toggled);
         m.setSelected(4);
-        Java2dCanvas c = new Java2dCanvas(1280, 720, glyphs, shapes);
+        Java2dCanvas c = new Java2dCanvas(1600, 900, glyphs, shapes);
         c.clear(0xFF2B3A2E);
         m.mouseMove(m.tileX(5), m.tileY(5));
         m.draw(c, new Frame(0, 0, m.tileX(5), m.tileY(5)));
         c.save(Paths.get("build", "gui-preview", "effortless_radial.png"));
-        // somewhere in the panel the first row's first chip takes a click
+        // the ring stays in the middle
+        assertEquals(800f, m.centerX(), 0.01f);
+        // somewhere right of the ring a fill segment takes a click, and its index is the segment
         boolean hit = false;
-        for (int dy = -300; dy <= 300 && !hit; dy += 3) {
-            for (int dx = 0; dx <= 400 && !hit; dx += 4) {
-                if (m.mouseDown(m.panelX() + dx, m.centerY() + dy, 0, 0) && !chip.isEmpty()) {
-                    hit = true;
-                }
+        for (float dy = -400; dy <= 400 && !hit; dy += 3) {
+            for (float dx = 0; dx <= 400 && !hit; dx += 4) {
+                m.mouseDown(m.rightX() + dx, m.centerY() + dy, 0, 0);
+                hit = !fills.isEmpty();
             }
         }
-        assertTrue("a chip in the first row took a click", hit);
-        assertEquals(Integer.valueOf(0), chip.get(0));
+        assertTrue("a filling segment took a click", hit);
+        assertEquals(Integer.valueOf(0), fills.get(0));
+        // and left of it the Turn chip
+        boolean turned = false;
+        for (float dy = -400; dy <= 400 && !turned; dy += 3) {
+            for (float dx = 0; dx <= 500 && !turned; dx += 4) {
+                m.mouseDown(2 * m.centerX() - m.rightX() - dx, m.centerY() + dy, 0, 0);
+                turned = !toggled.isEmpty();
+            }
+        }
+        assertTrue("the Turn toggle took a click", turned);
+        // clicks on a panel never pick a tile behind it
+        assertTrue(picked.isEmpty());
     }
 
     @Test
-    public void mixRowsWithToggles() throws IOException {
+    public void noShapeNoPanels() throws IOException {
         RadialMenu m = real();
-        List<String> toggled = new ArrayList<>();
-        m.setRows(List.of(new RadialMenu.Row("Shape", List.of("Filled", "Outline"), 0, i -> {
-                }),
-                new RadialMenu.Row("With", List.of("Hand", "Offhand", "Hotbar mix"), 2, i -> {
-                }),
-                RadialMenu.Row.heading("Hotbar mix"),
-                new RadialMenu.Row("1  Stone Bricks  60%", List.of("Off", "1", "2", "3", "4", "5"), 3, i -> {
-                }, null, false, null),
-                new RadialMenu.Row("2  Cracked Stone Bri\u2026  20%", List.of("Off", "1", "2", "3", "4", "5"), 1, i -> {
-                }, null, false, null),
-                new RadialMenu.Row("3  Oak Log  20%", List.of("Off", "1", "2", "3", "4", "5"), 1, i -> {
-                }, "Turn", true, () -> toggled.add("log")),
-                new RadialMenu.Row("Pattern", List.of("Reroll"), -1, i -> {
-                })));
-        m.setSelected(3);
-        Java2dCanvas c = new Java2dCanvas(1280, 720, glyphs, shapes);
+        Java2dCanvas c = new Java2dCanvas(1600, 900, glyphs, shapes);
         c.clear(0xFF2B3A2E);
         m.draw(c, new Frame(0, 0, -1, -1));
-        c.save(Paths.get("build", "gui-preview", "effortless_radial_mix.png"));
-        boolean hit = false;
-        for (int dy = -300; dy <= 300 && !hit; dy += 3) {
-            for (int dx = 0; dx <= 600 && !hit; dx += 4) {
-                m.mouseDown(m.panelX() + dx, m.centerY() + dy, 0, 0);
-                hit = !toggled.isEmpty();
-            }
-        }
-        assertTrue("the Turn toggle took a click", hit);
+        c.save(Paths.get("build", "gui-preview", "effortless_radial_none.png"));
+        assertFalse(m.mouseDown(m.rightX() + 50, m.centerY(), 0, 0));
     }
 }

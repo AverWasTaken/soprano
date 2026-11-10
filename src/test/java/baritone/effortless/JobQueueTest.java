@@ -49,9 +49,9 @@ public class JobQueueTest {
     private static JobQueue house() {
         JobQueue q = new JobQueue();
         q.add(job(ShapeKind.FLOOR, 0), 1);
-        q.add(job(ShapeKind.STAIRS, 10), 2);
+        q.add(job(ShapeKind.SLOPE_FLOOR, 10), 2);
         q.add(job(ShapeKind.WALL, 20), 3);
-        q.add(job(ShapeKind.ROOF, 30), 4);
+        q.add(job(ShapeKind.PYRAMID, 30), 4);
         return q;
     }
 
@@ -63,9 +63,9 @@ public class JobQueueTest {
     public void moveKeepsTheRestInOrder() {
         JobQueue q = house();
         q.move(3, 1);
-        assertEquals(List.of(ShapeKind.FLOOR, ShapeKind.ROOF, ShapeKind.STAIRS, ShapeKind.WALL), kinds(q));
+        assertEquals(List.of(ShapeKind.FLOOR, ShapeKind.PYRAMID, ShapeKind.SLOPE_FLOOR, ShapeKind.WALL), kinds(q));
         q.move(0, 3);
-        assertEquals(List.of(ShapeKind.ROOF, ShapeKind.STAIRS, ShapeKind.WALL, ShapeKind.FLOOR), kinds(q));
+        assertEquals(List.of(ShapeKind.PYRAMID, ShapeKind.SLOPE_FLOOR, ShapeKind.WALL, ShapeKind.FLOOR), kinds(q));
     }
 
     @Test
@@ -75,8 +75,8 @@ public class JobQueueTest {
         assertEquals(3, q.size());
         assertSame(g, q.get(1));
         assertTrue(g.merged());
-        assertEquals(ShapeKind.STAIRS, g.jobs().get(0).spec.kind());
-        assertEquals(ShapeKind.ROOF, g.jobs().get(1).spec.kind());
+        assertEquals(ShapeKind.SLOPE_FLOOR, g.jobs().get(0).spec.kind());
+        assertEquals(ShapeKind.PYRAMID, g.jobs().get(1).spec.kind());
         assertEquals(2, g.added());
         // one build for both: the schematic covers the two shapes and the space between
         JobSchematic s = g.schematic();
@@ -85,7 +85,7 @@ public class JobQueueTest {
         assertNull(s.owner(20, 0, 0));
         q.unmerge(1);
         assertEquals(4, q.size());
-        assertEquals(ShapeKind.ROOF, q.get(2).jobs().get(0).spec.kind());
+        assertEquals(ShapeKind.PYRAMID, q.get(2).jobs().get(0).spec.kind());
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -112,10 +112,10 @@ public class JobQueueTest {
         BlockState stair = Blocks.OAK_STAIRS.defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.EAST)
                 .setValue(BlockStateProperties.HALF, Half.TOP);
-        q.add(EffortlessJob.place(ShapeSpec.of(ShapeKind.LINE).withAxis(ShapeSpec.Axis.X).withThickness(2),
+        q.add(EffortlessJob.place(ShapeSpec.of(ShapeKind.LINE).withDirection(ShapeSpec.Direction.X),
                 List.of(new BlockPos(0, 5, 0), new BlockPos(6, 5, 0)), EffortlessJob.FillMode.OVERWRITE, null,
                 new Palette(List.of(new Palette.Entry(stair, 3, false), new Palette.Entry(Blocks.OAK_LOG.defaultBlockState(), 1, true)), 42)), 5);
-        q.add(EffortlessJob.breaking(ShapeSpec.of(ShapeKind.SPHERE).withHalf(true), List.of(new BlockPos(0, 0, 0), new BlockPos(3, 0, 0)),
+        q.add(EffortlessJob.breaking(ShapeSpec.of(ShapeKind.DOME).withCentered(true), List.of(new BlockPos(0, 0, 0), new BlockPos(3, 0, 3), new BlockPos(3, 3, 3)),
                 BlockFilter.ALL.withOnly(List.of("#minecraft:logs")).withExcept(List.of("minecraft:birch_log")).withSkipContainers(true)), 6);
         q.merge(List.of(0, 1));
         q.get(0).rename("Ground floor");
@@ -134,8 +134,7 @@ public class JobQueueTest {
         // mid build when it was saved: back to waiting
         assertEquals(JobQueue.State.QUEUED, back.get(2).state());
         EffortlessJob line = back.get(3).jobs().get(0);
-        assertEquals(ShapeSpec.Axis.X, line.spec.axis());
-        assertEquals(2, line.spec.thickness());
+        assertEquals(ShapeSpec.Direction.X, line.spec.direction());
         assertEquals(EffortlessJob.FillMode.OVERWRITE, line.fillMode);
         assertEquals(42, line.palette.seed());
         assertEquals(stair, line.palette.entries().get(0).state());
@@ -144,7 +143,8 @@ public class JobQueueTest {
         assertEquals(q.get(3).jobs().get(0).mask.count(), line.mask.count());
         assertEquals(q.get(3).jobs().get(0).palette.pick(3, 5, 0), line.palette.pick(3, 5, 0));
         EffortlessJob sphere = back.get(4).jobs().get(0);
-        assertTrue(sphere.spec.half());
+        assertEquals(ShapeKind.DOME, sphere.spec.kind());
+        assertTrue(sphere.spec.centered());
         assertEquals(List.of("#minecraft:logs"), sphere.filter.only());
         assertTrue(sphere.filter.skipContainers());
     }

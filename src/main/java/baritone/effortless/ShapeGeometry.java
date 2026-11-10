@@ -17,13 +17,15 @@
 
 package baritone.effortless;
 
-import baritone.effortless.ShapeSpec.Axis;
 import baritone.effortless.ShapeSpec.Fill;
 import net.minecraft.core.BlockPos;
 
 import java.util.List;
 
-// clicks in, cells out. plain arithmetic on block coords, no world, so every shape has a test that counts its cells
+// clicks in, cells out, the way Effortless Structure works them out: a box's corners, a circle that fits between the
+// first two clicks (or around the first), a pyramid that shrinks a whole number of blocks a layer. plain arithmetic on
+// block coords, no world, so every shape has a test that counts its cells. with fewer clicks than the shape takes it's
+// what that stage shows: the face a cube will be pulled out of, the circle a sphere starts from
 public final class ShapeGeometry {
 
     // the box a shape may even think about before it gets counted. a 256^3 box is 16M bits, 2 MB, fine for a moment
@@ -38,46 +40,69 @@ public final class ShapeGeometry {
         }
     }
 
-    // points are the clicks so far, at least one. a shape that wants more than it got uses what it has (the preview
-    // between clicks: the second point is wherever you look)
+    private interface Inside {
+        boolean at(int x, int y, int z);
+    }
+
+    private interface Cell {
+        void accept(int x, int y, int z);
+    }
+
+    // the plane two corners lie in, by the coordinate they share (Effortless Structure's trace shape)
+    enum Plane {
+        SINGLE, LINE, X, Y, Z, BOX
+    }
+
+    static Plane plane(BlockPos a, BlockPos b) {
+        boolean sx = a.getX() == b.getX(), sy = a.getY() == b.getY(), sz = a.getZ() == b.getZ();
+        if (sx && sy && sz) {
+            return Plane.SINGLE;
+        }
+        if ((sx && sz) || (sy && sz) || (sx && sy)) {
+            return Plane.LINE;
+        }
+        if (sx) {
+            return Plane.X;
+        }
+        if (sy) {
+            return Plane.Y;
+        }
+        return sz ? Plane.Z : Plane.BOX;
+    }
+
     public static AreaMask build(ShapeSpec spec, List<BlockPos> points) {
         if (points.isEmpty()) {
             throw new IllegalArgumentException("no points");
         }
         BlockPos a = points.get(0);
-        BlockPos b = points.size() > 1 ? points.get(1) : a;
-        BlockPos c = points.size() > 2 ? points.get(2) : null;
-        return switch (spec.kind()) {
-            case SINGLE -> box(a, a, spec, true);
-            case LINE -> line(a, b, spec.axis() == Axis.FREE ? spec.withAxis(dominant(a, b, true)) : spec);
-            case DIAGONAL_LINE -> line(a, b, spec.withAxis(Axis.FREE));
-            case FLOOR -> floor(a, b, spec);
-            // the third click is the height, the second only the base. with two clicks the second is both
-            case WALL -> wall(a, heightFrom(b, c), spec.axis() == Axis.FREE || spec.axis() == Axis.Y ? spec.withAxis(dominant(a, b, false)) : spec);
-            case DIAGONAL_WALL -> wall(a, heightFrom(b, c), spec.withAxis(Axis.FREE));
-            case CUBOID -> box(a, c == null ? b : new BlockPos(b.getX(), c.getY(), b.getZ()), spec, false);
-            case CIRCLE -> circle(a, b, spec);
-            case CYLINDER -> cylinder(a, b, c, spec);
-            case SPHERE -> sphere(a, b, spec);
-            case STAIRS -> stairs(a, b, spec);
-            case PYRAMID -> layered(a, b, spec, false);
-            case ROOF -> layered(a, b, spec, true);
-        };
-    }
-
-    // the axis b is furthest from a along. with vertical off it's X or Z only, a wall stands on the ground
-    static Axis dominant(BlockPos a, BlockPos b, boolean vertical) {
-        int dx = Math.abs(b.getX() - a.getX());
-        int dy = vertical ? Math.abs(b.getY() - a.getY()) : -1;
-        int dz = Math.abs(b.getZ() - a.getZ());
-        if (dy > dx && dy > dz) {
-            return Axis.Y;
+        if (points.size() == 1 || spec.kind() == ShapeKind.SINGLE) {
+            return box(a, a, Fill.FILLED);
         }
-        return dx >= dz ? Axis.X : Axis.Z;
-    }
-
-    private static BlockPos heightFrom(BlockPos b, BlockPos c) {
-        return c == null ? b : new BlockPos(b.getX(), c.getY(), b.getZ());
+        BlockPos b = points.get(1);
+        boolean hollow = spec.fill() != Fill.FILLED;
+        if (points.size() == 2) {
+            return switch (spec.kind()) {
+                case LINE, DIAGONAL_LINE, DIAGONAL_WALL -> line(a, b);
+                case WALL, FLOOR, PYRAMID, SLOPE_FLOOR -> rect(a, b, spec.kind() != ShapeKind.SLOPE_FLOOR && hollow);
+                case CUBE -> rect(a, b, spec.fill() == Fill.SKELETON);
+                case CIRCLE, CYLINDER, SPHERE -> circle(a, b, spec.centered(), hollow);
+                case DOME, CONE -> circle(a, b, spec.centered(), false);
+                default -> box(a, a, Fill.FILLED);
+            };
+        }
+        BlockPos c = points.get(2);
+        return switch (spec.kind()) {
+            case CUBE -> box(a, c, spec.fill());
+            case CYLINDER -> cylinder(a, b, c, spec.centered(), hollow);
+            case SPHERE -> sphere(a, b, c, spec.centered(), hollow);
+            case DOME -> dome(a, b, c, spec.centered(), hollow);
+            case DIAGONAL_WALL -> diagonalWall(a, b, c);
+            case SLOPE_FLOOR -> slopeFloor(a, b, c, spec.longEdge());
+            case PYRAMID -> pyramid(a, b, c, hollow);
+            case CONE -> cone(a, b, c, spec.centered());
+            // a two click shape handed a stray third point
+            default -> build(spec, points.subList(0, 2));
+        };
     }
 
     private static AreaMask.Builder builder(int x0, int y0, int z0, int x1, int y1, int z1) {
@@ -88,27 +113,37 @@ public final class ShapeGeometry {
         return new AreaMask.Builder(x0, y0, z0, x1, y1, z1);
     }
 
-    // ----- boxes
+    private static AreaMask.Builder builder(int[] k) {
+        return builder(k[0], k[1], k[2], k[3], k[4], k[5]);
+    }
 
-    private static AreaMask box(BlockPos a, BlockPos b, ShapeSpec spec, boolean single) {
-        int x0 = Math.min(a.getX(), b.getX()), x1 = Math.max(a.getX(), b.getX());
-        int y0 = Math.min(a.getY(), b.getY()), y1 = Math.max(a.getY(), b.getY());
-        int z0 = Math.min(a.getZ(), b.getZ()), z1 = Math.max(a.getZ(), b.getZ());
-        AreaMask.Builder out = builder(x0, y0, z0, x1, y1, z1);
-        int t = spec.thickness();
-        Fill fill = single ? Fill.FILLED : spec.fill();
-        for (int x = x0; x <= x1; x++) {
-            for (int y = y0; y <= y1; y++) {
-                for (int z = z0; z <= z1; z++) {
-                    boolean nearX = x - x0 < t || x1 - x < t;
-                    boolean nearY = y - y0 < t || y1 - y < t;
-                    boolean nearZ = z - z0 < t || z1 - z < t;
+    private static int[] bounds(BlockPos... ps) {
+        int[] k = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+        for (BlockPos p : ps) {
+            k[0] = Math.min(k[0], p.getX());
+            k[1] = Math.min(k[1], p.getY());
+            k[2] = Math.min(k[2], p.getZ());
+            k[3] = Math.max(k[3], p.getX());
+            k[4] = Math.max(k[4], p.getY());
+            k[5] = Math.max(k[5], p.getZ());
+        }
+        return k;
+    }
+
+    // ----- boxes, rectangles and lines
+
+    private static AreaMask box(BlockPos a, BlockPos b, Fill fill) {
+        int[] k = bounds(a, b);
+        AreaMask.Builder out = builder(k);
+        for (int x = k[0]; x <= k[3]; x++) {
+            for (int y = k[1]; y <= k[4]; y++) {
+                for (int z = k[2]; z <= k[5]; z++) {
+                    int faces = (x == k[0] || x == k[3] ? 1 : 0) + (y == k[1] || y == k[4] ? 1 : 0) + (z == k[2] || z == k[5] ? 1 : 0);
                     boolean in = switch (fill) {
                         case FILLED -> true;
-                        case HOLLOW -> nearX || nearY || nearZ;
-                        case WALLS -> nearX || nearZ;
+                        case HOLLOW -> faces >= 1;
                         // an edge is where two faces meet
-                        case FRAME -> (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0) >= 2;
+                        case SKELETON -> faces >= 2;
                     };
                     if (in) {
                         out.add(x, y, z);
@@ -119,200 +154,155 @@ public final class ShapeGeometry {
         return out.build();
     }
 
-    // ----- lines
-
-    // a locked axis keeps the first click's other two coords, so the line can't wander off it whatever you look at
-    static BlockPos lockTo(BlockPos a, BlockPos b, Axis axis) {
-        return switch (axis) {
-            case X -> new BlockPos(b.getX(), a.getY(), a.getZ());
-            case Y -> new BlockPos(a.getX(), b.getY(), a.getZ());
-            case Z -> new BlockPos(a.getX(), a.getY(), b.getZ());
-            case FREE -> b;
-        };
+    // a rectangle between two corners on a plane, or its outline. corners that only line up make a line
+    private static AreaMask rect(BlockPos a, BlockPos b, boolean outline) {
+        Plane p = plane(a, b);
+        int[] k = bounds(a, b);
+        AreaMask.Builder out = builder(k);
+        for (int x = k[0]; x <= k[3]; x++) {
+            for (int y = k[1]; y <= k[4]; y++) {
+                for (int z = k[2]; z <= k[5]; z++) {
+                    boolean edge = switch (p) {
+                        case X -> y == k[1] || y == k[4] || z == k[2] || z == k[5];
+                        case Z -> x == k[0] || x == k[3] || y == k[1] || y == k[4];
+                        case Y -> x == k[0] || x == k[3] || z == k[2] || z == k[5];
+                        default -> true;
+                    };
+                    if (!outline || edge) {
+                        out.add(x, y, z);
+                    }
+                }
+            }
+        }
+        return out.build();
     }
 
-    private static AreaMask line(BlockPos a, BlockPos b, ShapeSpec spec) {
-        Axis axis = spec.axis();
-        BlockPos end = lockTo(a, b, axis);
-        int t = spec.thickness();
-        int lo = -(t - 1) / 2;
-        int hi = t / 2;
-        // thickness grows across the line, never along it, so a 3 thick X line is 3x3 in Y and Z
-        int ox0 = axis == Axis.X ? 0 : lo, ox1 = axis == Axis.X ? 0 : hi;
-        int oy0 = axis == Axis.Y ? 0 : lo, oy1 = axis == Axis.Y ? 0 : hi;
-        int oz0 = axis == Axis.Z ? 0 : lo, oz1 = axis == Axis.Z ? 0 : hi;
-        AreaMask.Builder out = builder(Math.min(a.getX(), end.getX()) + ox0, Math.min(a.getY(), end.getY()) + oy0,
-                Math.min(a.getZ(), end.getZ()) + oz0, Math.max(a.getX(), end.getX()) + ox1,
-                Math.max(a.getY(), end.getY()) + oy1, Math.max(a.getZ(), end.getZ()) + oz1);
-        int dx = end.getX() - a.getX();
-        int dy = end.getY() - a.getY();
-        int dz = end.getZ() - a.getZ();
+    private static AreaMask line(BlockPos a, BlockPos b) {
+        AreaMask.Builder out = builder(bounds(a, b));
+        walk(a, b, out::add);
+        return out.build();
+    }
+
+    // every cell from a to b, one step at a time along the axis they're furthest apart on, the others rounded
+    private static void walk(BlockPos a, BlockPos b, Cell cell) {
+        int dx = b.getX() - a.getX();
+        int dy = b.getY() - a.getY();
+        int dz = b.getZ() - a.getZ();
         int steps = Math.max(Math.abs(dx), Math.max(Math.abs(dy), Math.abs(dz)));
         for (int i = 0; i <= steps; i++) {
             double f = steps == 0 ? 0 : (double) i / steps;
-            int x = a.getX() + (int) Math.round(dx * f);
-            int y = a.getY() + (int) Math.round(dy * f);
-            int z = a.getZ() + (int) Math.round(dz * f);
-            for (int ox = ox0; ox <= ox1; ox++) {
-                for (int oy = oy0; oy <= oy1; oy++) {
-                    for (int oz = oz0; oz <= oz1; oz++) {
-                        out.add(x + ox, y + oy, z + oz);
-                    }
-                }
-            }
+            cell.accept(a.getX() + (int) Math.round(dx * f), a.getY() + (int) Math.round(dy * f), a.getZ() + (int) Math.round(dz * f));
         }
-        return out.build();
     }
 
-    // ----- planes
+    // ----- diagonal walls and slopes
 
-    private static AreaMask floor(BlockPos a, BlockPos b, ShapeSpec spec) {
-        // flat at the first click, whatever height the second one is at
-        BlockPos flat = new BlockPos(b.getX(), a.getY(), b.getZ());
-        ShapeSpec s = spec.fill() == Fill.FILLED ? spec : spec.withFill(Fill.WALLS);
-        return box(a, flat, s, false);
-    }
-
-    private static AreaMask wall(BlockPos a, BlockPos b, ShapeSpec spec) {
-        Axis axis = spec.axis() == Axis.Y ? Axis.FREE : spec.axis();
-        int y0 = Math.min(a.getY(), b.getY());
-        int y1 = Math.max(a.getY(), b.getY());
-        if (axis != Axis.FREE) {
-            // straight along X or Z: a thin box, thickness out towards where the second click was
-            BlockPos far = axis == Axis.X ? new BlockPos(b.getX(), b.getY(), a.getZ()) : new BlockPos(a.getX(), b.getY(), b.getZ());
-            int t = spec.thickness() - 1;
-            int side = axis == Axis.X ? Integer.signum(b.getZ() - a.getZ()) : Integer.signum(b.getX() - a.getX());
-            if (side == 0) {
-                side = 1;
-            }
-            BlockPos near = a;
-            if (axis == Axis.X) {
-                far = new BlockPos(far.getX(), far.getY(), a.getZ() + side * t);
-            } else {
-                far = new BlockPos(a.getX() + side * t, far.getY(), far.getZ());
-            }
-            return wallFrame(box(near, far, spec.withFill(Fill.FILLED), false), axis, spec);
-        }
-        // free: the base runs from click to click across the ground, diagonal if need be
-        int dx = b.getX() - a.getX();
-        int dz = b.getZ() - a.getZ();
-        int steps = Math.max(Math.abs(dx), Math.abs(dz));
-        int t = spec.thickness();
-        boolean alongX = Math.abs(dx) >= Math.abs(dz);
-        AreaMask.Builder out = builder(Math.min(a.getX(), b.getX()) - t, y0, Math.min(a.getZ(), b.getZ()) - t,
-                Math.max(a.getX(), b.getX()) + t, y1, Math.max(a.getZ(), b.getZ()) + t);
-        for (int i = 0; i <= steps; i++) {
-            double f = steps == 0 ? 0 : (double) i / steps;
-            int x = a.getX() + (int) Math.round(dx * f);
-            int z = a.getZ() + (int) Math.round(dz * f);
-            for (int o = 0; o < t; o++) {
-                for (int y = y0; y <= y1; y++) {
-                    boolean edge = i == 0 || i == steps || y == y0 || y == y1;
-                    if (spec.fill() == Fill.FRAME && !edge) {
-                        continue;
-                    }
-                    if (alongX) {
-                        out.add(x, y, z + o);
-                    } else {
-                        out.add(x + o, y, z);
-                    }
-                }
-            }
-        }
-        return out.build();
-    }
-
-    // a straight wall with FRAME keeps only its border, looking at it face on
-    private static AreaMask wallFrame(AreaMask wall, Axis axis, ShapeSpec spec) {
-        if (spec.fill() != Fill.FRAME || wall.isEmpty()) {
-            return wall;
-        }
-        AreaMask.Builder out = new AreaMask.Builder(wall.minX, wall.minY, wall.minZ, wall.maxX(), wall.maxY(), wall.maxZ());
-        wall.forEach((x, y, z) -> {
-            boolean endAlong = axis == Axis.X ? (x == wall.minX || x == wall.maxX()) : (z == wall.minZ || z == wall.maxZ());
-            if (endAlong || y == wall.minY || y == wall.maxY()) {
-                out.add(x, y, z);
+    // the diagonal from the first click to the second, copied up (or down) to the third's height
+    private static AreaMask diagonalWall(BlockPos a, BlockPos b, BlockPos c) {
+        int y0 = Math.min(a.getY(), c.getY()), y1 = Math.max(a.getY(), c.getY());
+        int[] k = bounds(a, b);
+        AreaMask.Builder out = builder(k[0], y0, k[2], k[3], y1, k[5]);
+        walk(a, b, (x, y, z) -> {
+            for (int yy = y0; yy <= y1; yy++) {
+                out.add(x, yy, z);
             }
         });
         return out.build();
     }
 
+    // the rectangle on the ground between the first two clicks, one edge left on the ground and the opposite one raised
+    // to the third click's height. which pair of edges: the short ones (the slope climbs the long way) or the long
+    private static AreaMask slopeFloor(BlockPos a, BlockPos b, BlockPos c, boolean longEdge) {
+        int xLen = Math.abs(b.getX() - a.getX());
+        int zLen = Math.abs(b.getZ() - a.getZ());
+        boolean alongX = longEdge ? zLen > xLen : zLen <= xLen;
+        int y0 = Math.min(a.getY(), c.getY()), y1 = Math.max(a.getY(), c.getY());
+        int[] k = bounds(a, b);
+        AreaMask.Builder out = builder(k[0], y0, k[2], k[3], y1, k[5]);
+        if (alongX) {
+            BlockPos end = new BlockPos(b.getX(), c.getY(), a.getZ());
+            walk(a, end, (x, y, z) -> {
+                for (int zz = k[2]; zz <= k[5]; zz++) {
+                    out.add(x, y, zz);
+                }
+            });
+        } else {
+            BlockPos end = new BlockPos(a.getX(), c.getY(), b.getZ());
+            walk(a, end, (x, y, z) -> {
+                for (int xx = k[0]; xx <= k[3]; xx++) {
+                    out.add(xx, y, z);
+                }
+            });
+        }
+        return out.build();
+    }
+
     // ----- round things
 
-    // the two coords that span the plane a circle lies in, for a given axis (the circle's normal)
-    private static int u(BlockPos p, Axis axis) {
-        return axis == Axis.X ? p.getY() : p.getX();
+    // Effortless Structure's ellipse test: inside when the distance over the radius (plus half a block, so the outer
+    // cells count) is under one. hollow keeps a cell when a step outwards along either axis leaves the ellipse
+    static boolean inEllipse(double cu, double cv, double ru, double rv, int u, int v, boolean fill) {
+        ru += 0.5;
+        rv += 0.5;
+        double un = Math.abs(u - cu) / ru;
+        double vn = Math.abs(v - cv) / rv;
+        if (un * un + vn * vn >= 1) {
+            return false;
+        }
+        if (fill) {
+            return true;
+        }
+        double un1 = (Math.abs(u - cu) + 1) / ru;
+        double vn1 = (Math.abs(v - cv) + 1) / rv;
+        return !(un1 * un1 + vn * vn <= 1 && un * un + vn1 * vn1 <= 1);
     }
 
-    private static int v(BlockPos p, Axis axis) {
-        return axis == Axis.Z ? p.getY() : p.getZ();
+    static boolean inEllipsoid(double cx, double cy, double cz, double rx, double ry, double rz, int x, int y, int z, boolean fill) {
+        rx += 0.5;
+        ry += 0.5;
+        rz += 0.5;
+        double xn = Math.abs(x - cx) / rx, yn = Math.abs(y - cy) / ry, zn = Math.abs(z - cz) / rz;
+        if (xn * xn + yn * yn + zn * zn >= 1) {
+            return false;
+        }
+        if (fill) {
+            return true;
+        }
+        double xn1 = (Math.abs(x - cx) + 1) / rx, yn1 = (Math.abs(y - cy) + 1) / ry, zn1 = (Math.abs(z - cz) + 1) / rz;
+        return !(xn1 * xn1 + yn * yn + zn * zn <= 1 && xn * xn + yn1 * yn1 + zn * zn <= 1 && xn * xn + yn * yn + zn1 * zn1 <= 1);
     }
 
-    private static int w(BlockPos p, Axis axis) {
-        return switch (axis) {
-            case X -> p.getX();
-            case Z -> p.getZ();
-            default -> p.getY();
-        };
+    // the ellipse's centre and the far corner of its box, per axis. from the middle the first click is the centre and
+    // the second the rim, mirrored to the other side; from a corner it fits between the two
+    private static double centre(int a, int b, boolean centered) {
+        return centered ? a : a + (b - a) / 2.0;
     }
 
-    private static BlockPos fromUVW(int u, int v, int w, Axis axis) {
-        return switch (axis) {
-            case X -> new BlockPos(w, u, v);
-            case Z -> new BlockPos(u, v, w);
-            default -> new BlockPos(u, w, v);
-        };
+    private static int near(int a, int b, boolean centered) {
+        return centered ? 2 * a - b : a;
     }
 
-    // a centre and a point on the rim. +0.5 so a radius 2 circle reaches 2 blocks out along the axes, not 1.5
-    static double radius(int du, int dv) {
-        return Math.sqrt((double) du * du + (double) dv * dv);
-    }
-
-    private static Axis roundAxis(ShapeSpec spec) {
-        return spec.axis() == Axis.FREE ? Axis.Y : spec.axis();
-    }
-
-    private static AreaMask circle(BlockPos c, BlockPos rim, ShapeSpec spec) {
-        Axis axis = roundAxis(spec);
-        return disc(c, rim, w(c, axis), w(c, axis), spec, axis, false);
-    }
-
-    private static AreaMask cylinder(BlockPos c, BlockPos rim, BlockPos top, ShapeSpec spec) {
-        Axis axis = roundAxis(spec);
-        int w0 = w(c, axis);
-        int w1 = top != null ? w(top, axis) : w(rim, axis);
-        return disc(c, rim, Math.min(w0, w1), Math.max(w0, w1), spec, axis, true);
-    }
-
-    // a stack of the same circle from w0 to w1 along the axis. a flat circle is a stack of one
-    private static AreaMask disc(BlockPos c, BlockPos rim, int w0, int w1, ShapeSpec spec, Axis axis, boolean caps) {
-        double r = radius(u(rim, axis) - u(c, axis), v(rim, axis) - v(c, axis)) + 0.5;
-        int ri = (int) Math.ceil(r);
-        int cu = u(c, axis);
-        int cv = v(c, axis);
-        BlockPos lo = fromUVW(cu - ri, cv - ri, w0, axis);
-        BlockPos hi = fromUVW(cu + ri, cv + ri, w1, axis);
-        AreaMask.Builder out = builder(lo.getX(), lo.getY(), lo.getZ(), hi.getX(), hi.getY(), hi.getZ());
-        int t = spec.thickness();
-        for (int w = w0; w <= w1; w++) {
-            boolean cap = caps && (w - w0 < t || w1 - w < t);
-            for (int du = -ri; du <= ri; du++) {
-                for (int dv = -ri; dv <= ri; dv++) {
-                    double d = radius(du, dv);
-                    if (d > r) {
-                        continue;
-                    }
-                    boolean rimCell = d > r - t;
-                    boolean in = switch (spec.fill()) {
-                        case FILLED -> true;
-                        // a cylinder's hollow keeps its caps, WALLS is the tube alone. a flat circle has no caps
-                        case HOLLOW -> rimCell || cap;
-                        case WALLS, FRAME -> rimCell;
+    // a disc (or ring) on the plane the first two clicks share. clicks that only line up make a line
+    private static AreaMask circle(BlockPos a, BlockPos b, boolean centered, boolean hollow) {
+        Plane p = plane(a, b);
+        if (p == Plane.SINGLE || p == Plane.LINE || p == Plane.BOX) {
+            return line(a, b);
+        }
+        BlockPos from = new BlockPos(near(a.getX(), b.getX(), centered), near(a.getY(), b.getY(), centered), near(a.getZ(), b.getZ(), centered));
+        int[] k = bounds(from, b);
+        AreaMask.Builder out = builder(k);
+        double cx = centre(a.getX(), b.getX(), centered), cy = centre(a.getY(), b.getY(), centered), cz = centre(a.getZ(), b.getZ(), centered);
+        double rx = Math.abs(b.getX() - cx), ry = Math.abs(b.getY() - cy), rz = Math.abs(b.getZ() - cz);
+        for (int x = k[0]; x <= k[3]; x++) {
+            for (int y = k[1]; y <= k[4]; y++) {
+                for (int z = k[2]; z <= k[5]; z++) {
+                    boolean in = switch (p) {
+                        case X -> inEllipse(cy, cz, ry, rz, y, z, !hollow);
+                        case Y -> inEllipse(cx, cz, rx, rz, x, z, !hollow);
+                        default -> inEllipse(cy, cx, ry, rx, y, x, !hollow);
                     };
                     if (in) {
-                        BlockPos p = fromUVW(cu + du, cv + dv, w, axis);
-                        out.add(p.getX(), p.getY(), p.getZ());
+                        out.add(x, y, z);
                     }
                 }
             }
@@ -320,128 +310,135 @@ public final class ShapeGeometry {
         return out.build();
     }
 
-    private static AreaMask sphere(BlockPos c, BlockPos rim, ShapeSpec spec) {
-        int dx = rim.getX() - c.getX();
-        int dy = rim.getY() - c.getY();
-        int dz = rim.getZ() - c.getZ();
-        double r = Math.sqrt((double) dx * dx + (double) dy * dy + (double) dz * dz) + 0.5;
-        int ri = (int) Math.ceil(r);
-        int yLo = spec.half() ? 0 : -ri;
-        AreaMask.Builder out = builder(c.getX() - ri, c.getY() + yLo, c.getZ() - ri, c.getX() + ri, c.getY() + ri, c.getZ() + ri);
-        int t = spec.thickness();
-        boolean hollow = spec.fill() != Fill.FILLED;
-        for (int x = -ri; x <= ri; x++) {
-            for (int y = yLo; y <= ri; y++) {
-                for (int z = -ri; z <= ri; z++) {
-                    double d = Math.sqrt((double) x * x + (double) y * y + (double) z * z);
-                    if (d > r || (hollow && d <= r - t)) {
-                        continue;
+    // the circle from the first two clicks, stacked out of its plane to the third click
+    private static AreaMask cylinder(BlockPos a, BlockPos b, BlockPos c, boolean centered, boolean hollow) {
+        Plane p = plane(a, b);
+        AreaMask disc = circle(a, b, centered, hollow);
+        if (p != Plane.X && p != Plane.Y && p != Plane.Z) {
+            return disc;
+        }
+        int lo = switch (p) {
+            case X -> Math.min(a.getX(), c.getX());
+            case Y -> Math.min(a.getY(), c.getY());
+            default -> Math.min(a.getZ(), c.getZ());
+        };
+        int hi = switch (p) {
+            case X -> Math.max(a.getX(), c.getX());
+            case Y -> Math.max(a.getY(), c.getY());
+            default -> Math.max(a.getZ(), c.getZ());
+        };
+        AreaMask.Builder out = switch (p) {
+            case X -> builder(lo, disc.minY, disc.minZ, hi, disc.minY + disc.sizeY - 1, disc.minZ + disc.sizeZ - 1);
+            case Y -> builder(disc.minX, lo, disc.minZ, disc.minX + disc.sizeX - 1, hi, disc.minZ + disc.sizeZ - 1);
+            default -> builder(disc.minX, disc.minY, lo, disc.minX + disc.sizeX - 1, disc.minY + disc.sizeY - 1, hi);
+        };
+        disc.forEach((x, y, z) -> {
+            for (int l = lo; l <= hi; l++) {
+                switch (p) {
+                    case X -> out.add(l, y, z);
+                    case Y -> out.add(x, l, z);
+                    default -> out.add(x, y, l);
+                }
+            }
+        });
+        return out.build();
+    }
+
+    // the ball that fits the box the three clicks make. from the middle the first click's circle is mirrored round it;
+    // out of the plane it reaches from the first click to the third
+    private static AreaMask sphere(BlockPos a, BlockPos b, BlockPos c, boolean centered, boolean hollow) {
+        BlockPos from = new BlockPos(near(a.getX(), b.getX(), centered), near(a.getY(), b.getY(), centered), near(a.getZ(), b.getZ(), centered));
+        int[] k = bounds(from, b, c);
+        double cx = (k[0] + k[3]) / 2.0, cy = (k[1] + k[4]) / 2.0, cz = (k[2] + k[5]) / 2.0;
+        double rx = (k[3] - k[0]) / 2.0, ry = (k[4] - k[1]) / 2.0, rz = (k[5] - k[2]) / 2.0;
+        AreaMask.Builder out = builder(k);
+        for (int x = k[0]; x <= k[3]; x++) {
+            for (int y = k[1]; y <= k[4]; y++) {
+                for (int z = k[2]; z <= k[5]; z++) {
+                    if (inEllipsoid(cx, cy, cz, rx, ry, rz, x, y, z, !hollow)) {
+                        out.add(x, y, z);
                     }
-                    out.add(c.getX() + x, c.getY() + y, c.getZ() + z);
                 }
             }
         }
         return out.build();
     }
 
-    // ----- stairs
-
-    // up (or down) from the first click to the second, one step per block of run along whichever ground axis the
-    // clicks are further apart on. the other ground axis is the width. FILLED fills under each step to the low end
-    private static AreaMask stairs(BlockPos a, BlockPos b, ShapeSpec spec) {
-        boolean runX = Math.abs(b.getX() - a.getX()) >= Math.abs(b.getZ() - a.getZ());
-        int run0 = runX ? a.getX() : a.getZ();
-        int run1 = runX ? b.getX() : b.getZ();
-        int wid0 = Math.min(runX ? a.getZ() : a.getX(), runX ? b.getZ() : b.getX());
-        int wid1 = Math.max(runX ? a.getZ() : a.getX(), runX ? b.getZ() : b.getX());
-        int n = Math.abs(run1 - run0);
-        int sign = Integer.signum(run1 - run0);
-        int dy = b.getY() - a.getY();
-        int yLow = Math.min(a.getY(), b.getY());
-        AreaMask.Builder out = builder(Math.min(a.getX(), b.getX()), yLow, Math.min(a.getZ(), b.getZ()),
-                Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), Math.max(a.getZ(), b.getZ()));
-        int prevY = a.getY();
-        for (int i = 0; i <= n; i++) {
-            int y = a.getY() + (n == 0 ? dy : (int) Math.round((double) dy * i / n));
-            int r = run0 + sign * i;
-            // steep stairs climb more than one block per step, the gap between steps gets filled so it stays walkable
-            int from;
-            int to;
-            if (spec.fill() == Fill.FILLED) {
-                from = yLow;
-                to = y;
-            } else if (y > prevY) {
-                from = prevY + 1;
-                to = y;
-            } else if (y < prevY) {
-                from = y;
-                to = prevY - 1;
-            } else {
-                from = y;
-                to = y;
-            }
-            for (int yy = from; yy <= to; yy++) {
-                for (int wv = wid0; wv <= wid1; wv++) {
-                    if (runX) {
-                        out.add(r, yy, wv);
-                    } else {
-                        out.add(wv, yy, r);
+    // the base circle on the ground, the top half of a ball over it as high as the third click (under it if the third
+    // click is lower)
+    private static AreaMask dome(BlockPos a, BlockPos b, BlockPos c, boolean centered, boolean hollow) {
+        BlockPos from = new BlockPos(near(a.getX(), b.getX(), centered), a.getY(), near(a.getZ(), b.getZ(), centered));
+        int[] k = bounds(from, b);
+        double cx = (k[0] + k[3]) / 2.0, cz = (k[2] + k[5]) / 2.0;
+        double rx = (k[3] - k[0]) / 2.0, rz = (k[5] - k[2]) / 2.0;
+        int h = c.getY() - a.getY();
+        double ry = Math.abs(h);
+        int y0 = Math.min(a.getY(), c.getY()), y1 = Math.max(a.getY(), c.getY());
+        AreaMask.Builder out = builder(k[0], y0, k[2], k[3], y1, k[5]);
+        for (int x = k[0]; x <= k[3]; x++) {
+            for (int y = y0; y <= y1; y++) {
+                for (int z = k[2]; z <= k[5]; z++) {
+                    if (inEllipsoid(cx, a.getY(), cz, rx, ry, rz, x, y, z, !hollow)) {
+                        out.add(x, y, z);
                     }
                 }
             }
-            prevY = y;
         }
         return out.build();
     }
 
-    // ----- pyramids and roofs
+    // ----- pyramids and cones
 
-    // layer k sits k blocks up and is k smaller on each side (a roof only shrinks across its short side, so it ends
-    // in a ridge). HOLLOW keeps a cell only when nothing of the next layer sits on top of it: the outside of the slope.
-    // a roof keeps its gable ends in that case too, or it would be open at both ends
-    private static AreaMask layered(BlockPos a, BlockPos b, ShapeSpec spec, boolean roof) {
-        int x0 = Math.min(a.getX(), b.getX()), x1 = Math.max(a.getX(), b.getX());
-        int z0 = Math.min(a.getZ(), b.getZ()), z1 = Math.max(a.getZ(), b.getZ());
-        int base = a.getY();
-        boolean ridgeAlongX = (x1 - x0) >= (z1 - z0);
-        int layers = roof
-                ? (ridgeAlongX ? (z1 - z0) / 2 : (x1 - x0) / 2) + 1
-                : Math.min(x1 - x0, z1 - z0) / 2 + 1;
-        AreaMask.Builder out = builder(x0, base, z0, x1, base + layers - 1, z1);
-        boolean hollow = spec.fill() != Fill.FILLED;
-        for (int k = 0; k < layers; k++) {
-            int lx0 = x0, lx1 = x1, lz0 = z0, lz1 = z1;
-            if (!roof || !ridgeAlongX) {
-                lx0 += k;
-                lx1 -= k;
-            }
-            if (!roof || ridgeAlongX) {
-                lz0 += k;
-                lz1 -= k;
-            }
-            int nx0 = lx0, nx1 = lx1, nz0 = lz0, nz1 = lz1;
-            if (!roof || !ridgeAlongX) {
-                nx0++;
-                nx1--;
-            }
-            if (!roof || ridgeAlongX) {
-                nz0++;
-                nz1--;
-            }
-            boolean top = k == layers - 1;
-            for (int x = lx0; x <= lx1; x++) {
-                for (int z = lz0; z <= lz1; z++) {
-                    if (hollow && !top) {
-                        boolean covered = x >= nx0 && x <= nx1 && z >= nz0 && z <= nz1;
-                        boolean gable = roof && (ridgeAlongX ? (x == x0 || x == x1) : (z == z0 || z == z1));
-                        if (covered && !gable) {
-                            continue;
-                        }
+    // the base between the first two clicks, each layer towards the third click's height in by a whole number of blocks,
+    // Effortless Structure's integer maths so the steps come out the same
+    private static AreaMask pyramid(BlockPos a, BlockPos b, BlockPos c, boolean hollow) {
+        return tapered(a, b, c, (cx, cz, rx, rz, x, z) -> Math.abs(x - cx) <= rx && Math.abs(z - cz) <= rz, hollow);
+    }
+
+    // from the middle the base circle is mirrored round the first click, like the circle it starts as
+    private static AreaMask cone(BlockPos a, BlockPos b, BlockPos c, boolean centered) {
+        BlockPos from = centered ? new BlockPos(2 * a.getX() - b.getX(), a.getY(), 2 * a.getZ() - b.getZ()) : a;
+        return tapered(from, b, c, (cx, cz, rx, rz, x, z) -> inEllipse(cx, cz, rx, rz, x, z, true), false);
+    }
+
+    private interface Layer {
+        boolean in(int cx, int cz, int rx, int rz, int x, int z);
+    }
+
+    private static AreaMask tapered(BlockPos a, BlockPos b, BlockPos c, Layer layer, boolean hollow) {
+        int minX = Math.min(a.getX(), b.getX()), maxX = Math.max(a.getX(), b.getX());
+        int minZ = Math.min(a.getZ(), b.getZ()), maxZ = Math.max(a.getZ(), b.getZ());
+        int sizeX = maxX - minX, sizeZ = maxZ - minZ;
+        int cx = (maxX + minX) / 2, cz = (maxZ + minZ) / 2;
+        int y1 = a.getY(), y3 = c.getY();
+        int height = Math.abs(y3 - y1);
+        int dir = y3 >= y1 ? 1 : -1;
+        AreaMask.Builder all = builder(minX, Math.min(y1, y3), minZ, maxX, Math.max(y1, y3), maxZ);
+        for (int s = 0; s <= height; s++) {
+            int y = y1 + dir * s;
+            int rx = height == 0 ? sizeX : sizeX * (height - s) / height / 2;
+            int rz = height == 0 ? sizeZ : sizeZ * (height - s) / height / 2;
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (layer.in(cx, cz, rx, rz, x, z)) {
+                        all.add(x, y, z);
                     }
-                    out.add(x, base + k, z);
                 }
             }
         }
+        AreaMask m = all.build();
+        if (!hollow) {
+            return m;
+        }
+        // hollow: only the cells you'd see from outside, the skin
+        AreaMask.Builder out = builder(m.minX, m.minY, m.minZ, m.minX + m.sizeX - 1, m.minY + m.sizeY - 1, m.minZ + m.sizeZ - 1);
+        Inside in = m::contains;
+        m.forEach((x, y, z) -> {
+            if (!in.at(x + 1, y, z) || !in.at(x - 1, y, z) || !in.at(x, y + 1, z) || !in.at(x, y - 1, z)
+                    || !in.at(x, y, z + 1) || !in.at(x, y, z - 1)) {
+                out.add(x, y, z);
+            }
+        });
         return out.build();
     }
 }

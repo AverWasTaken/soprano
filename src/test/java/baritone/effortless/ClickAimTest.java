@@ -25,88 +25,97 @@ import java.util.Optional;
 
 import static org.junit.Assert.*;
 
-// the corners after the first follow your look along the shape's plane
+// the corners after the first follow your look, the way Effortless Structure traces them. the numbers are worked by
+// hand from the planes through the start block's face that's towards the eye
 public class ClickAimTest {
 
     private static final BlockPos ORIGIN = new BlockPos(0, 64, 0);
 
+    private static Optional<BlockPos> next(ShapeSpec spec, List<BlockPos> pts, double ex, double ey, double ez,
+                                           double dx, double dy, double dz) {
+        return ClickAim.next(spec, pts, ex, ey, ez, dx, dy, dz);
+    }
+
     @Test
     public void floorCornerFollowsTheLookAcrossTheLayer() {
-        // standing at 0,65.6,0 looking down at 45 degrees towards +x: the layer at 64.5 is 1.1 below, so 1.1 out
-        Optional<BlockPos> p = ClickAim.next(ShapeSpec.of(ShapeKind.FLOOR), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, -1, 0);
-        assertEquals(Optional.of(new BlockPos(1, 64, 0)), p);
-        // far: a shallow look lands 30 blocks off, still on the layer
-        Optional<BlockPos> far = ClickAim.next(ShapeSpec.of(ShapeKind.CUBOID), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, -1.1 / 30, 0);
-        assertEquals(64, far.orElseThrow().getY());
-        assertEquals(30, far.orElseThrow().getX());
+        // the top face of the start block is at 65: 0.6 below the eye, so a 45 degree look lands 0.6 out
+        assertEquals(Optional.of(new BlockPos(1, 64, 0)),
+                next(ShapeSpec.of(ShapeKind.FLOOR), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, -1, 0));
+        // a shallow look lands far off, still on the layer
+        BlockPos far = next(ShapeSpec.of(ShapeKind.FLOOR), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, -1.1 / 30, 0).orElseThrow();
+        assertEquals(64, far.getY());
+        assertEquals(16, far.getX());
     }
 
     @Test
     public void lookingUpNeverReachesTheFloor() {
-        assertTrue(ClickAim.next(ShapeSpec.of(ShapeKind.FLOOR), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, 0.5, 0).isEmpty());
+        assertTrue(next(ShapeSpec.of(ShapeKind.FLOOR), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, 0.5, 0).isEmpty());
     }
 
     @Test
-    public void wallSecondCornerIsOnTheGround() {
-        // where the wall ends: across the first corner's layer, like a floor's corner
+    public void wallTakesTheSideYouFace() {
+        // facing +z at a wall through z=5, looking a bit up and to the side
         BlockPos a = new BlockPos(0, 64, 5);
-        Optional<BlockPos> p = ClickAim.next(ShapeSpec.of(ShapeKind.WALL), List.of(a), 0.5, 65.6, 0.5, 6, -1.1, 4.5);
-        assertEquals(64, p.orElseThrow().getY());
-        assertEquals(6, p.orElseThrow().getX());
+        BlockPos p = next(ShapeSpec.of(ShapeKind.WALL), List.of(a), 0.5, 65.6, 0.5, 2, 0.9, 4.5).orElseThrow();
+        assertEquals(new BlockPos(2, 66, 5), p);
     }
 
     @Test
-    public void wallThirdCornerIsTheHeight() {
+    public void bothFacingsTakeTheNearestPlane() {
+        // up and to the side of the start, looking back down towards it: the floor is crossed first
+        BlockPos p = next(ShapeSpec.of(ShapeKind.CUBE), List.of(ORIGIN), 6.5, 70.6, 0.5, -3, -6.1, 0).orElseThrow();
+        assertEquals(new BlockPos(3, 64, 0), p);
+        // vertical only can't take the floor
+        BlockPos w = next(ShapeSpec.of(ShapeKind.CUBE).withFacing(ShapeSpec.Facing.VERTICAL), List.of(ORIGIN),
+                6.5, 70.6, 0.5, -3, -6.1, 0).orElse(null);
+        assertTrue(w == null || w.getX() == 0 || w.getZ() == 0);
+        assertNotEquals(new BlockPos(3, 64, 0), w);
+    }
+
+    @Test
+    public void lineTakesTheAxisYouLookAlong() {
+        // beside the column, looking up it: a vertical line
+        BlockPos up = next(ShapeSpec.of(ShapeKind.LINE), List.of(ORIGIN), 2.5, 65.6, 0.5, -0.2, 1, 0).orElseThrow();
+        assertEquals(new BlockPos(0, 73, 0), up);
+        // behind and to the side, looking along +x past it: an x line
+        BlockPos along = next(ShapeSpec.of(ShapeKind.LINE), List.of(ORIGIN), 0.5, 65.6, -3.5, 6, -1.1, 4).orElseThrow();
+        assertEquals(new BlockPos(5, 64, 0), along);
+    }
+
+    @Test
+    public void lockedLineStaysOnItsAxis() {
+        ShapeSpec line = ShapeSpec.of(ShapeKind.LINE).withDirection(ShapeSpec.Direction.Y);
+        BlockPos p = next(line, List.of(ORIGIN), 4.5, 65.6, 0.5, -4, 8.9, 0).orElseThrow();
+        assertEquals(new BlockPos(0, 73, 0), p);
+    }
+
+    @Test
+    public void thirdClickRunsOutOfThePlane() {
+        // a floor face from the origin to 6,_,3: the third click goes straight up from its far corner
+        BlockPos b = new BlockPos(6, 64, 3);
+        BlockPos p = next(ShapeSpec.of(ShapeKind.CUBE), List.of(ORIGIN, b), 0.5, 65.6, 0.5, 5.5, 3, 3).orElseThrow();
+        assertEquals(new BlockPos(6, 68, 3), p);
+    }
+
+    @Test
+    public void diagonalWallsAreRaisedStraightUp() {
         BlockPos a = new BlockPos(0, 64, 5);
         BlockPos b = new BlockPos(6, 64, 5);
-        BlockPos p = ClickAim.next(ShapeSpec.of(ShapeKind.DIAGONAL_WALL), List.of(a, b), 6.5, 65.6, 0.5, 0, 0.5, 1).orElseThrow();
+        BlockPos p = next(ShapeSpec.of(ShapeKind.DIAGONAL_WALL), List.of(a, b), 6.5, 65.6, 0.5, 0, 0.5, 1).orElseThrow();
         assertEquals(6, p.getX());
-        assertTrue(p.getY() > 64);
+        assertEquals(5, p.getZ());
+        assertEquals(67, p.getY());
     }
 
     @Test
-    public void autoLineTakesTheAxisYouLookAlong() {
-        // standing beside the column and looking up it: a vertical line
-        BlockPos up = ClickAim.next(ShapeSpec.of(ShapeKind.LINE), List.of(ORIGIN), 2.5, 65.6, 0.5, -0.2, 1, 0).orElseThrow();
-        assertEquals(0, up.getX());
-        assertTrue(up.getY() > 66);
-        // looking out along the ground in +x: an X line
-        BlockPos along = ClickAim.next(ShapeSpec.of(ShapeKind.LINE), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, -0.15, 0).orElseThrow();
-        assertEquals(64, along.getY());
-        assertTrue(along.getX() > 3);
+    public void diagonalLineEndsUnderTheCrosshair() {
+        assertTrue(next(ShapeSpec.of(ShapeKind.DIAGONAL_LINE), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, 0, 0).isEmpty());
     }
 
     @Test
-    public void heightClickStaysAboveTheSecondCorner() {
-        BlockPos b = new BlockPos(6, 64, 0);
-        // the third click: looking up at the column over 6,_,0 from the side
-        BlockPos p = ClickAim.next(ShapeSpec.of(ShapeKind.CUBOID), List.of(ORIGIN, b), 0.5, 65.6, 0.5, 1, 0.5, 0).orElseThrow();
-        assertEquals(6, p.getX());
-        assertEquals(0, p.getZ());
-        assertEquals(68, p.getY());
-    }
-
-    @Test
-    public void lockedLineSnapsToItsAxis() {
-        ShapeSpec line = ShapeSpec.of(ShapeKind.LINE).withAxis(ShapeSpec.Axis.Y);
-        // looking at a point 10 up the column over the origin, from 4 blocks off
-        BlockPos p = ClickAim.next(line, List.of(ORIGIN), 4.5, 65.6, 0.5, -4, 8.9, 0).orElseThrow();
-        assertEquals(0, p.getX());
-        assertEquals(0, p.getZ());
-        assertEquals(74, p.getY());
-    }
-
-    @Test
-    public void diagonalLineHasNoPlane() {
-        assertTrue(ClickAim.next(ShapeSpec.of(ShapeKind.DIAGONAL_LINE), List.of(ORIGIN), 0.5, 65.6, 0.5, 1, 0, 0).isEmpty());
-    }
-
-    @Test
-    public void standingOnTheCornerLookingUpIsAVerticalLine() {
-        // the eye is on the corner's own column: look up, the line goes up
-        BlockPos p = ClickAim.next(ShapeSpec.of(ShapeKind.LINE), List.of(ORIGIN), 0.5, 65.6, 0.5, 0.05, 1, 0.12).orElseThrow();
-        assertEquals(0, p.getX());
-        assertEquals(0, p.getZ());
-        assertTrue(p.getY() > 68);
+    public void equalLengthsMakeASquare() {
+        assertEquals(new BlockPos(5, 64, 5), ClickAim.uniform(ORIGIN, new BlockPos(5, 64, 2), true));
+        assertEquals(new BlockPos(-4, 64, 4), ClickAim.uniform(ORIGIN, new BlockPos(-4, 64, 1), true));
+        assertEquals(new BlockPos(5, 64, 2), ClickAim.uniform(ORIGIN, new BlockPos(5, 64, 2), false));
     }
 }

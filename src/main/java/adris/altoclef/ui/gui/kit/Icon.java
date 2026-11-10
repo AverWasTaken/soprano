@@ -73,7 +73,8 @@ public enum Icon {
     SHAPE_SPHERE,   // a ball with its equator
     SHAPE_STAIRS,   // three steps
     SHAPE_PYRAMID,  // a triangle with its front edge
-    SHAPE_ROOF,     // a gable over two walls
+    SHAPE_DOME,     // half a ball on its base
+    SHAPE_CONE,     // a point over a round base
     MERGE,          // two lines joining into one arrow
     SPLIT           // one line forking into two
 }

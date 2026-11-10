@@ -64,7 +64,7 @@ public class JobSchematicTest {
     }
 
     private static ShapeSpec cuboid() {
-        return ShapeSpec.of(ShapeKind.CUBOID);
+        return ShapeSpec.of(ShapeKind.CUBE);
     }
 
     @Test

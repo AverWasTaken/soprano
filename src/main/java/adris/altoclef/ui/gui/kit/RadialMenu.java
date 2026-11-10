@@ -21,74 +21,85 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntConsumer;
 
-// a ring of wedges round an empty middle, and a panel of option chips beside it: the effortless build mode's shape
-// picker. the first wedge, at the top, is "none". hovering goes by angle once the pointer is out of the middle, so a
-// short flick towards a wedge is enough. the wedges are drawn by hand into a picture (the canvas has no arcs), redrawn
-// only when the hover or the pick moves. no minecraft in here, the preview tests draw it
+// the effortless build mode's picker: a ring of round shape tiles around a "none" hub, centred, with a panel either
+// side. the left one is about blocks (what goes down, where it comes from, what the clicks touch), the right one about
+// the shape picked (its name, how it's clicked out, its options). every option is a label with a segmented control
+// under it, the full width of the panel, so nothing crowds: one decision per line, the same rhythm all the way down.
+// hovering the ring goes by angle once the pointer is past the hub, so a flick towards a tile is enough. no minecraft in
+// here, the preview tests draw it
 public class RadialMenu extends Widget {
 
-    // picture is the wedge's 3D drawing (null for the flat glyph), group the coloured arc it sits on (0 for none)
-    public record Entry(Icon icon, String label, PixelImage picture, int group) {
-        public Entry(Icon icon, String label) {
-            this(icon, label, null, 0);
-        }
+    public record Entry(Icon icon, String label) {
     }
 
-    // one line of the panel: a label, a row of chips with one picked, and maybe a chip of its own on the end that turns
-    // on and off by itself (the mix's "Turn"). no choices makes it a heading
-    public record Row(String label, List<String> choices, int picked, IntConsumer onPick, String toggle, boolean toggled,
-                      Runnable onToggle) {
+    // what a panel holds, top to bottom
+    public sealed interface Item permits Title, Choice, Stepper, Action, Note {
+    }
 
-        public Row(String label, List<String> choices, int picked, IntConsumer onPick) {
-            this(label, choices, picked, onPick, null, false, null);
-        }
+    // the panel's heading, and a line under it saying what to do
+    public record Title(String text, String hint) implements Item {
+    }
 
-        public static Row heading(String label) {
-            return new Row(label, List.of(), -1, i -> {
-            });
-        }
+    // a label over a segmented control, one of the options picked
+    public record Choice(String label, List<String> options, int picked, IntConsumer onPick) implements Item {
+    }
+
+    // one compact line: a name with a detail after it, a - n + stepper, and maybe a chip that turns on and off (the
+    // mix's slots: block, share, weight, "Turn")
+    public record Stepper(String label, String detail, int value, int min, int max, IntConsumer onSet, String toggle,
+                          boolean toggled, Runnable onToggle) implements Item {
+    }
+
+    // a full width button
+    public record Action(String label, Runnable onClick) implements Item {
+    }
+
+    // a quiet line of text
+    public record Note(String text) implements Item {
     }
 
     public interface Listener {
-        // index into the entries, -1 for none
+        // index into the entries, -1 for the hub (none)
         void select(int index);
     }
 
-    // the none wedge
     public static final int HUB = -1;
-    // the empty middle, or far off the ring
     public static final int NOTHING = -2;
 
-    static final int RING_OUT = 150;
-    static final int RING_IN = 66;
-    static final int ARC = 6;
-    static final int ICON = 46;
-    static final int PANEL_W = 300;
-    static final int GAP = 28;
-    static final int PAD = 14;
-    static final int ROW_GAP = 10;
-    static final int CHIP_H = 24;
-    static final int CHIP_PAD = 10;
-    static final int CHIP_GAP = 6;
-    // the gap between two wedges, in pixels at the outer edge
-    private static final float WEDGE_GAP = 3f;
-    // the coloured arcs under the wedges, one per group of shapes
-    static final int[] GROUP_RGB = {0, 0x5BD27A, 0x4F8DF7, 0x9B6BF2, 0xF2A93B};
+    static final int RING_R = 116;
+    static final int TILE = 56;
+    static final int HUB_R = 36;
+    static final int PANEL_W = 288;
+    static final int GAP = 36;
+    static final int PAD = 18;
+    // between one option and the next, and between a label and its control
+    static final int ITEM_GAP = 16;
+    static final int LABEL_GAP = 7;
+    static final int CONTROL_H = 28;
+    static final int STEP_H = 26;
+    static final int SEG_PAD = 10;
 
     private final List<Entry> entries;
     private final Listener listener;
-    private List<Row> rows = List.of();
+    private List<Item> left = List.of();
+    private List<Item> right = List.of();
     private int selected = HUB;
     private int hover = NOTHING;
-    // chip hit boxes from the last draw: row, chip, x, y, w, h
-    private final List<float[]> chips = new ArrayList<>();
-    private float hoverChipX = Float.NaN;
-    private float hoverChipY = Float.NaN;
-    // the panel is as wide as its widest row of chips, measured on the last draw. the ring centres against it
-    private float panelW = -1;
-    private float labelW;
-    private PixelImage ring;
-    private long ringKey = Long.MIN_VALUE;
+    private float pointerX = Float.NaN;
+    private float pointerY = Float.NaN;
+    // hit boxes from the last draw
+    private final List<Hit> hits = new ArrayList<>();
+    // the panels' boxes from the last draw, the ring ignores the pointer over them
+    private final float[] leftBox = new float[4];
+    private final float[] rightBox = new float[4];
+    private float leftW = -1;
+    private float rightW = -1;
+
+    private record Hit(float x, float y, float w, float h, Runnable run) {
+        boolean in(float px, float py) {
+            return px >= x && py >= y && px < x + w && py < y + h;
+        }
+    }
 
     public RadialMenu(Theme theme, List<Entry> entries, Listener listener) {
         super(theme);
@@ -108,62 +119,74 @@ public class RadialMenu extends Widget {
         return hover;
     }
 
-    public void setRows(List<Row> rows) {
-        this.rows = List.copyOf(rows);
+    public void setPanels(List<Item> left, List<Item> right) {
+        this.left = List.copyOf(left);
+        this.right = List.copyOf(right);
     }
 
-    // ----- geometry. segment 0 is none at the top, entry i is segment i + 1, clockwise
+    // ----- geometry
 
-    private int segments() {
-        return entries.size() + 1;
-    }
-
+    // the ring is always in the middle of the screen, the panels hang off its sides
     float centerX() {
-        float pw = rows.isEmpty() ? 0 : panelW > 0 ? panelW : theme.pxf(PANEL_W);
-        float total = 2 * theme.pxf(RING_OUT) + (rows.isEmpty() ? 0 : theme.pxf(GAP) + pw);
-        return x + (w - total) / 2f + theme.pxf(RING_OUT);
+        return x + w / 2f;
     }
 
     float centerY() {
         return y + h / 2f;
     }
 
-    double angle(int segment) {
-        return 2 * Math.PI * segment / segments();
+    // the ring grows with the number of tiles so neighbours keep a gap between them
+    float ringR() {
+        float fit = (TILE + 10) * entries.size() / (float) (2 * Math.PI);
+        return theme.pxf(Math.max(RING_R, fit));
     }
 
-    private float iconRadius() {
-        return (theme.pxf(RING_OUT) + theme.pxf(RING_IN)) / 2f;
+    float tileX(int i) {
+        return centerX() + ringR() * (float) Math.sin(angle(i));
     }
 
-    float tileX(int entry) {
-        return centerX() + iconRadius() * (float) Math.sin(angle(entry + 1));
+    float tileY(int i) {
+        return centerY() - ringR() * (float) Math.cos(angle(i));
     }
 
-    float tileY(int entry) {
-        return centerY() - iconRadius() * (float) Math.cos(angle(entry + 1));
+    // clockwise from the top
+    double angle(int i) {
+        return 2 * Math.PI * i / entries.size();
     }
 
-    float panelX() {
-        return centerX() + theme.pxf(RING_OUT) + theme.pxf(GAP);
+    float ringOuter() {
+        return ringR() + theme.pxf(TILE) / 2f + theme.pxf(12);
     }
 
-    // which wedge the pointer means: by angle anywhere past a small dead zone in the middle, nothing in the middle (so
-    // letting go there changes nothing) or far off the ring
+    float rightX() {
+        return centerX() + ringOuter() + theme.pxf(GAP);
+    }
+
+    float leftX(float panelW) {
+        return centerX() - ringOuter() - theme.pxf(GAP) - panelW;
+    }
+
+    // which tile the pointer means: the hub inside it, a tile by angle outside it, nothing far off the ring
     public int pick(float px, float py) {
         float dx = px - centerX();
         float dy = py - centerY();
         double d = Math.sqrt(dx * dx + dy * dy);
-        if (d < theme.pxf(RING_IN) * 0.4f || d > theme.pxf(RING_OUT) * 1.35f) {
+        if (d <= theme.pxf(HUB_R)) {
+            return HUB;
+        }
+        if (d > ringR() + theme.pxf(TILE)) {
             return NOTHING;
         }
         double a = Math.atan2(dx, -dy);
         if (a < 0) {
             a += 2 * Math.PI;
         }
-        double step = 2 * Math.PI / segments();
-        int seg = (int) Math.round(a / step) % segments();
-        return seg - 1;
+        double step = 2 * Math.PI / entries.size();
+        return (int) Math.round(a / step) % entries.size();
+    }
+
+    private static boolean inBox(float[] b, float px, float py) {
+        return px >= b[0] && py >= b[1] && px < b[0] + b[2] && py < b[1] + b[3];
     }
 
     // ----- input
@@ -171,24 +194,22 @@ public class RadialMenu extends Widget {
     @Override
     public Widget mouseMove(float mx, float my) {
         super.mouseMove(mx, my);
-        hover = pick(mx, my);
-        hoverChipX = mx;
-        hoverChipY = my;
+        pointerX = mx;
+        pointerY = my;
+        hover = inBox(leftBox, mx, my) || inBox(rightBox, mx, my) ? NOTHING : pick(mx, my);
         return this;
     }
 
     @Override
     public boolean mouseDown(float mx, float my, int button, int mods) {
-        for (float[] c : chips) {
-            if (mx >= c[2] && my >= c[3] && mx < c[2] + c[4] && my < c[3] + c[5]) {
-                Row r = rows.get((int) c[0]);
-                if (c[1] < 0) {
-                    r.onToggle().run();
-                } else {
-                    r.onPick().accept((int) c[1]);
-                }
+        for (Hit hit : hits) {
+            if (hit.in(mx, my)) {
+                hit.run().run();
                 return true;
             }
+        }
+        if (inBox(leftBox, mx, my) || inBox(rightBox, mx, my)) {
+            return true;
         }
         int p = pick(mx, my);
         if (p != NOTHING) {
@@ -203,200 +224,263 @@ public class RadialMenu extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        // the panel's width moves the ring's centre, so it's measured before anything is drawn
-        measurePanel(c);
+        hits.clear();
+        leftW = panelWidth(c, left);
+        rightW = panelWidth(c, right);
+        drawRing(c);
+        drawPanel(c, left, leftX(leftW), leftW, leftBox);
+        drawPanel(c, right, rightX(), rightW, rightBox);
+    }
+
+    private void drawRing(Canvas c) {
         float cx = centerX();
         float cy = centerY();
-        float out = theme.pxf(RING_OUT);
-        int size = Math.max(8, Math.round(2 * out) + 2);
-        long key = ((long) size << 32) ^ ((long) (hover + 3) << 16) ^ (selected + 3) ^ ((long) c.color(Theme.ACCENT) << 40);
-        if (ring == null || ringKey != key || ring.width() != size) {
-            ring = drawRing(size, c.color(Theme.ACCENT));
-            ringKey = key;
-        }
-        c.image(ring, cx - size / 2f, cy - size / 2f, size, size, 0xFFFFFFFF);
+        float tile = theme.pxf(TILE);
+        float back = ringOuter();
+        c.shadow(cx - back, cy - back, 2 * back, 2 * back, back, c.color(Theme.SHADOW));
+        c.fillRoundRect(cx - back, cy - back, 2 * back, 2 * back, back, c.color(Theme.PANEL) & 0xE6FFFFFF);
 
-        float is = theme.pxf(ICON);
-        for (int seg = 0; seg < segments(); seg++) {
-            float ix = cx + iconRadius() * (float) Math.sin(angle(seg));
-            float iy = cy - iconRadius() * (float) Math.cos(angle(seg));
-            boolean on = seg - 1 == selected;
-            if (seg == 0) {
-                float g = is * 0.55f;
-                c.icon(Icon.CLOSE, ix - g / 2f, iy - g / 2f, g, c.color(Theme.TEXT));
-                continue;
+        for (int i = 0; i < entries.size(); i++) {
+            float tx = tileX(i) - tile / 2f;
+            float ty = tileY(i) - tile / 2f;
+            boolean on = i == selected;
+            boolean hv = i == hover;
+            int fill = on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED);
+            c.fillRoundRect(tx, ty, tile, tile, tile / 2f, fill);
+            if (hv && !on) {
+                c.strokeRoundRect(tx, ty, tile, tile, tile / 2f, c.color(Theme.HAIRLINE_STRONG));
             }
-            Entry e = entries.get(seg - 1);
-            if (e.picture() != null) {
-                c.image(e.picture(), ix - e.picture().width() / 2f, iy - e.picture().height() / 2f,
-                        e.picture().width(), e.picture().height(), 0xFFFFFFFF);
-            } else {
-                float g = is * 0.6f;
-                c.icon(e.icon(), ix - g / 2f, iy - g / 2f, g, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
-            }
+            float is = tile * 0.5f;
+            c.icon(entries.get(i).icon(), tx + (tile - is) / 2f, ty + (tile - is) / 2f, is,
+                    on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
         }
+
+        float hub = theme.pxf(HUB_R);
+        boolean hubOn = selected == HUB;
+        c.fillRoundRect(cx - hub, cy - hub, 2 * hub, 2 * hub, hub,
+                hubOn ? c.color(Theme.ACCENT) : hover == HUB ? c.color(Theme.HOVER) : c.color(Theme.SURFACE));
+        float is = hub * 0.7f;
+        c.icon(Icon.CLOSE, cx - is / 2f, cy - is / 2f - theme.pxf(5), is, hubOn ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT_2));
+        String none = "None";
+        float nw = c.measure(none, theme.small);
+        c.text(none, cx - nw / 2f, cy + hub * 0.62f, theme.small, hubOn ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT_2));
 
         // what the pointer is on (or what's picked), under the ring
         int named = hover != NOTHING ? hover : selected;
         String title = named == HUB ? "None, build mode off" : named >= 0 ? entries.get(named).label() : "";
         float tw = c.measure(title, theme.label);
-        c.text(title, cx - tw / 2f, cy + out + theme.pxf(26), theme.label, c.color(Theme.TEXT));
-
-        drawPanel(c);
+        c.text(title, cx - tw / 2f, cy + back + theme.pxf(28), theme.label, c.color(Theme.TEXT));
     }
 
-    // the wedges, by hand: every pixel of the ring finds its segment from its angle, with a soft edge all round and a gap
-    // between neighbours. hovered is lighter, picked is the accent, and the inner edge carries its group's colour
-    private PixelImage drawRing(int size, int accent) {
-        PixelImage img = new PixelImage(size, size);
-        int[] px = img.pixels();
-        float half = size / 2f;
-        float out = theme.pxf(RING_OUT);
-        float in = theme.pxf(RING_IN);
-        float arc = theme.pxf(ARC);
-        int n = segments();
-        double step = 2 * Math.PI / n;
-        for (int yy = 0; yy < size; yy++) {
-            for (int xx = 0; xx < size; xx++) {
-                float dx = xx + 0.5f - half;
-                float dy = yy + 0.5f - half;
-                float r = (float) Math.sqrt(dx * dx + dy * dy);
-                float radial = Math.min(r - in, out - r) + 0.5f;
-                if (radial <= 0) {
-                    continue;
+    // ----- panels
+
+    // as wide as PANEL_W, or wider when a control's options can't fit at equal widths
+    private float panelWidth(Canvas c, List<Item> items) {
+        if (items.isEmpty()) {
+            return 0;
+        }
+        float pad = theme.pxf(PAD);
+        float inner = theme.pxf(PANEL_W) - 2 * pad;
+        for (Item it : items) {
+            if (it instanceof Choice ch && !ch.options().isEmpty()) {
+                float widest = 0;
+                for (String o : ch.options()) {
+                    widest = Math.max(widest, c.measure(o, theme.small));
                 }
-                double a = Math.atan2(dx, -dy);
-                if (a < 0) {
-                    a += 2 * Math.PI;
-                }
-                int seg = (int) Math.round(a / step) % n;
-                double off = Math.abs(a - seg * step);
-                if (off > Math.PI) {
-                    off = 2 * Math.PI - off;
-                }
-                // the gap is a fixed width in pixels, so it's an angle that shrinks outwards
-                float side = (float) ((step / 2 - off) * r) - WEDGE_GAP / 2f + 0.5f;
-                if (side <= 0) {
-                    continue;
-                }
-                float edge = Math.min(1f, Math.min(radial, side));
-                int entry = seg - 1;
-                int rgb;
-                int alpha;
-                boolean inArc = r - in < arc && entry >= 0 && entries.get(entry).group() > 0;
-                if (inArc) {
-                    rgb = GROUP_RGB[Math.min(GROUP_RGB.length - 1, entries.get(entry).group())];
-                    alpha = 235;
-                } else if (entry == selected) {
-                    rgb = accent & 0xFFFFFF;
-                    alpha = 230;
-                } else if (entry == hover) {
-                    rgb = 0x4A4A50;
-                    alpha = 215;
-                } else {
-                    rgb = 0x202024;
-                    alpha = 185;
-                }
-                px[yy * size + xx] = (Math.round(alpha * edge) << 24) | rgb;
+                inner = Math.max(inner, ch.options().size() * (widest + 2 * theme.pxf(SEG_PAD)));
+            } else if (it instanceof Stepper st) {
+                // the name and its share, then the stepper and the toggle's column, capped so one long name can't
+                // stretch the panel across the screen
+                float text = c.measure(st.label(), theme.small) + (st.detail() == null ? 0 : theme.pxf(8) + c.measure(st.detail(), theme.small));
+                float controls = theme.pxf(STEP_H) * 2 + theme.pxf(26) + c.measure("Turn", theme.small) + 2 * theme.pxf(SEG_PAD) + theme.pxf(8);
+                inner = Math.max(inner, Math.min(text, theme.pxf(200)) + theme.pxf(10) + controls);
+            } else if (it instanceof Title t) {
+                inner = Math.max(inner, Math.min(c.measure(t.text(), theme.title), theme.pxf(PANEL_W * 2)));
             }
         }
-        img.bump();
-        return img;
+        return inner + 2 * pad;
     }
 
-    private void drawPanel(Canvas c) {
-        chips.clear();
-        if (rows.isEmpty()) {
+    private float itemHeight(Canvas c, Item it) {
+        return switch (it) {
+            case Title t -> c.lineHeight(theme.title) + (t.hint() == null ? 0 : theme.pxf(4) + c.lineHeight(theme.small));
+            case Choice ch -> c.lineHeight(theme.smallLabel) + theme.pxf(LABEL_GAP) + theme.pxf(CONTROL_H);
+            case Stepper s -> theme.pxf(STEP_H);
+            case Action a -> theme.pxf(CONTROL_H);
+            case Note n -> c.lineHeight(theme.small);
+        };
+    }
+
+    // steppers sit closer together than options: a mix of nine slots reads as one list, not nine settings
+    private float gapBefore(Item prev, Item it) {
+        if (prev == null) {
+            return 0;
+        }
+        if (prev instanceof Stepper && it instanceof Stepper) {
+            return theme.pxf(6);
+        }
+        if (prev instanceof Title) {
+            return theme.pxf(ITEM_GAP + 4);
+        }
+        return theme.pxf(ITEM_GAP);
+    }
+
+    private void drawPanel(Canvas c, List<Item> items, float px, float pw, float[] box) {
+        if (items.isEmpty()) {
+            box[0] = box[1] = box[2] = box[3] = 0;
             return;
         }
         float pad = theme.pxf(PAD);
-        float chipH = theme.pxf(CHIP_H);
-        float gap = theme.pxf(CHIP_GAP);
-        float labelW = this.labelW;
-        float ph = pad * 2;
-        for (int r = 0; r < rows.size(); r++) {
-            ph += rowHeight(c, rows.get(r)) + (r > 0 ? theme.pxf(ROW_GAP) : 0);
+        float ph = 2 * pad;
+        Item prev = null;
+        for (Item it : items) {
+            ph += gapBefore(prev, it) + itemHeight(c, it);
+            prev = it;
         }
-        float px = panelX();
-        float py = Math.max(y + pad, centerY() - ph / 2f);
-        c.shadow(px, py, panelW, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.SHADOW));
-        c.fillRoundRect(px, py, panelW, ph, theme.pxf(Theme.CARD_RADIUS), c.color(Theme.PANEL) & 0xF0FFFFFF);
-        float ry = py + pad;
-        for (int r = 0; r < rows.size(); r++) {
-            Row row = rows.get(r);
-            if (r > 0) {
-                ry += theme.pxf(ROW_GAP);
+        // centred on the ring, kept on screen
+        float py = Math.max(y + theme.pxf(12), Math.min(centerY() - ph / 2f, y + h - ph - theme.pxf(12)));
+        box[0] = px;
+        box[1] = py;
+        box[2] = pw;
+        box[3] = ph;
+        float r = theme.pxf(Theme.CARD_RADIUS);
+        c.shadow(px, py, pw, ph, r, c.color(Theme.SHADOW));
+        c.fillRoundRect(px, py, pw, ph, r, c.color(Theme.PANEL) & 0xF2FFFFFF);
+        float ix = px + pad;
+        float iw = pw - 2 * pad;
+        float iy = py + pad;
+        prev = null;
+        for (Item it : items) {
+            float gap = gapBefore(prev, it);
+            if (gap > 0 && !(prev instanceof Stepper && it instanceof Stepper) && !(prev instanceof Title)
+                    && it instanceof Title) {
+                // a second title starts a new part of the panel: a hairline across
+                c.fillRect(ix, iy + gap / 2f, iw, 1, c.color(Theme.HAIRLINE));
             }
-            float rh = rowHeight(c, row);
-            if (row.choices().isEmpty()) {
-                // a heading, with a hairline above it when it isn't the first thing
-                if (r > 0) {
-                    c.fillRect(px + pad, ry - theme.pxf(ROW_GAP) / 2f, panelW - 2 * pad, 1, c.color(Theme.HAIRLINE));
-                }
-                c.text(row.label(), px + pad, ry + rh - c.descent(theme.label) - theme.pxf(2), theme.label, c.color(Theme.TEXT));
-                ry += rh;
-                continue;
+            iy += gap;
+            float ih = itemHeight(c, it);
+            switch (it) {
+                case Title t -> drawTitle(c, t, ix, iy, iw);
+                case Choice ch -> drawChoice(c, ch, ix, iy, iw);
+                case Stepper s -> drawStepper(c, s, ix, iy, iw);
+                case Action a -> drawAction(c, a, ix, iy, iw);
+                case Note n -> c.text(fit(c, n.text(), theme.small, iw), ix, iy + c.ascent(theme.small), theme.small, c.color(Theme.TEXT_3));
             }
-            float base = ry + (chipH + c.ascent(theme.smallLabel) - c.descent(theme.smallLabel)) / 2f;
-            c.text(row.label(), px + pad, base, theme.smallLabel, c.color(Theme.TEXT_2));
-            float cx = px + pad + labelW;
-            for (int i = 0; i < row.choices().size(); i++) {
-                float cw = chip(c, row.choices().get(i), cx, ry, i == row.picked());
-                chips.add(new float[]{r, i, cx, ry, cw, chipH});
-                cx += cw + gap;
-            }
-            if (row.toggle() != null) {
-                cx += gap;
-                float cw = chip(c, row.toggle(), cx, ry, row.toggled());
-                // chip -1 is the toggle
-                chips.add(new float[]{r, -1, cx, ry, cw, chipH});
-            }
-            ry += rh;
+            iy += ih;
+            prev = it;
         }
     }
 
-    // a label column as wide as the widest label, the chips start where it ends. the panel is as wide as the widest row
-    private void measurePanel(Canvas c) {
-        float pad = theme.pxf(PAD);
-        float lw = 0;
-        float chipsW = 0;
-        float headW = 0;
-        for (Row row : rows) {
-            if (row.choices().isEmpty()) {
-                headW = Math.max(headW, c.measure(row.label(), theme.label));
-                continue;
+    private void drawTitle(Canvas c, Title t, float x, float y, float w) {
+        c.text(fit(c, t.text(), theme.title, w), x, y + c.ascent(theme.title), theme.title, c.color(Theme.TEXT));
+        if (t.hint() != null) {
+            float hy = y + c.lineHeight(theme.title) + theme.pxf(4);
+            c.text(fit(c, t.hint(), theme.small, w), x, hy + c.ascent(theme.small), theme.small, c.color(Theme.TEXT_2));
+        }
+    }
+
+    private void drawChoice(Canvas c, Choice ch, float x, float y, float w) {
+        c.text(ch.label().toUpperCase(java.util.Locale.ROOT), x, y + c.ascent(theme.smallLabel), theme.smallLabel, c.color(Theme.TEXT_3));
+        float sy = y + c.lineHeight(theme.smallLabel) + theme.pxf(LABEL_GAP);
+        segmented(c, ch.options(), ch.picked(), ch.onPick(), x, sy, w, theme.pxf(CONTROL_H));
+    }
+
+    // a track with the options at equal widths, the picked one raised in the accent colour
+    private void segmented(Canvas c, List<String> options, int picked, IntConsumer onPick, float x, float y, float w, float h) {
+        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        c.fillRoundRect(x, y, w, h, r, c.color(Theme.FIELD));
+        int n = options.size();
+        float seg = w / n;
+        float inset = theme.pxf(2);
+        for (int i = 0; i < n; i++) {
+            float sx = x + i * seg;
+            boolean on = i == picked;
+            boolean hv = pointerX >= sx && pointerY >= y && pointerX < sx + seg && pointerY < y + h;
+            if (on) {
+                c.fillRoundRect(sx + inset, y + inset, seg - 2 * inset, h - 2 * inset, r - inset, c.color(Theme.ACCENT));
+            } else if (hv) {
+                c.fillRoundRect(sx + inset, y + inset, seg - 2 * inset, h - 2 * inset, r - inset, c.color(Theme.HOVER));
+            } else if (i > 0 && i - 1 != picked) {
+                // a thin divider between two options that aren't picked
+                c.fillRect(sx, y + h * 0.28f, 1, h * 0.44f, c.color(Theme.HAIRLINE));
             }
-            lw = Math.max(lw, c.measure(row.label(), theme.smallLabel));
-            chipsW = Math.max(chipsW, rowChipsWidth(c, row));
+            String s = fit(c, options.get(i), theme.small, seg - theme.pxf(6));
+            float tw = c.measure(s, theme.small);
+            float base = y + (h + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
+            c.text(s, sx + (seg - tw) / 2f, base, theme.small, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
+            int at = i;
+            hits.add(new Hit(sx, y, seg, h, () -> onPick.accept(at)));
         }
-        labelW = lw + theme.pxf(12);
-        panelW = Math.max(labelW + chipsW, headW) + 2 * pad;
     }
 
-    private float rowHeight(Canvas c, Row row) {
-        return row.choices().isEmpty() ? c.lineHeight(theme.label) + theme.pxf(4) : theme.pxf(CHIP_H);
+    private void drawStepper(Canvas c, Stepper s, float x, float y, float w) {
+        float h = theme.pxf(STEP_H);
+        float btn = h;
+        float valueW = theme.pxf(26);
+        // the toggle's column is kept even on a line without one, so the steppers line up down the list
+        float toggleW = c.measure("Turn", theme.small) + 2 * theme.pxf(SEG_PAD);
+        if (s.toggle() != null) {
+            toggleW = Math.max(toggleW, c.measure(s.toggle(), theme.small) + 2 * theme.pxf(SEG_PAD));
+        }
+        float controls = btn * 2 + valueW + toggleW + theme.pxf(8);
+        float base = y + (h + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
+        boolean off = s.value() <= s.min();
+        float textW = w - controls - theme.pxf(10);
+        float lw = c.measure(fit(c, s.label(), theme.small, textW), theme.small);
+        c.text(fit(c, s.label(), theme.small, textW), x, base, theme.small, off ? c.color(Theme.TEXT_3) : c.color(Theme.TEXT));
+        if (s.detail() != null && lw + theme.pxf(8) < textW) {
+            c.text(fit(c, s.detail(), theme.small, textW - lw - theme.pxf(8)), x + lw + theme.pxf(8), base, theme.small, c.color(Theme.TEXT_3));
+        }
+        float cx = x + w - controls;
+        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        float tx = cx + btn * 2 + valueW + theme.pxf(8);
+        c.fillRoundRect(cx, y, btn * 2 + valueW, h, r, c.color(Theme.FIELD));
+        button(c, Icon.MINUS, cx, y, btn, h, s.value() > s.min(), () -> s.onSet().accept(s.value() - 1));
+        String v = s.value() <= s.min() ? "off" : String.valueOf(s.value());
+        float vw = c.measure(v, theme.small);
+        c.text(v, cx + btn + (valueW - vw) / 2f, base, theme.small, off ? c.color(Theme.TEXT_3) : c.color(Theme.TEXT));
+        button(c, Icon.PLUS, cx + btn + valueW, y, btn, h, s.value() < s.max(), () -> s.onSet().accept(s.value() + 1));
+        if (s.toggle() != null) {
+            boolean on = s.toggled();
+            boolean hv = pointerX >= tx && pointerY >= y && pointerX < tx + toggleW && pointerY < y + h;
+            c.fillRoundRect(tx, y, toggleW, h, r, on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED));
+            float tw = c.measure(s.toggle(), theme.small);
+            c.text(s.toggle(), tx + (toggleW - tw) / 2f, base, theme.small, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
+            hits.add(new Hit(tx, y, toggleW, h, s.onToggle()));
+        }
     }
 
-    private float rowChipsWidth(Canvas c, Row row) {
-        float w = -theme.pxf(CHIP_GAP);
-        for (String s : row.choices()) {
-            w += c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD) + theme.pxf(CHIP_GAP);
+    private void button(Canvas c, Icon icon, float x, float y, float w, float h, boolean enabled, Runnable run) {
+        boolean hv = enabled && pointerX >= x && pointerY >= y && pointerX < x + w && pointerY < y + h;
+        if (hv) {
+            c.fillRoundRect(x + theme.pxf(2), y + theme.pxf(2), w - theme.pxf(4), h - theme.pxf(4), theme.pxf(Theme.CONTROL_RADIUS) - theme.pxf(2), c.color(Theme.HOVER));
         }
-        if (row.toggle() != null) {
-            w += 2 * theme.pxf(CHIP_GAP) + c.measure(row.toggle(), theme.small) + 2 * theme.pxf(CHIP_PAD);
+        float is = h * 0.5f;
+        c.icon(icon, x + (w - is) / 2f, y + (h - is) / 2f, is, enabled ? c.color(Theme.TEXT) : c.color(Theme.TEXT_3));
+        if (enabled) {
+            hits.add(new Hit(x, y, w, h, run));
         }
-        return w;
     }
 
-    // one pill, picked or not, hover from the last pointer position. returns its width
-    private float chip(Canvas c, String s, float cx, float cy, boolean on) {
-        float cw = c.measure(s, theme.small) + 2 * theme.pxf(CHIP_PAD);
-        float chipH = theme.pxf(CHIP_H);
-        boolean hv = hoverChipX >= cx && hoverChipY >= cy && hoverChipX < cx + cw && hoverChipY < cy + chipH;
-        int fill = on ? c.color(Theme.ACCENT) : hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED);
-        c.fillRoundRect(cx, cy, cw, chipH, chipH / 2f, fill);
-        float base = cy + (chipH + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
-        c.text(s, cx + theme.pxf(CHIP_PAD), base, theme.small, on ? c.color(Theme.ON_ACCENT) : c.color(Theme.TEXT));
-        return cw;
+    private void drawAction(Canvas c, Action a, float x, float y, float w) {
+        float h = theme.pxf(CONTROL_H);
+        boolean hv = pointerX >= x && pointerY >= y && pointerX < x + w && pointerY < y + h;
+        c.fillRoundRect(x, y, w, h, theme.pxf(Theme.CONTROL_RADIUS), hv ? c.color(Theme.HOVER) : c.color(Theme.RAISED));
+        float tw = c.measure(a.label(), theme.small);
+        float base = y + (h + c.ascent(theme.small) - c.descent(theme.small)) / 2f;
+        c.text(a.label(), x + (w - tw) / 2f, base, theme.small, c.color(Theme.TEXT));
+        hits.add(new Hit(x, y, w, h, a.onClick()));
+    }
+
+    // the string cut down with an ellipsis until it fits
+    private static String fit(Canvas c, String s, TextStyle style, float w) {
+        if (s == null || c.measure(s, style) <= w) {
+            return s;
+        }
+        String t = s;
+        while (t.length() > 1 && c.measure(t + "…", style) > w) {
+            t = t.substring(0, t.length() - 1);
+        }
+        return t + "…";
     }
 }

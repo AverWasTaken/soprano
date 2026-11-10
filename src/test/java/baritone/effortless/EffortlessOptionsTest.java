@@ -45,22 +45,25 @@ public class EffortlessOptionsTest {
 
     @Test
     public void shapeWords() {
-        ShapeSpec s = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CYLINDER), "x hollow t=3 half").spec();
-        assertEquals(ShapeSpec.Axis.X, s.axis());
+        ShapeSpec s = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CYLINDER), "x hollow middle equal facing=vertical").spec();
+        assertEquals(ShapeSpec.Direction.X, s.direction());
         assertEquals(ShapeSpec.Fill.HOLLOW, s.fill());
-        assertEquals(3, s.thickness());
-        assertTrue(s.half());
-        assertEquals(ShapeSpec.Fill.FRAME, EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "fill=edges").spec().fill());
+        assertTrue(s.centered());
+        assertTrue(s.equal());
+        assertEquals(ShapeSpec.Facing.VERTICAL, s.facing());
+        assertEquals(ShapeSpec.Fill.SKELETON, EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "fill=edges").spec().fill());
+        assertTrue(EffortlessOptions.parse(ShapeSpec.of(ShapeKind.SLOPE_FLOOR), "long").spec().longEdge());
+        assertEquals(ShapeSpec.Direction.FLOOR, EffortlessOptions.parse(ShapeSpec.of(ShapeKind.LINE), "direction=floor").spec().direction());
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void nonsenseIsRefused() {
-        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "sideways");
+        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "sideways");
     }
 
     @Test
     public void placeUsesTheHandByDefault() throws Exception {
-        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "")
+        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "")
                 .placeJob(BOX, held(Blocks.OAK_PLANKS), Optional.empty());
         assertEquals(EffortlessJob.Mode.PLACE, job.mode);
         assertEquals(EffortlessJob.FillMode.FILL_EMPTY, job.fillMode);
@@ -69,7 +72,7 @@ public class EffortlessOptionsTest {
 
     @Test(expected = EffortlessOptions.Bad.class)
     public void placeWithEmptyHandsSaysSo() throws Exception {
-        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "").placeJob(BOX, Optional.empty(), Optional.empty());
+        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "").placeJob(BOX, Optional.empty(), Optional.empty());
     }
 
     @Test
@@ -87,39 +90,60 @@ public class EffortlessOptionsTest {
     }
 
     @Test
-    public void replaceSwapsHandForOffhand() throws Exception {
-        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "mode=replace")
-                .placeJob(BOX, held(Blocks.DIRT), held(Blocks.COBBLESTONE));
+    public void replaceTakesExistingBlocksOnly() throws Exception {
+        // no only=: every block that's there, air stays air
+        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "mode=replace")
+                .placeJob(BOX, held(Blocks.COBBLESTONE), held(Blocks.DIRT));
         assertEquals(EffortlessJob.FillMode.REPLACE, job.fillMode);
-        assertTrue(job.filter.matches(Blocks.DIRT.defaultBlockState()));
-        assertFalse(job.filter.matches(Blocks.STONE.defaultBlockState()));
+        assertEquals(EffortlessJob.Outcome.REPLACE, job.outcome(0, 0, 0, Blocks.STONE.defaultBlockState()));
+        assertEquals(EffortlessJob.Outcome.UNTOUCHED, job.outcome(0, 0, 0, Blocks.AIR.defaultBlockState()));
         assertEquals(Blocks.COBBLESTONE.defaultBlockState(), job.palette.pick(0, 0, 0));
     }
 
     @Test
+    public void offhandPicksWhichExistingBlocks() throws Exception {
+        // only the offhand's: the dirt goes, the stone stays
+        EffortlessJob only = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "mode=replace only=offhand")
+                .placeJob(BOX, held(Blocks.COBBLESTONE), held(Blocks.DIRT));
+        assertEquals(EffortlessJob.Outcome.REPLACE, only.outcome(0, 0, 0, Blocks.DIRT.defaultBlockState()));
+        assertEquals(EffortlessJob.Outcome.UNTOUCHED, only.outcome(0, 0, 0, Blocks.STONE.defaultBlockState()));
+        // all but the offhand's, air too: the logs in the offhand are kept, the rest filled over
+        EffortlessJob but = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "mode=overwrite except=offhand")
+                .placeJob(BOX, held(Blocks.COBBLESTONE), held(Blocks.OAK_LOG));
+        assertEquals(EffortlessJob.Outcome.UNTOUCHED, but.outcome(0, 0, 0, Blocks.OAK_LOG.defaultBlockState()));
+        assertEquals(EffortlessJob.Outcome.REPLACE, but.outcome(0, 0, 0, Blocks.STONE.defaultBlockState()));
+        assertEquals(EffortlessJob.Outcome.PLACE, but.outcome(0, 0, 0, Blocks.AIR.defaultBlockState()));
+    }
+
+    @Test
     public void breakFilters() throws Exception {
-        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "only=stone,granite skipcontainers")
+        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "only=stone,granite skipcontainers")
                 .breakJob(BOX, Optional.empty(), Optional.empty());
         assertTrue(job.filter.matches(Blocks.GRANITE.defaultBlockState()));
         assertFalse(job.filter.matches(Blocks.DIRT.defaultBlockState()));
         assertTrue(job.filter.skipContainers());
         assertTrue(job.filter.keepFluids());
 
-        EffortlessJob notHand = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "nothand fluids")
+        EffortlessJob notHand = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "nothand fluids")
                 .breakJob(BOX, held(Blocks.STONE), Optional.empty());
         assertFalse(notHand.filter.matches(Blocks.STONE.defaultBlockState()));
         assertTrue(notHand.filter.matches(Blocks.DIRT.defaultBlockState()));
         assertTrue(notHand.filter.matches(Blocks.WATER.defaultBlockState()));
+
+        EffortlessJob notOff = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "notoffhand")
+                .breakJob(BOX, Optional.empty(), held(Blocks.OAK_LOG));
+        assertFalse(notOff.filter.matches(Blocks.OAK_LOG.defaultBlockState()));
+        assertTrue(notOff.filter.matches(Blocks.STONE.defaultBlockState()));
     }
 
     @Test(expected = EffortlessOptions.Bad.class)
     public void unknownBlockInAFilter() throws Exception {
-        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "only=stoen").breakJob(BOX, Optional.empty(), Optional.empty());
+        EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "only=stoen").breakJob(BOX, Optional.empty(), Optional.empty());
     }
 
     @Test
     public void seedSticks() throws Exception {
-        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBOID), "block=stone,dirt seed=77")
+        EffortlessJob job = EffortlessOptions.parse(ShapeSpec.of(ShapeKind.CUBE), "block=stone,dirt seed=77")
                 .placeJob(BOX, Optional.empty(), Optional.empty());
         assertEquals(77, job.palette.seed());
     }

@@ -34,9 +34,10 @@ import java.util.Optional;
 public final class EffortlessOptions {
 
     public static final List<String> KEYWORDS = List.of(
-            "x", "y", "z", "free", "filled", "hollow", "walls", "frame", "half", "t=", "block=", "mode=fill",
-            "mode=overwrite", "mode=replace", "only=", "except=", "hand", "offhand", "nothand", "skipcontainers",
-            "fluids", "seed="
+            "all", "x", "y", "z", "direction=floor", "facing=", "vertical", "horizontal", "filled", "hollow", "skeleton",
+            "middle", "corner", "equal", "variable", "long", "short",
+            "block=", "mode=fill", "mode=overwrite", "mode=replace", "only=", "except=", "hand", "offhand",
+            "nothand", "notoffhand", "skipcontainers", "fluids", "seed="
     );
 
     public static final class Bad extends Exception {
@@ -53,6 +54,7 @@ public final class EffortlessOptions {
     private boolean hand;
     private boolean offhand;
     private boolean notHand;
+    private boolean notOffhand;
     private boolean skipContainers;
     private boolean fluids;
     private Long seed;
@@ -81,6 +83,7 @@ public final class EffortlessOptions {
         o.hand = hand;
         o.offhand = offhand;
         o.notHand = notHand;
+        o.notOffhand = notOffhand;
         o.skipContainers = skipContainers;
         o.fluids = fluids;
         o.seed = seed;
@@ -104,11 +107,6 @@ public final class EffortlessOptions {
         String key = eq < 0 ? w : w.substring(0, eq);
         String value = eq < 0 ? null : w.substring(eq + 1);
         if (value == null) {
-            ShapeSpec.Axis axis = ShapeSpec.Axis.byId(key);
-            if (axis != null) {
-                spec = spec.withAxis(axis);
-                return;
-            }
             ShapeSpec.Fill f = ShapeSpec.Fill.byId(key);
             if (f != null) {
                 spec = spec.withFill(f);
@@ -116,22 +114,37 @@ public final class EffortlessOptions {
             }
         }
         switch (key) {
-            case "axis" -> {
-                ShapeSpec.Axis axis = ShapeSpec.Axis.byId(need(key, value));
-                if (axis == null) {
-                    throw new IllegalArgumentException("axis is x, y, z or free");
+            // a line's direction: all, floor (x or z), or one axis
+            case "x", "y", "z", "all" -> spec = spec.withDirection(ShapeSpec.Direction.byId(key));
+            case "direction", "dir" -> {
+                ShapeSpec.Direction d = ShapeSpec.Direction.byId(need(key, value));
+                if (d == null) {
+                    throw new IllegalArgumentException("direction is all, floor, x, y or z");
                 }
-                spec = spec.withAxis(axis);
+                spec = spec.withDirection(d);
             }
+            case "facing", "face" -> {
+                ShapeSpec.Facing f = ShapeSpec.Facing.byId(need(key, value));
+                if (f == null) {
+                    throw new IllegalArgumentException("facing is both, vertical or horizontal");
+                }
+                spec = spec.withFacing(f);
+            }
+            case "vertical" -> spec = spec.withFacing(ShapeSpec.Facing.VERTICAL);
+            case "horizontal" -> spec = spec.withFacing(ShapeSpec.Facing.HORIZONTAL);
             case "fill" -> {
                 ShapeSpec.Fill f = ShapeSpec.Fill.byId(need(key, value));
                 if (f == null) {
-                    throw new IllegalArgumentException("fill is filled, hollow, walls or frame");
+                    throw new IllegalArgumentException("fill is filled, hollow or skeleton");
                 }
                 spec = spec.withFill(f);
             }
-            case "t", "thickness" -> spec = spec.withThickness(number(key, value));
-            case "half", "dome" -> spec = spec.withHalf(value == null || Boolean.parseBoolean(value));
+            case "middle", "centered", "centre", "center" -> spec = spec.withCentered(true);
+            case "corner" -> spec = spec.withCentered(false);
+            case "equal" -> spec = spec.withEqual(true);
+            case "variable" -> spec = spec.withEqual(false);
+            case "long" -> spec = spec.withLongEdge(true);
+            case "short" -> spec = spec.withLongEdge(false);
             case "block", "blocks", "with" -> blocks = need(key, value);
             case "mode" -> fill = switch (need(key, value)) {
                 case "fill", "empty", "fillempty", "fill_empty" -> EffortlessJob.FillMode.FILL_EMPTY;
@@ -146,6 +159,7 @@ public final class EffortlessOptions {
             case "hand" -> hand = true;
             case "offhand" -> offhand = true;
             case "nothand" -> notHand = true;
+            case "notoffhand" -> notOffhand = true;
             case "skipcontainers" -> skipContainers = true;
             case "fluids" -> fluids = true;
             case "seed" -> seed = (long) number(key, value);
@@ -182,33 +196,33 @@ public final class EffortlessOptions {
 
     public EffortlessJob placeJob(List<BlockPos> points, Optional<BlockState> hand, Optional<BlockState> off) throws Bad {
         EffortlessJob.FillMode mode = fill == null ? EffortlessJob.FillMode.FILL_EMPTY : fill;
-        BlockFilter filter = BlockFilter.ALL;
-        Palette palette;
-        if (mode == EffortlessJob.FillMode.REPLACE) {
-            // replace with nothing said: what's in the hand goes, what's in the offhand comes in
-            List<String> from = new ArrayList<>(only);
-            if (from.isEmpty()) {
-                if (hand.isEmpty()) {
-                    throw new Bad("replace needs only=<blocks to replace>, or the block to replace in your hand");
-                }
-                from.add(BlockFilter.idOf(hand.get().getBlock()));
-            }
-            filter = filterFrom(from, except);
-            palette = blocks != null ? palette(blocks, hand, off) : off.map(Palette::of)
-                    .orElseThrow(() -> new Bad("replace needs block=<new block>, or the new block in your offhand"));
-        } else {
-            palette = blocks != null ? palette(blocks, hand, off) : hand.map(Palette::of)
-                    .orElseThrow(() -> new Bad("hold a block or say block=<block>"));
-        }
+        // which existing blocks a replace or overwrite may touch. a replace with nothing said takes every block that's
+        // there; only=offhand is "the blocks like the one in my offhand", except=offhand "all but those"
+        BlockFilter filter = filterFrom(resolve(only, hand, off), resolve(except, hand, off));
+        Palette palette = blocks != null ? palette(blocks, hand, off) : hand.map(Palette::of)
+                .orElseThrow(() -> new Bad("hold a block or say block=<block>"));
         if (seed != null) {
             palette = palette.withSeed(seed);
         }
         return EffortlessJob.place(spec, points, mode, filter, palette);
     }
 
+    // "hand" and "offhand" in an only=/except= list are whatever you're holding there
+    private static List<String> resolve(List<String> ids, Optional<BlockState> hand, Optional<BlockState> off) throws Bad {
+        List<String> out = new ArrayList<>();
+        for (String id : ids) {
+            switch (id) {
+                case "hand" -> out.add(BlockFilter.idOf(hand.orElseThrow(() -> new Bad("\"hand\" needs a block in your hand")).getBlock()));
+                case "offhand" -> out.add(BlockFilter.idOf(off.orElseThrow(() -> new Bad("put the block to match in your offhand")).getBlock()));
+                default -> out.add(id);
+            }
+        }
+        return out;
+    }
+
     public EffortlessJob breakJob(List<BlockPos> points, Optional<BlockState> hand, Optional<BlockState> off) throws Bad {
-        List<String> in = new ArrayList<>(only);
-        List<String> out = new ArrayList<>(except);
+        List<String> in = resolve(only, hand, off);
+        List<String> out = resolve(except, hand, off);
         if (this.hand) {
             in.add(BlockFilter.idOf(hand.orElseThrow(() -> new Bad("\"hand\" needs a block in your hand")).getBlock()));
         }
@@ -217,6 +231,9 @@ public final class EffortlessOptions {
         }
         if (notHand) {
             out.add(BlockFilter.idOf(hand.orElseThrow(() -> new Bad("\"nothand\" needs a block in your hand")).getBlock()));
+        }
+        if (notOffhand) {
+            out.add(BlockFilter.idOf(off.orElseThrow(() -> new Bad("put the block to keep in your offhand")).getBlock()));
         }
         BlockFilter filter = filterFrom(in, out).withSkipContainers(skipContainers).withKeepFluids(!fluids);
         return EffortlessJob.breaking(spec, points, filter);
@@ -286,6 +303,6 @@ public final class EffortlessOptions {
     @Override
     public String toString() {
         return spec + " blocks=" + blocks + " fill=" + fill + " only=" + only + " except=" + except
-                + Arrays.toString(new boolean[]{hand, offhand, notHand, skipContainers, fluids});
+                + Arrays.toString(new boolean[]{hand, offhand, notHand, notOffhand, skipContainers, fluids});
     }
 }

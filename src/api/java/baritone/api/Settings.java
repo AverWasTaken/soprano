@@ -1512,9 +1512,10 @@ public final class Settings {
     public final Setting<Double> effortlessReach = new Setting<>(6D);
 
     /**
-     * Shapes with a height (cuboid, cylinder) take a third click for it. Off, the second corner sets the height too.
+     * The Effortless Soprano radial shows while its key is held and picks what's under the mouse when you let go. Off,
+     * a press opens it and it stays until you pick something or press the key again.
      */
-    public final Setting<Boolean> effortlessThreeClickHeight = new Setting<>(true);
+    public final Setting<Boolean> effortlessRadialHold = new Setting<>(true);
 
     /**
      * Start an Effortless Soprano shape the moment its last corner is clicked. Off, it goes into the queue (the

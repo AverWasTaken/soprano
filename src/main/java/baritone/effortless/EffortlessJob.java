@@ -112,8 +112,10 @@ public final class EffortlessJob {
         boolean empty = current.isAir() || current.canBeReplaced();
         return switch (fillMode) {
             case FILL_EMPTY -> empty ? Outcome.PLACE : Outcome.UNTOUCHED;
-            case OVERWRITE -> empty ? Outcome.PLACE : Outcome.REPLACE;
-            case REPLACE -> filter.matches(current) ? Outcome.REPLACE : Outcome.UNTOUCHED;
+            // the filter can keep blocks out of an overwrite: everything but the logs in your offhand
+            case OVERWRITE -> empty ? Outcome.PLACE : filter.matches(current) ? Outcome.REPLACE : Outcome.UNTOUCHED;
+            // only blocks that are there: air stays air, a door's hole stays open
+            case REPLACE -> !empty && filter.matches(current) ? Outcome.REPLACE : Outcome.UNTOUCHED;
         };
     }
 

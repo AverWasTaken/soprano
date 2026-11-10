@@ -17,7 +17,6 @@
 
 package baritone.effortless;
 
-import baritone.effortless.ShapeSpec.Axis;
 import baritone.effortless.ShapeSpec.Fill;
 import net.minecraft.core.BlockPos;
 import org.junit.Test;
@@ -26,7 +25,8 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-// every shape counted by hand once, so a change to the maths shows up as a number that moved
+// every shape counted once, the way Effortless Structure builds it, so a change to the maths shows up as a number
+// that moved
 public class ShapeGeometryTest {
 
     private static BlockPos p(int x, int y, int z) {
@@ -42,84 +42,26 @@ public class ShapeGeometryTest {
     }
 
     @Test
+    public void everyShapeTakesOneTwoOrThreeClicks() {
+        for (ShapeKind k : ShapeKind.values()) {
+            int n = k.clicks(spec(k));
+            assertTrue(k + " takes " + n, n >= 1 && n <= 3);
+        }
+        assertEquals(3, ShapeKind.CUBE.clicks);
+        assertEquals(2, ShapeKind.WALL.clicks);
+    }
+
+    @Test
     public void single() {
-        AreaMask m = build(spec(ShapeKind.SINGLE), p(3, 4, 5), p(9, 9, 9));
+        AreaMask m = build(spec(ShapeKind.SINGLE), p(3, 4, 5));
         assertEquals(1, m.count());
         assertTrue(m.contains(3, 4, 5));
     }
 
     @Test
-    public void lineLockedToAnAxisIgnoresTheOtherCoords() {
-        AreaMask m = build(spec(ShapeKind.LINE).withAxis(Axis.X), p(0, 0, 0), p(5, 3, 9));
+    public void line() {
+        AreaMask m = build(spec(ShapeKind.LINE), p(0, 0, 0), p(5, 0, 0));
         assertEquals(6, m.count());
-        assertTrue(m.contains(5, 0, 0));
-        assertFalse(m.contains(5, 3, 9));
-    }
-
-    @Test
-    public void thickLineGrowsAcrossNotAlong() {
-        AreaMask m = build(spec(ShapeKind.LINE).withAxis(Axis.X).withThickness(3), p(0, 0, 0), p(5, 0, 0));
-        assertEquals(6 * 9, m.count());
-        assertEquals(6, m.sizeX);
-    }
-
-    @Test
-    public void freeDiagonalLine() {
-        AreaMask m = build(spec(ShapeKind.DIAGONAL_LINE), p(0, 0, 0), p(3, 3, 3));
-        assertEquals(4, m.count());
-        assertTrue(m.contains(2, 2, 2));
-    }
-
-    @Test
-    public void floorStaysAtTheFirstClick() {
-        AreaMask m = build(spec(ShapeKind.FLOOR), p(0, 0, 0), p(4, 7, 4));
-        assertEquals(25, m.count());
-        assertEquals(1, m.sizeY);
-        assertEquals(16, build(spec(ShapeKind.FLOOR).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 7, 4)).count());
-    }
-
-    @Test
-    public void straightWall() {
-        assertEquals(15, build(spec(ShapeKind.WALL).withAxis(Axis.X), p(0, 0, 0), p(4, 2, 0)).count());
-        assertEquals(30, build(spec(ShapeKind.WALL).withAxis(Axis.X).withThickness(2), p(0, 0, 0), p(4, 2, 0)).count());
-        // 5 wide, 3 high: top and bottom rows plus the two end cells of the middle row
-        assertEquals(12, build(spec(ShapeKind.WALL).withAxis(Axis.X).withFill(Fill.FRAME), p(0, 0, 0), p(4, 2, 0)).count());
-    }
-
-    @Test
-    public void diagonalWallRunsAtAnAngle() {
-        AreaMask m = build(spec(ShapeKind.DIAGONAL_WALL), p(0, 0, 0), p(3, 1, 3));
-        assertEquals(8, m.count());
-        assertTrue(m.contains(2, 1, 2));
-        assertFalse(m.contains(3, 0, 0));
-    }
-
-    @Test
-    public void straightWallSnapsToTheLongerSide() {
-        // aimed a bit off the X axis: the wall still runs straight along X, at the first click's z
-        AreaMask m = build(spec(ShapeKind.WALL), p(0, 0, 0), p(6, 0, 2), p(6, 3, 2));
-        assertEquals(7 * 4, m.count());
-        assertEquals(1, m.sizeZ);
-        assertTrue(m.contains(6, 3, 0));
-    }
-
-    @Test
-    public void wallThirdClickIsTheHeight() {
-        AreaMask m = build(spec(ShapeKind.WALL), p(0, 0, 0), p(0, 0, 4), p(9, 2, 9));
-        assertEquals(5 * 3, m.count());
-        assertEquals(1, m.sizeX);
-        assertEquals(3, m.sizeY);
-    }
-
-    @Test
-    public void autoLineFollowsTheLongestDirection() {
-        AreaMask up = build(spec(ShapeKind.LINE), p(0, 0, 0), p(1, 6, 2));
-        assertEquals(7, up.count());
-        assertEquals(1, up.sizeX);
-        assertTrue(up.contains(0, 6, 0));
-        AreaMask along = build(spec(ShapeKind.LINE), p(0, 0, 0), p(2, 1, -5));
-        assertEquals(6, along.count());
-        assertTrue(along.contains(0, 0, -5));
     }
 
     @Test
@@ -130,102 +72,124 @@ public class ShapeGeometryTest {
     }
 
     @Test
-    public void cuboidFills() {
-        BlockPos a = p(0, 0, 0);
-        BlockPos b = p(2, 2, 2);
-        assertEquals(27, build(spec(ShapeKind.CUBOID), a, b).count());
-        assertEquals(26, build(spec(ShapeKind.CUBOID).withFill(Fill.HOLLOW), a, b).count());
-        assertEquals(24, build(spec(ShapeKind.CUBOID).withFill(Fill.WALLS), a, b).count());
-        assertEquals(20, build(spec(ShapeKind.CUBOID).withFill(Fill.FRAME), a, b).count());
+    public void wallAndFloor() {
+        assertEquals(15, build(spec(ShapeKind.WALL), p(0, 0, 0), p(4, 2, 0)).count());
+        // 5 wide, 3 high: top and bottom rows plus the two end cells of the middle row
+        assertEquals(12, build(spec(ShapeKind.WALL).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 2, 0)).count());
+        assertEquals(25, build(spec(ShapeKind.FLOOR), p(0, 0, 0), p(4, 0, 4)).count());
+        assertEquals(16, build(spec(ShapeKind.FLOOR).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 0, 4)).count());
     }
 
     @Test
-    public void cuboidThirdClickIsTheHeight() {
-        AreaMask m = build(spec(ShapeKind.CUBOID), p(0, 0, 0), p(2, 0, 2), p(5, 4, 5));
-        assertEquals(45, m.count());
-        assertEquals(3, m.sizeX);
-        assertEquals(5, m.sizeY);
+    public void cubeIsAFaceThenPulledOut() {
+        // after two clicks: the face
+        assertEquals(9, build(spec(ShapeKind.CUBE), p(0, 0, 0), p(2, 0, 2)).count());
+        BlockPos a = p(0, 0, 0), b = p(2, 0, 2), c = p(2, 2, 2);
+        assertEquals(27, build(spec(ShapeKind.CUBE), a, b, c).count());
+        assertEquals(26, build(spec(ShapeKind.CUBE).withFill(Fill.HOLLOW), a, b, c).count());
+        assertEquals(20, build(spec(ShapeKind.CUBE).withFill(Fill.SKELETON), a, b, c).count());
     }
 
     @Test
-    public void circle() {
-        AreaMask m = build(spec(ShapeKind.CIRCLE), p(0, 0, 0), p(2, 0, 0));
-        assertEquals(21, m.count());
-        assertEquals(1, m.sizeY);
-        AreaMask upright = build(spec(ShapeKind.CIRCLE).withAxis(Axis.Z), p(0, 0, 0), p(2, 0, 0));
-        assertEquals(21, upright.count());
-        assertEquals(1, upright.sizeZ);
+    public void circleFromACornerAndFromTheMiddle() {
+        // corner: fits between the clicks, a 5x5 box
+        AreaMask corner = build(spec(ShapeKind.CIRCLE), p(0, 0, 0), p(4, 0, 4));
+        assertEquals(1, corner.sizeY);
+        assertEquals(5, corner.sizeX);
+        assertTrue(corner.contains(2, 0, 2));
+        assertFalse(corner.contains(0, 0, 0));
+        // middle: the first click is the centre, the same circle around it
+        AreaMask middle = build(spec(ShapeKind.CIRCLE).withCentered(true), p(2, 0, 2), p(4, 0, 4));
+        assertEquals(corner.count(), middle.count());
+        assertTrue(middle.contains(0, 0, 2));
+        AreaMask ring = build(spec(ShapeKind.CIRCLE).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 0, 4));
+        assertTrue(ring.count() < corner.count());
+        assertFalse(ring.contains(2, 0, 2));
+        // upright: on the plane the clicks share
+        AreaMask wall = build(spec(ShapeKind.CIRCLE), p(0, 0, 0), p(4, 4, 0));
+        assertEquals(1, wall.sizeZ);
+        assertEquals(corner.count(), wall.count());
     }
 
     @Test
-    public void cylinder() {
-        BlockPos c = p(0, 0, 0);
-        BlockPos rim = p(2, 4, 0);
-        assertEquals(105, build(spec(ShapeKind.CYLINDER), c, rim).count());
-        assertEquals(60, build(spec(ShapeKind.CYLINDER).withFill(Fill.WALLS), c, rim).count());
-        assertEquals(78, build(spec(ShapeKind.CYLINDER).withFill(Fill.HOLLOW), c, rim).count());
+    public void cylinderStacksTheCircle() {
+        AreaMask disc = build(spec(ShapeKind.CIRCLE), p(0, 0, 0), p(4, 0, 4));
+        AreaMask can = build(spec(ShapeKind.CYLINDER), p(0, 0, 0), p(4, 0, 4), p(4, 3, 4));
+        assertEquals(disc.count() * 4, can.count());
     }
 
     @Test
-    public void sphere() {
-        BlockPos c = p(0, 0, 0);
-        BlockPos rim = p(2, 0, 0);
-        assertEquals(81, build(spec(ShapeKind.SPHERE), c, rim).count());
-        assertEquals(51, build(spec(ShapeKind.SPHERE).withHalf(true), c, rim).count());
-        assertEquals(62, build(spec(ShapeKind.SPHERE).withFill(Fill.HOLLOW), c, rim).count());
+    public void sphereFitsTheBox() {
+        AreaMask ball = build(spec(ShapeKind.SPHERE), p(0, 0, 0), p(4, 0, 4), p(4, 4, 4));
+        assertEquals(5, ball.sizeY);
+        assertTrue(ball.contains(2, 2, 2));
+        assertFalse(ball.contains(0, 0, 0));
+        AreaMask shell = build(spec(ShapeKind.SPHERE).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 0, 4), p(4, 4, 4));
+        assertFalse(shell.contains(2, 2, 2));
+        assertTrue(shell.count() < ball.count());
     }
 
     @Test
-    public void stairs() {
-        assertEquals(5, build(spec(ShapeKind.STAIRS).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 4, 0)).count());
-        assertEquals(15, build(spec(ShapeKind.STAIRS), p(0, 0, 0), p(4, 4, 0)).count());
-        assertEquals(45, build(spec(ShapeKind.STAIRS), p(0, 0, 0), p(4, 4, 2)).count());
+    public void domeIsTheTopHalf() {
+        AreaMask dome = build(spec(ShapeKind.DOME).withCentered(true), p(0, 0, 0), p(3, 0, 0), p(3, 3, 0));
+        assertEquals(4, dome.sizeY);
+        assertEquals(0, dome.minY);
+        assertTrue(dome.contains(0, 3, 0));
+        assertTrue(dome.contains(-3, 0, 0));
     }
 
     @Test
-    public void steepStairsHaveNoGaps() {
-        AreaMask m = build(spec(ShapeKind.STAIRS).withFill(Fill.HOLLOW), p(0, 0, 0), p(2, 6, 0));
-        for (int y = 0; y <= 6; y++) {
-            int at = y;
-            boolean any = false;
-            for (int x = 0; x <= 2; x++) {
-                any |= m.contains(x, at, 0);
-            }
-            assertTrue("gap at y " + y, any);
-        }
+    public void diagonalWallRaisesTheDiagonal() {
+        AreaMask m = build(spec(ShapeKind.DIAGONAL_WALL), p(0, 0, 0), p(3, 0, 3), p(3, 2, 3));
+        assertEquals(4 * 3, m.count());
+        assertTrue(m.contains(2, 2, 2));
+        assertFalse(m.contains(3, 0, 0));
     }
 
     @Test
-    public void pyramid() {
-        assertEquals(35, build(spec(ShapeKind.PYRAMID), p(0, 0, 0), p(4, 0, 4)).count());
-        assertEquals(25, build(spec(ShapeKind.PYRAMID).withFill(Fill.HOLLOW), p(0, 0, 0), p(4, 0, 4)).count());
+    public void slopeFloorClimbsTheLongWayByDefault() {
+        // 5 along x, 3 along z: the short edges stay level, the slope climbs along x
+        AreaMask m = build(spec(ShapeKind.SLOPE_FLOOR), p(0, 0, 0), p(4, 0, 2), p(4, 4, 2));
+        assertEquals(5 * 3, m.count());
+        assertTrue(m.contains(0, 0, 1));
+        assertTrue(m.contains(4, 4, 1));
+        // the long edge raised instead: it climbs along z
+        AreaMask l = build(spec(ShapeKind.SLOPE_FLOOR).withLongEdge(true), p(0, 0, 0), p(4, 0, 2), p(4, 2, 2));
+        assertTrue(l.contains(4, 2, 2));
+        assertTrue(l.contains(4, 0, 0));
     }
 
     @Test
-    public void roofRidgeRunsAlongTheLongSide() {
-        AreaMask m = build(spec(ShapeKind.ROOF), p(0, 0, 0), p(6, 0, 4));
-        assertEquals(63, m.count());
-        assertEquals(3, m.sizeY);
-        assertTrue(m.contains(0, 2, 2));
-        assertFalse(m.contains(0, 2, 1));
-        assertEquals(43, build(spec(ShapeKind.ROOF).withFill(Fill.HOLLOW), p(0, 0, 0), p(6, 0, 4)).count());
+    public void pyramidShrinksAWholeBlockALayer() {
+        AreaMask m = build(spec(ShapeKind.PYRAMID), p(0, 0, 0), p(4, 0, 4), p(4, 2, 4));
+        // Effortless Structure's steps: 5x5, 3x3, the point
+        assertEquals(25 + 9 + 1, m.count());
+        assertTrue(m.contains(2, 2, 2));
+    }
+
+    @Test
+    public void coneIsRoundLayers() {
+        AreaMask m = build(spec(ShapeKind.CONE), p(0, 0, 0), p(4, 0, 4), p(4, 2, 4));
+        assertTrue(m.contains(2, 2, 2));
+        assertFalse(m.contains(0, 0, 0));
+        assertTrue(m.count() < 35);
     }
 
     @Test
     public void cornersInAnyOrder() {
-        assertEquals(build(spec(ShapeKind.CUBOID), p(0, 0, 0), p(3, 2, 1)).count(),
-                build(spec(ShapeKind.CUBOID), p(3, 2, 1), p(0, 0, 0)).count());
+        assertEquals(build(spec(ShapeKind.CUBE), p(0, 0, 0), p(3, 0, 1), p(3, 2, 1)).count(),
+                build(spec(ShapeKind.CUBE), p(3, 2, 1), p(0, 2, 0), p(0, 0, 0)).count());
     }
 
     @Test(expected = ShapeGeometry.TooBig.class)
     public void hugeBoxIsRefused() {
-        build(spec(ShapeKind.CUBOID), p(0, 0, 0), p(1000, 300, 1000));
+        build(spec(ShapeKind.CUBE), p(0, 0, 0), p(1000, 0, 1000), p(1000, 300, 1000));
     }
 
     @Test
     public void unionCoversBoth() {
-        AreaMask a = build(spec(ShapeKind.CUBOID), p(0, 0, 0), p(1, 1, 1));
-        AreaMask b = build(spec(ShapeKind.CUBOID), p(5, 0, 0), p(5, 0, 0));
+        AreaMask a = build(spec(ShapeKind.CUBE), p(0, 0, 0), p(1, 0, 1), p(1, 1, 1));
+        AreaMask b = build(spec(ShapeKind.SINGLE), p(5, 0, 0));
         AreaMask u = AreaMask.union(List.of(a, b));
         assertEquals(9, u.count());
         assertTrue(u.contains(5, 0, 0));

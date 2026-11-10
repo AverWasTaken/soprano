@@ -17,163 +17,296 @@
 
 package baritone.effortless;
 
-import baritone.effortless.ShapeSpec.Axis;
 import net.minecraft.core.BlockPos;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
-// where the next corner goes when you look somewhere, after the first one is down. the first corner is the block you
-// click on, the rest follow your look along the shape's own plane, so a floor's far corner can be thirty blocks off
-// across a valley and a wall's top is wherever you look up to on the wall. plain arithmetic on the eye and the look
+// where the next corner goes when you look somewhere, after the first one is down: Effortless Structure's tracing,
+// ported as it is because it feels right in the hand. the first corner is the block you click. the second follows your
+// look across a plane through it: the floor, a wall, or for "both" whichever of the three your look crosses nearest
+// you. the third runs along one line out of that plane from the second corner. plain arithmetic on the eye and the look
 // direction, the tests feed it numbers
 public final class ClickAim {
 
-    // how far a corner can follow your look along a plane
-    public static final double MAX_DISTANCE = 64;
+    // how far a corner can follow your look. Effortless Structure doesn't cap it below its 1024
+    public static final double MAX_DISTANCE = 256;
+
+    // a look straight along an axis (or with a component of exactly 0) would divide by zero
+    static final double LOOK_TOLERANCE = 0.01;
+
+    enum Axis {
+        X, Y, Z
+    }
 
     private ClickAim() {
     }
 
     // eye and dir are the camera, dir need not be normalised. points are the corners set so far (at least one).
-    // empty when the shape has no plane for this corner, or you're looking away from it: the caller falls back to the
-    // block under the crosshair
+    // empty when this corner goes under the crosshair (the first one, a diagonal line's end) or the look can't reach a
+    // plane: the caller falls back to the block under the crosshair
     public static Optional<BlockPos> next(ShapeSpec spec, List<BlockPos> points, double ex, double ey, double ez,
                                           double dx, double dy, double dz) {
         if (points.isEmpty()) {
             return Optional.empty();
         }
-        BlockPos a = points.get(0);
+        Look look = Look.of(ex, ey, ez, dx, dy, dz);
         ShapeKind kind = spec.kind();
-        if (points.size() == 2) {
-            // the height click: straight up or down from the second corner, where your look crosses it
-            return height(points.get(1), ex, ey, ez, dx, dy, dz);
+        BlockPos a = points.get(0);
+        if (points.size() == 1) {
+            return Optional.ofNullable(switch (kind.second) {
+                case LINE -> traceLine(look, a, lineAxes(spec.direction()));
+                case WALL -> uniform(a, traceWall(look, a), spec.equal());
+                case FLOOR -> uniform(a, traceSquare(look, a, EnumSet.of(Axis.Y)), spec.equal());
+                case SQUARE -> uniform(a, traceSquare(look, a, facingAxes(spec.facing())), spec.equal());
+                case NONE, CROSSHAIR -> null;
+            });
         }
-        return switch (kind) {
-            case FLOOR, CUBOID, PYRAMID, ROOF, SPHERE, STAIRS -> flat(a, ex, ey, ez, dx, dy, dz);
-            case CIRCLE, CYLINDER -> spec.axis() == Axis.Y || spec.axis() == Axis.FREE ? flat(a, ex, ey, ez, dx, dy, dz)
-                    : upright(a, spec.axis() == Axis.X ? Axis.Z : Axis.X, ex, ey, ez, dx, dy, dz);
-            // a wall's second corner is where it ends on the ground, the height is the third click
-            case WALL, DIAGONAL_WALL -> flat(a, ex, ey, ez, dx, dy, dz);
-            case LINE -> spec.axis() == Axis.FREE ? nearestAxis(a, ex, ey, ez, dx, dy, dz) : onAxis(a, spec.axis(), ex, ey, ez, dx, dy, dz);
-            // a diagonal goes wherever the crosshair is
-            case DIAGONAL_LINE, SINGLE -> Optional.empty();
+        BlockPos b = points.get(1);
+        if (points.size() == 2) {
+            return Optional.ofNullable(switch (kind.third) {
+                case UP -> traceLine(look, b, EnumSet.of(Axis.Y));
+                case OUT_OF_PLANE -> traceLine(look, b, outOfPlane(a, b));
+                case NONE -> null;
+            });
+        }
+        return Optional.empty();
+    }
+
+    static Set<Axis> lineAxes(ShapeSpec.Direction d) {
+        return switch (d) {
+            case ALL -> EnumSet.allOf(Axis.class);
+            case FLOOR -> EnumSet.of(Axis.X, Axis.Z);
+            case X -> EnumSet.of(Axis.X);
+            case Y -> EnumSet.of(Axis.Y);
+            case Z -> EnumSet.of(Axis.Z);
         };
     }
 
-    // across the first corner's layer
-    static Optional<BlockPos> flat(BlockPos a, double ex, double ey, double ez, double dx, double dy, double dz) {
-        double t = plane(ey, dy, a.getY() + 0.5);
-        return at(t, ex, ey, ez, dx, dy, dz);
+    static Set<Axis> facingAxes(ShapeSpec.Facing f) {
+        return switch (f) {
+            case BOTH -> EnumSet.allOf(Axis.class);
+            case VERTICAL -> EnumSet.of(Axis.X, Axis.Z);
+            case HORIZONTAL -> EnumSet.of(Axis.Y);
+        };
     }
 
-    // on an upright plane through the first corner: the one along X (z fixed) or along Z (x fixed)
-    static Optional<BlockPos> upright(BlockPos a, Axis along, double ex, double ey, double ez, double dx, double dy, double dz) {
-        double t = along == Axis.X ? plane(ez, dz, a.getZ() + 0.5) : plane(ex, dx, a.getX() + 0.5);
-        return at(t, ex, ey, ez, dx, dy, dz);
-    }
-
-    // a straight line on auto: of the three axis lines through the first corner, the one your look passes closest to.
-    // look up the column and it's a Y line, along the ground and it's X or Z
-    static Optional<BlockPos> nearestAxis(BlockPos a, double ex, double ey, double ez, double dx, double dy, double dz) {
-        // standing on (or right beside) the first corner, every axis line runs through your eye and "closest" means
-        // nothing: then it's the way you look the most, as far out as you look along it
-        double ax = a.getX() + 0.5, ay = a.getY() + 0.5, az = a.getZ() + 0.5;
-        double ox = ax - ex, oy = ay - ey, oz = az - ez;
-        if (ox * ox + oy * oy + oz * oz < 2.5 * 2.5) {
-            return Optional.of(alongLook(a, dx, dy, dz));
+    // the line the third corner runs along: the axis the first two corners share. corners that only made a line (or
+    // the same block) leave more than one way out, the look picks
+    static Set<Axis> outOfPlane(BlockPos a, BlockPos b) {
+        EnumSet<Axis> out = EnumSet.noneOf(Axis.class);
+        if (a.getX() == b.getX()) {
+            out.add(Axis.X);
         }
-        Optional<BlockPos> best = Optional.empty();
+        if (a.getY() == b.getY()) {
+            out.add(Axis.Y);
+        }
+        if (a.getZ() == b.getZ()) {
+            out.add(Axis.Z);
+        }
+        return out.isEmpty() ? EnumSet.allOf(Axis.class) : out;
+    }
+
+    // ----- the look
+
+    // the eye, and the look direction nudged off exact zeros and ones and normalised, like Effortless Structure does
+    record Look(double ex, double ey, double ez, double lx, double ly, double lz) {
+
+        static Look of(double ex, double ey, double ez, double dx, double dy, double dz) {
+            double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            double x = nudge(dx / len), y = nudge(dy / len), z = nudge(dz / len);
+            double l = Math.sqrt(x * x + y * y + z * z);
+            return new Look(ex, ey, ez, x / l, y / l, z / l);
+        }
+
+        private static double nudge(double v) {
+            if (Math.abs(v) < LOOK_TOLERANCE) {
+                return LOOK_TOLERANCE;
+            }
+            if (Math.abs(v - 1) < LOOK_TOLERANCE) {
+                return 1 - LOOK_TOLERANCE;
+            }
+            if (Math.abs(v + 1) < LOOK_TOLERANCE) {
+                return LOOK_TOLERANCE - 1;
+            }
+            return v;
+        }
+
+        double eye(Axis a) {
+            return a == Axis.X ? ex : a == Axis.Y ? ey : ez;
+        }
+
+        double dir(Axis a) {
+            return a == Axis.X ? lx : a == Axis.Y ? ly : lz;
+        }
+    }
+
+    // one plane through the start block, facing along the axis: where the look crosses it, and the bits the choices
+    // are made on
+    static final class Criteria {
+        final Axis axis;
+        final double[] centre;
+        final double[] start;
+        final double[] plane;
+        final Look look;
+
+        Criteria(Look look, BlockPos at, Axis axis) {
+            this.look = look;
+            this.axis = axis;
+            this.centre = new double[]{at.getX() + 0.5, at.getY() + 0.5, at.getZ() + 0.5};
+            // the start block's face on each axis that's towards the eye (or the way you look, stood inside it): you
+            // see faces, the plane goes through the one you see
+            this.start = new double[3];
+            for (Axis a : Axis.values()) {
+                start[a.ordinal()] = Math.round(snap(centre[a.ordinal()], look.eye(a), look.dir(a)));
+            }
+            int i = axis.ordinal();
+            double t = (start[i] - look.eye(axis)) / look.dir(axis);
+            this.plane = new double[]{look.ex() + t * look.lx(), look.ey() + t * look.ly(), look.ez() + t * look.lz()};
+            plane[i] = start[i];
+        }
+
+        private static double snap(double start, double eye, double look) {
+            if (eye >= start + 0.5) {
+                return start + 0.5;
+            }
+            if (eye <= start - 0.5) {
+                return start - 0.5;
+            }
+            if (look > 0) {
+                return start + 0.5;
+            }
+            if (look < 0) {
+                return start - 0.5;
+            }
+            return start;
+        }
+
+        double toEyeSqr() {
+            double x = plane[0] - look.ex(), y = plane[1] - look.ey(), z = plane[2] - look.ez();
+            return x * x + y * y + z * z;
+        }
+
+        // in front of you and in reach
+        boolean inRange() {
+            double x = plane[0] - look.ex(), y = plane[1] - look.ey(), z = plane[2] - look.ez();
+            double d = toEyeSqr();
+            return x * look.lx() + y * look.ly() + z * look.lz() > 0 && d > 0 && d < MAX_DISTANCE * MAX_DISTANCE;
+        }
+
+        // the block on the plane: the crossing put back on the start block's own layer
+        BlockPos onPlane() {
+            double[] p = plane.clone();
+            p[axis.ordinal()] = centre[axis.ordinal()];
+            return BlockPos.containing(p[0], p[1], p[2]);
+        }
+
+        // from the start, the crossing moved onto the axis line it's furthest along of the allowed ones
+        double[] lineVec(Set<Axis> allowed) {
+            Axis best = null;
+            double longest = -1;
+            for (Axis a : Axis.values()) {
+                if (!allowed.contains(a)) {
+                    continue;
+                }
+                double s = Math.abs(plane[a.ordinal()] - centre[a.ordinal()]);
+                if (s > longest) {
+                    longest = s;
+                    best = a;
+                }
+            }
+            double[] v = centre.clone();
+            if (best != null) {
+                v[best.ordinal()] = plane[best.ordinal()];
+            }
+            return v;
+        }
+
+        double toLineSqr(Set<Axis> allowed) {
+            double[] l = lineVec(allowed);
+            double x = plane[0] - l[0], y = plane[1] - l[1], z = plane[2] - l[2];
+            return x * x + y * y + z * z;
+        }
+
+        // how squarely you look at a wall: the wall's run from the start weighted by the look, along the ground
+        double wallAngle() {
+            double wx = plane[0] - start[0], wz = plane[2] - start[2];
+            return Math.abs(wx * look.lx()) + Math.abs(wz * look.lz());
+        }
+    }
+
+    // a line from the start along one of the allowed axes: of the three planes through it, the crossing that's
+    // nearest its own axis line wins, and the corner is that line's point
+    static BlockPos traceLine(Look look, BlockPos at, Set<Axis> allowed) {
+        Criteria best = null;
         double bestGap = Double.MAX_VALUE;
-        for (Axis axis : new Axis[]{Axis.X, Axis.Y, Axis.Z}) {
-            Optional<BlockPos> p = onAxis(a, axis, ex, ey, ez, dx, dy, dz);
-            if (p.isEmpty()) {
+        for (Axis a : Axis.values()) {
+            Criteria c = new Criteria(look, at, a);
+            if (!c.inRange()) {
                 continue;
             }
-            double gap = rayGap(p.get(), ex, ey, ez, dx, dy, dz);
+            double gap = c.toLineSqr(allowed);
             if (gap < bestGap) {
                 bestGap = gap;
-                best = p;
+                best = c;
             }
         }
-        return best;
+        if (best == null) {
+            return null;
+        }
+        double[] v = best.lineVec(allowed);
+        return BlockPos.containing(v[0], v[1], v[2]);
     }
 
-    // how many blocks a line from your feet runs when you look along it: the reach, scaled by how squarely you look
-    static final double ALONG_REACH = 8;
-
-    static BlockPos alongLook(BlockPos a, double dx, double dy, double dz) {
-        double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        double nx = dx / len, ny = dy / len, nz = dz / len;
-        if (Math.abs(ny) >= Math.abs(nx) && Math.abs(ny) >= Math.abs(nz)) {
-            return a.offset(0, (int) Math.round(ny * ALONG_REACH), 0);
+    // a corner on one of the allowed planes: the one your look crosses nearest your eye
+    static BlockPos traceSquare(Look look, BlockPos at, Set<Axis> axes) {
+        Criteria best = null;
+        for (Axis a : axes) {
+            Criteria c = new Criteria(look, at, a);
+            if (c.inRange() && (best == null || c.toEyeSqr() < best.toEyeSqr())) {
+                best = c;
+            }
         }
-        if (Math.abs(nx) >= Math.abs(nz)) {
-            return a.offset((int) Math.round(nx * ALONG_REACH), 0, 0);
-        }
-        return a.offset(0, 0, (int) Math.round(nz * ALONG_REACH));
+        return best == null ? null : best.onPlane();
     }
 
-    // how far the cell's centre is from the look ray
-    static double rayGap(BlockPos p, double ex, double ey, double ez, double dx, double dy, double dz) {
-        double px = p.getX() + 0.5 - ex, py = p.getY() + 0.5 - ey, pz = p.getZ() + 0.5 - ez;
-        double dd = dx * dx + dy * dy + dz * dz;
-        double t = Math.max(0, (px * dx + py * dy + pz * dz) / dd);
-        double qx = px - t * dx, qy = py - t * dy, qz = pz - t * dz;
-        return Math.sqrt(qx * qx + qy * qy + qz * qz);
+    // a corner on an upright plane: of the two, the one you look at most squarely
+    static BlockPos traceWall(Look look, BlockPos at) {
+        Criteria best = null;
+        for (Axis a : new Axis[]{Axis.X, Axis.Z}) {
+            Criteria c = new Criteria(look, at, a);
+            if (c.inRange() && (best == null || c.wallAngle() < best.wallAngle())) {
+                best = c;
+            }
+        }
+        return best == null ? null : best.onPlane();
     }
 
-    // a line locked to an axis: the point on the axis line nearest your look
-    static Optional<BlockPos> onAxis(BlockPos a, Axis axis, double ex, double ey, double ez, double dx, double dy, double dz) {
-        double ax = a.getX() + 0.5, ay = a.getY() + 0.5, az = a.getZ() + 0.5;
-        double ux = axis == Axis.X ? 1 : 0, uy = axis == Axis.Y ? 1 : 0, uz = axis == Axis.Z ? 1 : 0;
-        // closest points between the line a + s*u and the ray e + t*d
-        double wx = ax - ex, wy = ay - ey, wz = az - ez;
-        double b = ux * dx + uy * dy + uz * dz;
-        double dd = dx * dx + dy * dy + dz * dz;
-        double denom = dd - b * b;
-        if (Math.abs(denom) < 1e-9) {
-            return Optional.empty();
+    // equal lengths: the two sides of the rectangle made as long as the longer one, each keeping its direction
+    static BlockPos uniform(BlockPos a, BlockPos b, boolean equal) {
+        if (b == null || !equal) {
+            return b;
         }
-        double d1 = ux * wx + uy * wy + uz * wz;
-        double d2 = dx * wx + dy * wy + dz * wz;
-        double s = (b * d2 - dd * d1) / denom;
-        if (Math.abs(s) > MAX_DISTANCE) {
-            return Optional.empty();
+        int dx = b.getX() - a.getX(), dy = b.getY() - a.getY(), dz = b.getZ() - a.getZ();
+        int zeros = (dx == 0 ? 1 : 0) + (dy == 0 ? 1 : 0) + (dz == 0 ? 1 : 0);
+        if (zeros != 1) {
+            return b;
         }
-        return Optional.of(BlockPos.containing(ax + s * ux, ay + s * uy, az + s * uz));
+        if (dx == 0) {
+            int m = Math.max(Math.abs(dy), Math.abs(dz));
+            return a.offset(0, sign(dy) * m, sign(dz) * m);
+        }
+        if (dy == 0) {
+            int m = Math.max(Math.abs(dx), Math.abs(dz));
+            return a.offset(sign(dx) * m, 0, sign(dz) * m);
+        }
+        int m = Math.max(Math.abs(dx), Math.abs(dy));
+        return a.offset(sign(dx) * m, sign(dy) * m, 0);
     }
 
-    // straight up or down from b: where the look crosses the upright plane through b facing you
-    static Optional<BlockPos> height(BlockPos b, double ex, double ey, double ez, double dx, double dy, double dz) {
-        double t = Math.abs(dx) >= Math.abs(dz) ? plane(ex, dx, b.getX() + 0.5) : plane(ez, dz, b.getZ() + 0.5);
-        if (Double.isNaN(t)) {
-            return Optional.empty();
-        }
-        double y = ey + t * dy;
-        if (Math.abs(y - b.getY()) > MAX_DISTANCE) {
-            return Optional.empty();
-        }
-        return Optional.of(new BlockPos(b.getX(), (int) Math.floor(y), b.getZ()));
-    }
-
-    // t where e + t*d crosses the plane coordinate = c, NaN when it never does in front of you or too far out
-    static double plane(double e, double d, double c) {
-        if (Math.abs(d) < 1e-9) {
-            return Double.NaN;
-        }
-        double t = (c - e) / d;
-        return t > 0 ? t : Double.NaN;
-    }
-
-    private static Optional<BlockPos> at(double t, double ex, double ey, double ez, double dx, double dy, double dz) {
-        if (Double.isNaN(t)) {
-            return Optional.empty();
-        }
-        double len = Math.sqrt(dx * dx + dy * dy + dz * dz) * t;
-        if (len > MAX_DISTANCE) {
-            return Optional.empty();
-        }
-        return Optional.of(BlockPos.containing(ex + t * dx, ey + t * dy, ez + t * dz));
+    private static int sign(int v) {
+        return v < 0 ? -1 : 1;
     }
 }

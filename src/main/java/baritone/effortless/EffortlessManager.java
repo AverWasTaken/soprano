@@ -50,7 +50,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private static final double GROW = 0.002;
 
     private final Baritone baritone;
-    private ShapeSpec spec = ShapeSpec.of(ShapeKind.CUBOID);
+    private ShapeSpec spec = ShapeSpec.of(ShapeKind.CUBE);
     private final List<BlockPos> points = new ArrayList<>();
     // the last shape drawn, so the outline only rebuilds the mask when the clicks or the crosshair move
     private List<BlockPos> previewKey;
@@ -140,7 +140,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 return out;
             }
         }
-        if (!out.isEmpty() && out.size() < spec.kind().clicks(Baritone.settings().effortlessThreeClickHeight.value) && look.isPresent()) {
+        if (!out.isEmpty() && out.size() < spec.kind().clicks(spec) && look.isPresent()) {
             out.add(look.get());
         }
         return out;

@@ -509,9 +509,15 @@ public final class Icons {
                 poly(g, true, 12, 3.5f, 21, 19.5f, 3, 19.5f);
                 line(g, 12, 3.5f, 14.5f, 19.5f);
             }
-            case SHAPE_ROOF -> {
-                poly(g, false, 2.5f, 13, 12, 4.5f, 21.5f, 13);
-                poly(g, false, 6, 10, 6, 20, 18, 20, 18, 10);
+            case SHAPE_CONE -> {
+                line(g, 12, 3.5f, 3.5f, 18);
+                line(g, 12, 3.5f, 20.5f, 18);
+                g.draw(new Arc2D.Float(3.5f, 15, 17, 6, 180, 180, Arc2D.OPEN));
+            }
+            case SHAPE_DOME -> {
+                g.draw(new Arc2D.Float(3.5f, 5.5f, 17, 26, 0, 180, Arc2D.OPEN));
+                line(g, 2.5f, 18.5f, 21.5f, 18.5f);
+                g.draw(new Arc2D.Float(3.5f, 15.5f, 17, 6, 180, 180, Arc2D.OPEN));
             }
             case IF -> {
                 Path2D.Float up = new Path2D.Float();

@@ -44,18 +44,21 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-// Effortless Soprano's radial: hold the key, flick to a shape and let go to build with it, or tap the key and click
-// around (shapes and their options) with it open, then esc or the key again. the hub is none, build mode off. nothing
-// pauses, the world keeps going behind it
+// Effortless Soprano's radial: the shapes on a ring, what you build with on the left, the picked shape's options on the
+// right. with effortlessRadialHold it's up while the key is held and letting go picks what's under the pointer; without,
+// a press opens it, clicks pick and set, and the key again (or esc) closes it. the hub is none, build mode off.
+// nothing pauses, the world keeps going behind it
 public final class EffortlessRadialScreen extends Screen {
 
-    // let go sooner than this after opening and it was a tap: the menu stays up for clicking
+    // in hold mode, let go sooner than this after opening and it was a tap: the menu stays up for clicking anyway
     private static final long TAP_NANOS = 250_000_000L;
 
+    // Effortless Structure's order round the ring: one block, the straight ones, the diagonal ones, the round ones,
+    // the pointed ones
     public static final ShapeKind[] SHAPES = {
-            ShapeKind.SINGLE, ShapeKind.LINE, ShapeKind.DIAGONAL_LINE, ShapeKind.WALL, ShapeKind.DIAGONAL_WALL,
-            ShapeKind.FLOOR, ShapeKind.CUBOID, ShapeKind.STAIRS, ShapeKind.ROOF, ShapeKind.PYRAMID, ShapeKind.SPHERE,
-            ShapeKind.CYLINDER, ShapeKind.CIRCLE
+            ShapeKind.SINGLE, ShapeKind.LINE, ShapeKind.WALL, ShapeKind.FLOOR, ShapeKind.CUBE, ShapeKind.DIAGONAL_LINE,
+            ShapeKind.DIAGONAL_WALL, ShapeKind.SLOPE_FLOOR, ShapeKind.CIRCLE, ShapeKind.CYLINDER, ShapeKind.SPHERE,
+            ShapeKind.DOME, ShapeKind.PYRAMID, ShapeKind.CONE
     };
 
     private final Minecraft mc = Minecraft.getInstance();
@@ -89,72 +92,22 @@ public final class EffortlessRadialScreen extends Screen {
         return ((Baritone) BaritoneAPI.getProvider().getPrimaryBaritone()).getEffortlessManager();
     }
 
-    // the wedge's drawing: the shape itself, built from a few sample corners and drawn as white isometric blocks, so the
-    // icon is exactly what the shape makes. null when it can't be drawn (the flat glyph stands in)
-    public static adris.altoclef.ui.gui.kit.PixelImage picture(ShapeKind k, int size) {
-        try {
-            List<net.minecraft.core.BlockPos> pts = samplePoints(k);
-            baritone.effortless.AreaMask m = baritone.effortless.ShapeGeometry.build(ShapeSpec.of(k), pts);
-            List<Integer> cells = new ArrayList<>();
-            m.forEach((x, y, z) -> {
-                cells.add(x - m.minX);
-                cells.add(y - m.minY);
-                cells.add(z - m.minZ);
-            });
-            int[] xyz = cells.stream().mapToInt(Integer::intValue).toArray();
-            int[] rgb = new int[xyz.length / 3];
-            java.util.Arrays.fill(rgb, 0xECECEC);
-            return adris.altoclef.ui.gui.kit.ShapeThumb.render(xyz, rgb, m.sizeX, m.sizeY, m.sizeZ, size, size, 4.5f);
-        } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    private static List<net.minecraft.core.BlockPos> samplePoints(ShapeKind k) {
-        net.minecraft.core.BlockPos zero = net.minecraft.core.BlockPos.ZERO;
-        return switch (k) {
-            case SINGLE -> List.of(zero);
-            case LINE -> List.of(zero, new net.minecraft.core.BlockPos(5, 0, 0));
-            // not along (1,1,1): the isometric camera looks straight down that diagonal and it would be one dot
-            case DIAGONAL_LINE -> List.of(zero, new net.minecraft.core.BlockPos(5, 4, 0));
-            case WALL -> List.of(zero, new net.minecraft.core.BlockPos(4, 0, 0), new net.minecraft.core.BlockPos(4, 3, 0));
-            case DIAGONAL_WALL -> List.of(zero, new net.minecraft.core.BlockPos(5, 0, 2), new net.minecraft.core.BlockPos(5, 3, 2));
-            case FLOOR -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 3));
-            case CUBOID -> List.of(zero, new net.minecraft.core.BlockPos(2, 0, 2), new net.minecraft.core.BlockPos(2, 2, 2));
-            case CIRCLE -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 0));
-            case CYLINDER -> List.of(zero, new net.minecraft.core.BlockPos(2, 0, 0), new net.minecraft.core.BlockPos(2, 4, 0));
-            case SPHERE -> List.of(zero, new net.minecraft.core.BlockPos(3, 0, 0));
-            case STAIRS -> List.of(zero, new net.minecraft.core.BlockPos(4, 4, 1));
-            case PYRAMID -> List.of(zero, new net.minecraft.core.BlockPos(6, 0, 6));
-            case ROOF -> List.of(zero, new net.minecraft.core.BlockPos(6, 0, 4));
-        };
-    }
-
-    // the coloured arc a wedge sits on: lines, walls and floors, solids, round things
-    public static int group(ShapeKind k) {
-        return switch (k) {
-            case SINGLE, LINE, DIAGONAL_LINE -> 1;
-            case WALL, DIAGONAL_WALL, FLOOR -> 2;
-            case CUBOID, STAIRS, ROOF, PYRAMID -> 3;
-            case CIRCLE, CYLINDER, SPHERE -> 4;
-        };
-    }
-
-    static Icon icon(ShapeKind k) {
+    public static Icon icon(ShapeKind k) {
         return switch (k) {
             case SINGLE -> Icon.SHAPE_SINGLE;
             case LINE -> Icon.SHAPE_LINE;
+            case WALL -> Icon.SHAPE_WALL;
+            case FLOOR -> Icon.SHAPE_FLOOR;
+            case CUBE -> Icon.SHAPE_CUBOID;
             case DIAGONAL_LINE -> Icon.SHAPE_DIAG_LINE;
             case DIAGONAL_WALL -> Icon.SHAPE_DIAG_WALL;
-            case FLOOR -> Icon.SHAPE_FLOOR;
-            case WALL -> Icon.SHAPE_WALL;
-            case CUBOID -> Icon.SHAPE_CUBOID;
+            case SLOPE_FLOOR -> Icon.SHAPE_STAIRS;
             case CIRCLE -> Icon.SHAPE_CIRCLE;
             case CYLINDER -> Icon.SHAPE_CYLINDER;
             case SPHERE -> Icon.SHAPE_SPHERE;
-            case STAIRS -> Icon.SHAPE_STAIRS;
+            case DOME -> Icon.SHAPE_DOME;
             case PYRAMID -> Icon.SHAPE_PYRAMID;
-            case ROOF -> Icon.SHAPE_ROOF;
+            case CONE -> Icon.SHAPE_CONE;
         };
     }
 
@@ -179,13 +132,13 @@ public final class EffortlessRadialScreen extends Screen {
             atlases.prewarm(theme);
         }
         List<RadialMenu.Entry> entries = new ArrayList<>();
-        int picture = theme.px(46);
         for (ShapeKind k : SHAPES) {
-            entries.add(new RadialMenu.Entry(icon(k), k.title, picture(k, picture), group(k)));
+            entries.add(new RadialMenu.Entry(icon(k), k.title));
         }
-        menu = new RadialMenu(theme, entries, i -> rebuildRows());
+        menu = new RadialMenu(theme, entries, i -> rebuildPanels());
         menu.setSelected(BuildMode.active() ? indexOf(manager().spec().kind()) : RadialMenu.HUB);
-        rebuildRows();
+        held = Baritone.settings().effortlessRadialHold.value;
+        rebuildPanels();
     }
 
     private static int indexOf(ShapeKind k) {
@@ -202,91 +155,43 @@ public final class EffortlessRadialScreen extends Screen {
         return i >= 0 && i < SHAPES.length ? SHAPES[i] : null;
     }
 
-    // ----- the option rows, for whatever shape is picked
+    // ----- the two panels
 
-    private void rebuildRows() {
+    private void rebuildPanels() {
         ShapeKind kind = selectedKind();
-        List<RadialMenu.Row> rows = new ArrayList<>();
-        if (kind == null) {
-            menu.setRows(rows);
-            return;
+        List<RadialMenu.Item> left = new ArrayList<>();
+        List<RadialMenu.Item> right = new ArrayList<>();
+        if (kind != null) {
+            EffortlessManager m = manager();
+            m.spec(m.spec().withKind(kind));
+            blocksPanel(left);
+            shapePanel(right, m.spec());
+            clicksPanel(right);
         }
-        EffortlessManager m = manager();
-        ShapeSpec spec = m.spec().withKind(kind);
-        m.spec(spec);
-        List<ShapeSpec.Fill> fills = fills(kind);
-        if (fills.size() > 1) {
-            List<String> names = new ArrayList<>();
-            for (ShapeSpec.Fill f : fills) {
-                names.add(fillName(kind, f));
-            }
-            int at = Math.max(0, fills.indexOf(spec.fill()));
-            rows.add(new RadialMenu.Row("Shape", names, at, i -> {
-                m.spec(m.spec().withFill(fills.get(i)));
-                rebuildRows();
-            }));
-        }
-        if (kind == ShapeKind.SPHERE) {
-            rows.add(new RadialMenu.Row("Sphere", List.of("Full", "Dome"), spec.half() ? 1 : 0, i -> {
-                m.spec(m.spec().withHalf(i == 1));
-                rebuildRows();
-            }));
-        }
-        List<ShapeSpec.Axis> axes = axes(kind);
-        if (!axes.isEmpty()) {
-            List<String> names = new ArrayList<>();
-            for (ShapeSpec.Axis a : axes) {
-                names.add(a == ShapeSpec.Axis.FREE ? "Auto" : a.name());
-            }
-            int at = Math.max(0, axes.indexOf(spec.axis()));
-            rows.add(new RadialMenu.Row(kind == ShapeKind.CIRCLE || kind == ShapeKind.CYLINDER ? "Facing" : "Direction",
-                    names, at, i -> {
-                        m.spec(m.spec().withAxis(axes.get(i)));
-                        rebuildRows();
-                    }));
-        }
-        if (kind != ShapeKind.SINGLE) {
-            rows.add(new RadialMenu.Row("Thickness", List.of("1", "2", "3", "4"), Math.min(3, spec.thickness() - 1), i -> {
-                m.spec(m.spec().withThickness(i + 1));
-                rebuildRows();
-            }));
-        }
-        EffortlessJob.FillMode[] modes = EffortlessJob.FillMode.values();
-        rows.add(new RadialMenu.Row("Right click places", List.of("Into empty", "Over anything", "Replace hand"),
-                BuildMode.placeMode().ordinal(), i -> {
-                    BuildMode.placeMode(modes[i]);
-                    rebuildRows();
-                }));
-        BuildMode.PaletteSource[] sources = BuildMode.PaletteSource.values();
-        rows.add(new RadialMenu.Row("With", List.of("Hand", "Offhand", "Hotbar mix"), BuildMode.palette().ordinal(), i -> {
-            BuildMode.palette(sources[i]);
-            rebuildRows();
-        }));
-        if (BuildMode.palette() == BuildMode.PaletteSource.HOTBAR) {
-            mixRows(rows);
-        }
-        baritone.api.utils.EffortlessMaterials[] from = baritone.api.utils.EffortlessMaterials.values();
-        rows.add(new RadialMenu.Row("Blocks from", List.of("Inventory", "Storage", "Gather"), BuildMode.materials().ordinal(), i -> {
-            BuildMode.materials(from[i]);
-            rebuildRows();
-        }));
-        BuildMode.BreakFilter[] filters = BuildMode.BreakFilter.values();
-        rows.add(new RadialMenu.Row("Left click breaks", List.of("All", "Hand block", "Offhand block", "All but hand"),
-                BuildMode.breakFilter().ordinal(), i -> {
-                    BuildMode.breakFilter(filters[i]);
-                    rebuildRows();
-                }));
-        rows.add(new RadialMenu.Row("Containers", List.of("Break", "Leave"), BuildMode.skipContainers() ? 1 : 0, i -> {
-            BuildMode.skipContainers(i == 1);
-            rebuildRows();
-        }));
-        menu.setRows(rows);
+        menu.setPanels(left, right);
     }
 
-    // one line per hotbar block: its share, a weight (off leaves it out) and whether it turns at random. the hologram
-    // shows the exact pick per cell, so changing a weight or rerolling shows straight away in the world
-    private void mixRows(List<RadialMenu.Row> rows) {
-        rows.add(RadialMenu.Row.heading("Hotbar mix"));
+    // what goes down and where it comes from. the same for every shape, so it lives on its own side
+    private void blocksPanel(List<RadialMenu.Item> out) {
+        out.add(new RadialMenu.Title("Blocks", "Used for every shape"));
+        BuildMode.PaletteSource[] sources = BuildMode.PaletteSource.values();
+        out.add(new RadialMenu.Choice("Place with", List.of("Held block", "Hotbar mix"), BuildMode.palette().ordinal(), i -> {
+            BuildMode.palette(sources[i]);
+            rebuildPanels();
+        }));
+        if (BuildMode.palette() == BuildMode.PaletteSource.HOTBAR) {
+            mix(out);
+        }
+        baritone.api.utils.EffortlessMaterials[] from = baritone.api.utils.EffortlessMaterials.values();
+        out.add(new RadialMenu.Choice("Take blocks from", List.of("Inventory", "Storage", "Gather"), BuildMode.materials().ordinal(), i -> {
+            BuildMode.materials(from[i]);
+            rebuildPanels();
+        }));
+    }
+
+    // one line per hotbar block: its share, a - n + weight (off leaves it out) and whether it turns at random. the
+    // hologram shows the exact pick per cell, so a change shows straight away in the world
+    private void mix(List<RadialMenu.Item> out) {
         boolean any = false;
         for (int slot = 0; slot < 9; slot++) {
             var block = BuildMode.slotBlock(slot);
@@ -295,63 +200,134 @@ public final class EffortlessRadialScreen extends Screen {
             }
             any = true;
             int at = slot;
-            String name = block.get().getBlock().getName().getString();
-            if (name.length() > 18) {
-                name = name.substring(0, 17) + "\u2026";
-            }
             int share = BuildMode.share(slot);
-            String label = (slot + 1) + "  " + name + (share > 0 ? "  " + share + "%" : "");
             boolean turns = baritone.effortless.Palette.canTurn(block.get());
-            rows.add(new RadialMenu.Row(label, List.of("Off", "1", "2", "3", "4", "5"), Math.min(5, BuildMode.slotWeight(slot)),
-                    i -> {
-                        BuildMode.slotWeight(at, i);
-                        rebuildRows();
-                    }, turns ? "Turn" : null, BuildMode.slotTurn(slot), () -> {
-                        BuildMode.slotTurn(at, !BuildMode.slotTurn(at));
-                        rebuildRows();
-                    }));
+            out.add(new RadialMenu.Stepper((slot + 1) + "  " + block.get().getBlock().getName().getString(),
+                    share > 0 ? share + "%" : null, BuildMode.slotWeight(slot), 0, 9, w -> {
+                BuildMode.slotWeight(at, w);
+                rebuildPanels();
+            }, turns ? "Turn" : null, BuildMode.slotTurn(slot), () -> {
+                BuildMode.slotTurn(at, !BuildMode.slotTurn(at));
+                rebuildPanels();
+            }));
         }
         if (!any) {
-            rows.add(RadialMenu.Row.heading("Put some blocks on the hotbar"));
+            out.add(new RadialMenu.Note("Put some blocks on your hotbar to mix them"));
             return;
         }
-        rows.add(new RadialMenu.Row("Pattern", List.of("Reroll"), -1, i -> {
+        out.add(new RadialMenu.Action("Reroll the pattern", () -> {
             BuildMode.reroll();
-            rebuildRows();
+            rebuildPanels();
         }));
+    }
+
+    // the shape's name, how it's clicked out, and only the options it has, as Effortless Structure offers them
+    private void shapePanel(List<RadialMenu.Item> out, ShapeSpec spec) {
+        EffortlessManager m = manager();
+        ShapeKind kind = spec.kind();
+        out.add(new RadialMenu.Title(kind.title, clicksHint(spec)));
+        if (kind == ShapeKind.LINE) {
+            ShapeSpec.Direction[] ds = ShapeSpec.Direction.values();
+            out.add(new RadialMenu.Choice("Direction", List.of("All", "Floor", "X", "Y", "Z"), spec.direction().ordinal(), i -> {
+                m.spec(m.spec().withDirection(ds[i]));
+                rebuildPanels();
+            }));
+        }
+        if (kind.round()) {
+            out.add(new RadialMenu.Choice("Start from", List.of("Corner", "Middle"), spec.centered() ? 1 : 0, i -> {
+                m.spec(m.spec().withCentered(i == 1));
+                rebuildPanels();
+            }));
+        }
+        List<ShapeSpec.Fill> fills = fills(kind);
+        if (fills.size() > 1) {
+            List<String> names = new ArrayList<>();
+            for (ShapeSpec.Fill f : fills) {
+                names.add(fillName(f));
+            }
+            out.add(new RadialMenu.Choice("Filling", names, Math.max(0, fills.indexOf(spec.fill())), i -> {
+                m.spec(m.spec().withFill(fills.get(i)));
+                rebuildPanels();
+            }));
+        }
+        if (kind.faces()) {
+            ShapeSpec.Facing[] fs = ShapeSpec.Facing.values();
+            out.add(new RadialMenu.Choice("Facing", List.of("Both", "Vertical", "Horizontal"), spec.facing().ordinal(), i -> {
+                m.spec(m.spec().withFacing(fs[i]));
+                rebuildPanels();
+            }));
+        }
+        if (kind == ShapeKind.SLOPE_FLOOR) {
+            out.add(new RadialMenu.Choice("Raised edge", List.of("Short", "Long"), spec.longEdge() ? 1 : 0, i -> {
+                m.spec(m.spec().withLongEdge(i == 1));
+                rebuildPanels();
+            }));
+        }
+        if (kind.lengths()) {
+            out.add(new RadialMenu.Choice("Plane length", List.of("Variable", "Equal"), spec.equal() ? 1 : 0, i -> {
+                m.spec(m.spec().withEqual(i == 1));
+                rebuildPanels();
+            }));
+        }
+    }
+
+    // what the two mouse buttons touch
+    private void clicksPanel(List<RadialMenu.Item> out) {
+        out.add(new RadialMenu.Title("Clicks", "Hold a block in your offhand to match it"));
+        BuildMode.PlaceMode[] modes = BuildMode.PlaceMode.values();
+        out.add(new RadialMenu.Choice("Right click fills", List.of("Empty", "Existing", "Both"), BuildMode.placeMode().ordinal(), i -> {
+            BuildMode.placeMode(modes[i]);
+            rebuildPanels();
+        }));
+        BuildMode.Match[] matches = BuildMode.Match.values();
+        if (BuildMode.placeMode() != BuildMode.PlaceMode.EMPTY) {
+            out.add(new RadialMenu.Choice("Existing blocks", List.of("Any", "Offhand's", "Not offhand's"),
+                    BuildMode.placeMatch().ordinal(), i -> {
+                        BuildMode.placeMatch(matches[i]);
+                        rebuildPanels();
+                    }));
+        }
+        out.add(new RadialMenu.Choice("Left click breaks", List.of("All", "Offhand's", "Not offhand's"),
+                BuildMode.breakMatch().ordinal(), i -> {
+                    BuildMode.breakMatch(matches[i]);
+                    rebuildPanels();
+                }));
+        out.add(new RadialMenu.Choice("Containers", List.of("Break", "Leave"), BuildMode.skipContainers() ? 1 : 0, i -> {
+            BuildMode.skipContainers(i == 1);
+            rebuildPanels();
+        }));
+    }
+
+    // "3 clicks: a corner, the far corner, then the height"
+    static String clicksHint(ShapeSpec spec) {
+        ShapeKind kind = spec.kind();
+        int n = kind.clicks(spec);
+        String first = kind.round() && spec.centered() ? "the middle" : "a corner";
+        String how = switch (kind) {
+            case SINGLE -> "the block you aim at";
+            case LINE, DIAGONAL_LINE -> "the start, then the end";
+            case WALL, FLOOR -> "a corner, then the far one";
+            case CIRCLE -> first + ", then the rim";
+            case DIAGONAL_WALL -> "the start, the end, then the height";
+            case CUBE, CYLINDER, SPHERE -> first + ", the far corner, then how far out";
+            default -> first + ", the far corner, then the height";
+        };
+        return n + (n == 1 ? " click: " : " clicks: ") + how;
     }
 
     static List<ShapeSpec.Fill> fills(ShapeKind k) {
         return switch (k) {
-            case CUBOID -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW, ShapeSpec.Fill.WALLS, ShapeSpec.Fill.FRAME);
-            case CYLINDER -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW, ShapeSpec.Fill.WALLS);
-            case FLOOR, CIRCLE, SPHERE, PYRAMID, ROOF, STAIRS -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW);
-            case WALL, DIAGONAL_WALL -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.FRAME);
+            case CUBE -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW, ShapeSpec.Fill.SKELETON);
+            case WALL, FLOOR, CIRCLE, CYLINDER, SPHERE, DOME, PYRAMID -> List.of(ShapeSpec.Fill.FILLED, ShapeSpec.Fill.HOLLOW);
             default -> List.of();
         };
     }
 
-    static String fillName(ShapeKind k, ShapeSpec.Fill f) {
+    static String fillName(ShapeSpec.Fill f) {
         return switch (f) {
-            case FILLED -> k == ShapeKind.STAIRS ? "Solid" : "Filled";
-            case HOLLOW -> switch (k) {
-                case FLOOR -> "Outline";
-                case CIRCLE -> "Ring";
-                case STAIRS -> "Steps only";
-                default -> "Hollow";
-            };
-            case WALLS -> k == ShapeKind.CYLINDER ? "Tube" : "Walls";
-            case FRAME -> k == ShapeKind.WALL || k == ShapeKind.DIAGONAL_WALL ? "Border" : "Edges";
-        };
-    }
-
-    static List<ShapeSpec.Axis> axes(ShapeKind k) {
-        return switch (k) {
-            // FREE on a straight shape is "follow my look": whichever axis it's pointed along
-            case LINE -> List.of(ShapeSpec.Axis.FREE, ShapeSpec.Axis.X, ShapeSpec.Axis.Y, ShapeSpec.Axis.Z);
-            case WALL -> List.of(ShapeSpec.Axis.FREE, ShapeSpec.Axis.X, ShapeSpec.Axis.Z);
-            case CIRCLE, CYLINDER -> List.of(ShapeSpec.Axis.Y, ShapeSpec.Axis.X, ShapeSpec.Axis.Z);
-            default -> List.of();
+            case FILLED -> "Filled";
+            case HOLLOW -> "Hollow";
+            case SKELETON -> "Skeleton";
         };
     }
 
@@ -459,6 +435,7 @@ public final class EffortlessRadialScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         Safe.run("effortless radial key", () -> {
             int key = McKeys.toKit(event.key());
+            // the key again closes it once it's been let go (press mode, or a tap in hold mode)
             if (key == Keys.ESCAPE || (!held && SopranoKeys.isRadial(event))) {
                 apply();
             }
@@ -477,7 +454,7 @@ public final class EffortlessRadialScreen extends Screen {
                 // a tap: stay up for clicking
                 return;
             }
-            // a hold: whatever the pointer is on when you let go is the pick
+            // let go after holding: whatever the pointer is on is the pick, off the ring keeps what's picked
             int h = menu.hover();
             if (h != RadialMenu.NOTHING) {
                 menu.setSelected(h);

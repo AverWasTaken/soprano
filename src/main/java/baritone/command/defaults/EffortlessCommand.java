@@ -330,13 +330,21 @@ public class EffortlessCommand extends Command {
 
     private static String describe(ShapeSpec s) {
         StringBuilder b = new StringBuilder(s.kind().title);
-        b.append(", axis ").append(s.axis().name().toLowerCase(Locale.ROOT));
-        b.append(", ").append(s.fill().name().toLowerCase(Locale.ROOT));
-        if (s.thickness() > 1) {
-            b.append(", ").append(s.thickness()).append(" thick");
+        if (s.kind() == ShapeKind.LINE) {
+            b.append(", direction ").append(s.direction().name().toLowerCase(Locale.ROOT));
         }
-        if (s.half()) {
-            b.append(", half");
+        if (s.kind().faces()) {
+            b.append(", facing ").append(s.facing().name().toLowerCase(Locale.ROOT));
+        }
+        b.append(", ").append(s.fill().name().toLowerCase(Locale.ROOT));
+        if (s.kind().round()) {
+            b.append(s.centered() ? ", from the middle" : ", from a corner");
+        }
+        if (s.kind().lengths()) {
+            b.append(s.equal() ? ", equal" : ", variable");
+        }
+        if (s.kind() == ShapeKind.SLOPE_FLOOR) {
+            b.append(s.longEdge() ? ", long edge raised" : ", short edge raised");
         }
         return b.toString();
     }
@@ -402,15 +410,16 @@ public class EffortlessCommand extends Command {
                 "> ef info - What's set up",
                 "> ef clear - Forget the points",
                 "",
-                "Shape options: x y z free (axis), filled hollow walls frame, t=<thickness>, half (a dome)",
+                "Shape options: all x y z direction=floor (a line), facing=both|vertical|horizontal, filled hollow skeleton,",
+                "  middle / corner (round shapes), equal / variable (lengths), long / short (slope floor's raised edge)",
                 "Place options: block=<blocks> (hand, offhand, or ids like stone*3,cobblestone with @r for random rotation),",
-                "  mode=fill (only empty cells, the default) / overwrite / replace, only=<blocks to replace>, seed=<n>",
-                "Break options: only=<blocks or #tags>, except=<blocks>, hand (only the hand block), offhand,",
-                "  nothand (all but the hand block), skipcontainers, fluids (break fluids too)",
-                "Replace with no only= swaps the hand block for the offhand block.",
+                "  mode=fill (only empty cells, the default) / replace (only blocks already there) / overwrite (both),",
+                "  only=<blocks> and except=<blocks> pick which existing blocks (hand and offhand mean what you hold), seed=<n>",
+                "Break options: only=<blocks or #tags>, except=<blocks>, hand, offhand, nothand, notoffhand,",
+                "  skipcontainers, fluids (break fluids too)",
                 "",
                 "Examples:",
-                "> ef shape wall t=2, ef p1, ef p2, ef place",
+                "> ef shape wall, ef p1, ef p2, ef place mode=replace except=offhand",
                 "> ef shape cuboid, ef p1 ~ ~ ~, ef p2 ~10 ~5 ~10, ef break only=stone,#minecraft:logs",
                 "> ef place block=stone_bricks*6,cracked_stone_bricks*3,mossy_stone_bricks"
         );

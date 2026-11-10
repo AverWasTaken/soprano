@@ -19,41 +19,75 @@ package baritone.effortless;
 
 import java.util.Locale;
 
-// what the radial offers. clicks is how many points the shape takes, a third one (where there is one) only when the
-// height should come from its own click instead of the second corner
+// what the radial offers, the same set and the same clicks as Effortless Structure: the first click is the block you
+// aim at, the second is a corner on a plane through it (a wall, a floor, or whichever you look at), the third, for the
+// solid ones, how far it reaches out of that plane
 public enum ShapeKind {
 
-    SINGLE("Single block", 1, false),
-    // straight: along X, Y or Z, whichever you look along (or the one locked in the radial)
-    LINE("Line", 2, false),
-    // any direction at all, corner to corner in 3D
-    DIAGONAL_LINE("Diagonal line", 2, false),
-    FLOOR("Floor", 2, false),
-    // start, where it ends on the ground (straight along X or Z), then how high
-    WALL("Wall", 2, true),
-    // the same with the base at any angle across the ground
-    DIAGONAL_WALL("Diagonal wall", 2, true),
-    CUBOID("Cuboid", 2, true),
-    CIRCLE("Circle", 2, false),
-    CYLINDER("Cylinder", 2, true),
-    SPHERE("Sphere", 2, false),
-    STAIRS("Staircase", 2, false),
-    PYRAMID("Pyramid", 2, false),
-    ROOF("Roof", 2, false);
+    SINGLE("Single", 1, Second.NONE, Third.NONE),
+    // along one axis, the one your look runs closest to (or the one the direction option allows)
+    LINE("Line", 2, Second.LINE, Third.NONE),
+    WALL("Wall", 2, Second.WALL, Third.NONE),
+    FLOOR("Floor", 2, Second.FLOOR, Third.NONE),
+    // a face on a plane, then pulled out of it
+    CUBE("Cube", 3, Second.SQUARE, Third.OUT_OF_PLANE),
+    // corner to corner, wherever the crosshair is
+    DIAGONAL_LINE("Diagonal line", 2, Second.CROSSHAIR, Third.NONE),
+    // a diagonal on the ground, then raised
+    DIAGONAL_WALL("Diagonal wall", 3, Second.FLOOR, Third.UP),
+    // a rectangle on the ground, then one edge raised
+    SLOPE_FLOOR("Slope floor", 3, Second.FLOOR, Third.UP),
+    CIRCLE("Circle", 2, Second.SQUARE, Third.NONE),
+    CYLINDER("Cylinder", 3, Second.SQUARE, Third.OUT_OF_PLANE),
+    SPHERE("Sphere", 3, Second.SQUARE, Third.OUT_OF_PLANE),
+    // the top half of a sphere: the base on the ground, then how high
+    DOME("Dome", 3, Second.FLOOR, Third.UP),
+    PYRAMID("Pyramid", 3, Second.FLOOR, Third.UP),
+    CONE("Cone", 3, Second.FLOOR, Third.UP);
+
+    // how the second corner follows your look
+    public enum Second {
+        NONE, LINE, WALL, FLOOR, SQUARE, CROSSHAIR
+    }
+
+    // how the third does
+    public enum Third {
+        NONE,
+        // straight out of the plane the first two made, from the second corner
+        OUT_OF_PLANE,
+        // straight up or down from the second corner
+        UP
+    }
 
     public final String title;
     public final int clicks;
-    // with effortlessThreeClickHeight on, this one takes a third click for its height
-    public final boolean heightClick;
+    public final Second second;
+    public final Third third;
 
-    ShapeKind(String title, int clicks, boolean heightClick) {
+    ShapeKind(String title, int clicks, Second second, Third third) {
         this.title = title;
         this.clicks = clicks;
-        this.heightClick = heightClick;
+        this.second = second;
+        this.third = third;
     }
 
-    public int clicks(boolean threeClickHeight) {
-        return heightClick && threeClickHeight ? clicks + 1 : clicks;
+    public int clicks(ShapeSpec spec) {
+        return clicks;
+    }
+
+    // has the "start from the middle or a corner" option
+    public boolean round() {
+        return this == CIRCLE || this == CYLINDER || this == SPHERE || this == DOME || this == CONE;
+    }
+
+    // has the facing option (both, vertical, horizontal): the second corner goes on a plane you pick by looking
+    public boolean faces() {
+        return second == Second.SQUARE;
+    }
+
+    // has the variable / equal option: the second corner kept square to the first
+    public boolean lengths() {
+        return second == Second.WALL || second == Second.FLOOR || second == Second.SQUARE;
     }
 
     public String id() {
@@ -67,31 +101,35 @@ public enum ShapeKind {
                 return k;
             }
         }
-        // a couple of the names people will type anyway
+        // the names people will type anyway, and the ones older queues were saved with
         switch (want) {
             case "block":
             case "one":
                 return SINGLE;
-            case "diagonal_line":
             case "diagline":
             case "dline":
                 return DIAGONAL_LINE;
-            case "diagonal_wall":
+            case "square":
+            case "plane":
+            case "rect":
+                return FLOOR;
             case "diagwall":
             case "dwall":
+            case "diagonal_square":
                 return DIAGONAL_WALL;
+            case "slope":
+            case "ramp":
+            case "stairs":
+            case "stair":
+                return SLOPE_FLOOR;
             case "box":
-            case "cube":
-                return CUBOID;
+            case "cuboid":
+                return CUBE;
             case "disc":
             case "ring":
                 return CIRCLE;
             case "ball":
-            case "dome":
                 return SPHERE;
-            case "stair":
-            case "slope":
-                return STAIRS;
             default:
                 return null;
         }

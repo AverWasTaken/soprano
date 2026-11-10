@@ -40,20 +40,28 @@ import java.util.Optional;
 // other button (or esc) drops the half set shape. game thread only
 public final class BuildMode {
 
-    // which block a place job takes when you don't say otherwise
+    // which block a place job puts down: the one in your hand, or a mix of the hotbar's
     public enum PaletteSource {
-        HAND, OFFHAND, HOTBAR
+        HAND, HOTBAR
     }
 
-    // which blocks a break job takes
-    public enum BreakFilter {
-        ALL, HAND, OFFHAND, NOT_HAND
+    // which cells a place job fills: empty ones only, the blocks already there only (air stays air: a door's hole
+    // stays open), or both
+    public enum PlaceMode {
+        EMPTY, EXISTING, BOTH
+    }
+
+    // which existing blocks a click touches: any, only ones like the block in your offhand, or all but those. hold
+    // logs in the offhand and "all but" swaps the stone around them and leaves the logs
+    public enum Match {
+        ANY, OFFHAND, NOT_OFFHAND
     }
 
     private static boolean active;
-    private static EffortlessJob.FillMode placeMode = EffortlessJob.FillMode.FILL_EMPTY;
+    private static PlaceMode placeMode = PlaceMode.EMPTY;
+    private static Match placeMatch = Match.ANY;
     private static PaletteSource palette = PaletteSource.HAND;
-    private static BreakFilter breakFilter = BreakFilter.ALL;
+    private static Match breakMatch = Match.ANY;
     private static boolean skipContainers;
     // the hotbar mix: a weight per slot (0 leaves the slot out), whether that slot's block gets turned at random, and
     // the pattern's seed. weights are relative, 3 and 1 is 75% and 25%
@@ -112,11 +120,11 @@ public final class BuildMode {
         }
     }
 
-    public static EffortlessJob.FillMode placeMode() {
+    public static PlaceMode placeMode() {
         return placeMode;
     }
 
-    public static void placeMode(EffortlessJob.FillMode m) {
+    public static void placeMode(PlaceMode m) {
         placeMode = m;
         refreshDraft();
     }
@@ -130,12 +138,21 @@ public final class BuildMode {
         refreshDraft();
     }
 
-    public static BreakFilter breakFilter() {
-        return breakFilter;
+    public static Match placeMatch() {
+        return placeMatch;
     }
 
-    public static void breakFilter(BreakFilter f) {
-        breakFilter = f;
+    public static void placeMatch(Match m) {
+        placeMatch = m;
+        refreshDraft();
+    }
+
+    public static Match breakMatch() {
+        return breakMatch;
+    }
+
+    public static void breakMatch(Match m) {
+        breakMatch = m;
         refreshDraft();
     }
 
@@ -280,7 +297,7 @@ public final class BuildMode {
         List<BlockPos> set = setPoints(m);
         m.point(set.size(), at.get());
         set = setPoints(m);
-        int need = m.spec().kind().clicks(Baritone.settings().effortlessThreeClickHeight.value);
+        int need = m.spec().kind().clicks(m.spec());
         if (set.size() < need) {
             return;
         }
@@ -348,9 +365,18 @@ public final class BuildMode {
         if (!set.isEmpty() && !storagePick) {
             Vec3 eye = mc.player.getEyePosition();
             Vec3 dir = mc.player.getLookAngle();
-            Optional<BlockPos> next = ClickAim.next(manager().spec(), set, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z);
+            ShapeSpec spec = manager().spec();
+            Optional<BlockPos> next = ClickAim.next(spec, set, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z);
             if (next.isPresent()) {
                 return next;
+            }
+            // a corner that goes on a plane or a line and your look can't reach it: no corner, the click does nothing
+            // (like Effortless Structure), rather than one under the crosshair somewhere off the shape
+            boolean traced = set.size() == 1
+                    ? spec.kind().second != ShapeKind.Second.CROSSHAIR && spec.kind().second != ShapeKind.Second.NONE
+                    : spec.kind().third != ShapeKind.Third.NONE;
+            if (traced) {
+                return Optional.empty();
             }
         }
         HitResult hit = mc.hitResult;
@@ -373,25 +399,29 @@ public final class BuildMode {
     static EffortlessOptions options(EffortlessJob.Mode mode) {
         StringBuilder b = new StringBuilder();
         if (mode == EffortlessJob.Mode.PLACE) {
-            b.append("mode=").append(switch (placeMode) {
-                case FILL_EMPTY -> "fill";
-                case OVERWRITE -> "overwrite";
-                case REPLACE -> "replace";
+            b.append(switch (placeMode) {
+                case EMPTY -> "mode=fill";
+                case EXISTING -> "mode=replace";
+                case BOTH -> "mode=overwrite";
             });
-            if (placeMode != EffortlessJob.FillMode.REPLACE) {
-                String blocks = paletteBlocks();
-                if (blocks != null) {
-                    b.append(" block=").append(blocks);
+            if (placeMode != PlaceMode.EMPTY) {
+                switch (placeMatch) {
+                    case OFFHAND -> b.append(" only=offhand");
+                    case NOT_OFFHAND -> b.append(" except=offhand");
+                    default -> {
+                    }
                 }
-                if (palette == PaletteSource.HOTBAR) {
-                    b.append(" seed=").append((int) mixSeed);
+            }
+            if (palette == PaletteSource.HOTBAR) {
+                String blocks = hotbarBlocks();
+                if (blocks != null) {
+                    b.append(" block=").append(blocks).append(" seed=").append((int) mixSeed);
                 }
             }
         } else {
-            switch (breakFilter) {
-                case HAND -> b.append("hand");
+            switch (breakMatch) {
                 case OFFHAND -> b.append("offhand");
-                case NOT_HAND -> b.append("nothand");
+                case NOT_OFFHAND -> b.append("notoffhand");
                 default -> {
                 }
             }
@@ -400,15 +430,6 @@ public final class BuildMode {
             }
         }
         return EffortlessOptions.parse(manager().spec(), b.toString());
-    }
-
-    // the block= words for the palette choice. null leaves it to the default (the hand)
-    private static String paletteBlocks() {
-        return switch (palette) {
-            case HAND -> null;
-            case OFFHAND -> "offhand";
-            case HOTBAR -> hotbarBlocks();
-        };
     }
 
     // the hotbar's blocks as block= words: id*weight, @r where that slot turns at random. the same block in two slots
@@ -487,10 +508,10 @@ public final class BuildMode {
             return b.toString();
         }
         AreaMask mask = m.currentMask(true);
-        int need = spec.kind().clicks(Baritone.settings().effortlessThreeClickHeight.value);
+        int need = spec.kind().clicks(spec);
         int at = setPoints(m).size() + 1;
         b.append(" · ").append(pending == EffortlessJob.Mode.PLACE ? "placing" : "breaking");
-        b.append(" · click ").append(at).append(" of ").append(need).append(": ").append(step(spec.kind(), at, need));
+        b.append(" · click ").append(at).append(" of ").append(need).append(": ").append(step(spec, setPoints(m), at, need));
         if (mask != null) {
             b.append(" · X ").append(mask.sizeX).append("  Y ").append(mask.sizeY).append("  Z ").append(mask.sizeZ)
                     .append(" · ").append(mask.count()).append(" blocks");
@@ -499,16 +520,17 @@ public final class BuildMode {
     }
 
     // what the click you're about to make sets, in the shape's own words
-    static String step(ShapeKind kind, int at, int need) {
+    static String step(ShapeSpec spec, List<BlockPos> set, int at, int need) {
+        ShapeKind kind = spec.kind();
         if (at >= 3) {
-            return "how high";
+            return kind.third == ShapeKind.Third.UP ? "how high" : "how far out";
         }
-        return switch (kind) {
-            case WALL, DIAGONAL_WALL -> need == 3 ? "where it ends" : "where it ends, and how high";
-            case CUBOID -> need == 3 ? "the far corner on the ground" : "the far corner";
-            case CIRCLE, SPHERE, CYLINDER -> "how wide";
-            case LINE, DIAGONAL_LINE -> "where it ends";
-            default -> "the other corner";
+        return switch (kind.second) {
+            case LINE, CROSSHAIR -> "where it ends";
+            case WALL -> "the wall's far corner";
+            case FLOOR -> kind.round() && spec.centered() ? "how wide" : "the floor's far corner";
+            case SQUARE -> kind.round() && spec.centered() ? "how wide" : "the far corner";
+            case NONE -> "";
         };
     }
 

@@ -91,10 +91,12 @@ public final class JobStore {
         JsonObject o = new JsonObject();
         o.addProperty("name", j.name);
         o.addProperty("shape", j.spec.kind().name());
-        o.addProperty("axis", j.spec.axis().name());
+        o.addProperty("direction", j.spec.direction().name());
+        o.addProperty("facing", j.spec.facing().name());
         o.addProperty("fill", j.spec.fill().name());
-        o.addProperty("thickness", j.spec.thickness());
-        o.addProperty("half", j.spec.half());
+        o.addProperty("centered", j.spec.centered());
+        o.addProperty("equal", j.spec.equal());
+        o.addProperty("longEdge", j.spec.longEdge());
         JsonArray pts = new JsonArray();
         for (BlockPos p : j.points) {
             JsonArray a = new JsonArray();
@@ -232,13 +234,20 @@ public final class JobStore {
     }
 
     static EffortlessJob readJob(JsonObject o) {
-        ShapeKind kind = enumOr(ShapeKind.class, o.get("shape").getAsString(), null);
+        // byId knows the old names too (wall, floor, cuboid), so a queue saved before the shapes were reworked loads
+        ShapeKind kind = ShapeKind.byId(o.get("shape").getAsString());
         if (kind == null) {
             return null;
         }
-        ShapeSpec spec = new ShapeSpec(kind, enumOr(ShapeSpec.Axis.class, str(o, "axis"), null),
-                enumOr(ShapeSpec.Fill.class, str(o, "fill"), null), o.has("thickness") ? o.get("thickness").getAsInt() : 1,
-                o.has("half") && o.get("half").getAsBoolean());
+        if (kind == ShapeKind.SPHERE && o.has("half") && o.get("half").getAsBoolean()) {
+            kind = ShapeKind.DOME;
+        }
+        // older saves: FRAME is now SKELETON, WALLS has no match and falls back to filled
+        String fillName = str(o, "fill");
+        ShapeSpec spec = new ShapeSpec(kind, enumOr(ShapeSpec.Direction.class, str(o, "direction"), null),
+                enumOr(ShapeSpec.Facing.class, str(o, "facing"), null), fillName == null ? null : ShapeSpec.Fill.byId(fillName),
+                o.has("centered") && o.get("centered").getAsBoolean(), o.has("equal") && o.get("equal").getAsBoolean(),
+                o.has("longEdge") && o.get("longEdge").getAsBoolean());
         List<BlockPos> pts = new ArrayList<>();
         for (JsonElement pe : o.getAsJsonArray("points")) {
             JsonArray a = pe.getAsJsonArray();
