@@ -471,7 +471,7 @@ public class EndGearTest {
     }
 
     @Test
-    public void thePortalAndRoomBedsOnlySpendTheSurplus() {
+    public void theRoomBedOnlySpendsTheSurplus() {
         assertEquals(0, EndGear.surplusBeds(3, cfg.beds));
         assertEquals(0, EndGear.surplusBeds(cfg.beds, cfg.beds));
         assertEquals(1, EndGear.surplusBeds(cfg.beds + 1, cfg.beds));
@@ -479,8 +479,8 @@ public class EndGearTest {
         s.strongholdStart = new RunState.Pos(0, 70, 0);
         assertFalse(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds, cfg.beds)));
         assertTrue(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds + 1, cfg.beds)));
-        assertFalse(Respawn.wantPortalBed(s, EndGear.surplusBeds(cfg.beds + 1, EndGear.bedTarget(cfg, true)), 0, 0));
-        assertTrue(Respawn.wantPortalBed(s, EndGear.surplusBeds(cfg.beds + 2, EndGear.bedTarget(cfg, true)), 0, 0));
+        // the portal bed borrows from the End's instead (round 187), END_PREP buys it back
+        assertTrue(Respawn.wantPortalBed(s, 0, 0));
     }
 
     @Test

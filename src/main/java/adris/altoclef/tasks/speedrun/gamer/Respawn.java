@@ -66,6 +66,18 @@ public final class Respawn {
         return spawn != null && BedRules.touches(spawn, new RunState.Pos(x, y, z));
     }
 
+    // either half of the bed by the overworld nether portal (while a run is on). a night bed somewhere else can take the spawn off
+    // it for a while, it is still the one the next way into the nether clicks again, so nobody mines it
+    public static boolean isPortalBed(int x, int y, int z) {
+        RunState s = bound;
+        return s != null && s.portalBed != null && BedRules.touches(s.portalBed, new RunState.Pos(x, y, z));
+    }
+
+    // the beds the bed collectors leave alone: the one we respawn at and the one by the nether portal
+    public static boolean keepsBed(int x, int y, int z) {
+        return isSpawnBed(x, y, z) || isPortalBed(x, y, z);
+    }
+
     public static RunState.Pos bed(RunState state) {
         return "OVERWORLD".equals(state.respawnDim) ? state.respawnPos : null;
     }
@@ -161,14 +173,17 @@ public final class Respawn {
         return atStart && spareBeds > 0 && state.strongholdStart != null && nothingNearStronghold(state);
     }
 
-    // the bed by the overworld nether portal: a bed we carry to spare (the End's beds are not, none gets made for this), and nothing
-    // holding our respawn near that portal already. night is fine, the click sets the spawn before the sleep check and we just
-    // sleep through it. the caller latches it, once per run
-    public static boolean wantPortalBed(RunState state, int spareBeds, double portalX, double portalZ) {
-        if (spareBeds <= 0) {
-            return false;
-        }
+    // the bed by the overworld nether portal: wanted whenever nothing holds our respawn near that portal. it used to wait for a
+    // bed to spare beyond the End's, which never came before the nether (the End's beds are still wool then), so every nether death
+    // went back to the world spawn. the bed gets borrowed from the End's and END_PREP buys it back. night is fine, the click sets
+    // the spawn before the sleep check and we just sleep through it
+    public static boolean wantPortalBed(RunState state, double portalX, double portalZ) {
+        return portalBedNear(state, portalX, portalZ) == null;
+    }
+
+    // our respawn bed, when it is close enough to the portal to count as the portal bed. null = it is not (or there is none)
+    public static RunState.Pos portalBedNear(RunState state, double portalX, double portalZ) {
         RunState.Pos bed = bed(state);
-        return bed == null || Math.hypot(bed.x - portalX, bed.z - portalZ) > NEAR_NETHER_PORTAL;
+        return bed != null && Math.hypot(bed.x - portalX, bed.z - portalZ) <= NEAR_NETHER_PORTAL ? bed : null;
     }
 }

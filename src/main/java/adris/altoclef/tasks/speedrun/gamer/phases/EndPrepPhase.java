@@ -586,10 +586,11 @@ public class EndPrepPhase implements PhaseHandler {
         return bedOk(mod, p) && WorldHelper.canBreak(mod, p);
     }
 
-    // any distance, but not the bed we respawn at, not one way down low, and not one on copper (that's a trial chamber, CollectBedTask
-    // blacklists those too)
+    // any distance, but not the bed we respawn at, not the one by the nether portal (a walk back across the map for one bed, and
+    // the errand buys that one back from sheep instead), not one way down low, and not one on copper (that's a trial chamber,
+    // CollectBedTask blacklists those too)
     private static boolean bedOk(AltoClef mod, BlockPos p) {
-        return !Respawn.isSpawnBed(p.getX(), p.getY(), p.getZ())
+        return !Respawn.keepsBed(p.getX(), p.getY(), p.getZ())
                 && !EndGear.bedTooLow(p.getY())
                 && !ArrayUtils.contains(ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS), mod.getWorld().getBlockState(p.below()).getBlock());
     }

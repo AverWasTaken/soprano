@@ -89,7 +89,7 @@ public final class NightSleep {
 
     // the phases a night may cut into. the portal is let through and decides for itself (PhaseHandler.nightHold: lava being cast
     // must not be stretched, but looking for a spot is just walking), the nether is let through too (the night branch only runs in
-    // the overworld, so only the home half of a food trip gets night handling, and keepsSpawnBed guards the bed by the portal),
+    // the overworld, so only the home half of a food trip gets night handling, and the way back in clicks the bed by the portal again),
     // the end prep is let through too (keepsSpawnBed guards the bed by the portal, and it holds the night itself once it only has the
     // walk in left, the End has no night), and the dragon is in the end
     public static boolean phaseAllowed(GamerPhase phase) {
@@ -130,14 +130,16 @@ public final class NightSleep {
         return bestWoolStack >= 3 && planks >= 3 ? BedSource.CRAFT : BedSource.NONE;
     }
 
-    // a placed bed (bag or craft) sleeps wherever we stand, and a nether or eyes leg that got home for food would move the respawn
-    // off the bed by the portal and then pick that bed up. so while the spawn bed is standing those phases leave the night alone
-    // (END_PREP: a night bed 200 blocks out must not move the respawn off the portal either. ROOM and OPEN: the beds made ahead of
-    // the dig are in the bag from here on, and the one by the start is what a death in the shaft comes back to).
+    // a placed bed (bag or craft) sleeps wherever we stand, moves the respawn onto itself and the morning pickup leaves us with none.
+    // so while the spawn bed is standing these phases leave the night alone (EYES: same as the nether used to be. END_PREP: a night
+    // bed 200 blocks out must not move the respawn off the portal either. ROOM and OPEN: the beds made ahead of the dig are in the
+    // bag from here on, and the one by the start is what a death in the shaft comes back to).
+    // the nether's food trip sleeps like any night now: the way back in clicks the portal bed again (PortalBedStep in
+    // HomePortalWalk) before we step through, so the spawn is back by the portal before it can matter. the old rule made those nights
+    // a hole whenever we were more than 40 blocks from the portal bed.
     // a bed that is already standing close (FOUND) is never claimed or picked up, that one stays fine
     public static boolean keepsSpawnBed(GamerPhase phase, BedSource source, boolean spawnBedStands) {
-        return spawnBedStands && (phase == GamerPhase.NETHER || phase == GamerPhase.EYES || phase == GamerPhase.ROOM || phase == GamerPhase.OPEN
-                || phase == GamerPhase.END_PREP)
+        return spawnBedStands && (phase == GamerPhase.EYES || phase == GamerPhase.ROOM || phase == GamerPhase.OPEN || phase == GamerPhase.END_PREP)
                 && (source == BedSource.BAG || source == BedSource.CRAFT);
     }
 

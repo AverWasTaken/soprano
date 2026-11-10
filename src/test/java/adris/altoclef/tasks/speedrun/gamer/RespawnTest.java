@@ -200,19 +200,56 @@ public class RespawnTest {
     }
 
     @Test
-    public void aCarriedBedGoesDownByThePortalOnlyWhenNothingHoldsTheRespawnThere() {
+    public void aBedGoesDownByThePortalWhenNothingHoldsTheRespawnThere() {
         RunState s = new RunState();
-        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
-        // no bed in the bag (none gets made for this)
-        assertFalse(Respawn.wantPortalBed(s, 0, 100, 100));
+        // no spare bed asked for any more: the End's reserve lends one
+        assertTrue(Respawn.wantPortalBed(s, 100, 100));
         // a respawn right by the portal is already the answer, one a long way off is not
         Respawn.set(s, pos(130, 66, 90), "OVERWORLD");
-        assertFalse(Respawn.wantPortalBed(s, 1, 100, 100));
+        assertFalse(Respawn.wantPortalBed(s, 100, 100));
+        assertEquals(pos(130, 66, 90), Respawn.portalBedNear(s, 100, 100));
         Respawn.set(s, pos(900, 66, 90), "OVERWORLD");
-        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        assertNull(Respawn.portalBedNear(s, 100, 100));
         // a respawn in another dimension holds nothing here
         Respawn.set(s, pos(130, 66, 90), "NETHER");
-        assertTrue(Respawn.wantPortalBed(s, 1, 100, 100));
+        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+    }
+
+    @Test
+    public void aNightBedThatTookTheSpawnMeansTheWayBackInClicksThePortalBedAgain() {
+        RunState s = new RunState();
+        s.portalBed = pos(104, 64, 100);
+        Respawn.set(s, pos(104, 64, 100), "OVERWORLD");
+        assertFalse(Respawn.wantPortalBed(s, 100, 100));
+        // the night bed 300 out took the spawn, then the morning pickup took the night bed
+        Respawn.set(s, pos(400, 70, 100), "OVERWORLD");
+        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        Respawn.lose(s);
+        assertTrue(Respawn.wantPortalBed(s, 100, 100));
+        // and the portal bed still standing is enough, no bag bed needed
+        assertEquals(PortalBedRules.Source.STANDING, PortalBedRules.source(true, 0, false));
+    }
+
+    @Test
+    public void thePortalBedIsNotForTheBedCollectors() {
+        RunState s = new RunState();
+        s.portalBed = pos(104, 64, 100);
+        // the respawn moved on to the End portal's bed, the portal bed is still kept
+        Respawn.set(s, pos(2000, 40, 1500), "OVERWORLD");
+        Respawn.bind(s);
+        try {
+            assertTrue(Respawn.keepsBed(104, 64, 100));
+            // the other half of it
+            assertTrue(Respawn.keepsBed(105, 64, 100));
+            assertTrue(Respawn.keepsBed(2000, 40, 1500));
+            assertFalse(Respawn.keepsBed(110, 64, 100));
+            assertFalse(Respawn.isSpawnBed(104, 64, 100));
+        } finally {
+            Respawn.unbind();
+        }
+        // no run on, nothing is kept
+        assertFalse(Respawn.keepsBed(104, 64, 100));
     }
 
     @Test

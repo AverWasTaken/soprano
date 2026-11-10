@@ -755,8 +755,12 @@ public class NightSleepTest {
     }
 
     @Test
-    public void aFoodTripHomeKeepsTheSpawnBedByThePortal() {
-        assertTrue(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, true));
+    public void aFoodTripHomeSleepsAndTheWayBackInFixesTheSpawn() {
+        // the nether's food trip may put a bed down at any distance from the portal bed: HomePortalWalk clicks the portal bed again
+        // on the way back in, so the night is a sleep and not a hole
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, true));
+        assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.CRAFT, true));
+        // eyes has no way back in through the walk, it keeps the old rule
         assertTrue(NightSleep.keepsSpawnBed(GamerPhase.EYES, NightSleep.BedSource.CRAFT, true));
         // no spawn bed standing: sleeping is how one gets set
         assertFalse(NightSleep.keepsSpawnBed(GamerPhase.NETHER, NightSleep.BedSource.BAG, false));
