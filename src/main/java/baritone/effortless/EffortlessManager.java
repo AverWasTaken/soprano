@@ -86,6 +86,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     // in its put-it-back build now
     private final Map<Long, BlockState> dug = new java.util.LinkedHashMap<>();
     private boolean restoring;
+    private BlockPos restoreExit;
     // the shown entries as one schematic for the preview, rebuilt when what's shown changes
     private Object shownKey;
     private JobSchematic shownSchematic;
@@ -290,6 +291,12 @@ public final class EffortlessManager implements AbstractGameEventListener {
             return "Nothing waiting in the queue";
         }
         queue.running(true);
+        var builder = baritone.getBuilderProcess();
+        if (restoring && builder.buildSerial() == entrySerial && builder.isPaused()) {
+            builder.resume();
+            JobQueue.Entry e = queue.runningEntry();
+            if (e != null) e.state(JobQueue.State.RUNNING, null);
+        }
         return null;
     }
 
@@ -349,10 +356,15 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 save();
                 return;
             } else if (builder.isPaused() && restoring) {
-                // the job itself is done, only some of the terrain couldn't go back
-                baritone.getPathingBehavior().cancelEverything();
-                entrySerial = 0;
-                finishEntry(e, "couldn't put all the terrain back");
+                // keep the repair and its ledger: Start resumes this phase, not the finished structure.
+                if (queue.running()) {
+                    queue.running(false);
+                    String note = "Terrain repair paused: missing materials or no safe access/retreat route; remaining cells left open";
+                    e.state(JobQueue.State.RUNNING, note);
+                    BuildMode.say(note);
+                    save();
+                }
+                return;
             } else if (builder.isPaused()) {
                 Map<BlockState, Integer> missing = builder.missingAtPause();
                 if (!missing.isEmpty() && fetchOrGather(e, bill(missing))) {
@@ -388,6 +400,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     // a storage or gather entry gets its bill in before the builder starts on it, the rest start straight away
     private void begin(JobQueue.Entry e) {
+        restoreExit = baritone.getPlayerContext().playerFeet().immutable();
         e.trips(0);
         if (e.places() && e.materials() != EffortlessMaterials.INVENTORY && !creative()) {
             Map<Item, Integer> bill = billFor(e);
@@ -410,8 +423,12 @@ public final class EffortlessManager implements AbstractGameEventListener {
 
     // every block one of our own breaks took out. while an entry is building (not on an errand, not putting terrain
     // back) one outside its area is terrain a path dug through, and it's noted with what it was
+    private static boolean preserveTerrain() {
+        return Baritone.settings().effortlessRestoreTerrain.value || Baritone.settings().backfill.value;
+    }
+
     public void broke(BlockPos pos, BlockState before, String who) {
-        if (before == null || before.isAir() || tripOut || restoring || !Baritone.settings().effortlessRestoreTerrain.value) {
+        if (before == null || before.isAir() || tripOut || restoring || !preserveTerrain()) {
             return;
         }
         JobQueue.Entry e = queue.runningEntry();
@@ -429,7 +446,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     // have that (stone comes back as cobblestone), else the hole stays. effortlessRestoreExact has AltoClef make the
     // originals first. false when there's nothing to do
     private boolean startRestore(JobQueue.Entry e) {
-        if (!Baritone.settings().effortlessRestoreTerrain.value || dug.isEmpty()) {
+        if (!preserveTerrain() || dug.isEmpty()) {
             return false;
         }
         if (Baritone.settings().effortlessRestoreExact.value && !creative() && trips != null && trips.available() && e.trips() < MAX_TRIPS) {
@@ -485,7 +502,8 @@ public final class EffortlessManager implements AbstractGameEventListener {
         e.state(JobQueue.State.RUNNING, null);
         RestoreSchematic rs = new RestoreSchematic(plan);
         BuildMode.say("Putting back " + rs.size() + " blocks of terrain" + (skipped > 0 ? " (" + skipped + " left open)" : ""));
-        baritone.getBuilderProcess().buildInPlace("Restoring terrain", rs, rs.origin(), Baritone.settings().effortlessJumpOff.value);
+        baritone.getBuilderProcess().buildRestoration("Restoring terrain", rs, rs.origin(),
+                (x, y, z, current) -> runningSchematic != null && runningSchematic.owner(x, y, z) != null, restoreExit);
         entrySerial = baritone.getBuilderProcess().buildSerial();
         save();
         return true;

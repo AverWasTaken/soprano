@@ -922,9 +922,17 @@ public final class Settings {
     public final Setting<Integer> chunkPackerQueueMaxSize = new Setting<>(2000);
 
     /**
-     * Fill in blocks behind you
+     * Fill in blocks behind you while walking or mining. Effortless builds defer recorded terrain repair until
+     * construction finishes, rather than filling a passage the builder still needs.
      */
     public final Setting<Boolean> backfill = new Setting<>(false);
+
+    /**
+     * Check the walking route left after a builder placement, deferring closures until they can be placed from the
+     * exit side. Uses loaded terrain within twelve blocks; ladders, swimming and new scaffold routes are not proved
+     * by this check. Terrain restoration always uses the check and never mines a new access tunnel.
+     */
+    public final Setting<Boolean> builderPreserveAccess = new Setting<>(true);
 
     /**
      * Place torches in dark spots near you while Baritone is busy mining or walking
