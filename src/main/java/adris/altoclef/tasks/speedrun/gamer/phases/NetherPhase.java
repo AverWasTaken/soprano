@@ -256,6 +256,9 @@ public class NetherPhase implements PhaseHandler {
     private int lastPearls;
     private double huntWanderSince = -1;
     private double huntSeen = -1;
+    // the forest the no-pearl clock is counting for. a new one gets the full clock, or a forest found late in the last
+    // one's count would be written off for good after a few minutes
+    private RunState.Pos huntClockFor;
     private double barterSpent;
     private double barterTickAt = -1;
     private int lastHurt;
@@ -442,6 +445,7 @@ public class NetherPhase implements PhaseHandler {
         warpedSearchOver = false;
         huntWanderSince = -1;
         huntSeen = -1;
+        huntClockFor = null;
         barterSpent = 0;
         barterTickAt = -1;
         hudState = null;
@@ -1625,6 +1629,12 @@ public class NetherPhase implements PhaseHandler {
 
     enum DryHunt { LEAVE, NEXT_FOREST, KEEP_HUNTING }
 
+    // losing the forest (given up, null) keeps the count going, the hunt is still dry. only a forest we weren't counting for
+    // starts it over
+    static boolean newForest(RunState.Pos forest, RunState.Pos countingFor) {
+        return forest != null && !forest.equals(countingFor);
+    }
+
     // the no-pearl clock ran out. with the floor in the bag that's the old exit (onTimeout skips us out), otherwise only the spot
     // was wrong: a known forest gets written off and the search looks elsewhere, no forest just starts the clock over.
     // ctx.fail here used to spend the phase's last attempt and end a run with budget left
@@ -1645,8 +1655,11 @@ public class NetherPhase implements PhaseHandler {
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
         huntWanderSince = pausedClock(huntWanderSince, huntSeen, now);
         huntSeen = now;
-        if (huntWanderSince < 0 || pearls > lastPearls) {
+        if (huntWanderSince < 0 || pearls > lastPearls || newForest(s.warpedForest, huntClockFor)) {
             huntWanderSince = now;
+        }
+        if (s.warpedForest != null) {
+            huntClockFor = s.warpedForest;
         }
         lastPearls = pearls;
         // runs whether or not a forest is known: a forest with no endermen in it is just as stuck
@@ -1668,6 +1681,9 @@ public class NetherPhase implements PhaseHandler {
             }
             // no forest known: nothing to move away from, the hunt keeps taking whatever wanders by. the phase budget is
             // what ends a hopeless Nether, not this clock
+            if (move == DryHunt.KEEP_HUNTING) {
+                ctx.log("pearl hunt: no pearl for " + Math.round(ctx.cfg().nether.huntWanderMinutes) + " min and no forest known, still hunting");
+            }
             huntWanderSince = now;
         }
         huntTickedAt = lastGameTime;
