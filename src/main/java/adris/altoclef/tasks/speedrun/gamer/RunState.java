@@ -227,6 +227,8 @@ public class RunState {
     public List<Pos> fortressExhausted = new ArrayList<>();
     // warped forests the walk never reached, same idea
     public List<Pos> warpedExhausted = new ArrayList<>();
+    // forests we hunted for the whole no-pearl clock and got nothing, wider than warpedExhausted (see WARPED_DRY_BLOCKS)
+    public List<Pos> warpedDry = new ArrayList<>();
 
     // w6
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed

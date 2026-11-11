@@ -688,6 +688,15 @@ public class PearlHuntTask extends Task {
         return best;
     }
 
+    // the phase gave up on this forest after a whole no-pearl clock. the walk flags reset by themselves when the hotspot changes
+    // (walkToHotspot), the roam has to be told or its idle latch from the dead forest keeps it off at the next one
+    public void forestGivenUp() {
+        roam.reset();
+        roamTask = null;
+        roamMissSaid = false;
+        roamQuietSaid = false;
+    }
+
     // the roam around a known forest when there is nothing to chase, null hands it to the loot task (and its far wander)
     private Task roamStep(AltoClef mod, int lootId) {
         RunState.Pos spot = hotspot.get();

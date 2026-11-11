@@ -149,6 +149,9 @@ public final class NetherSweepPlanner {
     private static final int EXHAUSTED_BLOCKS = 192;
     // nylium this close to a forest we couldn't reach is that same forest behind that same rock
     static final int WARPED_EXHAUSTED_BLOCKS = 64;
+    // a forest we stood in for the whole no-pearl clock is dead, and so is the floor around it. 64 would hand back the next
+    // nylium blob of the same forest, so the next pick has to be somewhere else for real
+    public static final int WARPED_DRY_BLOCKS = 128;
     // not asked for this long = something else had the wheel
     private static final double IDLE_SECONDS = 5;
     private static final int MAX_GAP_RESETS = 2;
@@ -340,13 +343,20 @@ public final class NetherSweepPlanner {
 
     // same as isGivenUp, for nylium: dropped before the scan's nearest forty or the dud forest is all it ever looks at
     public boolean isGivenUpWarped(RunState.Pos pos) {
-        return nearAny(state.warpedExhausted, pos, WARPED_EXHAUSTED_BLOCKS);
+        return nearAny(state.warpedExhausted, pos, WARPED_EXHAUSTED_BLOCKS) || nearAny(state.warpedDry, pos, WARPED_DRY_BLOCKS);
     }
 
     // the walk there stalled or ran out of time, so it's behind something. nothing else ever clears the forest and it survives a
     // retry, so without this a bad one gets walked at for the rest of the run. goalMet flips back and the sweep can go again
     public void giveUpWarped(RunState.Pos spot) {
         state.warpedExhausted.add(spot);
+        state.warpedForest = null;
+    }
+
+    // we got there and hunted the whole clock with nothing to show: the area's done, not just that block. permanent like the
+    // walk give up, a run that burns through every forest in reach just hunts whatever wanders by
+    public void giveUpWarpedDry(RunState.Pos spot) {
+        state.warpedDry.add(spot);
         state.warpedForest = null;
     }
 

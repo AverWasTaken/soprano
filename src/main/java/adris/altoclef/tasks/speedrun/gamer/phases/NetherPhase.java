@@ -1623,6 +1623,18 @@ public class NetherPhase implements PhaseHandler {
         return since + (now - seen);
     }
 
+    enum DryHunt { LEAVE, NEXT_FOREST, KEEP_HUNTING }
+
+    // the no-pearl clock ran out. with the floor in the bag that's the old exit (onTimeout skips us out), otherwise only the spot
+    // was wrong: a known forest gets written off and the search looks elsewhere, no forest just starts the clock over.
+    // ctx.fail here used to spend the phase's last attempt and end a run with budget left
+    static DryHunt dryHunt(boolean floorHeld, RunState.Pos forest) {
+        if (floorHeld) {
+            return DryHunt.LEAVE;
+        }
+        return forest != null ? DryHunt.NEXT_FOREST : DryHunt.KEEP_HUNTING;
+    }
+
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
@@ -1639,7 +1651,24 @@ public class NetherPhase implements PhaseHandler {
         lastPearls = pearls;
         // runs whether or not a forest is known: a forest with no endermen in it is just as stuck
         if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
-            return fail(ctx, "no pearl gained in the Nether hunt for too long");
+            DryHunt move = dryHunt(EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), s, true), s.warpedForest);
+            if (move == DryHunt.LEAVE) {
+                return fail(ctx, "no pearl gained in the Nether hunt for too long");
+            }
+            if (move == DryHunt.NEXT_FOREST) {
+                RunState.Pos dead = s.warpedForest;
+                ctx.log("pearl hunt: no pearl for " + Math.round(ctx.cfg().nether.huntWanderMinutes) + " min here, moving on (excluding "
+                        + NetherSweepPlanner.WARPED_DRY_BLOCKS + " around " + dead.x + " " + dead.z + ")");
+                planner.giveUpWarpedDry(dead);
+                // same reset as warpedWalkFailed: the old search is goal met or failed and would never look again
+                findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+                warpedSearchOver = false;
+                hunt.forestGivenUp();
+                ctx.save();
+            }
+            // no forest known: nothing to move away from, the hunt keeps taking whatever wanders by. the phase budget is
+            // what ends a hopeless Nether, not this clock
+            huntWanderSince = now;
         }
         huntTickedAt = lastGameTime;
         hudState = hunt.step();
