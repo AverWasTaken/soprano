@@ -33,6 +33,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightBeds;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PortalBedStep;
 import adris.altoclef.tasks.speedrun.gamer.tasks.ShelterTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
@@ -401,6 +402,12 @@ public class GamerTask extends Task {
         // a furnace or smoker with a job of ours in it is not ours to dig through. one predicate in our own level, reading a snapshot
         // (baritone asks from its own thread), so a station stops being protected the moment its job is done
         mod.getBehaviour().avoidBlockBreaking(p -> jobSpots.contains(p));
+        // the bed by the overworld portal is all that stands between a nether death and the world spawn, and nothing of ours ever
+        // needs to break it (the collectors already skip it, see Respawn.keepsBed). this covers the pather and every miner at once
+        mod.getBehaviour().avoidBlockBreaking(p -> {
+            var world = mod.getWorld();
+            return world != null && PortalBedStep.guarded(Respawn.boundRun(), p, world::getBlockState);
+        });
         // and nothing builds on or beside a standing station: the cell over it and the four around it. breaking stays free, a box
         // there would refuse the ore and the logs next to the table
         mod.getBehaviour().avoidBlockPlacing(p -> StationBox.avoids(stationBox, p));

@@ -925,6 +925,68 @@ public class PhaseMachineTest {
         assertEquals(GamerPhase.LOCATE, host.state.phase);
     }
 
+    // a nether death throws the bag on the floor and the kit gets rebuilt: that's the recovery, the death caps judge it, not
+    // the ping pong cap. the third nether death used to end runs with half the deaths left
+    @Test
+    public void aRegressAfterADeathInThePhaseIsNotPingPong() {
+        host.state.phase = GamerPhase.LOCATE;
+        FakeHandler locate = h(GamerPhase.LOCATE);
+        locate.regress = Optional.of(GamerPhase.NETHER);
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.LOCATE, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN}) {
+            h(p).stall = 0;
+        }
+        start();
+        h(GamerPhase.NETHER).alwaysDone();
+        h(GamerPhase.EYES).alwaysDone();
+        h(GamerPhase.RETURN).alwaysDone();
+        for (int round = 1; round <= PhaseMachine.MAX_REGRESS_PER_PAIR + 3; round++) {
+            host.state.deathsThisPhase = 1;
+            host.facts.seconds(61);
+            machine.tick(null);
+            assertFalse("regress " + round, host.state.stuck);
+            assertEquals("regress " + round, GamerPhase.NETHER, host.state.phase);
+            assertNull(host.state.regressCounts.get("LOCATE>NETHER"));
+            // the move zeroed the phase's deaths, the next one has to die again to be free
+            assertEquals(0, host.state.deathsThisPhase);
+            machine.tick(null);
+            assertEquals(GamerPhase.LOCATE, host.state.phase);
+        }
+    }
+
+    @Test
+    public void aDeathOnlyBuysTheOneRegressAfterIt() {
+        host.state.phase = GamerPhase.LOCATE;
+        FakeHandler locate = h(GamerPhase.LOCATE);
+        locate.regress = Optional.of(GamerPhase.NETHER);
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.LOCATE, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN}) {
+            h(p).stall = 0;
+        }
+        host.state.regressCounts.put("LOCATE>NETHER", PhaseMachine.MAX_REGRESS_PER_PAIR);
+        start();
+        h(GamerPhase.NETHER).alwaysDone();
+        h(GamerPhase.EYES).alwaysDone();
+        h(GamerPhase.RETURN).alwaysDone();
+        host.state.deathsThisPhase = 1;
+        host.facts.seconds(61);
+        machine.tick(null);
+        assertFalse(host.state.stuck);
+        assertEquals(GamerPhase.NETHER, host.state.phase);
+        machine.tick(null);
+        assertEquals(GamerPhase.LOCATE, host.state.phase);
+        // no death this time: the old count stands and this one is the loop
+        host.facts.seconds(61);
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertTrue(host.state.stuckReason, host.state.stuckReason.contains("phase ping pong"));
+    }
+
+    @Test
+    public void onlyADeathlessRegressCountsTowardThePingPongCap() {
+        assertTrue(PhaseMachine.countsAsPingPong(0));
+        assertFalse(PhaseMachine.countsAsPingPong(1));
+        assertFalse(PhaseMachine.countsAsPingPong(3));
+    }
+
     @Test
     public void differentRegressPairsCountSeparately() {
         host.state.regressCounts.put("LOCATE>NETHER", PhaseMachine.MAX_REGRESS_PER_PAIR);
