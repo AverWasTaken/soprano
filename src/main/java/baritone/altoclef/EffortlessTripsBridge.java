@@ -28,6 +28,9 @@ import adris.altoclef.util.ItemTarget;
 import baritone.api.command.exception.CommandException;
 import baritone.api.utils.BlockRange;
 import baritone.effortless.EffortlessTrips;
+import baritone.effortless.StorageArea;
+import baritone.api.utils.Dimension;
+import adris.altoclef.tasks.container.StorageRouteTask;
 import net.minecraft.world.item.Item;
 
 import java.util.ArrayList;
@@ -53,19 +56,19 @@ final class EffortlessTripsBridge implements EffortlessTrips {
     }
 
     @Override
-    public void deposit(BlockRange range, Consumer<String> done) {
+    public void deposit(List<StorageArea> areas, Dimension dimension, Consumer<String> done) {
         run(mod -> {
-            StoreInStashTask task = new StoreInStashTask(false, range, DepositCommand.getAllNonEquippedOrToolItemsAsTarget(mod));
-            return new Run(task, () -> task.failure() == null ? null : FULL);
-        }, done);
+            StorageRouteTask task = new StorageRouteTask(areas,dimension,Map.of(),true);
+            return new Run(task, task::failure);
+        },done);
     }
 
     @Override
-    public void fetch(BlockRange range, Map<Item, Integer> bill, Consumer<String> done) {
+    public void fetch(List<StorageArea> areas, Dimension dimension, Map<Item, Integer> bill, Consumer<String> done) {
         run(mod -> {
-            FetchFromStashTask task = new FetchFromStashTask(range, targets(mod, bill));
+            StorageRouteTask task = new StorageRouteTask(areas,dimension,bill,false);
             return new Run(task, task::failure);
-        }, done);
+        },done);
     }
 
     @Override

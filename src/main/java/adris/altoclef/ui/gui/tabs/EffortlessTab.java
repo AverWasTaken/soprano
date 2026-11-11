@@ -21,6 +21,7 @@ import adris.altoclef.ui.gui.facade.BotFacade;
 import adris.altoclef.ui.gui.facade.EffortlessAccess;
 import adris.altoclef.ui.gui.facade.EffortlessAccess.Row;
 import adris.altoclef.ui.gui.kit.Button;
+import adris.altoclef.ui.gui.kit.Segmented;
 import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
@@ -66,6 +67,8 @@ public final class EffortlessTab implements Tab {
     private final Button clearBtn;
     private final VirtualList<Row> list;
     private final View view;
+    private final Segmented pages;
+    private final StoragePanel storage;
     private final Map<Object, PixelImage> thumbs = new HashMap<>();
     private String status = "";
     private int ticks;
@@ -82,6 +85,8 @@ public final class EffortlessTab implements Tab {
         list = new VirtualList<>(theme, theme.px(ROW_H), this::drawRow);
         list.setEmptyText("Nothing queued. Pick a shape with the Effortless key (left alt), click its corners, and it lands here");
         list.onRowMouseDown(this::rowMouse);
+        storage = new StoragePanel(theme,access,ctx);
+        pages = new Segmented(theme,List.of("Queue","Storage"),0,i -> { ctx.blur(); viewLayout(); });
         view = new View();
         refresh();
     }
@@ -110,6 +115,8 @@ public final class EffortlessTab implements Tab {
     public void onShown() {
         refresh();
     }
+
+    private void viewLayout() { if (view != null) view.layout(); }
 
     private void startStop() {
         if (access.running()) {
@@ -248,12 +255,10 @@ public final class EffortlessTab implements Tab {
 
     private final class View extends Widget {
 
-        private final List<Widget> kids;
         private int infoTop;
 
         View() {
             super(EffortlessTab.this.theme);
-            kids = List.of(startBtn, clearBtn, list);
         }
 
         @Override
@@ -267,14 +272,18 @@ public final class EffortlessTab implements Tab {
             startBtn.setBounds(right - sw, top, sw, ch);
             int cw = clearBtn.preferredWidth();
             clearBtn.setBounds(startBtn.x() - gap - cw, top, cw, ch);
-            infoTop = top;
-            int lt = top + ch + theme.px(Theme.SECTION);
+            pages.setBounds(x+pad,top,pages.preferredWidth(),ch);
+            boolean queuePage=pages.selected()==0;
+            startBtn.setVisible(queuePage); clearBtn.setVisible(queuePage); list.setVisible(queuePage); storage.setVisible(!queuePage);
+            infoTop = top+ch+theme.px(8);
+            int lt = infoTop + ch + theme.px(8);
+            storage.setBounds(x,top+ch+theme.px(8),w,Math.max(0,y+h-top-ch-theme.px(8)));
             list.setBounds(x + pad, lt, w - 2 * pad + ListCard.gutter(theme), Math.max(0, y + h - lt - pad));
         }
 
         @Override
         public List<Widget> children() {
-            return kids;
+            return pages.selected()==0 ? List.of(pages,startBtn,clearBtn,list) : List.of(pages,storage);
         }
 
         @Override
@@ -287,10 +296,11 @@ public final class EffortlessTab implements Tab {
 
         @Override
         public void draw(Canvas c, Frame f) {
-            ListCard.card(theme, c, list, f.nowNanos(), list.items().size() * list.rowHeight());
-            for (Widget k : kids) {
+            if (pages.selected()==0) ListCard.card(theme, c, list, f.nowNanos(), list.items().size() * list.rowHeight());
+            for (Widget k : children()) {
                 k.draw(c, f);
             }
+            if (pages.selected()!=0) return;
             int pad = theme.px(Theme.PAD);
             TextStyle s = theme.label;
             float hy = infoTop + theme.px(Theme.CONTROL_H) / 2f + (c.ascent(s) - c.descent(s)) / 2f;

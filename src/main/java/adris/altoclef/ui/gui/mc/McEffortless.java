@@ -24,6 +24,8 @@ import baritone.effortless.AreaMask;
 import baritone.effortless.EffortlessJob;
 import baritone.effortless.EffortlessManager;
 import baritone.effortless.JobQueue;
+import baritone.effortless.StorageArea;
+import adris.altoclef.ui.gui.facade.Result;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
@@ -210,6 +212,64 @@ final class McEffortless implements EffortlessAccess {
         JobQueue.Entry e = queue().get(index);
         e.shown(!e.shown());
         manager().save();
+    }
+
+    @Override public List<Storage> storages() {
+        return queue().storage().stream().map(a -> new Storage(a.id(),a.name(),a.role().ordinal(),a.match().ordinal(),
+                String.join(", ",a.items()), a.boxes().stream().map(b -> new Region(b.a().toShortString(),b.b().toShortString())).toList())).toList();
+    }
+
+    private int storageIndex(String id) {
+        for (int i = 0; i < queue().storage().size(); i++) if (queue().storage().get(i).id().equals(id)) return i;
+        throw new IllegalArgumentException("That storage was removed; select another entry");
+    }
+
+    private static BlockPos storagePos(String text) {
+        List<String> values = adris.altoclef.ui.gui.model.Coords.split(text);
+        if (values.size() != 3) throw new IllegalArgumentException("Enter X Y Z for each corner");
+        try {
+            int x = Integer.parseInt(values.get(0)), y = Integer.parseInt(values.get(1)), z = Integer.parseInt(values.get(2));
+            if (Math.abs((long)x) > 30_000_000 || Math.abs((long)z) > 30_000_000 || y < -2032 || y > 2031)
+                throw new IllegalArgumentException("Coordinates are outside the supported world bounds");
+            return new BlockPos(x,y,z);
+        } catch (NumberFormatException e) { throw new IllegalArgumentException("Use whole numbers for X Y Z"); }
+    }
+
+    @Override public Result updateStorage(Storage value) {
+        try {
+            int i = storageIndex(value.id());
+            if (value.regions().isEmpty()) return Result.fail("A storage needs at least one area");
+            List<StorageArea.Box> parts = value.regions().stream().map(v -> new StorageArea.Box(storagePos(v.a()),storagePos(v.b()))).toList();
+            StorageArea old = queue().storage().get(i);
+            StorageArea edited = old.edited(value.name(),StorageArea.Role.values()[value.role()],StorageArea.Match.values()[value.match()],
+                    value.items(),parts.get(0).a(),parts.get(0).b());
+            edited = new StorageArea(edited.a(),edited.b(),edited.role(),edited.id(),edited.name(),edited.match(),edited.items(),parts.subList(1,parts.size()));
+            queue().storage().set(i,edited); manager().save();
+            return Result.ok("Storage saved. Changes apply to the next trip");
+        } catch (IllegalArgumentException e) { return Result.fail(e.getMessage()); }
+    }
+
+    @Override public Result removeStorage(String id) {
+        try { queue().storage().remove(storageIndex(id)); manager().save(); return Result.ok("Storage removed"); }
+        catch (IllegalArgumentException e) { return Result.fail(e.getMessage()); }
+    }
+
+    @Override public Result moveStorage(String id, int delta) {
+        try {
+            int from = storageIndex(id), to = Math.max(0,Math.min(queue().storage().size()-1,from+delta));
+            StorageArea area = queue().storage().remove(from); queue().storage().add(to,area); manager().save();
+            return Result.ok("Storage priority updated");
+        } catch (IllegalArgumentException e) { return Result.fail(e.getMessage()); }
+    }
+
+    @Override public Result mergeStorage(String id) {
+        try {
+            int i = storageIndex(id);
+            if (i+1 >= queue().storage().size()) return Result.fail("There is no storage below this one");
+            StorageArea merged = queue().storage().get(i).merge(queue().storage().get(i+1));
+            queue().storage().set(i,merged); queue().storage().remove(i+1); manager().save();
+            return Result.ok("Storage areas merged; the space between them is excluded");
+        } catch (IllegalArgumentException e) { return Result.fail(e.getMessage()); }
     }
 
     @Override

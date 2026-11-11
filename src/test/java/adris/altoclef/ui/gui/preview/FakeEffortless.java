@@ -28,6 +28,26 @@ public final class FakeEffortless implements EffortlessAccess {
     public final List<String> actions = new ArrayList<>();
     private final List<Row> rows = new ArrayList<>();
     public boolean running = true;
+    public final List<Storage> storageRows = new ArrayList<>(List.of(
+            new Storage("stone","Stone and earth",1,1,"minecraft:stone, minecraft:cobblestone, minecraft:dirt",List.of(new Region("120, 64, -30","124, 66, -28"))),
+            new Storage("wood","Timber supply",2,1,"#minecraft:logs, #minecraft:planks",List.of(new Region("128, 64, -30","132, 65, -28"))),
+            new Storage("overflow","Overflow",0,0,"",List.of(new Region("140, 64, -30","144, 66, -28"),new Region("150, 64, -30","152, 66, -28")))));
+    @Override public List<Storage> storages() { return List.copyOf(storageRows); }
+    @Override public adris.altoclef.ui.gui.facade.Result updateStorage(Storage value) {
+        for (int i=0;i<storageRows.size();i++) if (storageRows.get(i).id().equals(value.id())) {
+            storageRows.set(i,value); actions.add("storage save "+value.id()); return adris.altoclef.ui.gui.facade.Result.ok("Saved");
+        }
+        return adris.altoclef.ui.gui.facade.Result.fail("Missing storage");
+    }
+    @Override public adris.altoclef.ui.gui.facade.Result removeStorage(String id) {
+        storageRows.removeIf(s->s.id().equals(id)); actions.add("storage remove "+id); return adris.altoclef.ui.gui.facade.Result.ok("Removed");
+    }
+    @Override public adris.altoclef.ui.gui.facade.Result moveStorage(String id,int delta) {
+        for(int i=0;i<storageRows.size();i++) if(storageRows.get(i).id().equals(id)) {
+            int to=Math.max(0,Math.min(storageRows.size()-1,i+delta)); storageRows.add(to,storageRows.remove(i)); break;
+        }
+        return adris.altoclef.ui.gui.facade.Result.ok("Moved");
+    }
 
     public FakeEffortless() {
         rows.add(row("Floor 9×1×7", "Place · 63 blocks · Oak Planks · into empty", "added 12 min ago", State.DONE, null, false,

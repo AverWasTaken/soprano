@@ -21,6 +21,8 @@ import baritone.api.utils.BlockRange;
 import net.minecraft.world.item.Item;
 
 import java.util.Map;
+import java.util.List;
+import baritone.api.utils.Dimension;
 import java.util.function.Consumer;
 
 // the errands a job sends the bot on between builds: empty the bag into the output storage, fetch the bill from the
@@ -33,9 +35,9 @@ public interface EffortlessTrips {
 
     boolean available();
 
-    void deposit(BlockRange range, Consumer<String> done);
+    void deposit(List<StorageArea> areas, Dimension dimension, Consumer<String> done);
 
-    void fetch(BlockRange range, Map<Item, Integer> bill, Consumer<String> done);
+    void fetch(List<StorageArea> areas, Dimension dimension, Map<Item, Integer> bill, Consumer<String> done);
 
     void gather(Map<Item, Integer> bill, Consumer<String> done);
 

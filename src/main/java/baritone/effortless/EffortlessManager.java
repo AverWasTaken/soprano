@@ -81,6 +81,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private int resumeIn;
     private static final int SETTLE_TICKS = 10;
     private long storageRetryAt;
+    private long tripTimeoutMs = 60_000L;
     private static final int MAX_TRIPS = 5;
     // terrain the running entry's paths dug through outside its area, cell -> what was there, and whether the entry is
     // in its put-it-back build now
@@ -329,7 +330,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
         if (tripOut) {
             // an errand has the bot, the entry waits for it to come back
-            if (tripTimed && System.currentTimeMillis() - tripStarted > TRIP_TIMEOUT_MS && trips != null) {
+            if (tripTimed && System.currentTimeMillis() - tripStarted > tripTimeoutMs && trips != null) {
                 tripTimed = false;
                 tripCalledOff = true;
                 trips.cancel();
@@ -561,6 +562,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
         tripOut = true;
         tripStarted = System.currentTimeMillis();
         tripTimed = e.materials() == EffortlessMaterials.STORAGE;
+        tripTimeoutMs = TRIP_TIMEOUT_MS * Math.max(1,queue.storage().stream().filter(a -> a.role().input()).mapToInt(a -> a.boxes().size()).sum());
         // the builder lets go for the errand, it starts fresh on the entry when the bot is back
         stopBuilderFor(e);
         java.util.function.Consumer<String> back = why -> {
@@ -575,7 +577,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
         };
         if (e.materials() == EffortlessMaterials.STORAGE) {
             BuildMode.say("Fetching " + total(bill) + " blocks from the storage");
-            trips.fetch(input.range(dimension()), bill, back);
+            trips.fetch(List.copyOf(queue.storage()), dimension(), bill, back);
         } else {
             BuildMode.say("Gathering " + total(bill) + " blocks");
             trips.gather(bill, back);
@@ -589,16 +591,20 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 || System.currentTimeMillis() < storageRetryAt || creative()) {
             return false;
         }
-        return freeSlots() <= Baritone.settings().effortlessFreeSlotsLow.value && trips.available();
+        boolean eligible = baritone.getPlayerContext().player().getInventory().getNonEquipmentItems().stream()
+                .filter(stack -> !stack.isEmpty() && !adris.altoclef.util.helpers.ItemHelper.isTool(stack.getItem()))
+                .anyMatch(stack -> queue.storage().stream().anyMatch(a -> a.role().output() && a.accepts(stack.getItem())));
+        return eligible && freeSlots() <= Baritone.settings().effortlessFreeSlotsLow.value && trips.available();
     }
 
     private void deposit(JobQueue.Entry e) {
         tripOut = true;
         tripStarted = System.currentTimeMillis();
         tripTimed = true;
+        tripTimeoutMs = TRIP_TIMEOUT_MS * Math.max(1,queue.storage().stream().filter(a -> a.role().output()).mapToInt(a -> a.boxes().size()).sum());
         stopBuilderFor(e);
         BuildMode.say("Inventory full, emptying it into the storage");
-        trips.deposit(queue.output().range(dimension()), why -> {
+        trips.deposit(List.copyOf(queue.storage()), dimension(), why -> {
             tripOut = false;
             if (playerStopped(why, e)) {
                 return;
@@ -617,6 +623,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 storageRetryAt = System.currentTimeMillis() + 1000L * Baritone.settings().effortlessStorageRetrySeconds.value;
                 BuildMode.say("The storage is full, carrying on and trying again later");
             } else if (why != null) {
+                storageRetryAt = System.currentTimeMillis() + 1000L * Baritone.settings().effortlessStorageRetrySeconds.value;
                 BuildMode.say("Storage: " + why);
             }
             settleThenResume(e);
@@ -865,7 +872,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
         }
         PoseStack stack = event.getModelViewStack();
         BufferBuilder buf = IRenderer.startLines(new java.awt.Color(0x5BD27A), 0.9f);
-        for (StorageArea a : queue.storage()) {
+        for (StorageArea area : queue.storage()) for (StorageArea.Box a : area.boxes()) {
             IRenderer.emitAABB(buf, stack, new AABB(Math.min(a.a().getX(), a.b().getX()), Math.min(a.a().getY(), a.b().getY()),
                     Math.min(a.a().getZ(), a.b().getZ()), Math.max(a.a().getX(), a.b().getX()) + 1, Math.max(a.a().getY(), a.b().getY()) + 1,
                     Math.max(a.a().getZ(), a.b().getZ()) + 1), 0.02, Baritone.settings().selectionLineWidth.value);

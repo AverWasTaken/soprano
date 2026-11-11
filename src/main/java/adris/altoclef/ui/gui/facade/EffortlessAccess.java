@@ -56,6 +56,14 @@ public interface EffortlessAccess {
 
     void clearDone();
 
+    record Region(String a, String b) {}
+    record Storage(String id, String name, int role, int match, String items, List<Region> regions) {}
+    default List<Storage> storages() { return List.of(); }
+    default Result updateStorage(Storage value) { return Result.fail("Storage editing is unavailable"); }
+    default Result removeStorage(String id) { return Result.fail("Storage editing is unavailable"); }
+    default Result moveStorage(String id, int delta) { return Result.fail("Storage editing is unavailable"); }
+    default Result mergeStorage(String id) { return Result.fail("Storage editing is unavailable"); }
+
     EffortlessAccess NONE = new EffortlessAccess() {
         @Override
         public List<Row> rows() {

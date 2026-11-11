@@ -81,6 +81,13 @@ public final class JobStore {
             o.add("a", pos(a.a()));
             o.add("b", pos(a.b()));
             o.addProperty("role", a.role().name());
+            o.addProperty("id", a.id()); o.addProperty("name", a.name()); o.addProperty("match", a.match().name());
+            JsonArray ids = new JsonArray(); a.items().forEach(ids::add); o.add("items", ids);
+            JsonArray parts = new JsonArray();
+            for (StorageArea.Box box : a.extra()) {
+                JsonObject part = new JsonObject(); part.add("a",pos(box.a())); part.add("b",pos(box.b())); parts.add(part);
+            }
+            o.add("extra", parts);
             areas.add(o);
         }
         root.add("storage", areas);
@@ -201,8 +208,16 @@ public final class JobStore {
                 try {
                     JsonObject o = el.getAsJsonObject();
                     StorageArea.Role role = StorageArea.Role.byId(o.get("role").getAsString());
+                    List<String> ids = new ArrayList<>();
+                    if (o.has("items")) o.getAsJsonArray("items").forEach(v -> ids.add(v.getAsString()));
+                    List<StorageArea.Box> parts = new ArrayList<>();
+                    if (o.has("extra")) for (JsonElement part : o.getAsJsonArray("extra")) {
+                        JsonObject v = part.getAsJsonObject(); parts.add(new StorageArea.Box(pos(v.getAsJsonArray("a")), pos(v.getAsJsonArray("b"))));
+                    }
                     q.storage().add(new StorageArea(pos(o.getAsJsonArray("a")), pos(o.getAsJsonArray("b")),
-                            role == null ? StorageArea.Role.BOTH : role));
+                            role == null ? StorageArea.Role.BOTH : role, o.has("id") ? o.get("id").getAsString() : null,
+                            o.has("name") ? o.get("name").getAsString() : "Storage",
+                            o.has("match") ? StorageArea.Match.valueOf(o.get("match").getAsString()) : StorageArea.Match.ALL, ids, parts));
                 } catch (RuntimeException ignored) {
                 }
             }
