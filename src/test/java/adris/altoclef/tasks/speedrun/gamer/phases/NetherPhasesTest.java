@@ -262,4 +262,14 @@ public class NetherPhasesTest {
         assertEquals(NetherPhase.DryHunt.NEXT_FOREST, NetherPhase.dryHunt(false, new RunState.Pos(10, 70, 10)));
         assertEquals(NetherPhase.DryHunt.KEEP_HUNTING, NetherPhase.dryHunt(false, null));
     }
+
+    @Test
+    public void onlyANewForestRestartsTheDryClock() {
+        RunState.Pos a = new RunState.Pos(10, 70, 10);
+        assertTrue(NetherPhase.newForest(a, null));
+        assertTrue(NetherPhase.newForest(new RunState.Pos(300, 70, 10), a));
+        assertFalse(NetherPhase.newForest(new RunState.Pos(10, 70, 10), a));
+        assertFalse(NetherPhase.newForest(null, a));
+        assertFalse(NetherPhase.newForest(null, null));
+    }
 }
