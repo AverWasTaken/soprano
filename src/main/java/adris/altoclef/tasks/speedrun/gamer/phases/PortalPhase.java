@@ -274,7 +274,8 @@ public class PortalPhase implements PhaseHandler {
         // benches hear about it. asked once the rest of the gate is through, the standing bed check reads a few thousand blocks
         boolean craftBed = !gateDone && gate.isEmpty() && wantsBedCraft(mod, ctx);
         List<KitNeed> benchPlan = gate;
-        if (craftBed) {
+        // (the portal bed step makes its own when the bed went missing after the gate, and its table stays down the same way)
+        if (craftBed || portalBed.crafting()) {
             benchPlan = new ArrayList<>(gate);
             benchPlan.add(BED_CRAFT_NEED);
         }
