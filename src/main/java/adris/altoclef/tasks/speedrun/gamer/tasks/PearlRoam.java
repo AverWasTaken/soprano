@@ -154,6 +154,18 @@ final class PearlRoam {
         stall = 0;
     }
 
+    // a new forest: the old one's quiet clock and dud spots mean nothing here, and a carried over idle would switch the roam
+    // off before it ever walked the new place
+    void reset() {
+        goal = null;
+        best = Double.MAX_VALUE;
+        stall = 0;
+        idle = 0;
+        retry = 0;
+        recheck = 0;
+        failed.clear();
+    }
+
     // ticks with no goal still count toward the quiet clock
     void idleTick() {
         idle++;

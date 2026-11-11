@@ -817,4 +817,40 @@ public class NetherSweepPlannerTest {
         assertTrue(planner.isKnownBastion(pos(250 + 63, 0)));
         assertFalse(planner.isKnownBastion(pos(250 + 65, 0)));
     }
+
+    @Test
+    public void aDryForestTakesTheFloorAroundItToo() {
+        planner.report(Sight.WARPED, pos(30, 30));
+        planner.giveUpWarpedDry(pos(30, 30));
+        assertNull(state.warpedForest);
+        assertEquals(List.of(pos(30, 30)), state.warpedDry);
+        assertTrue(state.warpedExhausted.isEmpty());
+        assertFalse(planner.goalMet(Goal.WARPED));
+        // past the walk give up's 64, still the same dead area
+        assertTrue(planner.isGivenUpWarped(pos(157, 30)));
+        assertFalse(planner.report(Sight.WARPED, pos(157, 30)));
+        // 128 out is somewhere else
+        assertFalse(planner.isGivenUpWarped(pos(158, 30)));
+        assertTrue(planner.report(Sight.WARPED, pos(158, 30)));
+        assertEquals(pos(158, 30), state.warpedForest);
+    }
+
+    @Test
+    public void theWalkGiveUpKeepsItsOwnRadius() {
+        planner.giveUpWarped(pos(30, 30));
+        assertFalse(planner.isGivenUpWarped(pos(94, 30)));
+        assertTrue(state.warpedDry.isEmpty());
+    }
+
+    @Test
+    public void aDryForestSurvivesARelog() {
+        planner.report(Sight.WARPED, pos(30, 30));
+        planner.giveUpWarpedDry(pos(30, 30));
+        RunState back = new Gson().fromJson(RunStateStore.toJson(state), RunState.class);
+        assertEquals(state.warpedDry, back.warpedDry);
+        NetherSweepPlanner again = new NetherSweepPlanner(back, cfg, ROW, 12);
+        assertFalse(again.report(Sight.WARPED, pos(130, 30)));
+        RunState old = new Gson().fromJson("{}", RunState.class);
+        assertTrue(old.warpedDry.isEmpty());
+    }
 }

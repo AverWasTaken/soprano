@@ -163,4 +163,28 @@ public class PearlRoamTest {
         }
         assertFalse(roam.step(37, () -> true));
     }
+
+    @Test
+    public void aResetForgetsTheOldForest() {
+        PearlRoam roam = new PearlRoam();
+        for (int i = 0; i <= PearlRoam.IDLE_TICKS; i++) {
+            roam.idleTick();
+        }
+        roam.picked(new BlockPos(5, 64, 5));
+        // the first step only sets the progress mark, the stall then needs one more than STALL_TICKS
+        for (int i = 0; i <= PearlRoam.STALL_TICKS + 1; i++) {
+            roam.step(20, () -> true);
+        }
+        assertFalse(roam.failed().isEmpty());
+        // a failed pick leaves a cool down behind
+        roam.picked(null);
+        assertFalse(PearlRoam.wanted(true, false, -1, false, false, roam.idleTicks()));
+
+        roam.reset();
+        assertNull(roam.goal());
+        assertEquals(0, roam.idleTicks());
+        assertTrue(roam.failed().isEmpty());
+        assertTrue(roam.mayPick());
+        assertTrue(PearlRoam.wanted(true, false, -1, false, false, roam.idleTicks()));
+    }
 }

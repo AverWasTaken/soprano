@@ -249,4 +249,17 @@ public class NetherPhasesTest {
         assertEquals(-1, NetherPhase.pausedClock(-1, 500, 560), 1e-9);
         assertEquals(100, NetherPhase.pausedClock(100, -1, 560), 1e-9);
     }
+
+    @Test
+    public void aDryHuntWithTheFloorInTheBagStillLeaves() {
+        assertEquals(NetherPhase.DryHunt.LEAVE, NetherPhase.dryHunt(true, new RunState.Pos(10, 70, 10)));
+        assertEquals(NetherPhase.DryHunt.LEAVE, NetherPhase.dryHunt(true, null));
+    }
+
+    @Test
+    public void aDryHuntWithoutTheFloorMovesOnOrKeepsGoing() {
+        // a known forest gets written off, no forest never asks the planner to give up a null
+        assertEquals(NetherPhase.DryHunt.NEXT_FOREST, NetherPhase.dryHunt(false, new RunState.Pos(10, 70, 10)));
+        assertEquals(NetherPhase.DryHunt.KEEP_HUNTING, NetherPhase.dryHunt(false, null));
+    }
 }
