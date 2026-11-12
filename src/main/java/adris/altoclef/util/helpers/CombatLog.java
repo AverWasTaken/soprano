@@ -60,6 +60,22 @@ public final class CombatLog {
                 + " blocks, stepping out of the blast";
     }
 
+    public static String creeperParked(Dimension dimension, CreeperStep.Park park) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper #" + park.id() + " parked at "
+                + Math.round(park.x()) + "," + Math.round(park.y()) + "," + Math.round(park.z())
+                + " (moved " + String.format(Locale.ROOT, "%.1f", park.moved()) + " between steps), not stepping from it unless it lights or moves";
+    }
+
+    public static String creeperUnparked(Dimension dimension, CreeperStep.Unpark unpark) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper #" + unpark.id() + " unparked (" + unpark.why()
+                + "), stepping from it again";
+    }
+
+    public static String creeperParkForgot(Dimension dimension, int count, String why) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] forgot " + count + " parked creeper" + (count == 1 ? "" : "s")
+                + " (" + why + ")";
+    }
+
     // what the step does before baritone has a path: sprints (degrees off straight away, 0 = straight) or has nowhere safe to
     public static String creeperSprint(Dimension dimension, int degrees) {
         return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: sprinting "
