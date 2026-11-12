@@ -42,4 +42,22 @@ public class NightShedGuardTest {
         assertTrue(g.gaveUp());
         assertEquals(ShedGuard.CAP, g.throwsAsked());
     }
+
+    @Test
+    public void aSchematicBuildNeverThrowsForTheBed() {
+        int build = NightSleep.bedShedFloor(false, 32);
+        assertFalse(NightSleep.asksShed(true, build, false));
+        assertFalse(NightSleep.asksShed(true, NightSleep.bedShedFloor(false, 0), false));
+    }
+
+    @Test
+    public void gamerAsksOnlyAfterTheStockNo() {
+        int floor = NightSleep.bedShedFloor(true, 32);
+        assertEquals(32, floor);
+        assertTrue(NightSleep.asksShed(true, floor, false));
+        assertFalse(NightSleep.asksShed(false, floor, false));
+        assertFalse(NightSleep.asksShed(true, floor, true));
+        // a floor of 0 is still a floor, the config clamp never makes it -1
+        assertTrue(NightSleep.asksShed(true, NightSleep.bedShedFloor(true, 0), false));
+    }
 }

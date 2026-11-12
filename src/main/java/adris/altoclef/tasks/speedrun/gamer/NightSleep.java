@@ -406,7 +406,18 @@ public final class NightSleep {
         }
     }
 
-    // the night bed's pickup throwing a stack for a full bag (DropRoom.shed): a few different stacks at most, and one throw that's
+    // the bed pickup's throw floor: the night's for #gamer, -1 for a schematic build, whose spare blocks are the build's own
+    // material and three wool is not worth a hole in the house
+    public static int bedShedFloor(boolean shedForBed, int floor) {
+        return shedForBed ? floor : -1;
+    }
+
+    // ask for the build stack throw only when the stock pickup said no room, there is a floor at all, and the guard is still in
+    public static boolean asksShed(boolean stockNo, int floor, boolean gaveUp) {
+        return stockNo && floor >= 0 && !gaveUp;
+    }
+
+    // the night bed's pickup throwing a stack for a full bag (DropRoom.shedBlocks): a few different stacks at most, and one throw that's
     // still the plan after PATIENCE_TICKS never went out (the slot task ends stuck and the same answer comes straight back). either
     // way the pickup falls back to the stock no, and the PICKUP clock leaves the bed like it always did. keys are whatever tells
     // one throw from the next, slot and stack

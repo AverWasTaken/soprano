@@ -144,7 +144,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
     // virtual. a full bag touching the drop: what goes to make room, if anything. the stock answer is the garbage pick
-    // (GarbageView.room). the night bed's pickup asks the bed errand's shed when that's a no
+    // (GarbageView.room). the night bed's pickup throws a spare build stack when that's a no (GarbageView.shedBlocks)
     protected StorageHelper.Room roomFor(StorageHelper.GarbageView view, ItemStack drop) {
         return view.room(drop);
     }

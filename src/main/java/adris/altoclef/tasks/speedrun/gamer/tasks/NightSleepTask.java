@@ -142,6 +142,9 @@ public class NightSleepTask extends Task {
     private boolean pickupArmed;
     // one pickup per arming, held so its gaveUpReason means something when the clock runs out (a new one each tick never gave up)
     private BedPickup bedPickup;
+    // a full bag with no garbage may throw a spare build stack for the bed. off for schematic builds, the spare blocks there are
+    // the build's own material
+    private final boolean shedForBed;
     private final BedCraft bedCraft = new BedCraft();
     private long shortSince = -1;
 
@@ -150,7 +153,7 @@ public class NightSleepTask extends Task {
     private Subscription<GameOverlayEvent> overlayWatch;
 
     public NightSleepTask(RunState state, Supplier<OverworldConfig> cfg, NightSleep.Budget budget, IntSupplier buildBlocks,
-                          Consumer<String> say, Runnable save, BedSource source, BlockPos found, int endBeds) {
+                          Consumer<String> say, Runnable save, BedSource source, BlockPos found, int endBeds, boolean shedForBed) {
         this.state = state;
         this.cfg = cfg;
         this.budget = budget;
@@ -161,6 +164,7 @@ public class NightSleepTask extends Task {
         this.found = found;
         this.cleanup = state.nightBed != null;
         this.endBeds = endBeds;
+        this.shedForBed = shedForBed;
     }
 
     // null once the trip is over. GamerTask hands this to mob defense every tick
@@ -993,7 +997,7 @@ public class NightSleepTask extends Task {
         if (!pickupArmed) {
             pickupArmed = true;
             bedsBeforePickup = bedsInBag(mod);
-            bedPickup = new BedPickup(bedsBeforePickup + 1, cfg.get().nightBedShedFloor);
+            bedPickup = new BedPickup(bedsBeforePickup + 1, NightSleep.bedShedFloor(shedForBed, cfg.get().nightBedShedFloor));
         }
         // a pickup that said no room has banned the drop and would only wander about until the clock runs out
         boolean noRoom = !standing && bedPickup != null && BedPickup.NO_ROOM.equals(bedPickup.gaveUpReason());
@@ -1052,11 +1056,12 @@ public class NightSleepTask extends Task {
     // the night bed's pickup. bedsBeforePickup + 1 beds, room made when the bag is full, and no stone pickaxe trip halfway (same
     // as RecoverItemsTask's, the static flag it leaves up is everybody's problem). clearing the bed spot leaves stone and the like
     // lying round, and those grab the slot placing the bed freed. the garbage pick goes first like any pickup; a bag with no
-    // garbage in it gets the End errand's bed throw (DropRoom.shed): the biggest build stack the night's floor can spare, and past
-    // that the same victim and late list the errand uses. the guard keeps it bounded, past it this is the stock no and the bed stays
+    // garbage in it throws the biggest build stack the night's floor can spare (DropRoom.shedBlocks) and nothing else, three wool
+    // is cheaper than any kit. the guard keeps it bounded, past it this is the stock no and the bed stays
     private static final class BedPickup extends PickupDroppedItemTask {
         // what the stock pickup calls a full bag it gave up on
         static final String NO_ROOM = "no room";
+        // -1 = no throw past the garbage pick at all (schematic builds)
         private final int floor;
         private final NightSleep.ShedGuard guard = new NightSleep.ShedGuard();
 
@@ -1073,10 +1078,10 @@ public class NightSleepTask extends Task {
         @Override
         protected StorageHelper.Room roomFor(StorageHelper.GarbageView view, ItemStack drop) {
             StorageHelper.Room stock = super.roomFor(view, drop);
-            if (stock.kind() != DropRoom.Kind.NONE || guard.gaveUp()) {
+            if (!NightSleep.asksShed(stock.kind() == DropRoom.Kind.NONE, floor, guard.gaveUp())) {
                 return stock;
             }
-            StorageHelper.Room shed = view.shed(floor);
+            StorageHelper.Room shed = view.shedBlocks(floor);
             if (shed.kind() != DropRoom.Kind.EVICT) {
                 return stock;
             }

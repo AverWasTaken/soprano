@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
@@ -400,7 +401,33 @@ public class StorageHelper {
         // a full bag the bed errand wants a slot in, no drop in sight (DropRoom.shed). same throw as a room() EVICT, or NO.
         // blockFloor = the End gate's minBuildBlocks
         public Room shed(int blockFloor) {
-            int i = DropRoom.shed(_pick, victims(), blockFloor);
+            return evictAt(DropRoom.shed(_pick, victims(), blockFloor));
+        }
+
+        // the night bed's narrow throw (DropRoom.shedBlocks): a build stack the floor can spare, or NO. the evict throw has no
+        // canDropStack veto, so the protected list gets asked here. by count though: the stone kit's cobble floor protects
+        // cobble while it owes a few, and keeping all 80 for a floor of 9 would leave the bed for nothing
+        public Room shedBlocks(int blockFloor) {
+            List<DropRoom.Stack> bag = victims();
+            Map<Item, Integer> held = new HashMap<>();
+            for (DropRoom.Stack s : bag) {
+                if (!s.stack().isEmpty()) held.merge(s.stack().getItem(), s.stack().getCount(), Integer::sum);
+            }
+            for (int i = 0; i < bag.size(); i++) {
+                DropRoom.Stack s = bag.get(i);
+                Item item = s.stack().getItem();
+                if (s.keep() || s.stack().isEmpty() || !_mod.getBehaviour().isProtected(item)) continue;
+                int reserved = _mod.getExtraBaritoneSettings().reservedCount(item);
+                // protected but the settings snapshot says 0 is a stale snapshot, not a free stack
+                if (reserved <= 0) reserved = AltoClefSettings.FULLY_RESERVED;
+                if (held.get(item) - s.stack().getCount() < reserved) {
+                    bag.set(i, new DropRoom.Stack(s.stack(), s.tier(), true, s.build(), s.gate()));
+                }
+            }
+            return evictAt(DropRoom.shedBlocks(bag, blockFloor));
+        }
+
+        private Room evictAt(int i) {
             if (i < 0) {
                 return new Room(DropRoom.Decision.NO, Optional.empty(), null);
             }
