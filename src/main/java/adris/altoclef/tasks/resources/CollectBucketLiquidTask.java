@@ -24,6 +24,7 @@ import adris.altoclef.util.helpers.BucketSourceRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.PoolMisses;
+import adris.altoclef.util.helpers.ScoopStall;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -116,6 +117,9 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private static final int OPEN_LOOK_TICKS = 20;
     // the "got nowhere near it" misses, per pool (see missedPool). lives as long as this task instance does
     private final PoolMisses _poolMisses = new PoolMisses();
+    // standing right by an open looking source that the bucket can't get at (see ScoopStall). a field, so a restart
+    // doesn't hand it a fresh 12 s
+    private final ScoopStall _scoopStall = new ScoopStall();
 
     // sources the caller wants left alone (the cast's own pour), checked next to the tracker's bans
     private Predicate<BlockPos> _leaveAlone = p -> false;
@@ -323,8 +327,13 @@ public class CollectBucketLiquidTask extends ResourceTask {
                         return new DestroyBlockTask(blockPos.above());
                     }
                     // We can reach the block.
-                    if (LookHelper.getReach(blockPos).isPresent() &&
-                            mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                    boolean scooping = LookHelper.getReach(blockPos).isPresent() &&
+                            mod.getClientBaritone().getPathingBehavior().isSafeToCancel();
+                    if (stalledBy(mod, blockPos, scooping)) {
+                        // banned, the next tick picks another source
+                        return null;
+                    }
+                    if (scooping) {
                         return InteractWithBlockTask.scoop(new ItemTarget(Items.BUCKET, 1), blockPos, _toCollect != Blocks.LAVA);
                     }
                     // Get close enough.
@@ -334,7 +343,9 @@ public class CollectBucketLiquidTask extends ResourceTask {
                         missedPool(mod, blockPos);
                         wasWandering = true;
                     }
-                    return new GetCloseToBlockTask(blockPos.above());
+                    // never range 0 on the cell over it: with a 15/16 block there baritone and minecraft disagree on our feet
+                    // by one and baritone searches for a goal minecraft says we're in. next to it is where the scoop is from anyway
+                    return new GetCloseToBlockTask(blockPos.above(), 1);
                 }, isSourceLiquid, nearestSourceBlock);
             }
         }
@@ -405,6 +416,24 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return false;
         }
         Debug.logInternal("bucket: " + LID_GIVE_UP_SECONDS + " s on the block over the " + _liquidName + " at " + source.toShortString() + " and it is still there, giving up on it");
+        return true;
+    }
+
+    // true once we've stood by this source long enough without a scoop, and then it's banned. one cell like skipLid,
+    // not missedPool: that one would take the whole pond for a single bad cell
+    private boolean stalledBy(AltoClef mod, BlockPos source, boolean scooping) {
+        double distSq = mod.getPlayer().distanceToSqr(source.getX() + 0.5, source.getY() + 0.5, source.getZ() + 0.5);
+        boolean walking = mod.getClientBaritone().getPathingBehavior().isPathing();
+        if (!_scoopStall.tick(source.asLong(), distSq, walking, scooping)) {
+            return false;
+        }
+        Debug.logMessage("stood by the " + _liquidName + " at " + source.toShortString() + " for " + (int) ScoopStall.GIVE_UP_SECONDS
+                + " s and the bucket can't get at it, trying another");
+        mod.getClientBaritone().getPathingBehavior().cancelEverything();
+        mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        mod.getBlockTracker().requestBlockUnreachable(source, 0, "stood by it and couldn't scoop it");
+        BanPolicy.bucketNoScoop(mod.getBans(), WorldHelper.getCurrentDimension(), source.getX(), source.getY(), source.getZ());
+        _openLookAt = Integer.MIN_VALUE / 2;
         return true;
     }
 

@@ -153,6 +153,12 @@ public final class BanPolicy {
         return bans.ban(Key.block(dim, x, y, z), "couldn't break the block over this source", TASK_GAVE_UP);
     }
 
+    // CollectBucketLiquidTask stood right by a source and the bucket never got at it (ScoopStall). one cell, not the pool:
+    // the rest of a pond is usually fine, it's the one under the farmland that isn't
+    public static boolean bucketNoScoop(Bans bans, Dimension dim, int x, int y, int z) {
+        return bans.ban(Key.block(dim, x, y, z), "stood by this source and couldn't scoop it", TASK_GAVE_UP);
+    }
+
     public static boolean coal(Bans bans, int x, int y, int z) {
         return bans.banFor(COAL_SCOPE, Key.block(Dimension.OVERWORLD, x, y, z), COAL_REASON, COAL);
     }
