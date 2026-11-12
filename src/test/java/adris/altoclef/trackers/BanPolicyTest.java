@@ -168,4 +168,15 @@ public class BanPolicyTest {
         bans.lift("couldn't reach it (1 try)", key -> true);
         assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 10, 70, 0)));
     }
+
+    @Test
+    public void aNoScoopBanTakesTheOneSourceAndNotItsNeighbours() {
+        assertTrue(BanPolicy.bucketNoScoop(bans, Dimension.OVERWORLD, 5, 62, 5));
+        assertTrue(bans.banned(Key.block(Dimension.OVERWORLD, 5, 62, 5)));
+        // the pond next to it is still fair game
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 6, 62, 5)));
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 5, 63, 5)));
+        bans.tick(BanPolicy.TASK_GAVE_UP);
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 5, 62, 5)));
+    }
 }
