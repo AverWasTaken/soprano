@@ -9,6 +9,8 @@ public final class IdleRimStep {
     // stood still this long: a path that is still being thought about (the sweep failing its calcs at the lip) is not
     // walking us anywhere, a path that walks is the executor's business
     public static final int STILL_TICKS = 10;
+    // stood still this long with a calc on and it's not a walk getting going: one failed search times out in about two seconds
+    public static final int CALC_STILL_TICKS = 50;
     // a hoglin covers this in about two seconds, which is how long a ground walk takes
     public static final double FOE_RANGE = 8;
     // same cap as the rim guards (CombatRules.RIM_GUARD_CAP_TICKS): a foe that hangs about at six blocks doesn't get to pin
@@ -25,11 +27,17 @@ public final class IdleRimStep {
     private boolean holding;
     private long start;
     private long quietUntil = Long.MIN_VALUE / 2;
+    private long noCellSaidAt = Long.MIN_VALUE / 2;
 
     // the cheap half of the trigger, everything but the cell scan. nether only (the lakes there are the kit killers), nothing
-    // committed, no path on, stood still, a melee foe close, and not already swimming (the escape owns that)
-    public static boolean gate(boolean nether, boolean idle, boolean pathing, boolean inLava, int stillTicks, double foeDistance) {
-        return nether && idle && !pathing && !inLava && stillTicks >= STILL_TICKS && foeDistance <= FOE_RANGE;
+    // committed, no path held, stood still, a melee foe close, and not already swimming (the escape owns that).
+    // "a path held" and not isPathing: the walk's rim shield pauses the path to stand us still, isPathing reads false the whole
+    // time, and the step went looking for ground in the middle of a bridge crossing every two seconds.
+    // a calc only counts for a short stand: a walk that's about to start thinks for a tick or forty, the sweep failing at the lip
+    // thinks back to back for half a minute and that's exactly the stand this is for
+    public static boolean gate(boolean nether, boolean idle, boolean pathHeld, boolean calculating, boolean inLava, int stillTicks, double foeDistance) {
+        return nether && idle && !pathHeld && !(calculating && stillTicks < CALC_STILL_TICKS) && !inLava
+                && stillTicks >= STILL_TICKS && foeDistance <= FOE_RANGE;
     }
 
     // why our spot is a lip, null when it isn't one. a drop into lava next to us, or lava within LavaShore.NEAR at or under our
@@ -63,8 +71,14 @@ public final class IdleRimStep {
         start = now;
     }
 
-    public void noCell(long now) {
+    // true when it's worth a line: a 1-wide bridge has no cell for its whole length, and one line a retry is a wall of them
+    public boolean noCell(long now) {
         quietUntil = now + NO_CELL_RETRY_TICKS;
+        if (now - noCellSaidAt < COOLDOWN_TICKS) {
+            return false;
+        }
+        noCellSaidAt = now;
+        return true;
     }
 
     // ticks into the current hold
@@ -95,5 +109,6 @@ public final class IdleRimStep {
         holding = false;
         start = 0;
         quietUntil = Long.MIN_VALUE / 2;
+        noCellSaidAt = Long.MIN_VALUE / 2;
     }
 }

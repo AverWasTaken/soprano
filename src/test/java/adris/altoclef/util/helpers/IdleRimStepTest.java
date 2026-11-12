@@ -20,7 +20,7 @@ public class IdleRimStepTest {
 
     @Test
     public void standingStillOnTheLipWithAHoglinCloseSteps() {
-        assertTrue(IdleRimStep.gate(true, true, false, false, IdleRimStep.STILL_TICKS, 6));
+        assertTrue(IdleRimStep.gate(true, true, false, false, false, IdleRimStep.STILL_TICKS, 6));
         assertNotNull(IdleRimStep.why(LIP, 0.5, 0, 0.5));
     }
 
@@ -28,18 +28,27 @@ public class IdleRimStepTest {
     public void theGateSaysNoToEachMissingPiece() {
         int still = IdleRimStep.STILL_TICKS;
         // overworld
-        assertFalse(IdleRimStep.gate(false, true, false, false, still, 6));
+        assertFalse(IdleRimStep.gate(false, true, false, false, false, still, 6));
         // a fight or a run is already on
-        assertFalse(IdleRimStep.gate(true, false, false, false, still, 6));
-        // a path is walking us somewhere
-        assertFalse(IdleRimStep.gate(true, true, true, false, still, 6));
+        assertFalse(IdleRimStep.gate(true, false, false, false, false, still, 6));
+        // a path is walking us somewhere, or held but paused by the walk's rim shield
+        assertFalse(IdleRimStep.gate(true, true, true, false, false, still, 6));
+        // a walk getting going: thinking, not stood long
+        assertFalse(IdleRimStep.gate(true, true, false, true, false, IdleRimStep.CALC_STILL_TICKS - 1, 6));
         // swimming already, the escape has it
-        assertFalse(IdleRimStep.gate(true, true, false, true, still, 6));
+        assertFalse(IdleRimStep.gate(true, true, false, false, true, still, 6));
         // moving
-        assertFalse(IdleRimStep.gate(true, true, false, false, still - 1, 6));
+        assertFalse(IdleRimStep.gate(true, true, false, false, false, still - 1, 6));
         // nobody close
-        assertFalse(IdleRimStep.gate(true, true, false, false, still, IdleRimStep.FOE_RANGE + 0.1));
-        assertFalse(IdleRimStep.gate(true, true, false, false, still, Double.POSITIVE_INFINITY));
+        assertFalse(IdleRimStep.gate(true, true, false, false, false, still, IdleRimStep.FOE_RANGE + 0.1));
+        assertFalse(IdleRimStep.gate(true, true, false, false, false, still, Double.POSITIVE_INFINITY));
+    }
+
+    @Test
+    public void theSweepFailingItsCalcsAtTheLipStillSteps() {
+        // back to back searches that each fail: always calculating, never a path, stood for ages
+        assertTrue(IdleRimStep.gate(true, true, false, true, false, IdleRimStep.CALC_STILL_TICKS, 6));
+        assertTrue(IdleRimStep.gate(true, true, false, true, false, 600, 6));
     }
 
     @Test
@@ -85,6 +94,19 @@ public class IdleRimStepTest {
         step.noCell(10);
         assertFalse(step.ready(10 + IdleRimStep.NO_CELL_RETRY_TICKS - 1));
         assertTrue(step.ready(10 + IdleRimStep.NO_CELL_RETRY_TICKS));
+    }
+
+    @Test
+    public void nowhereToGoIsSaidOncePerCooldown() {
+        IdleRimStep step = new IdleRimStep();
+        assertTrue(step.noCell(10));
+        // every retry along a bridge asks again, only the first one gets a line
+        for (long t = 10 + IdleRimStep.NO_CELL_RETRY_TICKS; t < 10 + IdleRimStep.COOLDOWN_TICKS; t += IdleRimStep.NO_CELL_RETRY_TICKS) {
+            assertFalse(step.noCell(t));
+        }
+        assertTrue(step.noCell(10 + IdleRimStep.COOLDOWN_TICKS));
+        step.reset();
+        assertTrue(step.noCell(10 + IdleRimStep.COOLDOWN_TICKS + 1));
     }
 
     @Test

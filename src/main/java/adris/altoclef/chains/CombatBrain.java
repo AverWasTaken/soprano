@@ -773,7 +773,10 @@ final class CombatBrain {
             return;
         }
         if (!_idleStep.ready(now) || mod.getClientBaritone().bsi == null) return;
-        if (!IdleRimStep.gate(dimension == Dimension.NETHER, idle, mod.getClientBaritone().getPathingBehavior().isPathing(), player.isInLava(),
+        // a path we hold counts even while it's paused (the walk's rim shield stands us still by pausing it), the step would only
+        // fight it. a calc counts for a short stand, see IdleRimStep.gate
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        if (!IdleRimStep.gate(dimension == Dimension.NETHER, idle, pathing.hasPath(), pathing.getInProgress().isPresent(), player.isInLava(),
                 _stillTicks, distance)) return;
         CliffAvoidance.Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
         String why = IdleRimStep.why(cells, player.getX(), player.getY(), player.getZ());
@@ -788,7 +791,7 @@ final class CombatBrain {
         BlockPos from = player.blockPosition();
         String who = BuiltInRegistries.ENTITY_TYPE.getKey(foe.getType()).getPath() + " #" + foe.getId();
         if (cell == null) {
-            _idleStep.noCell(now);
+            if (!_idleStep.noCell(now)) return;
             Debug.logInternal(String.format(java.util.Locale.ROOT, "combat: [%s] idle rim step: nowhere to go from %d %d %d, %s at %.1f, %s",
                     dim, from.getX(), from.getY(), from.getZ(), who, distance, why));
             return;
