@@ -68,6 +68,9 @@ public class RunState {
 
     // end portal
     public Pos endPortalCenter;
+    // the dry column the room search dug down from to reach a ring under the sea. the tracker's last dry land moves on as soon as we
+    // stand in the shaft, and the portal dig after an end death wants the same way in. y is where we stand on it
+    public Pos ringShore;
     public int framesFilled;
     public boolean endPortalOpened;
     // OPEN has read all 12 frames at least once, so framesFilled is a real count and not the zero it starts as

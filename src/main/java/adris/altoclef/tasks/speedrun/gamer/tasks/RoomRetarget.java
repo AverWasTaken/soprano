@@ -1,6 +1,9 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 // a loaded frame far away (or far below) is not something to walk at: the room search digs down from dry land near it instead.
 // the pure half of that, so the rule and the column pick are testable without a world
@@ -53,8 +56,48 @@ final class RoomRetarget {
         return stageSeconds >= FAR_WALK_CAP_SECONDS || (stuckSeconds >= approachSeconds && shoreLoaded(px, pz, fx, fz));
     }
 
+    enum ApproachEnd {GO_ON, FINISH, UNDER_SEA}
+
+    // approachOver, except for a bot floating over a ring under the sea: that's not being there, and OPEN can't fill a frame twenty
+    // blocks down. a dry land ring (or one we're already under the floor of) ends exactly as it always did
+    static ApproachEnd approachEnd(double stageSeconds, double stuckSeconds, double approachSeconds, Probe probe, double px, double py,
+                                   double pz, int fx, int fz) {
+        if (!approachOver(stageSeconds, stuckSeconds, approachSeconds, px, pz, fx, fz)) {
+            return ApproachEnd.GO_ON;
+        }
+        return shoreWalk(probe, fx, fz, py) ? ApproachEnd.UNDER_SEA : ApproachEnd.FINISH;
+    }
+
     static boolean near(double px, double py, double pz, int fx, int fy, int fz) {
-        return Math.hypot(fx - px, fz - pz) <= NEAR_HORIZONTAL && Math.abs(fy - py) <= NEAR_VERTICAL;
+        return near(px, py, pz, fx, fy, fz, NEAR_HORIZONTAL);
+    }
+
+    // reach is how far sideways still counts, see reachFor
+    static boolean near(double px, double py, double pz, int fx, int fy, int fz, double reach) {
+        return Math.hypot(fx - px, fz - pz) <= reach && Math.abs(fy - py) <= NEAR_VERTICAL;
+    }
+
+    // the slack NEAR_HORIZONTAL keeps over SEARCH_RADIUS (shift, frame offset, sloppy stand). a far shore needs the same on top of
+    // its own distance, or the bottom of its shaft never counts as near and the dig runs on to the floor and calls the estimate wrong
+    static final double REACH_SLACK = NEAR_HORIZONTAL - SEARCH_RADIUS;
+
+    static double reachFor(int sx, int sz, int fx, int fz) {
+        return Math.max(NEAR_HORIZONTAL, Math.hypot(sx - fx, sz - fz) + REACH_SLACK);
+    }
+
+    // a ring under the sea: the shaft goes down to about the ring before the walk takes over. turning at ring + 12 runs the tunnel
+    // through the water band, and avoidBreaking won't touch a block next to water, so it just detours up and out
+    static final int UNDER_SEA_TURN_ABOVE = 2;
+    // inside this of the ring we're in the room or right by it (its stairs are a few blocks up), the depth rule is for the shaft
+    static final double ROOM_HALF = 16;
+
+    static boolean deepEnough(boolean ringUnderSea, double px, double py, double pz, int fx, int fy, int fz) {
+        return !ringUnderSea || py <= fy + UNDER_SEA_TURN_ABOVE || Math.hypot(fx - px, fz - pz) <= ROOM_HALF;
+    }
+
+    // as far as we can see. unseen with a shore past SEARCH_RADIUS: no dry land in a hundred blocks of it is the sea
+    static boolean ringUnderSea(Probe probe, int fx, int fz, double reach) {
+        return probe.loaded(fx, fz) ? underWater(probe, fx, fz) : reach > NEAR_HORIZONTAL;
     }
 
     static boolean progressed(double bestDist, double dist) {
@@ -131,7 +174,11 @@ final class RoomRetarget {
     // the nearest dry column to the frame's x/z (square rings out, nearest of the first ring that has one), at least
     // KEEP_OFF_RING from the ring centre. empty = nothing in range, the caller keeps the old straight walk
     static Optional<int[]> pickColumn(Probe probe, int fx, int fz, int cx, int cz) {
-        for (int r = 0; r <= SEARCH_RADIUS; r++) {
+        return pickColumn(probe, fx, fz, cx, cz, SEARCH_RADIUS);
+    }
+
+    static Optional<int[]> pickColumn(Probe probe, int fx, int fz, int cx, int cz, int radius) {
+        for (int r = 0; r <= radius; r++) {
             int[] best = null;
             double bestD = Double.MAX_VALUE;
             for (int dx = -r; dx <= r; dx++) {
@@ -143,7 +190,7 @@ final class RoomRetarget {
                     int z = fz + dz;
                     double d = Math.hypot(dx, dz);
                     // the square's corners are further than the radius, and the near rule is radial
-                    if (d > SEARCH_RADIUS || d >= bestD || Math.hypot(x - cx, z - cz) < KEEP_OFF_RING || !dry(probe, x, z)) {
+                    if (d > radius || d >= bestD || Math.hypot(x - cx, z - cz) < KEEP_OFF_RING || !dry(probe, x, z)) {
                         continue;
                     }
                     bestD = d;
@@ -155,5 +202,82 @@ final class RoomRetarget {
             }
         }
         return Optional.empty();
+    }
+
+    // past SEARCH_RADIUS the only shore we trust is one we stood on: the route's own pick, or the tracker's last dry land. this far
+    // from the ring at most, a couple of minutes more of tunnel
+    static final double FAR_SHORE_RADIUS = 200;
+    // the remembered spot is wherever our feet last were, usually the beach with the sea right beside it. a real column is a few
+    // blocks inland
+    static final int CHECK_RADIUS = 12;
+
+    // y is where we stand on it. checked = dry() passed on a loaded chunk, unchecked = a remembered spot we can't see from here yet
+    record Shore(int x, int y, int z, boolean checked) {
+    }
+
+    // the one shore pick (the room's retarget, a water start, the portal dig after an end death): a dry column within SEARCH_RADIUS,
+    // else the first remembered spot (x, y, z) within FAR_SHORE_RADIUS of the target that holds up. null entries are skipped
+    static Optional<Shore> pickShore(Probe probe, int fx, int fz, int cx, int cz, List<int[]> remembered) {
+        Optional<int[]> column = pickColumn(probe, fx, fz, cx, cz);
+        if (column.isPresent()) {
+            int[] c = column.get();
+            return Optional.of(new Shore(c[0], probe.topY(c[0], c[1]) + 1, c[1], true));
+        }
+        Shore unseen = null;
+        for (int[] r : remembered) {
+            if (r == null || Math.hypot(r[0] - fx, r[2] - fz) > FAR_SHORE_RADIUS) {
+                continue;
+            }
+            if (!probe.loaded(r[0], r[2])) {
+                // we stood there, so it was land. whether it digs is asked once we're close enough to see it (checkShore).
+                // one we can check right now still wins over it
+                if (unseen == null) {
+                    unseen = new Shore(r[0], r[1], r[2], false);
+                }
+                continue;
+            }
+            Optional<Shore> checked = checkShore(probe, r[0], r[2], cx, cz);
+            if (checked.isPresent()) {
+                return checked;
+            }
+            if (unseen == null && !checkLoaded(probe, r[0], r[2])) {
+                // the beach is in but the column inland isn't yet, that's still a maybe and not a no
+                unseen = new Shore(r[0], r[1], r[2], false);
+            }
+        }
+        return Optional.ofNullable(unseen);
+    }
+
+    // the remembered spots in the order they're trusted: the route's own pick, then the tracker. bad = "x,z" of ones that didn't dig
+    static List<int[]> remembered(int[] saved, int[] tracker, Set<String> bad) {
+        List<int[]> out = new ArrayList<>();
+        for (int[] r : new int[][]{saved, tracker}) {
+            if (r != null && !bad.contains(key(r[0], r[2]))) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    static String key(int x, int z) {
+        return x + "," + z;
+    }
+
+    // everything checkShore looks at is loaded (dry() asks the neighbours too). points 13 apart never skip a 16 wide chunk
+    static boolean checkLoaded(Probe probe, int x, int z) {
+        int r = CHECK_RADIUS + 1;
+        for (int dx = -r; dx <= r; dx += r) {
+            for (int dz = -r; dz <= r; dz += r) {
+                if (!probe.loaded(x + dx, z + dz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // a remembered spot with its chunks in (checkLoaded): a dry column on it or next to it, else it's no shore
+    static Optional<Shore> checkShore(Probe probe, int x, int z, int cx, int cz) {
+        return pickColumn(probe, x, z, cx, cz, CHECK_RADIUS).map(c -> new Shore(c[0], probe.topY(c[0], c[1]) + 1, c[1], true));
     }
 }

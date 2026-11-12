@@ -6,7 +6,9 @@ import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasksystem.Task;
 import net.minecraft.core.BlockPos;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 // the walk back to a portal far under us. a plain goal on it heads for whatever is straight above, and when that's a lake nothing
 // can be dug and the search just shuttles along the bank. so go down from dry land like the room search does, then walk the last bit.
@@ -24,6 +26,8 @@ public final class PortalDig {
     private double noDryUntil;
     private boolean gaveUp;
     private boolean handedOver;
+    // been down at the portal's level this life: from then on near alone is the walk, a restart in the tunnel isn't a trip back up
+    private boolean wentDeep;
     private RoomCoverage.DigWatch watch;
     private int centreX;
     private int centreZ;
@@ -33,6 +37,8 @@ public final class PortalDig {
     private int lowestY = Integer.MAX_VALUE;
     private Task digTask;
     private int digTaskY;
+    // how far sideways the portal counts as near, a far shore stretches it (RoomRetarget.reachFor)
+    private double reach = RoomRetarget.NEAR_HORIZONTAL;
 
     // null = the plain walk
     public Task step(AltoClef mod, GamerContext ctx, BlockPos portal) {
@@ -43,7 +49,9 @@ public final class PortalDig {
         double py = mod.getPlayer().getY();
         double pz = mod.getPlayer().getZ();
         boolean hadColumn = hasColumn();
-        int segment = plan(px, py, pz, portal.getX(), portal.getY(), portal.getZ(), StrongholdRoomSearchTask.probe(mod));
+        // the room search's own shore first: under the sea there may be no dry land within a hundred of the portal at all
+        List<int[]> remembered = StrongholdRoomSearchTask.rememberedShores(mod, ctx.state(), Set.of());
+        int segment = plan(px, py, pz, portal.getX(), portal.getY(), portal.getZ(), StrongholdRoomSearchTask.probe(mod), remembered);
         if (segment == WALK) {
             return null;
         }
@@ -66,11 +74,15 @@ public final class PortalDig {
 
     // the whole decision with no game in it: the y to dig to on the current column, or WALK
     int plan(double px, double py, double pz, int fx, int fy, int fz, RoomRetarget.Probe probe) {
-        if (gaveUp || walking(px, py, pz, fx, fy, fz)) {
+        return plan(px, py, pz, fx, fy, fz, probe, List.of());
+    }
+
+    int plan(double px, double py, double pz, int fx, int fy, int fz, RoomRetarget.Probe probe, List<int[]> remembered) {
+        if (gaveUp || walking(px, py, pz, fx, fy, fz, probe)) {
             return WALK;
         }
         double now = ticks++ / 20.0;
-        if (watch == null && !pick(py, fy, fx, fz, probe, now)) {
+        if (watch == null && !pick(py, fy, fx, fz, probe, now, remembered)) {
             return WALK;
         }
         watch.update(px, py, pz, digX, digZ, now);
@@ -90,10 +102,15 @@ public final class PortalDig {
         return segmentY;
     }
 
-    private boolean walking(double px, double py, double pz, int fx, int fy, int fz) {
-        if (RoomRetarget.near(px, py, pz, fx, fy, fz)) {
+    // a portal under the sea is walked at from about its own level, same as the room search (RoomRetarget.deepEnough)
+    private boolean walking(double px, double py, double pz, int fx, int fy, int fz, RoomRetarget.Probe probe) {
+        if (py <= fy + RoomRetarget.UNDER_SEA_TURN_ABOVE) {
+            wentDeep = true;
+        }
+        if (RoomRetarget.near(px, py, pz, fx, fy, fz, reach)
+                && (wentDeep || RoomRetarget.deepEnough(RoomRetarget.ringUnderSea(probe, fx, fz, reach), px, py, pz, fx, fy, fz))) {
             handedOver = true;
-        } else if (Math.hypot(fx - px, fz - pz) > RoomRetarget.NEAR_HORIZONTAL + HANDED_OVER_SLACK
+        } else if (Math.hypot(fx - px, fz - pz) > reach + HANDED_OVER_SLACK
                 || Math.abs(fy - py) > RoomRetarget.NEAR_VERTICAL + HANDED_OVER_SLACK) {
             // properly away again, an errand say. the way back is the same long walk as before
             handedOver = false;
@@ -101,24 +118,27 @@ public final class PortalDig {
         return handedOver;
     }
 
-    private boolean pick(double py, int fy, int fx, int fz, RoomRetarget.Probe probe, double now) {
+    private boolean pick(double py, int fy, int fx, int fz, RoomRetarget.Probe probe, double now, List<int[]> remembered) {
         if (now < noDryUntil) {
             return false;
         }
-        Optional<int[]> column = RoomRetarget.pickColumn(probe, fx, fz, fx, fz);
-        if (column.isEmpty()) {
+        Optional<RoomRetarget.Shore> column = RoomRetarget.pickShore(probe, fx, fz, fx, fz, remembered);
+        // a remembered spot we can't see yet is a maybe. the walk goes on and we ask again once it's loaded
+        if (column.isEmpty() || !column.get().checked()) {
             noDryUntil = now + NO_DRY_RETRY_SECONDS;
             return false;
         }
-        centreX = digX = column.get()[0];
-        centreZ = digZ = column.get()[1];
+        centreX = digX = column.get().x();
+        centreZ = digZ = column.get().z();
+        reach = RoomRetarget.reachFor(digX, digZ, fx, fz);
         int entryY = (int) Math.floor(py);
         watch = new RoomCoverage.DigWatch(entryY, now);
         segmentY = RoomCoverage.firstSegmentY(entryY, fy);
         return true;
     }
 
-    // a phase restart means the walk stalled, so it doesn't get to hold on through the slack. inside near it's still the walk
+    // a phase restart means the walk stalled, so it doesn't get to hold on through the slack. inside near it's still the walk (under
+    // the sea that's near once we've been down at the portal's level, see wentDeep)
     public void walkStalled() {
         handedOver = false;
     }
