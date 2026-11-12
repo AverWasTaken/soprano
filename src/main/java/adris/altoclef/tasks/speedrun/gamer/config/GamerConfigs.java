@@ -203,6 +203,8 @@ public final class GamerConfigs {
         c.death.netherTripSeconds = Math.max(0, c.death.netherTripSeconds);
         c.death.netherBlocks = Math.max(0, c.death.netherBlocks);
         c.death.netherBlocksSeconds = Math.max(0, c.death.netherBlocksSeconds);
+        // a negative floor would let the night bed's shed throw every last block we bridge with
+        c.overworld.nightBedShedFloor = Math.max(0, c.overworld.nightBedShedFloor);
         c.end.attempts = Math.max(1, c.end.attempts);
         c.end.beds = Math.max(0, c.end.beds);
         c.stronghold.maxThrows = Math.max(1, c.stronghold.maxThrows);

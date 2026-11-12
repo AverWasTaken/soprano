@@ -19,6 +19,7 @@ import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.DropRoom;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
@@ -35,6 +36,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
@@ -137,6 +140,8 @@ public class NightSleepTask extends Task {
     private boolean liftAfterPickup;
     private int bedsBeforePickup;
     private boolean pickupArmed;
+    // one pickup per arming, held so its gaveUpReason means something when the clock runs out (a new one each tick never gave up)
+    private BedPickup bedPickup;
     private final BedCraft bedCraft = new BedCraft();
     private long shortSince = -1;
 
@@ -988,10 +993,13 @@ public class NightSleepTask extends Task {
         if (!pickupArmed) {
             pickupArmed = true;
             bedsBeforePickup = bedsInBag(mod);
+            bedPickup = new BedPickup(bedsBeforePickup + 1, cfg.get().nightBedShedFloor);
         }
-        if (NightSleep.timedOut(Stage.PICKUP, 0, retrievalSeconds(now))) {
+        // a pickup that said no room has banned the drop and would only wander about until the clock runs out
+        boolean noRoom = !standing && bedPickup != null && BedPickup.NO_ROOM.equals(bedPickup.gaveUpReason());
+        if (noRoom || NightSleep.timedOut(Stage.PICKUP, 0, retrievalSeconds(now))) {
             // our own try gets one more go on a later trip (nightBed stays set), a second time round it is not worth chasing
-            Debug.logInternal("night: could not take the bed back, leaving it at " + bed.toShortString());
+            Debug.logInternal("night: could not take the bed back, leaving it at " + bed.toShortString() + " (" + whyNoBed(mod, standing) + ")");
             if (cleanup) {
                 state.nightBed = null;
                 save.run();
@@ -1016,7 +1024,78 @@ public class NightSleepTask extends Task {
         }
         // broken, the item is lying where it stood
         setDebugState("Picking the bed up.");
-        return new PickupDroppedItemTask(new ItemTarget(ItemHelper.BED, bedsBeforePickup + 1), false);
+        return bedPickup;
+    }
+
+    // the leave-it line's why: room in the bag, what the pickup said, and how far off the bed is. a full bag with the drop under
+    // our feet and a drop we never got to are two very different bugs
+    private String whyNoBed(AltoClef mod, boolean standing) {
+        String drop = standing ? "still standing" : bedDropDistance(mod);
+        String gaveUp = bedPickup == null || bedPickup.gaveUpReason() == null ? "none" : bedPickup.gaveUpReason();
+        String shed = bedPickup == null ? "" : ", shed " + bedPickup.shedSummary();
+        return StorageHelper.freeBagSlots(mod) + " free, pickup gave up: " + gaveUp + shed + ", " + drop;
+    }
+
+    // straight off the world and not the tracker: the tracker hides a banned drop, and the no room ban is exactly the case this
+    // line is for
+    private static String bedDropDistance(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        double best = -1;
+        for (ItemEntity e : mod.getWorld().getEntitiesOfClass(ItemEntity.class, player.getBoundingBox().inflate(32),
+                it -> DropRoom.isBed(it.getItem().getItem()))) {
+            double d = player.distanceTo(e);
+            if (best < 0 || d < best) best = d;
+        }
+        return best < 0 ? "no drop in sight" : String.format("drop %.1f away", best);
+    }
+
+    // the night bed's pickup. bedsBeforePickup + 1 beds, room made when the bag is full, and no stone pickaxe trip halfway (same
+    // as RecoverItemsTask's, the static flag it leaves up is everybody's problem). clearing the bed spot leaves stone and the like
+    // lying round, and those grab the slot placing the bed freed. the garbage pick goes first like any pickup; a bag with no
+    // garbage in it gets the End errand's bed throw (DropRoom.shed): the biggest build stack the night's floor can spare, and past
+    // that the same victim and late list the errand uses. the guard keeps it bounded, past it this is the stock no and the bed stays
+    private static final class BedPickup extends PickupDroppedItemTask {
+        // what the stock pickup calls a full bag it gave up on
+        static final String NO_ROOM = "no room";
+        private final int floor;
+        private final NightSleep.ShedGuard guard = new NightSleep.ShedGuard();
+
+        BedPickup(int beds, int floor) {
+            super(new ItemTarget(ItemHelper.BED, beds), true);
+            this.floor = floor;
+        }
+
+        @Override
+        protected boolean mayGetPickaxeFirst() {
+            return false;
+        }
+
+        @Override
+        protected StorageHelper.Room roomFor(StorageHelper.GarbageView view, ItemStack drop) {
+            StorageHelper.Room stock = super.roomFor(view, drop);
+            if (stock.kind() != DropRoom.Kind.NONE || guard.gaveUp()) {
+                return stock;
+            }
+            StorageHelper.Room shed = view.shed(floor);
+            if (shed.kind() != DropRoom.Kind.EVICT) {
+                return stock;
+            }
+            List<Object> key = List.of(shed.slot().get(), shed.victim().getItem(), shed.victim().getCount());
+            boolean fresh = guard.isNew(key);
+            if (!guard.allow(key, WorldHelper.getTicks())) {
+                Debug.logInternal("night: gave up throwing for the bed after " + guard.throwsAsked() + " throws, bag: " + view.dump());
+                return stock;
+            }
+            if (fresh) {
+                Debug.logInternal("night: no garbage for the bed, throwing " + ItemHelper.stripItemName(shed.victim().getItem()) + " x"
+                        + shed.victim().getCount() + ", bag: " + view.dump());
+            }
+            return shed;
+        }
+
+        String shedSummary() {
+            return guard.throwsAsked() + (guard.gaveUp() ? " (gave up)" : "");
+        }
     }
 
     private Task returnToBed(AltoClef mod, long now) {
@@ -1046,6 +1125,7 @@ public class NightSleepTask extends Task {
 
     private void afterPickup(AltoClef mod, long now) {
         pickupArmed = false;
+        bedPickup = null;
         foot = null;
         if (liftAfterPickup) {
             liftAfterPickup = false;
