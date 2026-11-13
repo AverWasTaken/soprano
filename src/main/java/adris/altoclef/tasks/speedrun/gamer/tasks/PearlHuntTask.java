@@ -374,7 +374,7 @@ public class PearlHuntTask extends Task {
         // (any other branch below that returns first still counts as calm)
         awayCount = awayCount.step(gameTime, false);
         // before the nook: a nook built by the lava would sit there and put the walk off
-        armLavaSpot(mod, gameTime, false);
+        armLavaSpot(mod, gameTime, LavaTrigger.HOLD);
         if (leaveSpot != null) {
             if (gameTime < leaveUntil && !leaveSpot.isFinished(mod)) {
                 return say("Leaving the lava", leaveSpot);
@@ -441,7 +441,7 @@ public class PearlHuntTask extends Task {
                 lastFleeAt = gameTime;
             }
             if (struck) {
-                armLavaSpot(mod, gameTime, true);
+                armLavaSpot(mod, gameTime, LavaTrigger.STRIKE);
                 if (leaveSpot != null) {
                     away = null;
                     return say("Leaving the lava", leaveSpot);
@@ -453,7 +453,7 @@ public class PearlHuntTask extends Task {
             away = null;
             // the give up fired: this spot is the problem, not the endermen in it
             if (fleeing) {
-                armLavaSpot(mod, gameTime, true);
+                armLavaSpot(mod, gameTime, LavaTrigger.GIVE_UP);
                 if (leaveSpot != null) {
                     return say("Leaving the lava", leaveSpot);
                 }
@@ -479,18 +479,30 @@ public class PearlHuntTask extends Task {
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
     }
 
-    // the lava spot goes up when the back off gave up or the kill tasks have spent 20 s of the last minute standing by lava, and
-    // we walk off it once. a second trigger while it is live changes nothing
-    private void armLavaSpot(AltoClef mod, long gameTime, boolean awayGaveUp) {
+    private enum LavaTrigger {
+        HOLD("hold"), STRIKE("strike"), GIVE_UP("give up");
+
+        final String label;
+
+        LavaTrigger(String label) {
+            this.label = label;
+        }
+    }
+
+    // a lava spot goes up when the back off struck out or gave up, or the kill tasks have spent 20 s of the last minute standing
+    // by lava, and we walk off it once. inside a live spot it restarts that one, anywhere else it is a new spot next to the
+    // old ones (see LavaSpot). every one gets a log line, the labs and player logs have to show which trigger did it
+    private void armLavaSpot(AltoClef mod, long gameTime, LavaTrigger why) {
         var me = mod.getPlayer();
-        if (!LavaSpot.trigger(awayGaveUp, AbstractDoToEntityTask.lavaHoldTicks(me.tickCount))) {
+        if (!LavaSpot.trigger(why != LavaTrigger.HOLD, AbstractDoToEntityTask.lavaHoldTicks(me.tickCount))) {
             return;
         }
         AbstractDoToEntityTask.clearLavaHolds();
-        if (lavaSpot.arm(me.getX(), me.getY(), me.getZ(), gameTime)) {
-            leaveSpot = new RunAwayFromPositionTask(LEAVE_BLOCKS, me.blockPosition());
-            leaveUntil = gameTime + LEAVE_TICKS;
-        }
+        LavaSpot.Armed armed = lavaSpot.arm(me.getX(), me.getY(), me.getZ(), gameTime);
+        Debug.logInternal("pearl: lava spot " + (armed == LavaSpot.Armed.NEW ? "added" : "restarted") + " at " + lavaSpot.lastCentre()
+                + " (" + why.label + "), " + lavaSpot.liveCount(gameTime) + " live");
+        leaveSpot = new RunAwayFromPositionTask(LEAVE_BLOCKS, me.blockPosition());
+        leaveUntil = gameTime + LEAVE_TICKS;
     }
 
     // not worth the walk: on a lava shore, or inside the lava spot while it lasts
