@@ -178,7 +178,8 @@ public class NightBedRoomTest {
 
     @Test
     public void aKeptBuildStackNeverGoes() {
-        // GarbageView.shedBlocks marks the protected list keep, the throw itself has no veto. floor 0 so only the keep says no
+        // GarbageView.shedBlocks marks a protected stack keep when throwing it dips under its reserve, the throw itself has no
+        // veto. floor 0 so only the keep says no
         List<Stack> bag = keepers(new Stack(new ItemStack(Items.COBBLESTONE, 64), ItemValue.REST, true, true, true));
         assertEquals(-1, DropRoom.shedBlocks(bag, 0));
         bag.add(blocks(Items.DIRT, 10));

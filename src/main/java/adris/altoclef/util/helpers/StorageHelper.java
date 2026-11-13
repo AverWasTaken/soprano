@@ -418,7 +418,7 @@ public class StorageHelper {
                 Item item = s.stack().getItem();
                 if (s.keep() || s.stack().isEmpty() || !_mod.getBehaviour().isProtected(item)) continue;
                 int reserved = _mod.getExtraBaritoneSettings().reservedCount(item);
-                // protected but the settings snapshot says 0 is a stale snapshot, not a free stack
+                // protected with no count on record means keep all of it. a 0 here is a missing entry, not a free stack
                 if (reserved <= 0) reserved = AltoClefSettings.FULLY_RESERVED;
                 if (held.get(item) - s.stack().getCount() < reserved) {
                     bag.set(i, new DropRoom.Stack(s.stack(), s.tier(), true, s.build(), s.gate()));

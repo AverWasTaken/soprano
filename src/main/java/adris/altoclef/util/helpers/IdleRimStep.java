@@ -6,8 +6,8 @@ import baritone.pathing.movement.CliffAvoidance.Cells;
 // starts on the hit tick, which is the tick a hoglin throws us into the lake (it throws through a shield too). so the idle
 // brain gets one walk to ground before anybody swings. no world in here, CombatBrain does the looking
 public final class IdleRimStep {
-    // stood still this long: a path that is still being thought about (the sweep failing its calcs at the lip) is not
-    // walking us anywhere, a path that walks is the executor's business
+    // stood still this long before a lip counts. the calc case has its own longer wait (CALC_STILL_TICKS), a held path
+    // never counts at all, that one is the executor's business
     public static final int STILL_TICKS = 10;
     // stood still this long with a calc on and it's not a walk getting going: one failed search times out in about two seconds
     public static final int CALC_STILL_TICKS = 50;
