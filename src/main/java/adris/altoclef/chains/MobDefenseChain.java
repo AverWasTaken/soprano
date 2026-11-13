@@ -326,7 +326,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // user task walks its own route, often straight back at what we ran from
         // (a creeper step does not stand down for a meal either: the line says we stepped, so we step. nor does the heal-up
         // hold: the meal is half of what it is holding for)
-        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active() || _brain.recovering();
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active() || _brain.recovering() || _brain.idleStepping();
         if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
