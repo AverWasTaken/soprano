@@ -326,7 +326,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // user task walks its own route, often straight back at what we ran from
         // (a creeper step does not stand down for a meal either: the line says we stepped, so we step. nor does the heal-up
         // hold: the meal is half of what it is holding for)
-        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active() || _brain.recovering();
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active() || _brain.recovering() || _brain.idleStepping();
         if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
@@ -783,14 +783,14 @@ public class MobDefenseChain extends SingleTaskChain {
         LocalPlayer player = mod.getPlayer();
         Dimension dimension = WorldHelper.getCurrentDimension();
         if (player != _creeperPlayer || dimension != _creeperDimension) {
-            _creeperStep.reset();
+            resetCreeperStep(_creeperDimension == null ? dimension : _creeperDimension, "respawned or changed worlds");
             _creeperPlayer = player;
             _creeperDimension = dimension;
         }
         // on a perch the step would walk us off the pillar (and a creeper that close is the perch's rules to call off), so it never
         // starts and one that was running ends here, cap and all
         if (_brain.perching()) {
-            _creeperStep.reset();
+            resetCreeperStep(dimension, "perching");
             _capSince = Long.MIN_VALUE;
             _capDone = false;
             _capPlaced = false;
@@ -822,7 +822,8 @@ public class MobDefenseChain extends SingleTaskChain {
                 }
                 // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
                 seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f,
-                        CreeperStep.inView(creeper.getY() - player.getY(), creeper.hasLineOfSight(player))));
+                        CreeperStep.inView(creeper.getY() - player.getY(), creeper.hasLineOfSight(player)),
+                        creeper.getX(), creeper.getY(), creeper.getZ()));
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
@@ -832,6 +833,8 @@ public class MobDefenseChain extends SingleTaskChain {
                 && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
         boolean noHeading = noWayOut(mod, seen);
         CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady, mode, enabled, noHeading);
+        for (CreeperStep.Park park : _creeperStep.parkedNow()) Debug.logInternal(CombatLog.creeperParked(dimension, park));
+        for (CreeperStep.Unpark unpark : _creeperStep.unparkedNow()) Debug.logInternal(CombatLog.creeperUnparked(dimension, unpark));
         // (a step that starts boxed in comes back as CORNERED, it is still the start of the step)
         if ((event == CreeperStep.Event.START || event == CreeperStep.Event.CORNERED) && _creeperStep.shouldLog()) {
             Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
@@ -864,6 +867,13 @@ public class MobDefenseChain extends SingleTaskChain {
         if ((_capAbove || _capBeside != null) && _capSince == Long.MIN_VALUE) _capSince = now;
         // out of time: the shield has it, and the food chain gets its hands back if there is no shield
         if (_capSince != Long.MIN_VALUE && !CreeperCap.inWindow(GameClock.since(_capSince, now))) _capDone = true;
+    }
+
+    // a reset forgets the parked ones too, say so once (a perch resets every tick, there is nothing left to say after the first)
+    private void resetCreeperStep(Dimension dimension, String why) {
+        int parked = _creeperStep.parkedCount();
+        if (parked > 0) Debug.logInternal(CombatLog.creeperParkForgot(dimension, parked, why));
+        _creeperStep.reset();
     }
 
     // the cell for the wall beside us, or null when there is no point: only a cell a block can still go in, with nobody

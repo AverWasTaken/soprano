@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import baritone.pathing.movement.CliffAvoidance;
 import baritone.pathing.movement.CliffAvoidance.Cell;
 import baritone.pathing.movement.CliffAvoidance.Cells;
 import java.util.HashMap;
@@ -667,5 +668,110 @@ public class LavaShoreTest {
         // our side is solid ground, the ledge it stands on is the rim
         World w = new World().pit(6, 0);
         assertTrue(LavaShore.climbBlocked(true, w, 0.5, 0.0, 0.5, 5.5, 3.0, 0.5));
+    }
+
+    // a lake thirty down under the columns x = 1..2 (every z close by), flat ground everywhere else. a ledge over a nether lake
+    private static World lakeLedge() {
+        World w = new World();
+        for (int x = 1; x <= 2; x++) {
+            for (int z = -10; z <= 10; z++) {
+                w.ledge(x, z, -31).lava(x, -30, z);
+            }
+        }
+        return w;
+    }
+
+    @Test
+    public void aFallIntoLavaThirtyDownLandsInLava() {
+        World w = new World().ledge(1, 1, -31).lava(1, -30, 1);
+        assertTrue(CliffAvoidance.landsInLava(w, 1, 0, 1, CliffAvoidance.DROP_DEPTH));
+        // past the depth it's a void as far as we know, not lava
+        assertFalse(CliffAvoidance.landsInLava(w, 1, 0, 1, 20));
+    }
+
+    @Test
+    public void aFloorNineDownIsNoLava() {
+        assertFalse(CliffAvoidance.landsInLava(new World().ledge(1, 1, -9), 1, 0, 1, CliffAvoidance.DROP_DEPTH));
+    }
+
+    @Test
+    public void anOpenVoidIsNoLava() {
+        assertFalse(CliffAvoidance.landsInLava(new World().pit(1, 1), 1, 0, 1, CliffAvoidance.DROP_DEPTH));
+    }
+
+    @Test
+    public void waterOverLavaIsALanding() {
+        World w = new World().ledge(1, 1, -31).lava(1, -30, 1).water(1, -5, 1);
+        assertFalse(CliffAvoidance.landsInLava(w, 1, 0, 1, CliffAvoidance.DROP_DEPTH));
+    }
+
+    @Test
+    public void lavaDropNearSeesTheLakeEdgeNearCannotTellApart() {
+        World lake = lakeLedge();
+        assertTrue(LavaShore.lavaDropNear(lake, 0.5, 0, 0.5));
+        // a deep drop onto stone: an edge, but no lava at the bottom
+        World stone = new World().ledge(1, 0, -20);
+        assertTrue(LavaShore.edgeNear(stone, 0.5, 0, 0.5));
+        assertFalse(LavaShore.lavaDropNear(stone, 0.5, 0, 0.5));
+        // a block of wall at head height stops the throw
+        World walled = new World().ledge(1, 0, -31).lava(1, -30, 0).solid(1, 1, 0);
+        assertFalse(LavaShore.lavaDropNear(walled, 0.5, 0, 0.5));
+        assertFalse(LavaShore.lavaDropNear(new World(), 0.5, 0, 0.5));
+    }
+
+    @Test
+    public void aLavaDropByUsBlocksAtAnyRise() {
+        World w = lakeLedge();
+        // the foe on our level, inland: no rise, but we stand on the lip
+        assertTrue(LavaShore.climbBlocked(true, w, 0.5, 0.0, 0.5, -4.5, 0.0, 0.5));
+        // the overworld keeps the old rule
+        assertFalse(LavaShore.climbBlocked(false, w, 0.5, 0.0, 0.5, -4.5, 0.0, 0.5));
+    }
+
+    @Test
+    public void aLavaDropByTheFoeBlocksAtAnyRise() {
+        World w = lakeLedge();
+        assertTrue(LavaShore.climbBlocked(true, w, -5.5, 0.0, 0.5, 0.5, 0.0, 0.5));
+    }
+
+    @Test
+    public void aDeepDropOntoStoneAtNoRiseIsNoClimb() {
+        World w = new World().ledge(1, 0, -20);
+        assertFalse(LavaShore.climbBlocked(true, w, 0.5, 0.0, 0.5, -4.5, 0.0, 0.5));
+    }
+
+    @Test
+    public void aLedgeOverALakeWalksToGround() {
+        World w = lakeLedge();
+        // the lake is past DEPTH, so the old gate saw no shore and the walk never started
+        assertFalse(LavaShore.lavaDeepNear(w, 0.5, 0, 0.5, LavaShore.GROUND_CLEAR));
+        assertTrue(LavaShore.shoreNear(w, 0.5, 0, 0.5));
+        int[] cell = LavaShore.groundCell(w, 0.5, 0, 0.5, 6.5, 0.5);
+        assertNotNull(cell);
+        // and it lands out of knock range of the lip, not one cell back where the next walk would start
+        assertTrue(cell[0] <= -3);
+        assertFalse(LavaShore.shoreNear(w, cell[0] + 0.5, cell[1], cell[2] + 0.5));
+    }
+
+    @Test
+    public void groundFitWantsTheLakeOutOfKnockRange() {
+        World w = lakeLedge();
+        assertFalse(LavaShore.groundFit(w, -1, 0, 0, 6.5, 0.5));
+        assertTrue(LavaShore.groundFit(w, -3, 0, 0, 6.5, 0.5));
+    }
+
+    @Test
+    public void inlandHasNoShoreToWalkOff() {
+        assertNull(LavaShore.groundCell(new World(), 0.5, 0, 0.5, 3.5, 0.5));
+        // a deep drop onto stone is the edge step's business, not a walk off a shore
+        assertNull(LavaShore.groundCell(new World().ledge(1, 0, -20), 0.5, 0, 0.5, 3.5, 0.5));
+    }
+
+    @Test
+    public void noStareFromARim() {
+        assertTrue(LavaShore.noStare(true, true, false));
+        assertTrue(LavaShore.noStare(false, true, true));
+        assertFalse(LavaShore.noStare(false, true, false));
+        assertFalse(LavaShore.noStare(true, false, false));
     }
 }

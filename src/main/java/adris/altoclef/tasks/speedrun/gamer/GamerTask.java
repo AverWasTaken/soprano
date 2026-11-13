@@ -1681,7 +1681,7 @@ public class GamerTask extends Task {
         }
         nightPlayer = mod.getPlayer();
         nightPrep.drop();
-        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found, cfg.end.beds);
+        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found, cfg.end.beds, true);
     }
 
     // blocks the pillar may really spend: the cobble the stone kit still eats is spoken for (updateStoneFloor) and placing never
