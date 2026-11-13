@@ -42,6 +42,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -76,6 +77,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private int _lastDirectTick = -1000;
     private int _directRejectedSince = 0;
     private BlockPos _directHit = null;
+    // the ice lid we last went to break, and when it stopped being ice (see noteThawedLid)
+    private BlockPos _iceLid = null;
+    private int _iceLidGoneAt = -1;
+    // the water shows up a tick or so after the air, two seconds is plenty
+    private static final int THAW_WAIT_TICKS = 40;
     private final HashSet<BlockPos> _directRejected = new HashSet<>();
     private static final int CLIMB_GAP_TICKS = 60;
     private static final double CLIMB_SEARCH_RANGE = 24;
@@ -157,6 +163,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
         _progressChecker.reset();
         _directRejected.clear();
         _directHit = null;
+        _iceLid = null;
+        _iceLidGoneAt = -1;
         // a restart gets a fresh look at whether anything can be thrown, the bag may have changed while we were away
         _roomTask = null;
         _noRoom = false;
@@ -246,7 +254,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
             }
             // obsidian over the source (or anything else that takes minutes) is a source we are not getting at. skipped
             // now, not after the progress checker has watched us swing at it
-            if (WorldHelper.isSolid(mod, blockPos.above()) && WorldHelper.tooSlowToBreak(mod, blockPos.above())) {
+            if (lidOver(mod, blockPos) && WorldHelper.tooSlowToBreak(mod, blockPos.above())) {
                 skipLid(mod, blockPos);
                 return false;
             }
@@ -270,6 +278,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
                 BlockPos at = new BlockPos(x, y, z);
                 return open(x, y, z) && mod.getWorld().getBlockState(at).getFluidState().isEmpty();
             }
+
+            @Override
+            public boolean ice(int x, int y, int z) {
+                return mod.getWorld().getBlockState(new BlockPos(x, y, z)).is(BlockTags.ICE);
+            }
         };
         // open sources first, a lid only when there is no open one to be had, and never one that can't be got at (see
         // BucketSourceRules)
@@ -283,6 +296,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                     _toCollect);
             _openOutranks = BucketSourceRules.openOutranksLids(away(mod, open), away(mod, lid));
         };
+        noteThawedLid(mod);
         if (WorldHelper.getTicks() - _openLookAt >= OPEN_LOOK_TICKS) {
             lookForOpen.run();
         }
@@ -307,7 +321,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                 return new DoToClosestBlockTask(blockPos -> {
                     // Clear above if lava because we can't enter.
                     // but NOT if we're standing right above.
-                    if (WorldHelper.isSolid(mod, blockPos.above())) {
+                    if (lidOver(mod, blockPos)) {
                         boolean slow = !_progressChecker.check(mod);
                         if (slow || lidTimedOut(mod, blockPos)) {
                             mod.getClientBaritone().getPathingBehavior().cancelEverything();
@@ -323,6 +337,10 @@ public class CollectBucketLiquidTask extends ResourceTask {
                             // and the ban runs out some day, the next go at this lid gets a clock of its own
                             _lidClocks.remove(blockPos);
                             _openLookAt = Integer.MIN_VALUE / 2;
+                        }
+                        // (not over one that just broke and is still waiting for its water)
+                        if (_iceLidGoneAt < 0 && mod.getWorld().getBlockState(blockPos.above()).is(BlockTags.ICE)) {
+                            _iceLid = blockPos.above();
                         }
                         return new DestroyBlockTask(blockPos.above());
                     }
@@ -461,6 +479,44 @@ public class CollectBucketLiquidTask extends ResourceTask {
         BanPolicy.bucketPoolGaveUp(mod.getBans(), keys, source.getX(), source.getY(), source.getZ());
         // the open-vs-lid answer may have been this pool
         _openLookAt = Integer.MIN_VALUE / 2;
+    }
+
+    // something over the source a bucket can't see through and we have to break first. ice too: vanilla doesn't call it solid
+    // (see BucketSourceRules.lid), so a frozen pond read as open water and the scoop kept hitting the ice
+    private static boolean lidOver(AltoClef mod, BlockPos source) {
+        BlockPos above = source.above();
+        return WorldHelper.isSolid(mod, above) || mod.getWorld().getBlockState(above).is(BlockTags.ICE);
+    }
+
+    // broken ice over water turns into a water source right where it was, and the old source under it stops being one (water
+    // on top). the tracker's place hook only fires for full blocks, so that new source waited for the next rescan while
+    // the pick went off to break the next lid over. tell it now. the break turns the cell to air on our side at once and the
+    // water comes from the server a tick later, so air is "not yet", not "no water"
+    private void noteThawedLid(AltoClef mod) {
+        if (_iceLid == null) {
+            return;
+        }
+        var state = mod.getWorld().getBlockState(_iceLid);
+        if (state.is(BlockTags.ICE)) {
+            _iceLidGoneAt = -1;
+            return;
+        }
+        int now = WorldHelper.getTicks();
+        if (_iceLidGoneAt < 0) {
+            _iceLidGoneAt = now;
+            // packed ice just leaves air over the old source, that one is open water already
+            _openLookAt = Integer.MIN_VALUE / 2;
+        }
+        if (state.getBlock() == _toCollect && state.getFluidState().isSource()) {
+            Debug.logInternal("bucket: ice lid at " + _iceLid.toShortString() + " melted into a source, tracking it");
+            mod.getBlockTracker().addBlock(_toCollect, _iceLid);
+            // open water now, the rest of the pond's lids stop being worth breaking
+            _openLookAt = Integer.MIN_VALUE / 2;
+        } else if (now - _iceLidGoneAt <= THAW_WAIT_TICKS) {
+            return;
+        }
+        _iceLid = null;
+        _iceLidGoneAt = -1;
     }
 
     // straight line from us to a source, NaN when there isn't one
