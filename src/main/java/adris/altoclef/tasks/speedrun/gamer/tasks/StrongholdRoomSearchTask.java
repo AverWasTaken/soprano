@@ -38,7 +38,7 @@ import java.util.function.Predicate;
 // client has loaded count from the start (checkFrames), bricks and corridors still go by what we see. once three frames
 // agree on a ring the other nine are given (the ring is rigid)
 public class StrongholdRoomSearchTask extends Task {
-    private enum Stage {TO_START, DIG, SPIRAL, HINT, APPROACH}
+    private enum Stage {TO_START, DIG, SPIRAL, HINT, APPROACH, SEA_LEG}
 
     // everything only a stronghold builds with. the infested ones look the same from outside and the silverfish rooms are
     // some of the first walls we touch. the height and distance caps are what keep a stray bar from a village out
@@ -54,6 +54,8 @@ public class StrongholdRoomSearchTask extends Task {
     private static final double HINT_SECONDS = 40;
     private static final int APPROACH_RANGE = 4;
     private static final double NO_DRY_RETRY_SECONDS = 30;
+    // the approach only hands back to the leg this far past where the leg handed over, or the two take turns on the line
+    private static final double HAND_OFF_SLACK = 4;
 
     private final GamerContext ctx;
 
@@ -108,8 +110,17 @@ public class StrongholdRoomSearchTask extends Task {
     // the retarget start / the water start's shore is a remembered spot we couldn't see yet: checked once its chunk loads
     private boolean startUnchecked;
     private boolean shoreUnchecked;
-    // remembered shores that turned out not to dig, "x,z"
-    private final Set<String> badShores = new HashSet<>();
+    // shores that let us down, x/z. nothing within BAD_SHORE_RADIUS of one is picked again
+    private final List<int[]> badShores = new ArrayList<>();
+    // the tunnel under the sea from the bottom of a shore shaft, live while stage is SEA_LEG. legShore is the shore it came from
+    private UnderSeaLegTask leg;
+    private RunState.Pos legShore;
+    private boolean legToRing;
+    private boolean everLeg;
+    private int surfacings;
+    private static final int MAX_SURFACINGS = 3;
+    // the shore the last ring retarget picked: if we end up retargeting again, it's the one that didn't work
+    private RunState.Pos ringShorePick;
     // the start is out on the water: walk to this dry column and dig down there. the start itself stays what it was, the spiral
     // and the loaded frame look are about the stronghold, not about where we got in. not saved, a relog just picks it again
     private RunState.Pos shore;
@@ -235,6 +246,7 @@ public class StrongholdRoomSearchTask extends Task {
             case SPIRAL -> spiral(mod);
             case HINT -> hint(mod);
             case APPROACH -> approach(mod);
+            case SEA_LEG -> seaLeg(mod);
         };
     }
 
@@ -332,8 +344,13 @@ public class StrongholdRoomSearchTask extends Task {
         RunState state = ctx.state();
         if (state.endPortalCenter != null) {
             // asked again every tick, nothing latches: the walk and the dig down are what get us near
-            if (stage != Stage.APPROACH && !far(mod, centreOf()) && deepEnough(mod, centreOf())) {
-                enter(mod, Stage.APPROACH);
+            if (stage != Stage.APPROACH && stage != Stage.SEA_LEG && !far(mod, centreOf()) && deepEnough(mod, centreOf())) {
+                int[] c = centreOf();
+                if (!bricksSeen && legWanted(mod, c)) {
+                    enterLeg(mod, c[0], c[1], c[2], true);
+                } else {
+                    enter(mod, Stage.APPROACH);
+                }
             }
             return;
         }
@@ -351,7 +368,7 @@ public class StrongholdRoomSearchTask extends Task {
                 ctx.log("found the end portal room at " + c[0] + ", " + c[2]);
                 ctx.save();
                 routeToRing(mod);
-            } else if (stage != Stage.HINT && stage != Stage.APPROACH && !hintGivenUp) {
+            } else if (stage != Stage.HINT && stage != Stage.APPROACH && stage != Stage.SEA_LEG && !hintGivenUp) {
                 hintPos = nearestFrame(mod, frames);
                 if (far(mod, new int[]{hintPos.getX(), hintPos.getY(), hintPos.getZ()})
                         && (retargets > 0 || retarget(mod, hintPos.getX(), hintPos.getY(), hintPos.getZ(), hintPos.getX(), hintPos.getZ()))) {
@@ -379,6 +396,18 @@ public class StrongholdRoomSearchTask extends Task {
 
     private void routeToRing(AltoClef mod) {
         int[] c = centreOf();
+        if (stage == Stage.SEA_LEG && leg != null) {
+            // found it while tunnelling to the start column: that tunnel already goes there. a retarget now would walk us back up to
+            // the beach and dig the same shaft again
+            leg.target(c[0], c[1], c[2]);
+            legToRing = true;
+            return;
+        }
+        if (legWanted(mod, c)) {
+            // a relog in the tunnel, or the shaft already got us down to it
+            enterLeg(mod, c[0], c[1], c[2], true);
+            return;
+        }
         if ((far(mod, c) || !deepEnough(mod, c)) && retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
             return;
         }
@@ -395,7 +424,12 @@ public class StrongholdRoomSearchTask extends Task {
         RoomRetarget.Probe probe = probe(mod);
         // the far shore is for a known ring. a lone hint frame could be anything, and the spiral finds out cheaper
         boolean ring = ctx.state().endPortalCenter != null;
-        Optional<RoomRetarget.Shore> found = RoomRetarget.pickShore(probe, fx, fz, cx, cz, ring ? remembered(mod) : List.of());
+        if (ring && ringShorePick != null) {
+            // picking again for the same ring means the last pick didn't get us there
+            markShoreBad(ringShorePick, "the way in from it never got to the ring");
+            ringShorePick = null;
+        }
+        Optional<RoomRetarget.Shore> found = RoomRetarget.pickShore(probe, fx, fz, cx, cz, ring ? remembered(mod) : List.of(), badShores);
         if (found.isEmpty()) {
             noDryUntil = seconds(mod) + NO_DRY_RETRY_SECONDS;
             ctx.log("room: no dry land within " + RoomRetarget.SEARCH_RADIUS + (ring ? " (or remembered within "
@@ -410,6 +444,9 @@ public class StrongholdRoomSearchTask extends Task {
                 + " (" + Math.round(Math.hypot(s.x() - fx, s.z() - fz)) + " off" + (s.checked() ? "" : ", not loaded yet") + ")");
         resetForRetarget(new RunState.Pos(s.x(), s.y(), s.z()));
         useStartShore(s, fx, fz);
+        if (ring) {
+            ringShorePick = new RunState.Pos(s.x(), s.y(), s.z());
+        }
         ctx.save();
         enter(mod, Stage.TO_START);
         return true;
@@ -432,16 +469,16 @@ public class StrongholdRoomSearchTask extends Task {
         }
         startUnchecked = false;
         int[] c = centreOf();
-        Optional<RoomRetarget.Shore> s = RoomRetarget.checkShore(probe, start.x, start.z, c[0], c[2]);
+        Optional<RoomRetarget.Shore> s = RoomRetarget.checkShore(probe, start.x, start.z, c[0], c[2], badShores);
         if (s.isEmpty()) {
-            badShores.add(RoomRetarget.key(start.x, start.z));
+            markShoreBad(start, "no column to dig");
             forgetRingShore(start);
-            s = RoomRetarget.pickShore(probe, c[0], c[2], c[0], c[2], remembered(mod));
+            s = RoomRetarget.pickShore(probe, c[0], c[2], c[0], c[2], remembered(mod), badShores);
         }
         if (s.isEmpty()) {
             ctx.log("room: the remembered shore at " + start.x + ", " + start.z + " has no column to dig");
             if (RoomRetarget.ringUnderSea(probe, c[0], c[2], reach)) {
-                noShore(false);
+                noShore(RoomRetarget.GiveUp.NO_SHORE, 0, 0);
             } else {
                 // not the sea as far as we know, so the old straight walk
                 reach = RoomRetarget.NEAR_HORIZONTAL;
@@ -452,6 +489,7 @@ public class StrongholdRoomSearchTask extends Task {
         RoomRetarget.Shore got = s.get();
         ctx.state().strongholdStart = new RunState.Pos(got.x(), got.y(), got.z());
         useStartShore(got, c[0], c[2]);
+        ringShorePick = new RunState.Pos(got.x(), got.y(), got.z());
         goStartTask = null;
         startLeg = null;
         ctx.save();
@@ -468,12 +506,17 @@ public class StrongholdRoomSearchTask extends Task {
     }
 
     // OPEN can't put an eye in a frame twenty blocks under the sea from a bot floating over it, and there's no way down from here
-    private void noShore(boolean triedTunnels) {
+    private void noShore(RoomRetarget.GiveUp why, int x, int z) {
         failed = true;
-        ctx.fail(triedTunnels
-                ? "the stronghold is under open ocean and the tunnels from the shore never got there"
-                : "the stronghold is under open ocean and there's no shore within " + Math.round(RoomRetarget.FAR_SHORE_RADIUS)
-                + " to tunnel from");
+        ctx.fail(RoomRetarget.giveUpText(why, x, z));
+    }
+
+    private void markShoreBad(RunState.Pos s, String why) {
+        if (!RoomRetarget.nearBad(s.x, s.z, badShores)) {
+            ctx.log("room: the shore at " + s.x + ", " + s.z + " is out (" + why + "), nothing within "
+                    + Math.round(RoomRetarget.BAD_SHORE_RADIUS) + " of it gets picked again");
+        }
+        badShores.add(new int[]{s.x, s.z});
     }
 
     // the route's own shore first (it survives the tracker moving on to the shaft), then the last dry land we stood on
@@ -481,7 +524,7 @@ public class StrongholdRoomSearchTask extends Task {
         return rememberedShores(mod, ctx.state(), badShores);
     }
 
-    static List<int[]> rememberedShores(AltoClef mod, RunState state, Set<String> bad) {
+    static List<int[]> rememberedShores(AltoClef mod, RunState state, List<int[]> bad) {
         RunState.Pos saved = state.ringShore;
         int[] tracker = mod.getMiscBlockTracker().getLastDryLand(Dimension.OVERWORLD)
                 .map(p -> new int[]{p.getX(), p.getY(), p.getZ()}).orElse(null);
@@ -521,15 +564,20 @@ public class StrongholdRoomSearchTask extends Task {
         tunnelling = false;
         reach = RoomRetarget.NEAR_HORIZONTAL;
         startUnchecked = false;
+        leg = null;
+        legShore = null;
         dropLeg();
     }
 
     // the shore shaft is only the way in. under the sea floor it turns and tunnels to the start column and digs that one, so the
     // floor verdict and the staircase bricks mean what they always did. the shore column's own floor says nothing about the estimate,
     // and a spiral from down there would be a search at the bottom of the world
-    private void shoreTunnel(AltoClef mod, int y, double now) {
+    private boolean shoreTunnel(AltoClef mod, int y, double now) {
         if (shore != null && y <= shoreTunnelY) {
             RunState.Pos start = ctx.state().strongholdStart;
+            if (columnLeg(mod, start, shore, 0)) {
+                return true;
+            }
             ctx.log("room: under the sea floor at y " + y + ", tunnelling over to the start column at " + start.x + ", " + start.z);
             shore = null;
             tunnelling = true;
@@ -540,7 +588,7 @@ public class StrongholdRoomSearchTask extends Task {
             digTask = null;
         }
         if (!tunnelling) {
-            return;
+            return false;
         }
         // the dig budget and the stuck depth are about the start column, the shaft and the tunnel were not that. so the dig starts
         // for real where the tunnel meets the column
@@ -548,7 +596,7 @@ public class StrongholdRoomSearchTask extends Task {
         digEntryY = y;
         if (onDigColumn(mod)) {
             tunnelling = false;
-            return;
+            return false;
         }
         // a minute of tunnel is not a minute stuck on the column, so the watch starts over until we get there. a tunnel that gets
         // nowhere stops earning progress below and the phase's stall clock ends it
@@ -559,6 +607,140 @@ public class StrongholdRoomSearchTask extends Task {
             tunnelBest = dist;
             ctx.progress("tunnelled");
         }
+        return false;
+    }
+
+    // a water start's column more than a room away from under the sea floor: the leg, not a GetDownColumnTask 160 blocks out (that
+    // one's goal is a long goal like any other, and it boats). the ring if we know it, it's the reason we're down here at all.
+    // from = the shore we came down, null when we don't know (a relog)
+    private boolean columnLeg(AltoClef mod, RunState.Pos start, RunState.Pos from, double slack) {
+        // swimming over our own column's floor is up out of the rock, the leg would just send us back here
+        if (Math.hypot(start.x + 0.5 - mod.getPlayer().getX(), start.z + 0.5 - mod.getPlayer().getZ()) <= SeaLeg.HAND_OFF + slack
+                || UnderSeaLegTask.surfaced(mod)) {
+            return false;
+        }
+        shore = null;
+        int[] c = ctx.state().endPortalCenter != null ? centreOf() : null;
+        if (c != null && RoomRetarget.ringUnderSea(probe(mod), c[0], c[2], reach)) {
+            enterLeg(mod, c[0], c[1], c[2], true);
+        } else {
+            // a ring under dry land is the old walk once we're at the column, only the sea part is ours
+            int y = shoreTunnelY != 0 ? shoreTunnelY : RoomRetarget.tunnelY(probe(mod), start.x, start.z);
+            enterLeg(mod, start.x, y, start.z, false);
+        }
+        if (from != null) {
+            legShore = from;
+        }
+        return true;
+    }
+
+    // ring under the sea, more than a room off, and we're down at its level: see RoomRetarget.legWanted
+    private boolean legWanted(AltoClef mod, int[] c) {
+        return RoomRetarget.legWanted(RoomRetarget.ringUnderSea(probe(mod), c[0], c[2], reach), mod.getPlayer().getX(),
+                mod.getPlayer().getY(), mod.getPlayer().getZ(), c[0], c[1], c[2]) && !UnderSeaLegTask.surfaced(mod);
+    }
+
+    private void enterLeg(AltoClef mod, int x, int y, int z, boolean toRing) {
+        legToRing = toRing;
+        if (leg == null) {
+            leg = new UnderSeaLegTask(ctx, "room", x, y, z);
+            // the shore we came down: the water start's, else a ring retarget's start is the shore column
+            legShore = shore != null ? shore : ctx.state().endPortalCenter != null ? ctx.state().strongholdStart : null;
+            ctx.log("room: under the sea and " + Math.round(Math.hypot(x - mod.getPlayer().getX(), z - mod.getPlayer().getZ()))
+                    + " out from " + x + ", " + z + ", tunnelling there in short legs");
+        } else {
+            leg.target(x, y, z);
+        }
+        everLeg = true;
+        tunnelling = false;
+        enter(mod, Stage.SEA_LEG);
+    }
+
+    // the tunnel as its own stage: APPROACH's walk cap would FINISH us underground halfway, and its shore ask would retarget mid leg
+    private Task seaLeg(AltoClef mod) {
+        step = "Tunnelling under the sea";
+        setDebugState("Tunnelling under the sea", step);
+        if (leg == null) {
+            enter(mod, Stage.TO_START);
+            return null;
+        }
+        if (UnderSeaLegTask.surfaced(mod)) {
+            // a fight, an interrupt, a relog on the waves: back down the shaft we dug, the shore did nothing wrong. but every trip
+            // back down feeds the stall clock, so a tunnel we keep popping out of has to end somewhere
+            if (++surfacings > MAX_SURFACINGS) {
+                noShore(RoomRetarget.GiveUp.NEVER_THERE, 0, 0);
+                return null;
+            }
+            ctx.log("room: up out of the tunnel at " + mod.getPlayer().getBlockX() + ", " + mod.getPlayer().getBlockY() + ", "
+                    + mod.getPlayer().getBlockZ() + ", going back down from the shore");
+            leg = null;
+            enter(mod, Stage.TO_START);
+            return null;
+        }
+        if (leg.failed()) {
+            if (legShore != null) {
+                markShoreBad(legShore, "the tunnel from it got blocked");
+            }
+            noShore(RoomRetarget.GiveUp.BLOCKED, leg.failX(), leg.failZ());
+            return null;
+        }
+        if (leg.arrived(mod)) {
+            leg = null;
+            if (legToRing) {
+                ctx.log("room: under the sea and within " + Math.round(SeaLeg.HAND_OFF) + " of the ring, on to the approach");
+                enter(mod, Stage.APPROACH);
+            } else {
+                RunState.Pos start = ctx.state().strongholdStart;
+                ctx.log("room: under the sea and within " + Math.round(SeaLeg.HAND_OFF) + " of the start column at " + start.x + ", "
+                        + start.z + ", digging it");
+                enter(mod, Stage.DIG);
+                // the last few blocks over to the column are still tunnel, so the dig clock waits (shoreTunnel)
+                tunnelling = true;
+                tunnelBest = Double.MAX_VALUE;
+            }
+            return null;
+        }
+        return leg;
+    }
+
+    // got to a start out on the water with no shore picked. digging down from a boat digs the sea and stalls till the phase gives up,
+    // so ask for a shore one last time (everything around us is loaded now) and if there's none, say so
+    private boolean wetStart(AltoClef mod) {
+        RunState.Pos start = ctx.state().strongholdStart;
+        if (shore != null || !wetAndSeen(mod, start.x, start.z)) {
+            return false;
+        }
+        lookForShore(mod, start, true);
+        if (shore == null) {
+            noShore(RoomRetarget.GiveUp.NO_SHORE, 0, 0);
+        }
+        return true;
+    }
+
+    // same thing from inside DIG (an expired leg, a surfacing): the column is under water and we're over its floor, so the shore
+    // first and the column is a tunnel away from there
+    private boolean wetDig(AltoClef mod) {
+        RunState.Pos from = digFrom();
+        // only the column we were sent to. a footprint cell the watchdog shifted to can sit in the river next to a fine start, and
+        // that's a minute lost and the next cell, not "no shore"
+        if (digX != from.x || digZ != from.z || !wetAndSeen(mod, digX, digZ)) {
+            return false;
+        }
+        lookForShore(mod, ctx.state().strongholdStart, true);
+        if (shore == null) {
+            noShore(RoomRetarget.GiveUp.NO_SHORE, 0, 0);
+            return true;
+        }
+        ctx.log("room: not digging down through the sea at " + digX + ", " + digZ + ", over to the shore first");
+        enter(mod, Stage.TO_START);
+        return true;
+    }
+
+    // under water, we're over its floor, and close enough that the shore around it is loaded: "no shore" from here is an answer.
+    // further out the walk goes on, it's just chunks we haven't got yet
+    private boolean wetAndSeen(AltoClef mod, int x, int z) {
+        return RoomRetarget.shoreLoaded(mod.getPlayer().getX(), mod.getPlayer().getZ(), x, z)
+                && RoomRetarget.shoreWalk(probe(mod), x, z, mod.getPlayer().getY());
     }
 
     // where the surface walk and the dig go: the shore column for a start under water, else the start
@@ -568,20 +750,20 @@ public class StrongholdRoomSearchTask extends Task {
 
     // asked every tick of the walk until it's settled. a start we can't see yet isn't water, so the check repeats until the
     // column loads. a water start with no shore inside the radius is asked again later and walked at meanwhile (the boat)
-    private void lookForShore(AltoClef mod, RunState.Pos start) {
-        if (shore != null || seconds(mod) < noShoreUntil) {
+    private void lookForShore(AltoClef mod, RunState.Pos start, boolean force) {
+        if (shore != null || (!force && seconds(mod) < noShoreUntil)) {
             return;
         }
         RoomRetarget.Probe probe = probe(mod);
         if (!RoomRetarget.shoreWalk(probe, start.x, start.z, mod.getPlayer().getY())) {
             return;
         }
-        Optional<RoomRetarget.Shore> found = RoomRetarget.pickShore(probe, start.x, start.z, start.x, start.z, remembered(mod));
+        Optional<RoomRetarget.Shore> found = RoomRetarget.pickShore(probe, start.x, start.z, start.x, start.z, remembered(mod), badShores);
         if (found.isEmpty()) {
             noShoreUntil = seconds(mod) + NO_DRY_RETRY_SECONDS;
             ctx.log("room: the start at " + start.x + ", " + start.z + " is under water" + seaFloorNote(probe, start.x, start.z)
                     + " and there's no dry land within " + RoomRetarget.SEARCH_RADIUS + " (or remembered within "
-                    + Math.round(RoomRetarget.FAR_SHORE_RADIUS) + "), going straight there");
+                    + Math.round(RoomRetarget.FAR_SHORE_RADIUS) + ")" + (force ? "" : ", going straight there"));
             return;
         }
         RoomRetarget.Shore s = found.get();
@@ -603,12 +785,12 @@ public class StrongholdRoomSearchTask extends Task {
             return;
         }
         shoreUnchecked = false;
-        Optional<RoomRetarget.Shore> s = RoomRetarget.checkShore(probe, shore.x, shore.z, start.x, start.z);
+        Optional<RoomRetarget.Shore> s = RoomRetarget.checkShore(probe, shore.x, shore.z, start.x, start.z, badShores);
         goStartTask = null;
         startLeg = null;
         if (s.isEmpty()) {
             ctx.log("room: the remembered shore at " + shore.x + ", " + shore.z + " has no column to dig");
-            badShores.add(RoomRetarget.key(shore.x, shore.z));
+            markShoreBad(shore, "no column to dig");
             shore = null;
             return;
         }
@@ -784,9 +966,18 @@ public class StrongholdRoomSearchTask extends Task {
         if (!checkStartShore(mod, start)) {
             return null;
         }
+        if (ctx.state().endPortalCenter != null && !bricksSeen && legWanted(mod, centreOf())) {
+            // sent back to the start (an errand, a stall retry) from inside the tunnel: the beach is the wrong way
+            int[] c = centreOf();
+            enterLeg(mod, c[0], c[1], c[2], true);
+            return null;
+        }
         checkShore(mod, start);
-        lookForShore(mod, start);
+        lookForShore(mod, start, false);
         if (shore == null && RoomRetarget.underSeaFloor(probe(mod), start.x, start.z, mod.getPlayer().getY())) {
+            if (columnLeg(mod, start, null, 0)) {
+                return null;
+            }
             // the dig tunnels from here (shoreTunnel), GetDownColumnTask's goal is the column itself so the sea route isn't one
             ctx.log("room: under the sea floor already, tunnelling over to the start column at " + start.x + ", " + start.z);
             enter(mod, Stage.DIG);
@@ -802,6 +993,9 @@ public class StrongholdRoomSearchTask extends Task {
         }
         startLeg.update(seconds(mod), dist);
         if (dist <= cfg.startReachBlocks || startLeg.expired(seconds(mod))) {
+            if (wetStart(mod)) {
+                return null;
+            }
             // frames seen on the way in are handled by scan(), so heading down is the only thing left to decide
             RoomCoverage.DigVerdict verdict = RoomCoverage.digVerdict(bricksSeen, mod.getPlayer().getY(), cfg.digFloorY,
                     onStartColumn(mod));
@@ -828,7 +1022,16 @@ public class StrongholdRoomSearchTask extends Task {
             ctx.progress("dug down");
         }
         double now = timeOnTaskSeconds();
-        shoreTunnel(mod, y, now);
+        if (shoreTunnel(mod, y, now)) {
+            return null;
+        }
+        // the leg just handed the last few blocks to us, only a proper detour back out is its turn again
+        if (tunnelling && columnLeg(mod, ctx.state().strongholdStart, null, HAND_OFF_SLACK)) {
+            return null;
+        }
+        if (wetDig(mod)) {
+            return null;
+        }
         watch.update(mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ(), digX, digZ, now);
         // the floor only counts on the original column (the footprint cells are inside its slack), so a shift does not
         // turn a staircase that was fine into a floor verdict
@@ -1106,6 +1309,13 @@ public class StrongholdRoomSearchTask extends Task {
     private Task approach(AltoClef mod) {
         step = "Looking at the portal frames";
         setDebugState("Approaching the end portal", step);
+        int[] ring = centreOf();
+        if (!bricksSeen && legWanted(mod, ring)
+                && Math.hypot(ring[0] - mod.getPlayer().getX(), ring[2] - mod.getPlayer().getZ()) > SeaLeg.HAND_OFF + HAND_OFF_SLACK) {
+            // pushed back out past the hand off (a fight, a fall): the long goal from here is the same surface boat as ever
+            enterLeg(mod, ring[0], ring[1], ring[2], true);
+            return null;
+        }
         if (approachTask == null) {
             approachTask = new GetWithinRangeOfBlockTask(new BlockPos(centreOf()[0], centreOf()[1], centreOf()[2]), APPROACH_RANGE);
         }
@@ -1137,7 +1347,8 @@ public class StrongholdRoomSearchTask extends Task {
             // the shore route if there is one (no wait on noDryUntil, this is the last ask), else say so instead of handing OPEN a
             // bot bobbing on the waves
             if (!retarget(mod, c[0], c[1], c[2], c[0], c[2])) {
-                noShore(retargets >= RoomRetarget.MAX_RETARGETS);
+                noShore(retargets < RoomRetarget.MAX_RETARGETS ? RoomRetarget.GiveUp.NO_SHORE
+                        : everLeg ? RoomRetarget.GiveUp.NEVER_THERE : RoomRetarget.GiveUp.NEVER_UNDER, 0, 0);
             }
             return null;
         }

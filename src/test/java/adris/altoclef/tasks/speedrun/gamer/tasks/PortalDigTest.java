@@ -240,6 +240,36 @@ public class PortalDigTest {
         assertEquals(PortalDig.WALK, dig.plan(4, PORTAL_Y + 6, 4, 0, PORTAL_Y, 0, new Sea(), SHORE));
     }
 
+    // handed over at the bottom of a shaft 163 out with the portal under the sea: the leg, not the plain walk across the top
+    @Test
+    public void aFarPortalUnderTheSeaTakesTheLeg() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        assertEquals(PortalDig.WALK, dig.plan(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea, SHORE));
+        assertTrue(dig.legWanted(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea));
+        // within a room of it the plain walk is a short goal again
+        assertFalse(dig.legWanted(SeaLeg.HAND_OFF, PORTAL_Y + 1, 0, 0, PORTAL_Y, 0, sea));
+    }
+
+    // dry land over the portal: exactly the walk it always was
+    @Test
+    public void aLandPortalNeverTakesTheLeg() {
+        assertEquals(PortalDig.WALK, stand(1, 100, PORTAL_Y + 1, 0));
+        assertFalse(dig.legWanted(100, PORTAL_Y + 1, 0, 0, PORTAL_Y, 0, world));
+    }
+
+    // back up on the waves in the middle of the leg: the shaft again, nothing counted against anyone
+    @Test
+    public void surfacingGoesBackToTheShaft() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.plan(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.surfaced();
+        assertFalse(dig.legWanted(100, 62, 0, 0, PORTAL_Y, 0, sea));
+        assertTrue(dig.plan(100, 62, 0, 0, PORTAL_Y, 0, sea, SHORE) != PortalDig.WALK);
+        assertEquals(163, dig.digX());
+    }
+
     // a phase restart in the tunnel, already down at the portal's level once: still the walk, not back to the shaft
     @Test
     public void aRestartInTheTunnelStaysOnTheWalk() {
