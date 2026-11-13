@@ -143,6 +143,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         return true;
     }
 
+    // virtual. a full bag touching the drop: what goes to make room, if anything. the stock answer is the garbage pick
+    // (GarbageView.room). the night bed's pickup throws a spare build stack when that's a no (GarbageView.shedBlocks)
+    protected StorageHelper.Room roomFor(StorageHelper.GarbageView view, ItemStack drop) {
+        return view.room(drop);
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         _wanderTask.reset();
@@ -321,7 +327,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             if (_freeInventoryIfFull) {
                 // same answer the death pile filters by, so a drop it walked us to is never one we refuse here
                 StorageHelper.GarbageView view = StorageHelper.garbageView(_mod);
-                StorageHelper.Room room = view.room(itemEntity.getItem());
+                StorageHelper.Room room = roomFor(view, itemEntity.getItem());
                 if (room.kind() == DropRoom.Kind.EVICT) {
                     return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim());
                 }

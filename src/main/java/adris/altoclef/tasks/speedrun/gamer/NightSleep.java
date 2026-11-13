@@ -406,6 +406,65 @@ public final class NightSleep {
         }
     }
 
+    // the bed pickup's throw floor: the night's for #gamer, -1 for a schematic build, whose spare blocks are the build's own
+    // material and three wool is not worth a hole in the house
+    public static int bedShedFloor(boolean shedForBed, int floor) {
+        return shedForBed ? floor : -1;
+    }
+
+    // ask for the build stack throw only when the stock pickup said no room, there is a floor at all, and the guard is still in
+    public static boolean asksShed(boolean stockNo, int floor, boolean gaveUp) {
+        return stockNo && floor >= 0 && !gaveUp;
+    }
+
+    // the night bed's pickup throwing a stack for a full bag (DropRoom.shedBlocks): a few different stacks at most, and one throw that's
+    // still the plan after PATIENCE_TICKS never went out (the slot task ends stuck and the same answer comes straight back). either
+    // way the pickup falls back to the stock no, and the PICKUP clock leaves the bed like it always did. keys are whatever tells
+    // one throw from the next, slot and stack
+    public static final class ShedGuard {
+        public static final int CAP = 3;
+        public static final int PATIENCE_TICKS = 100;
+        private Object last;
+        private long since;
+        private int asked;
+        private boolean done;
+
+        // true = go ahead with this throw. a new key is a new throw, the same key again is the one we are waiting on
+        public boolean allow(Object key, long tick) {
+            if (done) {
+                return false;
+            }
+            if (!key.equals(last)) {
+                if (asked >= CAP) {
+                    done = true;
+                    return false;
+                }
+                asked++;
+                last = key;
+                since = tick;
+                return true;
+            }
+            if (tick - since > PATIENCE_TICKS) {
+                done = true;
+                return false;
+            }
+            return true;
+        }
+
+        // only new keys, so the log hears each throw once
+        public boolean isNew(Object key) {
+            return !done && !key.equals(last);
+        }
+
+        public int throwsAsked() {
+            return asked;
+        }
+
+        public boolean gaveUp() {
+            return done;
+        }
+    }
+
     // ---- monsters
 
     // a monster's box, the way the game sees it

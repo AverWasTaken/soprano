@@ -118,6 +118,12 @@ public final class DropRoom {
         return v >= 0 ? v : late(held);
     }
 
+    // the night bed's throw: shed's first stage and nothing past it. three wool makes that bed again, so spare duplicates, worse
+    // tools, the furnace and the raw gold are a worse deal than leaving it. -1 = no build stack the floor can spare
+    public static int shedBlocks(List<Stack> bag, int blockFloor) {
+        return biggestBuild(errandHolds(bag, blockFloor));
+    }
+
     // the bag with the errand's stuff and the gate's last blocks marked keep, so victim and late don't need to know about beds
     static List<Stack> errandHolds(List<Stack> bag, int blockFloor) {
         int gateBlocks = 0;
