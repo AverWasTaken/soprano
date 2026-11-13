@@ -2,6 +2,8 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -180,5 +182,101 @@ public class PortalDigTest {
         assertEquals(x, dig.digX());
         at(10, 64, 10);
         assertEquals(x, dig.digX());
+    }
+
+    // open sea out to 150 around the portal, land past it, the room search's shore at 163
+    private static final class Sea implements RoomRetarget.Probe {
+        @Override
+        public boolean loaded(int x, int z) {
+            return true;
+        }
+
+        @Override
+        public int topY(int x, int z) {
+            return 63;
+        }
+
+        @Override
+        public boolean solid(int x, int y, int z) {
+            return y <= 63 && !(wet(x, z) && y > 40);
+        }
+
+        @Override
+        public boolean fluid(int x, int y, int z) {
+            return wet(x, z) && y > 40 && y <= 63;
+        }
+
+        private static boolean wet(int x, int z) {
+            return Math.hypot(x, z) < 150;
+        }
+    }
+
+    private static final List<int[]> SHORE = List.of(new int[]{163, 64, 0});
+
+    @Test
+    public void noShoreInRangeDigsFromTheRememberedOne() {
+        Sea sea = new Sea();
+        assertTrue(dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE) != PortalDig.WALK);
+        assertEquals(163, dig.digX());
+        assertEquals(0, dig.digZ());
+        // and without it there's nothing to dig from, the plain walk it is
+        assertEquals(PortalDig.WALK, new PortalDig().plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, List.of()));
+    }
+
+    // the bottom of a shaft 163 out still counts as near once it's down at the portal, not 12 above it in the water band
+    @Test
+    public void aFarShaftHandsOverAtThePortalLevel() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        assertTrue(dig.plan(163.5, PORTAL_Y + 12, 0.5, 0, PORTAL_Y, 0, sea, SHORE) != PortalDig.WALK);
+        assertEquals(PortalDig.WALK, dig.plan(163.5, PORTAL_Y + RoomRetarget.UNDER_SEA_TURN_ABOVE, 0.5, 0, PORTAL_Y, 0, sea, SHORE));
+        // on the way over it climbs a bit, still the walk
+        assertEquals(PortalDig.WALK, dig.plan(100, PORTAL_Y + 8, 0, 0, PORTAL_Y, 0, sea, SHORE));
+    }
+
+    // a respawn in the room (up on its stairs, even) is just the walk, sea over it or not
+    @Test
+    public void inTheRoomUnderTheSeaJustWalks() {
+        assertEquals(PortalDig.WALK, dig.plan(4, PORTAL_Y + 6, 4, 0, PORTAL_Y, 0, new Sea(), SHORE));
+    }
+
+    // handed over at the bottom of a shaft 163 out with the portal under the sea: the leg, not the plain walk across the top
+    @Test
+    public void aFarPortalUnderTheSeaTakesTheLeg() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        assertEquals(PortalDig.WALK, dig.plan(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea, SHORE));
+        assertTrue(dig.legWanted(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea));
+        // within a room of it the plain walk is a short goal again
+        assertFalse(dig.legWanted(SeaLeg.HAND_OFF, PORTAL_Y + 1, 0, 0, PORTAL_Y, 0, sea));
+    }
+
+    // dry land over the portal: exactly the walk it always was
+    @Test
+    public void aLandPortalNeverTakesTheLeg() {
+        assertEquals(PortalDig.WALK, stand(1, 100, PORTAL_Y + 1, 0));
+        assertFalse(dig.legWanted(100, PORTAL_Y + 1, 0, 0, PORTAL_Y, 0, world));
+    }
+
+    // back up on the waves in the middle of the leg: the shaft again, nothing counted against anyone
+    @Test
+    public void surfacingGoesBackToTheShaft() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.plan(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.surfaced();
+        assertFalse(dig.legWanted(100, 62, 0, 0, PORTAL_Y, 0, sea));
+        assertTrue(dig.plan(100, 62, 0, 0, PORTAL_Y, 0, sea, SHORE) != PortalDig.WALK);
+        assertEquals(163, dig.digX());
+    }
+
+    // a phase restart in the tunnel, already down at the portal's level once: still the walk, not back to the shaft
+    @Test
+    public void aRestartInTheTunnelStaysOnTheWalk() {
+        Sea sea = new Sea();
+        dig.plan(163.5, 64, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.plan(163.5, PORTAL_Y + 1, 0.5, 0, PORTAL_Y, 0, sea, SHORE);
+        dig.walkStalled();
+        assertEquals(PortalDig.WALK, dig.plan(100, PORTAL_Y + 6, 0, 0, PORTAL_Y, 0, sea, SHORE));
     }
 }
