@@ -81,6 +81,10 @@ import static baritone.pathing.precompute.Ternary.*;
  */
 public interface MovementHelper extends ActionCosts, Helper {
 
+    // what crossing a cell that only the avoid list shuts costs: about six blocks of walking, so a short way around wins and a
+    // long one doesn't
+    double AVOIDED_PASSABLE_COST = 30;
+
     static boolean avoidBreaking(CalculationContext context, int x, int y, int z, BlockState state) {
         // same as the one below except the "is this block ever ok to break" bit is precomputed instead of a list scan every time
         return !context.bsi.worldBorder.canPlaceAt(x, z)
@@ -230,6 +234,21 @@ public interface MovementHelper extends ActionCosts, Helper {
         if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(x, y, z)) {
             return false;
         }
+        return canWalkThroughBlock(bsi, x, y, z, state);
+    }
+
+    // a cell that's open (air, grass, a flower) and only shut by altoclef's avoid list. nothing to break there, so prepared()
+    // walks on instead of clicking at it, and the planner prices it as AVOIDED_PASSABLE_COST instead of a one tick break
+    static boolean passableButAvoided(BlockStateInterface bsi, int x, int y, int z) {
+        return AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(x, y, z) && canWalkThroughBlock(bsi, x, y, z, bsi.get0(x, y, z));
+    }
+
+    static boolean passableButAvoided(IPlayerContext ctx, BetterBlockPos pos) {
+        return passableButAvoided(new BlockStateInterface(ctx), pos.x, pos.y, pos.z);
+    }
+
+    // canWalkThrough minus the avoid list
+    private static boolean canWalkThroughBlock(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
         Ternary canWalkThrough = canWalkThroughBlockState(state);
         if (canWalkThrough == YES) {
             return true;
@@ -868,6 +887,9 @@ public interface MovementHelper extends ActionCosts, Helper {
     static double getMiningDurationTicks0(CalculationContext context, int x, int y, int z, BlockState state, boolean includeFalling) {
         Block block = state.getBlock();
         if (!canWalkThrough(context, x, y, z, state)) {
+            if (context.altoActive && context.precomputedData.canWalkThrough(context.bsi, x, y, z, state)) {
+                return avoidedPassableCost(context, x, y, z, state);
+            }
             if (!state.getFluidState().isEmpty()) {
                 return COST_INF;
             }
@@ -901,6 +923,18 @@ public interface MovementHelper extends ActionCosts, Helper {
             return result;
         }
         return 0; // we won't actually mine it, so don't check fallings above
+    }
+
+    // open, and only the avoid list says no (canWalkThrough's context half has nothing else that can). this used to go down the
+    // mining branch and come out as a one tick break of air: the planner happily cut through, and the movement then stood at the
+    // edge clicking at nothing until the path timed out. now it's a real price, so paths go around when there's an around and
+    // still cross when there isn't (a bot standing in a cloud needs its way out). the walls that are also break protected (the
+    // pack zones, see RunZones.blocksAt) stay walls
+    static double avoidedPassableCost(CalculationContext context, int x, int y, int z, BlockState state) {
+        if (context.breakCostMultiplierAt(x, y, z, state) >= COST_INF || avoidBreaking(context, x, y, z, state)) {
+            return COST_INF;
+        }
+        return AVOIDED_PASSABLE_COST;
     }
 
     static boolean isBottomSlab(BlockState state) {

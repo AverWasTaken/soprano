@@ -13,7 +13,9 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -53,6 +55,8 @@ public class KillEnderDragonWithBedsTask extends Task {
     private static final int CLOUD_CELL_TICKS = 10;
     // a landing is 10 s of everything happening at once, this is how we read it afterwards
     private static final int TRACE_TICKS = 5;
+    // clouds this far from the stand can't touch it or any hold spot PillarBed.holdSpot would pick
+    private static final double CLOUD_HOLD_RANGE = 40;
 
     private final Task _whenNotPerchingTask;
     // instance state: this used to be two statics shared by every instance (and Playground), reset only in onStart
@@ -72,6 +76,10 @@ public class KillEnderDragonWithBedsTask extends Task {
     private String _placeLog;
     // a copy the path thread can read while we rebuild it
     private volatile Set<BlockPos> _cloudCells = Set.of();
+    // the cloud we last said we're waiting on, and whether this landing was already called off, so each gets one line
+    private int _heldCloud = -1;
+    private Vec3 _holdSpot;
+    private boolean _skipLogged;
 
     public KillEnderDragonWithBedsTask(IDragonWaiter notPerchingOverride) {
         _whenNotPerchingTask = (Task) notPerchingOverride;
@@ -210,6 +218,23 @@ public class KillEnderDragonWithBedsTask extends Task {
             _standWalk = null;
             walking = false;
         }
+        if (!landing) {
+            _skipLogged = false;
+        }
+        // a sat dragon is the ring's either way, its own breath is right where it sits
+        if (!sat) {
+            List<AreaEffectCloud> near = cloudsNear(mod, stand);
+            List<PillarBed.Cloud> clouds = new ArrayList<>(near.size());
+            for (AreaEffectCloud c : near) {
+                clouds.add(new PillarBed.Cloud(c.getX(), c.getZ(), c.getRadius()));
+            }
+            if (PillarBed.cloudOnStand(stand, clouds)) {
+                _standWalk = null;
+                return holdOffStand(mod, stand, near, clouds, landing, now.getPhase());
+            }
+        }
+        _heldCloud = -1;
+        _holdSpot = null;
         // a hop on the stand isn't worth a walk, the click still waits for covered
         switch (PillarBed.step(sat, landing, fightHere || atStand && !walking, bedDown)) {
             case RING -> {
@@ -248,6 +273,55 @@ public class KillEnderDragonWithBedsTask extends Task {
             }
         }
         return null;
+    }
+
+    // a cloud on the stand: walking there is walking into it, landing or not. sit it out at the nearest spot clear of every cloud
+    // and take the next landing, a skipped one costs a minute and a bed in the breath costs the fight
+    private Task holdOffStand(AltoClef mod, BlockPos stand, List<AreaEffectCloud> near, List<PillarBed.Cloud> clouds, boolean landing,
+                              EnderDragonPhase<?> phase) {
+        // nothing to hold the stand for, so endermen and food are back on
+        _holdStand = false;
+        mod.getFoodChain().shouldStop(false);
+        for (int i = 0; i < near.size(); i++) {
+            if (PillarBed.cloudOnStand(stand, List.of(clouds.get(i)))) {
+                if (near.get(i).getId() != _heldCloud) {
+                    _heldCloud = near.get(i).getId();
+                    Debug.logInternal(String.format("pillar bed: cloud on the stand (r=%.1f at %.1f %.1f), waiting for it to clear",
+                            clouds.get(i).radius(), clouds.get(i).x(), clouds.get(i).z()));
+                }
+                break;
+            }
+        }
+        if (landing && !_skipLogged) {
+            _skipLogged = true;
+            Debug.logInternal("pillar bed: cloud on the stand, skipping this landing, phase " + phase);
+        }
+        setDebugState("Cloud on the pillar, holding off", "Waiting for the breath to clear");
+        LocalPlayer player = mod.getPlayer();
+        // already out of reach of every cloud at its full size: stay. the breath run lets go a few blocks past a fresh cloud's
+        // rim, which is inside where it grows to, so that spot doesn't count
+        if (PillarBed.clearOfClouds(player.getX(), player.getZ(), clouds)) {
+            return null;
+        }
+        if (_holdSpot == null || !PillarBed.holds(_endPortalTop, _holdSpot.x, _holdSpot.z, clouds)) {
+            _holdSpot = PillarBed.holdSpot(_endPortalTop, clouds, player.getX(), player.getZ());
+        }
+        // (nowhere clear: stay put, the breath dodge has us if it reaches)
+        if (_holdSpot == null) {
+            return null;
+        }
+        // the block itself, anywhere on it is still clear (holdSpot's margin is wider than clearOfClouds')
+        return new GetToXZTask((int) Math.floor(_holdSpot.x), (int) Math.floor(_holdSpot.z));
+    }
+
+    private static List<AreaEffectCloud> cloudsNear(AltoClef mod, BlockPos stand) {
+        List<AreaEffectCloud> near = new ArrayList<>();
+        for (AreaEffectCloud cloud : mod.getEntityTracker().getTrackedEntities(AreaEffectCloud.class)) {
+            if (cloud.getRadius() > 0 && Math.hypot(cloud.getX() - stand.getX() - 0.5, cloud.getZ() - stand.getZ() - 0.5) < CLOUD_HOLD_RANGE) {
+                near.add(cloud);
+            }
+        }
+        return near;
     }
 
     // from the stand the crosshair only grazes the pillar's top face, so an aimed click needs a jump and a lucky frame. sent

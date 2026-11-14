@@ -1,6 +1,7 @@
 package baritone.pathing.calc;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.ItemFixture;
@@ -17,9 +18,9 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
-// a cell we may not walk through is priced as a block to mine, and air mines in a tick. the pack zone walls also go in as
-// break protected (see RunZones.blocksAt), which is what makes them solid. a plain walk-through rule (the dragon cloud, the
-// bastion planner) has to keep the old price, a bot standing in one of those cells needs its way out
+// the pack zone walls go in as break protected as well as avoided (see RunZones.blocksAt), which is what makes them solid. a plain
+// walk-through rule (the dragon cloud, the bastion planner) stays a finite price, a bot standing in one of those cells needs its
+// way out. that price is a real one now, not a one tick break of air
 public class ZoneWallCostTest {
 
     private static final int FLOOR = 63;
@@ -65,8 +66,26 @@ public class ZoneWallCostTest {
 
         assertEquals(ActionCosts.COST_INF, MovementHelper.getMiningDurationTicks(ctx, zoneCell.getX(), zoneCell.getY(), zoneCell.getZ(), false), 0);
         double cloudCost = MovementHelper.getMiningDurationTicks(ctx, cloudCell.getX(), cloudCell.getY(), cloudCell.getZ(), false);
-        assertTrue("cloud cell keeps its mining price: " + cloudCost, cloudCost > 0 && cloudCost < ActionCosts.COST_INF);
+        assertTrue("cloud cell keeps a finite price: " + cloudCost, cloudCost > 0 && cloudCost < ActionCosts.COST_INF);
+        // and it's the avoided-air price, not a one tick break of nothing
+        assertEquals(MovementHelper.AVOIDED_PASSABLE_COST, cloudCost, 0);
         // and a cell nobody walls is plain air, free
         assertEquals(0, MovementHelper.getMiningDurationTicks(ctx, 0, FLOOR + 1, 0, false), 0);
+    }
+
+    @Test
+    public void onlyOpenAvoidedCellsAreWalkedThroughInsteadOfBroken() {
+        VineLogPathTest.MapWorld w = new VineLogPathTest.MapWorld();
+        BlockPos stone = new BlockPos(0, FLOOR, 0);
+        BlockPos air = new BlockPos(0, FLOOR + 1, 0);
+        w.set(stone.getX(), stone.getY(), stone.getZ(), Blocks.STONE.defaultBlockState());
+        Predicate<BlockPos> rule = p -> p.equals(stone) || p.equals(air);
+        AltoClefSettings.getInstance().getForceAvoidWalkThroughPredicates().add(rule);
+        // open and avoided: prepared() walks on, there's nothing to click
+        assertTrue(MovementHelper.passableButAvoided(w, air.getX(), air.getY(), air.getZ()));
+        // a real block stays a block to break, avoided or not
+        assertFalse(MovementHelper.passableButAvoided(w, stone.getX(), stone.getY(), stone.getZ()));
+        // and open air nobody avoids isn't this case at all
+        assertFalse(MovementHelper.passableButAvoided(w, 5, FLOOR + 1, 0));
     }
 }
