@@ -2,9 +2,13 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.tasks.speedrun.gamer.end.PillarBed.Cloud;
 import adris.altoclef.tasks.speedrun.gamer.end.PillarBed.Step;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
@@ -209,5 +213,77 @@ public class PillarBedTest {
         assertTrue(PillarBed.looksEast(TOP, -1.5, 0.5));
         // out east it's not, that's the walk back
         assertFalse(PillarBed.covered(true, gapAt(3.5, 64, 0.5), seenAt(3.5, 64, 0.5)));
+    }
+
+    @Test
+    public void aSmallCloudThatWillGrowOverTheStandIsOnItAlready() {
+        BlockPos stand = PillarBed.stand(TOP);
+        // stand middle is -0.5, 0.5. a fresh radius 3 cloud 7 blocks off doesn't touch us yet but it will by the landing
+        assertTrue(PillarBed.cloudOnStand(stand, List.of(new Cloud(-0.5, 7.5, 3))));
+        assertTrue(PillarBed.cloudOnStand(stand, List.of(new Cloud(-0.5, 0.5, 3))));
+        assertFalse(PillarBed.cloudOnStand(stand, List.of(new Cloud(-0.5, 9.0, 3))));
+        assertFalse(PillarBed.cloudOnStand(stand, List.of()));
+        // any one of them is enough
+        assertTrue(PillarBed.cloudOnStand(stand, List.of(new Cloud(30, 30, 3), new Cloud(3, 0.5, 6))));
+    }
+
+    @Test
+    public void holdSpotIsTheNearestOneClearOfEveryFullGrownCloud() {
+        List<Cloud> clouds = List.of(new Cloud(-0.5, 0.5, 3), new Cloud(-0.5, 6.5, 6), new Cloud(-0.5, 10.5, 6));
+        Vec3 spot = PillarBed.holdSpot(TOP, clouds, -0.5, 0.5);
+        for (Cloud c : clouds) {
+            assertTrue(Math.hypot(spot.x - c.x(), spot.z - c.z()) >= PillarBed.CLOUD_FULL_RADIUS + PillarBed.CLOUD_HOLD_MARGIN);
+        }
+        // the clouds run off to the south (+z), so the way out is north
+        assertTrue(spot.z < 0);
+        // and nowhere near further than it has to be: one cloud on the stand is 8.5 out
+        assertTrue(Math.hypot(spot.x + 0.5, spot.z - 0.5) < 10);
+    }
+
+    @Test
+    public void holdSpotStaysOutOfThePodium() {
+        // a cloud right east of the pillar: the nearest clear spot by distance alone would be in the pit west of the stand
+        List<Cloud> clouds = List.of(new Cloud(8, 0.5, 3));
+        Vec3 spot = PillarBed.holdSpot(TOP, clouds, -0.5, 0.5);
+        assertTrue(Math.hypot(spot.x - 0.5, spot.z - 0.5) >= PillarBed.PODIUM_CLEAR);
+        assertTrue(Math.hypot(spot.x - 8, spot.z - 0.5) >= PillarBed.CLOUD_FULL_RADIUS + PillarBed.CLOUD_HOLD_MARGIN);
+    }
+
+    @Test
+    public void nowhereClearIsNull() {
+        List<Cloud> clouds = new ArrayList<>();
+        for (int x = -40; x <= 40; x += 6) {
+            for (int z = -40; z <= 40; z += 6) {
+                clouds.add(new Cloud(x, z, 7));
+            }
+        }
+        assertNull(PillarBed.holdSpot(TOP, clouds, -0.5, 0.5));
+    }
+
+    @Test
+    public void stayingPutNeedsToBeClearOfTheFullGrownCloud() {
+        List<Cloud> clouds = List.of(new Cloud(-0.5, 0.5, 3));
+        // where the breath run lets go of a fresh cloud: past its rim of now, inside where it grows to
+        assertFalse(PillarBed.clearOfClouds(-6.5, 0.5, clouds));
+        assertTrue(PillarBed.clearOfClouds(-8.5, 0.5, clouds));
+        // anywhere on the hold spot's block counts as clear, so arriving there ends the walk
+        Vec3 spot = PillarBed.holdSpot(TOP, clouds, -0.5, 0.5);
+        for (double ox = -0.5; ox <= 0.5; ox += 0.5) {
+            for (double oz = -0.5; oz <= 0.5; oz += 0.5) {
+                assertTrue(PillarBed.clearOfClouds(spot.x + ox, spot.z + oz, clouds));
+            }
+        }
+    }
+
+    @Test
+    public void holdSpotIsOnOurSideOfTheCloud() {
+        // a cloud on the stand and we got out east of it: the spot is east too, not round the rim on the far side
+        List<Cloud> clouds = List.of(new Cloud(-0.5, 0.5, 3));
+        Vec3 spot = PillarBed.holdSpot(TOP, clouds, 6.0, 0.5);
+        assertTrue(spot.x > 7);
+        assertTrue(Math.abs(spot.z - 0.5) < 2);
+        assertTrue(PillarBed.holds(TOP, spot.x, spot.z, clouds));
+        // and a spot under a newer cloud doesn't hold any more
+        assertFalse(PillarBed.holds(TOP, spot.x, spot.z, List.of(clouds.get(0), new Cloud(spot.x, spot.z, 3))));
     }
 }

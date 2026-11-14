@@ -745,6 +745,10 @@ public abstract class Movement implements IMovement, MovementHelper {
             return false;
         }
         for (BetterBlockPos blockPos : positionsToBreak) {
+            // open and only avoided: the planner paid AVOIDED_PASSABLE_COST to come through here, there's nothing to click
+            if (MovementHelper.passableButAvoided(ctx, blockPos)) {
+                continue;
+            }
             if (!MovementHelper.canWalkThrough(ctx, blockPos) && fallsOnUs(blockPos)) {
                 BetterBlockPos feet = ctx.playerFeet();
                 if (feet.x != blockPos.x || feet.z != blockPos.z) {
