@@ -25,6 +25,7 @@ import adris.altoclef.util.helpers.LocalBlockSearch;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.UnloadedTrust;
 import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.DropWatch;
 import adris.altoclef.util.helpers.MineAnchor;
@@ -488,6 +489,8 @@ public class MineAndCollectTask extends ResourceTask {
         private static final TreeStrikes STRIKES = new TreeStrikes();
         private final TreeReachScan _scan = new TreeReachScan();
         private final BuriedLogs _buried = new BuriedLogs();
+        // blocks picked while their chunk was unloaded, see trustBroke
+        private final UnloadedTrust _blind = new UnloadedTrust();
         // no digging for dirt before this tick. static for the same reason as the strikes, a rebuilt task would start another trip
         private static int dirtOffUntil = Integer.MIN_VALUE;
         // the last tree we dug dirt for, and when
@@ -584,6 +587,7 @@ public class MineAndCollectTask extends ResourceTask {
         protected Optional<Object> getClosestTo(AltoClef mod, Vec3 pos) {
             noteBreak(mod);
             Optional<Object> pick = pick(mod, pos);
+            noteBlind(mod, pick);
             // the drop we hand out is the one we stay on, see DropPatience
             if (pick.isPresent() && pick.get() instanceof ItemEntity drop) {
                 _lockedDrop = drop;
@@ -1144,6 +1148,9 @@ public class MineAndCollectTask extends ResourceTask {
         // so we stand still until the drop shows. the pick that follows has the patience lock for the walk to it
         @Override
         protected void onPursuitGone(AltoClef mod, Object gone) {
+            if (gone instanceof BlockPos dropped) {
+                trustBroke(mod, dropped);
+            }
             if (!(gone instanceof BlockPos pos) || !pos.equals(_miningPos)) {
                 return;
             }
@@ -1170,6 +1177,37 @@ public class MineAndCollectTask extends ResourceTask {
             _miningPos = null;
             _progressChecker.reset();
             expectDrop(false, spot);
+        }
+
+        // the pursuit still held here passed isValid this very tick (the base drops it before asking us), so loaded or not
+        // is all there is to say about it. the pick gets the same
+        private void noteBlind(AltoClef mod, Optional<Object> pick) {
+            if (pursuing() instanceof BlockPos held) {
+                _blind.seen(held, mod.getChunkTracker().isChunkLoaded(held));
+            }
+            if (pick.isPresent() && pick.get() instanceof BlockPos picked) {
+                _blind.seen(picked, mod.getChunkTracker().isChunkLoaded(picked));
+            }
+        }
+
+        // a block picked while its chunk was unloaded, still there now that it loaded, and canBreak says no. left alone it
+        // comes straight back as the pick the moment we step out of range again, and we spend the rest of the day on that
+        // step. once is enough, it was never going to pass once loaded. a plain ban, not the CHUNK_RELOAD kind, the reload
+        // is the loop
+        private void trustBroke(AltoClef mod, BlockPos pos) {
+            if (!_blind.picked(pos)) {
+                return;
+            }
+            boolean loaded = mod.getChunkTracker().isChunkLoaded(pos);
+            boolean there = loaded && mod.getBlockTracker().blockIsValid(pos, _blocks);
+            if (!_blind.caught(pos, loaded, there, !there || WorldHelper.canBreak(mod, pos))) {
+                return;
+            }
+            UnloadedTrust.Part part = WorldHelper.canBreakFailure(mod, pos);
+            long ticks = BanPolicy.unloadedTrustTicks(part);
+            Debug.logInternal("pick: " + pos.toShortString() + " " + mod.getWorld().getBlockState(pos).getBlock().getName().getString()
+                    + " passes while unloaded but fails " + part.label + " once loaded, banning for " + (ticks == Bans.RUN ? "the run" : (ticks / 1200) + " min"));
+            BanPolicy.unloadedTrust(mod.getBans(), WorldHelper.getCurrentDimension(), pos.getX(), pos.getY(), pos.getZ(), part);
         }
 
         @Override
