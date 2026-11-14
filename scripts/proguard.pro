@@ -65,6 +65,9 @@
     *** currentState;
 }
 -keepnames class baritone.pathing.movement.movements.**
+# nora-tweaks' OreSim injects into MineProcess.rescan (kept by @KeepName); its handler descriptor names
+# CalculationContext, so that type has to keep its name too or the injection can't be resolved
+-keepnames class baritone.pathing.movement.CalculationContext
 -keepnames class adris.altoclef.**
 -keepclassmembers class adris.altoclef.** {
     <fields>;

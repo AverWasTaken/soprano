@@ -18,6 +18,7 @@
 package baritone.command.defaults;
 
 import baritone.Baritone;
+import baritone.KeepName;
 import baritone.api.IBaritone;
 import baritone.api.command.Command;
 import baritone.api.command.argument.IArgConsumer;
@@ -28,6 +29,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
+// Meteor's baritone integration mixes into this exact class (meteor-client-baritone.mixins.json:ComeCommandMixin),
+// so proguard must not rename it on release jars or the mixin fails with "@Mixin target was not found" at startup
+@KeepName
 public class ComeCommand extends Command {
 
     public ComeCommand(IBaritone baritone) {
