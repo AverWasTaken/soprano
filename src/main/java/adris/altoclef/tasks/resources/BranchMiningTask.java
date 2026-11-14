@@ -10,6 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.BreakConfirmation;
 import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -196,6 +197,12 @@ public class BranchMiningTask extends ResourceTask {
                 }
                 _oreTask = new DestroyBlockTask(_oreAt);
                 _oreClock.reset();
+            }
+            // the client removed the ore itself and is waiting on the server to agree. the ore reading air here is not
+            // an ore that was mined, and dropping the target now is how the block came back with nothing left to dig it
+            if (BreakConfirmation.isPending(_oreAt)) {
+                setDebugState("Waiting for the server to confirm the break", "Waiting for the server");
+                return _oreTask;
             }
             if (!isOre(mod, _oreAt)) {
                 if (mod.getWorld().getBlockState(_oreAt).isAir()) {

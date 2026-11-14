@@ -14,6 +14,7 @@ import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.BreakConfirmation;
 import adris.altoclef.util.helpers.BuriedLogs;
 import adris.altoclef.util.helpers.FloatingBlock;
 import adris.altoclef.util.helpers.GameClock;
@@ -1147,6 +1148,10 @@ public class MineAndCollectTask extends ResourceTask {
             if (!(gone instanceof BlockPos pos) || !pos.equals(_miningPos)) {
                 return;
             }
+            // predicted air, not a confirmed break: the server may still put the block back
+            if (BreakConfirmation.isPending(pos)) {
+                return;
+            }
             // a tunnel's cobble lands in vacuum range on its own while the next block cracks, stopping for it is pure cost.
             // the hole it left gave its neighbours an air face though, so the live look goes again
             if (_stoneOnly) {
@@ -1185,6 +1190,10 @@ public class MineAndCollectTask extends ResourceTask {
         private void noteBreak(AltoClef mod) {
             BlockPos was = _miningPos;
             if (was == null || _stoneOnly || mod.getBlockTracker().unreachable(was)) {
+                return;
+            }
+            // the server has not agreed to the break yet, so this is not the "block is gone" moment the anchor is for
+            if (BreakConfirmation.isPending(was)) {
                 return;
             }
             if (!mod.getBlockTracker().blockIsValid(was, _blocks)) {
@@ -1395,9 +1404,11 @@ public class MineAndCollectTask extends ResourceTask {
             if (mod.getBlockTracker().unreachable(pos)) return false;
             if (hangsInTheNether(mod, pos)) return false;
             if (buriedLog(mod, pos)) return false;
-            if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
+            // the predicted air is the break we are waiting on, not the block disappearing from under the pick
+            boolean pending = BreakConfirmation.isPending(pos);
+            if (!pending && !mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
             // same answer as isValid, or a block that went unbreakable got dropped there and handed straight back here
-            if (!WorldHelper.canBreak(mod, pos)) return false;
+            if (!pending && !WorldHelper.canBreak(mod, pos)) return false;
             // a block we placed is scaffolding, holding on to it skipped the notOurs filter in pickBlock. stone only: everyone
             // else has the "nothing else within 16, take our own" fallback, and dropping that pick every tick would just repick it
             if (_stoneOnly && PlacedByUs.GLOBAL.recent(pos.getX(), pos.getY(), pos.getZ(), mod.getWorld().getGameTime())) return false;
@@ -1474,6 +1485,13 @@ public class MineAndCollectTask extends ResourceTask {
         protected Task onTick(AltoClef mod) {
             if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 _progressChecker.reset();
+            }
+            // the client's predicted air is not a broken block yet: the server may still refuse the break. keep the
+            // target (isValid and stillOurs below do the same) and let the DestroyBlockTask wait for the answer instead
+            // of scoring a stall against a block that is about to come back
+            if (_miningPos != null && BreakConfirmation.isPending(_miningPos)) {
+                _progressChecker.reset();
+                return super.onTick(mod);
             }
             NoPathScope.Verdict noPath = noPathVerdict(mod);
             if (noPath != NoPathScope.Verdict.NONE) {
@@ -1633,6 +1651,11 @@ public class MineAndCollectTask extends ResourceTask {
         @Override
         protected boolean isValid(AltoClef mod, Object obj) {
             if (obj instanceof BlockPos b) {
+                // a predicted break has not been agreed to yet, so the air at b is not a reason to drop the pursuit. the
+                // block tracker sees the predicted air too, which is why the normal validity test below would end it
+                if (BreakConfirmation.isPending(b)) {
+                    return !mod.getBlockTracker().unreachable(b) && !hangsInTheNether(mod, b) && !buriedLog(mod, b);
+                }
                 // a block we gave up on is not valid anymore, or the "new target must be twice as close" rule would
                 // keep us on it (it used to be swapped out for any other nearest block, which is how it got away with this)
                 return !mod.getBlockTracker().unreachable(b) && !hangsInTheNether(mod, b) && !buriedLog(mod, b)
