@@ -3,6 +3,7 @@ package adris.altoclef.util.progresscheck;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.altoclef.AltoClefSettings;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
@@ -38,6 +39,13 @@ public class MovementProgressChecker {
     // `target` is the block we are here to break: the mine clock waits until the crosshair is on it, see AimGate. (the
     // block being cracked is whatever the crosshair is on, so it can't say whether we are on the target)
     public boolean check(AltoClef mod, BlockPos target) {
+
+        // #pause holds the whole bot still, so nothing is expected to move or break while it lasts. Without this the
+        // clocks below bill every frozen tick and the task reports its target unreachable the moment the user resumes.
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            reset();
+            return true;
+        }
 
         // Allow pause on eat
         if (mod.getFoodChain().needsToEat()) {

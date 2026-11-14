@@ -19,6 +19,7 @@ package baritone.command.defaults;
 
 import baritone.Baritone;
 import baritone.altoclef.AltoClefBridge;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.command.Command;
 import baritone.api.command.argument.IArgConsumer;
@@ -90,6 +91,9 @@ public class ExecutionControlCommands {
                     throw new CommandInvalidStateException("Already paused.");
                 }
                 paused[0] = true;
+                // the task layer keeps ticking while paused, but nothing may interact with the world. this is also what
+                // stops a task's movement progress clock from billing the freeze as a stall (see MovementProgressChecker)
+                AltoClefSettings.getInstance().setCommandPaused(true);
                 logDirect("Paused. Use " + Baritone.settings().prefix.value + "resume to carry on.");
             }
 
@@ -124,6 +128,7 @@ public class ExecutionControlCommands {
                 }
                 baritone.getBuilderProcess().resume();
                 paused[0] = false;
+                AltoClefSettings.getInstance().setCommandPaused(false);
                 logDirect("Resumed.");
             }
 
@@ -181,6 +186,8 @@ public class ExecutionControlCommands {
                 if (paused[0]) {
                     paused[0] = false;
                 }
+                // a cancel ends the pause too, or finishing the task would leave interactions off
+                AltoClefSettings.getInstance().setCommandPaused(false);
                 // altoclef first: its task would just set the next goal on its next tick, and ending the task is what
                 // puts baritone's settings back the way the user had them
                 AltoClefBridge.cancelUserTask();
