@@ -280,6 +280,16 @@ public interface WorldHelper {
         return MineProcess.plausibleToBreak(BreakContextCache.get(mod), pos) && canReach(mod, pos);
     }
 
+    // which part of canBreak says no, for a log line. asks every part, so only for the rare caller that already got a no
+    static UnloadedTrust.Part canBreakFailure(AltoClef mod, BlockPos pos) {
+        return UnloadedTrust.failing(mod.getWorld().getBlockState(pos).getDestroySpeed(mod.getWorld(), pos) < 0,
+                mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos),
+                mod.getBlockTracker().unreachable(pos),
+                tooSlowToBreak(mod, pos),
+                MineProcess.plausibleToBreak(BreakContextCache.get(mod), pos),
+                oceanRuleBlocks(mod, pos));
+    }
+
     // would the pather be let to dig this cell out to stand in it. only the rules (allowBreak and allowBreakAnyway, the
     // protected cells altoclef and the cast tasks hand it, unbreakables, avoidBreaking), not reach or speed: the pather prices those itself.
     // nothing to dig counts as yes, a liquid as no, standing in a dug out cell full of lava is not the plan
@@ -398,16 +408,19 @@ public interface WorldHelper {
     }
 
     static boolean canReach(AltoClef mod, BlockPos pos) {
+        return !oceanRuleBlocks(mod, pos) && !mod.getBlockTracker().unreachable(pos);
+    }
+
+    // the ocean half of canReach on its own, so a no from canBreak can say it was this (UnloadedTrust)
+    static boolean oceanRuleBlocks(AltoClef mod, BlockPos pos) {
         if (Baritone.settings().altoAvoidOceanBlocks.value) {
             // are we up at the surface: a line at y 47 that only flips once we are clearly past it (OceanRule)
             if (OceanRule.PLAYER.atSurface(mod.getPlayer().getY()) && mod.getChunkTracker().isChunkLoaded(pos) && isOcean(mod.getWorld().getBiome(pos))) {
                 // Block is in an ocean biome. If it's below sea level...
-                if (pos.getY() < 64 && getGroundHeight(mod, pos.getX(), pos.getZ(), Blocks.WATER) > pos.getY()) {
-                    return false;
-                }
+                return pos.getY() < 64 && getGroundHeight(mod, pos.getX(), pos.getZ(), Blocks.WATER) > pos.getY();
             }
         }
-        return !mod.getBlockTracker().unreachable(pos);
+        return false;
     }
 
     static boolean isOcean(Holder<Biome> b) {

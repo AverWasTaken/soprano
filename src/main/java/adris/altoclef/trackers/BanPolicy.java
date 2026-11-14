@@ -2,6 +2,7 @@ package adris.altoclef.trackers;
 
 import adris.altoclef.trackers.Bans.Key;
 import adris.altoclef.trackers.Bans.Until;
+import adris.altoclef.util.helpers.UnloadedTrust;
 import baritone.api.utils.Dimension;
 
 import java.util.function.Predicate;
@@ -36,6 +37,11 @@ public final class BanPolicy {
     public static final long NO_PATH_VEIN = 600;
     // a coal detour that ran out of time or wandered off. 5 minutes, then the cluster gets one more 30 s try
     public static final long COAL = 6000;
+
+    // a block picked while its chunk was unloaded that is there once it loads and canBreak says no (UnloadedTrust). no
+    // CHUNK_RELOAD on purpose: stepping out of range and back is the very loop this ends. 20 minutes, a better pick ends
+    // the too slow kind, and the ocean kind lasts the run, the surface never gets any closer to a block under the sea
+    public static final long UNLOADED_TRUST = 24000;
 
     public static final String COAL_REASON = "coal detour gave up on it";
     // the coal bans are the detour's business only (Bans.banFor): the fuel task, or coal as the head need, still mines them
@@ -123,6 +129,20 @@ public final class BanPolicy {
     // MineAndCollectTask's progress checker ran out mid-break or on the way
     public static boolean miningStalled(Bans bans, Dimension dim, int x, int y, int z) {
         return bans.ban(Key.block(dim, x, y, z), "mining got nowhere", TASK_GAVE_UP);
+    }
+
+    public static long unloadedTrustTicks(UnloadedTrust.Part part) {
+        return part == UnloadedTrust.Part.OCEAN ? Bans.RUN : UNLOADED_TRUST;
+    }
+
+    // see UNLOADED_TRUST
+    public static boolean unloadedTrust(Bans bans, Dimension dim, int x, int y, int z, UnloadedTrust.Part part) {
+        Key key = Key.block(dim, x, y, z);
+        String reason = "fine while unloaded, fails " + part.label + " once loaded";
+        if (part == UnloadedTrust.Part.TOO_SLOW) {
+            return bans.ban(key, reason, unloadedTrustTicks(part), Until.BETTER_TOOL);
+        }
+        return bans.ban(key, reason, unloadedTrustTicks(part));
     }
 
     // MineAndCollectTask: baritone's search for the block came back empty (a minute, same as stalling on it)
