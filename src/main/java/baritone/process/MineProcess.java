@@ -18,6 +18,7 @@
 package baritone.process;
 
 import baritone.Baritone;
+import baritone.KeepName;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.pathing.goals.*;
@@ -57,6 +58,9 @@ import static baritone.api.pathing.movement.ActionCosts.COST_INF;
  *
  * @author leijurv
  */
+// third-party clients (nora-tweaks' OreSim) mix into this exact class by name, so proguard must not
+// rename it on release jars or the mixin fails with "@Mixin target was not found" at startup
+@KeepName
 public final class MineProcess extends BaritoneProcessHelper implements IMineProcess {
 
     private BlockOptionalMetaLookup filter;
