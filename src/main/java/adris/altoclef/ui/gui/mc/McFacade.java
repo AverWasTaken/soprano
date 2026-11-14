@@ -5,6 +5,7 @@ import adris.altoclef.ui.gui.facade.CommandsAccess;
 import adris.altoclef.ui.gui.facade.ItemsAccess;
 import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
+import adris.altoclef.ui.gui.facade.EffortlessAccess;
 import adris.altoclef.ui.gui.facade.RoutinesAccess;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
@@ -37,6 +38,7 @@ public final class McFacade implements BotFacade {
     private final Clipboard clipboard;
     private final SchematicsAccess schematics;
     private final RoutinesAccess routines;
+    private final EffortlessAccess effortless = new McEffortless();
 
     public McFacade(SettingsAccess settings, CommandsAccess commands, ItemsAccess items, WorldAccess world,
                     StatusAccess status, KeyNames keyNames, Clipboard clipboard,
@@ -116,6 +118,11 @@ public final class McFacade implements BotFacade {
     @Override
     public RoutinesAccess routines() {
         return routines;
+    }
+
+    @Override
+    public EffortlessAccess effortless() {
+        return effortless;
     }
 
     private static final class EmptyItems implements ItemsAccess {

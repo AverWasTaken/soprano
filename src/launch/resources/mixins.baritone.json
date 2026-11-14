@@ -44,6 +44,7 @@
     "MixinMinecraft",
     "MixinMoveCamera",
     "MixinMoveHand",
+    "MixinEffortlessClicks",
     "MixinMoveHud",
     "MixinMusicManager",
     "MixinNetworkManager",

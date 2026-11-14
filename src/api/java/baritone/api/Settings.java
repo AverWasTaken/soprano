@@ -18,6 +18,8 @@
 package baritone.api;
 
 import baritone.api.utils.BlockRange;
+import baritone.api.utils.EffortlessMaterials;
+import baritone.api.utils.EffortlessStorageFull;
 import baritone.api.utils.ForceFieldStrategy;
 import baritone.api.utils.Helper;
 import baritone.api.utils.NotificationHelper;
@@ -920,9 +922,17 @@ public final class Settings {
     public final Setting<Integer> chunkPackerQueueMaxSize = new Setting<>(2000);
 
     /**
-     * Fill in blocks behind you
+     * Fill in blocks behind you while walking or mining. Effortless builds defer recorded terrain repair until
+     * construction finishes, rather than filling a passage the builder still needs.
      */
     public final Setting<Boolean> backfill = new Setting<>(false);
+
+    /**
+     * Check the walking route left after a builder placement, deferring closures until they can be placed from the
+     * exit side. Uses loaded terrain within twelve blocks; ladders, swimming and new scaffold routes are not proved
+     * by this check. Terrain restoration always uses the check and never mines a new access tunnel.
+     */
+    public final Setting<Boolean> builderPreserveAccess = new Setting<>(true);
 
     /**
      * Place torches in dark spots near you while Baritone is busy mining or walking
@@ -1489,6 +1499,129 @@ public final class Settings {
      * Mainly for backward compatibility.
      */
     public final Setting<Boolean> buildRepeatSneaky = new Setting<>(true);
+
+    /**
+     * The most cells one Effortless Soprano job may touch. A shape past this is refused when you click its last corner,
+     * so a stray click across a valley can't queue a million blocks.
+     */
+    public final Setting<Integer> effortlessMaxBlocks = new Setting<>(32768);
+
+    /**
+     * Let an Effortless Soprano job jump off its own build when the fall leaves you with at least
+     * {@link #fastModeMinHealth} (the same rule {@link #fastMode} uses), instead of digging down through blocks it already
+     * placed and coming back to place them again. In creative every fall is free. Never in the nether.
+     */
+    public final Setting<Boolean> effortlessJumpOff = new Setting<>(true);
+
+    /**
+     * How far out, in blocks, an Effortless Soprano corner lands when you click with nothing in reach, so a shape can
+     * start in the air.
+     */
+    public final Setting<Double> effortlessReach = new Setting<>(6D);
+
+    /**
+     * Start a placement selection on the block under the crosshair (for replacing). Off, start against its face,
+     * as when placing a block by hand. The starting-cell preview uses the same rule. Breaking targets the block itself.
+     */
+    public final Setting<Boolean> effortlessStartOnTarget = new Setting<>(false);
+
+
+    /**
+     * The Effortless Soprano radial shows while its key is held and picks what's under the mouse when you let go. Off,
+     * a press opens it and it stays until you pick something or press the key again.
+     */
+    public final Setting<Boolean> effortlessRadialHold = new Setting<>(true);
+
+    /**
+     * Start an Effortless Soprano shape the moment its last corner is clicked. Off, it goes into the queue (the
+     * Effortless tab, or {@code #ef queue}) and waits for a start, so you can line up a house's floor, walls and roof
+     * first and reorder or merge them.
+     */
+    public final Setting<Boolean> effortlessStartRightAway = new Setting<>(false);
+
+    /**
+     * Where an Effortless Soprano place job takes its blocks from: only your inventory (the default), the marked input
+     * storage, or gathered by AltoClef. The radial can pick it per job. Storage and gathering need AltoClef.
+     */
+    public final Setting<EffortlessMaterials> effortlessMaterials = new Setting<>(EffortlessMaterials.INVENTORY);
+
+    /**
+     * When a break job's inventory fills up and an output storage is marked, walk back to it, put everything that isn't
+     * gear away, and carry on. Off, it keeps breaking and the drops it can't pick up stay where they fall.
+     */
+    public final Setting<Boolean> effortlessReturnToStorage = new Setting<>(true);
+
+    /**
+     * What a break job does when the output storage is full: keep working and try again later
+     * ({@link #effortlessStorageRetrySeconds}), or stop there.
+     */
+    public final Setting<EffortlessStorageFull> effortlessStorageFull = new Setting<>(EffortlessStorageFull.KEEP_WORKING);
+
+    /**
+     * A break job goes to empty its inventory when this many inventory slots or fewer are still free.
+     */
+    public final Setting<Integer> effortlessFreeSlotsLow = new Setting<>(2);
+
+    /**
+     * After finding the output storage full, how long a break job keeps working before it tries the storage again. A
+     * hopper or a sorting system may have made room by then.
+     */
+    public final Setting<Integer> effortlessStorageRetrySeconds = new Setting<>(120);
+
+    /**
+     * After an Effortless Soprano job, put back the terrain its paths dug through outside the job's area (a tunnel through
+     * a hill on the way to a roof). The original block goes back if you carry it, else what it drops if you carry that
+     * (stone comes back as cobblestone), else the hole stays. Pillars and scaffolding come down either way, that's the
+     * builder's own cleanup.
+     */
+    public final Setting<Boolean> effortlessRestoreTerrain = new Setting<>(false);
+
+    /**
+     * With {@link #effortlessRestoreTerrain}, have AltoClef make the exact blocks that were dug out before putting them back:
+     * smelt cobblestone back into stone, craft the bookshelf again. Blocks it has no recipe for fall back to the
+     * {@link #effortlessRestoreTerrain} rules.
+     */
+    public final Setting<Boolean> effortlessRestoreExact = new Setting<>(false);
+
+    /**
+     * The colour of the outline Effortless Soprano draws around the shape you are setting up.
+     */
+    public final Setting<Color> colorEffortlessOutline = new Setting<>(new Color(0x7FD4FF));
+
+    /**
+     * Draw the outline of the Effortless Soprano shape you're setting up, and the red, green and blue lines along its X, Y
+     * and Z, on top of everything, so a shape stays visible through the blocks in front of it (digging down into one,
+     * say).
+     */
+    public final Setting<Boolean> effortlessOutlineThroughBlocks = new Setting<>(true);
+
+    /**
+     * How see-through Effortless Soprano's preview is, from 0 (hidden) to 1. Blocks that will be placed show as a
+     * hologram of the exact block, blocks that will be broken in {@link #colorEffortlessBreak}, and blocks in the area
+     * that won't be touched in {@link #colorEffortlessUntouched} at half this.
+     */
+    public final Setting<Float> effortlessPreviewOpacity = new Setting<>(0.45f);
+
+    /**
+     * How far from the camera, in blocks, Effortless Soprano's preview is drawn. Capped at 128.
+     */
+    public final Setting<Integer> effortlessPreviewDistance = new Setting<>(96);
+
+    /**
+     * The colour of a block an Effortless Soprano job is going to break.
+     */
+    public final Setting<Color> colorEffortlessBreak = new Setting<>(new Color(0xFF3B3B));
+
+    /**
+     * The colour over the hologram of a block an Effortless Soprano job is going to replace.
+     */
+    public final Setting<Color> colorEffortlessReplace = new Setting<>(new Color(0xFFB060));
+
+    /**
+     * The colour of a block inside an Effortless Soprano job's area that it won't touch: filtered out, protected, or
+     * not empty for a fill.
+     */
+    public final Setting<Color> colorEffortlessUntouched = new Setting<>(new Color(0x9A9A9A));
 
     /**
      * Allow standing above a block while mining it, in BuilderProcess

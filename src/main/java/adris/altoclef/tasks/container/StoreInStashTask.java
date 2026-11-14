@@ -3,6 +3,7 @@ package adris.altoclef.tasks.container;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
@@ -27,6 +28,11 @@ public class StoreInStashTask extends Task {
     private final boolean _getIfNotPresent;
     private final BlockRange _stashRange;
     private ContainerStoredTracker _storedItems;
+    // when this run started. only containers read since then count as full: one the cache remembers full from an
+    // earlier visit may have been emptied since (a hopper under it, a sorter), so it gets another look first
+    private long _runStart;
+    // set once every container in the stash was looked into this run and none had room. null while there's hope
+    private String _failure;
 
     public StoreInStashTask(boolean getIfNotPresent, BlockRange stashRange, ItemTarget... toStore) {
         _getIfNotPresent = getIfNotPresent;
@@ -34,8 +40,16 @@ public class StoreInStashTask extends Task {
         _toStore = toStore;
     }
 
+    // null when it stored everything (or is still at it)
+    public String failure() {
+        return _failure;
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
+        if (_runStart == 0) {
+            _runStart = System.nanoTime();
+        }
         mod.getBlockTracker().trackBlock(TO_SCAN);
         if (_storedItems == null) {
             _storedItems = new ContainerStoredTracker(slot -> {
@@ -58,12 +72,13 @@ public class StoreInStashTask extends Task {
             }
         }
 
+        Predicate<BlockPos> inStash = blockPos -> _stashRange.contains(blockPos, WorldHelper.getCurrentDimension());
         Predicate<BlockPos> validContainer = blockPos -> {
-            if (!_stashRange.contains(blockPos, WorldHelper.getCurrentDimension()))
+            if (!inStash.test(blockPos))
                 return false;
             Optional<ContainerCache> container = mod.getItemStorage().getContainerAtPosition(blockPos);
-            // We haven't opened this container OR it's opened and NOT full
-            return container.isEmpty() || !container.get().isFull();
+            boolean seenThisRun = container.isPresent() && container.get().seenAt() >= _runStart;
+            return hasRoom(seenThisRun, container.map(ContainerCache::isFull).orElse(null));
         };
 
         // Store in valid container
@@ -76,7 +91,15 @@ public class StoreInStashTask extends Task {
             );
         }
 
-        setDebugState("Traveling to stash (no non-full containers in stash range found)");
+        // there are containers here and we've been inside every one of them: all full. walking to the middle again
+        // would just loop, so say so and let whoever started us decide (#stash ends, a build job carries on)
+        if (mod.getBlockTracker().anyFound(inStash, TO_SCAN)) {
+            _failure = "every container in the stash is full";
+            Debug.logWarning("The stash is full, nothing more fits in it.");
+            return null;
+        }
+
+        setDebugState("Traveling to stash (no containers found in stash range yet)");
         BlockPos centerStash = _stashRange.getCenter();
         return new GetToXZTask(centerStash.getX(), centerStash.getZ());
     }
@@ -84,11 +107,26 @@ public class StoreInStashTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(TO_SCAN);
+        // the last chest we looked into can still be open (a full one is left open while we decide it's full). whoever
+        // runs next, the builder or a person, gets the game back without it in the way. only a container screen: the
+        // click gui or a chat the player opened meanwhile stay
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player != null && mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
+            mc.player.closeContainer();
+        }
         _storedItems.stopTracking();
+    }
+
+    // worth walking to: never looked into this run, never opened at all, or it had room last time we looked
+    static boolean hasRoom(boolean lookedIntoThisRun, Boolean fullLastTime) {
+        return !lookedIntoThisRun || fullLastTime == null || !fullLastTime;
     }
 
     @Override
     public boolean isFinished(AltoClef mod) {
+        if (_failure != null) {
+            return true;
+        }
         return _storedItems != null && _storedItems.getUnstoredItemTargetsYouCanStore(mod, _toStore).length == 0;
     }
 

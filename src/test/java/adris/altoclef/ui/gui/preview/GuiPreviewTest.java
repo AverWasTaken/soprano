@@ -26,7 +26,7 @@ public class GuiPreviewTest {
             return tabs;
         });
         p.tick();
-        assertEquals(7, tabs.size());
+        assertEquals(8, tabs.size());
 
         // get: a few things in the basket
         float gx = p.shell.contentX() + 40;

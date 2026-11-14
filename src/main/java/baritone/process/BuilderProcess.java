@@ -40,6 +40,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.InputOverrideHandler;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.accessor.IClientBlockBreak;
@@ -126,6 +127,96 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // what the logMissing pass found with no item for it, kept for whoever wants to go and get it (SchematicBuildTask).
     // no lock: the builder, the gui and altoclef all run on the game thread
     private Map<BlockState, Integer> missingAtPause = Map.of();
+    // set by buildInPlace for builds that may jump off themselves, see there
+    private boolean jumpOff;
+    // the block the near-player break went for last, so it finishes that one before starting another
+    private BetterBlockPos nearBreak;
+    private boolean repairBuild;
+    private BlockPos accessEntry;
+    private BuildAccess access;
+    private int accessGoals;
+    private long accessAt;
+    private BlockPos accessFrom;
+    private boolean accessDirty;
+    private boolean accessBlocked;
+
+    // Restoration is a final, non-destructive pass: no new tunnels or temporary pillars to repair recursively.
+    public void buildRestoration(String name, ISchematic schematic, Vec3i origin, Keep preserve, BlockPos exit) {
+        buildInPlace(name, schematic, origin, false);
+        repairBuild = true;
+        accessEntry = exit;
+        setKeep(preserve);
+    }
+
+    private void snapshotAccess() {
+        accessGoals = 0;
+        accessBlocked = false;
+        if (!repairBuild && !Baritone.settings().builderPreserveAccess.value) { access = null; return; }
+        if (accessEntry == null) accessEntry = ctx.playerFeet().immutable();
+        if (!accessDirty && access != null && ctx.playerFeet().equals(accessFrom) && builderTicks - accessAt < 5) return;
+        accessDirty = false;
+        accessAt = builderTicks;
+        accessFrom = ctx.playerFeet().immutable();
+        access = new BuildAccess(ctx.playerFeet(), accessEntry, 12, new BuildAccess.Terrain() {
+            public boolean open(BlockPos p) {
+                return baritone.bsi.worldContainsLoadedChunk(p.getX(), p.getZ())
+                        && MovementHelper.canWalkThrough(baritone.bsi, p.getX(), p.getY(), p.getZ())
+                        && baritone.bsi.get0(p).getFluidState().isEmpty();
+            }
+            public boolean support(BlockPos p) {
+                return baritone.bsi.worldContainsLoadedChunk(p.getX(), p.getZ())
+                        && MovementHelper.canWalkOn(baritone.bsi, p.getX(), p.getY(), p.getZ());
+            }
+            public boolean futureSolid(BlockPos p) {
+                BlockState want = wholeWants(p.getX(), p.getY(), p.getZ(), baritone.bsi.get0(p));
+                return want != null && !want.getCollisionShape(ctx.world(), p).isEmpty();
+            }
+        });
+    }
+
+    private boolean safeClosure(BlockPos feet, BlockPos target) {
+        if (accessDirty) snapshotAccess();
+        return (access == null && !repairBuild) || (access != null && ((!access.known() && !repairBuild)
+                || (access.safe(feet, target) && accessOrderSafe(target))));
+    }
+
+    private List<BetterBlockPos> pendingAccessWork() {
+        return incorrectPositions == null ? List.of() : incorrectPositions.stream().filter(p -> {
+            BlockState current = baritone.bsi.get0(p);
+            BlockState wanted = wholeWants(p.x, p.y, p.z, current);
+            return wanted != null && !valid(current, wanted, false);
+        }).toList();
+    }
+
+    private boolean accessOrderSafe(BlockPos target) {
+        if (access == null || !access.known()) return !repairBuild;
+        return access.preservesWork(target, pendingAccessWork(),
+                Math.max(1, ctx.playerController().getBlockReachDistance() - .5));
+    }
+
+    private Goal closureGoal(BlockPos target) {
+        if (accessDirty) snapshotAccess();
+        if (!accessOrderSafe(target)) { accessBlocked = true; pendingSeen = true; return null; }
+        if (access == null || ++accessGoals > 8) { pendingSeen = true; return null; }
+        List<BlockPos> feet = access.stances(target, Math.max(1, ctx.playerController().getBlockReachDistance() - .5));
+        if (feet.isEmpty()) {
+            accessBlocked = true;
+            pendingSeen = true;
+            return null;
+        }
+        return new GoalComposite(feet.stream().map(GoalBlock::new).toArray(Goal[]::new));
+    }
+    private List<BetterBlockPos> cleanupPending() {
+        return ledger.scaffold().longStream().mapToObj(BetterBlockPos::deserializeFromLong).toList();
+    }
+
+    private Goal cleanupGoal(BetterBlockPos pos, Goal fallback) {
+        if (access == null || !access.known()) return fallback;
+        List<BlockPos> feet = access.removalStances(pos, cleanupPending(),
+                Math.max(1, ctx.playerController().getBlockReachDistance() - .5));
+        return feet.isEmpty() ? null : new GoalComposite(feet.stream().map(GoalBlock::new).toArray(Goal[]::new));
+    }
+
     // whoever started the build gets to say which wrong blocks are fine anyway (SchematicBuildTask's scaffolding, so the
     // builder stops mining the pillar it is standing on). volatile because the path thread reads it through the bcc
     private volatile Keep keep;
@@ -364,6 +455,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 net.minecraft.world.level.block.Mirror.NONE, false);
     }
 
+    // a build laid out in world space by its starter (Effortless Soprano): never turned or mirrored by the global
+    // build settings, it goes exactly where it was clicked. jumpOff lets the path take a fall priced by health (the same
+    // rule fastMode uses) instead of digging down through blocks it already placed: a floating build has nothing but
+    // itself to climb down, and every finished block it mines on the way is one it comes back up to place again
+    public void buildInPlace(String name, ISchematic schematic, Vec3i origin, boolean jumpOff) {
+        start(name, schematic, origin, net.minecraft.world.level.block.Rotation.NONE,
+                net.minecraft.world.level.block.Mirror.NONE, false);
+        this.jumpOff = jumpOff;
+    }
+
     // the old entry point with the orientation pulled out. useOrientation = add the schematicOrientation offsets, which
     // only the global setting path wants: they use the unturned size and would push a placed origin off its corner.
     // no ctx in here, BuilderPlacedBuildTest makes the builder without a baritone
@@ -371,6 +472,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
         this.buildSerial++;
         this.missingAtPause = Map.of();
+        this.jumpOff = false;
+        this.nearBreak = null;
+        this.repairBuild = false;
+        this.accessEntry = null;
+        this.access = null;
         // a #build from chat doesn't get to inherit somebody else's pillar
         this.keep = null;
         this.name = name;
@@ -647,42 +753,68 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         boolean hanging = hanging();
+        // the block we went for last time, while it's still worth it and in reach. the scan below takes the first one in
+        // its own order, and a step or a turn puts another one first: the pickaxe went back and forth between two
+        // blocks, breaking neither (270 swaps on a 108 block clear). finish the one that's started
+        if (nearBreak != null) {
+            Optional<Pair<BetterBlockPos, Rotation>> again = nearCandidate(bcc, nearBreak.x, nearBreak.y, nearBreak.z, center, pathStart, hanging);
+            if (again.isPresent()) {
+                return again;
+            }
+            nearBreak = null;
+        }
         for (int dx = -5; dx <= 5; dx++) {
             for (int dy = Baritone.settings().breakFromAbove.value ? -1 : 0; dy <= 5; dy++) {
                 for (int dz = -5; dz <= 5; dz++) {
-                    int x = center.x + dx;
-                    int y = center.y + dy;
-                    int z = center.z + dz;
-                    if (dy == -1 && x == pathStart.x && z == pathStart.z) {
-                        continue; // dont mine what we're supported by, but not directly standing on
-                    }
-                    if (hanging && dx == 0 && dy == 0 && dz == 0) {
-                        continue; // the ladder we're holding on to. from the ground it's just another block
-                    }
-                    if (givenUp(x, y, z)) {
-                        continue;
-                    }
-                    BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
-                    if (desired == null) {
-                        continue; // irrelevant
-                    }
-                    BlockState curr = bcc.bsi.get0(x, y, z);
-                    if (hanging && dx == 0 && dz == 0 && (dy == 1 || dy == -1) && curr.is(BlockTags.CLIMBABLE)) {
-                        // the rungs above our head and under our feet are the column we're on. mine one and we drop or
-                        // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
-                        continue;
-                    }
-                    // fine, not valid: a kept block is the caller's scaffolding and the ledger's is ours, the builder
-                    // never gets to mine either till the cleanup
-                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
-                            && !besideUs(center, x, y, z)) {
-                        BetterBlockPos pos = new BetterBlockPos(x, y, z);
-                        Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
-                        if (rot.isPresent()) {
-                            return Optional.of(new Pair<>(pos, rot.get()));
-                        }
+                    Optional<Pair<BetterBlockPos, Rotation>> hit = nearCandidate(bcc, center.x + dx, center.y + dy, center.z + dz, center, pathStart, hanging);
+                    if (hit.isPresent()) {
+                        nearBreak = hit.get().first();
+                        return hit;
                     }
                 }
+            }
+        }
+        return Optional.empty();
+    }
+
+    // a block near us the builder may break right now, with the rotation to hit it, or empty
+    private Optional<Pair<BetterBlockPos, Rotation>> nearCandidate(BuilderCalculationContext bcc, int x, int y, int z, BetterBlockPos center,
+                                                                   BetterBlockPos pathStart, boolean hanging) {
+        int dx = x - center.x;
+        int dy = y - center.y;
+        int dz = z - center.z;
+        if (Math.abs(dx) > 5 || Math.abs(dz) > 5 || dy > 5 || dy < (Baritone.settings().breakFromAbove.value ? -1 : 0)) {
+            return Optional.empty();
+        }
+        if (dy == -1 && x == pathStart.x && z == pathStart.z) {
+            return Optional.empty(); // dont mine what we're supported by, but not directly standing on
+        }
+        if (hanging && dx == 0 && dy == 0 && dz == 0) {
+            return Optional.empty(); // the ladder we're holding on to. from the ground it's just another block
+        }
+        if (givenUp(x, y, z)) {
+            return Optional.empty();
+        }
+        if (cleanStage != CleanStage.NONE && access != null && !access.removable(center, new BlockPos(x,y,z),
+                cleanupPending(), Math.max(1, ctx.playerController().getBlockReachDistance() - .5))) return Optional.empty();
+        BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
+        if (desired == null) {
+            return Optional.empty(); // irrelevant
+        }
+        BlockState curr = bcc.bsi.get0(x, y, z);
+        if (hanging && dx == 0 && dz == 0 && (dy == 1 || dy == -1) && curr.is(BlockTags.CLIMBABLE)) {
+            // the rungs above our head and under our feet are the column we're on. mine one and we drop or
+            // lose the grip, it gets fixed once we're off the ladder and it's just a wrong block 1 away
+            return Optional.empty();
+        }
+        // fine, not valid: a kept block is the caller's scaffolding and the ledger's is ours, the builder
+        // never gets to mine either till the cleanup
+        if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired) && !unbreakable(x, y, z, curr)
+                && !besideUs(center, x, y, z)) {
+            BetterBlockPos pos = new BetterBlockPos(x, y, z);
+            Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
+            if (rot.isPresent()) {
+                return Optional.of(new Pair<>(pos, rot.get()));
             }
         }
         return Optional.empty();
@@ -708,6 +840,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (Math.abs(pos.x - feet.x) > 6 || Math.abs(pos.y - feet.y) > 6 || Math.abs(pos.z - feet.z) > 6) {
                 continue; // nearest column first, but it's still a list of the whole build
             }
+            if (cleanStage != CleanStage.NONE && access != null && !access.removable(feet, pos, cleanupPending(),
+                    Math.max(1, ctx.playerController().getBlockReachDistance() - .5))) continue;
             if (pos.equals(feet.below()) || pos.equals(pathStart.below())) {
                 continue;
             }
@@ -892,7 +1026,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // this real click ask the exact same question. the real eye and the aim processor's noise, like upstream
     private Optional<Placement> possibleToPlace(BuilderCalculationContext bcc, BlockState toPlace, int x, int y, int z, Direction preferAgainst) {
         BetterBlockPos pos = new BetterBlockPos(x, y, z);
-        if (!placementPlausible(pos, toPlace)) {
+        if ((!toPlace.getCollisionShape(ctx.world(), pos).isEmpty() && !safeClosure(ctx.playerFeet(), pos)) || !placementPlausible(pos, toPlace)) {
             return Optional.empty();
         }
         List<ItemStack> hotbar = ctx.player().getInventory().getNonEquipmentItems().subList(0, 9);
@@ -964,6 +1098,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // again on exactly that ray and rotation and only click if the right state comes out. upstream also clicked when
     // the rotation was merely close, which is how stairs went in backwards
     private boolean placeGateOpen(BuilderCalculationContext bcc, Placement p) {
+        BlockState closure = bcc.getSchematic(p.target().getX(), p.target().getY(), p.target().getZ(), bcc.bsi.get0(p.target()));
+        if (closure != null && !closure.getCollisionShape(ctx.world(), p.target()).isEmpty()
+                && !safeClosure(ctx.playerFeet(), p.target())) return false;
         if (emptyBucket(ctx.player().getMainHandItem())) {
             // the click would scoop up whatever fluid it's looking at, likely the one we just poured
             return false;
@@ -1105,6 +1242,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (recursions == 0) {
             // before the bcc copies the ledger, so it gets this tick's answer
             tidyLedger();
+            snapshotAccess();
         }
         BuilderCalculationContext bcc = new BuilderCalculationContext();
         if (recursions == 0) {
@@ -1268,6 +1406,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // a few ticks of standing still beats giving up on them or pausing the build
             if (++pendingWaitTicks >= PENDING_WAIT_TICKS) {
                 pendingWaitedOut = true;
+                if (accessBlocked) {
+                    logDirect("Pausing: no proved access and retreat route for the remaining blocks; leaving them open");
+                    paused = true;
+                }
             }
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
@@ -1856,7 +1998,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         BetterBlockPos feet = ctx.playerFeet();
         double reach = ctx.playerController().getBlockReachDistance();
-        LongArrayList rejoined = ledger.updatePassing(pathCells::contains,
+        LongArrayList rejoined = cleanStage == CleanStage.NONE ? new LongArrayList() : ledger.updatePassing(pathCells::contains,
                 cell -> BetterBlockPos.deserializeFromLong(cell).distSqr(feet) <= reach * reach);
         if (!rejoined.isEmpty()) {
             workChanged();
@@ -1973,8 +2115,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return breakAt(bcc, hit.get().first(), hit.get().second());
             }
         }
-        BetterBlockPos target = targets.get(0);
-        Goal goal = new GoalBreak(target);
+        BetterBlockPos target = null;
+        Goal goal = null;
+        for (BetterBlockPos candidate : targets) {
+            goal = cleanupGoal(candidate, new GoalBreak(candidate));
+            if (goal != null) { target = candidate; break; }
+        }
+        if (goal == null) {
+            // No proved retreat side: leave these temporary blocks rather than start another destructive round.
+            logDirect("Leaving inaccessible scaffold in place: no safe cleanup route");
+            ledger.abandon();
+            toDetours();
+            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
         goalOwners = List.of(new Pair<>(target, goal));
         if (stallCheck(bcc, goal, interactionPaused, isSafeToCancel, List.of())) {
             // given up on, the next tick takes the next one
@@ -1985,6 +2138,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // the break click, for the scan's pick and the cleanup's
     private PathingCommand breakAt(BuilderCalculationContext bcc, BetterBlockPos pos, Rotation rot) {
+        if (accessDirty) snapshotAccess();
+        if (cleanStage != CleanStage.NONE && access != null && !access.removable(ctx.playerFeet(), pos,
+                cleanupPending(), Math.max(1, ctx.playerController().getBlockReachDistance() - .5))) {
+            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
         // we'd like to pause to break this block
         // only change look direction if it's safe (don't want to fuck up an in progress parkour for example
         dropPathBeforeClicking();
@@ -2070,6 +2228,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // a block near one we gave up on for good changed, so it gets another chance. both the multi block packet event and
     // the nearby scan in recalcNearby land here, the event alone misses single block updates
     private void blockChanged(int x, int y, int z) {
+        accessDirty = true;
         if (givenUp != null) {
             givenUp.nearbyChanged(x, y, z, builderTicks);
         }
@@ -2450,7 +2609,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         Collection<BetterBlockPos> near = trim ? nearCells(incorrectPositions, ctx.player().blockPosition(), NEAR_DIST_SQ) : incorrectPositions;
         boolean everything = near.size() == incorrectPositions.size();
         Goal goal = assembleEitherInventory(bcc, near, everything);
-        if (goal != null || plansPending || everything) {
+        if (goal != null || (plansPending && !accessBlocked) || everything) {
             return goal;
         }
         List<BetterBlockPos> cells = new ArrayList<>(near);
@@ -2667,6 +2826,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // our own scaffold in a real block's cell gets broken from a step away, every time and not only while
                 // we're next to it. a goal that flips with where we stand cancels the path every flip
                 Goal goal = ledger.isSolid(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z)) ? new GoalBreakAside(pos) : breakGoal(pos, bcc);
+                if (cleanStage != CleanStage.NONE) {
+                    goal = cleanupGoal(pos, goal);
+                    if (goal == null) return;
+                }
                 toBreak.add(goal);
                 owners.add(new Pair<>(pos, goal));
             }
@@ -3036,6 +3199,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // null for an aimed cell whose plan isn't in yet. upstream's any-adjacent goal for one of those is somewhere we can't
     // click it from as often as not, then the stall check gave it up for standing there. planCells gets to it first
     private Goal placementGoal(BetterBlockPos pos, BuilderCalculationContext bcc) {
+        // Choose a side which still reaches the exit after this cell is filled. Moving to that side is work,
+        // not a failed placement; never fall back to an adjacent goal inside the closing doorway.
+        if (repairBuild || (pos.distSqr(ctx.playerFeet()) <= 36 && !safeClosure(ctx.playerFeet(), pos))) {
+            if (repairBuild && pos.distSqr(ctx.playerFeet()) > 64) return new GoalNear(pos, 4);
+            return closureGoal(pos);
+        }
         BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos));
         long key = BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z);
         CellPlan plan = plans == null ? null : plans.get(key);
@@ -3703,6 +3872,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // creative with a slot free: any block the file wants is placeable whether or not it's on the hotbar yet, the
         // movement gets it handed over when it gets there (creativeHand). read here, the path thread can't ask the hotbar
         private final boolean creativeGives;
+        private final boolean repairing;
+        private final boolean cleaning;
+        private final BuildAccess accessSnapshot;
+        private final BlockPos accessFeet;
+        private final List<BetterBlockPos> accessWork;
 
         public BuilderCalculationContext() {
             super(BuilderProcess.this.baritone, true); // wew lad
@@ -3712,6 +3886,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.originY = origin.getY();
             this.originZ = origin.getZ();
             this.keep = BuilderProcess.this.keep;
+            this.repairing = repairBuild;
+            this.cleaning = cleanStage != CleanStage.NONE;
+            this.accessSnapshot = access;
+            this.accessFeet = ctx.playerFeet().immutable();
+            this.accessWork = access == null ? List.of() : pendingAccessWork();
             this.ledger = ledgerView();
             this.creativeGives = ctx.player().hasInfiniteMaterials() && !AltoClefSettings.getInstance().isInteractionPaused() && creativeSlot() >= 0;
 
@@ -3720,6 +3899,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // the first context gets built before we're the one in control, so clutchAllowed can't see us yet
             this.hasClutchItem = false;
             this.clutchPicksUp = false;
+            if (jumpOff) {
+                // the nether stays out like it does for fastMode, a drop there is as likely to end in lava as on ground
+                this.hurtingFallsOk = !ExperimentalMovement.inNether(world);
+                if (ctx.player().getAbilities().invulnerable) {
+                    // creative takes no fall damage at all, so any fall the planner can reason about is free
+                    this.plainFallsAreFree = true;
+                    this.maxFallHeightNoWater = Math.max(maxFallHeightNoWater, ExperimentalMovement.MAX_HURT_FALL);
+                }
+            }
         }
 
         private BlockState getSchematic(int x, int y, int z, BlockState current) {
@@ -3768,6 +3956,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // or A* plans through a cell the movement then refuses to fill and we recalc forever
         @Override
         public double costOfPlacingAt(int x, int y, int z, BlockState current) {
+            // Only the builder's aimed placement may close a repair cell. A movement filling it for footing
+            // would bypass the post-placement escape check and can seal the player inside.
+            if (repairing) return COST_INF;
+            if (accessSnapshot != null && accessSnapshot.known()
+                    && (!accessSnapshot.safe(accessFeet, new BlockPos(x, y, z))
+                    || !accessSnapshot.preservesWork(new BlockPos(x, y, z), accessWork, Math.max(1, blockReach - .5)))) return COST_INF;
             if (isPlaceProtected(x, y, z) || !worldBorder.canPlaceAt(x, z)) { // make calculation fail properly if we can't build
                 return COST_INF;
             }
@@ -3796,6 +3990,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // it back out, the next path puts it back. that's the scaffold loop (upstream #2173)
                 return COST_INF;
             } else {
+                if (cleaning) return COST_INF;
                 if (hasThrowaway) {
                     return placeBlockCost;
                 } else {
@@ -3806,6 +4001,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         @Override
         public double breakCostMultiplierAt(int x, int y, int z, BlockState current) {
+            if (repairing) return COST_INF;
+            if (cleaning && accessSnapshot != null && !accessSnapshot.removable(accessFeet, new BlockPos(x,y,z), List.of(), blockReach)) return COST_INF;
             if ((!allowBreak && !allowBreakAnyway.contains(current.getBlock())) || isBreakProtected(x, y, z)) {
                 return COST_INF;
             }
@@ -3842,7 +4039,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // TODO do blocks in render distace only?
                 // TODO allow breaking blocks that we have a tool to harvest and immediately place back?
             } else {
-                return 1; // why not lol
+                // An access tunnel is not free: preserving terrain adds replacement work after the build.
+                return Baritone.settings().effortlessRestoreTerrain.value || Baritone.settings().backfill.value ? 3 : 1;
             }
         }
     }

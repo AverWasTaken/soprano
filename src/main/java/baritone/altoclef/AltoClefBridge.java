@@ -24,6 +24,7 @@ import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
+import adris.altoclef.ui.gui.mc.ghost.EffortlessGhosts;
 import adris.altoclef.ui.gui.mc.ghost.SchematicGhostRenderer;
 import adris.altoclef.ui.gui.mc.move.MoveGizmo;
 import adris.altoclef.util.helpers.DeathStash;
@@ -85,6 +86,15 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             AltoClefCommands.register(primary);
             // the ghost of the schematic picked in the gui, it draws whatever McSchematics.ghost() says
             SchematicGhostRenderer.attach(primary);
+            // Effortless Soprano's preview: the same machinery, its own source. a broken preview shouldn't stop the rest
+            try {
+                // and its errands (deposit, fetch, gather) run as altoclef tasks
+                primary.getEffortlessManager().trips(new EffortlessTripsBridge());
+                EffortlessGhosts.attach(primary);
+            } catch (Throwable t) {
+                System.err.println("the effortless preview could not start");
+                t.printStackTrace();
+            }
             // the arrows of the schematic move mode, after the ghost so they draw over it
             MoveGizmo.attach(primary);
         } catch (Throwable t) {

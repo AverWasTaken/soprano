@@ -65,6 +65,13 @@ public final class FakeFacade implements BotFacade {
         return routines;
     }
 
+    public final FakeEffortless effortless = new FakeEffortless();
+
+    @Override
+    public adris.altoclef.ui.gui.facade.EffortlessAccess effortless() {
+        return effortless;
+    }
+
     @Override
     public KeyNames keyNames() {
         return key -> switch (key) {

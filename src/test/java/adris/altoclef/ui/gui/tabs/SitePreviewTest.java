@@ -53,7 +53,7 @@ public class SitePreviewTest {
             tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
             return tabs;
         });
-        assertEquals(7, tabs.size());
+        assertEquals(8, tabs.size());
         p.shell.setDarkMode(dark);
         p.tick();
         p.settle();

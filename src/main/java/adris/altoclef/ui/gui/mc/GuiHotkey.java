@@ -4,6 +4,7 @@ import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.model.KeyBind;
 import baritone.Baritone;
 import baritone.api.Settings;
+import baritone.effortless.BuildMode;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
@@ -32,6 +33,16 @@ public final class GuiHotkey {
                     && event.hasControlDownWithQuirk() && mc.gui.screen() instanceof GuiScreen gui) {
                 gui.keyPressed(event);
                 return true;
+            }
+            // Effortless Soprano's keys, only with nothing open: the radial (held or tapped) and the build mode toggle
+            if (action == InputConstants.PRESS && mc.gui.screen() == null) {
+                if (SopranoKeys.isRadial(event) && EffortlessRadialScreen.open()) {
+                    return true;
+                }
+                if (SopranoKeys.isToggle(event) && mc.player != null) {
+                    BuildMode.toggle();
+                    return true;
+                }
             }
             int key = McKeys.toKit(event.key());
             if (action != InputConstants.PRESS || key < 0) {

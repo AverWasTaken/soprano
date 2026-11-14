@@ -23,7 +23,9 @@ public final class GhostScan {
         // a different block is in the way
         WRONG_BLOCK,
         // the schematic wants air and the world has a block
-        EXTRA
+        EXTRA,
+        // in the area but left as it is (Effortless Soprano: filtered out, protected, or not empty for a fill)
+        UNTOUCHED
     }
 
     // world coords. faces has bit Direction.get3DDataValue() set for every side that still needs drawing
