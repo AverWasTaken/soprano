@@ -14,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.function.Function;
@@ -128,6 +129,15 @@ public class PortalBedStep {
             gaveUpTick = -1;
             tries = 0;
         }
+        // a portal deep in a cave: a nether death respawns down there with nothing in the bag and no way up, which is worse than
+        // the world spawn. the cooldown keeps it to one line per look, same as a give up
+        int depth = surfaceDepth(mod, portal);
+        if (PortalBedRules.tooDeep(depth)) {
+            gaveUpTick = now;
+            Debug.logInternal("portal bed: portal is " + depth + " under the surface, no spawn here (a respawn down here has no way up), going in"
+                    + " anyway. a nether death goes back to " + (Respawn.bed(state) == null ? "the world spawn" : Respawn.bed(state)));
+            return null;
+        }
         BlockPos standing = standingNear(mod, state, portal);
         int bagBeds = mod.getItemStorage().getItemCount(ItemHelper.BED);
         boolean canCraft = bagBeds == 0 && standing == null && PortalBedRules.canCraft(BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
@@ -186,6 +196,14 @@ public class PortalBedStep {
             return null;
         }
         return t;
+    }
+
+    // PortalBedRules.portalDepth on the client's heightmaps. an unloaded column is UNKNOWN, not the bottom of the world
+    private static int surfaceDepth(AltoClef mod, BlockPos portal) {
+        var world = mod.getWorld();
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        return PortalBedRules.portalDepth(portal.getX(), portal.getY(), portal.getZ(), (x, z) -> world.hasChunkAt(at.set(x, portal.getY(), z))
+                ? world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) : PortalBedRules.UNKNOWN);
     }
 
     // the game only says "Respawn point set" when the spot moves, so a click on the bed that already holds the server's spawn
