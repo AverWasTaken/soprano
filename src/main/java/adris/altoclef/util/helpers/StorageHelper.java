@@ -404,6 +404,11 @@ public class StorageHelper {
             return evictAt(DropRoom.shed(_pick, victims(), blockFloor));
         }
 
+        // END_PREP's gear steps with the beds done (DropRoom.shedGear). blockFloor = the step's buildBlocks
+        public Room shedGear(int blockFloor) {
+            return evictAt(DropRoom.shedGear(_pick, victims(), blockFloor));
+        }
+
         // the night bed's narrow throw (DropRoom.shedBlocks): a build stack the floor can spare, or NO. the evict throw has no
         // canDropStack veto, so the protected list gets asked here. by count though: the stone kit's cobble floor protects
         // cobble while it owes a few, and keeping all 80 for a floor of 9 would leave the bed for nothing
