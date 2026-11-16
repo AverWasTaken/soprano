@@ -36,6 +36,9 @@ public final class DeathStash {
     // skeleton's hit, the burn after a blaze's), and the one who started it is still the killer
     private static String lastAttacker;
     private static long lastAttackerHit = Long.MIN_VALUE;
+    // and which body it hit. a respawn, a relog or another world is a new LocalPlayer, and that one never inherits the last life's
+    // attacker (weak: we only compare it, keeping a dead player around for that would be silly)
+    private static java.lang.ref.WeakReference<LocalPlayer> lastAttacked = new java.lang.ref.WeakReference<>(null);
     public static final long ATTACKER_WINDOW_TICKS = 200;
 
     private DeathStash() {
@@ -67,6 +70,7 @@ public final class DeathStash {
         if (source != null && source != lastSeen && source.getEntity() != null) {
             lastAttacker = BuiltInRegistries.ENTITY_TYPE.getKey(source.getEntity().getType()).getPath();
             lastAttackerHit = player.level().getGameTime();
+            lastAttacked = new java.lang.ref.WeakReference<>(player);
         }
         lastSeen = source;
     }
@@ -105,7 +109,8 @@ public final class DeathStash {
         String blow = by == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(by.getType()).getPath();
         String killer;
         synchronized (DeathStash.class) {
-            killer = killer(blow, lava, out, lastAttacker, lastAttackerHit, level.getGameTime());
+            boolean sameBody = lastAttacked.get() == player;
+            killer = killer(blow, lava, out, sameBody ? lastAttacker : null, sameBody ? lastAttackerHit : Long.MIN_VALUE, level.getGameTime());
         }
         return new Death(WorldHelper.dimensionOf(level), at.getX(), at.getY(), at.getZ(), level.getGameTime(), lava, out,
                 describe(lava, out, source), killer);
