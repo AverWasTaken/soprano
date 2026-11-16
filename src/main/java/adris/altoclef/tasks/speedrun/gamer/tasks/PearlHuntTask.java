@@ -221,6 +221,8 @@ public class PearlHuntTask extends Task {
     public PearlHuntTask withZones(Supplier<List<double[]>> killZones, Supplier<List<double[]>> bastionZones) {
         this.killZones = killZones;
         this.bastionZones = bastionZones;
+        // the loot task picks pearls up on its own too (ResourceTask), and it walks with no zone wall up either
+        loot.acceptDrops(e -> !PearlWalkWall.inAny(e.getX(), e.getZ(), killZones.get()));
         return this;
     }
 
