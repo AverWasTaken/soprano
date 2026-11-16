@@ -48,6 +48,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PearlWalkWall;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
@@ -1598,7 +1599,8 @@ public class NetherPhase implements PhaseHandler {
         }
         RunState s = ctx.state();
         // (endermanHere runs off the phase tick, a fight under the combat brain lets it lapse, and the pearl it dropped is still there)
-        if (s.warpedForest == null && !endermanHere && !warpedSearchOver && !PearlHuntTask.pearlDropNear(mod)) {
+        if (s.warpedForest == null && !endermanHere && !warpedSearchOver
+                && !PearlHuntTask.pearlDropNear(mod, DeathZones.killerZones(s.deaths, ctx.facts().gameTime()))) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;
@@ -1648,8 +1650,12 @@ public class NetherPhase implements PhaseHandler {
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
+            // the forest walk keeps off where a brute or a wither pack killed us and off the bastions we know, with its own
+            // idea of where we stand (the planner's only moves while the sweep runs)
+            int bastionRadius = ctx.cfg().nether.bastionAvoidRadius;
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot));
+                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot))
+                    .withZones(() -> DeathZones.killerZones(s.deaths, ctx.facts().gameTime()), () -> PearlWalkWall.around(s.bastion, bastionRadius));
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);

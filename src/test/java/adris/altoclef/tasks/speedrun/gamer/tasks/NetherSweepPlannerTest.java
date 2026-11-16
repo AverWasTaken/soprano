@@ -14,6 +14,7 @@ import com.google.gson.Gson;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -153,6 +154,16 @@ public class NetherSweepPlannerTest {
         // 48 blocks around it are off limits
         assertTrue(planner.nearBastion(250, 40));
         assertFalse(planner.nearBastion(250, 60));
+    }
+
+    @Test
+    public void aNewBastionIsLoggedOnceAndAKnownOneIsNot() {
+        List<String> lines = new ArrayList<>();
+        planner.setLog(lines::add);
+        planner.report(Sight.BASTION, pos(250, 0));
+        planner.report(Sight.BASTION, pos(260, 10));
+        planner.report(Sight.BASTION, pos(5000, 0));
+        assertEquals(List.of("nether: bastion at 250,0 recorded", "nether: bastion at 5000,0 recorded"), lines);
     }
 
     @Test

@@ -14,7 +14,7 @@ import org.junit.Test;
 public class DeathStashTest {
 
     private static Death death(int x, Dimension dimension) {
-        return new Death(dimension, x, 64, -30, 1000, false, false, "mob by zombie");
+        return new Death(dimension, x, 64, -30, 1000, false, false, "mob by zombie", "zombie");
     }
 
     // it is static state, the next test must not inherit a death
@@ -63,5 +63,26 @@ public class DeathStashTest {
         // a nether death respawns in the overworld, the record must not follow the respawn
         DeathStash.put(death(5, Dimension.NETHER));
         assertEquals(Dimension.NETHER, DeathStash.take().dimension());
+    }
+
+    @Test
+    public void theKillingBlowNamesTheKillerFirst() {
+        assertEquals("piglin_brute", DeathStash.killer("piglin_brute", false, false, "blaze", 990, 1000));
+    }
+
+    @Test
+    public void aBodylessBlowFallsBackToTheLastHitInsideTheWindow() {
+        // the wither effect finishing what the skeleton started
+        assertEquals("wither_skeleton", DeathStash.killer(null, false, false, "wither_skeleton", 1000 - DeathStash.ATTACKER_WINDOW_TICKS, 1000));
+        assertNull(DeathStash.killer(null, false, false, "wither_skeleton", 1000 - DeathStash.ATTACKER_WINDOW_TICKS - 1, 1000));
+        assertNull(DeathStash.killer(null, false, false, null, Long.MIN_VALUE, 1000));
+        // a hit from the future is another world's clock
+        assertNull(DeathStash.killer(null, false, false, "blaze", 1005, 1000));
+    }
+
+    @Test
+    public void lavaAndTheVoidNameNobody() {
+        assertNull(DeathStash.killer("blaze", true, false, "blaze", 999, 1000));
+        assertNull(DeathStash.killer(null, false, true, "ghast", 999, 1000));
     }
 }

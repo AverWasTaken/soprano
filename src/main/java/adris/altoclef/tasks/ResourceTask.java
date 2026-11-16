@@ -73,6 +73,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     private boolean _noReserve = false;
     private static final int CONTAINER_LOOKUP_TICKS = 20;
     private int _containerLookupCooldown = 0;
+    // which dropped items are ours to walk to, all of them unless a caller has spots it will not go into
+    private Predicate<ItemEntity> _acceptDrop = drop -> true;
 
     public ResourceTask(ItemTarget[] itemTargets) {
         _itemTargets = itemTargets;
@@ -81,6 +83,13 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     public ResourceTask(ItemTarget target) {
         this(new ItemTarget[]{target});
+    }
+
+    // the drop filter for both halves: which drop we decide to go for, and which one the pickup task then picks itself
+    public ResourceTask acceptDrops(Predicate<ItemEntity> accept) {
+        _acceptDrop = accept;
+        _pickupTask.accepting(accept);
+        return this;
     }
 
     public ResourceTask(Item item, int targetCount) {
@@ -188,7 +197,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                         return _pickupTask;
                     }
                     // Only get items that are CLOSE to us.
-                    Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), _itemTargets);
+                    Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), _acceptDrop, _itemTargets);
                     if (closest.isPresent() && !closest.get().closerThan(mod.getPlayer(), 10)) {
                         return onResourceTick(mod);
                     }
@@ -207,7 +216,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 Item[] owned = ownedBelow();
                 // one at our feet goes in the bag by itself, a path search for it is a waste (same skip as MineAndCollectTask's nearestDrop)
                 Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(me,
-                        drop -> !contains(owned, drop.getItem().getItem()) && !landsByItself(mod, me, drop)
+                        drop -> _acceptDrop.test(drop) && !contains(owned, drop.getItem().getItem()) && !landsByItself(mod, me, drop)
                                 && WalkCost.dropWorthWalking(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z, craftable), _itemTargets);
                 if (closest.isPresent() && (range < 0 || closest.get().closerThan(mod.getPlayer(), range) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod)))) {
                     setDebugState("Picking up");
