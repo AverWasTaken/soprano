@@ -325,6 +325,8 @@ public final class NetherSweepPlanner {
         if (fresh) {
             state.bastion.add(pos);
             refreshAvoid();
+            // once per bastion, so a run's log says whether the sweep knew about one before something walked us into it
+            log.accept("nether: bastion at " + pos.x + "," + pos.z + " recorded");
         }
         fresh |= state.bastionCells.add(key);
         state.visitedCells.add(key);
