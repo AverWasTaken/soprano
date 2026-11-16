@@ -1444,6 +1444,22 @@ public class GamerTask extends Task {
         }
         RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
         double far = flatBlocksFromHome(pile);
+        if (NetherTripRules.hotPortal(deathCause, deathKiller, far)) {
+            // whatever killed us is standing at the far side of the portal, and the trip would come out right next to it with
+            // no armor. the kit goes in first: the same put off as a far pile, so eye parts wait for it and the rest is rebuilt
+            Debug.logInternal("nether trip: died " + (int) far + " blocks from the portal's nether side (" + deathKiller
+                    + "), not going back in naked");
+            if (!NetherTripRules.defersFor(worth)) {
+                deathLine("Died right by the Nether portal, nothing in the pile is worth walking back into that, making a new kit.",
+                        "nether death at " + where + " by the portal with no rods, powder, pearls or eyes in it, letting the pile go, rebuilding");
+                return;
+            }
+            state.deferredPile = pile;
+            host.save();
+            deathLine("Died right by the Nether portal. Going back for the items once the kit is ready.",
+                    "nether death at " + where + " by the portal: deferring the pile until the kit is back, rebuilding");
+            return;
+        }
         if (NetherTripRules.defers(far) && !NetherTripRules.defersFor(worth)) {
             // a pile with no eye parts in it is a stick and a bucket the rebuild makes anyway, and the second walk to it goes
             // through whatever killed us the first time
