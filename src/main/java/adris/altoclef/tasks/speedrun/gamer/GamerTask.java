@@ -35,6 +35,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NightBeds;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PortalBedStep;
 import adris.altoclef.tasks.speedrun.gamer.tasks.ShelterTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.StepOutOfPortalTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
 import adris.altoclef.tasksystem.Task;
@@ -51,6 +52,7 @@ import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
 import baritone.api.utils.Dimension;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.longs.LongSets;
 import net.minecraft.client.Minecraft;
@@ -90,6 +92,11 @@ public class GamerTask extends Task {
     private static final Item[] BUILD_BLOCKS = {Items.COBBLESTONE, Items.DIRT, Items.NETHERRACK, Items.END_STONE, Items.COBBLED_DEEPSLATE};
 
     private static final double SAVE_EVERY_SECONDS = 20;
+    // the keep-out wall's snapshot: how often, how far out the tracked portal blocks count (manhattan, a path that far off gets
+    // planned again long before it gets there), and the box we look at ourselves
+    private static final long PORTAL_SCAN_TICKS = 10;
+    private static final int PORTAL_WALL_REACH = 64;
+    private static final int PORTAL_BOX = 4;
     // an interrupt (mob defense flickering on and off) saves at most this often, wall clock
     private static final long INTERRUPT_SAVE_MILLIS = 5000;
     private static final double RECOVER_BUDGET_SECONDS = 90;
@@ -161,6 +168,12 @@ public class GamerTask extends Task {
     private NetherRecoverTask netherTrip;
     // the walk back out of a nether we should not be in (WrongDimension)
     private Task homeward;
+    // the walk out of a portal we stood in by accident while PortalKeepOut is on, and the portal cells the wall is made of
+    // (baritone asks from its own thread, so it reads a snapshot and a flag and never the world)
+    private StepOutOfPortalTask stepOut;
+    private volatile boolean portalWallOn;
+    private volatile LongSet portalCells = LongSets.EMPTY_SET;
+    private long portalScanTick = Long.MIN_VALUE;
     // last tick the trip sat out a night hide, for the stage clock's credit. tripHiding lets the night branch run in the nether
     // phase for that one call
     private long tripHideTick = Long.MIN_VALUE;
@@ -411,6 +424,10 @@ public class GamerTask extends Task {
         // and nothing builds on or beside a standing station: the cell over it and the four around it. breaking stays free, a box
         // there would refuse the ore and the logs next to the table
         mod.getBehaviour().avoidBlockPlacing(p -> StationBox.avoids(stationBox, p));
+        // the home portal while we are not meant to go through it (PortalKeepOut). avoided AND break protected is a real wall, and
+        // canWalkOn refuses the floor under an avoided cell, so no path ends standing in it either. both read the snapshot
+        mod.getBehaviour().avoidWalkingThrough(p -> portalWallOn && portalCells.contains(p.asLong()));
+        mod.getBehaviour().avoidBlockBreaking(p -> portalWallOn && portalCells.contains(p.asLong()));
         mod.getBlockTracker().trackBlock(TRACKED);
         applyRunSettings();
     }
@@ -936,6 +953,15 @@ public class GamerTask extends Task {
         }
         startDeferredTrip();
         startWaitingPile();
+        Task out = keepOutOfPortal(mod);
+        if (out != null) {
+            // not the phase's time and not its fault, same as the trip and the recovery below
+            machine.observe();
+            machine.holdClocks();
+            setDebugState("Stepping out of the portal.", "Stepping out of the portal");
+            autosave(now);
+            return out;
+        }
         // a naked respawn at night hides first, the trip picks up where it was once the night is over. only when the night branch
         // really has something to do (hole, bed): at dusk it has not, and the walk for blocks goes on until it does. a hole or bed
         // trip already going is seen through to the end, dawn or not
@@ -1026,6 +1052,62 @@ public class GamerTask extends Task {
         }
         autosave(now);
         return child;
+    }
+
+    // the portal keep-out (PortalKeepOut): keeps the wall's snapshot fresh while it is on, and hands out the walk out of a portal we
+    // stand in. null = carry on. the miners' own "getting out" only runs with baritone idle and loses the wheel a tick later
+    private Task keepOutOfPortal(AltoClef mod) {
+        NetherTripRules.Stage stage = state.netherTrip == null ? null : NetherTripRules.Stage.parse(state.netherTrip.stage);
+        boolean on = PortalKeepOut.on(facts.dimension(), state.phase, state.netherTrip != null, stage);
+        refreshPortalWall(mod, on);
+        if (!on || !WorldHelper.isStandingInPortal(mod)) {
+            stepOut = null;
+            return null;
+        }
+        if (stepOut == null) {
+            stepOut = new StepOutOfPortalTask();
+            BlockPos feet = mod.getPlayer().blockPosition();
+            Debug.logInternal("portal keep-out: standing in the portal at " + feet.toShortString() + " during "
+                    + (stage != null ? "the nether trip's " + stage + " stage" : state.phase) + ", stepping out");
+        }
+        return stepOut;
+    }
+
+    // every half second: the portal blocks the tracker knows near us, plus a small box around our feet for one lit since its last
+    // scan. off = empty, so the predicate has nothing to say in the phases that mean to go through
+    private void refreshPortalWall(AltoClef mod, boolean on) {
+        portalWallOn = on;
+        if (!on) {
+            if (!portalCells.isEmpty()) {
+                portalCells = LongSets.EMPTY_SET;
+            }
+            portalScanTick = Long.MIN_VALUE;
+            return;
+        }
+        long now = facts.gameTime();
+        if (portalScanTick != Long.MIN_VALUE && now >= portalScanTick && now - portalScanTick < PORTAL_SCAN_TICKS) {
+            return;
+        }
+        portalScanTick = now;
+        BlockPos feet = mod.getPlayer().blockPosition();
+        LongOpenHashSet cells = new LongOpenHashSet();
+        for (BlockPos p : mod.getBlockTracker().getKnownLocations(Blocks.NETHER_PORTAL)) {
+            if (p.distManhattan(feet) <= PORTAL_WALL_REACH) {
+                cells.add(p.asLong());
+            }
+        }
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (int dx = -PORTAL_BOX; dx <= PORTAL_BOX; dx++) {
+            for (int dz = -PORTAL_BOX; dz <= PORTAL_BOX; dz++) {
+                for (int dy = -2; dy <= 3; dy++) {
+                    at.set(feet.getX() + dx, feet.getY() + dy, feet.getZ() + dz);
+                    if (mod.getWorld().getBlockState(at).is(Blocks.NETHER_PORTAL)) {
+                        cells.add(at.asLong());
+                    }
+                }
+            }
+        }
+        portalCells = LongSets.unmodifiable(cells);
     }
 
     // GATHER, IRON and PORTAL run the station pickup with their own plan (PhaseHandler.ownsBenches). any other phase can still
