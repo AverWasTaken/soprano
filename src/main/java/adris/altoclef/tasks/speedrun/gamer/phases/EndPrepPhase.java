@@ -74,6 +74,9 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _buildBlocks;
     private Task _food;
     private boolean _topUpSaid;
+    // the top-up's last line and the batch wait's, once each
+    private boolean _topUpOverSaid;
+    private boolean _batchSaid;
     private int _foodTarget;
     private Task _toPortal;
     private BlockPos _toPortalAt;
@@ -331,6 +334,8 @@ public class EndPrepPhase implements PhaseHandler {
         }
         if (topUpsNow(step, gearToo)) {
             step = topUpStep(ctx, cfg);
+        } else if (step == null && !gearToo) {
+            noteTopUpOver(ctx, "the prep's cap");
         }
         return foodFirstThenCount(mod, ctx, cfg, gap, step, gear);
     }
@@ -345,7 +350,16 @@ public class EndPrepPhase implements PhaseHandler {
     private Task topUpStep(GamerContext ctx, EndConfig cfg) {
         FoodPlan food = ctx.food();
         GamerFacts f = ctx.facts();
-        if (!EndGear.wantsTopUp(food.shortOfEnd(cfg.wantFoodUnits), f.bagFull(), FoodDry.defers(f.foodDryLatched(), f.preyNear()))) {
+        String end = EndGear.topUpEnd(food.shortOfEnd(cfg.wantFoodUnits), f.bagFull(), FoodDry.defers(f.foodDryLatched(), f.preyNear()));
+        if (end != null) {
+            if (EndGear.waitsForBatch(_topUpSaid, batchCooking())) {
+                if (!_batchSaid) {
+                    _batchSaid = true;
+                    ctx.log("room: food top-up is done (" + end + ") but our batch is still in the smoker, waiting for it");
+                }
+                return _food;
+            }
+            noteTopUpOver(ctx, end);
             return null;
         }
         if (!_topUpSaid) {
@@ -353,6 +367,20 @@ public class EndPrepPhase implements PhaseHandler {
             ctx.log("room: topping food up from " + (food.held() - food.pending()) + ", want " + cfg.wantFoodUnits);
         }
         return foodStep(ctx, cfg.wantFoodUnits);
+    }
+
+    private boolean batchCooking() {
+        // no isFinished here: the bag reaching the target mid batch is exactly when the rest of it would get left behind, and a
+        // finished CollectFoodTask that is still returned keeps ticking its cook
+        return _food instanceof CollectFoodTask collect && collect.isActive() && collect.cooking();
+    }
+
+    // only for a top-up that really ran, the prep asks this every tick before it ever starts
+    private void noteTopUpOver(GamerContext ctx, String why) {
+        if (_topUpSaid && !_topUpOverSaid) {
+            _topUpOverSaid = true;
+            ctx.log("room: food top-up over at " + (ctx.food().held() - ctx.food().pending()) + ", " + why);
+        }
     }
 
     private boolean spareWaived(AltoClef mod, GamerContext ctx, EndConfig cfg, BlockPos at) {

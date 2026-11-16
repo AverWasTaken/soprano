@@ -16,8 +16,10 @@ import net.minecraft.world.level.Level;
 // alto side on purpose, nothing in here knows what a gamer is
 public final class DeathStash {
 
-    // flags and not a cause enum: what the cause means to the pile is the reader's business
-    public record Death(Dimension dimension, int x, int y, int z, long gameTime, boolean inLava, boolean outOfWorld, String cause) {
+    // flags and not a cause enum: what the cause means to the pile is the reader's business. attacker is the registry path of
+    // what killed us ("piglin_brute"), see killer(). null when nothing with a body did
+    public record Death(Dimension dimension, int x, int y, int z, long gameTime, boolean inLava, boolean outOfWorld, String cause,
+                        String attacker) {
         public String where() {
             return x + " " + y + " " + z;
         }
@@ -30,6 +32,14 @@ public final class DeathStash {
     // game time of the last lava hit, and the damage source it came on (the client makes a fresh one per hit)
     private static long lastLavaHit = Long.MIN_VALUE;
     private static DamageSource lastSeen;
+    // the last thing with a body that hit us, and when. the killing blow is often bodyless (the wither effect after a wither
+    // skeleton's hit, the burn after a blaze's), and the one who started it is still the killer
+    private static String lastAttacker;
+    private static long lastAttackerHit = Long.MIN_VALUE;
+    // and which body it hit. a respawn, a relog or another world is a new LocalPlayer, and that one never inherits the last life's
+    // attacker (weak: we only compare it, keeping a dead player around for that would be silly)
+    private static java.lang.ref.WeakReference<LocalPlayer> lastAttacked = new java.lang.ref.WeakReference<>(null);
+    public static final long ATTACKER_WINDOW_TICKS = 200;
 
     private DeathStash() {
     }
@@ -57,7 +67,25 @@ public final class DeathStash {
         if (source != null && source != lastSeen && source.is(DamageTypes.LAVA)) {
             lastLavaHit = player.level().getGameTime();
         }
+        if (source != null && source != lastSeen && source.getEntity() != null) {
+            lastAttacker = BuiltInRegistries.ENTITY_TYPE.getKey(source.getEntity().getType()).getPath();
+            lastAttackerHit = player.level().getGameTime();
+            lastAttacked = new java.lang.ref.WeakReference<>(player);
+        }
         lastSeen = source;
+    }
+
+    // who killed us: whoever the killing blow names, else the last one with a body that hit us inside the window. lava and the
+    // void are about the floor, not about a mob, so they name nobody
+    public static String killer(String byKillingBlow, boolean lava, boolean out, String lastHitBy, long lastHit, long now) {
+        if (lava || out) {
+            return null;
+        }
+        if (byKillingBlow != null) {
+            return byKillingBlow;
+        }
+        boolean recent = lastHit != Long.MIN_VALUE && now >= lastHit && now - lastHit <= ATTACKER_WINDOW_TICKS;
+        return recent ? lastHitBy : null;
     }
 
     // a hit inside the window, and not from the future (another world has its own clock). fire alone is not lava
@@ -77,8 +105,15 @@ public final class DeathStash {
         boolean lava = player.isInLava() || lavaRecent(lastLavaHit, level.getGameTime()) || (source != null && source.is(DamageTypes.LAVA))
                 || (level.isLoaded(at) && level.getFluidState(at).is(FluidTags.LAVA));
         boolean out = at.getY() < level.getMinY() || (source != null && source.is(DamageTypes.FELL_OUT_OF_WORLD));
+        Entity by = source == null ? null : source.getEntity();
+        String blow = by == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(by.getType()).getPath();
+        String killer;
+        synchronized (DeathStash.class) {
+            boolean sameBody = lastAttacked.get() == player;
+            killer = killer(blow, lava, out, sameBody ? lastAttacker : null, sameBody ? lastAttackerHit : Long.MIN_VALUE, level.getGameTime());
+        }
         return new Death(WorldHelper.dimensionOf(level), at.getX(), at.getY(), at.getZ(), level.getGameTime(), lava, out,
-                describe(lava, out, source));
+                describe(lava, out, source), killer);
     }
 
     private static String describe(boolean lava, boolean out, DamageSource source) {

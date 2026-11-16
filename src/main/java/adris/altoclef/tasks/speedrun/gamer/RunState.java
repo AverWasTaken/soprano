@@ -178,6 +178,9 @@ public class RunState {
         public String phase;
         // "lava", "void" or "other" (NetherTripRules.Cause). an old save has no key and reads null, which is just "unknown"
         public String cause;
+        // registry path of what killed us ("piglin_brute", "wither_skeleton"), null = nothing with a body, or an old save from
+        // before it was written down. DeathZones keeps the zones of the bad ones around for longer
+        public String killer;
     }
 
     // a walk back into the nether for the pile a nether death left behind (NetherRecoverTask). stage is a NetherTripRules.Stage
