@@ -429,6 +429,12 @@ public class CollectFoodTask extends Task {
         return StorageHelper.calculateInventoryFoodScore(mod) >= _unitsNeeded;
     }
 
+    // our cook is under way with meat in the smoker (the last look at it said so). a caller that drops us now leaves that meat
+    // there, and outside the phases that come back for a furnace nobody ever does
+    public boolean cooking() {
+        return _smeltTask != null && _smeltTask.isActive() && _smeltTask.holdsMeat();
+    }
+
     @Override
     protected boolean isEqual(Task other) {
         if (other instanceof CollectFoodTask task) {

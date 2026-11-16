@@ -432,6 +432,24 @@ public class EndGearTest {
     }
 
     @Test
+    public void theTopUpSaysWhyItEnded() {
+        assertNull(EndGear.topUpEnd(true, false, false));
+        assertEquals("reached", EndGear.topUpEnd(false, false, false));
+        // reached wins over the rest, a full bag over a dry field
+        assertEquals("reached", EndGear.topUpEnd(false, true, true));
+        assertEquals("bag full", EndGear.topUpEnd(true, true, true));
+        assertEquals("dry spell", EndGear.topUpEnd(true, false, true));
+    }
+
+    @Test
+    public void anEndedTopUpWaitsForItsBatch() {
+        assertTrue(EndGear.waitsForBatch(true, true));
+        assertFalse(EndGear.waitsForBatch(true, false));
+        // a top-up that never ran has no batch of its own to wait for
+        assertFalse(EndGear.waitsForBatch(false, true));
+    }
+
+    @Test
     public void aBagOverTheFloorButUnderTheWantIsNotAGapAndDoesNotReplaceAFarErrand() {
         EndConfig cfg = new EndConfig();
         assertEquals(24, cfg.minFoodUnits);
