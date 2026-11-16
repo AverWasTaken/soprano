@@ -118,6 +118,11 @@ public final class KitRunner {
         return current;
     }
 
+    // the task the last run() handed out, null when there was nothing to do
+    public Task task() {
+        return task;
+    }
+
     // CollectFoodTask counts anything edible (rotten flesh, spider eyes...) but our facts only count what we would eat,
     // so with a bag of junk it thinks it is done and wanders. ask it for the junk on top (FoodPlan.collect)
     public static int foodTarget(KitNeed need, FoodPlan food) {
