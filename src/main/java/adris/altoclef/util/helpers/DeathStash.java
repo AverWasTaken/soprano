@@ -16,8 +16,10 @@ import net.minecraft.world.level.Level;
 // alto side on purpose, nothing in here knows what a gamer is
 public final class DeathStash {
 
-    // flags and not a cause enum: what the cause means to the pile is the reader's business
-    public record Death(Dimension dimension, int x, int y, int z, long gameTime, boolean inLava, boolean outOfWorld, String cause) {
+    // flags and not a cause enum: what the cause means to the pile is the reader's business. attacker is the registry path of
+    // whatever hit us last ("piglin_brute"), null when nothing with a body did
+    public record Death(Dimension dimension, int x, int y, int z, long gameTime, boolean inLava, boolean outOfWorld, String cause,
+                        String attacker) {
         public String where() {
             return x + " " + y + " " + z;
         }
@@ -77,8 +79,9 @@ public final class DeathStash {
         boolean lava = player.isInLava() || lavaRecent(lastLavaHit, level.getGameTime()) || (source != null && source.is(DamageTypes.LAVA))
                 || (level.isLoaded(at) && level.getFluidState(at).is(FluidTags.LAVA));
         boolean out = at.getY() < level.getMinY() || (source != null && source.is(DamageTypes.FELL_OUT_OF_WORLD));
+        Entity by = source == null ? null : source.getEntity();
         return new Death(WorldHelper.dimensionOf(level), at.getX(), at.getY(), at.getZ(), level.getGameTime(), lava, out,
-                describe(lava, out, source));
+                describe(lava, out, source), by == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(by.getType()).getPath());
     }
 
     private static String describe(boolean lava, boolean out, DamageSource source) {

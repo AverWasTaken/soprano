@@ -148,6 +148,8 @@ public class GamerTask extends Task {
     private BlockPos deathPos;
     private long deathGameTime;
     private NetherTripRules.Cause deathCause = NetherTripRules.Cause.OTHER;
+    // what killed us, the entity's registry path ("piglin_brute"). null = nothing with a body did (a fall, fire, lava)
+    private String deathKiller;
     private RecoverItemsTask recover;
     // the pile's age clock (starts when it can be loaded, not at the death) and what the bag held the last tick we were alive
     private RecoverRules.Allowance allowance;
@@ -1283,6 +1285,7 @@ public class GamerTask extends Task {
         deathGameTime = death.gameTime();
         // lava eats the pile and the void takes it, so those are the two we write down
         deathCause = NetherTripRules.cause(death.inLava(), death.outOfWorld());
+        deathKiller = death.attacker();
     }
 
     private void onRespawn(DeathRules.Source seenBy) {
@@ -1316,6 +1319,7 @@ public class GamerTask extends Task {
         death.gameTime = deathGameTime;
         death.phase = state.phase.name();
         death.cause = deathCause.name().toLowerCase(Locale.ROOT);
+        death.killer = deathKiller;
         state.deaths.add(death);
         state.deathsThisPhase++;
         WoolHunt.onDeath(state);

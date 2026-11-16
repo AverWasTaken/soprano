@@ -14,7 +14,7 @@ import org.junit.Test;
 public class DeathStashTest {
 
     private static Death death(int x, Dimension dimension) {
-        return new Death(dimension, x, 64, -30, 1000, false, false, "mob by zombie");
+        return new Death(dimension, x, 64, -30, 1000, false, false, "mob by zombie", "zombie");
     }
 
     // it is static state, the next test must not inherit a death
