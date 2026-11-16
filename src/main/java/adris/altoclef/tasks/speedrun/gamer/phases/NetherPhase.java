@@ -1598,7 +1598,8 @@ public class NetherPhase implements PhaseHandler {
         }
         RunState s = ctx.state();
         // (endermanHere runs off the phase tick, a fight under the combat brain lets it lapse, and the pearl it dropped is still there)
-        if (s.warpedForest == null && !endermanHere && !warpedSearchOver && !PearlHuntTask.pearlDropNear(mod)) {
+        if (s.warpedForest == null && !endermanHere && !warpedSearchOver
+                && !PearlHuntTask.pearlDropNear(mod, DeathZones.killerZones(s.deaths, ctx.facts().gameTime()))) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;
@@ -1648,8 +1649,10 @@ public class NetherPhase implements PhaseHandler {
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
+            // the forest walk keeps off where a brute or a wither pack killed us, with its own idea of where we stand
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot));
+                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot))
+                    .withZones(() -> DeathZones.killerZones(s.deaths, ctx.facts().gameTime()), List::of);
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);

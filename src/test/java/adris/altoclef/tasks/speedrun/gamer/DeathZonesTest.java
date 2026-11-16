@@ -1,6 +1,8 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertArrayEquals;
 
@@ -37,6 +39,47 @@ public class DeathZonesTest {
         assertArrayEquals(new double[]{1, 2}, spots.get(0), 0);
         assertArrayEquals(new double[]{9, 10}, spots.get(1), 0);
         assertArrayEquals(new double[]{13, 14}, spots.get(2), 0);
+    }
+
+    private static RunState.Death killedBy(String killer, String dimension, String cause, long at, int x, int z) {
+        RunState.Death d = death(dimension, cause, at, x, z);
+        d.killer = killer;
+        return d;
+    }
+
+    @Test
+    public void bruteAndWitherDeathsGetAFatZoneThatOutlivesTheShortOne() {
+        long now = 10_000_000;
+        // 30 minutes old: long gone from spots(), still a zone for the pearl walk
+        long halfHour = now - 30 * 60 * 20L;
+        List<RunState.Death> deaths = List.of(
+                killedBy("piglin_brute", "NETHER", "other", halfHour, 98, 528),
+                killedBy("wither_skeleton", "NETHER", "other", now - 100, 21, 39),
+                killedBy("zombified_piglin", "NETHER", "other", now - 100, 1, 1),
+                killedBy(null, "NETHER", "other", now - 100, 2, 2),
+                killedBy("piglin_brute", "OVERWORLD", "other", now - 100, 3, 3),
+                killedBy("piglin_brute", "NETHER", "lava", now - 100, 4, 4),
+                killedBy("piglin_brute", "NETHER", "other", now - DeathZones.KILLER_MAX_AGE_TICKS, 5, 5),
+                killedBy("piglin_brute", "NETHER", "other", now - DeathZones.KILLER_MAX_AGE_TICKS + 1, 6, 6),
+                killedBy("piglin_brute", "NETHER", "other", now + 5, 7, 7));
+        List<double[]> zones = DeathZones.killerZones(deaths, now);
+        assertEquals(3, zones.size());
+        assertArrayEquals(new double[]{98, 528, DeathZones.KILLER_RADIUS}, zones.get(0), 0);
+        assertArrayEquals(new double[]{21, 39, DeathZones.KILLER_RADIUS}, zones.get(1), 0);
+        assertArrayEquals(new double[]{6, 6, DeathZones.KILLER_RADIUS}, zones.get(2), 0);
+        // the blaze walk's spots are unchanged: the half hour old brute death is out of them, the three fresh nether ones are in
+        List<double[]> spots = DeathZones.spots(deaths, now);
+        assertEquals(3, spots.size());
+        assertEquals(12, DeathZones.RADIUS, 0);
+    }
+
+    @Test
+    public void onlyBrutesAndWitherSkeletonsAreLastingKillers() {
+        assertTrue(DeathZones.lastingKiller("piglin_brute"));
+        assertTrue(DeathZones.lastingKiller("wither_skeleton"));
+        assertFalse(DeathZones.lastingKiller("blaze"));
+        assertFalse(DeathZones.lastingKiller("piglin"));
+        assertFalse(DeathZones.lastingKiller(null));
     }
 
     @Test
