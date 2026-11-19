@@ -66,12 +66,17 @@ public final class WhatIfContext extends CalculationContext {
 
     private static <T> T unpaused(Supplier<T> build) {
         AltoClefSettings alto = AltoClefSettings.getInstance();
-        boolean paused = alto.isInteractionPaused();
+        // both halves: this build wants the answer it would get with nothing held, and saving only the combined answer
+        // would put #pause back as a plain hold and outlive it
+        boolean held = alto.isInteractionPauseHeld();
+        boolean command = alto.isCommandPaused();
         alto.setInteractionPaused(false);
+        alto.setCommandPaused(false);
         try {
             return build.get();
         } finally {
-            alto.setInteractionPaused(paused);
+            alto.setInteractionPaused(held);
+            alto.setCommandPaused(command);
         }
     }
 

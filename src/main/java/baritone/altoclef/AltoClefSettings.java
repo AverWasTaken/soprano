@@ -65,6 +65,9 @@ public class AltoClefSettings {
     private volatile boolean allowFlowingWaterPass;
 
     private volatile boolean pauseInteractions;
+    // #pause holds this one. kept apart from pauseInteractions because a chain letting go of its own hold (a finished
+    // meal, a lowered shield) must not lift the pause the user asked for
+    private volatile boolean commandPaused;
     private volatile boolean dontPlaceBucketButStillFall;
     private volatile boolean allowSwimThroughLava;
     // combat keeps this ahead of the clock every tick it wants no jump moves planned. it runs out by itself on purpose, so a
@@ -454,11 +457,26 @@ public class AltoClefSettings {
     }
 
     public boolean isInteractionPaused() {
+        return pauseInteractions || commandPaused;
+    }
+
+    // a chain's own hold: eating, shielding, a bucket clutch. it can never clear #pause, see commandPaused
+    public void setInteractionPaused(boolean paused) {
+        pauseInteractions = paused;
+    }
+
+    // the chain-held part on its own, for the two places that build a context as if nothing held interactions and then
+    // put the hold back. saving the combined answer would turn #pause into a plain hold and outlive it
+    public boolean isInteractionPauseHeld() {
         return pauseInteractions;
     }
 
-    public void setInteractionPaused(boolean paused) {
-        pauseInteractions = paused;
+    public boolean isCommandPaused() {
+        return commandPaused;
+    }
+
+    public void setCommandPaused(boolean paused) {
+        commandPaused = paused;
     }
 
     public boolean canSwimThroughLava() {
@@ -551,6 +569,7 @@ public class AltoClefSettings {
         }
         allowFlowingWaterPass = false;
         pauseInteractions = false;
+        commandPaused = false;
         dontPlaceBucketButStillFall = false;
         allowSwimThroughLava = false;
         jumpsOffUntilTick = Long.MIN_VALUE;

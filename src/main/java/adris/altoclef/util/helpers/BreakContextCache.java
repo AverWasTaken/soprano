@@ -31,12 +31,15 @@ final class BreakContextCache {
         }
         // JANK: build it with interactions unpaused, same as canBreak always did. the constructor reads the pause flag
         // for hasThrowaway (placing, not breaking) but we want the answer we always got, so same toggle, same answer
-        boolean prevInteractionPaused = alto.isInteractionPaused();
+        boolean prevInteractionPaused = alto.isInteractionPauseHeld();
+        boolean prevCommandPaused = alto.isCommandPaused();
         alto.setInteractionPaused(false);
+        alto.setCommandPaused(false);
         try {
             context = new CalculationContext(mod.getClientBaritone());
         } finally {
             alto.setInteractionPaused(prevInteractionPaused);
+            alto.setCommandPaused(prevCommandPaused);
         }
         tick = now;
         world = w;

@@ -209,7 +209,11 @@ public class PlayerInteractionFixChain extends TaskChain {
         // (the credits too: closing them our way skips the respawn, and the player is left standing in the end with no world
         // under them. vanilla's own close sends it, so let them roll or let the player skip them. and the inventory
         // CraftScreenShow put up to watch a 2x2 craft: the craft looks around while it works, and that one closes itself)
-        if (openScreen == null || openScreen instanceof ChatScreen || openScreen instanceof PauseScreen || openScreen instanceof DeathScreen
+        // Only an inventory container gets closed this way (furnace, chest, crafting table...), which is what the bot can
+        // get stuck in. Any other screen (the Soprano gui, another mod's menu, a book) belongs to the user and must stay
+        // up: the bot looking around while a task runs is not a reason to shut it.
+        if (openScreen == null || !(openScreen instanceof AbstractContainerScreen<?>) || openScreen instanceof ChatScreen
+                || openScreen instanceof PauseScreen || openScreen instanceof DeathScreen
                 || openScreen instanceof WinScreen || mod.getCraftScreenShow().isOurs(openScreen)) {
             _mouseMovingButScreenOpenTimeout.reset();
             return false;

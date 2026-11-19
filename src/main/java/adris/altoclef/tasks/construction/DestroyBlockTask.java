@@ -2,6 +2,7 @@ package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
+import adris.altoclef.util.helpers.BreakConfirmation;
 import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.Debug;
@@ -741,6 +742,21 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (!there.isAir()) {
             _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
         }
+        // the client takes the block out the moment its own break finishes and asks the server afterwards. on a slow
+        // connection the server can still refuse it and put the block back, so the air is only a prediction until the
+        // answer comes. ending here stopped the swing and left a ghost block the task had already walked away from.
+        // standing on the spot costs nothing when the break is accepted and resumes the normal branch when it isn't.
+        if (there.isAir() && BreakConfirmation.isPending(_pos)) {
+            setDebugState("Waiting for the server to confirm the break", "Waiting for the server");
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            stopBackingUp(mod);
+            _moveChecker.reset();
+            stuckCheck.reset();
+            if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
+                mod.getClientBaritone().getPathingBehavior().forceCancel();
+            }
+            return null;
+        }
         // Check if there is white wool at the specified position
         if (there.getBlock() == Blocks.WOOL.white()) {
             // Iterate over all entities in the world
@@ -1195,6 +1211,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // Get the block state at the specified position and check if it's air
         BlockState blockState = mod.getWorld().getBlockState(_pos);
         if (!blockState.isAir()) {
+            return false;
+        }
+        // the air of a predicted break is not confirmed yet, see onTick: the server may still put the block back
+        if (BreakConfirmation.isPending(_pos)) {
             return false;
         }
         // air with a stack about to land in it is not a cleared block, it's a block that is about to have sand in it.
