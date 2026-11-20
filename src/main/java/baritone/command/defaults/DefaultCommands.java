@@ -70,6 +70,7 @@ public final class DefaultCommands {
                 new CommandAlias(baritone, "sethome", "Sets your home waypoint", "waypoints save home"),
                 new CommandAlias(baritone, "home", "Path to your home waypoint", "waypoints goto home"),
                 new SelCommand(baritone),
+                new EffortlessCommand(baritone),
                 new ElytraCommand(baritone),
                 new GuiCommand(baritone)
         ));

@@ -47,6 +47,12 @@ public final class BackfillProcess extends BaritoneProcessHelper {
         if (ctx.player() == null || ctx.world() == null) {
             return false;
         }
+        // Building owns its access holes and scaffold until its final cleanup. This temporary process must
+        // not fill a passage behind an active builder or clear the builder's input keys while merely probing activity.
+        if (baritone.getBuilderProcess().isActive()) {
+            blocksToReplace.clear();
+            return false;
+        }
         if (!Baritone.settings().backfill.value) {
             return false;
         }

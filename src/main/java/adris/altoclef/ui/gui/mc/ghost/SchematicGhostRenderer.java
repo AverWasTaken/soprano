@@ -60,6 +60,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     static final int WRONG_STATE_RGB = 0xFFB060;
     static final int WRONG_BLOCK_RGB = 0xFF6A6A;
     static final int EXTRA_RGB = 0xFF4040;
+    static final int UNTOUCHED_RGB = 0x9A9A9A;
     private static final Direction[] DIRECTIONS = Direction.values();
 
     // one block's worth of drawing. quads null = a plain coloured box (something to remove, or a block whose model
@@ -73,7 +74,70 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         }
     }
 
-    private final GhostField<Placed> field = new GhostField<>(this::bake);
+    // what this renderer shows. the schematic picked in the gui by default, Effortless Soprano's jobs on the second one
+    public interface Source {
+        // null for nothing right now
+        Target target();
+
+        // keep drawing what's there while target() is null for a moment (a reparse), instead of blinking out
+        default boolean hold(String currentPath) {
+            return false;
+        }
+
+        float alpha();
+
+        int distance();
+
+        // the cast over a hologram, or the colour of a box
+        default int rgb(Kind kind) {
+            return kindRgb(kind);
+        }
+
+        // a box drawn at half the alpha: a hint, not a block
+        default boolean faint(Kind kind) {
+            return kind == Kind.EXTRA;
+        }
+
+        // the player left the world
+        default void worldGone() {
+        }
+
+        // for the log line
+        default boolean logs() {
+            return true;
+        }
+    }
+
+    // the ghost of the schematic picked in the gui (McSchematics.ghost())
+    private static final class SchematicSource implements Source {
+        @Override
+        public Target target() {
+            return SchematicGhostRenderer.target(McSchematics.shared());
+        }
+
+        @Override
+        public boolean hold(String currentPath) {
+            return reparsing(McSchematics.shared(), currentPath);
+        }
+
+        @Override
+        public float alpha() {
+            return settings().schematicGhostAlpha.value;
+        }
+
+        @Override
+        public int distance() {
+            return settings().schematicGhostDistance.value;
+        }
+
+        @Override
+        public void worldGone() {
+            McSchematics.shared().clearGhost();
+        }
+    }
+
+    private final Source source;
+    private final GhostField<Placed> field;
     private final LevelWorld world = new LevelWorld();
     private final QuadInstance instance = new QuadInstance();
     private final List<Placed> visible = new ArrayList<>();
@@ -100,7 +164,9 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     private long worstTickNanos;
     private int scanTicks;
 
-    private SchematicGhostRenderer() {
+    private SchematicGhostRenderer(Source source, GhostField.Scanner scanner) {
+        this.source = source;
+        this.field = scanner == null ? new GhostField<>(this::bake) : new GhostField<>(this::bake, scanner);
         instance.setLightCoords(FULL_BRIGHT);
         instance.setOverlayCoords(OverlayTexture.NO_OVERLAY);
     }
@@ -108,29 +174,37 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     // runs inside Minecraft's constructor with the rest of the bridge. a ghost that can't start is no reason for
     // altoclef not to
     public static void attach(IBaritone primary) {
+        attach(primary, new SchematicSource(), null);
+    }
+
+    // another ghost with its own source (and scan, null for the schematic diff). null when it couldn't start
+    public static SchematicGhostRenderer attach(IBaritone primary, Source source, GhostField.Scanner scanner) {
         try {
-            SchematicGhostRenderer renderer = new SchematicGhostRenderer();
+            SchematicGhostRenderer renderer = new SchematicGhostRenderer(source, scanner);
             primary.getGameEventHandler().registerEventListener(renderer);
-            live = renderer;
+            LIVE.add(renderer);
+            return renderer;
         } catch (Throwable t) {
             System.err.println("schematic ghosts could not start, they stay off this session");
             t.printStackTrace();
+            return null;
         }
     }
 
     // for the level mixin, which has no event to hand this to
-    private static volatile SchematicGhostRenderer live;
+    private static final List<SchematicGhostRenderer> LIVE = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     // every client side setBlock: single block packets, section packets, prediction, explosions. BlockChangeEvent
     // only sees the section packet, so a block you place by hand would sit under its ghost until the backstop
     public static void blockChanged(int x, int y, int z) {
-        SchematicGhostRenderer r = live;
-        if (r != null && r.field.active()) {
-            Safe.run("schematic ghost block", () -> r.field.blockChanged(x, y, z));
+        for (SchematicGhostRenderer r : LIVE) {
+            if (r.field.active()) {
+                Safe.run("schematic ghost block", () -> r.field.blockChanged(x, y, z));
+            }
         }
     }
 
-    private static Settings settings() {
+    static Settings settings() {
         return BaritoneAPI.getSettings();
     }
 
@@ -161,9 +235,8 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
 
     private void update() {
         ClientLevel level = Minecraft.getInstance().level;
-        McSchematics schematics = McSchematics.shared();
-        Target t = target(schematics);
-        if (level != null && t == null && reparsing(schematics)) {
+        Target t = source.target();
+        if (level != null && t == null && source.hold(currentPath)) {
             // the parse cache only keeps two files, clicking through the list can push the ghost's out. it comes back
             // a moment later as the same file, so keep drawing the old one instead of blinking out and rescanning
             return;
@@ -180,7 +253,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             field.dirtyAll();
         }
         // 128 tops: nothing caps what's stored, only what's drawn, and a busy build at 512 is millions of quads in memory
-        field.distance(Math.max(8, Math.min(MAX_DISTANCE, settings().schematicGhostDistance.value)));
+        field.distance(Math.max(8, Math.min(MAX_DISTANCE, source.distance())));
         if (hasCamera) {
             field.camera(camX, camY, camZ);
         }
@@ -192,12 +265,14 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         } finally {
             world.level = null;
         }
-        logScan(t.path(), scanned, System.nanoTime() - start);
+        if (source.logs()) {
+            logScan(t.path(), scanned, System.nanoTime() - start);
+        }
     }
 
     // the same ghost, still in this dimension, just parsing again. not the placement moving (that's a new target)
     // and not a file that broke (previewFailed, nothing to wait for)
-    private boolean reparsing(McSchematics schematics) {
+    private static boolean reparsing(McSchematics schematics, String currentPath) {
         String path = schematics.ghost();
         if (path == null || !path.equals(currentPath) || schematics.previewFailed(path)) {
             return false;
@@ -253,7 +328,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             // corner, so nothing else would notice the pieces are the overworld's diff
             field.clear();
             if (event.getWorld() == null) {
-                McSchematics.shared().clearGhost();
+                source.worldGone();
             }
         });
     }
@@ -266,7 +341,8 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
         BlockColors colors = mc.getBlockColors();
         List<Placed> out = new ArrayList<>(ghosts.size());
         for (Ghost g : ghosts) {
-            Placed p = g.kind() == Kind.EXTRA ? box(g, EXTRA_RGB, true) : model(g, models, colors);
+            Placed p = g.kind() == Kind.EXTRA || g.kind() == Kind.UNTOUCHED
+                    ? box(g, source.rgb(g.kind()), source.faint(g.kind())) : model(g, models, colors);
             if (p != null) {
                 out.add(p);
             }
@@ -276,7 +352,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
 
     private Placed model(Ghost g, BlockStateModelSet models, BlockColors colors) {
         BlockState want = g.want();
-        int kindRgb = kindRgb(g.kind());
+        int kindRgb = source.rgb(g.kind());
         parts.clear();
         quads.clear();
         models.get(want).collectParts(RandomSource.create(want.getSeed(seedPos.set(g.x(), g.y(), g.z()))), parts);
@@ -320,6 +396,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
             case WRONG_STATE -> WRONG_STATE_RGB;
             case WRONG_BLOCK -> WRONG_BLOCK_RGB;
             case EXTRA -> EXTRA_RGB;
+            case UNTOUCHED -> UNTOUCHED_RGB;
         };
     }
 
@@ -377,7 +454,7 @@ public final class SchematicGhostRenderer implements AbstractGameEventListener {
     }
 
     private void draw(RenderEvent event) {
-        float alpha = Math.max(0f, Math.min(1f, settings().schematicGhostAlpha.value));
+        float alpha = Math.max(0f, Math.min(1f, source.alpha()));
         // the block shader throws away anything under 0.1 anyway
         if (alpha < 0.1f) {
             return;

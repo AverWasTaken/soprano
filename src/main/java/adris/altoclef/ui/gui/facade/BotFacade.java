@@ -28,4 +28,9 @@ public interface BotFacade {
     default RoutinesAccess routines() {
         return RoutinesAccess.NONE;
     }
+
+    // the effortless tab's queue. an empty one for fakes that don't care
+    default EffortlessAccess effortless() {
+        return EffortlessAccess.NONE;
+    }
 }

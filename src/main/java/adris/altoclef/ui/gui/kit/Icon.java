@@ -59,5 +59,22 @@ public enum Icon {
     HASH,           // raw command
     FIT,            // four corners, fit to view
     EQUIP,          // a sword, point up right
-    NODES           // two boxes and a wire
+    NODES,          // two boxes and a wire
+    // Effortless Soprano's radial, one per shape
+    SHAPE_SINGLE,   // one square block
+    SHAPE_LINE,     // a straight line with a dot at each end
+    SHAPE_DIAG_LINE, // a diagonal with a dot at each end
+    SHAPE_FLOOR,    // a flat diamond, a plane seen from above at an angle
+    SHAPE_WALL,     // an upright rectangle of bricks
+    SHAPE_DIAG_WALL, // a wall seen at an angle, a slanted run of bricks
+    SHAPE_CUBOID,   // the isometric cube
+    SHAPE_CIRCLE,   // a ring around a centre dot
+    SHAPE_CYLINDER, // a can: two ellipses joined at the sides
+    SHAPE_SPHERE,   // a ball with its equator
+    SHAPE_STAIRS,   // three steps
+    SHAPE_PYRAMID,  // a triangle with its front edge
+    SHAPE_DOME,     // half a ball on its base
+    SHAPE_CONE,     // a point over a round base
+    MERGE,          // two lines joining into one arrow
+    SPLIT           // one line forking into two
 }

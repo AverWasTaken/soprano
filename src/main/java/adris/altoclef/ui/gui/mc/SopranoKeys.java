@@ -16,6 +16,8 @@ public final class SopranoKeys {
 
     static final String YES = "key.soprano.trip_yes";
     static final String NO = "key.soprano.trip_no";
+    static final String RADIAL = "key.soprano.effortless_radial";
+    static final String TOGGLE = "key.soprano.effortless_toggle";
     private static final String CATEGORY = "key.category.soprano.soprano";
 
     // forge and neoforge would read a lang file, fabric without api never does. one place for both
@@ -23,11 +25,15 @@ public final class SopranoKeys {
             CATEGORY, "Soprano",
             // the category header already says Soprano, so the rows just say what the key does
             YES, "Answer Yes",
-            NO, "Answer No, or stop collecting"
+            NO, "Answer No, or stop collecting",
+            RADIAL, "Effortless menu (hold)",
+            TOGGLE, "Effortless build mode on/off"
     );
 
     private static KeyMapping yes;
     private static KeyMapping no;
+    private static KeyMapping radial;
+    private static KeyMapping toggle;
 
     private SopranoKeys() {
     }
@@ -40,12 +46,15 @@ public final class SopranoKeys {
                 KeyMapping.Category cat = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("soprano", "soprano"));
                 yes = new KeyMapping(YES, InputConstants.KEY_Y, cat);
                 no = new KeyMapping(NO, InputConstants.KEY_N, cat);
+                // left alt, like the build mods this is modelled on. vanilla leaves it free
+                radial = new KeyMapping(RADIAL, InputConstants.KEY_LALT, cat);
+                toggle = new KeyMapping(TOGGLE, InputConstants.UNKNOWN.getValue(), cat);
             } catch (Throwable t) {
                 Safe.report("soprano keys", t);
                 return new KeyMapping[0];
             }
         }
-        return new KeyMapping[]{yes, no};
+        return new KeyMapping[]{yes, no, radial, toggle};
     }
 
     public static String name(String key) {
@@ -58,6 +67,14 @@ public final class SopranoKeys {
 
     static boolean isNo(KeyEvent event) {
         return no != null && no.matches(event);
+    }
+
+    public static boolean isRadial(KeyEvent event) {
+        return radial != null && !radial.isUnbound() && radial.matches(event);
+    }
+
+    public static boolean isToggle(KeyEvent event) {
+        return toggle != null && !toggle.isUnbound() && toggle.matches(event);
     }
 
     // what the chip on the button says. "Y" until someone rebinds it, then whatever the controls screen calls the new

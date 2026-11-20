@@ -33,6 +33,13 @@ public final class SettingWords {
         if (name != null && name.length() > 4 && name.startsWith("alto") && Character.isUpperCase(name.charAt(4))) {
             return split(name.substring(4));
         }
+        // the same for the build mode's shelf: effortlessMaxBlocks -> Max blocks, colorEffortlessBreak -> Color break
+        if (name != null && name.length() > 10 && name.startsWith("effortless") && Character.isUpperCase(name.charAt(10))) {
+            return split(name.substring(10));
+        }
+        if (name != null && name.startsWith("colorEffortless") && name.length() > 15) {
+            return split("color" + name.substring(15));
+        }
         return split(name);
     }
 

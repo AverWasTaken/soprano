@@ -34,6 +34,7 @@ import baritone.pathing.movement.movements.MovementMomentum;
 import baritone.pathing.movement.movements.MovementNeo;
 import baritone.process.*;
 import baritone.selection.SelectionManager;
+import baritone.effortless.EffortlessManager;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.GuiClick;
 import baritone.utils.InputOverrideHandler;
@@ -103,6 +104,7 @@ public class Baritone implements IBaritone {
 
     private final PathingControlManager pathingControlManager;
     private final SelectionManager selectionManager;
+    private final EffortlessManager effortlessManager;
     private final CommandManager commandManager;
 
     private final IPlayerContext playerContext;
@@ -155,6 +157,7 @@ public class Baritone implements IBaritone {
 
         this.worldProvider = new WorldProvider(this);
         this.selectionManager = new SelectionManager(this);
+        this.effortlessManager = new EffortlessManager(this);
         this.commandManager = new CommandManager(this);
     }
 
@@ -249,6 +252,10 @@ public class Baritone implements IBaritone {
     @Override
     public SelectionManager getSelectionManager() {
         return selectionManager;
+    }
+
+    public EffortlessManager getEffortlessManager() {
+        return effortlessManager;
     }
 
     @Override

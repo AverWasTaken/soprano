@@ -17,6 +17,8 @@ public class ContainerCache {
 
     private final HashMap<Item, Integer> _itemCounts = new HashMap<>();
     private int _emptySlots;
+    // System.nanoTime() of the last look inside, so a task can tell "seen full a minute ago" from "seen full just now"
+    private long _seenAt;
 
     public ContainerCache(Dimension dimension, BlockPos blockPos, ContainerType containerType) {
         _dimension = dimension;
@@ -25,6 +27,7 @@ public class ContainerCache {
     }
 
     public void update(AbstractContainerMenu screenHandler, Consumer<ItemStack> onStack) {
+        _seenAt = System.nanoTime();
         _itemCounts.clear();
         _emptySlots = 0;
         int start = 0;
@@ -103,6 +106,11 @@ public class ContainerCache {
             total += f.applyAsDouble(entry.getKey(), entry.getValue());
         }
         return total;
+    }
+
+    // when the contents were last read, System.nanoTime(). 0 for never
+    public long seenAt() {
+        return _seenAt;
     }
 
     public int getEmptySlotCount() {

@@ -33,6 +33,12 @@ public final class GhostField<P extends GhostField.Piece> {
         List<P> bake(List<Ghost> ghosts);
     }
 
+    // what's off in one section. GhostScan diffs a schematic against the world, Effortless Soprano's preview says what a
+    // job will do to each cell instead
+    public interface Scanner {
+        List<Ghost> section(ISchematic s, int ox, int oy, int oz, GhostScan.World world, int sx, int sy, int sz);
+    }
+
     // ticks before a clean section gets looked at again anyway, for whatever changed without telling us. every
     // setBlock reaches blockChanged now, so this is a backstop: one section per REFRESH_EVERY ticks, not one a tick
     // forever (that was ~0.75 ms every tick on a big build)
@@ -56,7 +62,7 @@ public final class GhostField<P extends GhostField.Piece> {
     }
 
     private final Baker<P> baker;
-    private final GhostScan scan = new GhostScan();
+    private final Scanner scanner;
     private final Map<Long, Section> sections = new HashMap<>();
     private final List<Section> order = new ArrayList<>();
 
@@ -77,7 +83,12 @@ public final class GhostField<P extends GhostField.Piece> {
     private int generation;
 
     public GhostField(Baker<P> baker) {
+        this(baker, new GhostScan()::section);
+    }
+
+    public GhostField(Baker<P> baker, Scanner scanner) {
         this.baker = baker;
+        this.scanner = scanner;
     }
 
     // the schematic (by identity: McSchematics hands out a new wrapper when the turn or flip changes) and its corner.
@@ -226,7 +237,7 @@ public final class GhostField<P extends GhostField.Piece> {
     }
 
     private void scan(Section s, GhostScan.World world) {
-        List<Ghost> ghosts = scan.section(schematic, ox, oy, oz, world, s.sx, s.sy, s.sz);
+        List<Ghost> ghosts = scanner.section(schematic, ox, oy, oz, world, s.sx, s.sy, s.sz);
         s.ghosts = ghosts.size();
         s.pieces = ghosts.isEmpty() ? List.of() : baker.bake(ghosts);
         s.dirty = false;
