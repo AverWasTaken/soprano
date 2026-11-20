@@ -128,6 +128,11 @@ public class PearlHuntTask extends Task {
     private volatile long zoneNow;
     private volatile double zoneGoalX = Double.NaN;
     private volatile double zoneGoalZ = Double.NaN;
+    // the forest walk's own round walls on top of the run zones (PearlWalkWall): where a brute or a wither pack killed us and the
+    // bastions we know, {x, z, radius}. the suppliers are read on our tick, the predicate only ever sees the snapshot
+    private Supplier<List<double[]>> killZones = List::of;
+    private Supplier<List<double[]>> bastionZones = List::of;
+    private volatile double[][] walkZones = new double[0][];
     // the walk is waiting on hp, not done
     private boolean walkHeld;
     private RunState.Pos hotspotWalkingTo;
@@ -210,6 +215,15 @@ public class PearlHuntTask extends Task {
         loot = new KillAndLootTask(Enderman.class, man -> lootTarget(man, false), man -> lootTarget(man, true), pearlTarget);
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
+    }
+
+    // the nether hunt's death and bastion zones, see walkZones. the overworld hunt has none, a nether spot means nothing up there
+    public PearlHuntTask withZones(Supplier<List<double[]>> killZones, Supplier<List<double[]>> bastionZones) {
+        this.killZones = killZones;
+        this.bastionZones = bastionZones;
+        // the loot task picks pearls up on its own too (ResourceTask), and it walks with no zone wall up either
+        loot.acceptDrops(e -> !PearlWalkWall.inAny(e.getX(), e.getZ(), killZones.get()));
+        return this;
     }
 
     // ticks of fighting per enderman id, it carries over when the nearest angry one changes back and forth. an id that ran
@@ -345,7 +359,8 @@ public class PearlHuntTask extends Task {
         zoneOn = false;
         // (see RunZones for which zones never count as a wall: the one we stand in and the one the forest is in stay open)
         java.util.function.Predicate<BlockPos> packWall = p -> zoneOn
-                && RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, zoneGoalX, zoneGoalZ);
+                && (RunZones.INSTANCE.blocksAt(p.getX(), p.getY(), p.getZ(), zoneNow, zoneX, zoneY, zoneZ, zoneGoalX, zoneGoalZ)
+                || PearlWalkWall.blocks(p.getX(), p.getZ(), walkZones, zoneX, zoneZ, zoneGoalX, zoneGoalZ));
         mod.getBehaviour().avoidWalkingThrough(packWall);
         // and solid, see RunZones.blocksAt
         mod.getBehaviour().avoidBlockBreaking(packWall);
@@ -374,7 +389,7 @@ public class PearlHuntTask extends Task {
         // (any other branch below that returns first still counts as calm)
         awayCount = awayCount.step(gameTime, false);
         // before the nook: a nook built by the lava would sit there and put the walk off
-        armLavaSpot(mod, gameTime, false);
+        armLavaSpot(mod, gameTime, LavaTrigger.HOLD);
         if (leaveSpot != null) {
             if (gameTime < leaveUntil && !leaveSpot.isFinished(mod)) {
                 return say("Leaving the lava", leaveSpot);
@@ -441,7 +456,7 @@ public class PearlHuntTask extends Task {
                 lastFleeAt = gameTime;
             }
             if (struck) {
-                armLavaSpot(mod, gameTime, true);
+                armLavaSpot(mod, gameTime, LavaTrigger.STRIKE);
                 if (leaveSpot != null) {
                     away = null;
                     return say("Leaving the lava", leaveSpot);
@@ -453,7 +468,7 @@ public class PearlHuntTask extends Task {
             away = null;
             // the give up fired: this spot is the problem, not the endermen in it
             if (fleeing) {
-                armLavaSpot(mod, gameTime, true);
+                armLavaSpot(mod, gameTime, LavaTrigger.GIVE_UP);
                 if (leaveSpot != null) {
                     return say("Leaving the lava", leaveSpot);
                 }
@@ -479,18 +494,30 @@ public class PearlHuntTask extends Task {
         return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
     }
 
-    // the lava spot goes up when the back off gave up or the kill tasks have spent 20 s of the last minute standing by lava, and
-    // we walk off it once. a second trigger while it is live changes nothing
-    private void armLavaSpot(AltoClef mod, long gameTime, boolean awayGaveUp) {
+    private enum LavaTrigger {
+        HOLD("hold"), STRIKE("strike"), GIVE_UP("give up");
+
+        final String label;
+
+        LavaTrigger(String label) {
+            this.label = label;
+        }
+    }
+
+    // a lava spot goes up when the back off struck out or gave up, or the kill tasks have spent 20 s of the last minute standing
+    // by lava, and we walk off it once. inside a live spot it restarts that one, anywhere else it is a new spot next to the
+    // old ones (see LavaSpot). every one gets a log line, the labs and player logs have to show which trigger did it
+    private void armLavaSpot(AltoClef mod, long gameTime, LavaTrigger why) {
         var me = mod.getPlayer();
-        if (!LavaSpot.trigger(awayGaveUp, AbstractDoToEntityTask.lavaHoldTicks(me.tickCount))) {
+        if (!LavaSpot.trigger(why != LavaTrigger.HOLD, AbstractDoToEntityTask.lavaHoldTicks(me.tickCount))) {
             return;
         }
         AbstractDoToEntityTask.clearLavaHolds();
-        if (lavaSpot.arm(me.getX(), me.getY(), me.getZ(), gameTime)) {
-            leaveSpot = new RunAwayFromPositionTask(LEAVE_BLOCKS, me.blockPosition());
-            leaveUntil = gameTime + LEAVE_TICKS;
-        }
+        LavaSpot.Armed armed = lavaSpot.arm(me.getX(), me.getY(), me.getZ(), gameTime);
+        Debug.logInternal("pearl: lava spot " + (armed == LavaSpot.Armed.NEW ? "added" : "restarted") + " at " + lavaSpot.lastCentre()
+                + " (" + why.label + "), " + lavaSpot.liveCount(gameTime) + " live");
+        leaveSpot = new RunAwayFromPositionTask(LEAVE_BLOCKS, me.blockPosition());
+        leaveUntil = gameTime + LEAVE_TICKS;
     }
 
     // not worth the walk: on a lava shore, or inside the lava spot while it lasts
@@ -640,23 +667,28 @@ public class PearlHuntTask extends Task {
     // picks anything up and kills mostly happen outside it. the tracker only lists drops that passed the lava and wet checks and
     // skips banned ones, and the pickup task bans what it can't reach, so an unreachable pearl drops out of this by itself
     private Task pickupStep(AltoClef mod) {
-        if (closestPearlDrop(mod, pearlTarget).isEmpty()) {
+        if (closestPearlDrop(mod, pearlTarget, killZones.get()).isEmpty()) {
             return null;
         }
         if (pickup == null) {
-            pickup = new PickupDroppedItemTask(pearlTarget, true);
+            // the same filter as closestPearlDrop, or the pickup goes for the closer pearl in the death spot anyway
+            pickup = new PickupDroppedItemTask(pearlTarget, true).accepting(e -> !PearlWalkWall.inAny(e.getX(), e.getZ(), killZones.get()));
         }
         return pickup;
     }
 
-    private static Optional<ItemEntity> closestPearlDrop(AltoClef mod, ItemTarget target) {
+    // a pearl lying where a brute or a wither pack killed us is left there: the walk to it is the walk into them, and the
+    // pickup walks with no zone wall up (it goes where the pearl is)
+    private static Optional<ItemEntity> closestPearlDrop(AltoClef mod, ItemTarget target, List<double[]> killZones) {
         var me = mod.getPlayer();
-        return mod.getEntityTracker().getClosestItemDrop(me.position(), e -> pickupInReach(e.distanceToSqr(me)), target);
+        return mod.getEntityTracker().getClosestItemDrop(me.position(),
+                e -> pickupInReach(e.distanceToSqr(me)) && !PearlWalkWall.inAny(e.getX(), e.getZ(), killZones), target);
     }
 
-    // the phase asks this before it wanders off to sweep for a forest: a pearl on the floor is the hunt's to fetch
-    public static boolean pearlDropNear(AltoClef mod) {
-        return closestPearlDrop(mod, new ItemTarget(Items.ENDER_PEARL, 1)).isPresent();
+    // the phase asks this before it wanders off to sweep for a forest: a pearl on the floor is the hunt's to fetch. the same death
+    // spots as the hunt, or the phase would sit and wait on a pearl the hunt refuses to go for
+    public static boolean pearlDropNear(AltoClef mod, List<double[]> killZones) {
+        return closestPearlDrop(mod, new ItemTarget(Items.ENDER_PEARL, 1), killZones).isPresent();
     }
 
     static boolean pickupInReach(double distSqr) {
@@ -670,7 +702,7 @@ public class PearlHuntTask extends Task {
 
     // the pickup ahead of the angry fight when the pearl is right here, null to go on as usual
     private Task grabBeforeFight(AltoClef mod) {
-        Optional<ItemEntity> pearl = closestPearlDrop(mod, pearlTarget);
+        Optional<ItemEntity> pearl = closestPearlDrop(mod, pearlTarget, killZones.get());
         if (pearl.isEmpty() || !grabFirst(pearl.get().distanceToSqr(mod.getPlayer()), nearestAngry(mod))) {
             return null;
         }
@@ -686,6 +718,15 @@ public class PearlHuntTask extends Task {
             }
         }
         return best;
+    }
+
+    // the phase gave up on this forest after a whole no-pearl clock. the walk flags reset by themselves when the hotspot changes
+    // (walkToHotspot), the roam has to be told or its idle latch from the dead forest keeps it off at the next one
+    public void forestGivenUp() {
+        roam.reset();
+        roamTask = null;
+        roamMissSaid = false;
+        roamQuietSaid = false;
     }
 
     // the roam around a known forest when there is nothing to chase, null hands it to the loot task (and its far wander)
@@ -1018,8 +1059,15 @@ public class PearlHuntTask extends Task {
         zoneNow = mod.getWorld().getGameTime();
         zoneGoalX = spot.x;
         zoneGoalZ = spot.z;
+        walkZones = snapshotZones();
         zoneOn = dimension == Dimension.NETHER;
         return toHotspot;
+    }
+
+    private double[][] snapshotZones() {
+        List<double[]> all = new ArrayList<>(killZones.get());
+        all.addAll(bastionZones.get());
+        return all.toArray(new double[0][]);
     }
 
     @Override

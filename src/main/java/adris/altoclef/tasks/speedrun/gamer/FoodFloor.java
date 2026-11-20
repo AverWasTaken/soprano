@@ -38,18 +38,13 @@ public final class FoodFloor {
     }
 
     // the same hunt for a nether trip: the bag is nowhere near the floor by then, so it runs from the first overworld tick
-    // to the minimum and not only under the floor. one runner over whichever needs are short: food to the minimum, and on a blocks
+    // to the minimum and not only under the floor. one runner over whichever needs are short: food to the plan's tripEnd, and on a blocks
     // trip the TRIP_BLOCKS stack (emitted straight, no BuildBlocks band; KitRunner still notes a refill, which the next phase entry wipes). null = none short
     public Task tickTrip(GamerContext ctx, boolean wantBlocks) {
-        return tickTrip(ctx, wantBlocks, 0);
-    }
-
-    // endUnits > 0 = the trip's own stop (FoodTripRules.tripEndUnits) instead of the plan's
-    public Task tickTrip(GamerContext ctx, boolean wantBlocks, int endUnits) {
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
         FoodPlan food = overworld ? ctx.food() : null;
         List<KitNeed> needs = new ArrayList<>();
-        int end = food == null ? 0 : endUnits > 0 ? Math.min(endUnits, food.tripEnd()) : food.tripEnd();
+        int end = food == null ? 0 : food.tripEnd();
         if (food != null && FoodTripRules.tripFoodShort(FoodTripRules.units(food), end)) {
             // the runner reads the need against held, which counts what is still cooking: ask for that on top so it is the bag
             // that has to reach the trip's end (a real bag, not the 70 that sent the bot straight back down for another trip)
@@ -81,13 +76,6 @@ public final class FoodFloor {
     public static boolean tripFoodShort(GamerContext ctx) {
         FoodPlan food = ctx.food();
         return FoodTripRules.tripFoodShort(FoodTripRules.units(food), food.tripEnd());
-    }
-
-    // the trip's read against its own stop (FoodTripRules.tripEndUnits, 0 = the plan's), same clamp tickTrip uses
-    public static boolean tripFoodShort(GamerContext ctx, int endUnits) {
-        FoodPlan food = ctx.food();
-        int end = endUnits > 0 ? Math.min(endUnits, food.tripEnd()) : food.tripEnd();
-        return FoodTripRules.tripFoodShort(FoodTripRules.units(food), end);
     }
 
     public static boolean blocksShort(GamerContext ctx) {

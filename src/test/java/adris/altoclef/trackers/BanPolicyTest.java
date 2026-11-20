@@ -1,6 +1,7 @@
 package adris.altoclef.trackers;
 
 import adris.altoclef.trackers.Bans.Key;
+import adris.altoclef.util.helpers.UnloadedTrust;
 import baritone.api.utils.Dimension;
 import org.junit.Test;
 
@@ -167,5 +168,55 @@ public class BanPolicyTest {
         assertTrue("tables stay", bans.blockBanned(Dimension.OVERWORLD, 12, 70, 0));
         bans.lift("couldn't reach it (1 try)", key -> true);
         assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 10, 70, 0)));
+    }
+
+    @Test
+    public void aNoScoopBanTakesTheOneSourceAndNotItsNeighbours() {
+        assertTrue(BanPolicy.bucketNoScoop(bans, Dimension.OVERWORLD, 5, 62, 5));
+        assertTrue(bans.banned(Key.block(Dimension.OVERWORLD, 5, 62, 5)));
+        // the pond next to it is still fair game
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 6, 62, 5)));
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 5, 63, 5)));
+        bans.tick(BanPolicy.TASK_GAVE_UP);
+        assertFalse(bans.banned(Key.block(Dimension.OVERWORLD, 5, 62, 5)));
+    }
+
+    @Test
+    public void anUnloadedTrustBanSurvivesTheReloadThatCausedIt() {
+        bans.tick(0);
+        assertTrue(BanPolicy.unloadedTrust(bans, Dimension.OVERWORLD, 976, 37, 1541, UnloadedTrust.Part.PLAUSIBLE));
+        // the chunk at 61,96 going away and coming back is the loop itself
+        bans.chunkUnloaded(61, 96);
+        bans.chunkLoaded(Dimension.OVERWORLD, 61, 96);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 976, 37, 1541));
+        bans.tick(BanPolicy.UNLOADED_TRUST - 1);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 976, 37, 1541));
+        bans.tick(BanPolicy.UNLOADED_TRUST);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 976, 37, 1541));
+        assertEquals(24000, BanPolicy.UNLOADED_TRUST);
+    }
+
+    @Test
+    public void anUnloadedTrustBanUnderTheSeaLastsTheRun() {
+        bans.tick(0);
+        assertEquals(Bans.RUN, BanPolicy.unloadedTrustTicks(UnloadedTrust.Part.OCEAN));
+        BanPolicy.unloadedTrust(bans, Dimension.OVERWORLD, 1, 30, 1, UnloadedTrust.Part.OCEAN);
+        bans.tick(10_000_000L);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 1, 30, 1));
+        bans.clearRun("test");
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 30, 1));
+    }
+
+    @Test
+    public void anUnloadedTrustBanForSpeedEndsOnABetterPick() {
+        bans.tick(0);
+        BanPolicy.unloadedTrust(bans, Dimension.OVERWORLD, 1, 30, 1, UnloadedTrust.Part.TOO_SLOW);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 1, 30, 1));
+        bans.toolTier(3);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 30, 1));
+        // the others don't care about the pick
+        BanPolicy.unloadedTrust(bans, Dimension.OVERWORLD, 2, 30, 1, UnloadedTrust.Part.OTHER);
+        bans.toolTier(4);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 2, 30, 1));
     }
 }

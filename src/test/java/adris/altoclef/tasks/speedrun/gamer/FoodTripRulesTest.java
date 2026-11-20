@@ -176,26 +176,36 @@ public class FoodTripRulesTest {
     public void risingBagHoldsTheClockUntilTheHardCap() {
         double limit = FoodTripRules.MAX_SECONDS;
         // past the clock but the bag grew a minute ago: carry on
-        assertFalse(FoodTripRules.tripOver(true, limit + 30, limit, 60));
+        assertFalse(FoodTripRules.tripOver(true, limit + 30, limit, 60, false));
         // nothing gained for two minutes: the clock cuts it
-        assertTrue(FoodTripRules.tripOver(true, limit + 30, limit, FoodTripRules.RISING_SECONDS));
+        assertTrue(FoodTripRules.tripOver(true, limit + 30, limit, FoodTripRules.RISING_SECONDS, false));
         // before the clock it is never cut, gains or not
-        assertFalse(FoodTripRules.tripOver(true, limit - 1, limit, 500));
+        assertFalse(FoodTripRules.tripOver(true, limit - 1, limit, 500, false));
+        assertFalse(FoodTripRules.tripOver(true, limit - 1, limit, 500, true));
         // a bag that keeps nibbling still ends at the hard cap, and a full bag ends it at once
-        assertTrue(FoodTripRules.tripOver(true, FoodTripRules.HARD_SECONDS, limit, 0));
-        assertTrue(FoodTripRules.tripOver(false, 5, limit, 0));
+        assertTrue(FoodTripRules.tripOver(true, FoodTripRules.HARD_SECONDS, limit, 0, false));
+        assertTrue(FoodTripRules.tripOver(false, 5, limit, 0, false));
     }
 
     @Test
-    public void tripEndsAtTwiceTheHomeLineNotTheRefillStop() {
-        // at the portal: 2 * 36 = 72, over the minimum of 70, under the plan's 130
-        assertEquals(72, FoodTripRules.tripEndUnits(0, 70, 130));
+    public void risingHoldLetsGoOnceTheBagHasTheOldStop() {
+        double limit = FoodTripRules.MAX_SECONDS;
+        // still short of 130 and still gaining, but past the old stop: the clock ends it like it did before the hold
+        assertTrue(FoodTripRules.tripOver(true, limit, limit, 10, true));
+        assertTrue(FoodTripRules.tripOver(true, limit + 1, limit, 0, true));
+        // the two need clock too
+        assertTrue(FoodTripRules.tripOver(true, FoodTripRules.TWO_NEED_SECONDS, FoodTripRules.TWO_NEED_SECONDS, 10, true));
+        assertFalse(FoodTripRules.tripOver(true, FoodTripRules.TWO_NEED_SECONDS - 1, FoodTripRules.TWO_NEED_SECONDS, 10, true));
+    }
+
+    @Test
+    public void holdCapIsTwiceTheHomeLine() {
+        // at the portal: 2 * 36 = 72, over the minimum of 70
+        assertEquals(72, FoodTripRules.holdCapUnits(0, 70));
         // far out the line moves with the walk: 2 * (36 + 400 / 40) = 92
-        assertEquals(92, FoodTripRules.tripEndUnits(400, 70, 130));
+        assertEquals(92, FoodTripRules.holdCapUnits(400, 70));
         // never under the overworld minimum
-        assertEquals(90, FoodTripRules.tripEndUnits(0, 90, 130));
-        // never past what the plan itself would stop at (a full bag settles for the minimum)
-        assertEquals(70, FoodTripRules.tripEndUnits(400, 70, 70));
+        assertEquals(90, FoodTripRules.holdCapUnits(0, 90));
     }
 
     @Test

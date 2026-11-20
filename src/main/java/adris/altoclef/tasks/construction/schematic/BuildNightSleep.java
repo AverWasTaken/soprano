@@ -211,7 +211,7 @@ public final class BuildNightSleep {
             budget.began();
         }
         prep.drop();
-        trip = new NightSleepTask(beds, () -> cfg, budget, () -> spareBlocks(mod), Helper.HELPER::logDirect, () -> { }, source, found, 0);
+        trip = new NightSleepTask(beds, () -> cfg, budget, () -> spareBlocks(mod), Helper.HELPER::logDirect, () -> { }, source, found, 0, false);
         return trip;
     }
 

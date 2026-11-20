@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.end;
 import adris.altoclef.util.helpers.ReachRules;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import java.util.List;
 import net.minecraft.world.phys.Vec3;
 
 // where the pillar fight stands and clicks, and when. the bed goes on top of the bedrock pillar with us tucked against it one
@@ -39,6 +40,28 @@ public final class PillarBed {
     private static final double STAND_REACH = 0.5;
     // the dragon's feet this close to the pillar top is sat down, whatever the phase still says
     private static final int SAT_ABOVE_TOP = 2;
+
+    // a dragon fireball's cloud starts at 3 and grows to 7 over its 30 s, and the client only ever hears the radius of now. so any
+    // cloud is taken at its full size, the one that will be there by the time the landing is. the dragon's own breath while it sits
+    // shrinks instead, taking it at 7 just holds us off a few seconds longer
+    public static final double CLOUD_FULL_RADIUS = 7;
+    // a cloud reaching this close past its rim to the stand's middle is a cloud on the stand: our box sticks out a bit past our feet
+    public static final double CLOUD_ON_STAND_MARGIN = 1;
+    // where we hold is past the full grown rim by more than that, so the hold spot never counts as on the stand itself
+    public static final double CLOUD_HOLD_MARGIN = 1.5;
+    // where we may stay put: past the full grown rim plus our half width and a bit. under CLOUD_HOLD_MARGIN by more than half a
+    // block's diagonal, so anywhere on the hold spot's block passes
+    public static final double CLOUD_STAY_MARGIN = 0.5;
+    // the podium around the pillar: a pit with the portal floor in it and a bedrock rim, the stand is the only spot in there we want
+    public static final double PODIUM_CLEAR = 5.5;
+    // how far out from the stand a hold spot may be. three full grown clouds side by side still leave something in here
+    private static final int HOLD_SEARCH = 24;
+
+    public record Cloud(double x, double z, double radius) {
+        double reach() {
+            return Math.max(radius, CLOUD_FULL_RADIUS);
+        }
+    }
 
     private PillarBed() {
     }
@@ -161,5 +184,60 @@ public final class PillarBed {
     // finishing: the beds we have can end it off the body alone, and waiting for the head to swing by is how the crystals win
     public static boolean clickNow(boolean covered, double headDistance, boolean finishing, long tick, long lastClick) {
         return covered && (headDistance < HEAD_RANGE || finishing) && tick - lastClick >= CLICK_SPACING;
+    }
+
+    // the stand is under a cloud now or will be before that cloud is gone. walking there is walking into it, and a landing doesn't
+    // change that: the bed goes off with us sat in the breath, and that is how a bed fight loses at full beds
+    public static boolean cloudOnStand(BlockPos stand, List<Cloud> clouds) {
+        for (Cloud c : clouds) {
+            if (flat(stand.getX() + 0.5, stand.getZ() + 0.5, c) < c.reach() + CLOUD_ON_STAND_MARGIN) return true;
+        }
+        return false;
+    }
+
+    // the nearest block to (fromX, fromZ) that is clear of every cloud at its full size and out of the podium, searched around the
+    // stand. nearest to us, not to the stand: the breath run lets go wherever it got out, and the stand's side of the cloud can be
+    // a walk round its rim from there. null when there's nowhere to go, the breath dodge has that case
+    public static Vec3 holdSpot(BlockPos portalTop, List<Cloud> clouds, double fromX, double fromZ) {
+        BlockPos stand = stand(portalTop);
+        Vec3 best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int dx = -HOLD_SEARCH; dx <= HOLD_SEARCH; dx++) {
+            for (int dz = -HOLD_SEARCH; dz <= HOLD_SEARCH; dz++) {
+                double x = stand.getX() + 0.5 + dx;
+                double z = stand.getZ() + 0.5 + dz;
+                double d = (x - fromX) * (x - fromX) + (z - fromZ) * (z - fromZ);
+                if (d >= bestDist || !holds(portalTop, x, z, clouds)) continue;
+                best = new Vec3(x, stand.getY(), z);
+                bestDist = d;
+            }
+        }
+        return best;
+    }
+
+    // a spot picked earlier still does while the clouds haven't moved onto it. kept so the walk's target doesn't hop between
+    // blocks that tie as we go
+    public static boolean holds(BlockPos portalTop, double x, double z, List<Cloud> clouds) {
+        return Math.hypot(x - portalTop.getX() - 0.5, z - portalTop.getZ() - 0.5) >= PODIUM_CLEAR && clearOf(x, z, clouds);
+    }
+
+    // fine to stay right here while the clouds run out, every one of them at its full size
+    public static boolean clearOfClouds(double x, double z, List<Cloud> clouds) {
+        return clearOf(x, z, clouds, CLOUD_STAY_MARGIN);
+    }
+
+    private static boolean clearOf(double x, double z, List<Cloud> clouds) {
+        return clearOf(x, z, clouds, CLOUD_HOLD_MARGIN);
+    }
+
+    private static boolean clearOf(double x, double z, List<Cloud> clouds, double margin) {
+        for (Cloud c : clouds) {
+            if (flat(x, z, c) < c.reach() + margin) return false;
+        }
+        return true;
+    }
+
+    private static double flat(double x, double z, Cloud c) {
+        return Math.hypot(x - c.x(), z - c.z());
     }
 }

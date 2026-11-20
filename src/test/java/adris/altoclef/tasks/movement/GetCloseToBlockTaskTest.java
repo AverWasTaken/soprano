@@ -83,4 +83,29 @@ public class GetCloseToBlockTaskTest {
         // a distance past what GoalNear can square still lands on a range it can
         assertEquals(46340, GetCloseToBlockTask.shrunkRange(1e12));
     }
+
+    @Test
+    public void aFloorKeepsTheRangeOffTheExactBlock() {
+        // right next to it and right on it, the floored range stays at one
+        assertEquals(1, GetCloseToBlockTask.shrunkRange(1, 1));
+        assertEquals(1, GetCloseToBlockTask.shrunkRange(0, 1));
+        // farther out it still tightens like before
+        assertEquals(4, GetCloseToBlockTask.shrunkRange(25, 1));
+        // no floor is the old behaviour
+        assertEquals(0, GetCloseToBlockTask.shrunkRange(1, 0));
+    }
+
+    @Test
+    public void rangeOneAroundTheCellOverASourceIsMetFromEitherFeetReading() {
+        // standing on farmland over the source: minecraft floors the feet into the farmland cell (y 1), baritone rounds
+        // them up to the cell above it (y 2). range 0 is met for one and not the other, range 1 is met for both, so
+        // baritone has nothing to search for
+        BlockPos overSource = new BlockPos(0, 1, 0);
+        GoalNear exact = new GoalNear(overSource, 0);
+        GoalNear floored = new GoalNear(overSource, 1);
+        assertTrue(exact.isInGoal(0, 1, 0));
+        assertFalse(exact.isInGoal(0, 2, 0));
+        assertTrue(floored.isInGoal(0, 1, 0));
+        assertTrue(floored.isInGoal(0, 2, 0));
+    }
 }

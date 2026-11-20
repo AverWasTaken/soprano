@@ -110,7 +110,7 @@ public final class DropRoom {
     // log junk, and that log is exactly what the bed craft is short of. blockFloor = the gate's minBuildBlocks. a pick that's
     // somebody's keep doesn't count, the throw would refuse a reserved bed and we'd sit there asking again
     public static int shed(int garbagePick, List<Stack> bag, int blockFloor) {
-        List<Stack> held = errandHolds(bag, blockFloor);
+        List<Stack> held = errandHolds(bag, blockFloor, false);
         int big = biggestBuild(held);
         if (big >= 0) return big;
         if (garbagePick >= 0 && !held.get(garbagePick).keep()) return garbagePick;
@@ -118,19 +118,69 @@ public final class DropRoom {
         return v >= 0 ? v : late(held);
     }
 
-    // the bag with the errand's stuff and the gate's last blocks marked keep, so victim and late don't need to know about beds
-    static List<Stack> errandHolds(List<Stack> bag, int blockFloor) {
+    // END_PREP's gear steps once the beds are done (blocks, food): same order as shed, but the wool is nobody's errand anymore.
+    // it still keeps one bed's three, and spare wool goes before the victim pick: smaller() would hand over a lone stone pickaxe
+    // ahead of 34 wool otherwise, and the pickaxe at least mines. blockFloor = the gear step's buildBlocks, not the gate's
+    // minBuildBlocks: the step digs on to buildBlocks and a lower floor throws what it just dug
+    public static int shedGear(int garbagePick, List<Stack> bag, int blockFloor) {
+        List<Stack> held = errandHolds(bag, blockFloor, true);
+        int big = biggestBuild(held);
+        if (big >= 0) return big;
+        if (garbagePick >= 0 && !held.get(garbagePick).keep()) return garbagePick;
+        int wool = spareWool(held);
+        if (wool >= 0) return wool;
+        int v = victim(held);
+        return v >= 0 ? v : late(held);
+    }
+
+    // the night bed's throw: shed's first stage and nothing past it. three wool makes that bed again, so spare duplicates, worse
+    // tools, the furnace and the raw gold are a worse deal than leaving it. -1 = no build stack the floor can spare
+    public static int shedBlocks(List<Stack> bag, int blockFloor) {
+        return biggestBuild(errandHolds(bag, blockFloor, false));
+    }
+
+    // the bag with the errand's stuff and the gate's last blocks marked keep, so victim and late don't need to know about beds.
+    // bedsDone = the bed errand is over: the beds and the logs/planks still stay, the wool only down to its last three
+    static List<Stack> errandHolds(List<Stack> bag, int blockFloor, boolean bedsDone) {
         int gateBlocks = 0;
+        int wool = 0;
         for (Stack s : bag) {
-            if (s.gate() && !s.stack().isEmpty()) gateBlocks += s.stack().getCount();
+            if (s.stack().isEmpty()) continue;
+            if (s.gate()) gateBlocks += s.stack().getCount();
+            if (isWool(s.stack().getItem())) wool += s.stack().getCount();
         }
         List<Stack> out = new ArrayList<>(bag.size());
         for (Stack s : bag) {
             ItemStack st = s.stack();
-            boolean hold = !st.isEmpty() && (forTheBeds(st.getItem()) || s.gate() && gateBlocks - st.getCount() < blockFloor);
+            boolean hold = !st.isEmpty() && (held(st, bedsDone, wool) || s.gate() && gateBlocks - st.getCount() < blockFloor);
             out.add(hold && !s.keep() ? new Stack(st, s.tier(), true, s.build(), s.gate()) : s);
         }
         return out;
+    }
+
+    // a bed is always held, even with reserveBeds at 0: unstackable, so it always looks like a duplicate to the victim pick
+    private static boolean held(ItemStack st, boolean bedsDone, int wool) {
+        Item item = st.getItem();
+        if (bedsDone && isWool(item)) return wool - st.getCount() < 3;
+        return forTheBeds(item);
+    }
+
+    // the smallest wool stack the bag can lose and still make a bed, -1 for none
+    private static int spareWool(List<Stack> bag) {
+        Map<Item, Integer> stacks = new HashMap<>();
+        int wool = 0;
+        for (Stack s : bag) {
+            if (s.stack().isEmpty()) continue;
+            stacks.merge(s.stack().getItem(), 1, Integer::sum);
+            if (isWool(s.stack().getItem())) wool += s.stack().getCount();
+        }
+        int best = -1;
+        for (int i = 0; i < bag.size(); i++) {
+            Stack s = bag.get(i);
+            if (s.stack().isEmpty() || !isWool(s.stack().getItem()) || never(s, stacks)) continue;
+            if (wool - s.stack().getCount() >= 3) best = smaller(bag, best, i);
+        }
+        return best;
     }
 
     // a whole stack of cobble frees the same slot a lone leaf does and we'd rather keep the leaf's worth. biggest first, the bag

@@ -432,6 +432,24 @@ public class EndGearTest {
     }
 
     @Test
+    public void theTopUpSaysWhyItEnded() {
+        assertNull(EndGear.topUpEnd(true, false, false));
+        assertEquals("reached", EndGear.topUpEnd(false, false, false));
+        // reached wins over the rest, a full bag over a dry field
+        assertEquals("reached", EndGear.topUpEnd(false, true, true));
+        assertEquals("bag full", EndGear.topUpEnd(true, true, true));
+        assertEquals("dry spell", EndGear.topUpEnd(true, false, true));
+    }
+
+    @Test
+    public void anEndedTopUpWaitsForItsBatch() {
+        assertTrue(EndGear.waitsForBatch(true, true));
+        assertFalse(EndGear.waitsForBatch(true, false));
+        // a top-up that never ran has no batch of its own to wait for
+        assertFalse(EndGear.waitsForBatch(false, true));
+    }
+
+    @Test
     public void aBagOverTheFloorButUnderTheWantIsNotAGapAndDoesNotReplaceAFarErrand() {
         EndConfig cfg = new EndConfig();
         assertEquals(24, cfg.minFoodUnits);
@@ -471,7 +489,7 @@ public class EndGearTest {
     }
 
     @Test
-    public void thePortalAndRoomBedsOnlySpendTheSurplus() {
+    public void theRoomBedOnlySpendsTheSurplus() {
         assertEquals(0, EndGear.surplusBeds(3, cfg.beds));
         assertEquals(0, EndGear.surplusBeds(cfg.beds, cfg.beds));
         assertEquals(1, EndGear.surplusBeds(cfg.beds + 1, cfg.beds));
@@ -479,8 +497,8 @@ public class EndGearTest {
         s.strongholdStart = new RunState.Pos(0, 70, 0);
         assertFalse(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds, cfg.beds)));
         assertTrue(Respawn.wantRoomBed(s, true, EndGear.surplusBeds(cfg.beds + 1, cfg.beds)));
-        assertFalse(Respawn.wantPortalBed(s, EndGear.surplusBeds(cfg.beds + 1, EndGear.bedTarget(cfg, true)), 0, 0));
-        assertTrue(Respawn.wantPortalBed(s, EndGear.surplusBeds(cfg.beds + 2, EndGear.bedTarget(cfg, true)), 0, 0));
+        // the portal bed borrows from the End's instead (round 187), END_PREP buys it back
+        assertTrue(Respawn.wantPortalBed(s, 0, 64, 0));
     }
 
     @Test

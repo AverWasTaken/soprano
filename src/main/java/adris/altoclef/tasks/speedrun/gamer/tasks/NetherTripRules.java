@@ -62,7 +62,17 @@ public final class NetherTripRules {
     // a deferred pile this close to where we stand in the nether is worth the walk with the kit on, further is not on the way
     public static final int DEFERRED_REACH_BLOCKS = 300;
 
+    // a mob death this close (flat) to the nether side of the home portal: the killer is waiting where the trip comes out, and the
+    // nether stops ticking a few seconds after we leave, so it is still standing there whenever we come back. waiting cannot fix it
+    public static final int HOT_PORTAL_BLOCKS = 24;
+
     private NetherTripRules() {
+    }
+
+    // killed by a mob (not lava, not the void, something with a body did it) right by the portal: the naked trip walks out of the
+    // portal into the same crowd. no killer known (a fall, fire, an old save) is not this
+    public static boolean hotPortal(Cause cause, String killer, double pileFlatDistanceFromHome) {
+        return cause == Cause.OTHER && killer != null && !killer.isEmpty() && pileFlatDistanceFromHome <= HOT_PORTAL_BLOCKS;
     }
 
     // the pile is too far out to walk to naked

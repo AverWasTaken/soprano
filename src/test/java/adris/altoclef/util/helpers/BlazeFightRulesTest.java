@@ -32,6 +32,47 @@ public class BlazeFightRulesTest {
         assertEquals(KILL, BlazeFightRules.decide(15, false, false, true, true));
     }
 
+    // a blaze in swinging range: the 14 hp bail is four free hits on the way out, so a run only starts at 8
+    @Test
+    public void aBlazeInSwingingRangeMovesTheRunDownToEight() {
+        assertEquals(KILL, BlazeFightRules.decide(14, false, false, true, true, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(8.5f, false, false, true, true, false, true));
+        assertEquals(RUN, BlazeFightRules.decide(8, false, false, true, true, false, true));
+        // no target is nothing to swing at: the old line, never a camp in the fire
+        assertEquals(RUN, BlazeFightRules.decide(12, false, false, true, false, false, true));
+        // nothing looking still never starts one above the panic line, close or not
+        assertEquals(KILL, BlazeFightRules.decide(7, false, false, false, true, false, true));
+        assertEquals(RUN, BlazeFightRules.decide(6, false, false, false, true, false, true));
+    }
+
+    @Test
+    public void aBlazeCatchingUpDoesNotEndARunWeAreIn() {
+        assertEquals(RUN, BlazeFightRules.decide(11, true, false, true, true, false, true));
+        assertEquals(KILL, BlazeFightRules.decide(18, true, false, true, true, false, true));
+    }
+
+    @Test
+    public void pickTakesTheMostHurtOneInSwingingRange() {
+        assertEquals(-1, BlazeFightRules.pick(new double[0][]));
+        // {distance, hp}
+        assertEquals(1, BlazeFightRules.pick(new double[][]{{2, 20}, {4, 8}, {10, 2}}));
+        // a hurt one far off loses to any close one, the walk is more hits taken
+        assertEquals(0, BlazeFightRules.pick(new double[][]{{4.5, 20}, {6, 2}}));
+        // nothing close: the nearest, hp or not
+        assertEquals(1, BlazeFightRules.pick(new double[][]{{9, 2}, {6, 20}}));
+        // same hp: the nearer one
+        assertEquals(1, BlazeFightRules.pick(new double[][]{{3, 20}, {1.5, 20}}));
+    }
+
+    @Test
+    public void switchOnlyForAClearlyMoreHurtOneInSwingingRange() {
+        assertTrue(BlazeFightRules.switchTo(20, 3, 15));
+        assertFalse(BlazeFightRules.switchTo(20, 3, 15.5));
+        assertFalse(BlazeFightRules.switchTo(20, 4.6, 2));
+        // after the switch the old one is the fresh one, it would have to be a whole margin lower to win it back
+        assertFalse(BlazeFightRules.switchTo(15, 3, 20));
+    }
+
     @Test
     public void tenHpWithNothingLookingKeepsWorking() {
         assertEquals(KILL, BlazeFightRules.decide(10, false, false, false, true));

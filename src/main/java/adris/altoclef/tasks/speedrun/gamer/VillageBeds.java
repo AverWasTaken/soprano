@@ -158,6 +158,10 @@ public final class VillageBeds {
         // bed and we write down where
         // (the night bed is ours too, while it stands. a village bed is somebody else's and the tried set is a one shot)
         List<RunState.Pos> own = BedRules.ownBeds(state.spawnBed, state.nightBed, Respawn.bed(state));
+        // and the one by the nether portal: a rebuild after a nether death must not take it for a village's
+        if (state.portalBed != null) {
+            own.add(state.portalBed);
+        }
         var eye = mod.getPlayer().position();
         RunState.Pos best = BedRules.pick(beds, evidence, own, state.placedJobBlocks, state.villageBedsTried,
                 p -> usable(mod, tracker, p), eye.x, eye.y, eye.z, cfg.villageBedRadius, cfg.villageBedEvidenceRadius);

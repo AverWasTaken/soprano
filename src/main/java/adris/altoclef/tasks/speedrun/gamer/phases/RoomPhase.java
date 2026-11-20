@@ -268,6 +268,7 @@ public class RoomPhase implements PhaseHandler {
         state.strongholdRadius = 0;
         state.strongholdStart = null;
         state.roomChunksVisited.clear();
+        state.ringShore = null;
         // the throw cap is per locate attempt (the ledger starts counting from this number), the relocated try would
         // otherwise inherit whatever the first one burned and fail after a throw or two
         state.eyeThrows = 0;

@@ -78,6 +78,7 @@ public class CreeperStepTest {
     }
 
     // the user's path walks back into one we let go of: the second step is the run's job, not another lap
+    // (no position here, and an unknown spot never parks. the parked ones are further down)
     @Test
     public void anUnlitOneWeWalkBackIntoIsARun() {
         CreeperStep step = new CreeperStep();
@@ -337,6 +338,121 @@ public class CreeperStepTest {
         step.step(30, List.of(), false, Mode.NONE, true);
         assertEquals(Event.START, step.step(40, lit(8, 3), false, Mode.NONE, true));
         assertFalse(step.escalate());
+    }
+
+    // ---- parked: two dark steps from one that never moved
+
+    private static List<Seen> at(int id, boolean lit, double distance, double x, double z) {
+        return List.of(new Seen(id, lit, distance, false, lit, true, x, 64, z));
+    }
+
+    // step, let go, walk back to it. returns the step that just asked for the second go
+    private static CreeperStep pairUpTo(long second, double x, double z, boolean commitOn) {
+        CreeperStep step = new CreeperStep();
+        assertEquals(Event.START, step.step(0, at(7, false, 3, 10, 10), false, Mode.NONE, commitOn));
+        assertEquals(Event.END_UNLIT, step.step(20, at(7, false, 5.5, 10.2, 10), false, Mode.NONE, commitOn));
+        step.step(second, at(7, false, 3.5, x, z), false, Mode.NONE, commitOn);
+        return step;
+    }
+
+    @Test
+    public void aStillDarkOneParksAtTheSecondStep() {
+        CreeperStep step = pairUpTo(40, 10.3, 10.1, true);
+        assertFalse(step.active());
+        assertFalse(step.escalate());
+        assertTrue(step.parked(7));
+        assertEquals(1, step.parkedNow().size());
+        assertEquals(7, step.parkedNow().get(0).id());
+        assertEquals(Math.hypot(0.3, 0.1), step.parkedNow().get(0).moved(), 1e-9);
+        // and stays parked, in the window and long after it, no step and no fresh park line
+        assertEquals(Event.NONE, step.step(41, at(7, false, 3, 10.3, 10.1), false, Mode.NONE, true));
+        assertTrue(step.parkedNow().isEmpty());
+        assertEquals(Event.NONE, step.step(40 + CreeperStep.REPEAT_WINDOW * 5, at(7, false, 2.5, 10.5, 10.4), false, Mode.NONE, true));
+        assertFalse(step.active());
+        assertTrue(step.parked(7));
+    }
+
+    @Test
+    public void withTheCommitmentOffItParksToo() {
+        CreeperStep step = pairUpTo(40, 10, 10, false);
+        assertFalse(step.active());
+        assertTrue(step.parked(7));
+    }
+
+    @Test
+    public void aChaserStillGetsTheRun() {
+        CreeperStep step = pairUpTo(40, 11.5, 10, true);
+        assertTrue(step.active());
+        assertTrue(step.escalate());
+        assertFalse(step.parked(7));
+        assertTrue(step.parkedNow().isEmpty());
+    }
+
+    @Test
+    public void oneThatLitDuringThePairStillGetsTheRun() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, at(7, false, 3, 10, 10), false, Mode.NONE, true);
+        // a flicker of fuse mid step
+        assertEquals(Event.NONE, step.step(5, at(7, true, 4, 10, 10), false, Mode.NONE, true));
+        assertEquals(Event.END_UNLIT, step.step(20, List.of(new Seen(7, false, 5.5, false, false, true, 10, 64, 10)), false, Mode.NONE, true));
+        assertEquals(Event.START, step.step(40, at(7, false, 3.5, 10, 10), false, Mode.NONE, true));
+        assertTrue(step.escalate());
+        assertFalse(step.parked(7));
+    }
+
+    @Test
+    public void litAlwaysStepsAndLightingUnparks() {
+        CreeperStep step = pairUpTo(40, 10, 10, true);
+        assertTrue(step.parked(7));
+        assertEquals(Event.START, step.step(50, at(7, true, 3, 10, 10), false, Mode.NONE, true));
+        assertFalse(step.parked(7));
+        assertEquals(1, step.unparkedNow().size());
+        assertEquals("it lit", step.unparkedNow().get(0).why());
+        // and that pair has a lit tick in it now, so the next dark go is the run's as before
+        assertEquals(Event.END_UNLIT, step.step(70, List.of(new Seen(7, false, 5.5, false, false, true, 10, 64, 10)), false, Mode.NONE, true));
+        assertEquals(Event.START, step.step(90, at(7, false, 3.5, 10, 10), false, Mode.NONE, true));
+        assertTrue(step.escalate());
+    }
+
+    @Test
+    public void litFurtherOutUnparksWithoutAStep() {
+        CreeperStep step = pairUpTo(40, 10, 10, true);
+        assertEquals(Event.NONE, step.step(50, at(7, true, 6, 10, 10), false, Mode.NONE, true));
+        assertFalse(step.parked(7));
+        assertEquals("it lit", step.unparkedNow().get(0).why());
+    }
+
+    @Test
+    public void movingAwayFromTheSpotUnparks() {
+        CreeperStep step = pairUpTo(40, 10, 10, true);
+        // 0.9 off is still the same pit
+        assertEquals(Event.NONE, step.step(45, at(7, false, 3, 10.9, 10), false, Mode.NONE, true));
+        assertTrue(step.parked(7));
+        assertTrue(step.unparkedNow().isEmpty());
+        assertEquals(Event.NONE, step.step(50, at(7, false, 6, 11.2, 10), false, Mode.NONE, true));
+        assertFalse(step.parked(7));
+        assertEquals("it moved 1.2", step.unparkedNow().get(0).why());
+        // it can walk now, so it gets stepped from like any other
+        assertEquals(Event.START, step.step(60, at(7, false, 3, 11.2, 10), false, Mode.NONE, true));
+    }
+
+    @Test
+    public void resetForgetsTheParkedOnes() {
+        CreeperStep step = pairUpTo(40, 10, 10, true);
+        assertEquals(1, step.parkedCount());
+        step.reset();
+        assertEquals(0, step.parkedCount());
+        assertEquals(Event.START, step.step(50, at(7, false, 3, 10, 10), false, Mode.NONE, true));
+        assertFalse(step.escalate());
+    }
+
+    @Test
+    public void aParkedOneDoesNotHideAnotherCreeper() {
+        CreeperStep step = pairUpTo(40, 10, 10, true);
+        List<Seen> both = List.of(new Seen(7, false, 2.5, false, false, true, 10, 64, 10),
+                new Seen(8, false, 3.5, false, false, true, 14, 64, 10));
+        assertEquals(Event.START, step.step(50, both, false, Mode.NONE, true));
+        assertEquals(8, step.creeperId());
     }
 
     // ---- the run

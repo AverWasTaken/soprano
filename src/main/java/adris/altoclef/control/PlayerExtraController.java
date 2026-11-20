@@ -33,6 +33,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.damagesource.DamageSource;
@@ -142,12 +143,27 @@ public class PlayerExtraController {
         // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
         _mod.getEntityTracker().noteProvoked(entity);
         logPiglinsBeside(entity, now);
+        logBlazeSwing(entity);
         LegacyCombat.hit(_mod.getController(), _mod.getPlayer(), entity, InteractionHand.MAIN_HAND);
         if (legacy) {
             combat().clicker().clicked(now);
         }
         _swings++;
         return true;
+    }
+
+    // a blaze fight is short and messy, and whether the sword even went out was anyone's guess. one line per swing at a blaze,
+    // and tickHurtWatch says which of them landed. a sword swing is 12+ ticks apart, so this is its own rate limit. pre 1.9
+    // the clicker swings every few ticks and would flood it, those stay out
+    private void logBlazeSwing(Entity target) {
+        if (!(target instanceof Blaze blaze) || LegacyCombat.active()) {
+            return;
+        }
+        LocalPlayer player = _mod.getPlayer();
+        Debug.logInternal("swing: blaze #" + blaze.getId() + " at " + String.format(java.util.Locale.ROOT, "%.1f", blaze.getHealth())
+                + " hp, ours " + String.format(java.util.Locale.ROOT, "%.1f", player.getHealth()) + ", charge "
+                + String.format(java.util.Locale.ROOT, "%.2f", chargeScale()) + ", gap "
+                + String.format(java.util.Locale.ROOT, "%.1f", reachGap(player, blaze)));
     }
 
     // zombified piglins snap angry mid fight in the nether and we never knew which swing did it. one line per swing with one near, at most
@@ -566,7 +582,8 @@ public class PlayerExtraController {
                 continue;
             }
             Long was = _hurtLogged.get(mob.getId());
-            if (was != null && now - was < 20) {
+            // (a blaze gets hit every 12 ticks or so with a sword, the 20 would eat every other one)
+            if (was != null && now - was < (mob instanceof Blaze ? 8 : 20)) {
                 continue;
             }
             DamageSource source = mob.getLastDamageSource();
@@ -578,6 +595,13 @@ public class PlayerExtraController {
             // a sweep victim never went through attack(), the anger model has to hear about it from here
             if (!target) {
                 _mod.getEntityTracker().noteProvoked(mob);
+            }
+            if (mob instanceof Blaze) {
+                // the hp can be a tick behind the hurt flash, the next swing line has the settled number
+                Debug.logInternal("hurt by us: blaze #" + mob.getId() + (target ? "" : " (sweep)") + ", "
+                        + String.format(java.util.Locale.ROOT, "%.1f", mob.getHealth()) + " hp left, ours "
+                        + String.format(java.util.Locale.ROOT, "%.1f", player.getHealth()) + ", last swing " + (now - _swingAt) + " ticks ago");
+                continue;
             }
             if (!(mob instanceof ZombifiedPiglin || mob instanceof Piglin || mob instanceof Enderman)) {
                 continue;

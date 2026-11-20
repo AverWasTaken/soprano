@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -67,5 +69,18 @@ public class PlaceBedAndSetSpawnTaskTest {
     public void fourAwayIsFineThreeAwayIsNot() {
         assertFalse(PlaceBedAndSetSpawnTask.tooCloseToSpot(ORIGIN, BOX, new BlockPos(16, 60, 10), 4));
         assertTrue(PlaceBedAndSetSpawnTask.tooCloseToSpot(ORIGIN, BOX, new BlockPos(15, 60, 10), 4));
+    }
+
+    @Test
+    public void lavaNextToAnyPartOfTheDugBoxRulesTheSpotOut() {
+        // the far corner of the dig and the cell over it: the 2x1x2 spot check never looked there
+        assertTrue(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of(new BlockPos(13, 61, 12))));
+        assertTrue(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of(new BlockPos(12, 62, 12))));
+        // inside the box, and under the floor
+        assertTrue(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of(new BlockPos(12, 61, 12))));
+        assertTrue(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of(new BlockPos(11, 58, 10))));
+        // two out is behind a block we never dig
+        assertFalse(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of(new BlockPos(14, 60, 10))));
+        assertFalse(PlaceBedAndSetSpawnTask.lavaNearBox(ORIGIN, BOX, List.of()));
     }
 }

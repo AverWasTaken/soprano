@@ -50,6 +50,25 @@ public class EndPhasesTest {
     }
 
     @Test
+    public void theGearStepsThrowOnTheirOwnTally() throws Exception {
+        ShedTally beds = (ShedTally) peek("_shed");
+        ShedTally gear = (ShedTally) peek("_gearShed");
+        for (int i = 0; i < ShedTally.CAP; i++) {
+            beds.thrown();
+        }
+        // the beds spent theirs, the blocks still have all twelve, and nothing but a death hands either back
+        assertTrue(beds.spent());
+        assertFalse(gear.spent());
+        for (int i = 0; i < ShedTally.CAP; i++) {
+            gear.thrown();
+        }
+        assertTrue(peek("_gearShed") == gear);
+        prep.resetOnDeath(5);
+        assertFalse(((ShedTally) peek("_shed")).spent());
+        assertFalse(((ShedTally) peek("_gearShed")).spent());
+    }
+
+    @Test
     public void shortOnBedsNoClockGetsToUs() throws Exception {
         assertTrue(prep.stallSeconds() > 0);
         assertFalse(prep.holdsBudget());

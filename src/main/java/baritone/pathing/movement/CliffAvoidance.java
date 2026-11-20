@@ -247,6 +247,24 @@ public final class CliffAvoidance {
         return false;
     }
 
+    // how far down landsInLava keeps looking. a nether lake sits thirty blocks under the ledges around it, DEPTH stops at eight
+    public static final int DROP_DEPTH = 48;
+
+    // landsInLava over Cells, with a floor on the search: thrown into (x, y, z), do we stop in lava. open cells fall through,
+    // water or anything solid is where we stop. a column that is open past depth is a void and not lava, so false
+    public static boolean landsInLava(Cells cells, int x, int y, int z, int depth) {
+        for (int d = 0; d <= depth; d++) {
+            Cell c = cells.at(x, y - d, z);
+            if (c == Cell.LAVA) {
+                return true;
+            }
+            if (c != Cell.OPEN) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     // scanColumn's meaning over Cells: something we could stand in at y with lava below, or nothing to land on within DEPTH
     public static boolean columnUnsafe(Cells cells, int x, int y, int z) {
         Cell here = cells.at(x, y, z);

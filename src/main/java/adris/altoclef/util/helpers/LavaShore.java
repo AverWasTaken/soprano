@@ -179,14 +179,73 @@ public final class LavaShore {
         return false;
     }
 
+    // edgeNear's neighbourhood, but only the drops that end in lava, however far down (CliffAvoidance.DROP_DEPTH). edgeNear
+    // gives up at DEPTH and calls a 30 block fall "unsafe" the same as a fall onto netherrack, this one knows the lake is down there
+    public static boolean lavaDropNear(Cells cells, double ux, double uy, double uz) {
+        int cy = (int) Math.floor(uy);
+        for (double dx = -EDGE_RADIUS; dx < EDGE_RADIUS; dx += EDGE_STEP) {
+            for (double dz = -EDGE_RADIUS; dz < EDGE_RADIUS; dz += EDGE_STEP) {
+                if (Math.hypot(dx, dz) >= EDGE_RADIUS) {
+                    continue;
+                }
+                int cx = (int) Math.floor(ux + dx);
+                int cz = (int) Math.floor(uz + dz);
+                // same wall rule as edgeNear, nothing gets thrown through the head cell either
+                if (cells.at(cx, cy + 1, cz) == Cell.SOLID) {
+                    continue;
+                }
+                if (CliffAvoidance.landsInLava(cells, cx, cy, cz, CliffAvoidance.DROP_DEPTH)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // a lava ending drop in any column within r of (x, z), the knock range version (square, like lavaDeepNear)
+    static boolean lavaFallNear(Cells cells, double x, double y, double z, int r) {
+        int cx = (int) Math.floor(x);
+        int cy = (int) Math.floor(y);
+        int cz = (int) Math.floor(z);
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                if (CliffAvoidance.landsInLava(cells, cx + dx, cy, cz + dz, CliffAvoidance.DROP_DEPTH)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // "on a shore" for the walk to ground: lava within GROUND_CLEAR and DEPTH down, or a drop into lava further down than that.
+    // a ledge thirty up over a lake is a shore too, one knock off it is the same swim. used for leaving and for arriving, so a
+    // walk can't end on a cell that starts the next one
+    public static boolean shoreNear(Cells cells, double x, double y, double z) {
+        return lavaDeepNear(cells, x, y, z, GROUND_CLEAR) || lavaFallNear(cells, x, y, z, GROUND_CLEAR);
+    }
+
     // a foe this much higher than us is a climb, not a walk
     public static final double CLIMB_RISE = 2.0;
 
     // the climb guard, nether only (same as the cliff cost): a foe two or more up with a lethal drop by our spot or by its own.
     // the way up is a pillar or a cliff staircase and the top of either is a one block rim right where it hits us. it comes down
-    // instead (an angry enderman does, the rest walk), and the lava hold's wait and ban cap a foe that never does
+    // instead (an angry enderman does, the rest walk), and the lava hold's wait and ban cap a foe that never does.
+    // a drop into lava by either of us is the same deal at any height: the walk in is along a lip, and one hit off a lip into
+    // the lake is the kit gone, so that one doesn't need the rise
     public static boolean climbBlocked(boolean nether, Cells cells, double ux, double uy, double uz, double tx, double ty, double tz) {
-        return nether && ty - uy >= CLIMB_RISE && (edgeNear(cells, ux, uy, uz) || edgeNear(cells, tx, ty, tz));
+        if (!nether) {
+            return false;
+        }
+        if (ty - uy >= CLIMB_RISE && (edgeNear(cells, ux, uy, uz) || edgeNear(cells, tx, ty, tz))) {
+            return true;
+        }
+        return lavaDropNear(cells, ux, uy, uz) || lavaDropNear(cells, tx, ty, tz);
+    }
+
+    // no staring an enderman down from here: it teleports in and hits, and the hit is the trip over. an edge in the nether
+    // (where the hunt's pull stare draws the line too, PullStare.allowed), or a drop into lava in any dimension
+    public static boolean noStare(boolean nether, boolean edgeNear, boolean lavaDrop) {
+        return (nether && edgeNear) || lavaDrop;
     }
 
     // the stepping check: the knock line behind us, or a drop anywhere close
@@ -393,7 +452,7 @@ public final class LavaShore {
     }
 
     public static int[] groundCell(Cells cells, double ux, double uy, double uz, double fx, double fz, Skip skip) {
-        if (!lavaDeepNear(cells, ux, uy, uz, GROUND_CLEAR)) {
+        if (!shoreNear(cells, ux, uy, uz)) {
             return null;
         }
         int cx = (int) Math.floor(ux);
@@ -424,18 +483,21 @@ public final class LavaShore {
 
     // the floor first: most of the search box is rock or air and never gets as far as the slow questions
     public static boolean groundFit(Cells cells, int x, int y, int z, double fx, double fz) {
-        return cells.at(x, y - 1, z) == Cell.SOLID && !lavaDeepNear(cells, x + 0.5, y, z + 0.5, GROUND_CLEAR) && stepFit(cells, x, y, z, fx, fz);
+        return cells.at(x, y - 1, z) == Cell.SOLID && !shoreNear(cells, x + 0.5, y, z + 0.5) && stepFit(cells, x, y, z, fx, fz);
     }
 
     // the far bank of a channel is close as the crow flies and a lake away on foot. lineHitsLava stops one under the feet, this
-    // goes all the way down the open column like lavaBelow does
+    // goes all the way down the open column like lavaBelow does, and past DEPTH too for the crack over a deep lake
     static boolean wayCrossesLava(Cells cells, double ux, double uy, double uz, int x, int y, int z) {
         double dx = x + 0.5 - ux;
         double dz = z + 0.5 - uz;
         int steps = Math.max(1, (int) Math.ceil(Math.hypot(dx, dz) / STEP));
         for (int i = 0; i <= steps; i++) {
             double t = (double) i / steps;
-            if (lavaBelow(cells, (int) Math.floor(ux + dx * t), (int) Math.floor(uy + (y - uy) * t), (int) Math.floor(uz + dz * t))) {
+            int cx = (int) Math.floor(ux + dx * t);
+            int cy = (int) Math.floor(uy + (y - uy) * t);
+            int cz = (int) Math.floor(uz + dz * t);
+            if (lavaBelow(cells, cx, cy, cz) || CliffAvoidance.landsInLava(cells, cx, cy, cz, CliffAvoidance.DROP_DEPTH)) {
                 return true;
             }
         }

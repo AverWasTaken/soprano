@@ -68,6 +68,9 @@ public class RunState {
 
     // end portal
     public Pos endPortalCenter;
+    // the dry column the room search dug down from to reach a ring under the sea. the tracker's last dry land moves on as soon as we
+    // stand in the shaft, and the portal dig after an end death wants the same way in. y is where we stand on it
+    public Pos ringShore;
     public int framesFilled;
     public boolean endPortalOpened;
     // OPEN has read all 12 frames at least once, so framesFilled is a real count and not the zero it starts as
@@ -82,6 +85,9 @@ public class RunState {
     public String respawnDim = "OVERWORLD";
     // the bed we put down for the night (NightSleep) and have not picked up yet. not the spawn bed, and never a village's
     public Pos nightBed;
+    // the bed by the overworld nether portal that once held our respawn (PortalBedStep). the night can move the spawn off it, the
+    // next way into the nether clicks it again, and the bed collectors leave it alone (Respawn.keepsBed)
+    public Pos portalBed;
 
     // gear we left lying in the End (item registry name -> count), replaces BM2's cache so a death there does not re-craft it
     public Map<String, Integer> endDrops = new HashMap<>();
@@ -172,6 +178,9 @@ public class RunState {
         public String phase;
         // "lava", "void" or "other" (NetherTripRules.Cause). an old save has no key and reads null, which is just "unknown"
         public String cause;
+        // registry path of what killed us ("piglin_brute", "wither_skeleton"), null = nothing with a body, or an old save from
+        // before it was written down. DeathZones keeps the zones of the bad ones around for longer
+        public String killer;
     }
 
     // a walk back into the nether for the pile a nether death left behind (NetherRecoverTask). stage is a NetherTripRules.Stage
@@ -224,6 +233,8 @@ public class RunState {
     public List<Pos> fortressExhausted = new ArrayList<>();
     // warped forests the walk never reached, same idea
     public List<Pos> warpedExhausted = new ArrayList<>();
+    // forests we hunted for the whole no-pearl clock and got nothing, wider than warpedExhausted (see WARPED_DRY_BLOCKS)
+    public List<Pos> warpedDry = new ArrayList<>();
 
     // w6
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed

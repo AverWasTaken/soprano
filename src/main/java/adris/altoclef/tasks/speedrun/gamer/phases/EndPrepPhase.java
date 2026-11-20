@@ -30,6 +30,8 @@ import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.end.EndPortalWalk;
+import adris.altoclef.tasks.speedrun.gamer.end.LipSteer;
 import adris.altoclef.tasks.speedrun.gamer.end.ShedTally;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PortalDig;
 import adris.altoclef.tasksystem.Task;
@@ -54,6 +56,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 // overworld, portal open. the beds (EndGear.mayEnter is the law, the search has no give up), a spawn bed by the portal, the gear
@@ -67,9 +70,13 @@ public class EndPrepPhase implements PhaseHandler {
     // the spawn bed task finished and noteSpawnSet has read it, once per visit (the task stays finished)
     private boolean _spawnNoted;
     private Task _enterPortal;
+    private final LipSteer _lip = new LipSteer();
     private Task _buildBlocks;
     private Task _food;
     private boolean _topUpSaid;
+    // the top-up's last line and the batch wait's, once each
+    private boolean _topUpOverSaid;
+    private boolean _batchSaid;
     private int _foodTarget;
     private Task _toPortal;
     private BlockPos _toPortalAt;
@@ -96,6 +103,8 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _bedMine;
     private int _bedMineTail;
     private ShedTally _shed = new ShedTally();
+    // the gear steps' own throws: sharing the bed errand's twelve meant the beds spent them all and the blocks got none
+    private ShedTally _gearShed = new ShedTally();
     private String _hudState;
     // the gap the last gate line named, so a line goes out only when it changes
     private String _lastGate;
@@ -176,6 +185,8 @@ public class EndPrepPhase implements PhaseHandler {
         _bedMine = null;
         _bedMineTail = 0;
         _shed = new ShedTally();
+        // only here, not when the gate flips: blocks and food flap back and forth and the tally is the only thing bounding the throws
+        _gearShed = new ShedTally();
         _armorTicks = 0;
         _armorGaveUp = false;
         _armorTask = null;
@@ -236,7 +247,9 @@ public class EndPrepPhase implements PhaseHandler {
     private void ensureTasks() {
         if (_setSpawn == null) {
             _setSpawn = new PlaceBedAndSetSpawnTask();
-            _enterPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above()), Blocks.END_PORTAL);
+            // only the middle block, see EndPortalWalk.interior
+            _enterPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above()),
+                    blockPos -> EndPortalWalk.interiorIn(AltoClef.getInstance(), blockPos), Blocks.END_PORTAL);
         }
     }
 
@@ -266,7 +279,8 @@ public class EndPrepPhase implements PhaseHandler {
         noteErrandBlocks(mod, state);
         noteShort(mod, ctx, bedsToGet(ctx, cfg));
         Task step = bedStep(mod, ctx, cfg);
-        if (step == null) {
+        boolean gear = step == null;
+        if (gear) {
             step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
         // the last word before the portal, and it reads the bag: "nothing left to do" is never permission to go in short. the spawn
@@ -274,8 +288,9 @@ public class EndPrepPhase implements PhaseHandler {
         int bag = ctx.facts().bedsInBag();
         if (step == null && !EndGear.mayEnter(bag, cfg)) {
             step = bedErrand(mod, ctx, cfg.beds - bag);
+            gear = false;
         }
-        step = foodFirstThenCount(ctx, cfg, gap, step);
+        step = foodFirstThenCount(mod, ctx, cfg, gap, step, gear);
         noteGateOpen(mod, step == null, bag);
         _walkingIn = step == null;
         _farWalk = (step == null || step == _toPortal) && _errandBlocks > cfg.farErrandBlocks;
@@ -313,13 +328,16 @@ public class EndPrepPhase implements PhaseHandler {
         _spareAt = spareOnly && !waived ? at : null;
         noteShort(mod, ctx, lacking);
         Task step = lacking > 0 ? bedErrand(mod, ctx, lacking) : waived ? spareOnFloor(mod) : null;
-        if (step == null && gearToo) {
+        boolean gear = step == null && gearToo;
+        if (gear) {
             step = gearStep(mod, ctx, cfg, gap, armorFloor);
         }
         if (topUpsNow(step, gearToo)) {
             step = topUpStep(ctx, cfg);
+        } else if (step == null && !gearToo) {
+            noteTopUpOver(ctx, "the prep's cap");
         }
-        return foodFirstThenCount(ctx, cfg, gap, step);
+        return foodFirstThenCount(mod, ctx, cfg, gap, step, gear);
     }
 
     // last in line: the beds and the gear went first, and gearToo going false (the cap) ends this along with the gear
@@ -332,7 +350,16 @@ public class EndPrepPhase implements PhaseHandler {
     private Task topUpStep(GamerContext ctx, EndConfig cfg) {
         FoodPlan food = ctx.food();
         GamerFacts f = ctx.facts();
-        if (!EndGear.wantsTopUp(food.shortOfEnd(cfg.wantFoodUnits), f.bagFull(), FoodDry.defers(f.foodDryLatched(), f.preyNear()))) {
+        String end = EndGear.topUpEnd(food.shortOfEnd(cfg.wantFoodUnits), f.bagFull(), FoodDry.defers(f.foodDryLatched(), f.preyNear()));
+        if (end != null) {
+            if (EndGear.waitsForBatch(_topUpSaid, batchCooking())) {
+                if (!_batchSaid) {
+                    _batchSaid = true;
+                    ctx.log("room: food top-up is done (" + end + ") but our batch is still in the smoker, waiting for it");
+                }
+                return _food;
+            }
+            noteTopUpOver(ctx, end);
             return null;
         }
         if (!_topUpSaid) {
@@ -340,6 +367,20 @@ public class EndPrepPhase implements PhaseHandler {
             ctx.log("room: topping food up from " + (food.held() - food.pending()) + ", want " + cfg.wantFoodUnits);
         }
         return foodStep(ctx, cfg.wantFoodUnits);
+    }
+
+    private boolean batchCooking() {
+        // no isFinished here: the bag reaching the target mid batch is exactly when the rest of it would get left behind, and a
+        // finished CollectFoodTask that is still returned keeps ticking its cook
+        return _food instanceof CollectFoodTask collect && collect.isActive() && collect.cooking();
+    }
+
+    // only for a top-up that really ran, the prep asks this every tick before it ever starts
+    private void noteTopUpOver(GamerContext ctx, String why) {
+        if (_topUpSaid && !_topUpOverSaid) {
+            _topUpOverSaid = true;
+            ctx.log("room: food top-up over at " + (ctx.food().held() - ctx.food().pending()) + ", " + why);
+        }
     }
 
     private boolean spareWaived(AltoClef mod, GamerContext ctx, EndConfig cfg, BlockPos at) {
@@ -370,13 +411,15 @@ public class EndPrepPhase implements PhaseHandler {
         _errandBlocks = portal == null ? 0 : Math.hypot(mod.getPlayer().getX() - portal.getX(), mod.getPlayer().getZ() - portal.getZ());
     }
 
-    private Task foodFirstThenCount(GamerContext ctx, EndConfig cfg, EndGear.Gap gap, Task picked) {
+    // gear = picked came from gearStep, the beds are done and the food may throw spare wool to fit (shedForGear)
+    private Task foodFirstThenCount(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap, Task picked, boolean gear) {
         Task step = picked;
         // a far errand eats the food on the way, so the food floor comes first (the gear steps go on the same rule: far from the
-        // portal is far, whatever the errand). the walk back and the spawn bed are the way home, food does not replace them
-        if (step != null && step != _food
+        // portal is far, whatever the errand). the walk back and the spawn bed are the way home, food does not replace them. a
+        // throw for room neither: it's a tick or two, and the food would land in that slot too
+        if (step != null && step != _food && !(step instanceof EnsureFreeInventorySlotTask)
                 && EndGear.foodFirst(gap.food(), _errandBlocks, cfg.farErrandBlocks, step == _toPortal || step == _setSpawn)) {
-            step = foodStep(ctx);
+            step = gear ? shedForGear(mod, cfg, "food", foodStep(ctx)) : foodStep(ctx);
         }
         // the clock counts ticks the step really ran: a far errand hands the tick to the food, and the bench sweep in GamerTask
         // can swap us out for a pickup (that stops the task, so it is not active anymore)
@@ -512,6 +555,17 @@ public class EndPrepPhase implements PhaseHandler {
     // beds don't stack, so every one the errand finds needs a slot of its own and a full bag means it never lands. stacks out until
     // ShedTally.FREE slots are, then back to the errand. no clock on any of this, the tally bounds the throws and only the throws
     private Task shedForBeds(AltoClef mod, EndConfig cfg) {
+        return shedFor(mod, _shed, "beds", view -> view.shed(cfg.minBuildBlocks));
+    }
+
+    // the gear steps pick up blocks and food and both need a slot to land in, the garbage pick calls nothing in an END_PREP bag
+    // junk so nobody else makes one. step = the gear task that runs when there's room
+    private Task shedForGear(AltoClef mod, EndConfig cfg, String what, Task step) {
+        Task shed = shedFor(mod, _gearShed, what, view -> view.shedGear(cfg.buildBlocks));
+        return shed != null ? shed : step;
+    }
+
+    private Task shedFor(AltoClef mod, ShedTally tally, String forWhat, Function<StorageHelper.GarbageView, StorageHelper.Room> pick) {
         int free = StorageHelper.freeBagSlots(mod);
         if (!ShedTally.wanted(free)) {
             return null;
@@ -520,30 +574,29 @@ public class EndPrepPhase implements PhaseHandler {
         if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
             return null;
         }
-        if (_shed.spent()) {
-            if (_shed.sayCap()) {
-                Debug.logInternal("endprep: threw " + ShedTally.CAP + " stacks for beds and the bag is full again, leaving it be");
+        if (tally.spent()) {
+            if (tally.sayCap()) {
+                Debug.logInternal("endprep: threw " + ShedTally.CAP + " stacks for " + forWhat + " and the bag is full again, leaving it be");
             }
             return null;
         }
         StorageHelper.GarbageView view = StorageHelper.garbageView(mod);
-        StorageHelper.Room room = view.shed(cfg.minBuildBlocks);
+        StorageHelper.Room room = pick.apply(view);
         if (room.kind() != DropRoom.Kind.EVICT) {
             // one slot still takes a bed, that's only worth a line when the bag is really full
-            if (free == 0 && _shed.sayStuck()) {
-                Debug.logInternal("endprep: full bag and nothing may go for beds: " + view.dump());
+            if (free == 0 && tally.sayStuck()) {
+                Debug.logInternal("endprep: full bag and nothing may go for " + forWhat + ": " + view.dump());
             }
             return null;
         }
-        if (_shed.first()) {
-            Debug.logInternal("endprep: first throw for beds, bag: " + view.dump());
+        if (tally.first()) {
+            Debug.logInternal("endprep: first throw for " + forWhat + ", bag: " + view.dump());
         }
-        ShedTally tally = _shed;
         String what = ItemHelper.stripItemName(room.victim().getItem()) + " x" + room.victim().getCount();
-        _hudState = "Full bag: throwing " + what + " for beds";
+        _hudState = "Full bag: throwing " + what + " for " + forWhat;
         return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim(), () -> {
             tally.thrown();
-            Debug.logInternal("endprep: threw " + what + " for beds");
+            Debug.logInternal("endprep: threw " + what + " for " + forWhat);
         });
     }
 
@@ -581,10 +634,11 @@ public class EndPrepPhase implements PhaseHandler {
         return bedOk(mod, p) && WorldHelper.canBreak(mod, p);
     }
 
-    // any distance, but not the bed we respawn at, not one way down low, and not one on copper (that's a trial chamber, CollectBedTask
-    // blacklists those too)
+    // any distance, but not the bed we respawn at, not the one by the nether portal (a walk back across the map for one bed, and
+    // the errand buys that one back from sheep instead), not one way down low, and not one on copper (that's a trial chamber,
+    // CollectBedTask blacklists those too)
     private static boolean bedOk(AltoClef mod, BlockPos p) {
-        return !Respawn.isSpawnBed(p.getX(), p.getY(), p.getZ())
+        return !Respawn.keepsBed(p.getX(), p.getY(), p.getZ())
                 && !EndGear.bedTooLow(p.getY())
                 && !ArrayUtils.contains(ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS), mod.getWorld().getBlockState(p.below()).getBlock());
     }
@@ -714,13 +768,13 @@ public class EndPrepPhase implements PhaseHandler {
         }
         Task blocks = blocksStep(mod, cfg, gap);
         if (blocks != null) {
-            return blocks;
+            return shedForGear(mod, cfg, "blocks", blocks);
         }
         if (!wear.isEmpty()) {
             _hudState = "Putting on armor";
             return _equip.computeIfAbsent(wear.get(0), piece -> new EquipArmorTask(piece));
         }
-        return gap.food() ? foodStep(ctx) : null;
+        return gap.food() ? shedForGear(mod, cfg, "food", foodStep(ctx)) : null;
     }
 
     private Task foodStep(GamerContext ctx) {
@@ -793,7 +847,8 @@ public class EndPrepPhase implements PhaseHandler {
             return dig;
         }
         _hudState = "Walking into the End portal";
-        return _enterPortal;
+        Task steer = _lip.tick(mod, ctx);
+        return steer != null ? steer : _enterPortal;
     }
 
     private Task catalogueItem(Item item) {

@@ -25,7 +25,9 @@ import adris.altoclef.tasks.speedrun.gamer.end.DragonLogGate;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonStrat;
 import adris.altoclef.tasks.speedrun.gamer.end.EndDropCache;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.end.EndPortalWalk;
 import adris.altoclef.tasks.speedrun.gamer.end.EndRules;
+import adris.altoclef.tasks.speedrun.gamer.end.LipSteer;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -75,6 +77,7 @@ public class DragonPhase implements PhaseHandler {
     private final Map<Item, Task> _equip = new HashMap<>();
     // built in init, not here: the pure parts (isDone, regressTo) get tested with no game and no task machinery
     private Task _exitPortal;
+    private final LipSteer _lip = new LipSteer();
     private Task _bridge;
     private MineAndCollectTask _endStone;
     private Task _runAway;
@@ -164,7 +167,10 @@ public class DragonPhase implements PhaseHandler {
             _drops = new EndDropCache(cfg.dropEmptyWaitSeconds);
             _bedTask = new KillEnderDragonWithBedsTask(new WaitForDragonAndPearlTask(true));
             _swordTask = new KillEnderDragonTask();
-            _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false), Blocks.END_PORTAL);
+            // one of the four blocks off the pillar's corners, the rim's above cells let us stand on the bedrock half over the
+            // portal and call it arrived (see EndPortalWalk.interior, LipSteer for the corner that still can)
+            _exitPortal = new DoToClosestBlockTask(blockPos -> new GetToBlockTask(blockPos.above(), false),
+                    blockPos -> EndPortalWalk.interiorIn(AltoClef.getInstance(), blockPos), Blocks.END_PORTAL);
             _bridge = new GetToXZTask(BRIDGE_X, 0);
             _endStone = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 64), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD)
                     .onlyWhere(p -> closeEndStone(AltoClef.getInstance(), p))
@@ -234,7 +240,7 @@ public class DragonPhase implements PhaseHandler {
 
         Task step = breathStep(mod);
         if (step == null) {
-            step = dead ? exitStep(mod) : fightPrepStep(mod, ctx, dt, now);
+            step = dead ? exitStep(mod, ctx) : fightPrepStep(mod, ctx, dt, now);
         }
         if (step != null || dead) {
             return step;
@@ -336,11 +342,13 @@ public class DragonPhase implements PhaseHandler {
     }
 
     // dragon dead: into the exit portal as soon as it exists
-    private Task exitStep(AltoClef mod) {
+    private Task exitStep(AltoClef mod, GamerContext ctx) {
         if (exitPortalExists(mod)) {
             _walkWanted = true;
             _hudState = "Walking into the exit portal";
-            return _exitPortal;
+            // a last diagonal off a ring corner can still leave us on the bedrock in the goal cell, nothing else here would notice
+            Task steer = _lip.tick(mod, ctx);
+            return steer != null ? steer : _exitPortal;
         }
         _hudState = "Waiting for the exit portal";
         return null;

@@ -13,7 +13,9 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -47,12 +49,25 @@ public class KillEnderDragonWithBedsTask extends Task {
     private static final int EXIT_PORTAL_RADIUS = 8;
     // an enderman this close is on us, so mob defense may deal with it even mid bed
     private static final double HOLD_STAND_MELEE = 3;
+    // a landing with the dragon this low for the beds we have is nearly won, and an enderman fight hands it the rest of the landing
+    // to heal in. a click on the pillar does well over PillarBed's 14, so 25 a bed
+    static final int NEARLY_WON_PER_BED = 25;
+    // and never over this: a full bag reads as nearly won at full hp by the beds alone, and a fresh dragon is still a shielded
+    // mob defense job
+    static final float NEARLY_WON_CAP = 80;
+    // the latch only counts while we're the ones ticking the landing. paused or stopped this long and it's gone, so it can't
+    // ride a pause (the exclusions stay handed over) or wake up on the next landing
+    static final long NEARLY_WON_FRESH_TICKS = 40;
+    // the enderman gets ignored down to this (absorption counted). its punches are ~4 and a shove, under this we fight it again
+    static final double NEARLY_WON_MIN_HP = 12;
     // a cloud this close while landing is what the landing gets blamed on
     private static final double CLOUD_BLAME_RANGE = 8;
     // something this slow is fine a couple of times a second
     private static final int CLOUD_CELL_TICKS = 10;
     // a landing is 10 s of everything happening at once, this is how we read it afterwards
     private static final int TRACE_TICKS = 5;
+    // clouds this far from the stand can't touch it or any hold spot PillarBed.holdSpot would pick
+    private static final double CLOUD_HOLD_RANGE = 40;
 
     private final Task _whenNotPerchingTask;
     // instance state: this used to be two statics shared by every instance (and Playground), reset only in onStart
@@ -65,6 +80,14 @@ public class KillEnderDragonWithBedsTask extends Task {
     private boolean _perching;
     // landing: mob defense does not pull us off for an enderman then
     private volatile boolean _holdStand;
+    // this landing got to nearlyWon once. latched until the landing ends: the dragon healing back over the line or the bed being
+    // gone between the click and the next place doesn't make it any less worth finishing
+    private volatile boolean _nearlyWon;
+    private volatile long _landingTick = Long.MIN_VALUE / 2;
+    private boolean _endermanSaid;
+    // for the log line, read off the tick thread's last look
+    private volatile float _dragonHp;
+    private volatile int _bedsNow;
     private AltoClef _mod;
 
     private Task _standWalk;
@@ -72,6 +95,10 @@ public class KillEnderDragonWithBedsTask extends Task {
     private String _placeLog;
     // a copy the path thread can read while we rebuild it
     private volatile Set<BlockPos> _cloudCells = Set.of();
+    // the cloud we last said we're waiting on, and whether this landing was already called off, so each gets one line
+    private int _heldCloud = -1;
+    private Vec3 _holdSpot;
+    private boolean _skipLogged;
 
     public KillEnderDragonWithBedsTask(IDragonWaiter notPerchingOverride) {
         _whenNotPerchingTask = (Task) notPerchingOverride;
@@ -105,6 +132,9 @@ public class KillEnderDragonWithBedsTask extends Task {
         // and off the aura too, like the sword task: an excluded mob is the aura's otherwise, and a swing turns the head in the
         // middle of aiming a bed
         mod.getBehaviour().addForceFieldExclusion(KillEnderDragonTask::calmDragonFightEntity);
+        // and the enderman we let punch us on a nearly won landing: an aura swing is a sword in hand and a head turned away from
+        // east, both of which the next bed has to undo first
+        mod.getBehaviour().addForceFieldExclusion(this::spareFromAura);
         // paths go around the clouds. through them, the dodge just yanks us straight back out
         mod.getBehaviour().avoidWalkingThrough(p -> _cloudCells.contains(p));
     }
@@ -185,6 +215,18 @@ public class KillEnderDragonWithBedsTask extends Task {
         ((IDragonWaiter) _whenNotPerchingTask).setPerchState(landing);
         _perching = landing;
         _holdStand = landing;
+        int beds = bedsLeft(mod);
+        long tick = mod.getWorld().getGameTime();
+        boolean fresh = latchFresh(tick, _landingTick);
+        _nearlyWon = nearlyWon(_nearlyWon && fresh, landing, dragon.getHealth(), beds);
+        _dragonHp = dragon.getHealth();
+        _bedsNow = beds;
+        if (landing) {
+            _landingTick = tick;
+        }
+        if (!landing || !fresh) {
+            _endermanSaid = false;
+        }
         mod.getFoodChain().shouldStop(landing);
 
         LocalPlayer player = mod.getPlayer();
@@ -210,6 +252,23 @@ public class KillEnderDragonWithBedsTask extends Task {
             _standWalk = null;
             walking = false;
         }
+        if (!landing) {
+            _skipLogged = false;
+        }
+        // a sat dragon is the ring's either way, its own breath is right where it sits
+        if (!sat) {
+            List<AreaEffectCloud> near = cloudsNear(mod, stand);
+            List<PillarBed.Cloud> clouds = new ArrayList<>(near.size());
+            for (AreaEffectCloud c : near) {
+                clouds.add(new PillarBed.Cloud(c.getX(), c.getZ(), c.getRadius()));
+            }
+            if (PillarBed.cloudOnStand(stand, clouds)) {
+                _standWalk = null;
+                return holdOffStand(mod, stand, near, clouds, landing, now.getPhase());
+            }
+        }
+        _heldCloud = -1;
+        _holdSpot = null;
         // a hop on the stand isn't worth a walk, the click still waits for covered
         switch (PillarBed.step(sat, landing, fightHere || atStand && !walking, bedDown)) {
             case RING -> {
@@ -248,6 +307,55 @@ public class KillEnderDragonWithBedsTask extends Task {
             }
         }
         return null;
+    }
+
+    // a cloud on the stand: walking there is walking into it, landing or not. sit it out at the nearest spot clear of every cloud
+    // and take the next landing, a skipped one costs a minute and a bed in the breath costs the fight
+    private Task holdOffStand(AltoClef mod, BlockPos stand, List<AreaEffectCloud> near, List<PillarBed.Cloud> clouds, boolean landing,
+                              EnderDragonPhase<?> phase) {
+        // nothing to hold the stand for, so endermen and food are back on
+        _holdStand = false;
+        mod.getFoodChain().shouldStop(false);
+        for (int i = 0; i < near.size(); i++) {
+            if (PillarBed.cloudOnStand(stand, List.of(clouds.get(i)))) {
+                if (near.get(i).getId() != _heldCloud) {
+                    _heldCloud = near.get(i).getId();
+                    Debug.logInternal(String.format("pillar bed: cloud on the stand (r=%.1f at %.1f %.1f), waiting for it to clear",
+                            clouds.get(i).radius(), clouds.get(i).x(), clouds.get(i).z()));
+                }
+                break;
+            }
+        }
+        if (landing && !_skipLogged) {
+            _skipLogged = true;
+            Debug.logInternal("pillar bed: cloud on the stand, skipping this landing, phase " + phase);
+        }
+        setDebugState("Cloud on the pillar, holding off", "Waiting for the breath to clear");
+        LocalPlayer player = mod.getPlayer();
+        // already out of reach of every cloud at its full size: stay. the breath run lets go a few blocks past a fresh cloud's
+        // rim, which is inside where it grows to, so that spot doesn't count
+        if (PillarBed.clearOfClouds(player.getX(), player.getZ(), clouds)) {
+            return null;
+        }
+        if (_holdSpot == null || !PillarBed.holds(_endPortalTop, _holdSpot.x, _holdSpot.z, clouds)) {
+            _holdSpot = PillarBed.holdSpot(_endPortalTop, clouds, player.getX(), player.getZ());
+        }
+        // (nowhere clear: stay put, the breath dodge has us if it reaches)
+        if (_holdSpot == null) {
+            return null;
+        }
+        // the block itself, anywhere on it is still clear (holdSpot's margin is wider than clearOfClouds')
+        return new GetToXZTask((int) Math.floor(_holdSpot.x), (int) Math.floor(_holdSpot.z));
+    }
+
+    private static List<AreaEffectCloud> cloudsNear(AltoClef mod, BlockPos stand) {
+        List<AreaEffectCloud> near = new ArrayList<>();
+        for (AreaEffectCloud cloud : mod.getEntityTracker().getTrackedEntities(AreaEffectCloud.class)) {
+            if (cloud.getRadius() > 0 && Math.hypot(cloud.getX() - stand.getX() - 0.5, cloud.getZ() - stand.getZ() - 0.5) < CLOUD_HOLD_RANGE) {
+                near.add(cloud);
+            }
+        }
+        return near;
     }
 
     // from the stand the crosshair only grazes the pillar's top face, so an aimed click needs a jump and a lucky frame. sent
@@ -343,11 +451,57 @@ public class KillEnderDragonWithBedsTask extends Task {
     }
 
     // mob defense skips what the fight owns, and an angry enderman too while we go for a bed (unless it is already on us,
-    // then it is a fight like any other)
+    // then it is a fight like any other, except on a nearly won landing with health to spare)
     private boolean ownedOrHeld(Entity entity) {
         if (KillEnderDragonTask.ownedByTheDragonFight(entity)) return true;
         if (!_holdStand || !(entity instanceof Enderman)) return false;
-        return _mod == null || _mod.getPlayer() == null || entity.distanceTo(_mod.getPlayer()) > HOLD_STAND_MELEE;
+        if (_mod == null || _mod.getPlayer() == null) return true;
+        LocalPlayer player = _mod.getPlayer();
+        double gap = entity.distanceTo(player);
+        boolean hold = holdEnderman(_holdStand, nearlyWonNow(), player.getHealth() + player.getAbsorptionAmount(), gap);
+        if (hold && gap <= HOLD_STAND_MELEE && !_endermanSaid) {
+            _endermanSaid = true;
+            Debug.logInternal(String.format("pillar bed: dragon at %.0f with %d beds, ignoring the enderman (gap %.2f)", _dragonHp, _bedsNow, gap));
+        }
+        return hold;
+    }
+
+    private boolean spareFromAura(Entity entity) {
+        if (!(entity instanceof Enderman) || _mod == null || _mod.getPlayer() == null) return false;
+        LocalPlayer player = _mod.getPlayer();
+        return auraSparesEnderman(_holdStand, nearlyWonNow(), player.getHealth() + player.getAbsorptionAmount());
+    }
+
+    private boolean nearlyWonNow() {
+        return _nearlyWon && _mod != null && _mod.getWorld() != null && latchFresh(_mod.getWorld().getGameTime(), _landingTick);
+    }
+
+    // (a clock that went backwards is not fresh either)
+    static boolean latchFresh(long now, long lastLandingTick) {
+        return now >= lastLandingTick && now - lastLandingTick <= NEARLY_WON_FRESH_TICKS;
+    }
+
+    // the aura leaves endermen alone exactly while the nearly won hold is on, whatever the gap. under the hp floor it swings again
+    static boolean auraSparesEnderman(boolean holdStand, boolean nearlyWon, double ourHp) {
+        return holdStand && nearlyWon && ourHp > NEARLY_WON_MIN_HP;
+    }
+
+    // on once the dragon is at or under NEARLY_WON_PER_BED a bed (and NEARLY_WON_CAP) during a landing, off with the landing. no beds
+    // is never nearly won
+    static boolean nearlyWon(boolean was, boolean landing, float dragonHp, int bedsLeft) {
+        if (!landing) {
+            return false;
+        }
+        return was || bedsLeft > 0 && dragonHp <= Math.min(bedsLeft * NEARLY_WON_PER_BED, NEARLY_WON_CAP);
+    }
+
+    // keep the enderman out of mob defense: far off while we hold the stand (as always), or on us when the landing is nearly won
+    // and we can take its punches
+    static boolean holdEnderman(boolean holdStand, boolean nearlyWon, double ourHp, double gap) {
+        if (!holdStand) {
+            return false;
+        }
+        return gap > HOLD_STAND_MELEE || nearlyWon && ourHp > NEARLY_WON_MIN_HP;
     }
 
     @Override

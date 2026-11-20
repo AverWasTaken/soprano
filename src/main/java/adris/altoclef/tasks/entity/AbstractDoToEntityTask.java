@@ -435,6 +435,13 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return false;
         }
         var us = mod.getPlayer();
+        // a stared one teleports in and hits, and on a rim that hit is the trip over the edge. same rule as the hunt's pull
+        // stare (PullStare.allowed): no stare from an edge in the nether, and from a drop into lava nowhere
+        Cells rimCells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        if (LavaShore.noStare(WorldHelper.getCurrentDimension() == Dimension.NETHER, LavaShore.edgeNear(rimCells, us.getX(), us.getY(), us.getZ()),
+                LavaShore.lavaDropNear(rimCells, us.getX(), us.getY(), us.getZ()))) {
+            return false;
+        }
         int angryNow = 0;
         for (Enderman other : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
             if (other.isAlive() && other.isCreepy()) {
@@ -524,7 +531,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private boolean onShore(AltoClef mod, Entity entity) {
         var us = mod.getPlayer();
         // arrived, or out of walk: a swing tick never reaches groundWalk, and a cell left over here reads as a walk still on
-        if (rim(mod, entity).groundTicks >= GROUND_WALK_TICKS || !LavaShore.lavaDeepNear(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
+        if (rim(mod, entity).groundTicks >= GROUND_WALK_TICKS || !LavaShore.shoreNear(CliffAvoidance.of(mod.getClientBaritone().bsi), us.getX(), us.getY(), us.getZ())) {
             _groundCell = null;
             return false;
         }
@@ -544,7 +551,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return null;
         }
         // (no line for these two: every wait of every kill task asks, lava or not)
-        if (!rimFoe(mod, entity, Double.MAX_VALUE) || !LavaShore.lavaDeepNear(cells, us.getX(), us.getY(), us.getZ(), LavaShore.GROUND_CLEAR)) {
+        if (!rimFoe(mod, entity, Double.MAX_VALUE) || !LavaShore.shoreNear(cells, us.getX(), us.getY(), us.getZ())) {
             _groundCell = null;
             return null;
         }

@@ -48,6 +48,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
 import adris.altoclef.tasks.speedrun.gamer.tasks.PearlHuntTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.PearlWalkWall;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RodsWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.StrongholdScan;
 import adris.altoclef.tasks.speedrun.gamer.tasks.WalkProgress;
@@ -184,8 +185,9 @@ public class NetherPhase implements PhaseHandler {
     private long tripStartTick;
     private long tripGainTick;
     private int tripBestUnits;
-    // where this trip ends (FoodTripRules.tripEndUnits), 0 = the plan's stop
-    private int tripEndUnits;
+    // past this many units the rising hold lets go of the trip clock (FoodTripRules.holdCapUnits). the trip itself hunts to the
+    // plan's stop
+    private int tripHoldCap;
     // some part of a food trip is going on right now (the nether walk home, the overworld half, the walk back down)
     private boolean tripAway;
     // when the trip left the nether (foodTripStart is re-stamped once we are up top): the whole trip is paused out of the rods budget
@@ -255,6 +257,9 @@ public class NetherPhase implements PhaseHandler {
     private int lastPearls;
     private double huntWanderSince = -1;
     private double huntSeen = -1;
+    // the forest the no-pearl clock is counting for. a new one gets the full clock, or a forest found late in the last
+    // one's count would be written off for good after a few minutes
+    private RunState.Pos huntClockFor;
     private double barterSpent;
     private double barterTickAt = -1;
     private int lastHurt;
@@ -384,7 +389,7 @@ public class NetherPhase implements PhaseHandler {
         lastUnsafeTick = -1;
         foodTripUp = false;
         lastTripUnits = -1;
-        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.tripFoodShort(ctx, tripEndUnits) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
+        if (FoodTripRules.resume(upTop, tripWasUp, tripResumed, FoodFloor.tripFoodShort(ctx) || (keptBlocks && FoodFloor.blocksShort(ctx)))) {
             // same trip, same budget: nothing is counted. once per trip, so a hunt that stalls for some other reason still
             // gets handed back to the retry rules after one more go. the clock starts over because the phase's did
             tripResumed = true;
@@ -441,6 +446,7 @@ public class NetherPhase implements PhaseHandler {
         warpedSearchOver = false;
         huntWanderSince = -1;
         huntSeen = -1;
+        huntClockFor = null;
         barterSpent = 0;
         barterTickAt = -1;
         hudState = null;
@@ -498,7 +504,7 @@ public class NetherPhase implements PhaseHandler {
                     tripStartUnits = FoodTripRules.units(ctx.food());
                     foodPickup.reset();
                 }
-                // over when nothing is short any more: food in the bag at the overworld minimum (what is still cooking is not in
+                // over when nothing is short any more: food in the bag at the plan's trip stop (what is still cooking is not in
                 // it) and, on a blocks trip, the entry stack held. a kill or a pickup raises the count, and the hunt is the one
                 // thing up here that should keep the watchdog quiet
                 int units = FoodTripRules.units(ctx.food());
@@ -518,10 +524,10 @@ public class NetherPhase implements PhaseHandler {
                     hudState = foodPickup.hud() == null ? "Collecting the food we cooked" : foodPickup.hud();
                     return cooked;
                 }
-                Task hunt = foodFloor.tickTrip(ctx, tripBlocks, tripEndUnits);
+                Task hunt = foodFloor.tickTrip(ctx, tripBlocks);
                 long gameNow = ctx.facts().gameTime();
                 if (!FoodTripRules.tripOver(hunt != null, GameClock.since(tripStartTick, gameNow) / 20.0, tripSeconds,
-                        GameClock.since(tripGainTick, gameNow) / 20.0)) {
+                        GameClock.since(tripGainTick, gameNow) / 20.0, units >= tripHoldCap)) {
                     hudState = foodFloor.hud();
                     return hunt;
                 }
@@ -728,7 +734,7 @@ public class NetherPhase implements PhaseHandler {
             tripResumed = false;
             foodTripStart = now;
             tripStartTick = tick;
-            tripEndUnits = FoodTripRules.tripEndUnits(portalDistance, ctx.food().overworldMinimum(), ctx.food().tripEnd());
+            tripHoldCap = FoodTripRules.holdCapUnits(portalDistance, ctx.food().overworldMinimum());
             tripLeftAt = now;
             goHome = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
             homeMark = null;
@@ -1593,7 +1599,8 @@ public class NetherPhase implements PhaseHandler {
         }
         RunState s = ctx.state();
         // (endermanHere runs off the phase tick, a fight under the combat brain lets it lapse, and the pearl it dropped is still there)
-        if (s.warpedForest == null && !endermanHere && !warpedSearchOver && !PearlHuntTask.pearlDropNear(mod)) {
+        if (s.warpedForest == null && !endermanHere && !warpedSearchOver
+                && !PearlHuntTask.pearlDropNear(mod, DeathZones.killerZones(s.deaths, ctx.facts().gameTime()))) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
                 warpedSearchOver = true;
@@ -1622,23 +1629,68 @@ public class NetherPhase implements PhaseHandler {
         return since + (now - seen);
     }
 
+    enum DryHunt { LEAVE, NEXT_FOREST, KEEP_HUNTING }
+
+    // losing the forest (given up, null) keeps the count going, the hunt is still dry. only a forest we weren't counting for
+    // starts it over
+    static boolean newForest(RunState.Pos forest, RunState.Pos countingFor) {
+        return forest != null && !forest.equals(countingFor);
+    }
+
+    // the no-pearl clock ran out. with the floor in the bag that's the old exit (onTimeout skips us out), otherwise only the spot
+    // was wrong: a known forest gets written off and the search looks elsewhere, no forest just starts the clock over.
+    // ctx.fail here used to spend the phase's last attempt and end a run with budget left
+    static DryHunt dryHunt(boolean floorHeld, RunState.Pos forest) {
+        if (floorHeld) {
+            return DryHunt.LEAVE;
+        }
+        return forest != null ? DryHunt.NEXT_FOREST : DryHunt.KEEP_HUNTING;
+    }
+
     private Task huntStep(AltoClef mod, GamerContext ctx, double now, int pearlsNeed) {
         RunState s = ctx.state();
         if (hunt == null || huntTarget != pearlsNeed) {
+            // the forest walk keeps off where a brute or a wither pack killed us and off the bastions we know, with its own
+            // idea of where we stand (the planner's only moves while the sweep runs)
+            int bastionRadius = ctx.cfg().nether.bastionAvoidRadius;
             hunt = new PearlHuntTask(pearlsNeed, Dimension.NETHER, () -> s.warpedForest,
-                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot));
+                    () -> ctx.progress("enderman down"), planner::nearBastion, spot -> warpedWalkFailed(ctx, spot))
+                    .withZones(() -> DeathZones.killerZones(s.deaths, ctx.facts().gameTime()), () -> PearlWalkWall.around(s.bastion, bastionRadius));
             huntTarget = pearlsNeed;
         }
         int pearls = ctx.facts().count(Items.ENDER_PEARL);
         huntWanderSince = pausedClock(huntWanderSince, huntSeen, now);
         huntSeen = now;
-        if (huntWanderSince < 0 || pearls > lastPearls) {
+        if (huntWanderSince < 0 || pearls > lastPearls || newForest(s.warpedForest, huntClockFor)) {
             huntWanderSince = now;
+        }
+        if (s.warpedForest != null) {
+            huntClockFor = s.warpedForest;
         }
         lastPearls = pearls;
         // runs whether or not a forest is known: a forest with no endermen in it is just as stuck
         if (now - huntWanderSince > ctx.cfg().nether.huntWanderMinutes * 60) {
-            return fail(ctx, "no pearl gained in the Nether hunt for too long");
+            DryHunt move = dryHunt(EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), s, true), s.warpedForest);
+            if (move == DryHunt.LEAVE) {
+                return fail(ctx, "no pearl gained in the Nether hunt for too long");
+            }
+            if (move == DryHunt.NEXT_FOREST) {
+                RunState.Pos dead = s.warpedForest;
+                ctx.log("pearl hunt: no pearl for " + Math.round(ctx.cfg().nether.huntWanderMinutes) + " min here, moving on (excluding "
+                        + NetherSweepPlanner.WARPED_DRY_BLOCKS + " around " + dead.x + " " + dead.z + ")");
+                planner.giveUpWarpedDry(dead);
+                // same reset as warpedWalkFailed: the old search is goal met or failed and would never look again
+                findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
+                warpedSearchOver = false;
+                hunt.forestGivenUp();
+                ctx.save();
+            }
+            // no forest known: nothing to move away from, the hunt keeps taking whatever wanders by. the phase budget is
+            // what ends a hopeless Nether, not this clock
+            if (move == DryHunt.KEEP_HUNTING) {
+                ctx.log("pearl hunt: no pearl for " + Math.round(ctx.cfg().nether.huntWanderMinutes) + " min and no forest known, still hunting");
+            }
+            huntWanderSince = now;
         }
         huntTickedAt = lastGameTime;
         hudState = hunt.step();

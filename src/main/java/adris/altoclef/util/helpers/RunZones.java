@@ -130,10 +130,10 @@ public final class RunZones {
 
     // blocks with a y, what a walk's predicate asks. a flat zone answers the same as blocks. a floor zone only has its band of
     // cells, and only stands aside for a player who isn't over it: from 25 up the floor below is still somewhere not to land.
-    // the walks hand this to avoidBlockBreaking as well as avoidWalkingThrough. a cell we may not walk through is priced as a
-    // block to mine, and a cell of air mines for one tick, so the path went through and the movement clicked at nothing until
-    // it timed out. break protected is COST_INF. only these walls: the dragon cloud and the bastion planner stay soft, a bot
-    // stood in a cloud cell needs a way out of it
+    // the walks hand this to avoidBlockBreaking as well as avoidWalkingThrough: break protected is COST_INF, which is what makes
+    // these a wall. a cell that is only avoided is soft, MovementHelper.AVOIDED_PASSABLE_COST to cross (it used to be a one tick
+    // break of air, and the movement clicked at nothing until it timed out). the dragon cloud and the bastion planner stay soft,
+    // a bot stood in a cloud cell needs a way out of it
     public boolean blocksAt(int x, int y, int z, long now, double playerX, double playerY, double playerZ, double goalX, double goalZ) {
         for (Zone zone : zones) {
             if (!live(zone, now) || !inside(zone, x, z)) continue;

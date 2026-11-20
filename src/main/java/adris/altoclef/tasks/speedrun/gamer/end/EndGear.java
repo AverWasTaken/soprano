@@ -282,7 +282,24 @@ public final class EndGear {
     // the prep's soft top-up: only with room to carry it, and not in front of an empty field (FoodDry ends it in about 90 s, so a
     // field with nothing on it costs that and not the whole cap)
     public static boolean wantsTopUp(boolean foodShort, boolean bagFull, boolean dry) {
-        return foodShort && !bagFull && !dry;
+        return topUpEnd(foodShort, bagFull, dry) == null;
+    }
+
+    // why the top-up is off, for its last line. null = it is still on
+    public static String topUpEnd(boolean foodShort, boolean bagFull, boolean dry) {
+        if (!foodShort) {
+            return "reached";
+        }
+        if (bagFull) {
+            return "bag full";
+        }
+        return dry ? "dry spell" : null;
+    }
+
+    // a top-up that is over still waits for the batch it put in the smoker: the cook is synchronous outside the phases that come
+    // back for a furnace, so walking off strands that meat for good. the prep's cap still ends it (topUpsNow)
+    public static boolean waitsForBatch(boolean started, boolean cooking) {
+        return started && cooking;
     }
 
     // the bed search, from what the bag and the world offer: wool in the bag is crafted, a known bed is mined wherever it is, and with

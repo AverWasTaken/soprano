@@ -171,8 +171,10 @@ public class MobReachability {
         if (_logged.size() > 512) _logged.clear();
     }
 
-    // the creeper the stall rule leaves alone: the ones CreeperStep would step from, so the two rules agree. an unlit one needs
-    // the same height and a clear line, one behind a wall can be ignored like any other stuck mob
+    // the creeper the stall rule leaves alone: the ones CreeperStep could step from, so the two rules agree. an unlit one needs
+    // the same height and a clear line, one behind a wall can be ignored like any other stuck mob. a creeper CreeperStep
+    // parked still counts here: that only keeps it a foe while we walk past inside TRIGGER, the commitment never picks a
+    // creeper for melee or the bow anyway, and the one run that is about creepers (REPEAT_CREEPER) is the thing parking stops
     private static boolean stepsFor(Mob mob, LocalPlayer player) {
         if (!(mob instanceof Creeper creeper)) return false;
         boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();

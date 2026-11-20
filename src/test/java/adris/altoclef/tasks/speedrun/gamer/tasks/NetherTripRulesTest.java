@@ -36,6 +36,30 @@ public class NetherTripRulesTest {
     // ---- eligibility
 
     @Test
+    public void aMobDeathRightByTheNetherSideOfThePortalIsAHotPortal() {
+        assertTrue(NetherTripRules.hotPortal(Cause.OTHER, "wither_skeleton", 2));
+        assertTrue(NetherTripRules.hotPortal(Cause.OTHER, "zombified_piglin", NetherTripRules.HOT_PORTAL_BLOCKS));
+        assertFalse(NetherTripRules.hotPortal(Cause.OTHER, "wither_skeleton", NetherTripRules.HOT_PORTAL_BLOCKS + 0.5));
+    }
+
+    @Test
+    public void noMobNoHotPortal() {
+        // a fall or a fire by the portal leaves nothing standing there, and an old save never knew the killer
+        assertFalse(NetherTripRules.hotPortal(Cause.OTHER, null, 2));
+        assertFalse(NetherTripRules.hotPortal(Cause.OTHER, "", 2));
+        // lava and the void never get a trip anyway, refuse turns them down first
+        assertFalse(NetherTripRules.hotPortal(Cause.LAVA, "blaze", 2));
+        assertFalse(NetherTripRules.hotPortal(Cause.VOID, "piglin_brute", 2));
+    }
+
+    @Test
+    public void aHotPortalIsInsideTheNakedRangeSoItNeedsItsOwnRule() {
+        // the far pile rule never sees it: right by the portal is as close as a pile gets
+        assertFalse(NetherTripRules.defers(NetherTripRules.HOT_PORTAL_BLOCKS));
+        assertTrue(NetherTripRules.HOT_PORTAL_BLOCKS < NetherTripRules.DEFER_BLOCKS);
+    }
+
+    @Test
     public void onlyANetherDeathThatRespawnedInTheOverworldApplies() {
         assertTrue(NetherTripRules.applies(Dimension.NETHER, Dimension.OVERWORLD));
         // an anchor respawn is the plain same dimension recovery

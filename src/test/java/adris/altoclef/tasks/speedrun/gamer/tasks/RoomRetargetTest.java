@@ -8,7 +8,9 @@ import adris.altoclef.util.helpers.ItemFixture;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -370,5 +372,219 @@ public class RoomRetargetTest {
         // dry or unseen is neither
         assertFalse(RoomRetarget.shoreWalk(new World(), 0, 0, 64));
         assertFalse(RoomRetarget.underSeaFloor(new World(), 0, 0, 20));
+    }
+
+    // open sea out to 150 from the ring at 0,0 and land past it. the remembered spot is on that land
+    private static World openSea() {
+        World w = new World();
+        w.water = (x, z) -> Math.hypot(x, z) < 150;
+        return w;
+    }
+
+    @Test
+    public void aShoreInsideTheRadiusBeatsTheRememberedOne() {
+        World w = new World();
+        w.water = (x, z) -> Math.hypot(x, z) < 46;
+        RoomRetarget.Shore s = RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(new int[]{170, 64, 0})).orElseThrow();
+        assertTrue(s.checked());
+        assertTrue(Math.hypot(s.x(), s.z()) < 50);
+        assertEquals(64, s.y());
+    }
+
+    @Test
+    public void noShoreInRangeTakesTheRememberedOneWithin200() {
+        RoomRetarget.Shore s = RoomRetarget.pickShore(openSea(), 0, 0, 0, 0, List.of(new int[]{150, 64, 0})).orElseThrow();
+        assertTrue(s.checked());
+        // the spot itself has the sea right next to it, the column is a step inland
+        assertFalse(RoomRetarget.dry(openSea(), 150, 0));
+        assertEquals(151, s.x());
+        assertEquals(0, s.z());
+        assertEquals(64, s.y());
+    }
+
+    @Test
+    public void aRememberedSpotPast200IsNoShore() {
+        assertTrue(RoomRetarget.pickShore(openSea(), 0, 0, 0, 0, List.of(new int[]{201, 64, 0})).isEmpty());
+    }
+
+    // a remembered spot with nothing diggable around it (it's all sea) is no shore, and the next one in line gets its turn
+    @Test
+    public void aRememberedSpotThatFailsTheCheckIsNoShore() {
+        World sea = new World();
+        sea.water = (x, z) -> true;
+        assertTrue(RoomRetarget.pickShore(sea, 0, 0, 0, 0, List.of(new int[]{163, 64, 0})).isEmpty());
+        World w = openSea();
+        w.water = (x, z) -> Math.hypot(x, z) < 150 || x < -150;
+        RoomRetarget.Shore s = RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(new int[]{-170, 64, 0}, new int[]{163, 64, 0})).orElseThrow();
+        assertTrue(s.x() > 150);
+    }
+
+    // too far off to see: taken as a maybe and checked on the way, unless one we can check now holds up
+    @Test
+    public void anUnloadedRememberedSpotIsAnUncheckedMaybe() {
+        World w = openSea();
+        w.loadedAt = (x, z) -> x < 160;
+        RoomRetarget.Shore s = RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(new int[]{170, 64, 5})).orElseThrow();
+        assertFalse(s.checked());
+        assertEquals(170, s.x());
+        assertEquals(64, s.y());
+        assertEquals(5, s.z());
+        World w2 = openSea();
+        w2.loadedAt = (x, z) -> x < 180;
+        RoomRetarget.Shore checked = RoomRetarget.pickShore(w2, 0, 0, 0, 0,
+                List.of(new int[]{190, 64, 0}, new int[]{160, 64, 0})).orElseThrow();
+        assertTrue(checked.checked());
+        // and once it loads, the check is the same one
+        assertTrue(RoomRetarget.checkShore(openSea(), 170, 5, 0, 0).isPresent());
+        World sea = new World();
+        sea.water = (x, z) -> true;
+        assertTrue(RoomRetarget.checkShore(sea, 170, 5, 0, 0).isEmpty());
+    }
+
+    @Test
+    public void rememberedSkipsMissingAndBadOnes() {
+        int[] saved = {1, 64, 2};
+        int[] tracker = {3, 64, 4};
+        assertEquals(2, RoomRetarget.remembered(saved, tracker, List.of()).size());
+        assertArrayEquals(saved, RoomRetarget.remembered(saved, tracker, List.of()).get(0));
+        assertArrayEquals(tracker, RoomRetarget.remembered(null, tracker, List.of()).get(0));
+        int[] farTracker = {100, 64, 4};
+        assertArrayEquals(farTracker, RoomRetarget.remembered(saved, farTracker, List.of(new int[]{1, 2})).get(0));
+        assertTrue(RoomRetarget.remembered(null, null, List.of()).isEmpty());
+    }
+
+    // a few blocks along the same beach is the same beach: the tracker never hands back the exact spot twice
+    @Test
+    public void aBadShoreTakesItsWholeBeachWithIt() {
+        List<int[]> bad = List.of(new int[]{150, 0});
+        int[] alongTheBeach = {150 + 20, 64, 10};
+        assertTrue(RoomRetarget.remembered(alongTheBeach, null, bad).isEmpty());
+        int[] otherBeach = {-170, 64, 0};
+        assertEquals(1, RoomRetarget.remembered(otherBeach, null, bad).size());
+        // the remembered list passed straight to pickShore is filtered too
+        World w = openSea();
+        assertTrue(RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(alongTheBeach), bad).isEmpty());
+        assertTrue(RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(alongTheBeach), List.of()).isPresent());
+        // and checkShore won't hand back a column inside the bad radius
+        assertTrue(RoomRetarget.checkShore(w, 160, 0, 0, 0, bad).isEmpty());
+    }
+
+    @Test
+    public void theColumnScanSkipsABadBeach() {
+        World w = new World();
+        w.water = (x, z) -> Math.hypot(x, z) < 46;
+        int[] first = RoomRetarget.pickColumn(w, 0, 0, 0, 0).orElseThrow();
+        List<int[]> bad = List.of(first);
+        RoomRetarget.Shore again = RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(), bad).orElseThrow();
+        assertTrue(Math.hypot(again.x() - first[0], again.z() - first[1]) > RoomRetarget.BAD_SHORE_RADIUS);
+        assertFalse(RoomRetarget.nearBad(again.x(), again.z(), bad));
+        assertTrue(RoomRetarget.nearBad(first[0] + 31, first[1], bad));
+    }
+
+    // land rings never take the leg, sea rings take it only far off and once the shaft got us down
+    @Test
+    public void onlyAFarRingUnderTheSeaGetsTheLeg() {
+        // land: today's walk
+        assertFalse(RoomRetarget.legWanted(false, 160, 38, 0, 0, 38, 0));
+        // sea, at the bottom of a shaft 160 out
+        assertTrue(RoomRetarget.legWanted(true, 160, 38 + RoomRetarget.UNDER_SEA_TURN_ABOVE, 0, 0, 38, 0));
+        // still up in the shaft
+        assertFalse(RoomRetarget.legWanted(true, 160, 38 + RoomRetarget.UNDER_SEA_TURN_ABOVE + 1, 0, 0, 38, 0));
+        // within a room: the approach's short goal
+        assertFalse(RoomRetarget.legWanted(true, SeaLeg.HAND_OFF, 38, 0, 0, 38, 0));
+        assertTrue(RoomRetarget.legWanted(true, SeaLeg.HAND_OFF + 1, 38, 0, 0, 38, 0));
+    }
+
+    // the leg's hand off has to land somewhere the room calls near, or far() sends us straight off to retarget
+    @Test
+    public void theHandOffIsNear() {
+        World sea = new World();
+        sea.water = (x, z) -> true;
+        int y = SeaLeg.legY(sea, 16, 0, 38, 0);
+        assertTrue(RoomRetarget.near(SeaLeg.HAND_OFF, y, 0, 0, 38, 0));
+    }
+
+    @Test
+    public void theThreeGiveUpsSayDifferentThings() {
+        String none = RoomRetarget.giveUpText(RoomRetarget.GiveUp.NO_SHORE, 0, 0);
+        String under = RoomRetarget.giveUpText(RoomRetarget.GiveUp.NEVER_UNDER, 0, 0);
+        String blocked = RoomRetarget.giveUpText(RoomRetarget.GiveUp.BLOCKED, 900, 1500);
+        assertTrue(none.contains("no shore within 200"));
+        assertTrue(under.contains("never got under the sea floor"));
+        assertTrue(blocked.contains("blocked at 900, 1500"));
+        assertEquals(4, Set.of(none, under, blocked, RoomRetarget.giveUpText(RoomRetarget.GiveUp.NEVER_THERE, 0, 0)).size());
+    }
+
+    // the bottom of a shaft 163 out has to count as near, or the dig runs on to the floor and calls the estimate wrong
+    @Test
+    public void aFarShoreStretchesNear() {
+        double reach = RoomRetarget.reachFor(163, 0, 0, 0);
+        assertEquals(163 + RoomRetarget.REACH_SLACK, reach, 1e-9);
+        assertFalse(RoomRetarget.near(163, 45, 0, 0, 38, 0));
+        assertTrue(RoomRetarget.near(163, 45, 0, 0, 38, 0, reach));
+        // a shift and a sloppy stand at the bottom still count
+        assertTrue(RoomRetarget.near(163 + 2 + RoomCoverage.DUG_RADIUS, 45, 0, 0, 38, 0, reach));
+        // still needs the height
+        assertFalse(RoomRetarget.near(163, 64, 0, 0, 38, 0, reach));
+        // a close shore never shrinks it
+        assertEquals(RoomRetarget.NEAR_HORIZONTAL, RoomRetarget.reachFor(10, 0, 0, 0), 1e-9);
+    }
+
+    // under the sea the shaft goes to about the ring before the walk: ring + 12 is the water band
+    @Test
+    public void underTheSeaTheShaftGoesDownToTheRing() {
+        assertFalse(RoomRetarget.deepEnough(true, 163, 38 + 12, 0, 0, 38, 0));
+        assertFalse(RoomRetarget.deepEnough(true, 163, 38 + RoomRetarget.UNDER_SEA_TURN_ABOVE + 1, 0, 0, 38, 0));
+        assertTrue(RoomRetarget.deepEnough(true, 163, 38 + RoomRetarget.UNDER_SEA_TURN_ABOVE, 0, 0, 38, 0));
+        // dry land strongholds turn where they always did
+        assertTrue(RoomRetarget.deepEnough(false, 163, 38 + 12, 0, 0, 38, 0));
+        // in the room or on its stairs is not a shaft
+        assertTrue(RoomRetarget.deepEnough(true, 5, 38 + 6, 5, 0, 38, 0));
+    }
+
+    @Test
+    public void theRingIsUnderTheSeaAsFarAsWeCanSee() {
+        World w = new World();
+        w.water = (x, z) -> true;
+        assertTrue(RoomRetarget.ringUnderSea(w, 0, 0, RoomRetarget.NEAR_HORIZONTAL));
+        assertFalse(RoomRetarget.ringUnderSea(new World(), 0, 0, 500));
+        // unseen: only a far shore says sea
+        World unseen = new World();
+        unseen.unloaded = true;
+        assertFalse(RoomRetarget.ringUnderSea(unseen, 0, 0, RoomRetarget.NEAR_HORIZONTAL));
+        assertTrue(RoomRetarget.ringUnderSea(unseen, 0, 0, RoomRetarget.reachFor(163, 0, 0, 0)));
+    }
+
+    // floating over a ring under the sea doesn't hand OPEN the bot. dry land, or already under the sea floor, ends as it always did
+    @Test
+    public void theApproachClockDoesNotFinishOnTheWaves() {
+        World sea = new World();
+        sea.water = (x, z) -> true;
+        // water 63 down to 60, the floor block is 59
+        assertEquals(RoomRetarget.ApproachEnd.UNDER_SEA, RoomRetarget.approachEnd(45, 45, 45, sea, 0, 62, 0, 0, 0));
+        assertEquals(RoomRetarget.ApproachEnd.FINISH, RoomRetarget.approachEnd(45, 45, 45, sea, 0, 50, 0, 0, 0));
+        assertEquals(RoomRetarget.ApproachEnd.FINISH, RoomRetarget.approachEnd(45, 45, 45, new World(), 0, 62, 0, 0, 0));
+        // not over yet is not over, wet or dry
+        assertEquals(RoomRetarget.ApproachEnd.GO_ON, RoomRetarget.approachEnd(44, 44, 45, sea, 0, 62, 0, 0, 0));
+        assertEquals(RoomRetarget.ApproachEnd.GO_ON, RoomRetarget.approachEnd(44, 44, 45, new World(), 0, 62, 0, 0, 0));
+        // the cap on a walk that never arrived: a ring we can't see isn't water, same finish as before
+        World unseen = new World();
+        unseen.unloaded = true;
+        assertEquals(RoomRetarget.ApproachEnd.FINISH,
+                RoomRetarget.approachEnd(RoomRetarget.FAR_WALK_CAP_SECONDS, 0, 45, unseen, 1700, 62, 0, 0, 0));
+    }
+
+    // the beach chunk is in but the one inland isn't: still a maybe, not a no
+    @Test
+    public void aHalfLoadedShoreIsAMaybe() {
+        World w = openSea();
+        // the spot at 150 is in, but nothing past 155 is: no dry column can be proven yet
+        w.water = (x, z) -> Math.hypot(x, z) < 154;
+        w.loadedAt = (x, z) -> x < 155;
+        assertFalse(RoomRetarget.checkLoaded(w, 150, 0));
+        RoomRetarget.Shore s = RoomRetarget.pickShore(w, 0, 0, 0, 0, List.of(new int[]{150, 64, 0})).orElseThrow();
+        assertFalse(s.checked());
+        World all = openSea();
+        assertTrue(RoomRetarget.checkLoaded(all, 150, 0));
     }
 }

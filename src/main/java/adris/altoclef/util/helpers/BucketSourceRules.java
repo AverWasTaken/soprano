@@ -23,12 +23,24 @@ public final class BucketSourceRules {
         default boolean free(int x, int y, int z) {
             return open(x, y, z);
         }
+
+        // ice of any kind. vanilla says it doesn't conduct redstone so solid() calls it not a full block, but on a pond it is
+        // a lid all the same, and the bucket ray hits it like stone
+        default boolean ice(int x, int y, int z) {
+            return false;
+        }
+    }
+
+    // the block over a source that has to come off before a bucket gets at it. only for the bucket: WorldHelper.isSolid
+    // is asked everywhere else and ice not being solid there is fine
+    public static boolean lid(Cells cells, int x, int y, int z) {
+        return cells.solid(x, y, z) || cells.ice(x, y, z);
     }
 
     private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
     public static Kind classify(Cells cells, int x, int y, int z) {
-        if (!cells.solid(x, y + 1, z)) {
+        if (!lid(cells, x, y + 1, z)) {
             return openToTheOutside(cells, x, y, z) ? Kind.OPEN : Kind.NONE;
         }
         // a lid. digging it from the side needs a side cell of the lid itself to stand in or swing from. a cell that only
@@ -39,7 +51,22 @@ public final class BucketSourceRules {
                 return Kind.LID;
             }
         }
-        return Kind.NONE;
+        return cells.ice(x, y + 1, z) && standBeside(cells, x, y + 1, z) ? Kind.LID : Kind.NONE;
+    }
+
+    // a frozen pond has no free cell beside any lid: it is more ice, or shore flush with it. standing on the next block over
+    // and swinging down at the lid works fine (feet one up at a side is a goal GoalMineFromSide takes), so for ice that
+    // counts too. only ice: a stone lid like that is a source buried in a hillside, and the lava rules stay as they were.
+    // never the lid itself, standing on the block you break is how you end up in the pond
+    private static boolean standBeside(Cells cells, int x, int lidY, int z) {
+        for (int[] side : SIDES) {
+            int sx = x + side[0];
+            int sz = z + side[1];
+            if (lid(cells, sx, lidY, sz) && cells.free(sx, lidY + 1, sz) && cells.free(sx, lidY + 2, sz)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // some face of the source has air, fluid or a plant on it, so there's a spot to scoop it from. (glass over a pool is not

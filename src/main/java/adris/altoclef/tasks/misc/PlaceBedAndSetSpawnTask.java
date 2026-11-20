@@ -118,6 +118,13 @@ public class PlaceBedAndSetSpawnTask extends Task {
     // ticks spent in the search branch and how far we got from where it started, see the branch
     private int _searchTicks;
     private WanderGiveUp.Excursion _searchExcursion = new WanderGiveUp.Excursion();
+    // no bed in the bag and none standing close is the end of it, never the catalogue's "get a bed" (that one mines any bed the
+    // tracker knows and goes sheep hunting). the ticks we have waited for the tracker to show us one
+    private boolean _noFetch;
+    private int _noBedTicks;
+    private boolean _noBedInHand;
+    // a fresh tracker needs a scan or two before it knows the bed that's right next to us
+    private static final int NO_BED_WAIT_TICKS = 100;
 
     public PlaceBedAndSetSpawnTask() {
 
@@ -135,6 +142,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
     public PlaceBedAndSetSpawnTask spawnOnly() {
         this._spawnOnly = true;
+        return this;
+    }
+
+    // only ever a bed we hold or one standing close, see _noFetch
+    public PlaceBedAndSetSpawnTask noFetch() {
+        this._noFetch = true;
         return this;
     }
 
@@ -166,6 +179,19 @@ public class PlaceBedAndSetSpawnTask extends Task {
     // a region that comes closer than dist to the spot is out. no spot, no rule
     static boolean tooCloseToSpot(BlockPos origin, Vec3i clearSize, BlockPos spot, int dist) {
         return spot != null && gapToBedBox(origin, clearSize, spot) < dist;
+    }
+
+    // lava this close (chebyshev) to the dug box or its floor is out: digging the box opens a side to it and it pours in on us.
+    // the spot check only looks at a 2x1x2 core and its neighbours, the dig takes the whole 3x2x3
+    static final int LAVA_MARGIN = 1;
+
+    static boolean lavaNearBox(BlockPos origin, Vec3i clearSize, List<BlockPos> lava) {
+        for (BlockPos l : lava) {
+            if (gapToBedBox(origin, clearSize, l) <= LAVA_MARGIN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // blocks the clear loop never digs: a frame, or a portal. a bed is never worth either
@@ -275,6 +301,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
         _noBedSpot = false;
         _searchTicks = 0;
         _searchExcursion = new WanderGiveUp.Excursion();
+        _noBedTicks = 0;
+        _noBedInHand = false;
         _spawnSet = false;
         _sleepAttemptMade = false;
         _wasSleeping = false;
@@ -410,6 +438,13 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
         // Get a bed if we don't have one.
         if (!mod.getItemStorage().hasItem(ItemHelper.BED)) {
+            if (_noFetch) {
+                setDebugState("No bed in the bag, looking for the one standing here");
+                if (++_noBedTicks > NO_BED_WAIT_TICKS) {
+                    _noBedInHand = true;
+                }
+                return null;
+            }
             setDebugState("Getting a bed first", "Getting a bed");
             return TaskCatalogue.getItemTask("bed", 1);
         }
@@ -612,7 +647,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             return true; // If not in the overworld, the player is considered finished
         }
 
-        if (_noBedSpot) {
+        if (_noBedSpot || _noBedInHand) {
             return true;
         }
 
@@ -630,7 +665,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
     // finished, but only because there was nowhere to put a bed. a caller that reads finished as "spawn is set" has to ask
     public boolean gaveUp() {
-        return _noBedSpot;
+        return _noBedSpot || _noBedInHand;
+    }
+
+    // why gaveUp, for the caller's log line
+    public String gaveUpReason() {
+        return _noBedInHand ? "no bed in the bag and none standing close" : _noBedSpot ? "nowhere to put a bed" : "";
     }
 
     /**
@@ -663,6 +703,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
      */
     private BlockPos locateBedRegion(AltoClef mod, BlockPos origin) {
         final int SCAN_RANGE = 10;
+        // read once a scan, then every candidate box is held against the list (8000 boxes times 100 reads each is no)
+        List<BlockPos> lava = lavaAround(mod, origin, SCAN_RANGE + LAVA_MARGIN + BED_CLEAR_SIZE.getX());
 
         BlockPos closestGood = null; // The closest good position found so far
         double closestDist = Double.POSITIVE_INFINITY; // The closest distance found so far
@@ -677,7 +719,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
                         continue; // Skip if the distance is greater than the closest distance found so far
                     }
 
-                    if (!_slowRegions.contains(attemptPos) && !tooCloseToSpot(attemptPos, BED_CLEAR_SIZE, _awayFrom, _awayDist) && isGoodPosition(mod, attemptPos)) {
+                    if (!_slowRegions.contains(attemptPos) && !tooCloseToSpot(attemptPos, BED_CLEAR_SIZE, _awayFrom, _awayDist) && isGoodPosition(mod, attemptPos)
+                            && !lavaNearBox(attemptPos, BED_CLEAR_SIZE, lava)) {
                         closestGood = attemptPos;
                         closestDist = distance;
                     }
@@ -686,6 +729,16 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
 
         return closestGood;
+    }
+
+    private static List<BlockPos> lavaAround(AltoClef mod, BlockPos origin, int range) {
+        List<BlockPos> out = new java.util.ArrayList<>();
+        for (BlockPos p : BlockPos.betweenClosed(origin.offset(-range, -range, -range), origin.offset(range, range, range))) {
+            if (mod.getWorld().getBlockState(p).getBlock() == Blocks.LAVA) {
+                out.add(p.immutable());
+            }
+        }
+        return out;
     }
 
     /**

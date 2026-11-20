@@ -38,8 +38,8 @@ public final class NightShelter {
         return lead > 0 && tod >= NightSleep.EARLIEST_WINDOW - lead;
     }
 
-    // everything the branch can see. tripNight = a nether or eyes leg that is home in the overworld (the nether phase only lets a food trip through, NetherPhase.nightHold): the trip has no bed to use and
-    // was not just killed, so a recent death is not asked. armor still is: a kitted trip walks through the night, a naked one hides. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
+    // everything the branch can see. tripNight = a nether or eyes leg that is home in the overworld (the nether phase only lets a food trip through, NetherPhase.nightHold): the trip may have no bed to use
+    // (noBedTonight says) and was not just killed, so a recent death is not asked. armor still is: a kitted trip walks through the night, a naked one hides. note what is not here: low health and a spent bed trip. a sealed hole is the safest place
     // to regen, and the bed trip's tries have nothing to do with this
     public record Trigger(boolean windowOpen, boolean overworld, int armorPoints, boolean noBed, int depthBelowSky, boolean recoveryActive,
                           boolean fighting, boolean busy, boolean usedThisNight, long ticksSinceDeath, boolean tripNight,

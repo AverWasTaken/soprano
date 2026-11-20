@@ -441,6 +441,13 @@ public final class PhaseMachine implements GamerContext {
     private void regress(PhaseRules.Decision d) {
         RunState s = host.state();
         String pair = s.phase.name() + ">" + d.to().name();
+        if (!countsAsPingPong(s.deathsThisPhase)) {
+            // died here, so the bag is on the floor and going back for a kit is the recovery, not a loop. the death caps already
+            // end a hopeless run, the ping pong cap was killing runs on the third nether death with half the deaths left
+            host.say(d.to().hud() + " again (" + d.reason() + ", after a death)");
+            moveTo(d.to());
+            return;
+        }
         int times = s.regressCounts.getOrDefault(pair, 0);
         if (times >= MAX_REGRESS_PER_PAIR) {
             stuck("phase ping pong (" + pair.toLowerCase() + " " + (times + 1) + " times)");
@@ -449,6 +456,12 @@ public final class PhaseMachine implements GamerContext {
         s.regressCounts.put(pair, times + 1);
         host.say(d.to().hud() + " again (" + d.reason() + ")");
         moveTo(d.to());
+    }
+
+    // a regress counts toward the ping pong cap unless we died in this phase since we got here. moveTo zeroes the phase's deaths,
+    // so each death buys at most one free regress and the free ones can't outnumber death.maxTotal
+    static boolean countsAsPingPong(int deathsThisPhase) {
+        return deathsThisPhase == 0;
     }
 
     // leave the current handler and enter another one, the common part of advance / regress / skip

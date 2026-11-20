@@ -34,6 +34,7 @@ import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.phys.Vec3;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEntity> implements ITaskRequiresGrounded {
     private static final Task getPickaxeFirstTask = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
@@ -54,6 +55,8 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     private ItemEntity _currentDrop = null;
     // set once we ban/skip a drop, so a parent on a clock can stop waiting instead of wandering until its timer runs out
     private String _gaveUpReason = null;
+    // which drops are ours to go for at all, everything by default. a caller with spots it will not walk into says so here
+    private Predicate<ItemEntity> _accept = drop -> true;
 
     public PickupDroppedItemTask(ItemTarget[]itemTargets, boolean freeInventoryIfFull) {
         _itemTargets = itemTargets;
@@ -70,6 +73,11 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     public PickupDroppedItemTask(Item item, int targetCount) {
         this(item, targetCount, true);
+    }
+
+    public PickupDroppedItemTask accepting(Predicate<ItemEntity> accept) {
+        _accept = accept;
+        return this;
     }
 
     private static BlockPos[] generateSides(BlockPos pos) {
@@ -141,6 +149,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     // the static flag up until we own a stone pick, and every ResourceTask ignores far drops until then
     protected boolean mayGetPickaxeFirst() {
         return true;
+    }
+
+    // virtual. a full bag touching the drop: what goes to make room, if anything. the stock answer is the garbage pick
+    // (GarbageView.room). the night bed's pickup throws a spare build stack when that's a no (GarbageView.shedBlocks)
+    protected StorageHelper.Room roomFor(StorageHelper.GarbageView view, ItemStack drop) {
+        return view.room(drop);
     }
 
     @Override
@@ -296,6 +310,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     protected Optional<ItemEntity> getClosestTo(AltoClef mod, Vec3 pos) {
         return mod.getEntityTracker().getClosestItemDrop(
                 pos,
+                _accept,
                 _itemTargets);
     }
 
@@ -321,7 +336,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             if (_freeInventoryIfFull) {
                 // same answer the death pile filters by, so a drop it walked us to is never one we refuse here
                 StorageHelper.GarbageView view = StorageHelper.garbageView(_mod);
-                StorageHelper.Room room = view.room(itemEntity.getItem());
+                StorageHelper.Room room = roomFor(view, itemEntity.getItem());
                 if (room.kind() == DropRoom.Kind.EVICT) {
                     return new EnsureFreeInventorySlotTask(room.slot().get(), room.victim());
                 }

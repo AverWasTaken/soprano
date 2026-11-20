@@ -1,8 +1,10 @@
 package adris.altoclef.util.helpers;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -42,6 +44,11 @@ public final class CreeperStep {
     // REPEAT_CREEPER), not another lap of the step
     public static final long REPEAT_WINDOW = 200;
 
+    // ...unless it never lit and never moved between the two steps. that one is parked somewhere it cannot get to us (a pit,
+    // the far side of a fence), and running 24 blocks from it just walks us back to the same spot for another lap. it gets
+    // ignored until it lights or wanders PARK_MOVE off the spot. no timer: a creeper that cannot reach us stays that way
+    public static final double PARK_MOVE = 1.0;
+
     // the hand sprint at the start of a step. a standing start covers about 2 blocks in 10 ticks and 7 in 30, and the fuse is 30,
     // so it keeps going straight away until we are at SAFE or the fuse is spent. (waiting on the path for the rest of it is how
     // a creeper lit at 3 still got us from 2 blocks)
@@ -61,8 +68,13 @@ public final class CreeperStep {
 
     // one creeper as the world sees it this tick. lit = swelling up or flint-and-steeled, pathNear = the path walks into it
     // fusing = the fuse still has charge in it, lit or deflating (a creeper that lost its line to us goes unlit with the swell
-    // still up and relights the moment we walk back in). inView = about our height with a clear line, only an unlit one needs it
-    public record Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing, boolean inView) {
+    // still up and relights the moment we walk back in). inView = about our height with a clear line, only an unlit one needs it.
+    // x y z = where it stands, NaN when nobody said (and NaN never parks, nan is not less than anything)
+    public record Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing, boolean inView, double x, double y, double z) {
+        public Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing, boolean inView) {
+            this(id, lit, distance, pathNear, fusing, inView, Double.NaN, Double.NaN, Double.NaN);
+        }
+
         public Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing) {
             this(id, lit, distance, pathNear, fusing, true);
         }
@@ -85,6 +97,20 @@ public final class CreeperStep {
     private final Set<Integer> _capped = new LinkedHashSet<>();
     // id -> the tick its last step ended
     private final Map<Integer, Long> _stepped = new LinkedHashMap<>();
+
+    // the first half of a pair: where it stood when its last step started, and whether it has been lit at all since
+    private record Mark(double x, double z, boolean lit) {}
+
+    public record Park(int id, double x, double y, double z, double moved) {}
+
+    public record Unpark(int id, String why) {}
+
+    private final Map<Integer, Mark> _marks = new LinkedHashMap<>();
+    // id -> {x, z} of the spot it got parked on
+    private final Map<Integer, double[]> _parked = new LinkedHashMap<>();
+    // this tick's parks and unparks, for the chain to print
+    private final List<Park> _parkedNow = new ArrayList<>();
+    private final List<Unpark> _unparkedNow = new ArrayList<>();
 
     public boolean active() {
         return _id >= 0;
@@ -113,6 +139,22 @@ public final class CreeperStep {
         return _escalate;
     }
 
+    public List<Park> parkedNow() {
+        return _parkedNow;
+    }
+
+    public List<Unpark> unparkedNow() {
+        return _unparkedNow;
+    }
+
+    public int parkedCount() {
+        return _parked.size();
+    }
+
+    public boolean parked(int id) {
+        return _parked.containsKey(id);
+    }
+
     public void reset() {
         _id = -1;
         _cornered = false;
@@ -121,6 +163,10 @@ public final class CreeperStep {
         _logged.clear();
         _capped.clear();
         _stepped.clear();
+        _marks.clear();
+        _parked.clear();
+        _parkedNow.clear();
+        _unparkedNow.clear();
     }
 
     public Event step(long now, List<Seen> creepers, boolean shieldReady) {
@@ -139,6 +185,9 @@ public final class CreeperStep {
     public Event step(long now, List<Seen> creepers, boolean shieldReady, CombatCommit.Mode mode, boolean commitOn, boolean noHeading) {
         _log = false;
         _escalate = false;
+        _parkedNow.clear();
+        _unparkedNow.clear();
+        watchParked(creepers);
         boolean idle = mode == CombatCommit.Mode.NONE;
         if (_id >= 0) {
             Seen held = find(creepers, _id);
@@ -175,11 +224,15 @@ public final class CreeperStep {
         Seen pick = null;
         for (Seen s : creepers) {
             if (!triggers(s) || _capped.contains(s.id())) continue;
+            // parked and still unlit: not our problem (a lit one goes on through, watchParked already let it go)
+            if (!s.lit() && _parked.containsKey(s.id())) continue;
             // a run is already taking us away from everything, creepers included. stopping it to step is the step and the run
             // trading the wheel, so only when the run's own path is about to walk into a lit one, or one is already hissing
             // inside TRIGGER. the path check only looks ahead, and a creeper only lights within three blocks, so beside or
             // behind us it was never "on the path" and the run jogged on through the blast
             if (mode == CombatCommit.Mode.RUN && !s.pathNear() && !(s.lit() && s.distance() <= TRIGGER)) continue;
+            // the second go of one that never lit or moved gets parked instead of handed to the run (see PARK_MOVE)
+            if (parks(s, now)) continue;
             // the lit one first, it is the one with a clock on it
             if (pick == null || (s.lit() && !pick.lit()) || (s.lit() == pick.lit() && s.distance() < pick.distance())) pick = s;
         }
@@ -194,6 +247,9 @@ public final class CreeperStep {
         _since = now;
         _litSince = now;
         _startDistance = pick.distance();
+        _marks.remove(pick.id());
+        _marks.put(pick.id(), new Mark(pick.x(), pick.z(), pick.lit()));
+        if (_marks.size() > MEMORY) _marks.remove(_marks.keySet().iterator().next());
         _cornered = boxed;
         _log = remember(_logged, pick.id());
         return boxed ? Event.CORNERED : Event.START;
@@ -211,6 +267,39 @@ public final class CreeperStep {
         if (held.lit()) return false;
         if (mode == CombatCommit.Mode.RUN) return !held.fusing() && held.distance() > SWELL_STOP;
         return held.distance() > HOLD_RADIUS;
+    }
+
+    // every tick, every creeper: lighting up counts against the pair it is in and unparks it, and a parked one that wandered
+    // off its spot is a creeper that can move after all
+    private void watchParked(List<Seen> creepers) {
+        for (Seen s : creepers) {
+            if (s.lit()) {
+                Mark mark = _marks.get(s.id());
+                if (mark != null && !mark.lit()) _marks.put(s.id(), new Mark(mark.x(), mark.z(), true));
+                if (_parked.remove(s.id()) != null) _unparkedNow.add(new Unpark(s.id(), "it lit"));
+                continue;
+            }
+            double[] spot = _parked.get(s.id());
+            if (spot == null) continue;
+            double moved = Math.hypot(s.x() - spot[0], s.z() - spot[1]);
+            if (moved >= PARK_MOVE) {
+                _parked.remove(s.id());
+                _unparkedNow.add(new Unpark(s.id(), "it moved " + String.format(Locale.ROOT, "%.1f", moved)));
+            }
+        }
+    }
+
+    // the moment a second unlit step would start: if it stood still and stayed dark the whole time, park it instead
+    private boolean parks(Seen s, long now) {
+        if (s.lit() || !cameBack(s.id(), now)) return false;
+        Mark mark = _marks.get(s.id());
+        if (mark == null || mark.lit()) return false;
+        double moved = Math.hypot(s.x() - mark.x(), s.z() - mark.z());
+        if (!(moved < PARK_MOVE)) return false;
+        _parked.put(s.id(), new double[]{s.x(), s.z()});
+        if (_parked.size() > MEMORY) _parked.remove(_parked.keySet().iterator().next());
+        _parkedNow.add(new Park(s.id(), s.x(), s.y(), s.z(), moved));
+        return true;
     }
 
     private boolean cameBack(int id, long now) {

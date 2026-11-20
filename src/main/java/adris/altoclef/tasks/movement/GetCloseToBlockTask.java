@@ -22,10 +22,19 @@ public class GetCloseToBlockTask extends Task {
     static final int START_RANGE = 1;
 
     private final BlockPos _toApproach;
+    // the range never shrinks below this. 0 is the old "all the way onto the block"
+    private final int _minRange;
     private int _currentRange;
 
     public GetCloseToBlockTask(BlockPos toApproach) {
+        this(toApproach, 0);
+    }
+
+    // for a target you should stand next to, not in. range 0 on a block baritone thinks you're one above (15/16 tall
+    // farmland under you) is a goal minecraft says is met and baritone says isn't, and it searches for it forever
+    public GetCloseToBlockTask(BlockPos toApproach, int minRange) {
         _toApproach = toApproach;
+        _minRange = GetWithinRangeOfBlockTask.clampRange(minRange);
     }
 
     @Override
@@ -40,7 +49,7 @@ public class GetCloseToBlockTask extends Task {
         // as close as we can.
         double distSq = mod.getPlayer().blockPosition().distSqr(_toApproach);
         if (within(_currentRange, distSq)) {
-            _currentRange = shrunkRange(distSq);
+            _currentRange = shrunkRange(distSq, _minRange);
         }
         return new GetWithinRangeOfBlockTask(_toApproach, _currentRange);
     }
@@ -61,10 +70,14 @@ public class GetCloseToBlockTask extends Task {
         return GetWithinRangeOfBlockTask.clampRange((int) Math.sqrt(distSq) - 1);
     }
 
+    static int shrunkRange(double distSq, int floor) {
+        return Math.max(floor, shrunkRange(distSq));
+    }
+
     @Override
     protected boolean isEqual(Task other) {
         if (other instanceof GetCloseToBlockTask task) {
-            return task._toApproach.equals(_toApproach);
+            return task._toApproach.equals(_toApproach) && task._minRange == _minRange;
         }
         return false;
     }

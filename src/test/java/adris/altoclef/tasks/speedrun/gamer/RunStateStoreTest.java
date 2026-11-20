@@ -50,6 +50,7 @@ public class RunStateStoreTest {
         d.gameTime = 777;
         d.phase = "NETHER";
         d.cause = "other";
+        d.killer = "piglin_brute";
         s.deaths.add(d);
         s.deaths.add(d);
 
@@ -155,6 +156,7 @@ public class RunStateStoreTest {
         assertEquals(6200L, job.doneTick);
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals("other", out.deaths.get(0).cause);
+        assertEquals("piglin_brute", out.deaths.get(0).killer);
         assertEquals(new RunState.Pos(-12, 34, 56), out.netherTrip.pile);
         assertEquals("WALK", out.netherTrip.stage);
         assertEquals(4000L, out.netherTrip.startTick);
@@ -169,6 +171,16 @@ public class RunStateStoreTest {
         assertEquals(424_242L, out.startedGameTime);
         assertTrue(out.stuck);
         assertTrue(out.dragonDead);
+    }
+
+    @Test
+    public void aDeathFromBeforeTheKillerWasWrittenDownHasNoKiller() {
+        // null is "unknown": DeathZones gives it no lasting zone and the hot portal rule does not fire on it
+        RunState old = RunStateStore.parse("{\"phase\":\"NETHER\",\"deaths\":[{\"dimension\":\"NETHER\",\"x\":1,\"z\":2,\"cause\":\"other\"}]}");
+        assertNotNull(old);
+        assertEquals(1, old.deaths.size());
+        assertNull(old.deaths.get(0).killer);
+        assertEquals("other", old.deaths.get(0).cause);
     }
 
     @Test

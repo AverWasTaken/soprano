@@ -3,6 +3,7 @@ package adris.altoclef.chains;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntityTask;
+import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasks.movement.HealUpTask;
 import adris.altoclef.tasks.movement.IdleTask;
@@ -24,6 +25,7 @@ import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.RimHold;
+import adris.altoclef.util.helpers.IdleRimStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
@@ -147,6 +149,18 @@ final class CombatBrain {
     private KillEntityTask _fight;
     private final HealUpTask _healUp = new HealUpTask();
     private final IdleTask _splitHold = new IdleTask();
+    // the idle step off a lava lip before a fight starts (IdleRimStep): where to, and how long we have stood still
+    private final IdleRimStep _idleStep = new IdleRimStep();
+    private BlockPos _idleCell;
+    private GetToBlockTask _idleWalk;
+    private final IdleTask _idleStand = new IdleTask();
+    private int _stillTicks;
+    // the walk's progress, same stall rule as the kill task's walk off a shore (LavaShore.walkStalled)
+    private double _idleBest;
+    private int _idleIdleTicks;
+    private boolean _idleStalled;
+    private double _stillX = Double.NaN;
+    private double _stillZ = Double.NaN;
     private int _fightId = -1;
     private String _fightName = FightNames.UNKNOWN;
     private final FightNames _names = new FightNames();
@@ -272,8 +286,14 @@ final class CombatBrain {
         return switch (_commit.mode()) {
             case FIGHT -> FIGHT_PRIORITY;
             case RUN -> RUN_PRIORITY;
-            default -> _commit.recovering() ? RECOVER_PRIORITY : 0;
+            // (the idle rim step rides the heal hold's number: over the sweep, under going to get food)
+            default -> _commit.recovering() || _idleStep.holding() ? RECOVER_PRIORITY : 0;
         };
+    }
+
+    // the idle step off a lava lip is holding the wheel. a meal doesn't stand it down, eating is async and the lip is the problem
+    boolean idleStepping() {
+        return _idleStep.holding();
     }
 
     // the heal-up hold is on (a re-run from it counts too, it comes back to the hold)
@@ -330,6 +350,13 @@ final class CombatBrain {
         _enderId = -1;
         _enderLastPos = null;
         _enderGoneSaid = false;
+        _idleStep.reset();
+        _idleCell = null;
+        _idleWalk = null;
+        _stillTicks = 0;
+        _idleStalled = false;
+        _stillX = Double.NaN;
+        _stillZ = Double.NaN;
     }
 
     // what to hold the wheel with right now, null for nothing (the chain lets go of whatever it has)
@@ -367,6 +394,8 @@ final class CombatBrain {
                 return _run;
             }
             default:
+                // off the lip first, the heal can happen on ground just as well
+                if (_idleStep.holding() && _idleCell != null) return idleStepTask(mod);
                 // nothing committed, but hurt from the last one: stand here and heal instead of walking back in
                 return _commit.recovering() ? _healUp : null;
         }
@@ -696,6 +725,114 @@ final class CombatBrain {
         _stance = stance(mod, nearest, creeperClose, bite);
         logStance(mod, dimension, now, nearest, creeperClose, bite);
         logHurt(mod, dimension);
+        idleRimStep(mod, dimension, now, player, foes, mobs, enabled);
+    }
+
+    // walk to the cell, then stand on it. the same walk object for the whole hold, a new one each tick restarts its path.
+    // arrived goes by the column and not blockPosition: on soul sand our feet sit in the cell under it and the walk would never
+    // end, and a GetToBlockTask that never ends wanders off after six seconds, which is the lip again
+    private Task idleStepTask(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (_idleStalled || IdleRimStep.arrived(player.getX(), player.getY(), player.getZ(), _idleCell.getX(), _idleCell.getY(), _idleCell.getZ())) {
+            return _idleStand;
+        }
+        double dist = Math.sqrt(_idleCell.distToCenterSqr(player.position()));
+        double best = LavaShore.stepBest(_idleBest, dist);
+        _idleIdleTicks = best < _idleBest ? 0 : _idleIdleTicks + 1;
+        _idleBest = best;
+        // a cell we can't get to (groundCell doesn't ask baritone) is no reason to wander: stand where the walk got us
+        if (LavaShore.walkStalled(_idleIdleTicks)) {
+            _idleStalled = true;
+            Debug.logInternal("combat: idle rim step: walk to " + _idleCell.getX() + " " + _idleCell.getY() + " " + _idleCell.getZ() + " stalled, standing");
+            return _idleStand;
+        }
+        if (_idleWalk == null) _idleWalk = new GetToBlockTask(_idleCell);
+        return _idleWalk;
+    }
+
+    // the idle step off a lava lip, see IdleRimStep. the cheap gates first, the cell scans only once all of them say yes
+    private void idleRimStep(AltoClef mod, Dimension dimension, long now, LocalPlayer player, List<Foe> foes, List<Mob> mobs, boolean enabled) {
+        // still: under a twentieth of a block a tick, the sweep's head turning in place is not walking
+        double moved = Double.isNaN(_stillX) ? Double.POSITIVE_INFINITY : Math.hypot(player.getX() - _stillX, player.getZ() - _stillZ);
+        _stillTicks = moved < 0.05 ? _stillTicks + 1 : 0;
+        _stillX = player.getX();
+        _stillZ = player.getZ();
+        boolean idle = enabled && _commit.mode() == Mode.NONE;
+        Mob foe = idleRimFoe(mod, dimension, player, foes, mobs);
+        double distance = foe == null ? Double.POSITIVE_INFINITY : foe.distanceTo(player);
+        String dim = dimension.name().toLowerCase(java.util.Locale.ROOT);
+        if (_idleStep.holding()) {
+            long held = _idleStep.held(now);
+            IdleRimStep.End end = _idleStep.check(now, idle && !player.isInLava(), distance);
+            if (end != IdleRimStep.End.NONE) {
+                Debug.logInternal("combat: [" + dim + "] idle rim step: hold over after " + held + " ticks ("
+                        + end.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ') + ")");
+                _idleCell = null;
+                _idleWalk = null;
+            }
+            return;
+        }
+        if (!_idleStep.ready(now) || mod.getClientBaritone().bsi == null) return;
+        // a path we hold counts even while it's paused (the walk's rim shield stands us still by pausing it), the step would only
+        // fight it. a calc counts for a short stand, see IdleRimStep.gate
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        if (!IdleRimStep.gate(dimension == Dimension.NETHER, idle, pathing.hasPath(), pathing.getInProgress().isPresent(), player.isInLava(),
+                _stillTicks, distance)) return;
+        CliffAvoidance.Cells cells = CliffAvoidance.of(mod.getClientBaritone().bsi);
+        String why = IdleRimStep.why(cells, player.getX(), player.getY(), player.getZ());
+        if (why == null) return;
+        // real ground if there is any in reach (same walk the kill task takes off a shore), else one cell off the edge
+        int[] cell = LavaShore.groundCell(cells, player.getX(), player.getY(), player.getZ(), foe.getX(), foe.getZ());
+        if (cell == null) {
+            int[] step = LavaShore.edgeStep(cells, player.getX(), player.getY(), player.getZ());
+            BlockPos here = player.blockPosition();
+            if (step != null) cell = new int[]{here.getX() + step[0], here.getY(), here.getZ() + step[1]};
+        }
+        BlockPos from = player.blockPosition();
+        String who = BuiltInRegistries.ENTITY_TYPE.getKey(foe.getType()).getPath() + " #" + foe.getId();
+        if (cell == null) {
+            if (!_idleStep.noCell(now)) return;
+            Debug.logInternal(String.format(java.util.Locale.ROOT, "combat: [%s] idle rim step: nowhere to go from %d %d %d, %s at %.1f, %s",
+                    dim, from.getX(), from.getY(), from.getZ(), who, distance, why));
+            return;
+        }
+        _idleCell = new BlockPos(cell[0], cell[1], cell[2]);
+        _idleWalk = null;
+        _idleStalled = false;
+        _idleBest = Math.sqrt(_idleCell.distToCenterSqr(player.position()));
+        _idleIdleTicks = 0;
+        _idleStep.start(now);
+        Debug.logInternal(String.format(java.util.Locale.ROOT, "combat: [%s] idle rim step: %d %d %d -> %d %d %d, %s at %.1f, %s",
+                dim, from.getX(), from.getY(), from.getZ(), cell[0], cell[1], cell[2], who, distance, why));
+    }
+
+    // the nearest melee foe in IdleRimStep.FOE_RANGE. hoglins count whether or not they made the foe list yet: the list wants
+    // the aggressive flag, and the step is for the seconds before the first hit, which is exactly when we can't be sure it's up
+    private static Mob idleRimFoe(AltoClef mod, Dimension dimension, LocalPlayer player, List<Foe> foes, List<Mob> mobs) {
+        Mob best = null;
+        double bestDistance = IdleRimStep.FOE_RANGE;
+        for (int i = 0; i < foes.size() && i < mobs.size(); i++) {
+            Foe foe = foes.get(i);
+            if (foe.melee() && foe.distance() <= bestDistance && mobs.get(i).isAlive()) {
+                best = mobs.get(i);
+                bestDistance = foe.distance();
+            }
+        }
+        if (dimension != Dimension.NETHER) return best;
+        try {
+            for (Hoglin hoglin : mod.getEntityTracker().getTrackedEntities(Hoglin.class)) {
+                // (a piglet runs from nothing and throws nobody, same as notePacks)
+                if (!hoglin.isAlive() || hoglin.isBaby()) continue;
+                double d = hoglin.distanceTo(player);
+                if (d <= bestDistance) {
+                    best = hoglin;
+                    bestDistance = d;
+                }
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // same story as notePacks, next tick looks again
+        }
+        return best;
     }
 
     // the walk's own rim shield, outside any fight: a run has its rim guard and a fight its fight shield. the cube goes on the

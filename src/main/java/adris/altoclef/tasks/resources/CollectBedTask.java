@@ -65,8 +65,8 @@ public class CollectBedTask extends CraftWithMatchingWoolTask {
     protected Task onResourceTick(AltoClef mod) {
         // Break beds from the world if possible, that would be pretty fast.
         Block[] copperBlocks = ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS);
-        // the bed we respawn at is not for the taking, however close it is
-        Predicate<BlockPos> notSpawn = pos -> !Respawn.isSpawnBed(pos.getX(), pos.getY(), pos.getZ());
+        // the bed we respawn at is not for the taking, however close it is, and neither is the one by the nether portal
+        Predicate<BlockPos> notSpawn = pos -> !Respawn.keepsBed(pos.getX(), pos.getY(), pos.getZ());
         Optional<BlockPos> nearestBed = mod.getBlockTracker().getNearestTracking(notSpawn, BEDS);
         if (nearestBed.isPresent() && WorldHelper.canBreak(mod, nearestBed.get())) {
             for (Block CopperBlock : copperBlocks) {

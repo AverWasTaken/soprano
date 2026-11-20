@@ -12,6 +12,7 @@ import java.util.List;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -133,10 +134,50 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     protected Task onStalledSwing(AltoClef mod, Entity entity) {
         // the path was told to go but may be mid step, the head is ours anyway (see CombatAim.wantOverPath)
         mod.getControllerExtras().aimAtOverPath(entity);
-        if (!equipWeapon(mod, _toolFallback, entity)) {
-            mod.getControllerExtras().swingNow(entity);
+        if (equipWeapon(mod, _toolFallback, entity)) {
+            noteBlazeSwap(mod, entity);
+        } else {
+            noteBlazeMiss(mod, entity, mod.getControllerExtras().swingNow(entity));
         }
         return null;
+    }
+
+    // a blaze in reach, the charge full, and still no swing for this many ticks in a row is worth a line. one tick is normal
+    // (the sprint stop packet goes first), three is something holding it
+    private static final int BLAZE_MISS_TICKS = 3;
+    private static final long BLAZE_NOTE_GAP = 20;
+    private static int _blazeMissStreak;
+    private static long _blazeMissAt = Long.MIN_VALUE / 2;
+    private static long _blazeNotedAt = Long.MIN_VALUE / 2;
+
+    // the swap tick has no swing in it on purpose: vanilla resets the cooldown on any change of item, a swing now is a weak
+    // one. so it is not lost, but a fight that swaps a lot is a fight that hits a lot less, and that is what the line is for
+    private static void noteBlazeSwap(AltoClef mod, Entity entity) {
+        if (!(entity instanceof Blaze)) return;
+        _blazeMissStreak = 0;
+        long now = mod.getWorld().getGameTime();
+        if (now - _blazeNotedAt < BLAZE_NOTE_GAP) return;
+        _blazeNotedAt = now;
+        Debug.logInternal("swing: blaze #" + entity.getId() + " in reach, skipped for a weapon swap (hand "
+                + itemName(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem()) + ")");
+    }
+
+    private static void noteBlazeMiss(AltoClef mod, Entity entity, boolean swung) {
+        if (!(entity instanceof Blaze)) return;
+        if (swung || !mod.getControllerExtras().attackReady()) {
+            _blazeMissStreak = 0;
+            return;
+        }
+        long now = mod.getWorld().getGameTime();
+        // only back to back ticks make a streak, a leftover from the last time we stood here is not one
+        _blazeMissStreak = now - _blazeMissAt == 1 ? _blazeMissStreak + 1 : 1;
+        _blazeMissAt = now;
+        if (_blazeMissStreak < BLAZE_MISS_TICKS || now - _blazeNotedAt < BLAZE_NOTE_GAP) return;
+        _blazeNotedAt = now;
+        String why = mod.getControllerExtras().chargeResetActive() ? "charge reset swap in hand"
+                : !mod.getControllerExtras().onTarget(entity) ? "aim not on it" : "a swing gate";
+        Debug.logInternal("swing: blaze #" + entity.getId() + " in reach at full charge, no swing for " + _blazeMissStreak
+                + " ticks: " + why);
     }
 
     @Override
@@ -145,11 +186,15 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         // swing is due, not start then
         mod.getControllerExtras().aimAt(entity, CombatAim.Priority.KILL_TASK);
         // Equip weapon
-        if (!equipWeapon(mod, _toolFallback, entity)) {
+        if (equipWeapon(mod, _toolFallback, entity)) {
+            noteBlazeSwap(mod, entity);
+        } else {
+            boolean swung = false;
             // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
             if (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick()) {
-                mod.getControllerExtras().melee(entity);
+                swung = mod.getControllerExtras().melee(entity);
             }
+            noteBlazeMiss(mod, entity, swung);
         }
         return null;
     }

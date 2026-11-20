@@ -148,6 +148,10 @@ public class OverworldConfig {
     public int nightWoolRadius = 128;
     // a bed standing this close counts as one we can use (the old bed task's number)
     public int nightBedRadius = 40;
+    // a full bag picking the night bed back up with no garbage in it throws a build stack (DropRoom.shedBlocks), and only while this
+    // many build blocks stay behind. no stack to spare and the bed stays where it is. the End gate's own floor is bigger, this is
+    // only the night's: the pillar and the box want about this
+    public int nightBedShedFloor = 32;
 
     // coal on the way (see DetourRules, DetourSpec.COAL): while GATHER and IRON mine, coal ore this close is worth a short detour,
     // because a smelt that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block
