@@ -109,15 +109,23 @@ final class EffortlessTripsBridge implements EffortlessTrips {
             done.accept(e.getMessage());
             return;
         }
-        Run r = maker.make(mod);
-        pending = done;
-        mod.runUserTask(r.task(), (UserTaskChain.Listener) outcome -> {
-            if (pending != done) {
-                return;
+        try {
+            Run r = maker.make(mod);
+            pending = done;
+            mod.runUserTask(r.task(), (UserTaskChain.Listener) outcome -> {
+                if (pending != done) {
+                    return;
+                }
+                pending = null;
+                done.accept(outcome == UserTaskChain.Outcome.FINISHED ? r.result().get() : "stopped");
+            });
+        } catch (RuntimeException e) {
+            // the job waits on this callback (a gather has no timeout): an errand that never started has to say so
+            if (pending == done) {
+                pending = null;
             }
-            pending = null;
-            done.accept(outcome == UserTaskChain.Outcome.FINISHED ? r.result().get() : "stopped");
-        });
+            done.accept("couldn't start: " + e.getMessage());
+        }
     }
 
     @Override

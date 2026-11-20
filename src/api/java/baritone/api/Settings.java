@@ -930,9 +930,10 @@ public final class Settings {
     /**
      * Check the walking route left after a builder placement, deferring closures until they can be placed from the
      * exit side. Uses loaded terrain within twelve blocks; ladders, swimming and new scaffold routes are not proved
-     * by this check. Terrain restoration always uses the check and never mines a new access tunnel.
+     * by this check. Effortless Soprano jobs and terrain restoration always use the check (restoration never mines a new
+     * access tunnel); this turns it on for every other build too.
      */
-    public final Setting<Boolean> builderPreserveAccess = new Setting<>(true);
+    public final Setting<Boolean> builderPreserveAccess = new Setting<>(false);
 
     /**
      * Place torches in dark spots near you while Baritone is busy mining or walking

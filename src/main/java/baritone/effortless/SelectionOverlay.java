@@ -30,6 +30,12 @@ import java.awt.Color;
 final class SelectionOverlay {
     private AreaMask previous;
     private SelectionSurface surface;
+    // which faces are on cells the job leaves alone (drawn grey). a world read per face, so worked out a few times a
+    // second and whenever the shape or the job changes, not every frame
+    private boolean[] untouched;
+    private JobSchematic untouchedFor;
+    private long untouchedAt;
+    private static final long UNTOUCHED_EVERY_NS = 200_000_000L;
     // cap per-frame work; the normal selection limit is 32768 cells
     private static final int MAX_FACES = 24000;
 
@@ -37,6 +43,22 @@ final class SelectionOverlay {
         if (previous != mask) {
             surface = new SelectionSurface(mask);
             previous = mask;
+            untouched = null;
+        }
+        long now = System.nanoTime();
+        if (job == null || world == null) {
+            untouched = null;
+        } else if (untouched == null || untouchedFor != job || now - untouchedAt > UNTOUCHED_EVERY_NS) {
+            untouched = new boolean[Math.min(surface.faces.size(), MAX_FACES)];
+            BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+            for (int i = 0; i < untouched.length; i++) {
+                SelectionSurface.Face f = surface.faces.get(i);
+                EffortlessJob owner = job.owner(f.x(), f.y(), f.z());
+                untouched[i] = owner != null && owner.outcome(f.x(), f.y(), f.z(), world.getBlockState(at.set(f.x(), f.y(), f.z())))
+                        == EffortlessJob.Outcome.UNTOUCHED;
+            }
+            untouchedFor = job;
+            untouchedAt = now;
         }
         Color boundary = breaking ? Baritone.settings().colorEffortlessBreak.value : new Color(0xFFF1CE);
         boolean through = Baritone.settings().effortlessOutlineThroughBlocks.value;
@@ -45,16 +67,11 @@ final class SelectionOverlay {
         double cz = IRenderer.renderManager.renderPosZ();
         BufferBuilder buf = IRenderer.startQuads();
         try {
-            int n = 0;
-            BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
-            for (SelectionSurface.Face f : surface.faces) {
-                if (++n > MAX_FACES) break;
-                Color color = boundary;
-                if (job != null && world != null) {
-                    EffortlessJob owner = job.owner(f.x(), f.y(), f.z());
-                    if (owner != null && owner.outcome(f.x(), f.y(), f.z(), world.getBlockState(at.set(f.x(), f.y(), f.z())))
-                            == EffortlessJob.Outcome.UNTOUCHED) color = Baritone.settings().colorEffortlessUntouched.value;
-                }
+            int faces = Math.min(surface.faces.size(), MAX_FACES);
+            Color grey = Baritone.settings().colorEffortlessUntouched.value;
+            for (int i = 0; i < faces; i++) {
+                SelectionSurface.Face f = surface.faces.get(i);
+                Color color = untouched != null && i < untouched.length && untouched[i] ? grey : boundary;
                 // four checks per block face, fixed in world space so they don't crawl as the camera moves
                 for (int u = 0; u < 2; u++) for (int v = 0; v < 2; v++) {
                     float alpha = ((u + v) & 1) == 0 ? 0.035f : 0.105f;

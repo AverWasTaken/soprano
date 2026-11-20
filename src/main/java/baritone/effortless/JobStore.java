@@ -268,6 +268,14 @@ public final class JobStore {
             JsonArray a = pe.getAsJsonArray();
             pts.add(new BlockPos(a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()));
         }
+        if (pts.isEmpty()) {
+            return null;
+        }
+        // saved before 3D shapes took three clicks: corner to corner. the second corner again as the third keeps the
+        // same box instead of shrinking it to its first face
+        while (pts.size() < kind.clicks) {
+            pts.add(pts.get(pts.size() - 1));
+        }
         EffortlessJob.Mode mode = enumOr(EffortlessJob.Mode.class, str(o, "mode"), EffortlessJob.Mode.PLACE);
         EffortlessJob.FillMode fill = enumOr(EffortlessJob.FillMode.class, str(o, "fillMode"), EffortlessJob.FillMode.FILL_EMPTY);
         BlockFilter filter = BlockFilter.ALL;
@@ -352,7 +360,12 @@ public final class JobStore {
                 Files.createDirectories(parent);
             }
             Files.writeString(tmp, toJson(queue), StandardCharsets.UTF_8);
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                // some filesystems can't swap atomically. a plain replace still beats never saving
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
             return true;
         } catch (IOException e) {
             return false;

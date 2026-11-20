@@ -240,7 +240,7 @@ public final class BuildMode {
     // ----- the clicks. true = it was ours and the game should do nothing with it
 
     public static boolean onUse() {
-        if (!capturing()) {
+        if (!capturing() || passThroughUse()) {
             return false;
         }
         boolean repeat = ticks - lastUseTick <= 5;
@@ -259,7 +259,7 @@ public final class BuildMode {
     }
 
     public static boolean onAttack() {
-        if (!capturing()) {
+        if (!capturing() || (pending == null && aimingAtEntity())) {
             return false;
         }
         boolean repeat = ticks - lastAttackTick <= 1;
@@ -272,7 +272,26 @@ public final class BuildMode {
 
     // a held left button: no mining while build mode has the mouse
     public static boolean swallowHeldAttack() {
-        return capturing();
+        return capturing() && !(pending == null && aimingAtEntity());
+    }
+
+    // with no shape half set, a right click that isn't about blocks is the game's: eating, a shield, a bucket, a pearl,
+    // a bow, or a click on a mob or a villager. build mode left on must not stop you eating
+    private static boolean passThroughUse() {
+        if (pending != null || storagePick) {
+            return false;
+        }
+        if (aimingAtEntity()) {
+            return true;
+        }
+        ItemStack hand = Minecraft.getInstance().player.getMainHandItem();
+        // an empty hand marks storage, a block places, and the hotbar mix places from the hotbar whatever is held
+        return !hand.isEmpty() && !(hand.getItem() instanceof BlockItem) && palette != PaletteSource.HOTBAR;
+    }
+
+    private static boolean aimingAtEntity() {
+        HitResult hit = Minecraft.getInstance().hitResult;
+        return hit != null && hit.getType() == HitResult.Type.ENTITY;
     }
 
     public static boolean capturing() {

@@ -132,6 +132,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the block the near-player break went for last, so it finishes that one before starting another
     private BetterBlockPos nearBreak;
     private boolean repairBuild;
+    // Effortless builds always keep their walking access; other builds only with builderPreserveAccess
+    private boolean preserveAccess;
     private BlockPos accessEntry;
     private BuildAccess access;
     private int accessGoals;
@@ -144,6 +146,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     public void buildRestoration(String name, ISchematic schematic, Vec3i origin, Keep preserve, BlockPos exit) {
         buildInPlace(name, schematic, origin, false);
         repairBuild = true;
+        preserveAccess = true;
         accessEntry = exit;
         setKeep(preserve);
     }
@@ -151,7 +154,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void snapshotAccess() {
         accessGoals = 0;
         accessBlocked = false;
-        if (!repairBuild && !Baritone.settings().builderPreserveAccess.value) { access = null; return; }
+        if (!repairBuild && !preserveAccess && !Baritone.settings().builderPreserveAccess.value) { access = null; return; }
         if (accessEntry == null) accessEntry = ctx.playerFeet().immutable();
         if (!accessDirty && access != null && ctx.playerFeet().equals(accessFrom) && builderTicks - accessAt < 5) return;
         accessDirty = false;
@@ -180,8 +183,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 || (access.safe(feet, target) && accessOrderSafe(target))));
     }
 
+    // the cells still to do, read once a tick: every placement check asks, and each answer walks the whole build
+    private List<BetterBlockPos> pendingWork = List.of();
+    private long pendingWorkAt = -1;
+
     private List<BetterBlockPos> pendingAccessWork() {
-        return incorrectPositions == null ? List.of() : incorrectPositions.stream().filter(p -> {
+        if (pendingWorkAt == builderTicks) {
+            return pendingWork;
+        }
+        pendingWorkAt = builderTicks;
+        return pendingWork = incorrectPositions == null ? List.of() : incorrectPositions.stream().filter(p -> {
             BlockState current = baritone.bsi.get0(p);
             BlockState wanted = wholeWants(p.x, p.y, p.z, current);
             return wanted != null && !valid(current, wanted, false);
@@ -463,6 +474,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         start(name, schematic, origin, net.minecraft.world.level.block.Rotation.NONE,
                 net.minecraft.world.level.block.Mirror.NONE, false);
         this.jumpOff = jumpOff;
+        this.preserveAccess = true;
     }
 
     // the old entry point with the orientation pulled out. useOrientation = add the schematicOrientation offsets, which
@@ -475,8 +487,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.jumpOff = false;
         this.nearBreak = null;
         this.repairBuild = false;
+        this.preserveAccess = false;
         this.accessEntry = null;
         this.access = null;
+        this.pendingWork = List.of();
+        this.pendingWorkAt = -1;
         // a #build from chat doesn't get to inherit somebody else's pillar
         this.keep = null;
         this.name = name;
@@ -1998,7 +2013,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         BetterBlockPos feet = ctx.playerFeet();
         double reach = ctx.playerController().getBlockReachDistance();
-        LongArrayList rejoined = cleanStage == CleanStage.NONE ? new LongArrayList() : ledger.updatePassing(pathCells::contains,
+        // with access kept, scaffold a path walks over during the build waits for the cleanup instead of being
+        // pulled back into the work and mined out from under the route
+        LongArrayList rejoined = cleanStage == CleanStage.NONE && access != null ? new LongArrayList() : ledger.updatePassing(pathCells::contains,
                 cell -> BetterBlockPos.deserializeFromLong(cell).distSqr(feet) <= reach * reach);
         if (!rejoined.isEmpty()) {
             workChanged();
@@ -3990,7 +4007,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // it back out, the next path puts it back. that's the scaffold loop (upstream #2173)
                 return COST_INF;
             } else {
-                if (cleaning) return COST_INF;
+                if (cleaning && accessSnapshot != null) return COST_INF;
                 if (hasThrowaway) {
                     return placeBlockCost;
                 } else {
@@ -4040,7 +4057,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 // TODO allow breaking blocks that we have a tool to harvest and immediately place back?
             } else {
                 // An access tunnel is not free: preserving terrain adds replacement work after the build.
-                return Baritone.settings().effortlessRestoreTerrain.value || Baritone.settings().backfill.value ? 3 : 1;
+                return accessSnapshot != null && (Baritone.settings().effortlessRestoreTerrain.value || Baritone.settings().backfill.value) ? 3 : 1;
             }
         }
     }

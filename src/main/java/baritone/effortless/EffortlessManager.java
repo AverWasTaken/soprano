@@ -87,6 +87,8 @@ public final class EffortlessManager implements AbstractGameEventListener {
     // in its put-it-back build now
     private final Map<Long, BlockState> dug = new java.util.LinkedHashMap<>();
     private boolean restoring;
+    // the entry the terrain belongs to: restoring only ever goes on with that one, never with whatever starts next
+    private JobQueue.Entry restoringEntry;
     private BlockPos restoreExit;
     // the shown entries as one schematic for the preview, rebuilt when what's shown changes
     private Object shownKey;
@@ -112,8 +114,9 @@ public final class EffortlessManager implements AbstractGameEventListener {
         this.spec = newSpec;
     }
 
+    // a copy that keeps the gaps: #ef p2 before p1 leaves a null where p1 goes, and List.copyOf would throw on it
     public List<BlockPos> points() {
-        return List.copyOf(points);
+        return java.util.Collections.unmodifiableList(new ArrayList<>(points));
     }
 
     // index 0 based. setting point 2 with no point 1 is fine, the gaps get the crosshair until they're set
@@ -156,10 +159,23 @@ public final class EffortlessManager implements AbstractGameEventListener {
         // in build mode the next corner is where a click would land: in front of the face for a place, in the air
         // when there's nothing in reach
         if (BuildMode.active()) {
-            return BuildMode.crosshair();
+            // the outline, the preview job and the ghosts all ask every frame: aim once per look, not once per asker
+            var mc = net.minecraft.client.Minecraft.getInstance();
+            var eye = ctx.player().getEyePosition();
+            List<Object> key = java.util.Arrays.asList(eye, ctx.player().getYRot(), ctx.player().getXRot(),
+                    mc.hitResult == null ? null : mc.hitResult.getLocation(), new ArrayList<>(points), spec, BuildMode.pending(),
+                    BuildMode.storagePick());
+            if (!key.equals(aimKey)) {
+                aimKey = key;
+                aimed = BuildMode.crosshair();
+            }
+            return aimed;
         }
         return ctx.getSelectedBlock();
     }
+
+    private List<Object> aimKey;
+    private Optional<BlockPos> aimed = Optional.empty();
 
     // the cells of the shape as set up right now, null when there aren't enough points
     public AreaMask currentMask(boolean fillWithCrosshair) {
@@ -243,6 +259,12 @@ public final class EffortlessManager implements AbstractGameEventListener {
     }
 
     private void startEntry(JobQueue.Entry e) {
+        if (restoring && e != restoringEntry) {
+            // the repair was for an entry that got stopped or moved, its holes aren't this job's to fill
+            restoring = false;
+            restoringEntry = null;
+            dug.clear();
+        }
         if (restoring) {
             // back from the exact restore's gather: it's the terrain build that goes on, not the job again
             if (!buildRestore(e)) {
@@ -418,6 +440,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
     private void finishEntry(JobQueue.Entry e, String note) {
         e.state(JobQueue.State.DONE, note);
         restoring = false;
+        restoringEntry = null;
         dug.clear();
         save();
     }
@@ -463,6 +486,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
                 e.trips(e.trips() + 1);
                 tripOut = true;
                 restoring = true;
+                restoringEntry = e;
                 BuildMode.say("Making " + total(bill) + " blocks to put the terrain back exactly");
                 trips.gather(bill, why -> {
                     tripOut = false;
@@ -500,6 +524,7 @@ public final class EffortlessManager implements AbstractGameEventListener {
             return false;
         }
         restoring = true;
+        restoringEntry = e;
         e.state(JobQueue.State.RUNNING, null);
         RestoreSchematic rs = new RestoreSchematic(plan);
         BuildMode.say("Putting back " + rs.size() + " blocks of terrain" + (skipped > 0 ? " (" + skipped + " left open)" : ""));
@@ -776,11 +801,24 @@ public final class EffortlessManager implements AbstractGameEventListener {
         if (queue.runningEntry() != null) {
             queue.runningEntry().state(JobQueue.State.QUEUED, null);
         }
+        // the old world's file gets the running entry back in line before the new one loads
+        save();
         queueWorld = world;
         queueFile = world == null ? null : world.directory.resolve(JobStore.FILE_NAME);
         queue = JobStore.load(queueFile);
         entrySerial = 0;
         shownKey = null;
+        // an errand or a repair from the world we left never reports back here: without this the queue in the new
+        // world waits on it forever
+        tripOut = false;
+        tripTimed = false;
+        tripCalledOff = false;
+        resumeEntry = null;
+        restoring = false;
+        restoringEntry = null;
+        dug.clear();
+        running = null;
+        runningSchematic = null;
     }
 
     // what the preview should show for the next job, or null when there's nothing set up to show

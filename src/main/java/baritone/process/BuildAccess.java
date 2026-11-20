@@ -34,8 +34,17 @@ final class BuildAccess {
     };
     private final Set<BlockPos> reachable;
     private final BlockPos exit;
+    // the window the graph covers. a cell further than reach outside it can't have a stance in it, which spares the
+    // stance scan (a cube of reach^3 lookups) for every far cell of a big build on every check
+    private final int minX, minY, minZ, maxX, maxY, maxZ;
 
     BuildAccess(BlockPos from, BlockPos entry, int radius, Terrain terrain) {
+        minX = from.getX() - radius;
+        maxX = from.getX() + radius;
+        minY = from.getY() - 6;
+        maxY = from.getY() + 6;
+        minZ = from.getZ() - radius;
+        maxZ = from.getZ() + radius;
         for (int x = -radius; x <= radius; x++) for (int z = -radius; z <= radius; z++) {
             for (int y = -6; y <= 6; y++) {
                 BlockPos p = from.offset(x, y, z);
@@ -135,8 +144,12 @@ final class BuildAccess {
         return true;
     }
 
-    private static boolean hasStance(Set<BlockPos> feet, BlockPos target, double reach) {
+    private boolean hasStance(Set<BlockPos> feet, BlockPos target, double reach) {
         int r = (int)Math.ceil(reach);
+        if (feet.isEmpty() || target.getX() < minX - r || target.getX() > maxX + r || target.getZ() < minZ - r
+                || target.getZ() > maxZ + r || target.getY() < minY - r || target.getY() > maxY + r + 2) {
+            return false;
+        }
         for (int x = -r; x <= r; x++) for (int y = -r; y <= r; y++) for (int z = -r; z <= r; z++) {
             if (x*x + (y+1.12)*(y+1.12) + z*z <= reach*reach && feet.contains(target.offset(x,y,z))) return true;
         }

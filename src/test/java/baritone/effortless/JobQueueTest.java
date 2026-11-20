@@ -178,4 +178,16 @@ public class JobQueueTest {
         assertEquals(baritone.api.utils.EffortlessMaterials.STORAGE, back.get(0).materials());
         assertEquals(baritone.api.utils.EffortlessMaterials.GATHER, back.get(1).materials());
     }
+
+    @Test
+    public void aQueueSavedBeforeTheReworkKeepsItsBoxes() {
+        // a 3x3x3 cuboid saved with two corners, the way the old shapes were clicked
+        String old = "{\"entries\":[{\"name\":\"Old box\",\"state\":\"QUEUED\",\"jobs\":[{\"shape\":\"CUBOID\","
+                + "\"axis\":\"FREE\",\"fill\":\"FILLED\",\"thickness\":1,\"points\":[[0,0,0],[2,2,2]],\"mode\":\"BREAK\"}]}]}";
+        JobQueue q = JobStore.fromJson(old);
+        assertEquals(1, q.size());
+        EffortlessJob job = q.get(0).jobs().get(0);
+        assertEquals(ShapeKind.CUBE, job.spec.kind());
+        assertEquals(27, job.mask.count());
+    }
 }
